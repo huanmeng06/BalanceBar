@@ -236,6 +236,77 @@ final class OfficialQuotaClient {
         return true
     }
 
+    /// Read-only list of banked Codex reset credits. Used only when the
+    /// usage payload has a positive available count but no usable `credits[]`.
+    /// Never POSTs consume and never changes the usage request.
+    func fetchRateLimitResetCredits(
+        storedAccessToken: String? = nil,
+        now: Date = Date(),
+        completion: @escaping (Result<CodexBankedReset?, OfficialQuotaClientError>) -> Void
+    ) {
+        guard let request = makeRateLimitResetCreditsRequest(
+            storedAccessToken: storedAccessToken
+        ) else {
+            completion(.failure(.missingCredentials))
+            return
+        }
+
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error {
+                completion(.failure(.transport(Self.transportError(from: error))))
+                return
+            }
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let data else {
+                completion(.failure(.httpStatus(
+                    statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                    dataSize: data?.count ?? 0
+                )))
+                return
+            }
+            do {
+                let object = try JSONSerialization.jsonObject(with: data)
+                guard object is [String: Any] else {
+                    completion(.failure(.invalidJSON(dataSize: data.count)))
+                    return
+                }
+            } catch {
+                completion(.failure(.invalidJSON(dataSize: data.count)))
+                return
+            }
+            completion(.success(
+                OfficialQuotaResponseParser.parseBankedResetCredits(data: data, now: now)
+            ))
+        }
+        task.resume()
+    }
+
+    /// Public 48-hour Codex reset likelihood. No credentials. Failure is
+    /// `--%` and never fails the official quota snapshot.
+    func fetchCodexResetForecast(
+        completion: @escaping (CodexResetProbability) -> Void
+    ) {
+        var request = URLRequest(url: CodexResetForecastParser.forecastURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let task = session.dataTask(with: request) { data, response, error in
+            if error != nil {
+                completion(.unavailable)
+                return
+            }
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let data else {
+                completion(.unavailable)
+                return
+            }
+            completion(CodexResetForecastParser.parse(data: data))
+        }
+        task.resume()
+    }
+
     private static func parse(
         data: Data,
         client: AssistantClient,
@@ -316,6 +387,22 @@ final class OfficialQuotaClient {
         if client == .claude {
             request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         }
+        return request
+    }
+
+    private func makeRateLimitResetCreditsRequest(
+        storedAccessToken: String?
+    ) -> URLRequest? {
+        let accessToken = storedAccessToken ?? credentialReader.codexAccessToken()
+        guard let accessToken, !accessToken.isEmpty else { return nil }
+
+        var request = URLRequest(
+            url: URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
+        )
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         return request
     }
 }

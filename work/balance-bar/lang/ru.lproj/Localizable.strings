@@ -361,6 +361,10 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "Если включено, исчерпанные квоты скрываются в меню при отображении 🌙 %1$@";
 "dashboard.menu.page.low_balance_display_threshold" = "Порог предупреждения о низком балансе";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "После пополнения оставлять индикатор выполнения красным, пока баланс ниже этого значения";
+"dashboard.menu.page.banked_reset_display_mode" = "Стиль отображения";
+"dashboard.menu.page.banked_reset_display_mode_description" = "Краткий показывает число и вероятность сброса; подробный перечисляет каждую карту";
+"dashboard.menu.page.banked_reset_display_mode_compact" = "Краткий";
+"dashboard.menu.page.banked_reset_display_mode_detailed" = "Подробный";
 "dashboard.menu.page.dropdown_menu" = "Выпадающее меню";
 "dashboard.menu.page.menu_behavior" = "Поведение меню";
 "dashboard.menu.page.quick_switch" = "Быстрое переключение";
@@ -462,6 +466,16 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ временно недоступна";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "Карты сброса";
+"codex.banked_reset.full_reset_title" = "Полный сброс";
+"codex.banked_reset.full_reset_window" = "Неделя + 5-часовой лимит";
+"codex.banked_reset.expires_value" = "Истекает %1$@";
+"codex.banked_reset.remaining_hours" = "%1$@ ч";
+"codex.banked_reset.remaining_days" = "%1$@ д";
+"codex.banked_reset.remaining_days_hours" = "%1$@ д %2$@ ч";
+"codex.banked_reset.remaining_minutes" = "%1$@ мин";
+"codex.banked_reset.probability_prefix" = "Вероятность сброса:";
+"codex.banked_reset.probability_source" = "Источник данных: willcodexquotareset.com";
 "dashboard.menu.page.progress_color_ranges" = "Цветовые диапазоны индикатора";
 "dashboard.menu.page.progress_color_ranges_description" = "Перетаскивайте пороги, чтобы выбрать цвет для каждого диапазона оставшегося процента";
 "dashboard.menu.page.displayed_colors" = "Отображаемые цвета";

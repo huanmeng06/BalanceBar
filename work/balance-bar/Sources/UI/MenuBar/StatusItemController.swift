@@ -2148,6 +2148,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showStatusMenu: Bool
         let lunaReserveDisplayMode: LunaReserveDisplayMode
         let lunaReserveHideExhaustedQuota: Bool
+        let bankedResetDisplayMode: CodexBankedResetDisplayMode
         let showsAvailableUpdateBadge: Bool
 
         init(
@@ -2166,6 +2167,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showStatusMenu: Bool,
             lunaReserveDisplayMode: LunaReserveDisplayMode = .defaultValue,
             lunaReserveHideExhaustedQuota: Bool = false,
+            bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
             showsAvailableUpdateBadge: Bool = false
         ) {
             self.openCodexCards = openCodexCards
@@ -2183,6 +2185,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showStatusMenu = showStatusMenu
             self.lunaReserveDisplayMode = lunaReserveDisplayMode
             self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
+            self.bankedResetDisplayMode = bankedResetDisplayMode
             self.showsAvailableUpdateBadge = showsAvailableUpdateBadge
         }
 
@@ -2206,6 +2209,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showStatusMenu == rhs.showStatusMenu
                 && lhs.lunaReserveDisplayMode == rhs.lunaReserveDisplayMode
                 && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
+                && lhs.bankedResetDisplayMode == rhs.bankedResetDisplayMode
                 && lhs.showsAvailableUpdateBadge == rhs.showsAvailableUpdateBadge
         }
     }
@@ -5263,6 +5267,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let officialQuotaWindows = quotaPresentation.windows
         let lunaReserve = quotaPresentation.lunaReserve
+        let bankedReset = quotaPresentation.bankedReset
         let subscription = menuInput.openAIAccount?.subscription
         let subscriptionTextWidth = subscription.map {
             AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
@@ -5276,7 +5281,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             officialQuotaWindows: officialQuotaWindows,
             includesLunaReserve: snapshot.kind == .official && lunaReserve != nil,
             includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil,
-            lunaReserveInsertionIndex: quotaPresentation.lunaReserveInsertionIndex
+            lunaReserveInsertionIndex: quotaPresentation.lunaReserveInsertionIndex,
+            includesBankedReset: snapshot.kind == .official && bankedReset != nil,
+            bankedResetCardCount: bankedReset?.cards.count ?? 0,
+            bankedResetDisplayMode: menuInput.bankedResetDisplayMode
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -5302,7 +5310,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
 
-        if !layout.quotaRows.isEmpty || layout.lunaReserveRow != nil {
+        if !layout.quotaRows.isEmpty
+            || layout.lunaReserveRow != nil
+            || layout.bankedResetSummaryRow != nil {
             for (window, row) in zip(officialQuotaWindows, layout.quotaRows) {
                 let progress = QuotaProgressView(percentage: window.remaining, colorConfiguration: settings.quotaProgressColorConfiguration)
                 progress.frame = row.progress
@@ -5384,6 +5394,191 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     frame: overviewMarqueeFrame(row.reset, avoiding: amount)
                 )
                 view.addSubview(reset)
+            }
+            if let bankedReset,
+               let summaryRow = layout.bankedResetSummaryRow {
+                let isCompactBankedReset = menuInput.bankedResetDisplayMode == .compact
+                if summaryRow.amount.width > 0 {
+                    let amount = makeOverviewLabel(
+                        "\(bankedReset.availableCount)",
+                        font: .monospacedDigitSystemFont(
+                            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                            weight: .semibold
+                        )
+                    )
+                    amount.alignment = .right
+                    amount.frame = summaryRow.amount
+                    amount.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.count")
+                    view.addSubview(amount)
+                    view.addSubview(
+                        makeMarqueeOverviewLabel(
+                            tr(.keyCodexBankedResetTitle),
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                                weight: .medium
+                            ),
+                            textColor: .labelColor,
+                            frame: overviewMarqueeFrame(summaryRow.quotaDetail, avoiding: amount)
+                        )
+                    )
+                }
+
+                if summaryRow.reset.width > 0 {
+                    let prefixFont = NSFont.systemFont(ofSize: 12, weight: .regular)
+                    let prefix = makeOverviewLabel(
+                        tr(.keyCodexBankedResetProbabilityPrefix),
+                        font: prefixFont
+                    )
+                    prefix.textColor = .secondaryLabelColor
+                    prefix.lineBreakMode = .byClipping
+                    prefix.usesSingleLineMode = true
+                    prefix.sizeToFit()
+                    let prefixWidth = max(
+                        ceil(prefix.frame.width),
+                        ceil(
+                            AccountMarqueeView.textWidth(
+                                of: tr(.keyCodexBankedResetProbabilityPrefix),
+                                font: prefixFont
+                            )
+                        ) + 8
+                    )
+                    prefix.frame = CGRect(
+                        x: summaryRow.reset.minX,
+                        y: summaryRow.reset.minY,
+                        width: prefixWidth,
+                        height: max(prefix.frame.height, summaryRow.reset.height)
+                    )
+                    prefix.identifier = NSUserInterfaceItemIdentifier(
+                        "codex.bankedReset.probabilityPrefix"
+                    )
+                    view.addSubview(prefix)
+
+                    let percentText = quotaPresentation.resetProbability.displayText
+                    let link = HoverLinkTextField(text: percentText)
+                    link.lineBreakMode = .byClipping
+                    link.usesSingleLineMode = true
+                    link.sizeToFit()
+                    let linkFont = link.font ?? .systemFont(ofSize: 12, weight: .medium)
+                    let linkWidth = max(
+                        ceil(link.frame.width) + 4,
+                        ceil(link.attributedStringValue.size().width) + 8,
+                        ceil(AccountMarqueeView.textWidth(of: percentText, font: linkFont)) + 8
+                    )
+                    link.frame = CGRect(
+                        x: prefix.frame.maxX,
+                        y: summaryRow.reset.minY,
+                        width: linkWidth,
+                        height: max(link.frame.height, summaryRow.reset.height)
+                    )
+                    link.identifier = NSUserInterfaceItemIdentifier(
+                        "codex.bankedReset.probability"
+                    )
+                    link.hoverHint = tr(.keyCodexBankedResetProbabilitySource)
+                    link.onActivate = {
+                        NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
+                    }
+                    view.addSubview(link)
+                    view.track(link)
+                }
+
+                if !isCompactBankedReset {
+                    let ticketImage = Self.bankedResetTicketImage()
+                    let ticketHost: NSView
+                    let ticketScrollView: BankedResetTicketScrollView?
+                    if OpenCodexCardLayout.bankedResetTicketsNeedScroll(
+                        cardCount: bankedReset.cards.count
+                    ), let viewport = layout.bankedResetTicketViewport {
+                        let document = BankedResetTicketDocumentView(
+                            frame: NSRect(
+                                x: 0,
+                                y: 0,
+                                width: viewport.width,
+                                height: OpenCodexCardLayout.bankedResetTicketStackHeight(
+                                    cardCount: bankedReset.cards.count
+                                )
+                            )
+                        )
+                        let scrollView = BankedResetTicketScrollView(frame: viewport)
+                        scrollView.identifier = NSUserInterfaceItemIdentifier(
+                            "codex.bankedReset.ticketScroll"
+                        )
+                        scrollView.documentView = document
+                        view.addSubview(scrollView)
+                        view.trackTicketScroll(scrollView)
+                        ticketHost = document
+                        ticketScrollView = scrollView
+                    } else {
+                        ticketHost = view
+                        ticketScrollView = nil
+                    }
+                    for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
+                        if row.chrome.width > 0 {
+                            let chrome = BankedResetChromeView(frame: row.chrome)
+                            chrome.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.chrome")
+                            ticketHost.addSubview(chrome)
+                        }
+
+                        if row.icon.width > 0, let ticketImage {
+                            let icon = NSImageView(frame: row.icon)
+                            icon.image = ticketImage
+                            icon.imageScaling = .scaleProportionallyUpOrDown
+                            icon.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ticket")
+                            ticketHost.addSubview(icon)
+                        }
+
+                        let title = makeOverviewLabel(
+                            card.titleText,
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                                weight: .medium
+                            )
+                        )
+                        title.frame = row.quotaDetail
+                        ticketHost.addSubview(title)
+
+                        if let windowText = card.windowText, !windowText.isEmpty {
+                            let windowLine = makeOverviewLabel(
+                                windowText,
+                                font: .systemFont(
+                                    ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                                    weight: .regular
+                                )
+                            )
+                            windowLine.textColor = .secondaryLabelColor
+                            windowLine.frame = row.window
+                            ticketHost.addSubview(windowLine)
+                        }
+
+                        if let remainingText = card.remainingText, !remainingText.isEmpty {
+                            let remaining = makeOverviewLabel(
+                                remainingText,
+                                font: .systemFont(
+                                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                                    weight: .medium
+                                )
+                            )
+                            remaining.alignment = .right
+                            remaining.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
+                            remaining.frame = row.amount
+                            remaining.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
+                            ticketHost.addSubview(remaining)
+                        }
+
+                        if let expiresText = card.expiresText, !expiresText.isEmpty {
+                            let subtitle = makeOverviewLabel(
+                                expiresText,
+                                font: .systemFont(
+                                    ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                                    weight: .regular
+                                )
+                            )
+                            subtitle.textColor = .secondaryLabelColor
+                            subtitle.frame = row.reset
+                            ticketHost.addSubview(subtitle)
+                        }
+                    }
+                    ticketScrollView?.scrollToTopOfDocument()
+                }
             }
             view.addSubview(provider)
         } else {
@@ -5662,6 +5857,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.addSubview(detail)
         item.view = view
         return item
+    }
+
+    private static func bankedResetTicketImage() -> NSImage? {
+        guard let url = Bundle.main.url(forResource: "BankedResetTicket", withExtension: "svg"),
+              let image = NSImage(contentsOf: url) else {
+            return nil
+        }
+        image.size = OpenCodexCardLayout.bankedResetTicketIconSize
+        return image
     }
 
     private func makeOverviewLabel(_ text: String, font: NSFont) -> NSTextField {

@@ -231,6 +231,159 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertTrue(snapshot.menuBarToolTip.contains(reserve.remainingText))
     }
 
+    func testOfficialQuotaMenuPresentationShowsBankedResetOnlyWhenCardsExist() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "1h",
+            durationSeconds: 18_000
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "6d",
+            durationSeconds: 604_800
+        )
+        let earlier = CodexBankedResetCard(
+            id: "earlier",
+            resetType: "codex_rate_limits",
+            titleText: tr(.keyCodexBankedResetFullResetTitle),
+            expiresAt: date.addingTimeInterval(3_600),
+            expiresText: "Expires later"
+        )
+        let undated = CodexBankedResetCard(
+            id: "undated",
+            resetType: "codex_rate_limits",
+            titleText: tr(.keyCodexBankedResetFullResetTitle),
+            expiresAt: nil,
+            expiresText: nil
+        )
+        let bankedReset = try XCTUnwrap(CodexBankedReset(cards: [earlier, undated]))
+
+        let official = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            lunaReserve: LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m"),
+            bankedReset: bankedReset
+        )
+        let presented = official.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
+        )
+        XCTAssertEqual(presented.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNil(presented.lunaReserve)
+        XCTAssertNil(presented.lunaReserveInsertionIndex)
+        XCTAssertEqual(presented.bankedReset?.availableCount, 2)
+        XCTAssertEqual(presented.bankedReset?.cards.map(\.id), ["earlier", "undated"])
+        XCTAssertEqual(presented.resetProbability, .unavailable)
+
+        let scored = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            bankedReset: bankedReset,
+            resetProbability: .percent(75)
+        )
+        XCTAssertEqual(
+            scored.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: .always,
+                hideExhaustedQuota: false
+            ).resetProbability,
+            .percent(75)
+        )
+
+        let emptyOfficial = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay]
+        )
+        XCTAssertNil(
+            emptyOfficial.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: .always,
+                hideExhaustedQuota: false
+            ).bankedReset
+        )
+
+        let balance = Snapshot.balance(
+            "Custom",
+            12.5,
+            "USD",
+            nil,
+            date
+        )
+        XCTAssertNil(
+            balance.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: .always,
+                hideExhaustedQuota: false
+            ).bankedReset
+        )
+    }
+
+    func testBankedResetRemainingUsesWarningThresholdUnderTwentyFourHours() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let sixHours = try XCTUnwrap(
+            CodexBankedResetFormatting.remaining(
+                until: now.addingTimeInterval(6 * 3_600),
+                now: now
+            )
+        )
+        XCTAssertEqual(
+            sixHours.text,
+            tr(.keyCodexBankedResetRemainingHours, arguments: ["6"])
+        )
+        XCTAssertFalse(sixHours.text.contains("剩余"))
+        XCTAssertFalse(sixHours.text.contains("剩餘"))
+        XCTAssertFalse(sixHours.text.contains("Remaining"))
+        XCTAssertTrue(sixHours.isWarning)
+
+        let oneDayFourHours = try XCTUnwrap(
+            CodexBankedResetFormatting.remaining(
+                until: now.addingTimeInterval((1 * 86_400) + (4 * 3_600)),
+                now: now
+            )
+        )
+        XCTAssertEqual(
+            oneDayFourHours.text,
+            tr(.keyCodexBankedResetRemainingDaysHours, arguments: ["1", "4"])
+        )
+        XCTAssertFalse(oneDayFourHours.isWarning)
+
+        let exactlyOneDay = try XCTUnwrap(
+            CodexBankedResetFormatting.remaining(
+                until: now.addingTimeInterval(86_400),
+                now: now
+            )
+        )
+        XCTAssertEqual(
+            exactlyOneDay.text,
+            tr(.keyCodexBankedResetRemainingDays, arguments: ["1"])
+        )
+        XCTAssertFalse(exactlyOneDay.isWarning)
+
+        let expiry = try XCTUnwrap(
+            OfficialQuotaResetFormatter.bankedResetString(
+                for: now.addingTimeInterval(86_400),
+                relativeTo: now
+            )
+        )
+        XCTAssertFalse(expiry.contains("GMT"))
+    }
+
     func testOfficialQuotaMenuPresentationSupportsLunaReserveDisplayModesAndExhaustedHiding() {
         LunaReserveUserFacing.testOverride = true
         defer { LunaReserveUserFacing.testOverride = nil }
@@ -488,6 +641,35 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(
             unavailable.lunaReserve?.menuSubtitleText,
             "Luna Reserve temporarily unavailable"
+        )
+    }
+
+    func testBankedResetDemoTenCardsKeepsCountProbabilityAndWarningExpiry() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = DevelopmentBankedResetDemo.snapshot(
+            mode: .tenCards,
+            providerName: "OpenAI",
+            date: date
+        )
+        let bankedReset = try XCTUnwrap(snapshot.bankedReset)
+        XCTAssertEqual(bankedReset.availableCount, DevelopmentBankedResetDemo.cardCount)
+        XCTAssertEqual(bankedReset.cards.count, 10)
+        XCTAssertEqual(snapshot.resetProbability, .percent(23))
+        XCTAssertNil(snapshot.lunaReserve)
+        XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertTrue(bankedReset.cards[0].remainingIsWarning)
+        XCTAssertFalse(bankedReset.cards[9].remainingIsWarning)
+        XCTAssertEqual(
+            bankedReset.cards.map(\.resetType),
+            Array(repeating: "codex_rate_limits", count: 10)
+        )
+        XCTAssertEqual(
+            Set(bankedReset.cards.compactMap(\.id)).count,
+            10
         )
     }
 

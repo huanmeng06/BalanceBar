@@ -361,6 +361,10 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "Quando ativado, as cotas zeradas ficam ocultas no menu quando a 🌙 %1$@ é exibida";
 "dashboard.menu.page.low_balance_display_threshold" = "Limite de aviso de saldo baixo";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Após uma recarga, a barra de progresso permanece vermelha enquanto o saldo estiver abaixo deste valor";
+"dashboard.menu.page.banked_reset_display_mode" = "Estilo de exibição";
+"dashboard.menu.page.banked_reset_display_mode_description" = "Compacto mostra a quantidade e a probabilidade de reset; detalhado lista cada cartão";
+"dashboard.menu.page.banked_reset_display_mode_compact" = "Compacto";
+"dashboard.menu.page.banked_reset_display_mode_detailed" = "Detalhado";
 "dashboard.menu.page.dropdown_menu" = "Menu suspenso";
 "dashboard.menu.page.menu_behavior" = "Comportamento do menu";
 "dashboard.menu.page.quick_switch" = "Troca rápida";
@@ -462,6 +466,16 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ está temporariamente indisponível";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "Cartões de redefinição";
+"codex.banked_reset.full_reset_title" = "Redefinição completa";
+"codex.banked_reset.full_reset_window" = "Cota semanal + 5 horas";
+"codex.banked_reset.expires_value" = "Expira em %1$@";
+"codex.banked_reset.remaining_hours" = "%1$@ horas";
+"codex.banked_reset.remaining_days" = "%1$@ dias";
+"codex.banked_reset.remaining_days_hours" = "%1$@ d %2$@ h";
+"codex.banked_reset.remaining_minutes" = "%1$@ minutos";
+"codex.banked_reset.probability_prefix" = "Probabilidade de reset:";
+"codex.banked_reset.probability_source" = "Fonte dos dados: willcodexquotareset.com";
 "dashboard.menu.page.progress_color_ranges" = "Faixas de cor da barra";
 "dashboard.menu.page.progress_color_ranges_description" = "Arraste os limites para escolher a cor de cada faixa de percentagem restante";
 "dashboard.menu.page.displayed_colors" = "Cores exibidas";

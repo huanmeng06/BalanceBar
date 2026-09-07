@@ -361,6 +361,10 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "켜면 🌙 %1$@가 표시될 때 잔여량이 0%%인 할당량을 메뉴에서 숨깁니다";
 "dashboard.menu.page.low_balance_display_threshold" = "잔액 부족 경고 기준";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "충전 후 잔액이 이 금액보다 적으면 진행 막대를 계속 빨간색으로 표시";
+"dashboard.menu.page.banked_reset_display_mode" = "표시 스타일";
+"dashboard.menu.page.banked_reset_display_mode_description" = "간결은 장수와 리셋 확률만 표시하고, 상세는 각 카드를 나열합니다";
+"dashboard.menu.page.banked_reset_display_mode_compact" = "간결";
+"dashboard.menu.page.banked_reset_display_mode_detailed" = "상세";
 "dashboard.menu.page.dropdown_menu" = "드롭다운 메뉴";
 "dashboard.menu.page.menu_behavior" = "메뉴 동작";
 "dashboard.menu.page.quick_switch" = "빠른 전환";
@@ -462,6 +466,16 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@를 일시적으로 사용할 수 없음";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "리셋 카드";
+"codex.banked_reset.full_reset_title" = "전체 리셋";
+"codex.banked_reset.full_reset_window" = "주간 + 5시간 한도";
+"codex.banked_reset.expires_value" = "%1$@에 만료";
+"codex.banked_reset.remaining_hours" = "%1$@시간";
+"codex.banked_reset.remaining_days" = "%1$@일";
+"codex.banked_reset.remaining_days_hours" = "%1$@일 %2$@시간";
+"codex.banked_reset.remaining_minutes" = "%1$@분";
+"codex.banked_reset.probability_prefix" = "리셋 확률:";
+"codex.banked_reset.probability_source" = "데이터 출처: willcodexquotareset.com";
 "dashboard.menu.page.progress_color_ranges" = "진행률 막대 색상 범위";
 "dashboard.menu.page.progress_color_ranges_description" = "임계값을 드래그하여 남은 백분율 구간별 색상을 조정합니다";
 "dashboard.menu.page.displayed_colors" = "표시 색상";

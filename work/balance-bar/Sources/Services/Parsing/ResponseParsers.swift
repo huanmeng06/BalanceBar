@@ -78,6 +78,30 @@ enum ResponseParsingSupport {
         return date
     }
 
+    /// Parse an absolute API timestamp without requiring it to be in the
+    /// future. Banked-reset expiry uses this so expired cards can be filtered
+    /// instead of being treated as missing dates.
+    static func timestampDate(_ value: Any?) -> Date? {
+        if let number = numberValue(value) {
+            guard number.isFinite else { return nil }
+            let timestamp = number > 10_000_000_000 ? number / 1_000 : number
+            guard timestamp > 1_000_000_000, timestamp < 10_000_000_000 else { return nil }
+            return Date(timeIntervalSince1970: timestamp)
+        }
+        guard let text = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
+            return nil
+        }
+        if let number = Double(text) {
+            return timestampDate(number)
+        }
+        let formatter = ISO8601DateFormatter()
+        return formatter.date(from: text) ?? {
+            formatter.formatOptions.insert(.withFractionalSeconds)
+            return formatter.date(from: text)
+        }()
+    }
+
     private static func remainingTime(until date: Date, now: Date) -> String {
         let seconds = max(0, Int(date.timeIntervalSince(now).rounded(.down)))
         let days = seconds / 86_400
@@ -229,10 +253,22 @@ enum OfficialQuotaResponseParser {
     struct Output: Equatable {
         let windows: [OfficialQuotaWindow]
         let lunaReserve: LunaReserveQuota?
+        let bankedReset: CodexBankedReset?
+        /// True when Codex usage includes a reset-credits object with a
+        /// positive available count but no usable `credits[]`. Callers may
+        /// then issue one read-only list GET.
+        let bankedResetNeedsCreditList: Bool
 
-        init(windows: [OfficialQuotaWindow], lunaReserve: LunaReserveQuota? = nil) {
+        init(
+            windows: [OfficialQuotaWindow],
+            lunaReserve: LunaReserveQuota? = nil,
+            bankedReset: CodexBankedReset? = nil,
+            bankedResetNeedsCreditList: Bool = false
+        ) {
             self.windows = windows
             self.lunaReserve = lunaReserve
+            self.bankedReset = bankedReset
+            self.bankedResetNeedsCreditList = bankedResetNeedsCreditList
         }
 
         private var representative: OfficialQuotaWindow? {
@@ -304,10 +340,34 @@ enum OfficialQuotaResponseParser {
         guard !windows.isEmpty else {
             throw ResponseParserError.unsupportedFormat
         }
+        let bankedResetParse = Self.parseCodexBankedReset(from: object, now: now)
         return Output(
             windows: windows.sorted(by: Self.windowSort),
-            lunaReserve: Self.parseCodexLunaReserve(from: object, now: now)
+            lunaReserve: Self.parseCodexLunaReserve(from: object, now: now),
+            bankedReset: bankedResetParse.reset,
+            bankedResetNeedsCreditList: bankedResetParse.needsCreditList
         )
+    }
+
+    static func parseBankedResetCredits(
+        data: Data,
+        now: Date = Date()
+    ) -> CodexBankedReset? {
+        guard let object = try? ResponseParsingSupport.object(from: data) else {
+            return nil
+        }
+        return parseBankedResetCredits(object: object, now: now)
+    }
+
+    static func parseBankedResetCredits(
+        object: [String: Any],
+        now: Date = Date()
+    ) -> CodexBankedReset? {
+        let source = (object["rate_limit_reset_credits"] as? [String: Any]) ?? object
+        guard let credits = Self.creditDictionaries(from: source["credits"]) else {
+            return nil
+        }
+        return bankedReset(from: credits, now: now)
     }
 
     private static func parseCodexWindow(
@@ -439,5 +499,174 @@ enum OfficialQuotaResponseParser {
             return lhs.kind.sortOrder < rhs.kind.sortOrder
         }
         return (lhs.durationSeconds ?? 0) > (rhs.durationSeconds ?? 0)
+    }
+
+    private static func parseCodexBankedReset(
+        from object: [String: Any],
+        now: Date
+    ) -> (reset: CodexBankedReset?, needsCreditList: Bool) {
+        guard let creditsObject = object["rate_limit_reset_credits"] as? [String: Any] else {
+            return (nil, false)
+        }
+        if let credits = Self.creditDictionaries(from: creditsObject["credits"]),
+           let reset = bankedReset(from: credits, now: now) {
+            return (reset, false)
+        }
+        if let count = nonNegativeInt(creditsObject["available_count"]), count > 0 {
+            return (nil, true)
+        }
+        return (nil, false)
+    }
+
+    private static func creditDictionaries(from value: Any?) -> [[String: Any]]? {
+        guard let items = value as? [Any] else { return nil }
+        return items.compactMap { $0 as? [String: Any] }
+    }
+
+    private static func bankedReset(
+        from credits: [[String: Any]],
+        now: Date
+    ) -> CodexBankedReset? {
+        var seenIDs = Set<String>()
+        var cards: [CodexBankedResetCard] = []
+        for item in credits {
+            guard let card = parseBankedResetCard(item, now: now) else { continue }
+            if let id = card.id, !id.isEmpty {
+                if seenIDs.contains(id) { continue }
+                seenIDs.insert(id)
+            }
+            cards.append(card)
+        }
+        cards.sort(by: bankedResetCardSort)
+        return CodexBankedReset(cards: cards)
+    }
+
+    private static func parseBankedResetCard(
+        _ object: [String: Any],
+        now: Date
+    ) -> CodexBankedResetCard? {
+        if let status = ResponseParsingSupport.stringValue(object["status"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !status.isEmpty {
+            guard status.lowercased() == "available" else { return nil }
+        }
+
+        let expiresAt = ResponseParsingSupport.timestampDate(object["expires_at"])
+        if let expiresAt, expiresAt <= now {
+            return nil
+        }
+
+        let resetType = ResponseParsingSupport.stringValue(object["reset_type"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let apiTitle = ResponseParsingSupport.stringValue(object["title"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let titleText: String
+        let windowText: String?
+        if resetType == "codex_rate_limits" {
+            titleText = tr(.keyCodexBankedResetFullResetTitle)
+            windowText = tr(.keyCodexBankedResetFullResetWindow)
+        } else if let apiTitle, isUserReadableCreditTitle(apiTitle) {
+            titleText = apiTitle
+            windowText = nil
+        } else {
+            titleText = tr(.keyCodexBankedResetTitle)
+            windowText = nil
+        }
+
+        let rawID = ResponseParsingSupport.stringValue(object["id"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let remaining = CodexBankedResetFormatting.remaining(until: expiresAt, now: now)
+
+        return CodexBankedResetCard(
+            id: rawID?.isEmpty == true ? nil : rawID,
+            resetType: resetType,
+            titleText: titleText,
+            windowText: windowText,
+            expiresAt: expiresAt,
+            expiresText: CodexBankedResetFormatting.expiryText(for: expiresAt, relativeTo: now),
+            remainingText: remaining?.text,
+            remainingIsWarning: remaining?.isWarning ?? false
+        )
+    }
+
+    private static func bankedResetCardSort(
+        _ lhs: CodexBankedResetCard,
+        _ rhs: CodexBankedResetCard
+    ) -> Bool {
+        switch (lhs.expiresAt, rhs.expiresAt) {
+        case let (left?, right?):
+            return left < right
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            return false
+        }
+    }
+
+    private static func isUserReadableCreditTitle(_ title: String) -> Bool {
+        title.contains(where: { $0.isWhitespace || !$0.isASCII })
+            || title.contains(where: { !($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") })
+    }
+
+    private static func nonNegativeInt(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return nil
+            }
+            let doubleValue = number.doubleValue
+            guard doubleValue.isFinite,
+                  doubleValue >= 0,
+                  doubleValue == doubleValue.rounded(.towardZero),
+                  doubleValue <= Double(Int.max) else {
+                return nil
+            }
+            return Int(doubleValue)
+        }
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let parsed = Int(trimmed), parsed >= 0 else { return nil }
+            return parsed
+        }
+        return nil
+    }
+}
+
+enum CodexResetForecastParser {
+    static let websiteURL = URL(string: "https://www.willcodexquotareset.com/")!
+    static let forecastURL = URL(string: "https://www.willcodexquotareset.com/api/forecast")!
+
+    static func parse(data: Data) -> CodexResetProbability {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let forecast = object["forecast"] as? [String: Any] else {
+            return .unavailable
+        }
+        guard let score = Self.score(forecast["score"]),
+              (0...100).contains(score) else {
+            return .unavailable
+        }
+        return .percent(score)
+    }
+
+    private static func score(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return nil
+            }
+            let doubleValue = number.doubleValue
+            guard doubleValue.isFinite else { return nil }
+            return Int(doubleValue.rounded(.towardZero))
+        }
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let parsed = Int(trimmed) {
+                return parsed
+            }
+            if let parsed = Double(trimmed), parsed.isFinite {
+                return Int(parsed.rounded(.towardZero))
+            }
+        }
+        return nil
     }
 }

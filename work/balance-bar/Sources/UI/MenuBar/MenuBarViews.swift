@@ -13,6 +13,76 @@ final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+final class BankedResetChromeView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.06).setFill()
+        NSBezierPath(
+            roundedRect: bounds,
+            xRadius: OpenCodexCardLayout.bankedResetChromeCornerRadius,
+            yRadius: OpenCodexCardLayout.bankedResetChromeCornerRadius
+        ).fill()
+    }
+}
+
+/// Nested ticket list inside the official Codex quota menu card.
+/// NSMenu swallows wheel events unless this view consumes them.
+final class BankedResetTicketScrollView: NSScrollView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        drawsBackground = false
+        backgroundColor = .clear
+        borderType = .noBorder
+        hasVerticalScroller = true
+        hasHorizontalScroller = false
+        autohidesScrollers = true
+        scrollerStyle = .overlay
+        horizontalScrollElasticity = .none
+        verticalScrollElasticity = .allowed
+        automaticallyAdjustsContentInsets = false
+        contentInsets = NSEdgeInsets()
+        scrollerInsets = NSEdgeInsets()
+        usesPredominantAxisScrolling = true
+
+        let clipView = BankedResetTicketClipView(frame: bounds)
+        clipView.drawsBackground = false
+        clipView.backgroundColor = .clear
+        contentView = clipView
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    func scrollToTopOfDocument() {
+        layoutSubtreeIfNeeded()
+        guard let documentView else { return }
+        let topY = max(0, documentView.bounds.height - contentView.bounds.height)
+        contentView.scroll(to: NSPoint(x: 0, y: topY))
+        reflectScrolledClipView(contentView)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        super.scrollWheel(with: event)
+        let currentY = contentView.bounds.origin.y
+        contentView.scroll(to: NSPoint(x: 0, y: currentY))
+        reflectScrolledClipView(contentView)
+    }
+}
+
+final class BankedResetTicketClipView: NSClipView {
+    override func scroll(to newOrigin: NSPoint) {
+        super.scroll(to: NSPoint(x: 0, y: newOrigin.y))
+    }
+
+    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        var constrained = super.constrainBoundsRect(proposedBounds)
+        constrained.origin.x = 0
+        return constrained
+    }
+}
+
+final class BankedResetTicketDocumentView: NSView {}
+
 final class MenuBarContentView: NSView {
     override var isFlipped: Bool { true }
 }

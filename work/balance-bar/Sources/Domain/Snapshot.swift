@@ -115,6 +115,48 @@ struct LunaReserveQuota: Equatable {
     }
 }
 
+struct CodexBankedResetCard: Equatable {
+    let id: String?
+    let resetType: String
+    let titleText: String
+    let windowText: String?
+    let expiresAt: Date?
+    let expiresText: String?
+    let remainingText: String?
+    let remainingIsWarning: Bool
+
+    init(
+        id: String?,
+        resetType: String,
+        titleText: String,
+        windowText: String? = nil,
+        expiresAt: Date?,
+        expiresText: String?,
+        remainingText: String? = nil,
+        remainingIsWarning: Bool = false
+    ) {
+        self.id = id
+        self.resetType = resetType
+        self.titleText = titleText
+        self.windowText = windowText
+        self.expiresAt = expiresAt
+        self.expiresText = expiresText
+        self.remainingText = remainingText
+        self.remainingIsWarning = remainingIsWarning
+    }
+}
+
+struct CodexBankedReset: Equatable {
+    let availableCount: Int
+    let cards: [CodexBankedResetCard]
+
+    init?(cards: [CodexBankedResetCard]) {
+        guard !cards.isEmpty else { return nil }
+        self.cards = cards
+        self.availableCount = cards.count
+    }
+}
+
 struct OfficialQuotaWindow: Equatable {
     enum Kind: Int, Equatable, Hashable {
         case fiveHour
@@ -221,6 +263,20 @@ enum OfficialQuotaWindowResolver {
     }
 }
 
+enum CodexResetProbability: Equatable {
+    case percent(Int)
+    case unavailable
+
+    var displayText: String {
+        switch self {
+        case .percent(let value):
+            return "\(value)%"
+        case .unavailable:
+            return "--%"
+        }
+    }
+}
+
 struct OfficialQuotaMenuPresentation: Equatable {
     let windows: [OfficialQuotaWindow]
     let lunaReserve: LunaReserveQuota?
@@ -228,6 +284,26 @@ struct OfficialQuotaMenuPresentation: Equatable {
     /// top-to-bottom menu order. The source index is resolved before any
     /// exhausted rows are hidden so a hidden quota can still anchor Reserve.
     let lunaReserveInsertionIndex: Int?
+    /// Available unexpired Codex banked reset cards. Nil when count is 0
+    /// or the official snapshot did not carry a usable list.
+    let bankedReset: CodexBankedReset?
+    /// Community 48-hour reset likelihood for the banked-reset summary
+    /// subtitle. Ignored when `bankedReset` is nil.
+    let resetProbability: CodexResetProbability
+
+    init(
+        windows: [OfficialQuotaWindow],
+        lunaReserve: LunaReserveQuota?,
+        lunaReserveInsertionIndex: Int?,
+        bankedReset: CodexBankedReset?,
+        resetProbability: CodexResetProbability = .unavailable
+    ) {
+        self.windows = windows
+        self.lunaReserve = lunaReserve
+        self.lunaReserveInsertionIndex = lunaReserveInsertionIndex
+        self.bankedReset = bankedReset
+        self.resetProbability = resetProbability
+    }
 }
 
 enum OfficialQuotaResetFormatter {
@@ -242,14 +318,51 @@ enum OfficialQuotaResetFormatter {
         locale: Locale = .autoupdatingCurrent,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String? {
+        localizedString(
+            for: resetAt,
+            relativeTo: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone,
+            includeDate: nil
+        )
+    }
+
+    /// Banked-reset expiry always includes the local calendar date so a
+    /// compact `10/04 09:32`-style line fits the menu. Same-day quota windows
+    /// keep the shorter `jm` template.
+    static func bankedResetString(
+        for resetAt: Date?,
+        relativeTo now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        localizedString(
+            for: resetAt,
+            relativeTo: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone,
+            includeDate: true
+        )
+    }
+
+    private static func localizedString(
+        for resetAt: Date?,
+        relativeTo now: Date,
+        calendar: Calendar,
+        locale: Locale,
+        timeZone: TimeZone,
+        includeDate: Bool?
+    ) -> String? {
         guard let resetAt, resetAt > now else { return nil }
 
         var localizedCalendar = calendar
         localizedCalendar.locale = locale
         localizedCalendar.timeZone = timeZone
-        let template = localizedCalendar.isDate(resetAt, inSameDayAs: now)
-            ? "jm"
-            : "Mdjm"
+        let shouldIncludeDate = includeDate ?? !localizedCalendar.isDate(resetAt, inSameDayAs: now)
+        let template = shouldIncludeDate ? "Mdjm" : "jm"
 
         let formatter = DateFormatter()
         formatter.locale = locale
@@ -258,6 +371,60 @@ enum OfficialQuotaResetFormatter {
         formatter.setLocalizedDateFormatFromTemplate(template)
         let text = formatter.string(from: resetAt)
         return text.isEmpty ? nil : text
+    }
+}
+
+enum CodexBankedResetFormatting {
+    static let warningRemainingSeconds: TimeInterval = 86_400
+
+    static func expiryText(
+        for expiresAt: Date?,
+        relativeTo now: Date,
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        guard let formatted = OfficialQuotaResetFormatter.bankedResetString(
+            for: expiresAt,
+            relativeTo: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
+        ) else {
+            return nil
+        }
+        return tr(.keyCodexBankedResetExpiresValue, arguments: [formatted])
+    }
+
+    static func remaining(
+        until expiresAt: Date?,
+        now: Date
+    ) -> (text: String, isWarning: Bool)? {
+        guard let expiresAt else { return nil }
+        let interval = expiresAt.timeIntervalSince(now)
+        guard interval > 0 else { return nil }
+        let seconds = Int(interval.rounded(.down))
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        let minutes = (seconds % 3_600) / 60
+        let isWarning = interval < warningRemainingSeconds
+        let text: String
+        if days > 0, hours > 0 {
+            text = tr(
+                .keyCodexBankedResetRemainingDaysHours,
+                arguments: ["\(days)", "\(hours)"]
+            )
+        } else if days > 0 {
+            text = tr(.keyCodexBankedResetRemainingDays, arguments: ["\(days)"])
+        } else if hours > 0 {
+            text = tr(.keyCodexBankedResetRemainingHours, arguments: ["\(hours)"])
+        } else {
+            text = tr(
+                .keyCodexBankedResetRemainingMinutes,
+                arguments: ["\(max(1, minutes))"]
+            )
+        }
+        return (text, isWarning)
     }
 }
 
@@ -273,6 +440,8 @@ struct Snapshot {
     let balanceProgressPercentage: Double?
     let officialQuotaWindows: [OfficialQuotaWindow]
     let lunaReserve: LunaReserveQuota?
+    let bankedReset: CodexBankedReset?
+    let resetProbability: CodexResetProbability
     /// The window selected for the compact/menu-bar presentation. The full
     /// quota card keeps all source windows, so this marker prevents the
     /// selected row's exact reset timestamp from being replaced by the
@@ -295,6 +464,8 @@ struct Snapshot {
         officialQuotaWindows: [OfficialQuotaWindow],
         selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil,
         lunaReserve: LunaReserveQuota? = nil,
+        bankedReset: CodexBankedReset? = nil,
+        resetProbability: CodexResetProbability = .unavailable,
         menuBarUsesLunaReserve: Bool = false
     ) {
         self.kind = kind
@@ -308,6 +479,8 @@ struct Snapshot {
         self.officialQuotaWindows = officialQuotaWindows
         self.selectedOfficialQuotaWindowKind = selectedOfficialQuotaWindowKind
         self.lunaReserve = lunaReserve
+        self.bankedReset = bankedReset
+        self.resetProbability = resetProbability
         self.menuBarUsesLunaReserve = menuBarUsesLunaReserve
     }
 
@@ -330,7 +503,9 @@ struct Snapshot {
         _ reset: String?,
         _ date: Date,
         windows: [OfficialQuotaWindow] = [],
-        lunaReserve: LunaReserveQuota? = nil
+        lunaReserve: LunaReserveQuota? = nil,
+        bankedReset: CodexBankedReset? = nil,
+        resetProbability: CodexResetProbability = .unavailable
     ) -> Snapshot {
         let fallbackWindows = windows.isEmpty
             ? [OfficialQuotaWindow(
@@ -361,7 +536,9 @@ struct Snapshot {
             websiteURL: nil,
             balanceProgressPercentage: nil,
             officialQuotaWindows: resolvedWindows,
-            lunaReserve: lunaReserve
+            lunaReserve: lunaReserve,
+            bankedReset: bankedReset,
+            resetProbability: resetProbability
         )
     }
 
@@ -449,7 +626,8 @@ struct Snapshot {
             return OfficialQuotaMenuPresentation(
                 windows: [],
                 lunaReserve: nil,
-                lunaReserveInsertionIndex: nil
+                lunaReserveInsertionIndex: nil,
+                bankedReset: nil
             )
         }
 
@@ -508,10 +686,20 @@ struct Snapshot {
                     && (!shouldHideExhaustedQuota || $0.element.remaining > 0)
             }.count
         }
+        let presentedBankedReset: CodexBankedReset? = {
+            guard let bankedReset,
+                  bankedReset.availableCount > 0,
+                  bankedReset.availableCount == bankedReset.cards.count else {
+                return nil
+            }
+            return bankedReset
+        }()
         return OfficialQuotaMenuPresentation(
             windows: presentedWindows,
             lunaReserve: shouldShowLunaReserve ? lunaReserve : nil,
-            lunaReserveInsertionIndex: presentedInsertionIndex
+            lunaReserveInsertionIndex: presentedInsertionIndex,
+            bankedReset: presentedBankedReset,
+            resetProbability: presentedBankedReset == nil ? .unavailable : resetProbability
         )
     }
 
@@ -573,6 +761,8 @@ struct Snapshot {
             officialQuotaWindows: officialQuotaWindows,
             selectedOfficialQuotaWindowKind: window.kind,
             lunaReserve: lunaReserve,
+            bankedReset: bankedReset,
+            resetProbability: resetProbability,
             menuBarUsesLunaReserve: false
         )
     }
@@ -596,6 +786,8 @@ struct Snapshot {
             officialQuotaWindows: officialQuotaWindows,
             selectedOfficialQuotaWindowKind: selectedOfficialQuotaWindowKind,
             lunaReserve: lunaReserve,
+            bankedReset: bankedReset,
+            resetProbability: resetProbability,
             menuBarUsesLunaReserve: true
         )
     }

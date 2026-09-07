@@ -361,6 +361,10 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "オンにすると、🌙 %1$@ の表示時に残り 0%% のクォータをメニューから隠します";
 "dashboard.menu.page.low_balance_display_threshold" = "低残高の警告しきい値";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "チャージ後も残高がこの金額を下回っている間は、進捗バーを赤色で表示";
+"dashboard.menu.page.banked_reset_display_mode" = "表示スタイル";
+"dashboard.menu.page.banked_reset_display_mode_description" = "簡潔は枚数とリセット確率のみ、詳細は各カードを表示します";
+"dashboard.menu.page.banked_reset_display_mode_compact" = "簡潔";
+"dashboard.menu.page.banked_reset_display_mode_detailed" = "詳細";
 "dashboard.menu.page.dropdown_menu" = "ドロップダウンメニュー";
 "dashboard.menu.page.menu_behavior" = "メニューの動作";
 "dashboard.menu.page.quick_switch" = "クイック切り替え";
@@ -462,6 +466,16 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ は一時的に利用できません";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "リセットカード";
+"codex.banked_reset.full_reset_title" = "完全リセット";
+"codex.banked_reset.full_reset_window" = "週間 + 5時間の上限";
+"codex.banked_reset.expires_value" = "%1$@ に期限切れ";
+"codex.banked_reset.remaining_hours" = "%1$@ 時間";
+"codex.banked_reset.remaining_days" = "%1$@ 日";
+"codex.banked_reset.remaining_days_hours" = "%1$@ 日 %2$@ 時間";
+"codex.banked_reset.remaining_minutes" = "%1$@ 分";
+"codex.banked_reset.probability_prefix" = "リセット確率：";
+"codex.banked_reset.probability_source" = "データ出典：willcodexquotareset.com";
 "dashboard.menu.page.progress_color_ranges" = "進行状況バーの色範囲";
 "dashboard.menu.page.progress_color_ranges_description" = "しきい値をドラッグして、残りの割合ごとの色を調整します";
 "dashboard.menu.page.displayed_colors" = "表示する色";

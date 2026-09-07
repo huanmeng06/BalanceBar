@@ -268,6 +268,64 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .italian), "Usa la lingua di sistema")
     }
 
+    func testBankedResetProbabilityPrefixUsesEachLanguageColon() {
+        let cases: [(AppLanguage, String)] = [
+            (.simplifiedChinese, "："),
+            (.traditionalChineseTaiwan, "："),
+            (.traditionalChineseHongKong, "："),
+            (.japanese, "："),
+            (.french, " :"),
+            (.english, ":"),
+            (.korean, ":"),
+            (.spanish, ":"),
+            (.german, ":"),
+            (.portuguese, ":"),
+            (.russian, ":"),
+            (.italian, ":")
+        ]
+        for (language, colon) in cases {
+            let prefix = tr(.keyCodexBankedResetProbabilityPrefix, language: language)
+            let official = tr(.keyStatusItemControllerOfficialLink2, language: language)
+            XCTAssertTrue(
+                prefix.hasSuffix(colon),
+                "\(language.rawValue) probability prefix \(prefix) should end with \(colon)"
+            )
+            XCTAssertTrue(
+                official.hasSuffix(colon),
+                "\(language.rawValue) official link \(official) should end with \(colon)"
+            )
+            XCTAssertEqual(
+                String(prefix.suffix(colon.count)),
+                String(official.suffix(colon.count)),
+                "\(language.rawValue) should use the same colon as the official-link label"
+            )
+        }
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetProbabilityPrefix, language: .simplifiedChinese),
+            "重置概率："
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetProbabilityPrefix, language: .english),
+            "Reset probability:"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetProbabilitySource, language: .simplifiedChinese),
+            "数据来源：willcodexquotareset.com"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetProbabilitySource, language: .english),
+            "Data source: willcodexquotareset.com"
+        )
+        for (language, colon) in cases {
+            let source = tr(.keyCodexBankedResetProbabilitySource, language: language)
+            XCTAssertTrue(
+                source.contains(colon),
+                "\(language.rawValue) source \(source) should use \(colon)"
+            )
+            XCTAssertTrue(source.contains("willcodexquotareset.com"))
+        }
+    }
+
     func testNewLanguageNamesRemainNativeAndCoreCopyIsLocalized() {
         let cases: [(AppLanguage, String, String)] = [
             (.portuguese, "Sobre o BalanceBar", "Usar o idioma do sistema"),
@@ -782,7 +840,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 473)
+        XCTAssertEqual(expectedKeys.count, 487)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

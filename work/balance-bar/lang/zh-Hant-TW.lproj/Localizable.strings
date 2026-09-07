@@ -361,6 +361,10 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "開啟後，顯示 🌙 %1$@ 時會隱藏選單中已歸零的額度";
 "dashboard.menu.page.low_balance_display_threshold" = "低餘額警示門檻";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "儲值後若餘額仍低於此金額，進度條繼續顯示為紅色";
+"dashboard.menu.page.banked_reset_display_mode" = "顯示樣式";
+"dashboard.menu.page.banked_reset_display_mode_description" = "簡潔只顯示張數和重置機率，詳細列出每張卡";
+"dashboard.menu.page.banked_reset_display_mode_compact" = "簡潔";
+"dashboard.menu.page.banked_reset_display_mode_detailed" = "詳細";
 "dashboard.menu.page.dropdown_menu" = "下拉選單";
 "dashboard.menu.page.menu_behavior" = "選單行為";
 "dashboard.menu.page.quick_switch" = "快速切換";
@@ -462,6 +466,16 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ 暫時無法使用";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "重置卡";
+"codex.banked_reset.full_reset_title" = "完全重置";
+"codex.banked_reset.full_reset_window" = "每週 + 5 小時額度";
+"codex.banked_reset.expires_value" = "%1$@ 到期";
+"codex.banked_reset.remaining_hours" = "%1$@ 小時";
+"codex.banked_reset.remaining_days" = "%1$@ 天";
+"codex.banked_reset.remaining_days_hours" = "%1$@ 天 %2$@ 小時";
+"codex.banked_reset.remaining_minutes" = "%1$@ 分鐘";
+"codex.banked_reset.probability_prefix" = "重置機率：";
+"codex.banked_reset.probability_source" = "資料來源：willcodexquotareset.com";
 "dashboard.menu.page.progress_color_ranges" = "進度條顏色區間";
 "dashboard.menu.page.progress_color_ranges_description" = "拖曳分界點，調整不同剩餘百分比對應的顏色";
 "dashboard.menu.page.displayed_colors" = "顯示顏色";

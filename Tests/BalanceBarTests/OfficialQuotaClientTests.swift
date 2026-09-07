@@ -181,6 +181,101 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "anthropic-beta"))
     }
 
+    func testCodexUsageRequestDoesNotFetchBankedResetCreditsWhenUsageIncludesCards() throws {
+        StubURLProtocol.setHandler { _ in
+            StubResult(data: Self.codexBankedResetBody)
+        }
+        let client = makeClient(codexToken: "fixture-codex-value")
+
+        let result = try waitForResult(client, clientName: .codex, providerID: "codex-banked-reset")
+        guard case .success(let response) = result else {
+            return XCTFail("expected Codex success, got \(result)")
+        }
+        XCTAssertEqual(response.output.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(response.output.bankedReset?.availableCount, 2)
+        XCTAssertFalse(response.output.bankedResetNeedsCreditList)
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url?.path, "/backend-api/wham/usage")
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.timeoutInterval, 15)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-codex-value")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+        XCTAssertNil(request.value(forHTTPHeaderField: "ChatGPT-Account-Id"))
+        XCTAssertFalse((request.url?.path ?? "").contains("consume"))
+    }
+
+    func testCodexRateLimitResetCreditsListUsesReadOnlyGet() throws {
+        StubURLProtocol.setHandler { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertFalse((request.url?.absoluteString ?? "").contains("consume"))
+            return StubResult(data: Self.codexBankedResetListBody)
+        }
+        let client = makeClient(codexToken: "fixture-codex-value")
+        let expectation = expectation(description: "reset-credits list completed")
+        var captured: Result<CodexBankedReset?, OfficialQuotaClientError>?
+        client.fetchRateLimitResetCredits(
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        ) { result in
+            captured = result
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2)
+
+        guard case .success(let bankedReset) = captured else {
+            return XCTFail("expected list success, got \(String(describing: captured))")
+        }
+        XCTAssertEqual(bankedReset?.availableCount, 1)
+        XCTAssertEqual(bankedReset?.cards.first?.resetType, "codex_rate_limits")
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url?.host, "chatgpt.com")
+        XCTAssertEqual(request.url?.path, "/backend-api/wham/rate-limit-reset-credits")
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.timeoutInterval, 15)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-codex-value")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+        XCTAssertNil(request.value(forHTTPHeaderField: "ChatGPT-Account-Id"))
+    }
+
+    func testCodexResetForecastParsesScoreWithoutCredentials() throws {
+        StubURLProtocol.setHandler { request in
+            XCTAssertEqual(request.url, CodexResetForecastParser.forecastURL)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+            return StubResult(data: Data(#"{"forecast":{"score":75}}"#.utf8))
+        }
+        let client = makeClient(codexToken: nil, claudeToken: nil)
+        let expectation = expectation(description: "forecast completed")
+        var captured: CodexResetProbability?
+        client.fetchCodexResetForecast { probability in
+            captured = probability
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2)
+        XCTAssertEqual(captured, .percent(75))
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url?.host, "www.willcodexquotareset.com")
+        XCTAssertEqual(request.url?.path, "/api/forecast")
+        XCTAssertEqual(request.timeoutInterval, 8)
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testCodexResetForecastFailureIsUnavailable() throws {
+        StubURLProtocol.setHandler { _ in
+            StubResult(statusCode: 500, data: Data("{}".utf8))
+        }
+        let client = makeClient(codexToken: nil, claudeToken: nil)
+        let expectation = expectation(description: "forecast failed")
+        var captured: CodexResetProbability?
+        client.fetchCodexResetForecast { probability in
+            captured = probability
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2)
+        XCTAssertEqual(captured, .unavailable)
+    }
+
     func testCodexRequestPublishesTheOfficialLunaReserveFields() throws {
         StubURLProtocol.setHandler { _ in
             StubResult(data: Self.codexReserveBody)
@@ -527,6 +622,10 @@ final class OfficialQuotaClientTests: XCTestCase {
     }
 
     private static let codexBody = Data(#"{"rate_limit":{"primary_window":{"used_percent":"20","limit_window_seconds":18000,"reset_after_seconds":3600},"secondary_window":{"used_percent":55,"limit_window_seconds":604800,"reset_after_seconds":5400}}}"#.utf8)
+
+    private static let codexBankedResetBody = Data(#"{"rate_limit":{"primary_window":{"used_percent":"20","limit_window_seconds":18000,"reset_after_seconds":3600},"secondary_window":{"used_percent":55,"limit_window_seconds":604800,"reset_after_seconds":5400}},"rate_limit_reset_credits":{"available_count":2,"credits":[{"id":"RateLimitResetCredit_a","reset_type":"codex_rate_limits","status":"available","expires_at":"2023-11-15T22:13:20Z"},{"id":"RateLimitResetCredit_b","reset_type":"codex_rate_limits","status":"available","expires_at":"2023-11-16T22:13:20Z"}]}}"#.utf8)
+
+    private static let codexBankedResetListBody = Data(#"{"available_count":1,"credits":[{"id":"RateLimitResetCredit_list","reset_type":"codex_rate_limits","status":"available","expires_at":"2023-11-15T22:13:20Z","title":"One free rate limit reset"}]}"#.utf8)
 
     private static let codexReserveBody = Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000,"reset_after_seconds":3600},"secondary_window":{"used_percent":55,"limit_window_seconds":604800,"reset_after_seconds":5400}},"additional_rate_limits":[{"limit_name":"gpt-reserve","metered_feature":"base_model_inference","rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"used_percent":38,"limit_window_seconds":604800,"reset_after_seconds":7200}}}]}"#.utf8)
 

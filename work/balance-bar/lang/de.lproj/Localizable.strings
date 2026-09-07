@@ -361,6 +361,10 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "Wenn aktiviert, werden Kontingente mit 0 %% im Menü ausgeblendet, sobald 🌙 %1$@ angezeigt wird";
 "dashboard.menu.page.low_balance_display_threshold" = "Warnschwelle für niedriges Guthaben";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Nach einer Aufladung bleibt der Fortschrittsbalken rot, solange das Guthaben unter diesem Wert liegt.";
+"dashboard.menu.page.banked_reset_display_mode" = "Anzeigestil";
+"dashboard.menu.page.banked_reset_display_mode_description" = "Kompakt zeigt Anzahl und Reset-Wahrscheinlichkeit; detailliert listet jede Karte";
+"dashboard.menu.page.banked_reset_display_mode_compact" = "Kompakt";
+"dashboard.menu.page.banked_reset_display_mode_detailed" = "Detailliert";
 "dashboard.menu.page.dropdown_menu" = "Dropdown-Menü";
 "dashboard.menu.page.menu_behavior" = "Menüverhalten";
 "dashboard.menu.page.quick_switch" = "Schnellwechsel";
@@ -462,6 +466,16 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ vorübergehend nicht verfügbar";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "Reset-Karten";
+"codex.banked_reset.full_reset_title" = "Vollständiger Reset";
+"codex.banked_reset.full_reset_window" = "Wöchentlich + 5-Stunden-Kontingent";
+"codex.banked_reset.expires_value" = "Läuft am %1$@ ab";
+"codex.banked_reset.remaining_hours" = "%1$@ Stunden";
+"codex.banked_reset.remaining_days" = "%1$@ Tage";
+"codex.banked_reset.remaining_days_hours" = "%1$@ T. %2$@ Std.";
+"codex.banked_reset.remaining_minutes" = "%1$@ Minuten";
+"codex.banked_reset.probability_prefix" = "Reset-Wahrscheinlichkeit:";
+"codex.banked_reset.probability_source" = "Datenquelle: willcodexquotareset.com";
 "dashboard.menu.page.progress_color_ranges" = "Farbbereiche der Fortschrittsleiste";
 "dashboard.menu.page.progress_color_ranges_description" = "Ziehe die Schwellenwerte, um die Farbe für jeden verbleibenden Prozentbereich festzulegen";
 "dashboard.menu.page.displayed_colors" = "Angezeigte Farben";

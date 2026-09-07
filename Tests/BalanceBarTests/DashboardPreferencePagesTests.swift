@@ -1123,6 +1123,68 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(field.stringValue, "0.25")
     }
 
+    func testBankedResetDisplayModeSectionSitsBetweenProgressBarAndMenuBehavior() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.BankedResetDisplayMode.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuPage()
+        let relay = DashboardPreferencePageRelay()
+        var changedModes: [CodexBankedResetDisplayMode] = []
+        relay.onBankedResetDisplayModeChanged = { mode in
+            changedModes.append(mode)
+            preferences.menuBankedResetDisplayMode = mode
+            controller.refresh(preferences: preferences)
+        }
+
+        let page = controller.make(.init(
+            preferences: preferences,
+            relay: relay,
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        defer { controller.teardown() }
+
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue)
+        let progressBarIndex = try XCTUnwrap(labels.firstIndex(of: "进度条"))
+        let bankedResetIndex = try XCTUnwrap(labels.firstIndex(of: "重置卡"))
+        let menuBehaviorIndex = try XCTUnwrap(labels.firstIndex(of: "菜单行为"))
+        XCTAssertLessThan(progressBarIndex, bankedResetIndex)
+        XCTAssertLessThan(bankedResetIndex, menuBehaviorIndex)
+        XCTAssertTrue(labels.contains("显示样式"))
+        XCTAssertTrue(labels.contains("简洁只显示张数和重置概率，详细列出每张卡"))
+
+        let popup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.bankedResetDisplayModeIdentifier }
+        )
+        XCTAssertEqual(popup.itemTitles, ["简洁", "详细"])
+        XCTAssertEqual(popup.indexOfSelectedItem, CodexBankedResetDisplayMode.allCases.firstIndex(of: .detailed))
+        XCTAssertEqual(
+            popup.item(at: 0)?.representedObject as? String,
+            CodexBankedResetDisplayMode.compact.rawValue
+        )
+
+        popup.selectItem(at: 0)
+        _ = NSApp.sendAction(
+            try XCTUnwrap(popup.action),
+            to: popup.target,
+            from: popup
+        )
+        XCTAssertEqual(changedModes, [.compact])
+        XCTAssertEqual(preferences.menuBankedResetDisplayMode, .compact)
+        XCTAssertEqual(popup.indexOfSelectedItem, 0)
+    }
+
     func testProgressBarSectionLocalizesRowsAndPersistsControlsAcrossSupportedLanguages() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

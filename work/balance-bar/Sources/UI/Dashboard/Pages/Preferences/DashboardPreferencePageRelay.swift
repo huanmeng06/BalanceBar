@@ -18,6 +18,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onMenuBarQuotaResetDisplayModeChanged: ((OfficialQuotaResetDisplayMode) -> Void)?
     var onMenuBarLunaReserveResetTimeModeChanged: ((LunaReserveResetTimeMode) -> Void)?
     var onLunaReserveDisplayModeChanged: ((LunaReserveDisplayMode) -> Void)?
+    var onBankedResetDisplayModeChanged: ((CodexBankedResetDisplayMode) -> Void)?
     var onUpdateChannelChanged: ((UpdateChannel) -> Void)?
     var onOpenCCSwitch: (() -> Void)?
     var onOpenSystemMenuBarSettings: (() -> Void)?
@@ -114,6 +115,12 @@ final class DashboardPreferencePageRelay: NSObject {
         guard let rawValue = sender.selectedItem?.representedObject as? String,
               let mode = LunaReserveDisplayMode(rawValue: rawValue) else { return }
         onLunaReserveDisplayModeChanged?(mode)
+    }
+
+    @objc func bankedResetDisplayMode(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let mode = CodexBankedResetDisplayMode(rawValue: rawValue) else { return }
+        onBankedResetDisplayModeChanged?(mode)
     }
 
     @objc func updateChannel(_ sender: NSPopUpButton) {

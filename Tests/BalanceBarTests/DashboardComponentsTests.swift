@@ -1137,6 +1137,17 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(progressHost.frame.height, 6, accuracy: 0.5)
     }
 
+    func testHoverLinkHoverHintSetsNativeTooltip() {
+        let link = HoverLinkTextField(text: "24%")
+        XCTAssertEqual(link.hoverHint, "")
+        XCTAssertNil(link.toolTip)
+        link.hoverHint = "数据来源：willcodexquotareset.com"
+        XCTAssertEqual(link.toolTip, "数据来源：willcodexquotareset.com")
+        link.hoverHint = ""
+        XCTAssertNil(link.toolTip)
+        XCTAssertFalse(link.isHoverHintVisible)
+    }
+
     func testHoverLinkInvokesActivationCallbackOnMouseDown() {
         let link = HoverLinkTextField(text: "Provider")
         link.frame = NSRect(x: 0, y: 0, width: 120, height: 20)

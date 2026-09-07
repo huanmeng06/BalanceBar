@@ -372,6 +372,10 @@
     case keyDashboardMenuPageHideExhaustedQuotaDescription = "dashboard.menu.page.hide_exhausted_quota_description"
     case keyDashboardMenuPageLowBalanceDisplayThreshold = "dashboard.menu.page.low_balance_display_threshold"
     case keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount = "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount"
+    case keyDashboardMenuPageBankedResetDisplayMode = "dashboard.menu.page.banked_reset_display_mode"
+    case keyDashboardMenuPageBankedResetDisplayModeDescription = "dashboard.menu.page.banked_reset_display_mode_description"
+    case keyDashboardMenuPageBankedResetDisplayModeCompact = "dashboard.menu.page.banked_reset_display_mode_compact"
+    case keyDashboardMenuPageBankedResetDisplayModeDetailed = "dashboard.menu.page.banked_reset_display_mode_detailed"
     case keyDashboardMenuPageDropdownMenu = "dashboard.menu.page.dropdown_menu"
     case keyDashboardMenuPageMenuBehavior = "dashboard.menu.page.menu_behavior"
     case keyDashboardMenuPageQuickSwitch = "dashboard.menu.page.quick_switch"
@@ -473,6 +477,16 @@
     case keyLunaReserveMenuResetValue = "luna.reserve.menu_reset_value"
     case keyLunaReserveMenuUnavailable = "luna.reserve.menu_unavailable"
     case keyLunaReserveSummaryValue = "luna.reserve.summary_value"
+    case keyCodexBankedResetTitle = "codex.banked_reset.title"
+    case keyCodexBankedResetFullResetTitle = "codex.banked_reset.full_reset_title"
+    case keyCodexBankedResetFullResetWindow = "codex.banked_reset.full_reset_window"
+    case keyCodexBankedResetExpiresValue = "codex.banked_reset.expires_value"
+    case keyCodexBankedResetRemainingHours = "codex.banked_reset.remaining_hours"
+    case keyCodexBankedResetRemainingDays = "codex.banked_reset.remaining_days"
+    case keyCodexBankedResetRemainingDaysHours = "codex.banked_reset.remaining_days_hours"
+    case keyCodexBankedResetRemainingMinutes = "codex.banked_reset.remaining_minutes"
+    case keyCodexBankedResetProbabilityPrefix = "codex.banked_reset.probability_prefix"
+    case keyCodexBankedResetProbabilitySource = "codex.banked_reset.probability_source"
 
     var rawKey: String { rawValue }
   }
