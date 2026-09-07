@@ -70,10 +70,8 @@ final class GrokActivityMonitor {
     ]
 
     private struct TranscriptCache {
-        let path: String
         let size: UInt64
         let modifiedAt: TimeInterval
-        let checkedAt: Date
         let signal: SessionSignal
     }
 
@@ -109,6 +107,8 @@ final class GrokActivityMonitor {
         .distantPast, false, []
     )
     private var transcriptCaches: [String: TranscriptCache] = [:]
+    private(set) var transcriptReadCount = 0
+    private(set) var transcriptParseCount = 0
 
     init(
         grokDirectory: URL? = nil,
@@ -446,7 +446,22 @@ final class GrokActivityMonitor {
         earliestLiveOpenedAt: Date?
     ) -> (inProgress: Bool, trueTurnEvidence: Bool) {
         let updatesURL = sessionDirectory.appendingPathComponent("updates.jsonl")
-        let related = relatedSessionSignals(for: updatesURL, now: now)
+        // Only reject old parents without child containers. When child state
+        // exists, retain the full signal combination and true-turn evidence.
+        let parentIsStale: Bool
+        if let earliestLiveOpenedAt,
+           let identity = fileIdentity(atPath: updatesURL.path) {
+            let metaDate = fileIdentity(atPath: sessionDirectory.appendingPathComponent("meta.json").path)
+                .map { Date(timeIntervalSince1970: $0.modifiedAt) } ?? .distantPast
+            parentIsStale = Date(timeIntervalSince1970: identity.modifiedAt) < earliestLiveOpenedAt
+                && metaDate < earliestLiveOpenedAt
+                && !(Self.durableStillRunningDirectories + ["subagents"]).contains {
+                    FileManager.default.fileExists(atPath: sessionDirectory.appendingPathComponent($0).path)
+                }
+        } else {
+            parentIsStale = false
+        }
+        let related = relatedSessionSignals(for: updatesURL, now: now, skipParent: parentIsStale)
         let parent = related.first ?? .neverStarted
         let unfinishedChild = related.dropFirst().contains { $0.kind == .inProgress }
         if unfinishedChild {
@@ -509,10 +524,11 @@ final class GrokActivityMonitor {
 
     private func relatedSessionSignals(
         for sessionURL: URL,
-        now: Date
+        now: Date,
+        skipParent: Bool = false
     ) -> [SessionSignal] {
         let sessionDirectory = sessionURL.deletingLastPathComponent()
-        var signals = [transcriptSignal(sessionURL, now: now)]
+        var signals = [skipParent ? .neverStarted : transcriptSignal(sessionURL, now: now)]
         signals.append(contentsOf: durableStillRunningSignals(in: sessionDirectory))
         let subagentsDirectory = sessionDirectory
             .appendingPathComponent("subagents", isDirectory: true)
@@ -663,27 +679,25 @@ final class GrokActivityMonitor {
 
     private func transcriptSignal(_ url: URL, now: Date) -> SessionSignal {
         guard let identity = fileIdentity(atPath: url.path) else {
+            transcriptCaches.removeValue(forKey: url.path)
             return .neverStarted
         }
         if let cached = transcriptCaches[url.path],
            cached.size == identity.size,
-           cached.modifiedAt == identity.modifiedAt,
-           now.timeIntervalSince(cached.checkedAt) < 0.75 {
+           cached.modifiedAt == identity.modifiedAt {
             return cached.signal
         }
         func cache(_ signal: SessionSignal) -> SessionSignal {
             transcriptCaches[url.path] = TranscriptCache(
-                path: url.path,
                 size: identity.size,
                 modifiedAt: identity.modifiedAt,
-                checkedAt: now,
                 signal: signal
             )
             return signal
         }
         let fileDate = Date(timeIntervalSince1970: identity.modifiedAt)
         guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return cache(.neverStarted)
+            return .neverStarted
         }
         defer { try? handle.close() }
 
@@ -692,12 +706,14 @@ final class GrokActivityMonitor {
         do {
             try handle.seek(toOffset: offset)
         } catch {
-            return cache(.neverStarted)
+            return .neverStarted
         }
-        guard let text = String(data: handle.readDataToEndOfFile(), encoding: .utf8) else {
-            return cache(.neverStarted)
+        transcriptReadCount += 1
+        guard let data = try? handle.read(upToCount: Int(tailSize)) else {
+            return .neverStarted
         }
-        var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        // Split bytes, not grapheme clusters; a tail may begin inside UTF-8.
+        var lines = data.split(separator: 0x0A, omittingEmptySubsequences: false)
         if offset > 0, !lines.isEmpty {
             lines.removeFirst()
         }
@@ -709,9 +725,10 @@ final class GrokActivityMonitor {
         var unmatchedBackgroundIDs = Set<String>()
         var completedBackgroundIDs = Set<String>()
         for line in lines.reversed() {
+            guard !line.isEmpty else { continue }
+            transcriptParseCount += 1
             guard
-                let data = line.data(using: .utf8),
-                let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let event = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
                 let update = Self.sessionUpdate(from: event)
             else {
                 continue

@@ -1257,6 +1257,112 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertEqual(failedMonitor.status().processRunning, false)
     }
 
+    func testUnchangedLargeSiblingTailsAreReusedAcrossSlowPollingRounds() throws {
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        var event = sessionUpdate("turn_completed")
+        event["padding"] = String(repeating: "fixture", count: 1_000)
+        for index in 0..<64 {
+            try writeSession(updates: Array(repeating: event, count: 30),
+                             sessionID: "history-\(index)", registerActive: false)
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        let reads = monitor.transcriptReadCount
+        let parses = monitor.transcriptParseCount
+        XCTAssertEqual(reads, 65)
+        XCTAssertGreaterThan(parses, 64)
+        for interval in [1.0, 5.0, 60.0] {
+            currentDate.addTimeInterval(interval)
+            XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+            XCTAssertEqual(monitor.transcriptReadCount, reads)
+            XCTAssertEqual(monitor.transcriptParseCount, parses)
+        }
+    }
+
+    func testTranscriptCacheInvalidatesForSameSizeMtimeChangeAndAppend() throws {
+        let url = try writeSession(updates: [["type": "tool_call"]])
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        let originalSize = try Data(contentsOf: url).count
+        currentDate.addTimeInterval(1)
+        try writeJSONL([["type": "turn_completed"]], to: url, modifiedAt: currentDate)
+        // Equalize the original file size with JSON whitespace before warming again.
+        let completedData = try Data(contentsOf: url)
+        try writeJSONL([["type": "tool_call"]], to: url, modifiedAt: currentDate)
+        var activeData = try Data(contentsOf: url)
+        activeData.append(Data(repeating: 0x20, count: completedData.count - originalSize))
+        try activeData.write(to: url)
+        try FileManager.default.setAttributes([.modificationDate: currentDate], ofItemAtPath: url.path)
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        let reads = monitor.transcriptReadCount
+        currentDate.addTimeInterval(1)
+        try writeJSONL([["type": "turn_completed"]], to: url, modifiedAt: currentDate)
+        XCTAssertEqual(try Data(contentsOf: url).count, activeData.count)
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptReadCount, reads + 1)
+        currentDate.addTimeInterval(1)
+        try writeJSONL([["type": "turn_completed"], ["type": "tool_call"]],
+                       to: url, modifiedAt: currentDate)
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        XCTAssertEqual(monitor.transcriptReadCount, reads + 2)
+    }
+
+    func testStaleSiblingParentsAreRejectedWithoutReadingAndLiveWorkIsNeverCapped() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        for index in 0..<64 {
+            try writeSession(updates: [sessionUpdate("agent_thought_chunk", timestamp: staleDate.timeIntervalSince1970)],
+                             sessionID: "history-\(index)", modifiedAt: staleDate, registerActive: false)
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptReadCount, 1)
+        XCTAssertEqual(monitor.transcriptParseCount, 1)
+        currentDate.addTimeInterval(2)
+        try writeSession(updates: [sessionUpdate("agent_thought_chunk")],
+                         sessionID: "live", registerActive: false)
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        try writeSession(updates: [sessionUpdate("turn_completed")],
+                         sessionID: "live", registerActive: false)
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        try writeSubagentMeta(parentSessionID: "history-63", subagentID: "child",
+                              childCWD: "/tmp/child-work", status: "running")
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        try writeSubagentMeta(parentSessionID: "history-63", subagentID: "child",
+                              childCWD: "/tmp/child-work", status: "completed")
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        for state in ["active", "running", "paused", "pausing"] {
+            try writeWorkflowState(sessionID: "history-63", runID: "workflow", status: state)
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+        }
+        try writeWorkflowState(sessionID: "history-63", runID: "workflow", status: "completed")
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptReadCount, 4)
+    }
+
+    func testEmptyActiveSessionsAndMissingProcessDoNotReadHistoricalTranscripts() throws {
+        try writeSession(updates: [sessionUpdate("agent_thought_chunk")], registerActive: false)
+        try writeActiveSessions([])
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptReadCount, 0)
+        try upsertActiveSession(sessionID: "session", cwd: "/tmp/fixture")
+        let absent = makeMonitor(processOutput: "")
+        XCTAssertEqual(absent.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(absent.transcriptReadCount, 0)
+    }
+
+    func testByteTailCanStartInsideUnicodeAndStillFindFinalEvent() throws {
+        var largeEvent = sessionUpdate("agent_thought_chunk")
+        largeEvent["padding"] = String(repeating: "\u{1F600}", count: 60_000)
+        try writeSession(updates: [largeEvent, sessionUpdate("turn_completed")])
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptParseCount, 1)
+    }
+
     private func makeMonitor(
         processOutput: String = "101 1 ?? /Users/dev/.grok/bin/grok grok",
         terminationStatus: Int32 = 0
