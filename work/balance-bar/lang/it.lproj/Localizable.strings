@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "Apri impostazioni";
 "dashboard.menu.bar.page.runtime_only_warning" = "È attiva l’opzione «Solo durante l’esecuzione» e il ritardo di occultamento dopo l’attività è terminato, quindi l’icona nella barra dei menu è temporaneamente nascosta.";
 "dashboard.menu.bar.page.set_now" = "Configura ora";
-"dashboard.menu.bar.page.preview" = "Anteprima";
+"dashboard.menu.bar.page.preview" = "Anteprima e visualizzazione";
 "dashboard.menu.bar.page.current_layout" = "Disposizione corrente";
 "dashboard.menu.bar.page.quota_and_reset" = "Quota e ripristino";
 "dashboard.menu.bar.page.icon_and_task_status" = "Icona e animazione";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barra dei menu si aggiorna con i dati del provider in tempo reale";
-"dashboard.menu.bar.page.icon_display_mode" = "Visualizzazione dell'icona nella barra dei menu";
+"dashboard.menu.bar.page.icon_display_mode" = "Visualizzazione della barra dei menu";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Scegli se mostrare sempre l'icona o solo durante l'esecuzione di un'attività";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Sempre visibile";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Solo durante l'esecuzione";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Inserisci un valore di almeno 0,01 con un massimo di due cifre decimali";
 "dashboard.menu.page.balance_display" = "Visualizzazione del saldo";
 "dashboard.menu.page.progress_bar" = "Barra di avanzamento";
+"dashboard.menu.page.show_quota_progress_bar" = "Mostra la barra di avanzamento";
+"dashboard.menu.page.show_quota_progress_bar_description" = "Se disattivata, i menu e le schede quota non mostrano più la barra della quota rimanente";
 "dashboard.menu.page.luna_reserve_display_mode" = "Visualizzazione di 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Scegli quando mostrare 🌙 %1$@ nel menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Non mostrare";

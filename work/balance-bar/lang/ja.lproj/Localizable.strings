@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "設定を開く";
 "dashboard.menu.bar.page.runtime_only_warning" = "「実行中のみ表示」が有効で、タスク終了後の非表示までの時間が経過したため、メニューバーアイコンは一時的に非表示です。";
 "dashboard.menu.bar.page.set_now" = "今すぐ設定";
-"dashboard.menu.bar.page.preview" = "プレビュー";
+"dashboard.menu.bar.page.preview" = "プレビューと表示";
 "dashboard.menu.bar.page.current_layout" = "現在のレイアウト";
 "dashboard.menu.bar.page.quota_and_reset" = "クォータとリセット";
 "dashboard.menu.bar.page.icon_and_task_status" = "アイコンとアニメーション";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "サービスプロバイダーのデータをメニューバーにリアルタイム表示";
-"dashboard.menu.bar.page.icon_display_mode" = "メニューバーアイコンの表示";
+"dashboard.menu.bar.page.icon_display_mode" = "メニューバーの表示";
 "dashboard.menu.bar.page.icon_display_mode_description" = "アイコンを常に表示するか、タスク実行中のみ表示するかを選択";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "常に表示";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "実行中のみ表示";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "0.01 以上の金額を小数点以下 2 桁まで入力してください";
 "dashboard.menu.page.balance_display" = "残高表示";
 "dashboard.menu.page.progress_bar" = "進捗バー";
+"dashboard.menu.page.show_quota_progress_bar" = "進捗バーを表示";
+"dashboard.menu.page.show_quota_progress_bar_description" = "オフにすると、メニューとクォータカードに進捗バーを表示しません";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ の表示方法";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "メニューで %1$@ を表示するタイミングを選択";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "表示しない";

@@ -116,6 +116,7 @@ private struct DashboardSettingsRowContentIdentity: Equatable {
     var titleLineBreak: NSLineBreakMode
     var subtitleLineBreak: NSLineBreakMode
     var controlHidden: Bool
+    var trailingControlHidden: Bool
     var controlKind: String
     var controlTitle: String
     var forceDedicated: Bool
@@ -127,6 +128,7 @@ private final class DashboardSettingsRowView: NSView {
     let verticalPadding: CGFloat
     weak var labelsView: NSStackView?
     weak var controlView: NSView?
+    weak var trailingControlView: NSView?
     weak var cardView: DashboardSettingsCardView?
     weak var titleTextField: NSTextField?
     weak var subtitleTextField: NSTextField?
@@ -309,6 +311,7 @@ private final class DashboardSettingsRowView: NSView {
             titleLineBreak: titleTextField?.lineBreakMode ?? .byWordWrapping,
             subtitleLineBreak: subtitleTextField?.lineBreakMode ?? .byWordWrapping,
             controlHidden: controlView?.isHidden ?? true,
+            trailingControlHidden: trailingControlView?.isHidden ?? true,
             controlKind: controlView.map { String(describing: type(of: $0)) } ?? "",
             controlTitle: controlTitleSnapshot(),
             forceDedicated: forceDedicatedControlRow
@@ -338,14 +341,16 @@ private final class DashboardSettingsRowView: NSView {
             return total + height
         } + max(0, CGFloat(visibleLabels.count - 1)) * labelsView.spacing
         let controlHeight = controlFittingSize().height
+        let trailingHeight = trailingControlFittingSize().height
+        let headerHeight = max(labelHeight, trailingHeight)
         let height: CGFloat
         if controlPlacement == .dedicatedRow {
             height = ceil(max(
                 minimumHeight,
-                labelHeight + controlHeight + DashboardSettingsComponents.settingsRowContentControlSpacing + verticalPadding * 2
+                headerHeight + controlHeight + DashboardSettingsComponents.settingsRowContentControlSpacing + verticalPadding * 2
             ))
         } else {
-            height = ceil(max(minimumHeight, max(labelHeight, controlHeight) + verticalPadding * 2))
+            height = ceil(max(minimumHeight, max(headerHeight, controlHeight) + verticalPadding * 2))
         }
         cachedPreferredHeight = height
         return height
@@ -360,6 +365,12 @@ private final class DashboardSettingsRowView: NSView {
         let size = controlView.fittingSize
         cachedControlFittingSize = size
         return size
+    }
+
+    private func trailingControlFittingSize() -> NSSize {
+        guard let trailingControlView, !trailingControlView.isHidden else { return .zero }
+        DashboardSettingsLayoutMetrics.controlFittingMeasurements += 1
+        return trailingControlView.fittingSize
     }
 
     private func textNeedsDedicatedRow(at contentWidth: CGFloat) -> Bool {
@@ -1121,6 +1132,7 @@ enum DashboardSettingsComponents {
         subtitleLabel: NSTextField? = nil,
         titleAccessory: NSView? = nil,
         headerTrailingAccessory: NSView? = nil,
+        trailingControl: NSView? = nil,
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
         verticalPadding: CGFloat = 11,
@@ -1233,8 +1245,15 @@ enum DashboardSettingsComponents {
         row.titleTextField = label
         row.labelsView = labels
         row.controlView = control
+        row.trailingControlView = trailingControl
         row.addSubview(labels)
         let padding = max(0, verticalPadding)
+        if let trailingControl {
+            trailingControl.translatesAutoresizingMaskIntoConstraints = false
+            trailingControl.setContentHuggingPriority(.required, for: .horizontal)
+            trailingControl.setContentCompressionResistancePriority(.required, for: .horizontal)
+            row.addSubview(trailingControl)
+        }
         if let control {
             control.translatesAutoresizingMaskIntoConstraints = false
             row.addSubview(control)
@@ -1242,19 +1261,32 @@ enum DashboardSettingsComponents {
                 labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
                 control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20)
             ])
+            let labelsTrailingLimit = trailingControl ?? control
             let sideBySideConstraints = [
                 labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
                 labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
                 labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -padding),
-                labels.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -20),
+                labels.trailingAnchor.constraint(lessThanOrEqualTo: labelsTrailingLimit.leadingAnchor, constant: -20),
                 control.centerYAnchor.constraint(equalTo: row.centerYAnchor)
             ]
-            let dedicatedConstraints = [
+            var dedicatedConstraints = [
                 labels.topAnchor.constraint(equalTo: row.topAnchor, constant: padding),
-                labels.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
                 control.topAnchor.constraint(greaterThanOrEqualTo: labels.bottomAnchor, constant: settingsRowContentControlSpacing),
                 control.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -padding)
             ]
+            if let trailingControl {
+                dedicatedConstraints.append(contentsOf: [
+                    labels.trailingAnchor.constraint(equalTo: trailingControl.leadingAnchor, constant: -20),
+                    trailingControl.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
+                    trailingControl.centerYAnchor.constraint(equalTo: labels.centerYAnchor),
+                    trailingControl.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
+                    control.topAnchor.constraint(greaterThanOrEqualTo: trailingControl.bottomAnchor, constant: settingsRowContentControlSpacing)
+                ])
+            } else {
+                dedicatedConstraints.append(
+                    labels.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20)
+                )
+            }
             row.installControlLayoutConstraints(
                 sideBySide: sideBySideConstraints,
                 dedicated: dedicatedConstraints
@@ -1267,6 +1299,17 @@ enum DashboardSettingsComponents {
             if forceDedicatedControlRow {
                 control.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20).isActive = true
             }
+        } else if let trailingControl {
+            NSLayoutConstraint.activate([
+                labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
+                labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
+                labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -padding),
+                labels.trailingAnchor.constraint(equalTo: trailingControl.leadingAnchor, constant: -20),
+                trailingControl.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
+                trailingControl.centerYAnchor.constraint(equalTo: labels.centerYAnchor),
+                trailingControl.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding)
+            ])
         } else {
             NSLayoutConstraint.activate([
                 labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),

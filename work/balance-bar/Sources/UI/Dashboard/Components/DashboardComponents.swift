@@ -234,6 +234,7 @@ extension QuotaProgressColor {
 
 final class LunaReserveCardView: NSView {
     var colorConfiguration: QuotaProgressColorConfiguration = .default
+    var showsProgressBar = true
     private let titleLabel = NSTextField(labelWithString: tr(.keyLunaReserveTitle))
     private let statusLabel = NSTextField(labelWithString: "")
     private let remainingLabel = NSTextField(labelWithString: "")
@@ -295,7 +296,7 @@ final class LunaReserveCardView: NSView {
         remainingLabel.stringValue = quota.remainingText
         resetLabel.stringValue = quota.resetText
         progressHost.subviews.forEach { $0.removeFromSuperview() }
-        if let remaining = quota.remaining {
+        if showsProgressBar, let remaining = quota.remaining {
             progressHost.isHidden = false
             progressHostHeightConstraint.constant = 6
             let progress = QuotaProgressView(percentage: remaining, colorConfiguration: colorConfiguration)

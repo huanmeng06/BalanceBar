@@ -2245,6 +2245,123 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
+    func testOfficialCodexMenuCardOmitsQuotaProgressViewsWhenProgressBarIsHidden() throws {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false,
+            lunaReserveDisplayMode: .always,
+            lunaReserveHideExhaustedQuota: false
+        )
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true,
+            showQuotaProgressBar: false
+        )
+        let date = Date()
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2d0h",
+                durationSeconds: 18_000,
+                resetAt: date.addingTimeInterval(2 * 86_400)
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "7d0h",
+                durationSeconds: 604_800,
+                resetAt: date.addingTimeInterval(7 * 86_400)
+            )
+        ]
+        controller.start(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                tr(.keyResponseParsers7DayQuota2),
+                "1h30m",
+                date,
+                windows: windows
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesQuotaProgress: false
+        )
+        XCTAssertEqual(overview.bounds.size, frames.cardSize)
+        XCTAssertTrue(overview.subviews.compactMap { $0 as? QuotaProgressView }.isEmpty)
+        let withProgressHeight = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesQuotaProgress: true
+        ).cardSize.height
+        XCTAssertEqual(
+            frames.cardSize.height + 2 * (
+                OpenCodexCardLayout.quotaRowHeight - OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+            ),
+            withProgressHeight
+        )
+        let percentageLabels = allControls(of: overview, as: NSTextField.self)
+            .filter { $0.stringValue == "80%" || $0.stringValue == "45%" }
+        XCTAssertEqual(percentageLabels.count, 2)
+        XCTAssertTrue(
+            percentageLabels.allSatisfy {
+                $0.frame.height == OpenCodexCardLayout.lunaReserveNoProgressAmountHeight
+            }
+        )
+    }
+
     func testOfficialCodexMenuCardRendersBankedResetSummaryAndDetailRowsWithoutReserve() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

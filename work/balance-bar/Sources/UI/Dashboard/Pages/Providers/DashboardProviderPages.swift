@@ -9,6 +9,7 @@ struct DashboardProviderPageInput {
     let revision: UInt64
     let currentProviderIsOfficial: Bool
     let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
+    let showQuotaProgressBar: Bool
 
     init(
         choices: [ProviderChoice],
@@ -18,7 +19,8 @@ struct DashboardProviderPageInput {
         refreshDate: Date?,
         revision: UInt64,
         currentProviderIsOfficial: Bool = false,
-        quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default
+        quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
+        showQuotaProgressBar: Bool = true
     ) {
         self.choices = choices
         self.selectedProviderID = selectedProviderID
@@ -28,6 +30,7 @@ struct DashboardProviderPageInput {
         self.revision = revision
         self.currentProviderIsOfficial = currentProviderIsOfficial
         self.quotaProgressColorConfiguration = quotaProgressColorConfiguration
+        self.showQuotaProgressBar = showQuotaProgressBar
     }
 }
 
@@ -304,6 +307,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
     private let refreshLabel = NSTextField(labelWithString: "--:--:--")
     private let statusLabel = NSTextField(labelWithString: tr(.keyDashboardProviderPagesConnectingToCcSwitch))
     private let progressHost = NSView()
+    private var progressHostHeightConstraint: NSLayoutConstraint!
     private let lunaReserveCard = LunaReserveCardView()
     private let providersStack = NSStackView()
     private let relay: DashboardProviderPageRelay
@@ -340,7 +344,8 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         quotaRow.orientation = .horizontal
         quotaRow.alignment = .centerY
         progressHost.translatesAutoresizingMaskIntoConstraints = false
-        progressHost.heightAnchor.constraint(equalToConstant: 6).isActive = true
+        progressHostHeightConstraint = progressHost.heightAnchor.constraint(equalToConstant: 6)
+        progressHostHeightConstraint.isActive = true
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textColor = .secondaryLabelColor
         let separator = NSBox()
@@ -386,6 +391,9 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
 
     func refresh(input: DashboardProviderPageInput) -> Bool {
         lunaReserveCard.colorConfiguration = input.quotaProgressColorConfiguration
+        lunaReserveCard.showsProgressBar = input.showQuotaProgressBar
+        progressHost.isHidden = !input.showQuotaProgressBar
+        progressHostHeightConstraint.constant = input.showQuotaProgressBar ? 6 : 0
         choices = input.choices
         quickSwitchSummaries = input.quickSwitchSummaries
         guard let current = choices.first(where: { $0.isCurrent }) else {

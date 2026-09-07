@@ -20,6 +20,7 @@ trap 'rm -rf "$probe_dir"' EXIT
         '    static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"' \
         '    static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"' \
         '    static let balanceDisplayThresholdKey = "balanceDisplayThreshold"' \
+        '    static let showQuotaProgressBarKey = "showQuotaProgressBar"' \
         '    static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"' \
         '    static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"' \
         '    static let menuBarAnimationModeKey = "menuBarAnimationMode"' \

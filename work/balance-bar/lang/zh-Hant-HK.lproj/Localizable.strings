@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "開啟設定";
 "dashboard.menu.bar.page.runtime_only_warning" = "目前已啟用「僅在執行時顯示」，任務結束後的隱藏延遲已到期，因此選單列圖示暫時隱藏。";
 "dashboard.menu.bar.page.set_now" = "立即設定";
-"dashboard.menu.bar.page.preview" = "預覽";
+"dashboard.menu.bar.page.preview" = "預覽與顯示";
 "dashboard.menu.bar.page.current_layout" = "目前版面";
 "dashboard.menu.bar.page.quota_and_reset" = "配額與重設";
 "dashboard.menu.bar.page.icon_and_task_status" = "圖示與動畫";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "選單列會隨服務商資料即時更新";
-"dashboard.menu.bar.page.icon_display_mode" = "選單列圖示顯示";
+"dashboard.menu.bar.page.icon_display_mode" = "選單列顯示";
 "dashboard.menu.bar.page.icon_display_mode_description" = "選擇始終顯示圖示，或僅在任務執行時顯示";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "始終顯示";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "僅在執行時顯示";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "請輸入大於等於 0.01 的金額，最多保留兩位小數";
 "dashboard.menu.page.balance_display" = "餘額顯示";
 "dashboard.menu.page.progress_bar" = "進度條";
+"dashboard.menu.page.show_quota_progress_bar" = "顯示進度條";
+"dashboard.menu.page.show_quota_progress_bar_description" = "關閉後，選單和額度卡片不再顯示進度條";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ 顯示方式";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "選擇 %1$@ 在選單中的顯示時機";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "不顯示";

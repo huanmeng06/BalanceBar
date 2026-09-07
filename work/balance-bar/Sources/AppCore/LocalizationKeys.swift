@@ -354,6 +354,8 @@
     case keyDashboardMenuPageEnterAnAmountOfAtLeast001WithUpToTwoDecimalPlaces = "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places"
     case keyDashboardMenuPageBalanceDisplay = "dashboard.menu.page.balance_display"
     case keyDashboardMenuPageProgressBar = "dashboard.menu.page.progress_bar"
+    case keyDashboardMenuPageShowQuotaProgressBar = "dashboard.menu.page.show_quota_progress_bar"
+    case keyDashboardMenuPageShowQuotaProgressBarDescription = "dashboard.menu.page.show_quota_progress_bar_description"
     case keyDashboardMenuPageProgressColorRanges = "dashboard.menu.page.progress_color_ranges"
     case keyDashboardMenuPageProgressColorRangesDescription = "dashboard.menu.page.progress_color_ranges_description"
     case keyDashboardMenuPageDisplayedColors = "dashboard.menu.page.displayed_colors"

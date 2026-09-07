@@ -62,6 +62,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(QuotaThresholdSliderMath.displayTicks, QuotaThresholdSliderMath.logicalTicks)
         XCTAssertEqual(QuotaThresholdSliderMath.nativeScaleTicks, [0, 25, 50, 75, 100])
         XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.quotaProgressEnabledColorsKey))
+        XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.showQuotaProgressBarKey))
     }
 
     func testScaleUsesDenseHighContrastTicksWithoutTextLabels() throws {
@@ -604,7 +605,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
     func testResetButtonUsesStandardRoundedStyle() {
         let button = NSButton()
         DashboardMenuPage.configureQuotaColorResetButton(button)
-        XCTAssertEqual(button.controlSize, .small)
+        XCTAssertEqual(button.controlSize, .regular)
         XCTAssertEqual(button.bezelStyle, .rounded)
         XCTAssertTrue(button.isEnabled)
     }

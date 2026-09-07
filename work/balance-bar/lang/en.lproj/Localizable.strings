@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "Open Settings";
 "dashboard.menu.bar.page.runtime_only_warning" = "Only While Running is enabled and the post-task hide delay has elapsed, so the menu bar icon is temporarily hidden.";
 "dashboard.menu.bar.page.set_now" = "Set Now";
-"dashboard.menu.bar.page.preview" = "Preview";
+"dashboard.menu.bar.page.preview" = "Preview & Display";
 "dashboard.menu.bar.page.current_layout" = "Current Layout";
 "dashboard.menu.bar.page.quota_and_reset" = "Quota & Reset";
 "dashboard.menu.bar.page.icon_and_task_status" = "Icon & Animation";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "The menu bar updates with Provider data in real time";
-"dashboard.menu.bar.page.icon_display_mode" = "Menu Bar Icon Display";
+"dashboard.menu.bar.page.icon_display_mode" = "Menu Bar Display";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Choose to always show the icon, or only while a task is running";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Always Visible";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Only While Running";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Enter an amount of at least 0.01 with up to two decimal places";
 "dashboard.menu.page.balance_display" = "Balance Display";
 "dashboard.menu.page.progress_bar" = "Progress Bar";
+"dashboard.menu.page.show_quota_progress_bar" = "Show Progress Bar";
+"dashboard.menu.page.show_quota_progress_bar_description" = "When off, menus and quota cards no longer show the remaining-quota bar";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ Display";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Choose when %1$@ is shown in the menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Do not show";

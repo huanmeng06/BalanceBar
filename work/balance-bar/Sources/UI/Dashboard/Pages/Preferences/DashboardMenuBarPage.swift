@@ -1312,7 +1312,8 @@ final class DashboardMenuBarPage {
                 verticalPadding: Self.previewRowVerticalPadding
             ),
             overflowWarningRow,
-            runtimeOnlyWarningRow
+            runtimeOnlyWarningRow,
+            iconDisplayModeRow
         ], onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
             self?.previewRowsStack = rowsStack
             self?.previewCardHeightConstraint = cardHeightConstraint
@@ -1344,7 +1345,6 @@ final class DashboardMenuBarPage {
             tr(.keyDashboardMenuBarPageIconAndTaskStatus),
             rows: [
                 taskStatusIconRow,
-                iconDisplayModeRow,
                 iconDisplayDelayRow,
                 animationRow,
                 animationModeRow,
@@ -2037,14 +2037,17 @@ final class DashboardMenuBarPage {
         overflowWarningRow.isHidden = !shouldShowOverflowWarning
         runtimeOnlyWarningLabel.isHidden = !shouldShowRuntimeOnlyWarning
         runtimeOnlyWarningRow.isHidden = !shouldShowRuntimeOnlyWarning
+        updatePreviewSeparators()
+    }
 
-        // The current-layout row is always visible. Each separator is shown
-        // only when it separates two visible rows in the fixed order:
-        // current layout → overflow warning → runtime warning.
+    private func updatePreviewSeparators() {
+        // Current layout is always visible. Remaining rows, in order:
+        // overflow warning → runtime warning → menu bar display.
         let visibleRows = [
             true,
-            shouldShowOverflowWarning,
-            shouldShowRuntimeOnlyWarning
+            overflowWarningRow?.isHidden == false,
+            runtimeOnlyWarningRow?.isHidden == false,
+            iconDisplayModeRow?.isHidden == false
         ]
         for (index, separator) in previewSeparators.enumerated() {
             guard index + 1 < visibleRows.count else {
@@ -2200,15 +2203,13 @@ final class DashboardMenuBarPage {
         animationModeControl?.isEnabled = showAnimationMode
         animationFallbackWarningRow?.isHidden = !showFallbackWarning
         animationFallbackWarningLabel?.stringValue = Self.animationFallbackWarningText()
+        updatePreviewSeparators()
 
-        // Rows are ordered as task status → display mode → delay → animation
-        // → animation mode → fallback warning. A separator is visible only
-        // when it bridges the last visible row before a hidden run to the next
-        // visible row.
-        // A separator is visible only when it separates two visible rows.
+        // Rows are ordered as task status → delay → animation → animation
+        // mode → fallback warning. Menu bar display now lives on the preview
+        // card. A separator is visible only when it separates two visible rows.
         let visibleRows = [
             showTaskStatusIcon,
-            showDependentRows,
             showDelay,
             showDependentRows,
             showAnimationMode,

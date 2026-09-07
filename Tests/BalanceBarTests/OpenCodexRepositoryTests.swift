@@ -1130,6 +1130,57 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(englishBalance.link, CGRect(x: 85, y: 28, width: 136, height: 17))
     }
 
+    func testOpenCodexCardLayoutCollapsesProgressSlotWhenQuotaProgressIsHidden() {
+        let shift = OpenCodexCardLayout.quotaRowHeight - OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+        let official = OpenCodexCardLayout.frames(for: .quota, includesQuotaProgress: false)
+        XCTAssertEqual(official.cardSize, CGSize(width: 304, height: 102 - shift))
+        XCTAssertNil(official.progress)
+        XCTAssertEqual(official.amount.height, OpenCodexCardLayout.lunaReserveNoProgressAmountHeight)
+
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: "5-hour",
+                daysText: "5 hours",
+                reset: "2h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: "7-day",
+                daysText: "7 days",
+                reset: "7d",
+                durationSeconds: 604_800
+            )
+        ]
+        let expanded = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: windows,
+            includesQuotaProgress: false
+        )
+        XCTAssertEqual(expanded.quotaRows.count, 2)
+        XCTAssertTrue(expanded.quotaRows.allSatisfy { $0.progress == .zero })
+        XCTAssertTrue(
+            expanded.quotaRows.allSatisfy {
+                $0.amount.height == OpenCodexCardLayout.lunaReserveNoProgressAmountHeight
+            }
+        )
+        let withProgress = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: windows,
+            includesQuotaProgress: true
+        )
+        XCTAssertLessThan(expanded.cardSize.height + 8, withProgress.cardSize.height)
+
+        let balance = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: false)
+        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 102 - shift))
+        XCTAssertNil(balance.progress)
+        XCTAssertEqual(balance.linkPrefix?.minY, 28 - shift)
+        XCTAssertEqual(balance.link?.minY, 28 - shift)
+    }
+
     func testOpenAIAccountRowAddsASeparatedSubtitleBeforeQuotaDetails() {
         let frames = OpenCodexCardLayout.frames(for: .quota, includesAccount: true)
 

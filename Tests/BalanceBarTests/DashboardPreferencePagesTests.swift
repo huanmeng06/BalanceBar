@@ -632,55 +632,55 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, String, String, [String])] = [
             (
                 .simplifiedChinese,
-                "菜单栏图标显示",
+                "菜单栏显示",
                 "选择始终显示图标，或仅在任务运行时显示",
                 ["始终显示", "仅在运行时显示"]
             ),
             (
                 .traditionalChineseTaiwan,
-                "選單列圖示顯示",
+                "選單列顯示",
                 "選擇始終顯示圖示，或僅在任務執行時顯示",
                 ["始終顯示", "僅在執行時顯示"]
             ),
             (
                 .traditionalChineseHongKong,
-                "選單列圖示顯示",
+                "選單列顯示",
                 "選擇始終顯示圖示，或僅在任務執行時顯示",
                 ["始終顯示", "僅在執行時顯示"]
             ),
             (
                 .english,
-                "Menu Bar Icon Display",
+                "Menu Bar Display",
                 "Choose to always show the icon, or only while a task is running",
                 ["Always Visible", "Only While Running"]
             ),
             (
                 .japanese,
-                "メニューバーアイコンの表示",
+                "メニューバーの表示",
                 "アイコンを常に表示するか、タスク実行中のみ表示するかを選択",
                 ["常に表示", "実行中のみ表示"]
             ),
             (
                 .korean,
-                "메뉴 막대 아이콘 표시",
+                "메뉴 막대 표시",
                 "아이콘을 항상 표시하거나 작업 실행 중에만 표시하도록 선택",
                 ["항상 표시", "실행 중에만 표시"]
             ),
             (
                 .spanish,
-                "Mostrar el icono de la barra de menús",
+                "Visualización de la barra de menús",
                 "Elige mostrar siempre el icono o solo mientras se ejecuta una tarea",
                 ["Siempre visible", "Solo durante la ejecución"]
             ),
             (
                 .german,
-                "Anzeige des Menüleistensymbols",
+                "Anzeige der Menüleiste",
                 "Wählen Sie, ob das Symbol immer oder nur während einer laufenden Aufgabe angezeigt wird",
                 ["Immer sichtbar", "Nur während der Ausführung"]
             ),
             (
                 .french,
-                "Affichage de l’icône de la barre des menus",
+                "Affichage de la barre des menus",
                 "Choisissez d’afficher l’icône toujours ou uniquement pendant l’exécution d’une tâche",
                 ["Toujours visible", "Uniquement pendant l’exécution"]
             )
@@ -855,26 +855,32 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let iconTaskStatusRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
             let iconRows = iconTaskStatusRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
             XCTAssertTrue(
-                zip(iconRows, [taskStatusRow, modeRow, delayRow, animationRow, animationModeRow])
+                zip(iconRows, [taskStatusRow, delayRow, animationRow, animationModeRow])
                     .allSatisfy { $0.0 === $0.1 },
-                "icon/task rows follow task status, display mode, delay, animation, mode order in (language)"
+                "icon/task rows follow task status, delay, animation, mode order in (language)"
+            )
+            XCTAssertFalse(
+                iconRows.contains { $0 === modeRow },
+                "menu bar display moved out of icon/task in (language)"
+            )
+            let previewRowsStack = try XCTUnwrap(modeRow.superview as? NSStackView)
+            let previewRows = previewRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+            XCTAssertTrue(
+                previewRows.last === modeRow,
+                "menu bar display is the last preview-card row in (language)"
             )
             let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-            XCTAssertEqual(iconTaskStatusSeparators.count, 5)
+            XCTAssertEqual(iconTaskStatusSeparators.count, 4)
             XCTAssertFalse(
                 iconTaskStatusSeparators[0].isHidden,
-                "the divider after task status is visible in (language)"
-            )
-            XCTAssertFalse(
-                iconTaskStatusSeparators[1].isHidden,
-                "the divider after display mode bridges the hidden delay row in (language)"
+                "the divider after task status bridges the hidden delay row in (language)"
             )
             XCTAssertTrue(
-                iconTaskStatusSeparators[2].isHidden,
+                iconTaskStatusSeparators[1].isHidden,
                 "the divider inside the hidden delay row is collapsed in (language)"
             )
-            XCTAssertFalse(iconTaskStatusSeparators[3].isHidden)
-            XCTAssertTrue(iconTaskStatusSeparators[4].isHidden)
+            XCTAssertFalse(iconTaskStatusSeparators[2].isHidden)
+            XCTAssertTrue(iconTaskStatusSeparators[3].isHidden)
             XCTAssertFalse(taskStatusRow.isHidden)
             XCTAssertFalse(animationRow.isHidden)
             XCTAssertFalse(modeRow.isHidden)
@@ -973,16 +979,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 iconTaskStatusSeparators[0].isHidden,
                 "the divider after task status remains visible after switching back in (language)"
             )
-            XCTAssertFalse(
-                iconTaskStatusSeparators[1].isHidden,
-                "the divider after display mode remains visible after switching back in (language)"
-            )
             XCTAssertTrue(
-                iconTaskStatusSeparators[2].isHidden,
+                iconTaskStatusSeparators[1].isHidden,
                 "the hidden delay row remains collapsed after switching back in (language)"
             )
-            XCTAssertFalse(iconTaskStatusSeparators[3].isHidden)
-            XCTAssertTrue(iconTaskStatusSeparators[4].isHidden)
+            XCTAssertFalse(iconTaskStatusSeparators[2].isHidden)
+            XCTAssertTrue(iconTaskStatusSeparators[3].isHidden)
 
             relay.onToggle = { identifier, enabled in
                 guard identifier == "showMenuBarIcon" else { return }
@@ -1070,7 +1072,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
         )
         let progressBarRows = settingsRows(in: progressBarSection)
-        XCTAssertEqual(progressBarRows.count, 3)
+        XCTAssertEqual(progressBarRows.count, 4)
         let sectionTitles = labels.map(\.stringValue)
         let progressBarIndex = try XCTUnwrap(
             sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageProgressBar))
@@ -1095,7 +1097,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             })?.superview else {
             return XCTFail("Expected both balance display and dropdown-menu rows")
         }
-        XCTAssertTrue(progressBarRows[2] === thresholdRow)
+        XCTAssertTrue(progressBarRows[3] === thresholdRow)
         XCTAssertEqual(
             equalHeightConstraint(in: thresholdRow),
             equalHeightConstraint(in: quickSwitchRow),
@@ -1240,6 +1242,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             for key in [
                 LocalizationKey.keyDashboardMenuPageProgressBar,
+                .keyDashboardMenuPageShowQuotaProgressBar,
+                .keyDashboardMenuPageShowQuotaProgressBarDescription,
                 .keyDashboardMenuPageLowBalanceDisplayThreshold,
                 .keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount,
                 .keyDashboardMenuPageProgressColorRanges,
@@ -1264,9 +1268,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar, language: language), in: page)
             )
             let progressBarRows = settingsRows(in: progressBarSection)
-            XCTAssertEqual(progressBarRows.count, 3, "Progress Bar row count for \(language)")
+            XCTAssertEqual(progressBarRows.count, 4, "Progress Bar row count for \(language)")
 
             let expectedRows = [
+                (
+                    tr(.keyDashboardMenuPageShowQuotaProgressBar, language: language),
+                    tr(.keyDashboardMenuPageShowQuotaProgressBarDescription, language: language)
+                ),
                 (
                     tr(.keyDashboardMenuPageProgressColorRanges, language: language),
                     tr(.keyDashboardMenuPageProgressColorRangesDescription, language: language)
@@ -1324,8 +1332,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             XCTAssertEqual(
                 progressBarRows.map(ObjectIdentifier.init),
-                [sliderRow, colorRow, thresholdRow].map(ObjectIdentifier.init)
+                [progressBarRows[0], sliderRow, colorRow, thresholdRow].map(ObjectIdentifier.init)
             )
+            XCTAssertTrue(progressBarRows[1] === sliderRow)
             XCTAssertEqual(thresholdField.stringValue, "0.10")
             XCTAssertEqual(slider.configuration, preferences.quotaProgressColorConfiguration)
 
@@ -1362,6 +1371,174 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(thresholdField.stringValue, "0.25")
             XCTAssertEqual(slider.configuration.orangeUpperBound, 35)
             XCTAssertEqual(greenButton.state, .off)
+        }
+    }
+
+    func testProgressBarMasterSwitchHidesDependentRowsWithoutResettingConfiguration() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.ShowQuotaProgressBar.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertTrue(preferences.showQuotaProgressBar)
+        let controller = DashboardMenuPage()
+        let relay = DashboardPreferencePageRelay()
+        relay.onToggle = { identifier, enabled in
+            if identifier == AppPreferences.showQuotaProgressBarKey {
+                preferences.showQuotaProgressBar = enabled
+                controller.refresh(preferences: preferences)
+            }
+        }
+        var colorChanges: [QuotaProgressColorConfiguration] = []
+        let page = controller.make(.init(
+            preferences: preferences,
+            relay: relay,
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in },
+            onQuotaProgressColorConfigurationChanged: { configuration in
+                colorChanges.append(configuration)
+                preferences.quotaProgressColorConfiguration = configuration
+            }
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
+        let window = NSWindow(
+            contentRect: page.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        window.layoutIfNeeded()
+        defer {
+            window.contentView = nil
+            controller.teardown()
+        }
+
+        let progressBarSection = try XCTUnwrap(
+            settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
+        )
+        let progressBarRows = settingsRows(in: progressBarSection)
+        XCTAssertEqual(progressBarRows.count, 4)
+        let rowsStack = try XCTUnwrap(progressBarRows[0].superview as? NSStackView)
+        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let toggle = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == AppPreferences.showQuotaProgressBarKey }
+        )
+        XCTAssertTrue(progressBarRows[0] === toggle.superview)
+        XCTAssertTrue(progressBarRows.allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        let expandedHeight = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: rowsStack,
+            separators: separators
+        )
+        XCTAssertEqual(rowsStack.superview?.frame.height ?? 0, expandedHeight, accuracy: 0.5)
+
+        let slider = try XCTUnwrap(descendants(of: page).compactMap { $0 as? QuotaColorThresholdSlider }.first)
+        slider.applyRawThumbValueForTesting(32.6, after: .orange)
+        let storedConfiguration = preferences.quotaProgressColorConfiguration
+        XCTAssertEqual(storedConfiguration.orangeUpperBound, 35)
+
+        toggle.state = .off
+        relay.toggle(toggle)
+        window.layoutIfNeeded()
+        XCTAssertFalse(preferences.showQuotaProgressBar)
+        XCTAssertFalse(progressBarRows[0].isHidden)
+        XCTAssertTrue(progressBarRows.dropFirst().allSatisfy(\.isHidden))
+        XCTAssertTrue(separators.allSatisfy(\.isHidden))
+        let collapsedHeight = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: rowsStack,
+            separators: separators
+        )
+        XCTAssertEqual(rowsStack.superview?.frame.height ?? 0, collapsedHeight, accuracy: 0.5)
+        XCTAssertLessThan(collapsedHeight + 8, expandedHeight)
+        XCTAssertEqual(preferences.quotaProgressColorConfiguration, storedConfiguration)
+
+        toggle.state = .on
+        relay.toggle(toggle)
+        window.layoutIfNeeded()
+        XCTAssertTrue(preferences.showQuotaProgressBar)
+        XCTAssertTrue(progressBarRows.allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        XCTAssertEqual(preferences.quotaProgressColorConfiguration, storedConfiguration)
+        XCTAssertEqual(slider.configuration, storedConfiguration)
+        XCTAssertEqual(colorChanges.last?.orangeUpperBound, 35)
+    }
+
+    func testQuotaColorResetButtonIsRegularAndVerticallyCenteredWithTitleAndSubtitle() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.QuotaColorResetAlignment.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let controller = DashboardMenuPage()
+        let page = controller.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
+        let window = NSWindow(
+            contentRect: page.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+        defer {
+            window.contentView = nil
+            controller.teardown()
+        }
+
+        let resetButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyCommonRestoreDefaults) }
+        )
+        XCTAssertEqual(resetButton.controlSize, .regular)
+        XCTAssertEqual(resetButton.bezelStyle, .rounded)
+        let row = try XCTUnwrap(resetButton.superview)
+        let title = try XCTUnwrap(
+            descendants(of: row)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.stringValue == tr(.keyDashboardMenuPageProgressColorRanges) }
+        )
+        let subtitle = try XCTUnwrap(
+            descendants(of: row)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.stringValue == tr(.keyDashboardMenuPageProgressColorRangesDescription) }
+        )
+        let titleFrame = title.convert(title.bounds, to: row)
+        let subtitleFrame = subtitle.convert(subtitle.bounds, to: row)
+        let buttonFrame = resetButton.convert(resetButton.bounds, to: row)
+        let labelsMidY = (min(titleFrame.minY, subtitleFrame.minY) + max(titleFrame.maxY, subtitleFrame.maxY)) / 2
+        XCTAssertEqual(buttonFrame.midY, labelsMidY, accuracy: 0.5)
+        XCTAssertGreaterThan(buttonFrame.minX, max(titleFrame.maxX, subtitleFrame.maxX))
+        let slider = try XCTUnwrap(descendants(of: row).compactMap { $0 as? QuotaColorThresholdSlider }.first)
+        let sliderFrame = slider.convert(slider.bounds, to: row)
+        let labelsMinY = min(titleFrame.minY, subtitleFrame.minY)
+        let labelsMaxY = max(titleFrame.maxY, subtitleFrame.maxY)
+        if row.isFlipped {
+            XCTAssertLessThan(labelsMaxY, sliderFrame.minY)
+        } else {
+            XCTAssertLessThan(sliderFrame.maxY, labelsMinY)
         }
     }
 
@@ -1469,7 +1646,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
         XCTAssertEqual(
             progressBarRows.count,
-            3
+            4
         )
         XCTAssertFalse(hideRow.isHidden)
         XCTAssertTrue(hideSwitch.isEnabled)
@@ -2046,13 +2223,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let rowsStack = try XCTUnwrap(overflowRow.superview as? NSStackView)
         let previewCard = try XCTUnwrap(rowsStack.superview)
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-        XCTAssertEqual(separators.count, 2)
+        XCTAssertEqual(separators.count, 3)
+        let previewRows = rowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+        let iconDisplayModeControl = try XCTUnwrap(
+            descendant(withIdentifier: AppPreferences.menuBarIconDisplayModeKey, in: page)
+        )
+        let iconDisplayModeRow = try XCTUnwrap(iconDisplayModeControl.superview)
+        XCTAssertTrue(previewRows.last === iconDisplayModeRow)
 
         let cases: [(StatusItemVisibility, Bool, Bool, [Bool])] = [
-            (.unknown, false, false, [true, true]),
-            (.hiddenByMenuBarSpace, true, false, [false, true]),
-            (.hiddenByRuntimePolicy, false, true, [false, true]),
-            (.hiddenByMenuBarSpaceAndRuntimePolicy, true, true, [false, false])
+            (.unknown, false, false, [false, true, true]),
+            (.hiddenByMenuBarSpace, true, false, [false, false, true]),
+            (.hiddenByRuntimePolicy, false, true, [false, true, false]),
+            (.hiddenByMenuBarSpaceAndRuntimePolicy, true, true, [false, false, false])
         ]
         for (visibility, showsOverflow, showsRuntime, separatorHidden) in cases {
             controller.refresh(
@@ -2376,7 +2559,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         window.layoutIfNeeded()
         XCTAssertTrue(warningRow.isHidden)
-        XCTAssertTrue(separator.isHidden)
+        // Overflow is gone, but 菜单栏显示 remains below 当前布局, so the
+        // first separator still divides two visible preview rows.
+        XCTAssertFalse(separator.isHidden)
 
         controller.refresh(
             snapshot: snapshot,
@@ -2445,9 +2630,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let quotaRowIndices = quotaRowTitles.compactMap { labelStrings.firstIndex(of: $0) }
             XCTAssertEqual(quotaRowIndices.count, quotaRowTitles.count)
             XCTAssertEqual(quotaRowIndices, quotaRowIndices.sorted())
+            let previewRowTitles = [
+                tr(.keyDashboardMenuBarPageCurrentLayout, language: language),
+                tr(.keyDashboardMenuBarPageIconDisplayMode, language: language)
+            ]
+            let previewRowIndices = previewRowTitles.compactMap { labelStrings.firstIndex(of: $0) }
+            XCTAssertEqual(previewRowIndices.count, previewRowTitles.count)
+            XCTAssertEqual(previewRowIndices, previewRowIndices.sorted())
+            XCTAssertLessThan(previewIndex, previewRowIndices[0])
+            XCTAssertLessThan(previewRowIndices[1], quotaAndResetIndex)
             let iconRowTitles = [
                 tr(.keyDashboardMenuBarPageAgentIcon, language: language),
-                tr(.keyDashboardMenuBarPageIconDisplayMode, language: language),
                 tr(.keyDashboardMenuBarPageIconDisplayDelay, language: language),
                 animationRowTitle,
                 tr(.keyDashboardMenuBarPageAnimation, language: language)
@@ -3750,6 +3943,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             window.layoutIfNeeded()
             let narrowHeight = row.frame.height
+            let narrowCardHeight = card.frame.height
             XCTAssertGreaterThan(narrowHeight, DashboardMenuBarPage.previewRowHeight, "(language) preview must grow when its subtitle wraps")
             XCTAssertLessThanOrEqual(
                 subtitle.cell!.cellSize(
@@ -3777,7 +3971,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 "(language) preview row must match the standard settings-row height at a wide width"
             )
             XCTAssertLessThan(row.frame.height, narrowHeight, "(language) preview row should shrink at wide width")
-            XCTAssertLessThan(card.frame.height, narrowHeight + DashboardSettingsComponents.settingsSeparatorHeight)
+            XCTAssertLessThan(
+                card.frame.height,
+                narrowCardHeight,
+                "(language) preview card should shrink at wide width"
+            )
 
             window.setContentSize(NSSize(width: 516, height: 520))
             window.layoutIfNeeded()

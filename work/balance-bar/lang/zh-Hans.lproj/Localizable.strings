@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "打开设置";
 "dashboard.menu.bar.page.runtime_only_warning" = "当前已启用「仅在运行时显示」，任务结束后的隐藏延迟已到期，因此菜单栏图标暂时隐藏。";
 "dashboard.menu.bar.page.set_now" = "立即设置";
-"dashboard.menu.bar.page.preview" = "预览";
+"dashboard.menu.bar.page.preview" = "预览与显示";
 "dashboard.menu.bar.page.current_layout" = "当前布局";
 "dashboard.menu.bar.page.quota_and_reset" = "额度与重置";
 "dashboard.menu.bar.page.icon_and_task_status" = "图标与动画";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "菜单栏会随服务商数据实时更新";
-"dashboard.menu.bar.page.icon_display_mode" = "菜单栏图标显示";
+"dashboard.menu.bar.page.icon_display_mode" = "菜单栏显示";
 "dashboard.menu.bar.page.icon_display_mode_description" = "选择始终显示图标，或仅在任务运行时显示";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "始终显示";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "仅在运行时显示";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "请输入大于等于 0.01 的金额，最多保留两位小数";
 "dashboard.menu.page.balance_display" = "余额显示";
 "dashboard.menu.page.progress_bar" = "进度条";
+"dashboard.menu.page.show_quota_progress_bar" = "显示进度条";
+"dashboard.menu.page.show_quota_progress_bar_description" = "关闭后，菜单和额度卡片不再显示进度条";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@显示方式";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "选择 %1$@ 在菜单中的显示时机";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "不显示";

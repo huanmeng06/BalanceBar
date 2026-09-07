@@ -31,6 +31,13 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.showMenuBarReset)
         XCTAssertTrue(preferences.showMenuBarIcon)
         XCTAssertTrue(preferences.showMenuBarAmount)
+        XCTAssertTrue(preferences.showQuotaProgressBar)
+        XCTAssertNil(defaults.object(forKey: AppPreferences.showQuotaProgressBarKey))
+        preferences.showQuotaProgressBar = false
+        XCTAssertFalse(preferences.showQuotaProgressBar)
+        XCTAssertEqual(defaults.object(forKey: AppPreferences.showQuotaProgressBarKey) as? Bool, false)
+        XCTAssertFalse(AppPreferences(defaults: defaults).showQuotaProgressBar)
+        XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.showQuotaProgressBarKey))
         XCTAssertTrue(preferences.animateCodexActivity)
         XCTAssertTrue(preferences.showQuickSwitchMenu)
         XCTAssertTrue(preferences.showOpenCCSwitchMenu)
