@@ -644,6 +644,35 @@ final class DomainModelsTests: XCTestCase {
         )
     }
 
+    func testBankedResetDemoTenCardsKeepsCountProbabilityAndWarningExpiry() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = DevelopmentBankedResetDemo.snapshot(
+            mode: .tenCards,
+            providerName: "OpenAI",
+            date: date
+        )
+        let bankedReset = try XCTUnwrap(snapshot.bankedReset)
+        XCTAssertEqual(bankedReset.availableCount, DevelopmentBankedResetDemo.cardCount)
+        XCTAssertEqual(bankedReset.cards.count, 10)
+        XCTAssertEqual(snapshot.resetProbability, .percent(23))
+        XCTAssertNil(snapshot.lunaReserve)
+        XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertTrue(bankedReset.cards[0].remainingIsWarning)
+        XCTAssertFalse(bankedReset.cards[9].remainingIsWarning)
+        XCTAssertEqual(
+            bankedReset.cards.map(\.resetType),
+            Array(repeating: "codex_rate_limits", count: 10)
+        )
+        XCTAssertEqual(
+            Set(bankedReset.cards.compactMap(\.id)).count,
+            10
+        )
+    }
+
     func testMenuBarQuotaWindowSelectionUsesRealWindowsAndSafeMissingFallbacks() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let exactCalendar = Calendar(identifier: .gregorian)

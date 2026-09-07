@@ -100,6 +100,103 @@ enum DevelopmentLunaReserveDemo {
     }
 }
 
+/// Supplies a deterministic 10-card banked-reset list only to the explicitly
+/// named demo bundle. Normal development and production bundles return nil.
+enum DevelopmentBankedResetDemo {
+    enum Mode: String {
+        case tenCards = "banked-reset-10"
+    }
+
+    static let cardCount = 10
+    private static let infoPlistKey = "BalanceBarBankedResetDemo"
+    private static let remainingOffsets: [TimeInterval] = [
+        30 * 60,
+        6 * 3_600,
+        18 * 3_600,
+        30 * 3_600,
+        2 * 86_400,
+        3 * 86_400,
+        (4 * 86_400) + (12 * 3_600),
+        6 * 86_400,
+        8 * 86_400,
+        10 * 86_400
+    ]
+
+    static func snapshot(
+        providerName: String,
+        date: Date = Date()
+    ) -> Snapshot? {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier,
+              bundleIdentifier.contains(".demo."),
+              let rawMode = Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? String,
+              let mode = Mode(rawValue: rawMode)
+        else {
+            return nil
+        }
+        return snapshot(mode: mode, providerName: providerName, date: date)
+    }
+
+    static func snapshot(
+        mode: Mode,
+        providerName: String,
+        date: Date = Date()
+    ) -> Snapshot {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2h0m",
+                durationSeconds: 5 * 3_600
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota),
+                daysText: tr(.keyResponseParsers7Days),
+                reset: "5d3h",
+                durationSeconds: 7 * 86_400
+            )
+        ]
+        let cardList: [CodexBankedResetCard]
+        switch mode {
+        case .tenCards:
+            cardList = cards(now: date)
+        }
+        return .official(
+            providerName,
+            windows[1].remaining,
+            windows[1].label,
+            windows[1].reset,
+            date,
+            windows: windows,
+            bankedReset: CodexBankedReset(cards: cardList),
+            resetProbability: .percent(23)
+        )
+    }
+
+    static func cards(now: Date) -> [CodexBankedResetCard] {
+        remainingOffsets.enumerated().map { index, offset in
+            let expiresAt = now.addingTimeInterval(offset)
+            let remaining = CodexBankedResetFormatting.remaining(until: expiresAt, now: now)
+            return CodexBankedResetCard(
+                id: "demo-\(index + 1)",
+                resetType: "codex_rate_limits",
+                titleText: tr(.keyCodexBankedResetFullResetTitle),
+                windowText: tr(.keyCodexBankedResetFullResetWindow),
+                expiresAt: expiresAt,
+                expiresText: CodexBankedResetFormatting.expiryText(
+                    for: expiresAt,
+                    relativeTo: now
+                ),
+                remainingText: remaining?.text,
+                remainingIsWarning: remaining?.isWarning ?? false
+            )
+        }
+    }
+}
+
 struct ProviderRefreshActions {
     let currentProvider: (AssistantClient) -> CCSwitchProvider?
     let isActiveClient: (AssistantClient) -> Bool
@@ -413,7 +510,8 @@ final class ProviderRefreshCoordinator {
     }
 
     private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient) {
-        if let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName) {
+        if let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
+            ?? DevelopmentBankedResetDemo.snapshot(providerName: providerName) {
             renderForCurrentProvider(
                 demoSnapshot,
                 providerID: providerID,
