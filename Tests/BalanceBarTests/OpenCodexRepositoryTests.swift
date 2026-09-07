@@ -1464,15 +1464,49 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(frames.bankedResetDetailRows.count, 2)
         XCTAssertGreaterThan(frames.cardSize.height, baseline.cardSize.height)
         XCTAssertEqual(frames.bankedResetSummaryRow?.progress ?? .zero, .zero)
+        XCTAssertEqual(frames.bankedResetSummaryRow?.amount ?? .zero, .zero)
         XCTAssertEqual(frames.bankedResetDetailRows.map(\.progress), [.zero, .zero])
         XCTAssertEqual(frames.bankedResetSummaryRow?.icon ?? .zero, .zero)
         XCTAssertEqual(frames.bankedResetSummaryRow?.window ?? .zero, .zero)
+        XCTAssertEqual(frames.bankedResetSummaryRow?.chrome ?? .zero, .zero)
+        XCTAssertEqual(
+            frames.bankedResetSummaryRow?.badge.size,
+            OpenCodexCardLayout.bankedResetBadgeSize
+        )
+        XCTAssertEqual(
+            frames.bankedResetSummaryRow!.badge.minX,
+            frames.bankedResetSummaryRow!.quotaDetail.maxX
+                + OpenCodexCardLayout.bankedResetBadgeGap,
+            accuracy: 0.001
+        )
+        XCTAssertLessThan(
+            frames.bankedResetSummaryRow!.badge.maxX,
+            OpenCodexCardLayout.amountX
+        )
         XCTAssertEqual(
             frames.bankedResetDetailRows.map(\.icon.size),
             [
                 OpenCodexCardLayout.bankedResetTicketIconSize,
                 OpenCodexCardLayout.bankedResetTicketIconSize
             ]
+        )
+        XCTAssertEqual(
+            frames.bankedResetDetailRows.map(\.chrome.size),
+            [
+                CGSize(
+                    width: OpenCodexCardLayout.contentWidth,
+                    height: OpenCodexCardLayout.bankedResetDetailRowHeight
+                ),
+                CGSize(
+                    width: OpenCodexCardLayout.contentWidth,
+                    height: OpenCodexCardLayout.bankedResetDetailRowHeight
+                )
+            ]
+        )
+        XCTAssertEqual(
+            frames.bankedResetDetailRows[0].chrome.minX,
+            frames.bankedResetDetailRows[1].chrome.minX,
+            accuracy: 0.001
         )
         XCTAssertGreaterThan(frames.bankedResetDetailRows[0].window.height, 0)
         XCTAssertGreaterThan(frames.bankedResetDetailRows[0].window.width, 180)
@@ -1487,7 +1521,8 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
         XCTAssertEqual(
             frames.quotaRows[1].progress.minY - (
-                frames.bankedResetSummaryRow!.amount.minY
+                frames.bankedResetDetailRows[0].chrome.maxY
+                    + OpenCodexCardLayout.quotaRowGap
                     + OpenCodexCardLayout.lunaReserveNoProgressRowHeight
             ),
             OpenCodexCardLayout.quotaRowGap,
@@ -1501,12 +1536,14 @@ final class OpenCodexRepositoryTests: XCTestCase {
             frames.bankedResetDetailRows[0].quotaDetail.minY,
             frames.bankedResetDetailRows[1].quotaDetail.minY
         )
+        let firstDetail = frames.bankedResetDetailRows[0]
         XCTAssertEqual(
-            frames.bankedResetDetailRows[0].icon.minY
-                + OpenCodexCardLayout.bankedResetTicketIconSize.height / 2,
-            frames.bankedResetDetailRows[0].quotaDetail.midY,
+            firstDetail.icon.midY,
+            (firstDetail.reset.minY + firstDetail.quotaDetail.maxY) / 2,
             accuracy: 0.001
         )
+        XCTAssertGreaterThan(firstDetail.icon.minY, firstDetail.chrome.minY)
+        XCTAssertLessThan(firstDetail.icon.maxY, firstDetail.chrome.maxY)
         XCTAssertEqual(
             frames.quotaRows[0].progress.minY - frames.quotaRows[1].progress.minY,
             OpenCodexCardLayout.quotaRowHeight + OpenCodexCardLayout.quotaRowGap,

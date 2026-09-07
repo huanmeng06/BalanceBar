@@ -576,6 +576,8 @@ struct OpenCodexQuotaRowFrames: Equatable {
     let progress: CGRect
     let icon: CGRect
     let window: CGRect
+    let badge: CGRect
+    let chrome: CGRect
 
     init(
         quotaDetail: CGRect,
@@ -583,7 +585,9 @@ struct OpenCodexQuotaRowFrames: Equatable {
         amount: CGRect,
         progress: CGRect,
         icon: CGRect = .zero,
-        window: CGRect = .zero
+        window: CGRect = .zero,
+        badge: CGRect = .zero,
+        chrome: CGRect = .zero
     ) {
         self.quotaDetail = quotaDetail
         self.reset = reset
@@ -591,6 +595,8 @@ struct OpenCodexQuotaRowFrames: Equatable {
         self.progress = progress
         self.icon = icon
         self.window = window
+        self.badge = badge
+        self.chrome = chrome
     }
 }
 
@@ -634,12 +640,20 @@ enum OpenCodexCardLayout {
     // progress-bar slot and the gap that preceded it.
     static let lunaReserveNoProgressRowHeight: CGFloat = 42
     static let lunaReserveNoProgressAmountHeight: CGFloat = 42
-    /// Ticket icon + title / window / expiry lines. Keep this taller than the
-    /// two-line summary so the type title is not marquee-truncated.
-    static let bankedResetDetailRowHeight: CGFloat = 64
+    /// Ticket icon + title / window / expiry lines inside rounded chrome.
+    /// Keep this taller than the two-line summary so the type title is not
+    /// marquee-truncated.
+    static let bankedResetDetailRowHeight: CGFloat = 72
     static let bankedResetTicketIconSize = CGSize(width: 31, height: 24)
     static let bankedResetTicketIconGap: CGFloat = 8
     static let bankedResetRemainingWidth: CGFloat = 120
+    static let bankedResetChromeInset: CGFloat = 8
+    static let bankedResetChromeCornerRadius: CGFloat = 10
+    static let bankedResetBadgeSize = CGSize(width: 18, height: 18)
+    static let bankedResetBadgeGap: CGFloat = 6
+    /// Geometry fallback for the three-character Chinese summary title. The
+    /// menu host sizes the real title to fit and moves the badge with it.
+    static let bankedResetSummaryTitleWidth: CGFloat = 42
 
     static func frames(
         for category: OpenCodexCardCategory,
@@ -890,47 +904,52 @@ enum OpenCodexCardLayout {
                     : .zero
             )
             : nil
-        let bankedContentShift = rowHeight - lunaReserveNoProgressRowHeight
         let bankedSummaryY = bottomInset + bankedDetailBlockHeight
         let bankedResetSummaryRow = includesBankedReset
-            ? OpenCodexQuotaRowFrames(
-                quotaDetail: CGRect(
-                    x: horizontalInset,
-                    y: bankedSummaryY + quotaDetailOffset - bankedContentShift,
-                    width: 128,
-                    height: quotaDetailHeight
-                ),
-                reset: CGRect(
-                    x: horizontalInset,
-                    y: bankedSummaryY + quotaResetOffset - bankedContentShift,
-                    width: 128,
-                    height: quotaResetHeight
-                ),
-                amount: CGRect(
-                    x: amountX,
-                    y: bankedSummaryY + max(0, quotaAmountOffset - bankedContentShift),
-                    width: amountWidth,
-                    height: lunaReserveNoProgressAmountHeight
-                ),
-                progress: .zero
-            )
+            ? {
+                let titleY = bankedSummaryY
+                    + (lunaReserveNoProgressRowHeight - quotaDetailHeight) / 2
+                let badgeY = bankedSummaryY
+                    + (lunaReserveNoProgressRowHeight - bankedResetBadgeSize.height) / 2
+                return OpenCodexQuotaRowFrames(
+                    quotaDetail: CGRect(
+                        x: horizontalInset,
+                        y: titleY,
+                        width: bankedResetSummaryTitleWidth,
+                        height: quotaDetailHeight
+                    ),
+                    reset: .zero,
+                    amount: .zero,
+                    progress: .zero,
+                    badge: CGRect(
+                        x: horizontalInset + bankedResetSummaryTitleWidth + bankedResetBadgeGap,
+                        y: badgeY,
+                        width: bankedResetBadgeSize.width,
+                        height: bankedResetBadgeSize.height
+                    )
+                )
+            }()
             : nil
         let bankedResetDetailRows: [OpenCodexQuotaRowFrames] = {
             guard includesBankedReset, bankedDetailCount > 0 else { return [] }
             let iconSize = bankedResetTicketIconSize
-            let textX = horizontalInset + iconSize.width + bankedResetTicketIconGap
-            let remainingX = cardWidth - horizontalInset - bankedResetRemainingWidth
+            let chromeInset = bankedResetChromeInset
+            let innerX = horizontalInset + chromeInset
+            let innerRight = cardWidth - horizontalInset - chromeInset
+            let textX = innerX + iconSize.width + bankedResetTicketIconGap
+            let remainingX = innerRight - bankedResetRemainingWidth
             let titleWidth = max(64, remainingX - textX - 6)
-            let lineWidth = contentWidth - (textX - horizontalInset)
-            let topPadding: CGFloat = 6
+            let lineWidth = max(64, innerRight - textX)
             let lineGap: CGFloat = 2
             return (0..<bankedDetailCount).map { index in
                 let y = bottomInset
                     + CGFloat(bankedDetailCount - 1 - index) * (bankedDetailHeight + rowGap)
-                let titleY = y + bankedDetailHeight - topPadding - quotaDetailHeight
-                let windowY = titleY - lineGap - quotaResetHeight
-                let expiryY = windowY - lineGap - quotaResetHeight
-                let iconY = titleY + (quotaDetailHeight - iconSize.height) / 2
+                let expiryY = y + chromeInset
+                let windowY = expiryY + quotaResetHeight + lineGap
+                let titleY = windowY + quotaResetHeight + lineGap
+                let textBottom = expiryY
+                let textTop = titleY + quotaDetailHeight
+                let iconY = (textBottom + textTop - iconSize.height) / 2
                 return OpenCodexQuotaRowFrames(
                     quotaDetail: CGRect(
                         x: textX,
@@ -952,7 +971,7 @@ enum OpenCodexCardLayout {
                     ),
                     progress: .zero,
                     icon: CGRect(
-                        x: horizontalInset,
+                        x: innerX,
                         y: iconY,
                         width: iconSize.width,
                         height: iconSize.height
@@ -962,6 +981,12 @@ enum OpenCodexCardLayout {
                         y: windowY,
                         width: lineWidth,
                         height: quotaResetHeight
+                    ),
+                    chrome: CGRect(
+                        x: horizontalInset,
+                        y: y,
+                        width: contentWidth,
+                        height: bankedDetailHeight
                     )
                 )
             }

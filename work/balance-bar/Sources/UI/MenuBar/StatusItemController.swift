@@ -5392,30 +5392,53 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             if let bankedReset,
                let summaryRow = layout.bankedResetSummaryRow {
-                let amount = makeOverviewLabel(
-                    "\(bankedReset.availableCount)",
-                    font: .monospacedDigitSystemFont(
-                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
-                        weight: .semibold
-                    )
-                )
-                amount.alignment = .right
-                amount.frame = summaryRow.amount
-                view.addSubview(amount)
-
-                let summaryTitle = makeMarqueeOverviewLabel(
+                let summaryTitle = makeOverviewLabel(
                     tr(.keyCodexBankedResetTitle),
                     font: .systemFont(
                         ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                         weight: .medium
-                    ),
-                    textColor: .labelColor,
-                    frame: overviewMarqueeFrame(summaryRow.quotaDetail, avoiding: amount)
+                    )
+                )
+                let titleWidth = max(
+                    1,
+                    ceil(
+                        AccountMarqueeView.textWidth(
+                            of: tr(.keyCodexBankedResetTitle),
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                                weight: .medium
+                            )
+                        )
+                    )
+                )
+                summaryTitle.frame = CGRect(
+                    x: summaryRow.quotaDetail.minX,
+                    y: summaryRow.quotaDetail.minY,
+                    width: titleWidth,
+                    height: summaryRow.quotaDetail.height
                 )
                 view.addSubview(summaryTitle)
 
+                let badgeSize = OpenCodexCardLayout.bankedResetBadgeSize
+                let badge = BankedResetCountBadgeView(
+                    count: bankedReset.availableCount,
+                    frame: CGRect(
+                        x: summaryTitle.frame.maxX + OpenCodexCardLayout.bankedResetBadgeGap,
+                        y: summaryTitle.frame.midY - badgeSize.height / 2,
+                        width: badgeSize.width,
+                        height: badgeSize.height
+                    )
+                )
+                view.addSubview(badge)
+
                 let ticketImage = Self.bankedResetTicketImage()
                 for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
+                    if row.chrome.width > 0 {
+                        let chrome = BankedResetChromeView(frame: row.chrome)
+                        chrome.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.chrome")
+                        view.addSubview(chrome)
+                    }
+
                     if row.icon.width > 0, let ticketImage {
                         let icon = NSImageView(frame: row.icon)
                         icon.image = ticketImage

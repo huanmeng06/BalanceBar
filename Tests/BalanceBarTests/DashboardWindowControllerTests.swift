@@ -2386,6 +2386,35 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(labels.contains("2"))
         XCTAssertFalse(labels.contains("2%"))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetTitle)))
+        let largeAmounts = allControls(of: overview, as: NSTextField.self).filter {
+            $0.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize
+        }
+        XCTAssertFalse(largeAmounts.contains { $0.stringValue == "2" })
+        let summaryTitle = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue == tr(.keyCodexBankedResetTitle)
+            }
+        )
+        let badge = try XCTUnwrap(
+            overview.subviews.first {
+                $0.identifier?.rawValue == "codex.bankedReset.badge"
+            } as? BankedResetCountBadgeView
+        )
+        XCTAssertEqual(badge.countText, "2")
+        XCTAssertEqual(badge.frame.width, badge.frame.height, accuracy: 0.001)
+        XCTAssertEqual(
+            badge.frame.minX,
+            summaryTitle.frame.maxX + OpenCodexCardLayout.bankedResetBadgeGap,
+            accuracy: 0.5
+        )
+        XCTAssertLessThan(badge.frame.maxX, OpenCodexCardLayout.amountX)
+        let chromes = overview.subviews.filter {
+            $0.identifier?.rawValue == "codex.bankedReset.chrome"
+        }
+        XCTAssertEqual(chromes.count, 2)
+        XCTAssertEqual(chromes[0].frame.width, chromes[1].frame.width, accuracy: 0.001)
+        XCTAssertEqual(chromes[0].frame.width, frames.bankedResetDetailRows[0].chrome.width)
+        XCTAssertEqual(chromes.map(\.frame), frames.bankedResetDetailRows.map(\.chrome))
         XCTAssertEqual(
             labels.filter { $0 == tr(.keyCodexBankedResetFullResetTitle) }.count,
             2
@@ -2409,11 +2438,35 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         ])
         XCTAssertEqual(remainingFields[0].textColor, NSColor.systemOrange)
         XCTAssertEqual(remainingFields[1].textColor, NSColor.labelColor)
+        let tickets = overview.subviews.filter {
+            $0.identifier?.rawValue == "codex.bankedReset.ticket"
+        }
+        XCTAssertEqual(tickets.count, 2)
+        let firstTicket = try XCTUnwrap(tickets.first)
+        let firstTitle = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue == tr(.keyCodexBankedResetFullResetTitle)
+                    && abs($0.frame.minY - frames.bankedResetDetailRows[0].quotaDetail.minY) < 0.5
+            }
+        )
+        let firstWindow = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue == tr(.keyCodexBankedResetFullResetWindow)
+                    && abs($0.frame.minY - frames.bankedResetDetailRows[0].window.minY) < 0.5
+            }
+        )
+        let firstExpiry = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue == (bankedReset.cards[0].expiresText ?? "")
+            }
+        )
         XCTAssertEqual(
-            overview.subviews.filter {
-                $0.identifier?.rawValue == "codex.bankedReset.ticket"
-            }.count,
-            2
+            firstTicket.frame.midY,
+            (
+                min(firstTitle.frame.minY, firstWindow.frame.minY, firstExpiry.frame.minY)
+                    + max(firstTitle.frame.maxY, firstWindow.frame.maxY, firstExpiry.frame.maxY)
+            ) / 2,
+            accuracy: 1
         )
         XCTAssertFalse(labels.contains { $0.contains("🌙") })
         XCTAssertFalse(labels.contains(tr(.keyLunaReserveTitle)))

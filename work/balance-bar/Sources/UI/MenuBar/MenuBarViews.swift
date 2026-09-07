@@ -13,6 +13,49 @@ final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+final class BankedResetChromeView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.06).setFill()
+        NSBezierPath(
+            roundedRect: bounds,
+            xRadius: OpenCodexCardLayout.bankedResetChromeCornerRadius,
+            yRadius: OpenCodexCardLayout.bankedResetChromeCornerRadius
+        ).fill()
+    }
+}
+
+final class BankedResetCountBadgeView: NSView {
+    let countText: String
+    private let label: NSTextField
+
+    init(count: Int, frame: NSRect) {
+        countText = "\(count)"
+        label = NSTextField(labelWithString: countText)
+        super.init(frame: frame)
+        identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.badge")
+        label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        label.alignment = .center
+        label.textColor = .labelColor
+        label.drawsBackground = false
+        label.isBordered = false
+        label.lineBreakMode = .byClipping
+        label.frame = bounds
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        label.frame = bounds
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.14).setFill()
+        NSBezierPath(ovalIn: bounds).fill()
+    }
+}
+
 final class MenuBarContentView: NSView {
     override var isFlipped: Bool { true }
 }
