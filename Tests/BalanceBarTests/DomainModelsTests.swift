@@ -263,7 +263,7 @@ final class DomainModelsTests: XCTestCase {
             expiresAt: nil,
             expiresText: nil
         )
-        let bankedReset = try XCTUnwrap(CodexBankedReset(cards: [earlier, undated]))
+        let bankedReset = CodexBankedReset(cards: [earlier, undated])
 
         let official = Snapshot.official(
             "OpenAI",
@@ -318,6 +318,24 @@ final class DomainModelsTests: XCTestCase {
                 hideExhaustedQuota: false
             ).bankedReset
         )
+
+        let zeroCountOfficial = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            bankedReset: CodexBankedReset(cards: []),
+            resetProbability: .percent(12)
+        )
+        let zeroCountPresented = zeroCountOfficial.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
+        )
+        XCTAssertEqual(zeroCountPresented.bankedReset?.availableCount, 0)
+        XCTAssertEqual(zeroCountPresented.bankedReset?.cards, [])
+        XCTAssertEqual(zeroCountPresented.resetProbability, .percent(12))
 
         let balance = Snapshot.balance(
             "Custom",
@@ -671,6 +689,23 @@ final class DomainModelsTests: XCTestCase {
             Set(bankedReset.cards.compactMap(\.id)).count,
             10
         )
+    }
+
+    func testBankedResetDemoZeroCardsKeepsWindowsAndEmptyCount() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = DevelopmentBankedResetDemo.snapshot(
+            mode: .zeroCards,
+            providerName: "OpenAI",
+            date: date
+        )
+        let bankedReset = try XCTUnwrap(snapshot.bankedReset)
+        XCTAssertEqual(bankedReset.availableCount, 0)
+        XCTAssertTrue(bankedReset.cards.isEmpty)
+        XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(snapshot.officialQuotaWindows.first?.remaining, 80)
+        XCTAssertEqual(snapshot.officialQuotaWindows.last?.remaining, 45)
+        XCTAssertEqual(snapshot.resetProbability, .percent(23))
+        XCTAssertNil(snapshot.lunaReserve)
     }
 
     func testMenuBarQuotaWindowSelectionUsesRealWindowsAndSafeMissingFallbacks() {

@@ -374,6 +374,8 @@
     case keyDashboardMenuPageHideExhaustedQuotaDescription = "dashboard.menu.page.hide_exhausted_quota_description"
     case keyDashboardMenuPageLowBalanceDisplayThreshold = "dashboard.menu.page.low_balance_display_threshold"
     case keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount = "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount"
+    case keyDashboardMenuPageShowBankedReset = "dashboard.menu.page.show_banked_reset"
+    case keyDashboardMenuPageShowBankedResetDescription = "dashboard.menu.page.show_banked_reset_description"
     case keyDashboardMenuPageBankedResetDisplayMode = "dashboard.menu.page.banked_reset_display_mode"
     case keyDashboardMenuPageBankedResetDisplayModeDescription = "dashboard.menu.page.banked_reset_display_mode_description"
     case keyDashboardMenuPageBankedResetDisplayModeCompact = "dashboard.menu.page.banked_reset_display_mode_compact"

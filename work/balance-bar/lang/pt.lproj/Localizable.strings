@@ -363,6 +363,8 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "Quando ativado, as cotas zeradas ficam ocultas no menu quando a 🌙 %1$@ é exibida";
 "dashboard.menu.page.low_balance_display_threshold" = "Limite de aviso de saldo baixo";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Após uma recarga, a barra de progresso permanece vermelha enquanto o saldo estiver abaixo deste valor";
+"dashboard.menu.page.show_banked_reset" = "Mostrar cartões de redefinição";
+"dashboard.menu.page.show_banked_reset_description" = "Quando desativada, o menu suspenso não mostra mais os cartões de redefinição";
 "dashboard.menu.page.banked_reset_display_mode" = "Estilo de exibição";
 "dashboard.menu.page.banked_reset_display_mode_description" = "Compacto mostra a quantidade e a probabilidade de reset; detalhado lista cada cartão";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "Compacto";

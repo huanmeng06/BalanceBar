@@ -363,6 +363,8 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "Wenn aktiviert, werden Kontingente mit 0 %% im Menü ausgeblendet, sobald 🌙 %1$@ angezeigt wird";
 "dashboard.menu.page.low_balance_display_threshold" = "Warnschwelle für niedriges Guthaben";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Nach einer Aufladung bleibt der Fortschrittsbalken rot, solange das Guthaben unter diesem Wert liegt.";
+"dashboard.menu.page.show_banked_reset" = "Reset-Karten anzeigen";
+"dashboard.menu.page.show_banked_reset_description" = "Wenn ausgeschaltet, zeigt das Dropdown-Menü keine Reset-Karten mehr";
 "dashboard.menu.page.banked_reset_display_mode" = "Anzeigestil";
 "dashboard.menu.page.banked_reset_display_mode_description" = "Kompakt zeigt Anzahl und Reset-Wahrscheinlichkeit; detailliert listet jede Karte";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "Kompakt";

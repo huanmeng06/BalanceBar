@@ -270,6 +270,8 @@ final class AppPreferences {
     static let menuLunaReserveDisplayModeDefault: LunaReserveDisplayMode = .defaultValue
     static let menuBankedResetDisplayModeKey = "menuBankedResetDisplayMode"
     static let menuBankedResetDisplayModeDefault: CodexBankedResetDisplayMode = .defaultValue
+    static let showBankedResetKey = "showBankedReset"
+    static let showBankedResetDefault = true
     static let menuLunaReserveHideExhaustedQuotaKey = "menuLunaReserveHideExhaustedQuota"
     static let menuLunaReserveHideExhaustedQuotaDefault = false
     static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"
@@ -398,6 +400,10 @@ final class AppPreferences {
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuBankedResetDisplayModeKey)
         }
+    }
+    var showBankedReset: Bool {
+        get { bool(Self.showBankedResetKey, default: Self.showBankedResetDefault) }
+        set { defaults.set(newValue, forKey: Self.showBankedResetKey) }
     }
     var menuLunaReserveHideExhaustedQuota: Bool {
         get {

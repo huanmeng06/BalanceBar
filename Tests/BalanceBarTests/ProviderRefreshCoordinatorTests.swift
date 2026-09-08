@@ -350,8 +350,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             reset: "7d",
             durationSeconds: 7 * 86_400
         )
-        let bankedReset = try XCTUnwrap(
-            CodexBankedReset(cards: [
+        let bankedReset = CodexBankedReset(cards: [
                 CodexBankedResetCard(
                     id: "usage-card",
                     resetType: "codex_rate_limits",
@@ -360,7 +359,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                     expiresText: "Expires later"
                 )
             ])
-        )
         let requestLock = NSLock()
         var requestPaths: [String] = []
         DelayedBalanceURLProtocol.setHandler { request in
@@ -608,8 +606,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             reset: "5h",
             durationSeconds: 5 * 3_600
         )
-        let bankedReset = try XCTUnwrap(
-            CodexBankedReset(cards: [
+        let bankedReset = CodexBankedReset(cards: [
                 CodexBankedResetCard(
                     id: "usage-card",
                     resetType: "codex_rate_limits",
@@ -618,7 +615,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                     expiresText: "Expires later"
                 )
             ])
-        )
         DelayedBalanceURLProtocol.setHandler { request in
             XCTAssertEqual(request.httpMethod, "GET")
             if request.url?.path == "/api/forecast" {

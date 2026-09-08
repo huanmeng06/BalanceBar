@@ -363,6 +363,8 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "オンにすると、🌙 %1$@ の表示時に残り 0%% のクォータをメニューから隠します";
 "dashboard.menu.page.low_balance_display_threshold" = "低残高の警告しきい値";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "チャージ後も残高がこの金額を下回っている間は、進捗バーを赤色で表示";
+"dashboard.menu.page.show_banked_reset" = "リセットカードを表示";
+"dashboard.menu.page.show_banked_reset_description" = "オフにすると、ドロップダウンメニューにリセットカードを表示しません";
 "dashboard.menu.page.banked_reset_display_mode" = "表示スタイル";
 "dashboard.menu.page.banked_reset_display_mode_description" = "簡潔は枚数とリセット確率のみ、詳細は各カードを表示します";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "簡潔";

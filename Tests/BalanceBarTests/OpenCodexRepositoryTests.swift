@@ -1589,6 +1589,43 @@ final class OpenCodexRepositoryTests: XCTestCase {
         }
         XCTAssertEqual(frames.bankedResetDetailRows.count, 2)
         XCTAssertGreaterThan(frames.cardSize.height, baseline.cardSize.height)
+        let hidden = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: false,
+            bankedResetCardCount: 2
+        )
+        XCTAssertEqual(hidden.cardSize, baseline.cardSize)
+        XCTAssertNil(hidden.bankedResetSummaryRow)
+        XCTAssertTrue(hidden.bankedResetDetailRows.isEmpty)
+        XCTAssertEqual(hidden.quotaRows.map(\.quotaDetail), baseline.quotaRows.map(\.quotaDetail))
+        let zeroCompact = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 0,
+            bankedResetDisplayMode: .compact
+        )
+        let zeroDetailed = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 0,
+            bankedResetDisplayMode: .detailed
+        )
+        XCTAssertNotNil(zeroCompact.bankedResetSummaryRow)
+        XCTAssertNotNil(zeroDetailed.bankedResetSummaryRow)
+        XCTAssertTrue(zeroCompact.bankedResetDetailRows.isEmpty)
+        XCTAssertTrue(zeroDetailed.bankedResetDetailRows.isEmpty)
+        XCTAssertEqual(zeroCompact.cardSize, zeroDetailed.cardSize)
+        XCTAssertGreaterThan(zeroCompact.cardSize.height, baseline.cardSize.height)
+        XCTAssertLessThan(zeroCompact.cardSize.height, frames.cardSize.height)
         XCTAssertEqual(summary.progress, .zero)
         XCTAssertGreaterThan(summary.amount.width, 0)
         XCTAssertEqual(

@@ -38,6 +38,13 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(defaults.object(forKey: AppPreferences.showQuotaProgressBarKey) as? Bool, false)
         XCTAssertFalse(AppPreferences(defaults: defaults).showQuotaProgressBar)
         XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.showQuotaProgressBarKey))
+        XCTAssertTrue(preferences.showBankedReset)
+        XCTAssertNil(defaults.object(forKey: AppPreferences.showBankedResetKey))
+        preferences.showBankedReset = false
+        XCTAssertFalse(preferences.showBankedReset)
+        XCTAssertEqual(defaults.object(forKey: AppPreferences.showBankedResetKey) as? Bool, false)
+        XCTAssertFalse(AppPreferences(defaults: defaults).showBankedReset)
+        XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.showBankedResetKey))
         XCTAssertTrue(preferences.animateCodexActivity)
         XCTAssertTrue(preferences.showQuickSwitchMenu)
         XCTAssertTrue(preferences.showOpenCCSwitchMenu)

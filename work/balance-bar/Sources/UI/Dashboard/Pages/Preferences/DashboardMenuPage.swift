@@ -64,6 +64,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private weak var progressBarRowsStack: NSStackView?
     private weak var progressBarCardHeightConstraint: NSLayoutConstraint?
     private var progressBarSeparators: [NSView] = []
+    private weak var showBankedResetSwitch: NSSwitch?
+    private var bankedResetDetailRows: [NSView] = []
+    private weak var bankedResetRowsStack: NSStackView?
+    private weak var bankedResetCardHeightConstraint: NSLayoutConstraint?
+    private var bankedResetSeparators: [NSView] = []
 
     func make(_ input: Input) -> NSView {
         balanceDisplayThresholdValue = input.preferences.balanceDisplayThreshold
@@ -82,6 +87,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         progressBarRowsStack = nil
         progressBarCardHeightConstraint = nil
         progressBarSeparators = []
+        showBankedResetSwitch = nil
+        bankedResetDetailRows = []
+        bankedResetRowsStack = nil
+        bankedResetCardHeightConstraint = nil
+        bankedResetSeparators = []
 
         let lunaReserveRows: [NSView]
         if LunaReserveUserFacing.isCurrentlyEnabled {
@@ -197,20 +207,41 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 }
             )
 
+        let showBankedResetSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.showBankedResetKey,
+            isOn: input.preferences.showBankedReset,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        self.showBankedResetSwitch = showBankedResetSwitch
+        let showBankedResetRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuPageShowBankedReset),
+            subtitle: tr(.keyDashboardMenuPageShowBankedResetDescription),
+            control: showBankedResetSwitch
+        )
         let bankedResetDisplayModeControl = makeBankedResetDisplayModeControl(
             value: input.preferences.menuBankedResetDisplayMode,
             relay: input.relay
         )
         self.bankedResetDisplayModeControl = bankedResetDisplayModeControl
+        let bankedResetDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuPageBankedResetDisplayMode),
+            subtitle: tr(.keyDashboardMenuPageBankedResetDisplayModeDescription),
+            control: bankedResetDisplayModeControl
+        )
+        bankedResetDetailRows = [bankedResetDisplayModeRow]
         let bankedReset = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyCodexBankedResetTitle),
             rows: [
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuPageBankedResetDisplayMode),
-                    subtitle: tr(.keyDashboardMenuPageBankedResetDisplayModeDescription),
-                    control: bankedResetDisplayModeControl
-                )
-            ]
+                showBankedResetRow,
+                bankedResetDisplayModeRow
+            ],
+            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                self?.bankedResetRowsStack = rowsStack
+                self?.bankedResetCardHeightConstraint = cardHeightConstraint
+                self?.bankedResetSeparators = separators
+                self?.updateBankedResetSettingsVisibility(input.preferences.showBankedReset)
+            }
         )
 
         let showQuotaProgressBarSwitch = DashboardSettingsComponents.makeSwitch(
@@ -405,6 +436,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         updateQuotaColorButtons()
         showQuotaProgressBarSwitch?.state = preferences.showQuotaProgressBar ? .on : .off
         updateProgressBarSettingsVisibility(preferences.showQuotaProgressBar)
+        showBankedResetSwitch?.state = preferences.showBankedReset ? .on : .off
+        updateBankedResetSettingsVisibility(preferences.showBankedReset)
         let statusLinks = preferences.statusLinks
         if statusLinksEditor?.links != statusLinks {
             statusLinksEditor?.updateLinks(statusLinks)
@@ -471,6 +504,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         lunaReserveHideExhaustedQuotaRow = nil
         lunaReserveHideExhaustedQuotaSwitch = nil
         bankedResetDisplayModeControl = nil
+        showBankedResetSwitch = nil
+        bankedResetDetailRows = []
+        bankedResetRowsStack = nil
+        bankedResetCardHeightConstraint = nil
+        bankedResetSeparators = []
         balanceDisplayRowsStack = nil
         balanceDisplayCardHeightConstraint = nil
         balanceDisplaySeparators = []
@@ -552,6 +590,33 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             separator.isHidden = !(visibleRows[index] && hasVisibleRowAfter)
         }
         updateProgressBarLayout()
+    }
+
+    private func updateBankedResetSettingsVisibility(_ visible: Bool) {
+        bankedResetDetailRows.forEach { $0.isHidden = !visible }
+        let visibleRows = [true] + bankedResetDetailRows.map { _ in visible }
+        for (index, separator) in bankedResetSeparators.enumerated() {
+            guard index < visibleRows.count - 1 else {
+                separator.isHidden = true
+                continue
+            }
+            let hasVisibleRowAfter = visibleRows[(index + 1)...].contains(true)
+            separator.isHidden = !(visibleRows[index] && hasVisibleRowAfter)
+        }
+        updateBankedResetLayout()
+    }
+
+    private func updateBankedResetLayout() {
+        guard let bankedResetRowsStack,
+              let bankedResetCardHeightConstraint else { return }
+        bankedResetRowsStack.needsLayout = true
+        bankedResetCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: bankedResetRowsStack,
+            separators: bankedResetSeparators
+        )
+        bankedResetRowsStack.superview?.invalidateIntrinsicContentSize()
+        bankedResetRowsStack.superview?.needsLayout = true
+        bankedResetRowsStack.superview?.superview?.needsLayout = true
     }
 
     private func updateProgressBarLayout() {

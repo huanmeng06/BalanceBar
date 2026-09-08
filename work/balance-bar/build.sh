@@ -5,7 +5,7 @@ set -Eeuo pipefail
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
     cat <<'EOF'
-Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10]
+Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0]
 
 Build the macOS app without changing the checked-in Info.plist.
 
@@ -22,6 +22,8 @@ Build the macOS app without changing the checked-in Info.plist.
               Build a demo app that shows both standard quotas at 0% with Luna Reserve available at 45%.
   demo-banked-reset-10
               Build a demo app that shows 10 official Codex banked reset cards.
+  demo-banked-reset-0
+              Build a demo app that shows 0 official Codex banked reset cards.
 EOF
 }
 
@@ -110,6 +112,16 @@ case "$variant" in
         bundle_name="BalanceBar Demo · 10 Reset Cards"
         demo_mode="banked-reset-10"
         banked_reset_demo_mode="banked-reset-10"
+        module_cache_dir="$build_dir/swift-module-cache"
+        clean_paths=("$build_dir")
+        ;;
+    demo-banked-reset-0)
+        build_dir="$source_dir/build/demo/banked-reset-0"
+        app_bundle="$build_dir/BalanceBar-BankedReset-0.app"
+        bundle_identifier="com.huanmeng06.BalanceBar.demo.banked-reset-0"
+        bundle_name="BalanceBar Demo · 0 Reset Cards"
+        demo_mode="banked-reset-0"
+        banked_reset_demo_mode="banked-reset-0"
         module_cache_dir="$build_dir/swift-module-cache"
         clean_paths=("$build_dir")
         ;;
