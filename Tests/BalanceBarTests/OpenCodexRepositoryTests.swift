@@ -1181,6 +1181,78 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(balance.link?.minY, 28 - shift)
     }
 
+    func testOfficialQuotaLayoutKeepsBankedResetCompactGapWhenQuotaProgressIsHidden() throws {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 82,
+                label: "5-hour",
+                daysText: "5 hours",
+                reset: "2h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 82,
+                label: "7-day",
+                daysText: "7 days",
+                reset: "7d",
+                durationSeconds: 604_800
+            )
+        ]
+        let withProgress = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: windows,
+            includesQuotaProgress: true,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .compact
+        )
+        let withoutProgress = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: windows,
+            includesQuotaProgress: false,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .compact
+        )
+        let compactOn = try XCTUnwrap(withProgress.bankedResetSummaryRow)
+        let compactOff = try XCTUnwrap(withoutProgress.bankedResetSummaryRow)
+        let noProgressRowHeight = OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+        let rowGap = OpenCodexCardLayout.quotaRowGap
+
+        XCTAssertEqual(compactOff.quotaDetail, compactOn.quotaDetail)
+        XCTAssertEqual(compactOff.reset, compactOn.reset)
+        XCTAssertEqual(compactOff.amount, compactOn.amount)
+        XCTAssertEqual(withProgress.quotaRows[1].progress.minY, withoutProgress.quotaRows[1].amount.minY)
+        XCTAssertEqual(
+            withoutProgress.quotaRows[0].amount.minY
+                - (withoutProgress.quotaRows[1].amount.minY + noProgressRowHeight),
+            rowGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            withProgress.quotaRows[0].progress.minY
+                - (withProgress.quotaRows[1].progress.minY + OpenCodexCardLayout.quotaRowHeight),
+            rowGap,
+            accuracy: 0.001
+        )
+        let bankedBoxMaxY = compactOff.amount.minY + noProgressRowHeight
+        XCTAssertEqual(
+            withoutProgress.quotaRows[1].amount.minY - bankedBoxMaxY,
+            rowGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            withProgress.quotaRows[1].progress.minY
+                - (compactOn.amount.minY + noProgressRowHeight),
+            rowGap,
+            accuracy: 0.001
+        )
+        XCTAssertLessThanOrEqual(compactOff.quotaDetail.maxY, bankedBoxMaxY + 0.001)
+        XCTAssertGreaterThan(withoutProgress.quotaRows[1].amount.minY, compactOff.quotaDetail.maxY)
+    }
+
     func testOpenAIAccountRowAddsASeparatedSubtitleBeforeQuotaDetails() {
         let frames = OpenCodexCardLayout.frames(for: .quota, includesAccount: true)
 

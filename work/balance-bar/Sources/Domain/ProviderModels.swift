@@ -979,7 +979,10 @@ enum OpenCodexCardLayout {
         let bankedSummaryY = bottomInset + bankedDetailBlockHeight
         let bankedResetSummaryRow = includesBankedReset
             ? {
-                let bankedContentShift = rowHeight - lunaReserveNoProgressRowHeight
+                // Banked reset is always a compact no-progress row. Do not
+                // inherit the quota-window rowHeight, or hiding window
+                // progress bars lifts 重置卡 into the last window's gap.
+                let bankedContentShift = quotaRowHeight - lunaReserveNoProgressRowHeight
                 return OpenCodexQuotaRowFrames(
                     quotaDetail: CGRect(
                         x: horizontalInset,
