@@ -479,10 +479,12 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(stringBalance.windows.map(\.kind), [.fiveHour, .sevenDay])
         let parsedString = try XCTUnwrap(stringBalance.gptCreditBalance)
         XCTAssertEqual(parsedString.amount, 0.4, accuracy: 0.000001)
-        XCTAssertEqual(parsedString.displayText, "US$0.40")
-        XCTAssertTrue(parsedString.displayText.hasPrefix("US$"))
+        XCTAssertEqual(parsedString.displayText, "$0.40")
+        XCTAssertTrue(parsedString.displayText.hasPrefix("$"))
+        XCTAssertFalse(parsedString.displayText.hasPrefix("US$"))
+        XCTAssertFalse(parsedString.displayText.contains("US$"))
         XCTAssertNotEqual(parsedString.displayText, "0.4")
-        XCTAssertNotEqual(parsedString.displayText, "$0.40")
+        XCTAssertNotEqual(parsedString.displayText, "US$0.40")
 
         let numericZero = try OfficialQuotaResponseParser.parse(
             object: standardCodexUsage(extra: [
@@ -492,7 +494,7 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         let parsedZero = try XCTUnwrap(numericZero.gptCreditBalance)
-        XCTAssertEqual(parsedZero.displayText, "US$0.00")
+        XCTAssertEqual(parsedZero.displayText, "$0.00")
         XCTAssertEqual(parsedZero.amount, 0, accuracy: 0.000001)
 
         let missing = try OfficialQuotaResponseParser.parse(
@@ -557,7 +559,7 @@ final class ResponseParsersTests: XCTestCase {
             client: .codex,
             now: now
         )
-        XCTAssertEqual(withBankedReset.gptCreditBalance?.displayText, "US$0.40")
+        XCTAssertEqual(withBankedReset.gptCreditBalance?.displayText, "$0.40")
         XCTAssertEqual(withBankedReset.bankedReset?.availableCount, 2)
         XCTAssertEqual(withBankedReset.windows.map(\.kind), [.fiveHour, .sevenDay])
     }

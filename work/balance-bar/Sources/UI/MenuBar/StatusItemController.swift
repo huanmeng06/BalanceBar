@@ -5400,16 +5400,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             if let gptCreditBalance,
                let row = layout.gptCreditBalanceRow {
+                let amountText = gptCreditBalance.displayText
                 let amount = makeOverviewLabel(
-                    gptCreditBalance.displayText,
-                    font: .monospacedDigitSystemFont(
-                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
-                        weight: .semibold
-                    )
+                    amountText,
+                    font: gptCreditAmountFont(for: amountText, in: row.amount.width)
                 )
-                amount.alignment = .right
-                amount.identifier = NSUserInterfaceItemIdentifier("codex.gptCredit.amount")
-                amount.frame = row.amount
+                configureUntruncatedGPTCreditAmount(amount, proposedFrame: row.amount)
                 view.addSubview(amount)
 
                 let title = makeMarqueeOverviewLabel(
@@ -5915,6 +5911,55 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingTail
         return label
+    }
+
+    /// Keep 31pt when `$10.00` fits; shrink only so `$` and digits stay complete.
+    private func gptCreditAmountFont(for text: String, in width: CGFloat) -> NSFont {
+        let preferredSize = OpenCodexCardLayout.quotaAmountPointSize
+        let minSize: CGFloat = 20
+        var size = preferredSize
+        while size > minSize {
+            let font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+            let textWidth = (text as NSString).size(withAttributes: [.font: font]).width
+            if textWidth <= width + 0.5 {
+                return font
+            }
+            size -= 1
+        }
+        return .monospacedDigitSystemFont(ofSize: minSize, weight: .semibold)
+    }
+
+    private func configureUntruncatedGPTCreditAmount(
+        _ label: NSTextField,
+        proposedFrame: NSRect
+    ) {
+        label.alignment = .right
+        label.identifier = NSUserInterfaceItemIdentifier("codex.gptCredit.amount")
+        label.lineBreakMode = .byClipping
+        label.maximumNumberOfLines = 1
+        if let cell = label.cell as? NSTextFieldCell {
+            cell.lineBreakMode = .byClipping
+            cell.wraps = false
+            cell.truncatesLastVisibleLine = false
+        }
+        let font = label.font ?? .monospacedDigitSystemFont(
+            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+            weight: .semibold
+        )
+        let textWidth = ceil(
+            (label.stringValue as NSString).size(withAttributes: [.font: font]).width
+        )
+        if textWidth > proposedFrame.width {
+            let extra = textWidth - proposedFrame.width
+            label.frame = NSRect(
+                x: proposedFrame.minX - extra,
+                y: proposedFrame.minY,
+                width: proposedFrame.width + extra,
+                height: proposedFrame.height
+            )
+        } else {
+            label.frame = proposedFrame
+        }
     }
 
     private func makeMarqueeOverviewLabel(

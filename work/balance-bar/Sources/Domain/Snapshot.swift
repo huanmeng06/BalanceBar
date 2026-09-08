@@ -173,8 +173,8 @@ struct CodexGPTCreditBalance: Equatable {
 }
 
 enum CodexGPTCreditBalanceFormatting {
-    /// ChatGPT billing style: fixed `US$` prefix and two decimal places.
-    /// Never reuse third-party `$` / localized currency formatting.
+    /// Menu amount: `$` plus two decimal places. Never emit `US$`, grouping,
+    /// or a localized currency symbol.
     static func displayText(for amount: Double) -> String? {
         guard amount.isFinite else { return nil }
         let formatter = NumberFormatter()
@@ -187,7 +187,7 @@ enum CodexGPTCreditBalanceFormatting {
         guard let number = formatter.string(from: NSNumber(value: amount)) else {
             return nil
         }
-        return "US$\(number)"
+        return "$\(number)"
     }
 }
 

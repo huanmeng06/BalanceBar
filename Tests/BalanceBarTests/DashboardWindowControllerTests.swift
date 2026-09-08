@@ -2844,10 +2844,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.gptCredit.amount"
             }
         )
-        XCTAssertEqual(amountField.stringValue, "US$0.40")
-        XCTAssertTrue(amountField.stringValue.hasPrefix("US$"))
+        XCTAssertEqual(amountField.stringValue, "$0.40")
+        XCTAssertTrue(amountField.stringValue.hasPrefix("$"))
+        XCTAssertFalse(amountField.stringValue.contains("US$"))
         XCTAssertNotEqual(amountField.stringValue, "0.4")
-        XCTAssertNotEqual(amountField.stringValue, "$0.40")
+        XCTAssertNotEqual(amountField.stringValue, "US$0.40")
+        XCTAssertEqual(amountField.lineBreakMode, .byClipping)
         XCTAssertEqual(
             amountField.font?.pointSize,
             OpenCodexCardLayout.quotaAmountPointSize
@@ -2866,6 +2868,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(subtitle.accountLabel.stringValue, tr(.keyCodexGPTCreditSubtitle))
         XCTAssertFalse(subtitle.accountLabel.stringValue.contains("US$"))
+        XCTAssertFalse(subtitle.accountLabel.stringValue.contains("$"))
         XCTAssertFalse(subtitle.accountLabel.stringValue.contains("0.40"))
         guard let creditRow = frames.gptCreditBalanceRow,
               let bankedSummary = frames.bankedResetSummaryRow else {
@@ -2919,13 +2922,67 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.gptCredit.amount"
             }
         )
-        XCTAssertEqual(compactAmount.stringValue, "US$0.40")
+        XCTAssertEqual(compactAmount.stringValue, "$0.40")
+        XCTAssertEqual(compactAmount.lineBreakMode, .byClipping)
+        XCTAssertFalse(compactAmount.stringValue.contains("US$"))
         XCTAssertFalse(
             compactOverview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" }
         )
         XCTAssertFalse(
             compactOverview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" }
         )
+
+        let tenCredit = try XCTUnwrap(CodexGPTCreditBalance(amount: 10))
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                bankedReset: bankedReset,
+                resetProbability: .percent(22),
+                gptCreditBalance: tenCredit
+            ),
+            refreshDate: date,
+            menuInput: StatusItemController.MenuInput(
+                openCodexCards: [],
+                openCodexState: nil,
+                openCodexSwitchInFlight: false,
+                choices: [],
+                quickSwitchSummaries: [:],
+                activeClient: .codex,
+                openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+                statusLinks: [],
+                showQuickSwitchMenu: false,
+                showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false,
+                showOpenCodexMenu: false,
+                showStatusMenu: false,
+                bankedResetDisplayMode: .compact
+            ),
+            settings: settings
+        )
+        let tenOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let tenAmount = try XCTUnwrap(
+            allControls(of: tenOverview, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "codex.gptCredit.amount"
+            }
+        )
+        XCTAssertEqual(tenAmount.stringValue, "$10.00")
+        XCTAssertTrue(tenAmount.stringValue.hasPrefix("$"))
+        XCTAssertFalse(tenAmount.stringValue.contains("US$"))
+        XCTAssertFalse(tenAmount.stringValue.contains("…"))
+        XCTAssertEqual(tenAmount.lineBreakMode, .byClipping)
+        XCTAssertEqual(
+            tenAmount.font?.pointSize,
+            OpenCodexCardLayout.quotaAmountPointSize
+        )
+        let tenTextWidth = (tenAmount.stringValue as NSString).size(
+            withAttributes: [.font: tenAmount.font ?? NSFont.systemFont(ofSize: 13)]
+        ).width
+        XCTAssertLessThanOrEqual(tenTextWidth, tenAmount.frame.width + 0.5)
 
         controller.update(
             snapshot: .official(

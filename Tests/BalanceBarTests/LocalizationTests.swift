@@ -351,6 +351,7 @@ final class LocalizationTests: XCTestCase {
             XCTAssertFalse(title.hasPrefix("⟦"), "untranslated GPT credit title for \(language)")
             XCTAssertFalse(subtitle.hasPrefix("⟦"), "untranslated GPT credit subtitle for \(language)")
             XCTAssertFalse(subtitle.contains("US$"), "subtitle must not repeat the amount for \(language)")
+            XCTAssertFalse(subtitle.contains("$"), "subtitle must not repeat the amount for \(language)")
         }
     }
 

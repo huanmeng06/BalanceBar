@@ -341,18 +341,21 @@ final class DomainModelsTests: XCTestCase {
     }
 
     func testGPTCreditBalanceFormatsUSDollarsAndGatesOfficialMenuRow() throws {
-        XCTAssertEqual(CodexGPTCreditBalance(amount: 0.4)?.displayText, "US$0.40")
-        XCTAssertEqual(CodexGPTCreditBalance(amount: 0)?.displayText, "US$0.00")
-        XCTAssertEqual(CodexGPTCreditBalance(amount: 12)?.displayText, "US$12.00")
-        XCTAssertEqual(CodexGPTCreditBalance(amount: 1234.5)?.displayText, "US$1234.50")
-        XCTAssertEqual(CodexGPTCreditBalance(amount: 2745.759713)?.displayText, "US$2745.76")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 0.4)?.displayText, "$0.40")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 0)?.displayText, "$0.00")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 10)?.displayText, "$10.00")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 12)?.displayText, "$12.00")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 1234.5)?.displayText, "$1234.50")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 2745.759713)?.displayText, "$2745.76")
         XCTAssertNil(CodexGPTCreditBalance(amount: .nan))
         XCTAssertNil(CodexGPTCreditBalance(amount: .infinity))
         let formatted = try XCTUnwrap(CodexGPTCreditBalance(amount: 0.4)?.displayText)
-        XCTAssertTrue(formatted.hasPrefix("US$"))
+        XCTAssertTrue(formatted.hasPrefix("$"))
+        XCTAssertFalse(formatted.hasPrefix("US$"))
+        XCTAssertFalse(formatted.contains("US$"))
         XCTAssertNotEqual(formatted, "0.4")
         XCTAssertNotEqual(formatted, "0.40")
-        XCTAssertNotEqual(formatted, "$0.40")
+        XCTAssertNotEqual(formatted, "US$0.40")
 
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let fiveHour = OfficialQuotaWindow(
@@ -398,7 +401,7 @@ final class DomainModelsTests: XCTestCase {
             hideExhaustedQuota: false
         )
         XCTAssertEqual(presented.windows.map(\.kind), [.fiveHour, .sevenDay])
-        XCTAssertEqual(presented.gptCreditBalance?.displayText, "US$0.40")
+        XCTAssertEqual(presented.gptCreditBalance?.displayText, "$0.40")
         XCTAssertEqual(presented.bankedReset?.availableCount, 1)
 
         let zeroCredit = try XCTUnwrap(CodexGPTCreditBalance(amount: 0))
@@ -414,7 +417,7 @@ final class DomainModelsTests: XCTestCase {
             lunaReserveDisplayMode: .always,
             hideExhaustedQuota: false
         )
-        XCTAssertEqual(zeroPresented.gptCreditBalance?.displayText, "US$0.00")
+        XCTAssertEqual(zeroPresented.gptCreditBalance?.displayText, "$0.00")
         XCTAssertNil(zeroPresented.bankedReset)
 
         let missing = Snapshot.official(
