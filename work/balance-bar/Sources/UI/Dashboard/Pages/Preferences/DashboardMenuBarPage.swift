@@ -2690,16 +2690,27 @@ final class DashboardMenuBarPage {
         fps: Int,
         language: AppLanguage = .selected
     ) -> String {
-        let estimate = MenuBarAnimationCPUEstimate.percent(mode: mode, fps: fps)
         let line1 = tr(
             .keyDashboardMenuBarPageAnimationFrameRateDescription,
             language: language
         )
-        let line2 = tr(
-            .keyDashboardMenuBarPageAnimationFrameRateCPUEstimate,
-            arguments: ["\(estimate)"],
-            language: language
-        )
+        let line2: String
+        switch mode {
+        case .synchronized:
+            let range = MenuBarAnimationCPUEstimate.synchronizedRange(fps: fps)
+            line2 = tr(
+                .keyDashboardMenuBarPageAnimationFrameRateCPUEstimateRange,
+                arguments: ["\(range.low)", "\(range.high)"],
+                language: language
+            )
+        case .efficient:
+            let estimate = MenuBarAnimationCPUEstimate.percent(mode: mode, fps: fps)
+            line2 = tr(
+                .keyDashboardMenuBarPageAnimationFrameRateCPUEstimate,
+                arguments: ["\(estimate)"],
+                language: language
+            )
+        }
         return "\(line1)\n\(line2)"
     }
 

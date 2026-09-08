@@ -319,6 +319,7 @@
     case keyDashboardMenuBarPageAnimationFrameRate = "dashboard.menu.bar.page.animation_frame_rate"
     case keyDashboardMenuBarPageAnimationFrameRateDescription = "dashboard.menu.bar.page.animation_frame_rate_description"
     case keyDashboardMenuBarPageAnimationFrameRateCPUEstimate = "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate"
+    case keyDashboardMenuBarPageAnimationFrameRateCPUEstimateRange = "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range"
     case keyDashboardMenuBarPageAnimationFrameRateUnit = "dashboard.menu.bar.page.animation_frame_rate_unit"
     case keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning = "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running"
     case keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunningDescription = "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description"

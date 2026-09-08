@@ -317,6 +317,7 @@
 "dashboard.menu.bar.page.animation_frame_rate" = "執行時動畫幀率";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "幀率越低越省電、佔用越少；幀率越高動畫越順，但佔用更高。";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "目前設定下，動畫執行時大約佔用單核 %1$@%%。";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "目前設定下，動畫執行時大約佔用單核 %1$@%%–%2$@%%。";
 "dashboard.menu.bar.page.animation_frame_rate_unit" = "幀/秒";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任務執行時圖示動畫";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "任務執行時在選單列播放圖示動畫；若裝置效能較弱，可以關閉以減少資源用量";

@@ -317,6 +317,7 @@
 "dashboard.menu.bar.page.animation_frame_rate" = "运行时动画帧率";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "帧率越低越省电、占用越少；帧率越高动画越顺，但占用更高。";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "当前设置下，动画运行时大约占用单核 %1$@%%。";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "当前设置下，动画运行时大约占用单核 %1$@%%–%2$@%%。";
 "dashboard.menu.bar.page.animation_frame_rate_unit" = "帧/秒";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任务运行时图标动画";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "任务运行时在菜单栏播放图标动画；若设备性能较弱，可关闭以减少资源占用";

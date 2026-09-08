@@ -317,6 +317,7 @@
 "dashboard.menu.bar.page.animation_frame_rate" = "Frecuencia de animación";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "Una tasa más baja ahorra energía y CPU. Una más alta se ve más fluida, pero consume más.";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "Con este ajuste, la animación usa alrededor del %1$@ %% de un núcleo de CPU.";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "Con este ajuste, la animación usa alrededor del %1$@ %%–%2$@ %% de un núcleo de CPU.";
 "dashboard.menu.bar.page.animation_frame_rate_unit" = "FPS";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animación del icono durante la tarea";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Reproduce la animación del icono en la barra de menús mientras se ejecuta una tarea; desactívala para reducir el uso de recursos en dispositivos de menor rendimiento";

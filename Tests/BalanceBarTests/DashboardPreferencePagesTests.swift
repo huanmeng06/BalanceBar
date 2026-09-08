@@ -3995,8 +3995,30 @@ final class DashboardPreferencePagesTests: XCTestCase {
             DashboardMenuBarPage.animationFrameRateSubtitle(mode: .synchronized, fps: 24)
         )
         XCTAssertTrue(
-            try XCTUnwrap(subtitleText()).contains("8%")
+            try XCTUnwrap(subtitleText()).contains("12%–17%")
         )
+        XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("单核 8%。"))
+
+        field.stringValue = "15"
+        field.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: field)
+        )
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 15)
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("8%–13%"))
+
+        field.stringValue = "20"
+        field.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: field)
+        )
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 20)
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("10%–15%"))
+
+        field.stringValue = "30"
+        field.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: field)
+        )
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("16%–20%"))
 
         field.stringValue = "10"
         field.delegate?.controlTextDidEndEditing?(
@@ -4008,7 +4030,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             subtitleText(),
             DashboardMenuBarPage.animationFrameRateSubtitle(mode: .synchronized, fps: 10)
         )
-        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("5%"))
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("6%–11%"))
 
         field.stringValue = "abc"
         field.delegate?.controlTextDidEndEditing?(
@@ -4045,7 +4067,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             DashboardMenuBarPage.animationFrameRateSubtitle(mode: .efficient, fps: 6)
         )
         XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("2%"))
+        XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("–"))
         XCTAssertFalse(animationFrameRateRow.isHidden)
+
+        field.stringValue = "24"
+        field.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: field)
+        )
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("4%"))
+        XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("–"))
 
         AppLanguage.selected = .english
         refreshPage()

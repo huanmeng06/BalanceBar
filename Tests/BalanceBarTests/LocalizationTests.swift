@@ -850,6 +850,17 @@ final class LocalizationTests: XCTestCase {
             XCTAssertFalse(estimate.hasPrefix("⟦"))
             XCTAssertTrue(estimate.contains("8"))
             XCTAssertTrue(estimate.contains("%"))
+            XCTAssertFalse(estimate.contains("–"))
+            let range = tr(
+                .keyDashboardMenuBarPageAnimationFrameRateCPUEstimateRange,
+                arguments: ["8", "13"],
+                language: language
+            )
+            XCTAssertFalse(range.hasPrefix("⟦"))
+            XCTAssertTrue(range.contains("8"))
+            XCTAssertTrue(range.contains("13"))
+            XCTAssertTrue(range.contains("%"))
+            XCTAssertTrue(range.contains("–"))
         }
 
         XCTAssertEqual(
@@ -867,6 +878,22 @@ final class LocalizationTests: XCTestCase {
                 language: .english
             ),
             "At this setting, animation uses about 8% of one CPU core."
+        )
+        XCTAssertEqual(
+            tr(
+                .keyDashboardMenuBarPageAnimationFrameRateCPUEstimateRange,
+                arguments: ["8", "13"],
+                language: .simplifiedChinese
+            ),
+            "当前设置下，动画运行时大约占用单核 8%–13%。"
+        )
+        XCTAssertEqual(
+            tr(
+                .keyDashboardMenuBarPageAnimationFrameRateCPUEstimateRange,
+                arguments: ["8", "13"],
+                language: .english
+            ),
+            "At this setting, animation uses about 8%–13% of one CPU core."
         )
         XCTAssertEqual(
             tr(
@@ -958,7 +985,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 496)
+        XCTAssertEqual(expectedKeys.count, 497)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

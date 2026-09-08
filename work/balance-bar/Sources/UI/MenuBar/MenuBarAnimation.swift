@@ -65,16 +65,58 @@ enum MenuBarAnimationFrameRateInput {
 }
 
 /// Static single-core occupancy estimate shown under the FPS control.
-/// This is a documented lookup table, not live sampling.
+/// This table is a snapshot of the current D0/G implementation, not live
+/// sampling. Retune it in the same PR that changes animation cost.
 enum MenuBarAnimationCPUEstimate {
+    struct Range: Equatable {
+        let low: Int
+        let high: Int
+    }
+
+    private static let synchronizedAnchors: [(fps: Int, low: Double, high: Double)] = [
+        (15, 8, 13),
+        (20, 10, 15),
+        (30, 16, 20),
+    ]
+
     static func percent(mode: MenuBarAnimationMode, fps: Int) -> Int {
         let rate = MenuBarAnimationTiming.clampedFrameRate(fps)
         switch mode {
         case .synchronized:
-            return Int((2 + 8 * Double(rate) / 30).rounded())
+            return synchronizedRange(fps: rate).low
         case .efficient:
             return Int((2 + 2 * Double(rate) / 30).rounded())
         }
+    }
+
+    static func synchronizedRange(fps: Int) -> Range {
+        let rate = MenuBarAnimationTiming.clampedFrameRate(fps)
+        let first = synchronizedAnchors[0]
+        let second = synchronizedAnchors[1]
+        if rate <= first.fps {
+            let span = Double(second.fps - first.fps)
+            let delta = Double(rate - first.fps)
+            return Range(
+                low: nearestInt(first.low + ((second.low - first.low) / span) * delta),
+                high: nearestInt(first.high + ((second.high - first.high) / span) * delta)
+            )
+        }
+        for index in 0..<(synchronizedAnchors.count - 1) {
+            let left = synchronizedAnchors[index]
+            let right = synchronizedAnchors[index + 1]
+            guard rate <= right.fps else { continue }
+            let t = Double(rate - left.fps) / Double(right.fps - left.fps)
+            return Range(
+                low: nearestInt(left.low + t * (right.low - left.low)),
+                high: nearestInt(left.high + t * (right.high - left.high))
+            )
+        }
+        let last = synchronizedAnchors[synchronizedAnchors.count - 1]
+        return Range(low: Int(last.low.rounded()), high: Int(last.high.rounded()))
+    }
+
+    private static func nearestInt(_ value: Double) -> Int {
+        Int(value.rounded(.toNearestOrAwayFromZero))
     }
 }
 

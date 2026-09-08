@@ -317,6 +317,7 @@
 "dashboard.menu.bar.page.animation_frame_rate" = "Fréquence d’animation";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "Un débit plus bas économise énergie et CPU. Un débit plus élevé est plus fluide, mais plus coûteux.";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "Avec ce réglage, l’animation utilise environ %1$@ %% d’un cœur CPU.";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "Avec ce réglage, l’animation utilise environ %1$@ %%–%2$@ %% d’un cœur CPU.";
 "dashboard.menu.bar.page.animation_frame_rate_unit" = "FPS";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animation de l’icône pendant une tâche";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Anime l’icône dans la barre des menus pendant une tâche ; désactivez-la pour réduire l’utilisation des ressources sur les appareils moins performants";

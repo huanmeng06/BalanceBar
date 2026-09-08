@@ -317,6 +317,7 @@
 "dashboard.menu.bar.page.animation_frame_rate" = "Частота анимации";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "Ниже — меньше нагрузка и расход энергии; выше — плавнее, но тяжелее.";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "При этой настройке анимация занимает около %1$@ %% одного ядра CPU.";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "При этой настройке анимация занимает около %1$@ %%–%2$@ %% одного ядра CPU.";
 "dashboard.menu.bar.page.animation_frame_rate_unit" = "FPS";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Анимация значка во время выполнения задачи";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Воспроизводит анимацию значка в строке меню во время выполнения задачи; на устройствах с низкой производительностью её можно отключить, чтобы снизить использование ресурсов";

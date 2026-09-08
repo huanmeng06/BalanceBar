@@ -317,6 +317,7 @@
 "dashboard.menu.bar.page.animation_frame_rate" = "アニメーションのフレームレート";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "フレームレートが低いほど省電力で負荷が小さく、高いほど滑らかですが負荷が増えます。";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "この設定では、アニメーション実行時に単一コアの約 %1$@%% を使います。";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "この設定では、アニメーション実行時に単一コアの約 %1$@%%–%2$@%% を使います。";
 "dashboard.menu.bar.page.animation_frame_rate_unit" = "FPS";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "タスク実行時のアイコンアニメーション";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "タスク実行中にメニューバーでアイコンをアニメーション表示します；デバイスの性能が低い場合は、オフにしてリソース使用量を減らせます";

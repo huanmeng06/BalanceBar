@@ -1069,10 +1069,12 @@ final class MenuBarAnimationTests: XCTestCase {
     }
 
     func testAnimationCPUEstimateUsesTheDocumentedStaticTable() {
-        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 6), 4)
-        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 10), 5)
-        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 24), 8)
-        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 30), 10)
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.synchronizedRange(fps: 15), .init(low: 8, high: 13))
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.synchronizedRange(fps: 20), .init(low: 10, high: 15))
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.synchronizedRange(fps: 30), .init(low: 16, high: 20))
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.synchronizedRange(fps: 6), .init(low: 4, high: 9))
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.synchronizedRange(fps: 10), .init(low: 6, high: 11))
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.synchronizedRange(fps: 24), .init(low: 12, high: 17))
         XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 6), 2)
         XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 24), 4)
         XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 30), 4)

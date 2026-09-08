@@ -317,6 +317,7 @@
 "dashboard.menu.bar.page.animation_frame_rate" = "Animationsrate";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "Niedrigere Raten sparen Strom und CPU. Höhere Raten wirken flüssiger, brauchen aber mehr.";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "Bei dieser Einstellung nutzt die Animation etwa %1$@ %% eines CPU-Kerns.";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "Bei dieser Einstellung nutzt die Animation etwa %1$@ %%–%2$@ %% eines CPU-Kerns.";
 "dashboard.menu.bar.page.animation_frame_rate_unit" = "FPS";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Symbolanimation während der Aufgabe";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Gibt die Symbolanimation während einer Aufgabe in der Menüleiste wieder; auf leistungsschwächeren Geräten kann sie deaktiviert werden, um Ressourcen zu sparen";
