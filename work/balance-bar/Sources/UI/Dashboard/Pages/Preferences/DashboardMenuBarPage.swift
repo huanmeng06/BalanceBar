@@ -695,9 +695,9 @@ final class DashboardMenuBarPage {
     private weak var animationModeTitleLabel: NSTextField?
     private weak var animationModeSubtitleLabel: InlineRangeLinkTextField?
     var relaunchApplication: () -> Void = DashboardMenuBarPage.relaunchCurrentApplication
-    private var restartConfirmationController: BalanceBarRestartConfirmationController?
-    var restartConfirmationPanelForTesting: NSPanel? {
-        restartConfirmationController?.panel
+    private var restartConfirmationAlert: NSAlert?
+    var restartConfirmationAlertForTesting: NSAlert? {
+        restartConfirmationAlert
     }
     private weak var animationFrameRateField: NSTextField?
     private weak var animationFrameRateUnitLabel: NSTextField?
@@ -2680,34 +2680,37 @@ final class DashboardMenuBarPage {
     }
 
     func presentAnimationRestartConfirmation() {
-        if restartConfirmationController == nil {
-            let controller = BalanceBarRestartConfirmationController()
-            controller.onRestart = { [weak self] in
-                self?.relaunchApplication()
-                self?.restartConfirmationController = nil
-            }
-            controller.onCancel = { [weak self] in
-                self?.restartConfirmationController = nil
-            }
-            restartConfirmationController = controller
-        }
-        restartConfirmationController?.applyLocalizedCopy()
-        guard let confirmation = restartConfirmationController else { return }
-        if confirmation.panel.sheetParent != nil {
+        if restartConfirmationAlert?.window.sheetParent != nil {
             return
         }
         let hostWindow = animationModeSubtitleLabel?.window
             ?? animationModeRow?.window
-        if let hostWindow {
-            confirmation.present(over: hostWindow)
-        } else {
-            confirmation.panel.makeKeyAndOrderFront(nil)
+        guard let hostWindow else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation)
+        alert.addButton(withTitle: tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm))
+        alert.addButton(withTitle: tr(.keyDashboardMenuBarPageAnimationModeRestartCancel))
+        alert.buttons[0].keyEquivalent = "\r"
+        alert.buttons[1].keyEquivalent = "\u{1b}"
+        alert.buttons[1].keyEquivalentModifierMask = []
+        restartConfirmationAlert = alert
+        alert.beginSheetModal(for: hostWindow) { [weak self] response in
+            guard let self else { return }
+            self.restartConfirmationAlert = nil
+            if response == .alertFirstButtonReturn {
+                self.relaunchApplication()
+            }
         }
     }
 
     private func dismissRestartConfirmation() {
-        restartConfirmationController?.dismiss(restarting: false)
-        restartConfirmationController = nil
+        guard let alert = restartConfirmationAlert else { return }
+        if let parent = alert.window.sheetParent {
+            parent.endSheet(alert.window, returnCode: .abort)
+        }
+        restartConfirmationAlert = nil
     }
 
     private func makeAnimationModeControl(

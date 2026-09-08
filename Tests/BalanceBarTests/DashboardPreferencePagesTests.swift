@@ -4030,7 +4030,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testPerformanceSubtitleRestartLinkPresentsCenteredConfirmationWithoutRelaunching() throws {
+    func testPerformanceSubtitleRestartLinkPresentsNativeAlertWithoutRelaunching() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -4040,7 +4040,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        var preferences = AppPreferences(defaults: defaults)
+        let preferences = AppPreferences(defaults: defaults)
         preferences.showMenuBarIcon = true
         preferences.animateCodexActivity = true
         preferences.menuBarAnimationMode = .synchronized
@@ -4082,6 +4082,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defer: false
         )
         window.contentView = page
+        window.makeKeyAndOrderFront(nil)
         defer { window.orderOut(nil) }
         window.layoutIfNeeded()
 
@@ -4121,6 +4122,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             location: subtitle.convert(outsideLink, to: nil)
         ))
         XCTAssertNil(window.attachedSheet)
+        XCTAssertNil(controller.restartConfirmationAlertForTesting)
         XCTAssertEqual(relaunchCount, 0)
 
         subtitle.mouseDown(with: makeMouseEvent(
@@ -4130,40 +4132,47 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 to: nil
             )
         ))
-        let panel = try XCTUnwrap(controller.restartConfirmationPanelForTesting)
-        XCTAssertEqual(window.attachedSheet, panel)
-        panel.layoutIfNeeded()
-        let content = try XCTUnwrap(panel.contentView)
-        content.layoutSubtreeIfNeeded()
+        let alert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(NSStringFromClass(type(of: alert)), "NSAlert")
+        XCTAssertEqual(window.attachedSheet, alert.window)
+        XCTAssertEqual(alert.alertStyle, .informational)
+        XCTAssertNil(alert.accessoryView)
+        XCTAssertEqual(alert.messageText, "是否立即重启 BalanceBar？")
+        XCTAssertEqual(alert.buttons.map(\.title), ["重启", "取消"])
+        XCTAssertEqual(alert.window.defaultButtonCell, alert.buttons[0].cell)
+        XCTAssertEqual(alert.buttons[1].keyEquivalent, "\u{1b}")
 
-        let icon = try XCTUnwrap(
-            descendants(of: content)
-                .compactMap { $0 as? NSImageView }
-                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.iconIdentifier }
+        let escapeEvent = try XCTUnwrap(
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: alert.window.windowNumber,
+                context: nil,
+                characters: "\u{1b}",
+                charactersIgnoringModifiers: "\u{1b}",
+                isARepeat: false,
+                keyCode: 53
+            )
         )
-        let question = try XCTUnwrap(
-            descendants(of: content)
-                .compactMap { $0 as? NSTextField }
-                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.questionIdentifier }
-        )
-        let restartButton = try XCTUnwrap(
-            descendants(of: content)
-                .compactMap { $0 as? NSButton }
-                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.restartIdentifier }
-        )
-        let cancelButton = try XCTUnwrap(
-            descendants(of: content)
-                .compactMap { $0 as? NSButton }
-                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.cancelIdentifier }
-        )
-        XCTAssertEqual(icon.frame.midX, content.bounds.midX, accuracy: 1.5)
-        let iconImage = try XCTUnwrap(icon.image)
-        XCTAssertGreaterThan(iconImage.size.width, 0)
-        XCTAssertEqual(question.stringValue, "是否立即重启 BalanceBar？")
-        XCTAssertEqual(restartButton.title, "重启")
-        XCTAssertEqual(cancelButton.title, "取消")
+        XCTAssertTrue(alert.window.performKeyEquivalent(with: escapeEvent))
+        XCTAssertNil(window.attachedSheet)
+        XCTAssertNil(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(relaunchCount, 0)
 
-        panel.cancelOperation(nil)
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let restartAlert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(window.attachedSheet, restartAlert.window)
+        XCTAssertEqual(restartAlert.messageText, "是否立即重启 BalanceBar？")
+        XCTAssertEqual(restartAlert.buttons[1].title, "取消")
+        restartAlert.buttons[1].performClick(nil)
         XCTAssertNil(window.attachedSheet)
         XCTAssertEqual(relaunchCount, 0)
 
@@ -4174,16 +4183,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 to: nil
             )
         ))
-        let restartedPanel = try XCTUnwrap(controller.restartConfirmationPanelForTesting)
-        let restartedContent = try XCTUnwrap(restartedPanel.contentView)
-        let confirmAgain = try XCTUnwrap(
-            descendants(of: restartedContent)
-                .compactMap { $0 as? NSButton }
-                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.restartIdentifier }
-        )
-        confirmAgain.performClick(nil)
+        let confirmAlert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(window.attachedSheet, confirmAlert.window)
+        XCTAssertEqual(confirmAlert.buttons[0].title, "重启")
+        confirmAlert.buttons[0].performClick(nil)
         XCTAssertEqual(relaunchCount, 1)
         XCTAssertNil(window.attachedSheet)
+        XCTAssertNil(controller.restartConfirmationAlertForTesting)
     }
 
     func testAnimationFrameRateRowCommitsValuesAndUpdatesCPUEstimate() throws {
