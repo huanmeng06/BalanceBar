@@ -314,6 +314,10 @@
 "dashboard.menu.bar.page.animation_mode_efficient" = "Rendimiento (Beta)";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Sincronizado";
 "dashboard.menu.bar.page.animation_mode_fallback" = "El modo Rendimiento no puede reproducir la animación correctamente en este momento, por lo que se está usando temporalmente el modo Sincronizado";
+"dashboard.menu.bar.page.animation_mode_restart_link" = "reinicia BalanceBar";
+"dashboard.menu.bar.page.animation_mode_restart_confirmation" = "¿Reiniciar BalanceBar ahora?";
+"dashboard.menu.bar.page.animation_mode_restart_confirm" = "Reiniciar";
+"dashboard.menu.bar.page.animation_mode_restart_cancel" = "Cancelar";
 "dashboard.menu.bar.page.animation_frame_rate" = "Frecuencia de animación";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "Una tasa más baja ahorra energía y CPU. Una más alta se ve más fluida, pero consume más.";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "Con este ajuste, la animación usa alrededor del %1$@ %% de un núcleo de CPU.";

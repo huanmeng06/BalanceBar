@@ -314,6 +314,10 @@
 "dashboard.menu.bar.page.animation_mode_efficient" = "性能（Beta）";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "同步";
 "dashboard.menu.bar.page.animation_mode_fallback" = "性能模式当前无法正常播放动画，已临时切换到同步模式";
+"dashboard.menu.bar.page.animation_mode_restart_link" = "重启 BalanceBar";
+"dashboard.menu.bar.page.animation_mode_restart_confirmation" = "是否立即重启 BalanceBar？";
+"dashboard.menu.bar.page.animation_mode_restart_confirm" = "重启";
+"dashboard.menu.bar.page.animation_mode_restart_cancel" = "取消";
 "dashboard.menu.bar.page.animation_frame_rate" = "运行时动画帧率";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "帧率越低越省电、占用越少；帧率越高动画越顺，但占用更高。";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "当前设置下，动画运行时大约占用单核 %1$@%%。";

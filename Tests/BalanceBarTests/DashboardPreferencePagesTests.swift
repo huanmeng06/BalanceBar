@@ -3908,6 +3908,284 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(warningRow.isHidden)
     }
 
+    func testAnimationModeTitleStaysVisibleAfterInPlaceModeSwitchInEveryLanguage() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let languages = AppLanguage.allCases.filter { $0 != .system }
+
+        for language in languages {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.AnimationTitle.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            var preferences = AppPreferences(defaults: defaults)
+            preferences.showMenuBarIcon = true
+            preferences.animateCodexActivity = true
+            preferences.menuBarAnimationMode = .synchronized
+            let snapshot = Snapshot.official(
+                "OpenAI",
+                72,
+                "7-day",
+                "2h",
+                Date(timeIntervalSince1970: 1)
+            )
+            let relay = DashboardPreferencePageRelay()
+            let controller = DashboardMenuBarPage()
+            defer { controller.teardown() }
+            func refreshPage() {
+                controller.refresh(
+                    snapshot: snapshot,
+                    preferences: preferences,
+                    menuBarSnapshot: { $0 },
+                    iconImage: nil
+                )
+            }
+            relay.onMenuBarAnimationModeChanged = { mode in
+                preferences.menuBarAnimationMode = mode
+                refreshPage()
+            }
+            let page = controller.make(.init(
+                preferences: preferences,
+                snapshot: snapshot,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: relay
+            ))
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 516, height: 860),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = page
+            defer { window.orderOut(nil) }
+            window.layoutIfNeeded()
+
+            let title = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeTitleIdentifier }
+            )
+            let subtitle = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeSubtitleIdentifier }
+            )
+            let modeControl = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
+            )
+            let animationModeRow = try XCTUnwrap(modeControl.superview)
+
+            func assertMode(_ mode: MenuBarAnimationMode) {
+                let expectedTitle = DashboardMenuBarPage.animationModeTitle(language: language)
+                let expectedSubtitle = DashboardMenuBarPage.animationModeDescription(
+                    mode: mode,
+                    language: language
+                )
+                XCTAssertEqual(
+                    title.stringValue,
+                    expectedTitle,
+                    "title string for \(mode.rawValue) in \(language.rawValue)"
+                )
+                XCTAssertGreaterThan(
+                    title.frame.height,
+                    1,
+                    "title height for \(mode.rawValue) in \(language.rawValue)"
+                )
+                XCTAssertEqual(
+                    subtitle.stringValue,
+                    expectedSubtitle,
+                    "subtitle string for \(mode.rawValue) in \(language.rawValue)"
+                )
+                XCTAssertNotEqual(
+                    title.stringValue,
+                    subtitle.stringValue,
+                    "title must not become the subtitle in \(language.rawValue)"
+                )
+                XCTAssertGreaterThan(
+                    animationModeRow.frame.height,
+                    58,
+                    "row must grow with wrapping subtitle in \(language.rawValue) \(mode.rawValue)"
+                )
+            }
+
+            XCTAssertEqual(modeControl.indexOfSelectedItem, 0)
+            assertMode(.synchronized)
+
+            modeControl.selectItem(at: 1)
+            relay.menuBarAnimationMode(modeControl)
+            window.layoutIfNeeded()
+            XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+            assertMode(.efficient)
+
+            modeControl.selectItem(at: 0)
+            relay.menuBarAnimationMode(modeControl)
+            window.layoutIfNeeded()
+            XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
+            assertMode(.synchronized)
+        }
+    }
+
+    func testPerformanceSubtitleRestartLinkPresentsCenteredConfirmationWithoutRelaunching() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.AnimationRestartLink.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        var preferences = AppPreferences(defaults: defaults)
+        preferences.showMenuBarIcon = true
+        preferences.animateCodexActivity = true
+        preferences.menuBarAnimationMode = .synchronized
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let relay = DashboardPreferencePageRelay()
+        let controller = DashboardMenuBarPage()
+        var relaunchCount = 0
+        controller.relaunchApplication = { relaunchCount += 1 }
+        defer { controller.teardown() }
+        func refreshPage() {
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+        }
+        relay.onMenuBarAnimationModeChanged = { mode in
+            preferences.menuBarAnimationMode = mode
+            refreshPage()
+        }
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 860),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+
+        let subtitle = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? InlineRangeLinkTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeSubtitleIdentifier }
+        )
+        let modeControl = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
+        )
+
+        XCTAssertEqual(subtitle.stringValue, DashboardMenuBarPage.animationModeDescription(mode: .synchronized))
+        XCTAssertFalse(subtitle.hasLink)
+        XCTAssertTrue(subtitle.linkHitRect.isEmpty)
+
+        modeControl.selectItem(at: 1)
+        relay.menuBarAnimationMode(modeControl)
+        window.layoutIfNeeded()
+        subtitle.layout()
+
+        let phrase = DashboardMenuBarPage.animationModeRestartLinkPhrase()
+        XCTAssertEqual(phrase, "重启 BalanceBar")
+        XCTAssertTrue(subtitle.stringValue.contains(phrase))
+        XCTAssertEqual(
+            subtitle.linkRange,
+            (subtitle.stringValue as NSString).range(of: phrase)
+        )
+        XCTAssertTrue(subtitle.hasLink)
+        XCTAssertFalse(subtitle.linkHitRect.isEmpty)
+
+        let outsideLink = NSPoint(x: subtitle.bounds.minX + 4, y: subtitle.bounds.maxY - 4)
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(outsideLink, to: nil)
+        ))
+        XCTAssertNil(window.attachedSheet)
+        XCTAssertEqual(relaunchCount, 0)
+
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let panel = try XCTUnwrap(controller.restartConfirmationPanelForTesting)
+        XCTAssertEqual(window.attachedSheet, panel)
+        panel.layoutIfNeeded()
+        let content = try XCTUnwrap(panel.contentView)
+        content.layoutSubtreeIfNeeded()
+
+        let icon = try XCTUnwrap(
+            descendants(of: content)
+                .compactMap { $0 as? NSImageView }
+                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.iconIdentifier }
+        )
+        let question = try XCTUnwrap(
+            descendants(of: content)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.questionIdentifier }
+        )
+        let restartButton = try XCTUnwrap(
+            descendants(of: content)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.restartIdentifier }
+        )
+        let cancelButton = try XCTUnwrap(
+            descendants(of: content)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.cancelIdentifier }
+        )
+        XCTAssertEqual(icon.frame.midX, content.bounds.midX, accuracy: 1.5)
+        let iconImage = try XCTUnwrap(icon.image)
+        XCTAssertGreaterThan(iconImage.size.width, 0)
+        XCTAssertEqual(question.stringValue, "是否立即重启 BalanceBar？")
+        XCTAssertEqual(restartButton.title, "重启")
+        XCTAssertEqual(cancelButton.title, "取消")
+
+        panel.cancelOperation(nil)
+        XCTAssertNil(window.attachedSheet)
+        XCTAssertEqual(relaunchCount, 0)
+
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let restartedPanel = try XCTUnwrap(controller.restartConfirmationPanelForTesting)
+        let restartedContent = try XCTUnwrap(restartedPanel.contentView)
+        let confirmAgain = try XCTUnwrap(
+            descendants(of: restartedContent)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == BalanceBarRestartConfirmationController.restartIdentifier }
+        )
+        confirmAgain.performClick(nil)
+        XCTAssertEqual(relaunchCount, 1)
+        XCTAssertNil(window.attachedSheet)
+    }
+
     func testAnimationFrameRateRowCommitsValuesAndUpdatesCPUEstimate() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -6612,6 +6890,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
+    }
+
+    private func makeMouseEvent(
+        type: NSEvent.EventType,
+        location: NSPoint
+    ) -> NSEvent {
+        guard let event = NSEvent.mouseEvent(
+            with: type,
+            location: location,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: type == .leftMouseDown ? 1 : 0,
+            pressure: type == .leftMouseDown ? 1 : 0
+        ) else {
+            fatalError("Expected to create a mouse event")
+        }
+        return event
     }
 
     private func makeDistinctPreviewIcon(size: CGFloat, height: CGFloat? = nil) -> NSImage {

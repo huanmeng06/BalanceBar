@@ -812,6 +812,55 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testAnimationModeRestartLinkPhraseIsExactSubstringOfEfficientDescription() {
+        let expectedPhrases: [AppLanguage: String] = [
+            .simplifiedChinese: "重启 BalanceBar",
+            .traditionalChineseTaiwan: "重新啟動 BalanceBar",
+            .traditionalChineseHongKong: "重新啟動 BalanceBar",
+            .japanese: "BalanceBar を再起動",
+            .english: "restart BalanceBar",
+            .korean: "BalanceBar를 다시 시작",
+            .spanish: "reinicia BalanceBar",
+            .german: "starte BalanceBar neu",
+            .french: "redémarre BalanceBar",
+            .portuguese: "reinicia o BalanceBar",
+            .russian: "перезапустите BalanceBar",
+            .italian: "riavvia BalanceBar"
+        ]
+        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation, language: .simplifiedChinese), "是否立即重启 BalanceBar？")
+        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation, language: .english), "Restart BalanceBar now?")
+        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm, language: .simplifiedChinese), "重启")
+        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm, language: .english), "Restart")
+        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartCancel, language: .simplifiedChinese), "取消")
+        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartCancel, language: .english), "Cancel")
+
+        for language in allLanguages {
+            let phrase = tr(.keyDashboardMenuBarPageAnimationModeRestartLink, language: language)
+            let efficient = tr(
+                .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
+                language: language
+            )
+            let synchronized = tr(
+                .keyDashboardMenuBarPageAnimationModeDescriptionSynchronized,
+                language: language
+            )
+            XCTAssertEqual(phrase, expectedPhrases[language])
+            XCTAssertFalse(phrase.isEmpty)
+            XCTAssertTrue(
+                efficient.contains(phrase),
+                "restart phrase must be an exact substring of the Performance subtitle in \(language.rawValue)"
+            )
+            XCTAssertFalse(
+                synchronized.contains(phrase),
+                "Synchronized subtitle must not contain the restart link phrase in \(language.rawValue)"
+            )
+            XCTAssertTrue(phrase.contains("BalanceBar"))
+            XCTAssertFalse(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation, language: language).hasPrefix("⟦"))
+            XCTAssertFalse(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm, language: language).hasPrefix("⟦"))
+            XCTAssertFalse(tr(.keyDashboardMenuBarPageAnimationModeRestartCancel, language: language).hasPrefix("⟦"))
+        }
+    }
+
     func testAnimationFrameRateCopyUsesShortTitlesUnitsAndAboutEstimates() {
         let expectedTitles: [AppLanguage: String] = [
             .simplifiedChinese: "运行时动画帧率",
@@ -985,7 +1034,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 497)
+        XCTAssertEqual(expectedKeys.count, 501)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

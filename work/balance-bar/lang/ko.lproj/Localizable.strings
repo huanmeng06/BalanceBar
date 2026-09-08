@@ -314,6 +314,10 @@
 "dashboard.menu.bar.page.animation_mode_efficient" = "성능 (Beta)";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "동기화";
 "dashboard.menu.bar.page.animation_mode_fallback" = "현재 성능 모드에서 애니메이션을 정상적으로 재생할 수 없어 일시적으로 동기화 모드를 사용하고 있습니다";
+"dashboard.menu.bar.page.animation_mode_restart_link" = "BalanceBar를 다시 시작";
+"dashboard.menu.bar.page.animation_mode_restart_confirmation" = "지금 BalanceBar를 다시 시작할까요?";
+"dashboard.menu.bar.page.animation_mode_restart_confirm" = "다시 시작";
+"dashboard.menu.bar.page.animation_mode_restart_cancel" = "취소";
 "dashboard.menu.bar.page.animation_frame_rate" = "애니메이션 프레임 속도";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "프레임 속도가 낮을수록 전력과 점유가 줄고, 높을수록 더 부드럽지만 점유가 커집니다.";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "현재 설정에서 애니메이션은 단일 코어의 약 %1$@%%를 사용합니다.";

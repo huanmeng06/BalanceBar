@@ -314,6 +314,10 @@
 "dashboard.menu.bar.page.animation_mode_efficient" = "パフォーマンス（Beta）";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "同期";
 "dashboard.menu.bar.page.animation_mode_fallback" = "現在、パフォーマンスモードではアニメーションを正しく再生できないため、一時的に同期モードを使用しています";
+"dashboard.menu.bar.page.animation_mode_restart_link" = "BalanceBar を再起動";
+"dashboard.menu.bar.page.animation_mode_restart_confirmation" = "今すぐ BalanceBar を再起動しますか？";
+"dashboard.menu.bar.page.animation_mode_restart_confirm" = "再起動";
+"dashboard.menu.bar.page.animation_mode_restart_cancel" = "キャンセル";
 "dashboard.menu.bar.page.animation_frame_rate" = "アニメーションのフレームレート";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "フレームレートが低いほど省電力で負荷が小さく、高いほど滑らかですが負荷が増えます。";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "この設定では、アニメーション実行時に単一コアの約 %1$@%% を使います。";

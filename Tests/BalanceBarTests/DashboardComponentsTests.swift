@@ -1150,6 +1150,54 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(progressHost.frame.height, 0, accuracy: 0.5)
     }
 
+    func testInlineRangeLinkStylesOnlyThePhraseAndActivatesOnThatRange() {
+        let field = InlineRangeLinkTextField()
+        field.frame = NSRect(x: 0, y: 0, width: 420, height: 40)
+        var activations = 0
+        field.setContent(
+            "Beta: restart BalanceBar to fix it",
+            linkPhrase: "restart BalanceBar",
+            onActivate: { activations += 1 }
+        )
+        field.layout()
+
+        XCTAssertTrue(field.hasLink)
+        XCTAssertEqual(
+            field.linkRange,
+            ("Beta: restart BalanceBar to fix it" as NSString).range(of: "restart BalanceBar")
+        )
+        XCTAssertFalse(field.linkHitRect.isEmpty)
+
+        let attributed = field.attributedStringValue
+        let linkColor = attributed.attribute(
+            .foregroundColor,
+            at: field.linkRange.location,
+            effectiveRange: nil
+        ) as? NSColor
+        let bodyColor = attributed.attribute(
+            .foregroundColor,
+            at: 0,
+            effectiveRange: nil
+        ) as? NSColor
+        XCTAssertEqual(linkColor, NSColor.linkColor)
+        XCTAssertEqual(bodyColor, NSColor.secondaryLabelColor)
+        XCTAssertNil(
+            attributed.attribute(.underlineStyle, at: field.linkRange.location, effectiveRange: nil)
+        )
+
+        field.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 4, y: field.bounds.midY)
+        ))
+        XCTAssertEqual(activations, 0)
+
+        field.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: field.linkHitRect.midX, y: field.linkHitRect.midY)
+        ))
+        XCTAssertEqual(activations, 1)
+    }
+
     func testHoverLinkHoverHintSetsNativeTooltip() {
         let link = HoverLinkTextField(text: "24%")
         XCTAssertEqual(link.hoverHint, "")

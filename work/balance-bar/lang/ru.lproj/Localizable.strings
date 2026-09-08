@@ -314,6 +314,10 @@
 "dashboard.menu.bar.page.animation_mode_efficient" = "Производительность (Beta)";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Синхронный";
 "dashboard.menu.bar.page.animation_mode_fallback" = "Сейчас анимация не может корректно работать в режиме «Производительность», поэтому временно используется режим «Синхронный»";
+"dashboard.menu.bar.page.animation_mode_restart_link" = "перезапустите BalanceBar";
+"dashboard.menu.bar.page.animation_mode_restart_confirmation" = "Перезапустить BalanceBar сейчас?";
+"dashboard.menu.bar.page.animation_mode_restart_confirm" = "Перезапустить";
+"dashboard.menu.bar.page.animation_mode_restart_cancel" = "Отмена";
 "dashboard.menu.bar.page.animation_frame_rate" = "Частота анимации";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "Ниже — меньше нагрузка и расход энергии; выше — плавнее, но тяжелее.";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "При этой настройке анимация занимает около %1$@ %% одного ядра CPU.";

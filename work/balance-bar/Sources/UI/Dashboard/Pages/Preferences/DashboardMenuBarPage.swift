@@ -349,6 +349,7 @@ final class DashboardMenuBarPage {
     static let iconDisplayModeIdentifier = AppPreferences.menuBarIconDisplayModeKey
     static let iconDisplayDelayIdentifier = AppPreferences.menuBarIconDisplayDelayKey
     static let animationModeIdentifier = AppPreferences.menuBarAnimationModeKey
+    static let animationModeTitleIdentifier = AppPreferences.menuBarAnimationModeKey + "Title"
     static let animationModeSubtitleIdentifier = AppPreferences.menuBarAnimationModeKey + "Subtitle"
     static let animationFrameRateIdentifier = AppPreferences.menuBarAnimationFrameRateKey
     static let animationFrameRateRowIdentifier = AppPreferences.menuBarAnimationFrameRateKey + "Row"
@@ -505,6 +506,23 @@ final class DashboardMenuBarPage {
                 language: language
             )
         }
+    }
+
+    static func animationModeRestartLinkPhrase(
+        language: AppLanguage = .selected
+    ) -> String {
+        tr(.keyDashboardMenuBarPageAnimationModeRestartLink, language: language)
+    }
+
+    static func animationModeTitle(
+        language: AppLanguage = .selected
+    ) -> String {
+        tr(.keyDashboardMenuBarPageAnimation, language: language)
+    }
+
+    static func relaunchCurrentApplication() {
+        let relauncher = LiveUpdateApplicationRelauncher()
+        try? relauncher.relaunchApplication(at: Bundle.main.bundleURL)
     }
 
     static func animationFallbackWarningText(
@@ -674,7 +692,13 @@ final class DashboardMenuBarPage {
     private var animationFrameRate = MenuBarAnimationTiming.defaultFrameRate
     private let animationFrameRateEditor = AnimationFrameRateEditor()
     private weak var animationModeControl: NSPopUpButton?
-    private weak var animationModeSubtitleLabel: NSTextField?
+    private weak var animationModeTitleLabel: NSTextField?
+    private weak var animationModeSubtitleLabel: InlineRangeLinkTextField?
+    var relaunchApplication: () -> Void = DashboardMenuBarPage.relaunchCurrentApplication
+    private var restartConfirmationController: BalanceBarRestartConfirmationController?
+    var restartConfirmationPanelForTesting: NSPanel? {
+        restartConfirmationController?.panel
+    }
     private weak var animationFrameRateField: NSTextField?
     private weak var animationFrameRateUnitLabel: NSTextField?
     private weak var animationFrameRateSubtitleLabel: NSTextField?
@@ -751,6 +775,7 @@ final class DashboardMenuBarPage {
         lastPreviewSpriteImage = nil
         resetRefreshSignatures()
         pageActionTarget.onRevealIconDisplayModeSetting = nil
+        dismissRestartConfirmation()
     }
 
     private func resetRefreshSignatures() {
@@ -1379,20 +1404,27 @@ final class DashboardMenuBarPage {
         let animationModeSubtitle = Self.animationModeDescription(
             mode: input.preferences.menuBarAnimationMode
         )
-        let animationModeSubtitleLabel = DashboardSettingsComponents.makeSubtitleLabel(
-            LocalizedSubtitle(text: animationModeSubtitle)
+        let animationModeTitleLabel = NSTextField(
+            wrappingLabelWithString: Self.animationModeTitle()
         )
+        animationModeTitleLabel.identifier = NSUserInterfaceItemIdentifier(
+            Self.animationModeTitleIdentifier
+        )
+        self.animationModeTitleLabel = animationModeTitleLabel
+        let animationModeSubtitleLabel = InlineRangeLinkTextField()
         animationModeSubtitleLabel.identifier = NSUserInterfaceItemIdentifier(
             Self.animationModeSubtitleIdentifier
         )
         self.animationModeSubtitleLabel = animationModeSubtitleLabel
         let animationModeRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageAnimation),
+            Self.animationModeTitle(),
+            titleLabel: animationModeTitleLabel,
             subtitle: animationModeSubtitle,
             subtitleLabel: animationModeSubtitleLabel,
             control: animationModeControl
         )
         self.animationModeRow = animationModeRow
+        applyAnimationModeSubtitle(mode: input.preferences.menuBarAnimationMode)
         let animationFrameRateSubtitleLabel = DashboardSettingsComponents.makeSubtitleLabel(
             LocalizedSubtitle(
                 text: Self.animationFrameRateSubtitle(
@@ -1900,14 +1932,7 @@ final class DashboardMenuBarPage {
                 mode: preferences.menuBarAnimationMode
             )
         }
-        DashboardSettingsComponents.updateSubtitleLabel(
-            animationModeSubtitleLabel,
-            with: LocalizedSubtitle(
-                text: Self.animationModeDescription(
-                    mode: preferences.menuBarAnimationMode
-                )
-            )
-        )
+        applyAnimationModeSubtitle(mode: preferences.menuBarAnimationMode)
         animationFrameRate = preferences.menuBarAnimationFrameRate
         animationFrameRateEditor.setDisplayedValue(preferences.menuBarAnimationFrameRate)
         animationFrameRateUnitLabel?.stringValue = tr(
@@ -2634,6 +2659,55 @@ final class DashboardMenuBarPage {
         ).isActive = true
         control.toolTip = tr(.keyDashboardMenuBarPageIconDisplayDelayDescription)
         return control
+    }
+
+    private func applyAnimationModeSubtitle(mode: MenuBarAnimationMode) {
+        animationModeTitleLabel?.stringValue = Self.animationModeTitle()
+        let text = Self.animationModeDescription(mode: mode)
+        let phrase = mode == .efficient ? Self.animationModeRestartLinkPhrase() : nil
+        let subtitleChanged = animationModeSubtitleLabel?.stringValue != text
+            || (animationModeSubtitleLabel?.hasLink ?? false) != (phrase != nil)
+        animationModeSubtitleLabel?.setContent(
+            text,
+            linkPhrase: phrase,
+            onActivate: { [weak self] in
+                self?.presentAnimationRestartConfirmation()
+            }
+        )
+        guard subtitleChanged else { return }
+        DashboardSettingsComponents.notifySettingsRowContentChanged(animationModeSubtitleLabel)
+        updateIconTaskStatusCardLayout()
+    }
+
+    func presentAnimationRestartConfirmation() {
+        if restartConfirmationController == nil {
+            let controller = BalanceBarRestartConfirmationController()
+            controller.onRestart = { [weak self] in
+                self?.relaunchApplication()
+                self?.restartConfirmationController = nil
+            }
+            controller.onCancel = { [weak self] in
+                self?.restartConfirmationController = nil
+            }
+            restartConfirmationController = controller
+        }
+        restartConfirmationController?.applyLocalizedCopy()
+        guard let confirmation = restartConfirmationController else { return }
+        if confirmation.panel.sheetParent != nil {
+            return
+        }
+        let hostWindow = animationModeSubtitleLabel?.window
+            ?? animationModeRow?.window
+        if let hostWindow {
+            confirmation.present(over: hostWindow)
+        } else {
+            confirmation.panel.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    private func dismissRestartConfirmation() {
+        restartConfirmationController?.dismiss(restarting: false)
+        restartConfirmationController = nil
     }
 
     private func makeAnimationModeControl(

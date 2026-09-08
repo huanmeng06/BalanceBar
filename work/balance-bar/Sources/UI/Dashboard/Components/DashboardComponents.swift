@@ -887,3 +887,455 @@ enum DashboardSection: Int, CaseIterable {
         }
     }
 }
+
+/// Wrapping subtitle that styles one interior phrase as a link. Hover and
+/// click apply only to that range; the rest stays secondary label color.
+final class InlineRangeLinkTextField: NSTextField {
+    var onActivate: (() -> Void)?
+    private(set) var linkRange = NSRange(location: NSNotFound, length: 0)
+    private(set) var linkHitRect = NSRect.zero
+    private var sourceText = ""
+    private var linkPhrase: String?
+    private var trackingAreaReference: NSTrackingArea?
+    private var isHovered = false
+    private var isApplyingStyle = false
+
+    var hasLink: Bool {
+        linkRange.location != NSNotFound && linkRange.length > 0
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        isEditable = false
+        isSelectable = false
+        isBezeled = false
+        drawsBackground = false
+        usesSingleLineMode = false
+        lineBreakMode = .byWordWrapping
+        maximumNumberOfLines = 0
+        cell?.wraps = true
+        cell?.isScrollable = false
+        font = .systemFont(ofSize: 12)
+        textColor = .secondaryLabelColor
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override var stringValue: String {
+        didSet {
+            guard !isApplyingStyle else { return }
+            sourceText = stringValue
+            refreshLinkRange()
+            applyStyle(underlined: isHovered)
+            updateLinkHitRect()
+        }
+    }
+
+    override var font: NSFont? {
+        didSet {
+            guard !isApplyingStyle else { return }
+            applyStyle(underlined: isHovered)
+            updateLinkHitRect()
+        }
+    }
+
+    override var textColor: NSColor? {
+        didSet {
+            guard !isApplyingStyle else { return }
+            applyStyle(underlined: isHovered)
+        }
+    }
+
+    func setContent(
+        _ text: String,
+        linkPhrase: String?,
+        onActivate: (() -> Void)?
+    ) {
+        self.onActivate = onActivate
+        self.linkPhrase = linkPhrase
+        sourceText = text
+        refreshLinkRange()
+        applyStyle(underlined: false)
+        isHovered = false
+        updateLinkHitRect()
+    }
+
+    override func layout() {
+        super.layout()
+        updateLinkHitRect()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        refreshTrackingArea()
+        synchronizeHoverStateWithMouseLocation()
+    }
+
+    override func updateTrackingAreas() {
+        removeTrackingAreaReference()
+        super.updateTrackingAreas()
+        updateLinkHitRect()
+        installTrackingArea()
+        synchronizeHoverStateWithMouseLocation()
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        updateLinkHitRect()
+        guard !linkHitRect.isEmpty else { return }
+        addCursorRect(linkHitRect, cursor: .pointingHand)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        setHovering(isPointInsideLink(for: event))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        setHovering(false)
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        setHovering(isPointInsideLink(for: event))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        setHovering(isPointInsideLink(for: event))
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isPointInsideLink(for: event) else { return }
+        NSCursor.pointingHand.set()
+        onActivate?()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            tearDownInteraction()
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func removeFromSuperview() {
+        tearDownInteraction()
+        super.removeFromSuperview()
+    }
+
+    private func refreshLinkRange() {
+        guard let phrase = linkPhrase, !phrase.isEmpty else {
+            linkRange = NSRange(location: NSNotFound, length: 0)
+            return
+        }
+        let range = (sourceText as NSString).range(of: phrase)
+        linkRange = range.location == NSNotFound ? NSRange(location: NSNotFound, length: 0) : range
+    }
+
+    private func applyStyle(underlined: Bool) {
+        let text = sourceText
+        let attributed = NSMutableAttributedString(string: text)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = lineBreakMode
+        let body: [NSAttributedString.Key: Any] = [
+            .font: font ?? NSFont.systemFont(ofSize: 12),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraph
+        ]
+        if attributed.length > 0 {
+            attributed.addAttributes(body, range: NSRange(location: 0, length: attributed.length))
+        }
+        if hasLink, NSMaxRange(linkRange) <= attributed.length {
+            var linkAttributes: [NSAttributedString.Key: Any] = [
+                .foregroundColor: NSColor.linkColor
+            ]
+            if underlined {
+                linkAttributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            }
+            attributed.addAttributes(linkAttributes, range: linkRange)
+        }
+        isApplyingStyle = true
+        attributedStringValue = attributed
+        isApplyingStyle = false
+    }
+
+    private func installTrackingArea() {
+        let trackingRect = bounds.isEmpty ? .zero : bounds
+        let area = NSTrackingArea(
+            rect: trackingRect,
+            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingAreaReference = area
+    }
+
+    private func removeTrackingAreaReference() {
+        if let trackingAreaReference {
+            removeTrackingArea(trackingAreaReference)
+            self.trackingAreaReference = nil
+        }
+    }
+
+    private func setHovering(_ hovered: Bool) {
+        guard isHovered != hovered else {
+            if hovered {
+                NSCursor.pointingHand.set()
+            }
+            return
+        }
+        isHovered = hovered
+        applyStyle(underlined: hovered)
+        if hovered {
+            NSCursor.pointingHand.set()
+        } else {
+            NSCursor.arrow.set()
+        }
+        window?.invalidateCursorRects(for: self)
+    }
+
+    private func synchronizeHoverStateWithMouseLocation() {
+        guard let window else {
+            if isHovered { setHovering(false) }
+            return
+        }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        setHovering(linkHitRect.contains(point))
+    }
+
+    private func tearDownInteraction() {
+        removeTrackingAreaReference()
+        if isHovered {
+            isHovered = false
+            applyStyle(underlined: false)
+        }
+        NSCursor.arrow.set()
+    }
+
+    private func isPointInsideLink(for event: NSEvent) -> Bool {
+        let point: NSPoint
+        if window != nil {
+            point = convert(event.locationInWindow, from: nil)
+        } else {
+            point = event.locationInWindow
+        }
+        return linkHitRect.contains(point)
+    }
+
+    private func updateLinkHitRect() {
+        let previous = linkHitRect
+        linkHitRect = calculateLinkHitRect()
+        guard previous != linkHitRect else { return }
+        window?.invalidateCursorRects(for: self)
+        refreshTrackingArea()
+        synchronizeHoverStateWithMouseLocation()
+    }
+
+    private func refreshTrackingArea() {
+        guard trackingAreaReference != nil || window != nil else { return }
+        removeTrackingAreaReference()
+        installTrackingArea()
+    }
+
+    private func calculateLinkHitRect() -> NSRect {
+        guard hasLink,
+              !bounds.isEmpty,
+              let cell,
+              attributedStringValue.length >= NSMaxRange(linkRange)
+        else {
+            return .zero
+        }
+
+        let titleRect = cell.titleRect(forBounds: bounds)
+        guard !titleRect.isEmpty else { return .zero }
+
+        let textStorage = NSTextStorage(attributedString: attributedStringValue)
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(size: titleRect.size)
+        textContainer.lineFragmentPadding = 0
+        textContainer.lineBreakMode = cell.lineBreakMode
+        textContainer.maximumNumberOfLines = 0
+        layoutManager.addTextContainer(textContainer)
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        var actualRange = NSRange(location: 0, length: 0)
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: linkRange,
+            actualCharacterRange: &actualRange
+        )
+        guard glyphRange.length > 0 else { return .zero }
+        let glyphRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+        guard !glyphRect.isEmpty else { return .zero }
+        return NSRect(
+            x: titleRect.minX + glyphRect.minX,
+            y: titleRect.minY + glyphRect.minY,
+            width: glyphRect.width,
+            height: glyphRect.height
+        )
+        .insetBy(dx: -2, dy: -2)
+        .intersection(bounds)
+    }
+}
+
+private final class BalanceBarRestartConfirmationPanel: NSPanel {
+    var onEscape: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) {
+        onEscape?()
+    }
+}
+
+/// Confirmation sheet with a centered app icon. This is not an `NSAlert`;
+/// the standard alert layout pins the icon to the leading edge.
+final class BalanceBarRestartConfirmationController: NSObject {
+    static let iconIdentifier = "animationModeRestartIcon"
+    static let questionIdentifier = "animationModeRestartQuestion"
+    static let restartIdentifier = "animationModeRestartConfirm"
+    static let cancelIdentifier = "animationModeRestartCancel"
+
+    private(set) var panel: NSPanel
+    let iconView: NSImageView
+    let questionLabel: NSTextField
+    let restartButton: NSButton
+    let cancelButton: NSButton
+    var onRestart: (() -> Void)?
+    var onCancel: (() -> Void)?
+
+    override init() {
+        iconView = NSImageView()
+        questionLabel = NSTextField(wrappingLabelWithString: "")
+        restartButton = NSButton(title: "", target: nil, action: nil)
+        cancelButton = NSButton(title: "", target: nil, action: nil)
+        panel = BalanceBarRestartConfirmationPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 220),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        super.init()
+        configure()
+    }
+
+    func present(over window: NSWindow) {
+        applyLocalizedCopy()
+        restartButton.keyEquivalent = "\r"
+        cancelButton.keyEquivalent = "\u{1b}"
+        cancelButton.keyEquivalentModifierMask = []
+        layoutContent()
+        window.beginSheet(panel) { [weak self] response in
+            guard let self else { return }
+            if response == .continue {
+                self.onRestart?()
+            } else {
+                self.onCancel?()
+            }
+        }
+    }
+
+    func dismiss(restarting: Bool) {
+        guard panel.sheetParent != nil else {
+            panel.orderOut(nil)
+            if restarting {
+                onRestart?()
+            } else {
+                onCancel?()
+            }
+            return
+        }
+        panel.sheetParent?.endSheet(panel, returnCode: restarting ? .continue : .abort)
+    }
+
+    private func configure() {
+        panel.title = ""
+        panel.isFloatingPanel = false
+        panel.becomesKeyOnlyIfNeeded = false
+        panel.isReleasedWhenClosed = false
+        panel.level = .modalPanel
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 220))
+        panel.contentView = content
+
+        iconView.identifier = NSUserInterfaceItemIdentifier(Self.iconIdentifier)
+        iconView.image = Self.applicationIcon()
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        questionLabel.identifier = NSUserInterfaceItemIdentifier(Self.questionIdentifier)
+        questionLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        questionLabel.alignment = .center
+        questionLabel.usesSingleLineMode = false
+        questionLabel.lineBreakMode = .byWordWrapping
+        questionLabel.maximumNumberOfLines = 0
+        questionLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        restartButton.identifier = NSUserInterfaceItemIdentifier(Self.restartIdentifier)
+        restartButton.bezelStyle = .rounded
+        restartButton.keyEquivalent = "\r"
+        restartButton.target = self
+        restartButton.action = #selector(confirmRestart)
+        restartButton.translatesAutoresizingMaskIntoConstraints = false
+
+        cancelButton.identifier = NSUserInterfaceItemIdentifier(Self.cancelIdentifier)
+        cancelButton.bezelStyle = .rounded
+        cancelButton.keyEquivalent = "\u{1b}"
+        cancelButton.keyEquivalentModifierMask = []
+        cancelButton.target = self
+        cancelButton.action = #selector(cancelRestart)
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        (panel as? BalanceBarRestartConfirmationPanel)?.onEscape = { [weak self] in
+            self?.cancelRestart()
+        }
+
+        let buttons = NSStackView(views: [cancelButton, restartButton])
+        buttons.orientation = .horizontal
+        buttons.alignment = .centerY
+        buttons.spacing = 12
+        buttons.translatesAutoresizingMaskIntoConstraints = false
+
+        content.addSubview(iconView)
+        content.addSubview(questionLabel)
+        content.addSubview(buttons)
+
+        NSLayoutConstraint.activate([
+            iconView.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
+            iconView.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 64),
+            iconView.heightAnchor.constraint(equalToConstant: 64),
+            questionLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 16),
+            questionLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
+            questionLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            buttons.topAnchor.constraint(equalTo: questionLabel.bottomAnchor, constant: 20),
+            buttons.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            buttons.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -20)
+        ])
+        applyLocalizedCopy()
+    }
+
+    func applyLocalizedCopy() {
+        questionLabel.stringValue = tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation)
+        restartButton.title = tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm)
+        cancelButton.title = tr(.keyDashboardMenuBarPageAnimationModeRestartCancel)
+        iconView.image = Self.applicationIcon()
+    }
+
+    private func layoutContent() {
+        panel.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    @objc private func confirmRestart() {
+        dismiss(restarting: true)
+    }
+
+    @objc private func cancelRestart() {
+        dismiss(restarting: false)
+    }
+
+    static func applicationIcon() -> NSImage {
+        if let image = NSApp.applicationIconImage, image.size.width > 0, image.size.height > 0 {
+            return image
+        }
+        if let url = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        return NSImage(size: NSSize(width: 64, height: 64))
+    }
+}
