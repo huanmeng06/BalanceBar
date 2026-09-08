@@ -727,8 +727,8 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
-    func testAnimationModeUsesPerformanceNameInEveryBundledLanguage() {
-        let expectedNames: [AppLanguage: String] = [
+    func testAnimationModeUsesPerformanceNameInEveryBundledLanguage() throws {
+        let expectedBaseNames: [AppLanguage: String] = [
             .simplifiedChinese: "性能",
             .traditionalChineseTaiwan: "效能",
             .traditionalChineseHongKong: "效能",
@@ -742,28 +742,117 @@ final class LocalizationTests: XCTestCase {
             .russian: "Производительность",
             .italian: "Prestazioni"
         ]
+        let expectedDisplayNames: [AppLanguage: String] = [
+            .simplifiedChinese: "性能（Beta）",
+            .traditionalChineseTaiwan: "效能（Beta）",
+            .traditionalChineseHongKong: "效能（Beta）",
+            .japanese: "パフォーマンス（Beta）",
+            .english: "Performance (Beta)",
+            .korean: "성능 (Beta)",
+            .spanish: "Rendimiento (Beta)",
+            .german: "Leistung (Beta)",
+            .french: "Performances (Beta)",
+            .portuguese: "Desempenho (Beta)",
+            .russian: "Производительность (Beta)",
+            .italian: "Prestazioni (Beta)"
+        ]
 
         for language in allLanguages {
             let name = tr(
                 .keyDashboardMenuBarPageAnimationModeEfficient,
                 language: language
             )
-            XCTAssertEqual(name, expectedNames[language])
+            let baseName = try XCTUnwrap(expectedBaseNames[language])
+            XCTAssertEqual(name, expectedDisplayNames[language])
+            XCTAssertTrue(name.contains("Beta"))
+            XCTAssertTrue(name.contains(baseName))
             XCTAssertTrue(
                 tr(
                     .keyDashboardMenuBarPageAnimationModeDescription,
                     language: language
-                ).contains(name),
+                ).contains(baseName),
                 "animation mode description must use the renamed mode in \(language.rawValue)"
             )
             XCTAssertTrue(
                 tr(
                     .keyDashboardMenuBarPageAnimationModeFallback,
                     language: language
-                ).contains(name),
+                ).contains(baseName),
                 "animation mode fallback must use the renamed mode in \(language.rawValue)"
             )
         }
+    }
+
+    func testAnimationFrameRateCopyUsesShortTitlesUnitsAndAboutEstimates() {
+        let expectedTitles: [AppLanguage: String] = [
+            .simplifiedChinese: "运行时动画帧率",
+            .traditionalChineseTaiwan: "執行時動畫幀率",
+            .traditionalChineseHongKong: "執行時動畫幀率",
+            .english: "Animation frame rate",
+            .japanese: "アニメーションのフレームレート",
+            .korean: "애니메이션 프레임 속도",
+            .german: "Animationsrate",
+            .french: "Fréquence d’animation",
+            .spanish: "Frecuencia de animación",
+            .italian: "Frequenza animazione",
+            .portuguese: "Taxa de animação",
+            .russian: "Частота анимации"
+        ]
+        let cjkLanguages: Set<AppLanguage> = [
+            .simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong
+        ]
+
+        for language in allLanguages {
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageAnimationFrameRate, language: language),
+                expectedTitles[language]
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageAnimationFrameRateUnit, language: language),
+                cjkLanguages.contains(language) ? (language == .simplifiedChinese ? "帧/秒" : "幀/秒") : "FPS"
+            )
+            let estimate = tr(
+                .keyDashboardMenuBarPageAnimationFrameRateCPUEstimate,
+                arguments: ["8"],
+                language: language
+            )
+            XCTAssertFalse(estimate.hasPrefix("⟦"))
+            XCTAssertTrue(estimate.contains("8"))
+            XCTAssertTrue(estimate.contains("%"))
+        }
+
+        XCTAssertEqual(
+            tr(
+                .keyDashboardMenuBarPageAnimationFrameRateCPUEstimate,
+                arguments: ["8"],
+                language: .simplifiedChinese
+            ),
+            "当前设置下，动画运行时大约占用单核 8%。"
+        )
+        XCTAssertEqual(
+            tr(
+                .keyDashboardMenuBarPageAnimationFrameRateCPUEstimate,
+                arguments: ["8"],
+                language: .english
+            ),
+            "At this setting, animation uses about 8% of one CPU core."
+        )
+        XCTAssertEqual(
+            tr(
+                .keyDashboardMenuBarPageAnimationFrameRateDescription,
+                language: .simplifiedChinese
+            ),
+            "帧率越低越省电、占用越少；帧率越高动画越顺，但占用更高。"
+        )
+        XCTAssertEqual(
+            tr(
+                .keyDashboardMenuBarPageAnimationFrameRateDescription,
+                language: .english
+            ),
+            "Lower frame rates use less power and CPU. Higher frame rates look smoother, but use more."
+        )
     }
 
     func testTaskAnimationTitleAndSubtitleAreLocalizedAcrossAllLanguages() {
@@ -840,7 +929,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 491)
+        XCTAssertEqual(expectedKeys.count, 495)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

@@ -293,6 +293,42 @@ private final class DashboardMenuBarPageActionTarget: NSObject {
     }
 }
 
+/// Keeps the FPS field and stepper aligned and commits on stepper clicks,
+/// Return, and focus loss.
+private final class AnimationFrameRateEditor: NSObject, NSTextFieldDelegate {
+    weak var field: NSTextField?
+    weak var stepper: NSStepper?
+    var onChange: ((Int) -> Void)?
+
+    func setDisplayedValue(_ fps: Int) {
+        let clamped = MenuBarAnimationTiming.clampedFrameRate(fps)
+        if field?.currentEditor() == nil {
+            field?.integerValue = clamped
+        }
+        stepper?.integerValue = clamped
+    }
+
+    @objc func stepperChanged(_ sender: NSStepper) {
+        commit(MenuBarAnimationTiming.clampedFrameRate(sender.integerValue))
+    }
+
+    @objc func fieldAction(_ sender: NSTextField) {
+        commit(MenuBarAnimationFrameRateInput.resolve(sender.stringValue))
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField else { return }
+        commit(MenuBarAnimationFrameRateInput.resolve(field.stringValue))
+    }
+
+    private func commit(_ fps: Int) {
+        let clamped = MenuBarAnimationTiming.clampedFrameRate(fps)
+        field?.integerValue = clamped
+        stepper?.integerValue = clamped
+        onChange?(clamped)
+    }
+}
+
 final class DashboardMenuBarPage {
     static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
@@ -304,6 +340,8 @@ final class DashboardMenuBarPage {
     static let iconDisplayModeIdentifier = AppPreferences.menuBarIconDisplayModeKey
     static let iconDisplayDelayIdentifier = AppPreferences.menuBarIconDisplayDelayKey
     static let animationModeIdentifier = AppPreferences.menuBarAnimationModeKey
+    static let animationFrameRateIdentifier = AppPreferences.menuBarAnimationFrameRateKey
+    static let animationFrameRateRowIdentifier = AppPreferences.menuBarAnimationFrameRateKey + "Row"
     static let animationFallbackWarningIdentifier = "menuBarAnimationFallbackWarning"
     static let quotaWindowPreferenceIdentifier = AppPreferences.menuBarQuotaWindowPreferenceKey
     static let quotaResetDisplayModeIdentifier = AppPreferences.menuBarQuotaResetDisplayModeKey
@@ -526,6 +564,7 @@ final class DashboardMenuBarPage {
         let iconDisplayDelay: String
         let animationEnabled: Bool
         let animationMode: String
+        let animationFrameRate: Int
         let widthAdjustment: Double
         let horizontalPadding: CGFloat
         let synchronizeWidthSlider: Bool
@@ -562,6 +601,7 @@ final class DashboardMenuBarPage {
         let animationSpriteImageSize: NSSize
         let animationSpriteImageIsTemplate: Bool
         let animationFallbackActive: Bool
+        let animationFrameRate: Int
     }
 
     private struct RefreshSignature: Equatable {
@@ -609,10 +649,17 @@ final class DashboardMenuBarPage {
     private weak var iconSizePresetControl: NSPopUpButton?
     private weak var iconDisplayModeControl: NSPopUpButton?
     private weak var iconDisplayDelayControl: NSPopUpButton?
+    private var animationFrameRate = MenuBarAnimationTiming.defaultFrameRate
+    private let animationFrameRateEditor = AnimationFrameRateEditor()
     private weak var animationModeControl: NSPopUpButton?
+    private weak var animationFrameRateField: NSTextField?
+    private weak var animationFrameRateStepper: NSStepper?
+    private weak var animationFrameRateUnitLabel: NSTextField?
+    private weak var animationFrameRateSubtitleLabel: NSTextField?
     private weak var taskStatusIconRow: NSView?
     private weak var animationRow: NSView?
     private weak var animationModeRow: NSView?
+    private weak var animationFrameRateRow: NSView?
     private weak var animationFallbackWarningLabel: NSTextField?
     private weak var animationFallbackWarningRow: NSView?
     private weak var iconDisplayModeRow: NSView?
@@ -774,11 +821,16 @@ final class DashboardMenuBarPage {
                 return
             }
             previewAnimatedIconHost.isHidden = false
+            previewAnimatedIconHost.rotationDuration = MenuBarAnimationTiming.rotationDuration(
+                fps: animationFrameRate
+            )
             previewAnimatedIconHost.installRotationAnimation()
         case .claudeThinking, .grokThinking, .grokThinkingBitmap:
             previewAnimatedIconHost.removeRotationAnimation()
             previewAnimatedIconHost.isHidden = true
-            previewClaudeAnimatedIconHost.timing = kind == .claudeThinking ? .claude : .grok
+            previewClaudeAnimatedIconHost.timing = kind == .claudeThinking
+                ? .claude
+                : .grok(frameRate: animationFrameRate)
             guard let spriteImage = spriteImage ?? lastPreviewSpriteImage else {
                 previewClaudeAnimatedIconHost.removeThinkingAnimation()
                 previewClaudeAnimatedIconHost.isHidden = true
@@ -1107,6 +1159,10 @@ final class DashboardMenuBarPage {
             relay: input.relay
         )
         self.animationModeControl = animationModeControl
+        let animationFrameRateControl = makeAnimationFrameRateControl(
+            value: input.preferences.menuBarAnimationFrameRate,
+            relay: input.relay
+        )
         let animationFallbackWarningLabel = NSTextField(
             wrappingLabelWithString: Self.animationFallbackWarningText()
         )
@@ -1304,6 +1360,31 @@ final class DashboardMenuBarPage {
             control: animationModeControl
         )
         self.animationModeRow = animationModeRow
+        let animationFrameRateSubtitleLabel = DashboardSettingsComponents.makeSubtitleLabel(
+            LocalizedSubtitle(
+                text: Self.animationFrameRateSubtitle(
+                    mode: input.preferences.menuBarAnimationMode,
+                    fps: input.preferences.menuBarAnimationFrameRate
+                )
+            )
+        )
+        animationFrameRateSubtitleLabel.identifier = NSUserInterfaceItemIdentifier(
+            Self.animationFrameRateIdentifier + "Subtitle"
+        )
+        self.animationFrameRateSubtitleLabel = animationFrameRateSubtitleLabel
+        let animationFrameRateRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageAnimationFrameRate),
+            subtitle: Self.animationFrameRateSubtitle(
+                mode: input.preferences.menuBarAnimationMode,
+                fps: input.preferences.menuBarAnimationFrameRate
+            ),
+            subtitleLabel: animationFrameRateSubtitleLabel,
+            control: animationFrameRateControl
+        )
+        animationFrameRateRow.identifier = NSUserInterfaceItemIdentifier(
+            Self.animationFrameRateRowIdentifier
+        )
+        self.animationFrameRateRow = animationFrameRateRow
         let previewSection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPagePreview), rows: [
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardMenuBarPageCurrentLayout),
@@ -1349,6 +1430,7 @@ final class DashboardMenuBarPage {
                 taskStatusIconRow,
                 animationRow,
                 animationModeRow,
+                animationFrameRateRow,
                 animationFallbackWarningRow
             ],
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
@@ -1556,6 +1638,7 @@ final class DashboardMenuBarPage {
             iconDisplayDelay: preferences.menuBarIconDisplayDelay.rawValue,
             animationEnabled: preferences.animateCodexActivity,
             animationMode: preferences.menuBarAnimationMode.rawValue,
+            animationFrameRate: preferences.menuBarAnimationFrameRate,
             widthAdjustment: widthAdjustment,
             horizontalPadding: preferences.menuBarHorizontalPadding,
             synchronizeWidthSlider: transientWidthAdjustment == nil
@@ -1583,7 +1666,8 @@ final class DashboardMenuBarPage {
             animationSpriteImageIdentity: animationSpriteImage.map(ObjectIdentifier.init),
             animationSpriteImageSize: animationSpriteImage?.size ?? .zero,
             animationSpriteImageIsTemplate: animationSpriteImage?.isTemplate ?? false,
-            animationFallbackActive: animationFallbackActive
+            animationFallbackActive: animationFallbackActive,
+            animationFrameRate: preferences.menuBarAnimationFrameRate
         )
         let refreshSignature = RefreshSignature(
             warning: warningSignature,
@@ -1772,7 +1856,7 @@ final class DashboardMenuBarPage {
         }
         animationSwitch?.state = preferences.animateCodexActivity ? .on : .off
         if let animationModeControl,
-           let selectedIndex = MenuBarAnimationMode.allCases.firstIndex(
+           let selectedIndex = MenuBarAnimationMode.displayOrder.firstIndex(
                of: preferences.menuBarAnimationMode
            ) {
             if animationModeControl.indexOfSelectedItem != selectedIndex {
@@ -1780,6 +1864,20 @@ final class DashboardMenuBarPage {
             }
             animationModeControl.synchronizeTitleAndSelectedItem()
         }
+        animationFrameRate = preferences.menuBarAnimationFrameRate
+        animationFrameRateEditor.setDisplayedValue(preferences.menuBarAnimationFrameRate)
+        animationFrameRateUnitLabel?.stringValue = tr(
+            .keyDashboardMenuBarPageAnimationFrameRateUnit
+        )
+        DashboardSettingsComponents.updateSubtitleLabel(
+            animationFrameRateSubtitleLabel,
+            with: LocalizedSubtitle(
+                text: Self.animationFrameRateSubtitle(
+                    mode: preferences.menuBarAnimationMode,
+                    fps: preferences.menuBarAnimationFrameRate
+                )
+            )
+        )
         updateIconAndTaskStatusVisibility(
             showTaskStatusIcon: preferences.showMenuBarIcon,
             displayMode: preferences.menuBarIconDisplayMode,
@@ -2200,15 +2298,19 @@ final class DashboardMenuBarPage {
         iconDisplayDelayRow?.isHidden = !showDelay
         animationModeRow?.isHidden = !showAnimationMode
         animationModeControl?.isEnabled = showAnimationMode
+        animationFrameRateRow?.isHidden = !showAnimationMode
+        animationFrameRateField?.isEnabled = showAnimationMode
+        animationFrameRateStepper?.isEnabled = showAnimationMode
         animationFallbackWarningRow?.isHidden = !showFallbackWarning
         animationFallbackWarningLabel?.stringValue = Self.animationFallbackWarningText()
         updatePreviewSeparators()
 
         // Delay now lives on the preview card. Icon rows are task status →
-        // animation → animation mode → fallback warning.
+        // animation → animation mode → frame rate → fallback warning.
         let visibleRows = [
             true,
             showDependentRows,
+            showAnimationMode,
             showAnimationMode,
             showFallbackWarning
         ]
@@ -2497,13 +2599,13 @@ final class DashboardMenuBarPage {
     ) -> NSPopUpButton {
         let control = DashboardSettingsComponents.makePopUpButton(
             identifier: Self.animationModeIdentifier,
-            items: MenuBarAnimationMode.allCases.map { mode in
+            items: MenuBarAnimationMode.displayOrder.map { mode in
                 DashboardSettingsComponents.PopUpItem(
                     title: Self.animationModeLabel(mode),
                     representedObject: mode.rawValue
                 )
             },
-            selectedIndex: MenuBarAnimationMode.allCases.firstIndex(of: value),
+            selectedIndex: MenuBarAnimationMode.displayOrder.firstIndex(of: value),
             target: relay,
             action: #selector(DashboardPreferencePageRelay.menuBarAnimationMode(_:))
         )
@@ -2513,6 +2615,80 @@ final class DashboardMenuBarPage {
         ).isActive = true
         control.toolTip = Self.animationModeDescription()
         return control
+    }
+
+    private func makeAnimationFrameRateControl(
+        value: Int,
+        relay: DashboardPreferencePageRelay
+    ) -> NSView {
+        let clamped = MenuBarAnimationTiming.clampedFrameRate(value)
+        let field = NSTextField()
+        field.identifier = NSUserInterfaceItemIdentifier(Self.animationFrameRateIdentifier)
+        field.alignment = .right
+        field.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        field.isEditable = true
+        field.isSelectable = true
+        field.usesSingleLineMode = true
+        field.integerValue = clamped
+        field.toolTip = tr(.keyDashboardMenuBarPageAnimationFrameRateDescription)
+        field.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        field.setContentHuggingPriority(.required, for: .horizontal)
+        field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        field.delegate = animationFrameRateEditor
+        field.target = animationFrameRateEditor
+        field.action = #selector(AnimationFrameRateEditor.fieldAction(_:))
+        animationFrameRateField = field
+
+        let stepper = NSStepper()
+        stepper.identifier = NSUserInterfaceItemIdentifier(
+            Self.animationFrameRateIdentifier + "Stepper"
+        )
+        stepper.minValue = Double(MenuBarAnimationTiming.minimumFrameRate)
+        stepper.maxValue = Double(MenuBarAnimationTiming.maximumFrameRate)
+        stepper.increment = 1
+        stepper.valueWraps = false
+        stepper.integerValue = clamped
+        stepper.target = animationFrameRateEditor
+        stepper.action = #selector(AnimationFrameRateEditor.stepperChanged(_:))
+        animationFrameRateStepper = stepper
+
+        let unit = NSTextField(labelWithString: tr(.keyDashboardMenuBarPageAnimationFrameRateUnit))
+        unit.font = .systemFont(ofSize: 13)
+        unit.setContentHuggingPriority(.required, for: .horizontal)
+        unit.setContentCompressionResistancePriority(.required, for: .horizontal)
+        animationFrameRateUnitLabel = unit
+
+        animationFrameRateEditor.field = field
+        animationFrameRateEditor.stepper = stepper
+        animationFrameRateEditor.onChange = { [weak relay] fps in
+            relay?.commitMenuBarAnimationFrameRate(fps)
+        }
+
+        let stack = NSStackView(views: [field, stepper, unit])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        stack.setContentHuggingPriority(.required, for: .horizontal)
+        stack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return stack
+    }
+
+    static func animationFrameRateSubtitle(
+        mode: MenuBarAnimationMode,
+        fps: Int,
+        language: AppLanguage = .selected
+    ) -> String {
+        let estimate = MenuBarAnimationCPUEstimate.percent(mode: mode, fps: fps)
+        let line1 = tr(
+            .keyDashboardMenuBarPageAnimationFrameRateDescription,
+            language: language
+        )
+        let line2 = tr(
+            .keyDashboardMenuBarPageAnimationFrameRateCPUEstimate,
+            arguments: ["\(estimate)"],
+            language: language
+        )
+        return "\(line1)\n\(line2)"
     }
 
     private func makeQuotaResetDisplayModeControl(

@@ -6,16 +6,16 @@ final class MenuBarAnimationTests: XCTestCase {
     func testCodexAnimationKeepsItsDiscreteFrameCountDurationAndOrder() {
         XCTAssertEqual(RotatingTemplateImageView.frameCount, MenuBarAnimationTiming.frameCount)
         XCTAssertEqual(RotatingTemplateImageView.frameCount, 36)
-        XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.2, accuracy: 0.000_001)
+        XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.5, accuracy: 0.000_001)
         XCTAssertEqual(
             RotatingTemplateImageView.rotationFrameInterval,
-            1.2 / 36,
+            1.5 / 36,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
             Double(RotatingTemplateImageView.frameCount)
                 / RotatingTemplateImageView.rotationDuration,
-            30,
+            24,
             accuracy: 0.000_001
         )
 
@@ -63,14 +63,19 @@ final class MenuBarAnimationTests: XCTestCase {
         )
     }
 
-    func testCodexBackendsShareTheFixedThirtyHertzTimingContract() {
+    func testCodexBackendsShareTheDiscreteThirtySixStateCadenceContract() {
         XCTAssertEqual(MenuBarAnimationTiming.frameCount, 36)
-        XCTAssertEqual(MenuBarAnimationTiming.rotationDuration, 1.2, accuracy: 0.000_001)
+        XCTAssertEqual(MenuBarAnimationTiming.defaultFrameRate, 24)
+        XCTAssertEqual(MenuBarAnimationTiming.rotationDuration, 1.5, accuracy: 0.000_001)
         XCTAssertEqual(
             Double(MenuBarAnimationTiming.frameCount) / MenuBarAnimationTiming.rotationDuration,
-            30,
+            24,
             accuracy: 0.000_001
         )
+        XCTAssertEqual(MenuBarAnimationTiming.frameInterval(fps: 10), 0.1, accuracy: 0.000_001)
+        XCTAssertEqual(MenuBarAnimationTiming.rotationDuration(fps: 10), 3.6, accuracy: 0.000_001)
+        XCTAssertEqual(MenuBarAnimationTiming.clampedFrameRate(5), 6)
+        XCTAssertEqual(MenuBarAnimationTiming.clampedFrameRate(61), 60)
         XCTAssertEqual(
             MenuBarCodexAnimationBackend(mode: .efficient),
             .nativeCoreAnimation
@@ -88,11 +93,11 @@ final class MenuBarAnimationTests: XCTestCase {
             "D0 must continue to use the pre-rendered bitmap frame path"
         )
         XCTAssertEqual(RotatingTemplateImageView.frameCount, 36)
-        XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.2, accuracy: 0.000_001)
+        XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.5, accuracy: 0.000_001)
         XCTAssertEqual(
             Double(RotatingTemplateImageView.frameCount)
                 / RotatingTemplateImageView.rotationDuration,
-            30,
+            24,
             accuracy: 0.000_001
         )
 
@@ -214,7 +219,7 @@ final class MenuBarAnimationTests: XCTestCase {
             0,
             "positive layer rotation is the clockwise screen-space direction"
         )
-        XCTAssertEqual(animation.duration, 1.2, accuracy: 0.000_001)
+        XCTAssertEqual(animation.duration, 1.5, accuracy: 0.000_001)
         XCTAssertEqual(animation.calculationMode, .discrete)
         XCTAssertEqual(animation.repeatCount, Float.infinity)
         XCTAssertEqual(animation.values?.count, 36)
@@ -614,7 +619,12 @@ final class MenuBarAnimationTests: XCTestCase {
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: directoryURL.path))
         XCTAssertEqual(GrokThinkingAnimationTiming.frameCount, 30)
-        XCTAssertEqual(GrokThinkingAnimationTiming.duration, 2.40, accuracy: 0.000_001)
+        XCTAssertEqual(GrokThinkingAnimationTiming.duration, 1.25, accuracy: 0.000_001)
+        XCTAssertEqual(
+            GrokThinkingAnimationTiming.duration(fps: 30),
+            1.0,
+            accuracy: 0.000_001
+        )
 
         GrokThinkingSprite.resetCachesForTesting()
         let sprite = try XCTUnwrap(
@@ -639,7 +649,7 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(GrokThinkingSprite.synchronizedStripIndex(for: 29), 0)
         XCTAssertEqual(GrokThinkingSprite.synchronizedStripIndex(for: 14), 15)
         XCTAssertEqual(
-            MenuBarSpriteAnimationTiming.grok.restingFrameIndex,
+            MenuBarSpriteAnimationTiming.grok().restingFrameIndex,
             GrokThinkingAnimationTiming.restingFrameIndex
         )
     }
@@ -944,7 +954,8 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(animationSource.contains("enum GrokThinkingSprite"))
         XCTAssertTrue(animationSource.contains("enum GrokThinkingAnimationTiming"))
         XCTAssertTrue(animationSource.contains("case grokThinking"))
-        XCTAssertTrue(animationSource.contains("static let grok = MenuBarSpriteAnimationTiming"))
+        XCTAssertTrue(animationSource.contains("static func grok("))
+        XCTAssertTrue(animationSource.contains("frameRate: Int = MenuBarAnimationTiming.defaultFrameRate"))
         let compositionPreviewSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "work/balance-bar/Sources/UI/Dashboard/DashboardCompositionController.swift"
@@ -1053,5 +1064,96 @@ final class MenuBarAnimationTests: XCTestCase {
         let activeGate = try XCTUnwrap(spritePreviewPath.range(of: "if active {"))
         XCTAssertGreaterThan(iconCacheAssign.lowerBound, activeGate.lowerBound)
         XCTAssertTrue(spritePreviewPath.contains("menuBarPreviewAnimationSpriteImage = nil"))
+    }
+
+    func testAnimationCPUEstimateUsesTheDocumentedStaticTable() {
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 6), 4)
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 10), 5)
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 24), 8)
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 30), 10)
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 24), 4)
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 30), 4)
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 60), 6)
+    }
+
+    func testAnimationFrameRateInputClampsIntegersAndDefaultsInvalidValues() {
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve(""), 24)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("  "), 24)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("abc"), 24)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("24.5"), 24)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("5"), 6)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("61"), 60)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("10"), 10)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve(" 30 "), 30)
+    }
+
+    func testSynchronizedRotationTimerFollowsFrameRateWithoutResettingFrameIndex() throws {
+        let imageView = RotatingTemplateImageView(
+            frame: NSRect(x: 0, y: 0, width: 16, height: 16)
+        )
+        let source = NSImage(size: NSSize(width: 16, height: 16))
+        source.isTemplate = true
+        imageView.setSourceImage(source)
+        imageView.startRotating()
+        let timer = try XCTUnwrap(imageView.rotationTimerForTesting)
+        XCTAssertEqual(timer.timeInterval, 1.0 / 24.0, accuracy: 0.000_001)
+
+        imageView.setCurrentAnimationFrameIndexForTesting(12)
+        imageView.setFrameRate(10)
+        let retimed = try XCTUnwrap(imageView.rotationTimerForTesting)
+        XCTAssertEqual(retimed.timeInterval, 0.1, accuracy: 0.000_001)
+        XCTAssertEqual(imageView.currentAnimationFrameIndex, 12)
+        XCTAssertEqual(imageView.frameRateForTesting, 10)
+        imageView.stopRotating()
+    }
+
+    func testNativeRotationDurationFollowsFrameRate() throws {
+        let host = MenuBarNativeAnimatedIconHostView(
+            frame: NSRect(x: 0, y: 0, width: 16, height: 16)
+        )
+        host.updateGeometry(
+            frame: NSRect(x: 0, y: 0, width: 16, height: 16),
+            contentsScale: 2
+        )
+        let sourceImage = NSImage(size: NSSize(width: 16, height: 16))
+        sourceImage.isTemplate = true
+        XCTAssertTrue(
+            host.updateContents(
+                sourceImage: sourceImage,
+                appearance: NSAppearance(named: .aqua)!,
+                contentsScale: 2
+            )
+        )
+        host.installRotationAnimation()
+        XCTAssertEqual(
+            try XCTUnwrap(host.rotationAnimationForTesting).duration,
+            1.5,
+            accuracy: 0.000_001
+        )
+        host.rotationDuration = MenuBarAnimationTiming.rotationDuration(fps: 12)
+        XCTAssertEqual(
+            try XCTUnwrap(host.rotationAnimationForTesting).duration,
+            3.0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(host.rotationAnimationForTesting?.values?.count, 36)
+        host.removeRotationAnimation()
+    }
+
+    func testGrokThinkingCadenceFollowsFrameRateWhileClaudeStaysFixed() {
+        XCTAssertEqual(
+            MenuBarSpriteAnimationTiming.grok(frameRate: 24).duration,
+            1.25,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            MenuBarSpriteAnimationTiming.grok(frameRate: 30).duration,
+            1.0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(MenuBarSpriteAnimationTiming.grok(frameRate: 10).frameCount, 30)
+        XCTAssertEqual(MenuBarSpriteAnimationTiming.claude.duration, 0.81, accuracy: 0.000_001)
+        XCTAssertEqual(ClaudeThinkingAnimationTiming.frameCount, 9)
+        XCTAssertEqual(ClaudeThinkingAnimationTiming.duration, 0.81, accuracy: 0.000_001)
     }
 }

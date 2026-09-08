@@ -47,6 +47,7 @@ struct DashboardCompositionActions {
     let onMenuBarIconDisplayModeChanged: (MenuBarIconDisplayMode) -> Void
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
     let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
+    let onMenuBarAnimationFrameRateChanged: (Int) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
     let onMenuBarLunaReserveResetTimeModeChanged: (LunaReserveResetTimeMode) -> Void
@@ -110,6 +111,7 @@ final class DashboardCompositionController {
             onMenuBarIconDisplayModeChanged: actions.onMenuBarIconDisplayModeChanged,
             onMenuBarIconDisplayDelayChanged: actions.onMenuBarIconDisplayDelayChanged,
             onMenuBarAnimationModeChanged: actions.onMenuBarAnimationModeChanged,
+            onMenuBarAnimationFrameRateChanged: actions.onMenuBarAnimationFrameRateChanged,
             onMenuBarQuotaWindowPreferenceChanged: actions.onMenuBarQuotaWindowPreferenceChanged,
             onMenuBarQuotaResetDisplayModeChanged: actions.onMenuBarQuotaResetDisplayModeChanged,
             onMenuBarLunaReserveResetTimeModeChanged: actions.onMenuBarLunaReserveResetTimeModeChanged,

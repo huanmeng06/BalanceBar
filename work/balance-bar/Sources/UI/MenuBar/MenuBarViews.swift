@@ -111,7 +111,22 @@ final class MenuBarBitmapRenderView: NSView {
 final class MenuBarNativeAnimatedIconHostView: NSView {
     static let rotationAnimationKey = "balancebar.nativeCodexRotation"
     static let rotationFrameCount = MenuBarAnimationTiming.frameCount
-    static let rotationDuration = MenuBarAnimationTiming.rotationDuration
+    static var rotationDuration: TimeInterval { MenuBarAnimationTiming.rotationDuration }
+
+    var rotationDuration: TimeInterval = MenuBarAnimationTiming.rotationDuration {
+        didSet {
+            let normalized = max(rotationDuration, MenuBarAnimationTiming.frameInterval(fps: MenuBarAnimationTiming.maximumFrameRate))
+            if abs(normalized - rotationDuration) > 0.000_001 {
+                rotationDuration = normalized
+                return
+            }
+            guard abs(oldValue - rotationDuration) > 0.000_001 else { return }
+            guard hasRotationAnimation else { return }
+            let phase = currentRotationPhaseForTesting ?? 0
+            removeRotationAnimation()
+            installRotationAnimation(phase: phase)
+        }
+    }
 
     /// CALayer's positive Z rotation advances clockwise in the menu-bar's
     /// screen presentation. Keeping the values in one helper makes the visual
@@ -234,9 +249,9 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         return true
     }
 
-    /// Installs the fixed 36-state, 1.2-second CA animation exactly once.
-    /// `phase` is normalized to one cycle and is used only when a host is
-    /// recreated at a visual boundary.
+    /// Installs the 36-state CA animation exactly once for the current
+    /// duration. `phase` is normalized to one cycle and is used only when a
+    /// host is recreated at a visual boundary or the FPS changes.
     func installRotationAnimation(phase: Double = 0) {
         guard !hasRotationAnimation else { return }
         let normalizedPhase = phase.truncatingRemainder(dividingBy: 1)
@@ -246,11 +261,11 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         animation.keyTimes = (0..<Self.rotationFrameCount).map { index in
             NSNumber(value: Double(index) / Double(Self.rotationFrameCount))
         }
-        animation.duration = Self.rotationDuration
+        animation.duration = rotationDuration
         animation.repeatCount = .infinity
         animation.calculationMode = .discrete
         animation.beginTime = iconLayer.convertTime(CACurrentMediaTime(), from: nil)
-            - normalizedPhase * Self.rotationDuration
+            - normalizedPhase * rotationDuration
         animation.isRemovedOnCompletion = false
         iconLayer.add(animation, forKey: Self.rotationAnimationKey)
         rotationAnimationInstallCount += 1
@@ -347,15 +362,38 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
     var timing: MenuBarSpriteAnimationTiming = .claude {
         didSet {
             guard oldValue != timing else { return }
-            if spriteLayer.animation(forKey: oldValue.animationKey) != nil {
+            let wasAnimating = spriteLayer.animation(forKey: oldValue.animationKey) != nil
+            let phase: Double
+            if wasAnimating, oldValue.duration > 0 {
+                let localNow = spriteLayer.convertTime(CACurrentMediaTime(), from: nil)
+                if let animation = spriteLayer.animation(forKey: oldValue.animationKey)
+                    as? CAKeyframeAnimation,
+                   animation.duration > 0 {
+                    let elapsed = localNow - animation.beginTime
+                    let remainder = elapsed.truncatingRemainder(dividingBy: animation.duration)
+                    phase = (remainder < 0 ? remainder + animation.duration : remainder)
+                        / animation.duration
+                } else {
+                    phase = 0
+                }
+            } else {
+                phase = 0
+            }
+            if wasAnimating {
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
                 spriteLayer.removeAnimation(forKey: oldValue.animationKey)
                 spriteLayer.transform = CATransform3DIdentity
                 CATransaction.commit()
             }
-            configuredSpriteImage = nil
-            configuredFrameSize = .zero
+            if oldValue.frameCount != timing.frameCount
+                || oldValue.animationKey != timing.animationKey {
+                configuredSpriteImage = nil
+                configuredFrameSize = .zero
+            }
+            if wasAnimating, spriteLayer.contents != nil {
+                installThinkingAnimation(phase: phase)
+            }
         }
     }
 

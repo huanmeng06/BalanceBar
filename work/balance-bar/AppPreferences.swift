@@ -152,7 +152,11 @@ enum MenuBarAnimationMode: String, CaseIterable, Equatable {
     case efficient
     case synchronized
 
-    static let defaultValue: Self = .efficient
+    static let defaultValue: Self = .synchronized
+
+    /// Dropdown order is explicit so it does not depend on enum declaration
+    /// order. Internal `rawValue` values stay `efficient` / `synchronized`.
+    static let displayOrder: [Self] = [.synchronized, .efficient]
 }
 
 enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
@@ -280,6 +284,9 @@ final class AppPreferences {
     static let menuBarIconDisplayDelayDefault: MenuBarIconDisplayDelay = .defaultValue
     static let menuBarAnimationModeKey = "menuBarAnimationMode"
     static let menuBarAnimationModeDefault: MenuBarAnimationMode = .defaultValue
+    static let menuBarAnimationFrameRateKey = "menuBarAnimationFrameRate"
+    static let menuBarAnimationFrameRateDefault = MenuBarAnimationTiming.defaultFrameRate
+    static let menuBarAnimationFrameRateRange = MenuBarAnimationTiming.validFrameRateRange
     static let defaultBalanceDisplayThreshold = 0.10
     static let minimumBalanceDisplayThreshold = 0.01
     static let validOpenCodexDashboardPortRange = 1...65535
@@ -450,6 +457,20 @@ final class AppPreferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuBarAnimationModeKey)
+        }
+    }
+    var menuBarAnimationFrameRate: Int {
+        get {
+            guard let value = storedMenuBarAnimationFrameRate() else {
+                return Self.menuBarAnimationFrameRateDefault
+            }
+            return value
+        }
+        set {
+            defaults.set(
+                MenuBarAnimationTiming.clampedFrameRate(newValue),
+                forKey: Self.menuBarAnimationFrameRateKey
+            )
         }
     }
     var updateChannel: UpdateChannel {
@@ -772,6 +793,26 @@ final class AppPreferences {
             return nil
         }
         return Self.normalizedMenuBarFontSize(number.doubleValue, range: Self.menuBarFontSizeRange)
+    }
+
+    /// Missing, non-integer, boolean, or out-of-range values are corrupt and
+    /// fall back to the product default. The settings field clamps on commit.
+    private func storedMenuBarAnimationFrameRate() -> Int? {
+        guard let object = defaults.object(forKey: Self.menuBarAnimationFrameRateKey) else {
+            return nil
+        }
+        if CFGetTypeID(object as CFTypeRef) == CFBooleanGetTypeID() {
+            return nil
+        }
+        guard let number = object as? NSNumber else {
+            return nil
+        }
+        let value = number.intValue
+        guard number.doubleValue == Double(value),
+              Self.menuBarAnimationFrameRateRange.contains(value) else {
+            return nil
+        }
+        return value
     }
 }
 
