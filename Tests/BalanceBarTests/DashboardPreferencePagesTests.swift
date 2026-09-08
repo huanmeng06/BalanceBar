@@ -4087,6 +4087,106 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
     }
 
+    func testAnimationFrameRateFieldLiveClampsValuesAboveMaximumWithoutWaitingForBlur() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.AnimationFrameRateLiveClamp.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let relay = DashboardPreferencePageRelay()
+        let controller = DashboardMenuBarPage()
+        func refreshPage() {
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+        }
+        relay.onMenuBarAnimationFrameRateChanged = { fps in
+            preferences.menuBarAnimationFrameRate = fps
+            refreshPage()
+        }
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+        let field = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier }
+        )
+        let animationFrameRateRow = try XCTUnwrap(
+            descendant(
+                withIdentifier: DashboardMenuBarPage.animationFrameRateRowIdentifier,
+                in: page
+            )
+        )
+        let subtitleIdentifier = DashboardMenuBarPage.animationFrameRateIdentifier + "Subtitle"
+        func subtitleText() -> String? {
+            descendants(of: animationFrameRateRow)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == subtitleIdentifier }?
+                .stringValue
+        }
+
+        XCTAssertEqual(field.integerValue, 24)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
+
+        field.stringValue = "152"
+        field.delegate?.controlTextDidChange?(
+            Notification(name: NSControl.textDidChangeNotification, object: field)
+        )
+        XCTAssertEqual(field.stringValue, "30")
+        XCTAssertEqual(field.integerValue, 30)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("16%–20%"))
+
+        field.stringValue = "31"
+        field.delegate?.controlTextDidChange?(
+            Notification(name: NSControl.textDidChangeNotification, object: field)
+        )
+        XCTAssertEqual(field.stringValue, "30")
+        XCTAssertEqual(field.integerValue, 30)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+
+        field.stringValue = "1"
+        field.delegate?.controlTextDidChange?(
+            Notification(name: NSControl.textDidChangeNotification, object: field)
+        )
+        XCTAssertEqual(field.stringValue, "1")
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+
+        field.stringValue = "15"
+        field.delegate?.controlTextDidChange?(
+            Notification(name: NSControl.textDidChangeNotification, object: field)
+        )
+        XCTAssertEqual(field.stringValue, "15")
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+
+        field.stringValue = "5"
+        field.delegate?.controlTextDidChange?(
+            Notification(name: NSControl.textDidChangeNotification, object: field)
+        )
+        XCTAssertEqual(field.stringValue, "5")
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+    }
+
     func testRelayRoutesOffsetAdjustAndResetOnce() {
         let relay = DashboardPreferencePageRelay()
         var adjustments: [(String, Int)] = []

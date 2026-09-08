@@ -297,6 +297,7 @@ private final class DashboardMenuBarPageActionTarget: NSObject {
 private final class AnimationFrameRateEditor: NSObject, NSTextFieldDelegate {
     weak var field: NSTextField?
     var onChange: ((Int) -> Void)?
+    private var isRewritingDisplayedValue = false
 
     func setDisplayedValue(_ fps: Int) {
         let clamped = MenuBarAnimationTiming.clampedFrameRate(fps)
@@ -307,6 +308,22 @@ private final class AnimationFrameRateEditor: NSObject, NSTextFieldDelegate {
 
     @objc func fieldAction(_ sender: NSTextField) {
         commit(MenuBarAnimationFrameRateInput.resolve(sender.stringValue))
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard !isRewritingDisplayedValue, let field = obj.object as? NSTextField else { return }
+        let trimmed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = Int(trimmed),
+              value > MenuBarAnimationTiming.maximumFrameRate else {
+            return
+        }
+        isRewritingDisplayedValue = true
+        commit(MenuBarAnimationTiming.maximumFrameRate)
+        isRewritingDisplayedValue = false
+        if let editor = field.currentEditor() {
+            let end = (field.stringValue as NSString).length
+            editor.selectedRange = NSRange(location: end, length: 0)
+        }
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
