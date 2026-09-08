@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import XCTest
 @testable import BalanceBar
 
@@ -836,7 +837,7 @@ final class StatusItemControllerTests: XCTestCase {
         )
         XCTAssertNotNil(host.rotationAnimationForTesting)
         XCTAssertTrue(host.subviews.isEmpty)
-        try assertSourceIconCutoutIfHostIsSibling(controller, host: host)
+        try assertSourceLocalGPresentation(controller, host: host)
         XCTAssertTrue(
             controller.menuBarButtonImageForTesting === staticImage,
             "running CA presentation must keep the canonical static GPT+text bitmap"
@@ -880,7 +881,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNil(host.superview)
         XCTAssertTrue(host.isHidden)
         XCTAssertNil(host.rotationAnimationForTesting)
-        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
+        try assertSourceLocalGCleared(controller)
         XCTAssertTrue(controller.menuBarButtonImageForTesting === staticImage)
     }
 
@@ -971,7 +972,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertFalse(host.isHidden)
         XCTAssertNotNil(host.rotationAnimationForTesting)
         XCTAssertTrue(host.subviews.isEmpty)
-        try assertSourceIconCutoutIfHostIsSibling(controller, host: host)
+        try assertSourceLocalGPresentation(controller, host: host)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
 
         let installCount = host.rotationAnimationInstallCount
@@ -1001,7 +1002,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNil(host.superview)
         XCTAssertTrue(host.isHidden)
         XCTAssertNil(host.rotationAnimationForTesting)
-        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
+        try assertSourceLocalGCleared(controller)
 
         controller.updateActivity(
             activeClient: .codex,
@@ -1017,11 +1018,16 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNotNil(
             controller.nativeCodexAnimationHostForTesting?.rotationAnimationForTesting
         )
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
+        )
 
         controller.setCodexAnimationBackend(.stableBitmap)
         XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
         XCTAssertNil(controller.nativeCodexAnimationHostForTesting?.superview)
         XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+        try assertSourceLocalGCleared(controller)
 
         controller.setCodexAnimationBackend(.nativeCoreAnimation)
         try assertCanonicalStaticNativeImage(
@@ -1032,6 +1038,10 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(controller.nativeCodexAnimationHostForTesting?.superview != nil)
         XCTAssertNotNil(
             controller.nativeCodexAnimationHostForTesting?.rotationAnimationForTesting
+        )
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
         )
     }
 
@@ -1107,9 +1117,19 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(host.timing.frameCount, 9)
         XCTAssertEqual(MenuBarClaudeAnimatedIconHostView.thinkingFrameCount, 9)
         XCTAssertTrue(host.superview != nil)
+        XCTAssertTrue(host.superview is NSStatusBarButton)
         XCTAssertFalse(host.isHidden)
         XCTAssertNotNil(host.thinkingAnimationForTesting)
         XCTAssertTrue(controller.menuBarButtonImageForTesting !== staticBitmap)
+        XCTAssertTrue(
+            controller.menuBarButtonImageForTesting
+                === controller.cachedMenuBarTextBitmapForTesting,
+            "Claude must keep a text-only native bitmap"
+        )
+        XCTAssertNil(controller.sourceIconPunchViewForTesting)
+        if let button = controller.menuBarButtonForTesting {
+            assertButtonLayerIsNotSourceIconCutout(button)
+        }
         XCTAssertEqual(animationTransitions.count, 1)
         XCTAssertTrue(animationTransitions[0].0)
         XCTAssertTrue(animationTransitions[0].1 === staticIcon)
@@ -1517,6 +1537,7 @@ final class StatusItemControllerTests: XCTestCase {
                     GrokThinkingAnimationTiming.frameCount
                 )
                 XCTAssertNil(controller.grokThinkingAnimationHostForTesting?.superview)
+                try assertSourceLocalGCleared(controller)
             case .nativeCoreAnimation:
                 XCTAssertTrue(
                     buttonImage === controller.cachedStaticMenuBarContentBitmapForTesting,
@@ -1530,6 +1551,10 @@ final class StatusItemControllerTests: XCTestCase {
                 XCTAssertEqual(
                     controller.grokThinkingAnimationHostForTesting?.timing.restingFrameIndex,
                     GrokThinkingAnimationTiming.restingFrameIndex
+                )
+                try assertSourceLocalGPresentation(
+                    controller,
+                    host: try XCTUnwrap(controller.grokThinkingAnimationHostForTesting)
                 )
             }
 
@@ -1625,11 +1650,16 @@ final class StatusItemControllerTests: XCTestCase {
         let buttonImage = try XCTUnwrap(controller.menuBarButtonImageForTesting)
         XCTAssertTrue(buttonImage === controller.cachedStaticMenuBarContentBitmapForTesting)
         XCTAssertTrue(buttonImage !== controller.cachedMenuBarTextBitmapForTesting)
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.grokThinkingAnimationHostForTesting)
+        )
 
         controller.setCodexAnimationBackend(.stableBitmap)
         XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .stableBitmap)
         XCTAssertTrue(controller.grokThinkingAnimationIsActiveForTesting)
         XCTAssertNil(controller.grokThinkingAnimationHostForTesting?.superview)
+        try assertSourceLocalGCleared(controller)
         XCTAssertNotNil(controller.grokThinkingStableImageForTesting)
         XCTAssertEqual(
             controller.grokThinkingStableFrameCountForTesting,
@@ -1653,6 +1683,10 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(
             controller.menuBarButtonImageForTesting
                 !== controller.cachedMenuBarTextBitmapForTesting
+        )
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.grokThinkingAnimationHostForTesting)
         )
     }
 
@@ -1973,6 +2007,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .nativeCoreAnimation)
         XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+        try assertSourceLocalGPresentation(controller, host: host)
 
         controller.setCodexAnimationBackend(.stableBitmap)
         XCTAssertEqual(controller.preferredCodexAnimationBackendForTesting, .stableBitmap)
@@ -1982,6 +2017,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNil(host.rotationAnimationForTesting)
         XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertEqual(controller.stableCodexAnimationFrameCountForTesting, 36)
+        try assertSourceLocalGCleared(controller)
 
         controller.setCodexAnimationBackend(.nativeCoreAnimation)
         XCTAssertEqual(controller.preferredCodexAnimationBackendForTesting, .nativeCoreAnimation)
@@ -1992,6 +2028,10 @@ final class StatusItemControllerTests: XCTestCase {
             controller.nativeCodexAnimationHostForTesting?.rotationAnimationForTesting != nil
         )
         XCTAssertFalse(controller.codexAnimationFallbackActiveForTesting)
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
+        )
     }
 
     @MainActor
@@ -2061,30 +2101,398 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(fallbackTransitions, [true, false])
     }
 
-    private func assertSourceIconCutoutIfHostIsSibling(
+    @MainActor
+    func testSourceIconPunchViewUsesDestinationOutAndIgnoresHits() {
+        let punch = MenuBarSourceIconPunchView(
+            frame: NSRect(x: 4, y: 6, width: 16, height: 16)
+        )
+        XCTAssertTrue(punch.wantsLayer)
+        XCTAssertEqual(punch.layer?.backgroundColor?.alpha ?? 0, 1, accuracy: 0.001)
+        assertDestinationOutFilter(punch.layer?.compositingFilter)
+        XCTAssertNil(punch.hitTest(NSPoint(x: punch.bounds.midX, y: punch.bounds.midY)))
+    }
+
+    @MainActor
+    func testClientSwitchBackToCodexAndGrokGRestoresSourceLocalPunch() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "animation is disabled by the system reduce-motion setting"
+        )
+        let controller = makeController(codexAnimationBackend: .nativeCoreAnimation)
+        defer { controller.teardown() }
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+        let codexIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.2,
+            green: 0.4,
+            blue: 0.8
+        )
+        codexIcon.isTemplate = true
+        let grokIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.1,
+            green: 0.1,
+            blue: 0.1
+        )
+        grokIcon.isTemplate = true
+        let grokSprite = makeSolidImage(
+            size: NSSize(
+                width: 16,
+                height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount)
+            ),
+            red: 0.95,
+            green: 0.95,
+            blue: 0.95
+        )
+        grokSprite.isTemplate = true
+        let claudeIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.9,
+            green: 0.5,
+            blue: 0.2
+        )
+        claudeIcon.isTemplate = true
+        let claudeSprite = makeSolidImage(
+            size: NSSize(width: 16, height: 144),
+            red: 0.9,
+            green: 0.5,
+            blue: 0.2
+        )
+        claudeSprite.isTemplate = true
+        controller.setCodexIconForTesting(codexIcon)
+        controller.setGrokIconsForTesting(idle: grokIcon, thinking: grokSprite)
+        controller.setClaudeAnimationAssetsForTesting(
+            staticImage: claudeIcon,
+            spriteImage: claudeSprite
+        )
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            grokTaskRunning: false,
+            animationEnabled: true
+        )
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
+        )
+        XCTAssertNotNil(
+            controller.nativeCodexAnimationHostForTesting?.rotationAnimationForTesting
+        )
+
+        controller.updateActivity(
+            activeClient: .claude,
+            codexTaskRunning: true,
+            claudeTaskRunning: true,
+            grokTaskRunning: false,
+            animationEnabled: true
+        )
+        let claudeHost = try XCTUnwrap(controller.claudeThinkingAnimationHostForTesting)
+        XCTAssertTrue(claudeHost.superview is NSStatusBarButton)
+        XCTAssertNil(controller.sourceIconPunchViewForTesting)
+        XCTAssertTrue(
+            controller.menuBarButtonImageForTesting
+                === controller.cachedMenuBarTextBitmapForTesting
+        )
+        XCTAssertNil(controller.nativeCodexAnimationHostForTesting?.superview)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: true,
+            grokTaskRunning: false,
+            animationEnabled: true
+        )
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
+        )
+        XCTAssertNil(controller.claudeThinkingAnimationHostForTesting?.superview)
+
+        controller.updateActivity(
+            activeClient: .grok,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            grokTaskRunning: true,
+            animationEnabled: true
+        )
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.grokThinkingAnimationHostForTesting)
+        )
+        XCTAssertNil(controller.nativeCodexAnimationHostForTesting?.superview)
+
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.grokThinkingAnimationHostForTesting)
+        )
+        controller.menuDidClose(controller.statusMenuForTesting)
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.grokThinkingAnimationHostForTesting)
+        )
+
+        controller.updateActivity(
+            activeClient: .claude,
+            codexTaskRunning: false,
+            claudeTaskRunning: true,
+            grokTaskRunning: true,
+            animationEnabled: true
+        )
+        XCTAssertNil(controller.sourceIconPunchViewForTesting)
+        XCTAssertTrue(
+            controller.claudeThinkingAnimationHostForTesting?.superview is NSStatusBarButton
+        )
+
+        controller.updateActivity(
+            activeClient: .grok,
+            codexTaskRunning: false,
+            claudeTaskRunning: true,
+            grokTaskRunning: true,
+            animationEnabled: true
+        )
+        try assertSourceLocalGPresentation(
+            controller,
+            host: try XCTUnwrap(controller.grokThinkingAnimationHostForTesting)
+        )
+    }
+
+    private func assertSourceLocalGPresentation(
         _ controller: StatusItemController,
-        host: MenuBarNativeAnimatedIconHostView,
+        host: NSView,
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        XCTAssertNotNil(host.superview, "running native host must be attached", file: file, line: line)
+        let button = try XCTUnwrap(
+            controller.menuBarButtonForTesting,
+            file: file,
+            line: line
+        )
+        let staticImage = try XCTUnwrap(
+            controller.cachedStaticMenuBarContentBitmapForTesting,
+            file: file,
+            line: line
+        )
+        let textBitmap = try XCTUnwrap(
+            controller.cachedMenuBarTextBitmapForTesting,
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            controller.menuBarButtonImageForTesting === staticImage,
+            "Performance/G must keep the complete static icon+text bitmap",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            controller.menuBarButtonImageForTesting !== textBitmap,
+            "Performance/G must not replace the native image with the text-only bitmap",
+            file: file,
+            line: line
+        )
+        assertButtonLayerIsNotSourceIconCutout(button, file: file, line: line)
+        XCTAssertNotNil(
+            host.superview,
+            "running native host must be attached",
+            file: file,
+            line: line
+        )
+
         if host.superview is NSStatusBarButton {
             XCTAssertNil(
-                controller.nativeCodexSourceIconMaskForTesting,
-                "a button-child host cannot use the source icon cutout",
+                controller.sourceIconPunchViewForTesting,
+                "a button-child host cannot use the source-local punch",
                 file: file,
                 line: line
             )
             return
         }
-        let mask = try XCTUnwrap(
-            controller.nativeCodexSourceIconMaskForTesting,
-            "a sibling host must clip the source static GPT",
+
+        let punch = try XCTUnwrap(
+            controller.sourceIconPunchViewForTesting,
+            "a sibling host must punch the static icon locally",
             file: file,
             line: line
         )
-        XCTAssertEqual(mask.fillRule, .evenOdd, file: file, line: line)
-        XCTAssertNotNil(mask.path, file: file, line: line)
+        XCTAssertTrue(punch.superview === host.superview, file: file, line: line)
+        XCTAssertEqual(punch.frame, host.frame, file: file, line: line)
+        XCTAssertNil(
+            punch.hitTest(NSPoint(x: punch.bounds.midX, y: punch.bounds.midY)),
+            file: file,
+            line: line
+        )
+        assertDestinationOutFilter(
+            punch.layer?.compositingFilter,
+            file: file,
+            line: line
+        )
+        if let container = host.superview {
+            let views = container.subviews
+            let buttonIndex = try XCTUnwrap(
+                views.firstIndex(of: button),
+                file: file,
+                line: line
+            )
+            let punchIndex = try XCTUnwrap(
+                views.firstIndex(of: punch),
+                file: file,
+                line: line
+            )
+            let hostIndex = try XCTUnwrap(
+                views.firstIndex(of: host),
+                file: file,
+                line: line
+            )
+            XCTAssertLessThan(buttonIndex, punchIndex, file: file, line: line)
+            XCTAssertLessThan(punchIndex, hostIndex, file: file, line: line)
+        }
+
+        let iconRect = try XCTUnwrap(
+            controller.cachedMenuBarIconDrawRectForTesting,
+            file: file,
+            line: line
+        )
+        let maxAlpha = try maximumAlpha(
+            in: staticImage,
+            canvasRect: iconRect,
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThan(
+            maxAlpha,
+            0.2,
+            "the complete static bitmap must still contain icon pixels",
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertSourceLocalGCleared(
+        _ controller: StatusItemController,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertNil(controller.sourceIconPunchViewForTesting, file: file, line: line)
+        if let button = controller.menuBarButtonForTesting {
+            assertButtonLayerIsNotSourceIconCutout(button, file: file, line: line)
+        }
+        XCTAssertTrue(
+            controller.menuBarButtonImageForTesting
+                !== controller.cachedMenuBarTextBitmapForTesting,
+            "idle/D0 must keep a complete bitmap, not the text-only variant",
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertButtonLayerIsNotSourceIconCutout(
+        _ button: NSStatusBarButton,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        if let mask = button.layer?.mask as? CAShapeLayer {
+            XCTAssertNotEqual(
+                mask.fillRule,
+                .evenOdd,
+                "Performance/G must not mask NSStatusBarButton.layer",
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    private func assertDestinationOutFilter(
+        _ filter: Any?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        if let name = filter as? String {
+            XCTAssertEqual(
+                name,
+                MenuBarSourceIconPunchView.compositingFilterName,
+                file: file,
+                line: line
+            )
+            return
+        }
+        if let ciFilter = filter as? CIFilter {
+            XCTAssertTrue(
+                ciFilter.name.lowercased().contains("destinationout")
+                    || ciFilter.name == MenuBarSourceIconPunchView.compositingFilterName,
+                "unexpected compositing filter \(ciFilter.name)",
+                file: file,
+                line: line
+            )
+            return
+        }
+        XCTFail(
+            "missing destinationOut compositing filter: \(String(describing: filter))",
+            file: file,
+            line: line
+        )
+    }
+
+    private func maximumAlpha(
+        in image: NSImage,
+        canvasRect: NSRect,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> CGFloat {
+        let tiff = try XCTUnwrap(image.tiffRepresentation, file: file, line: line)
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff), file: file, line: line)
+        let pixelWidth = max(1, rep.pixelsWide)
+        let pixelHeight = max(1, rep.pixelsHigh)
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return 0 }
+
+        let minX = max(0, Int(floor(canvasRect.minX / size.width * CGFloat(pixelWidth))))
+        let maxX = min(
+            pixelWidth,
+            Int(ceil(canvasRect.maxX / size.width * CGFloat(pixelWidth)))
+        )
+        let minY = max(0, Int(floor(canvasRect.minY / size.height * CGFloat(pixelHeight))))
+        let maxY = min(
+            pixelHeight,
+            Int(ceil(canvasRect.maxY / size.height * CGFloat(pixelHeight)))
+        )
+        guard maxX > minX, maxY > minY else { return 0 }
+
+        var maxAlpha: CGFloat = 0
+        let stepX = max(1, (maxX - minX) / 8)
+        let stepY = max(1, (maxY - minY) / 8)
+        for y in stride(from: minY, to: maxY, by: stepY) {
+            for x in stride(from: minX, to: maxX, by: stepX) {
+                if let color = rep.colorAt(x: x, y: y) {
+                    maxAlpha = max(maxAlpha, color.alphaComponent)
+                }
+            }
+        }
+        let centerX = min(
+            pixelWidth - 1,
+            max(0, Int((canvasRect.midX / size.width) * CGFloat(pixelWidth)))
+        )
+        let centerY = min(
+            pixelHeight - 1,
+            max(0, Int((canvasRect.midY / size.height) * CGFloat(pixelHeight)))
+        )
+        if let color = rep.colorAt(x: centerX, y: centerY) {
+            maxAlpha = max(maxAlpha, color.alphaComponent)
+        }
+        return maxAlpha
     }
 
     private func makeSolidImage(

@@ -2255,9 +2255,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var codexAnimationFallbackActive = false
     private var nativeCodexAnimatedIconHost: MenuBarNativeAnimatedIconHostView?
     private var nativeCodexAnimationIsActive = false
-    private var nativeCodexSourceIconMask: CAShapeLayer?
-    private weak var nativeCodexSourceIconMaskOwnerButton: NSStatusBarButton?
-    private var nativeCodexSourceIconPreviousMask: CALayer?
+    private var sourceIconPunchView: MenuBarSourceIconPunchView?
     private var claudeThinkingAnimatedIconHost: MenuBarClaudeAnimatedIconHostView?
     private var claudeThinkingAnimationIsActive = false
     private var grokThinkingAnimatedIconHost: MenuBarClaudeAnimatedIconHostView?
@@ -2407,8 +2405,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         nativeCodexAnimatedIconHost
     }
 
-    var nativeCodexSourceIconMaskForTesting: CAShapeLayer? {
-        nativeCodexSourceIconMask
+    var sourceIconPunchViewForTesting: MenuBarSourceIconPunchView? {
+        sourceIconPunchView
+    }
+
+    var menuBarButtonForTesting: NSStatusBarButton? {
+        statusItem?.button
+    }
+
+    var cachedMenuBarIconDrawRectForTesting: NSRect? {
+        cachedMenuBarIconDrawRect
     }
 
     var claudeThinkingAnimationHostForTesting: MenuBarClaudeAnimatedIconHostView? {
@@ -2934,6 +2940,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         isStatusMenuTracking = true
         refreshNativeCodexIconAppearance()
+        refreshGrokThinkingIconAppearance()
         refreshClaudeThinkingIconAppearance()
     }
 
@@ -2941,6 +2948,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = false
         refreshNativeCodexIconAppearance()
+        refreshGrokThinkingIconAppearance()
         refreshClaudeThinkingIconAppearance()
         guard statusMenuNeedsRebuild else { return }
         statusMenuNeedsRebuild = false
@@ -3003,6 +3011,35 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             deactivateClaudeThinkingAnimation()
             restoreStaticMenuBarBitmap()
             return
+        }
+    }
+
+    private func refreshGrokThinkingIconAppearance() {
+        guard codexAnimationBackend == .nativeCoreAnimation,
+              grokThinkingAnimationIsActive else { return }
+        guard synchronizeGrokThinkingAnimationHost() else {
+            deactivateGrokThinkingAnimation()
+            restoreStaticMenuBarBitmap()
+            return
+        }
+    }
+
+    /// Re-aligns the source-local punch and CA host after a public window
+    /// geometry change. This is a bounded lifecycle refresh, not a timer.
+    private func synchronizeActiveSourceLocalAnimationHosts() {
+        if nativeCodexAnimationIsActive {
+            guard synchronizeNativeCodexAnimationHost() else {
+                activateTemporaryStableBitmapFallback()
+                return
+            }
+        }
+        if grokThinkingAnimationIsActive,
+           codexAnimationBackend == .nativeCoreAnimation {
+            guard synchronizeGrokThinkingAnimationHost() else {
+                deactivateGrokThinkingAnimation()
+                restoreStaticMenuBarBitmap()
+                return
+            }
         }
     }
 
@@ -3206,6 +3243,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     // backing must be rebuilt once at this public lifecycle
                     // boundary. This is not a timer/polling path.
                     self.refreshBitmapContentAfterExternalVisualChange()
+                } else {
+                    self.synchronizeActiveSourceLocalAnimationHosts()
                 }
                 self.scheduleStatusItemAttachmentCheck(
                     reason: "window-\(notificationName.rawValue)",
@@ -3911,7 +3950,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func invalidateBitmapContentCache(setPlaceholder: Bool = false) {
-        clearNativeCodexSourceIconCutout()
+        clearSourceIconPunch()
         cachedMenuBarTextBitmap = nil
         cachedStaticMenuBarContentBitmap = nil
         cachedMenuBarContentVisualSignature = nil
@@ -4077,8 +4116,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         if button.image !== staticImage {
             // Replicants snapshot this native image. Keep the complete static
-            // GPT+text bitmap; the CA host is source-local and is not copied
-            // to inactive displays.
+            // GPT+text bitmap unmasked; the punch and CA host are source-local
+            // and are not copied to inactive displays.
             button.image = staticImage
         }
 
@@ -4087,22 +4126,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             nativeCodexAnimatedIconHost = newHost
             return newHost
         }()
-        let hostFrame = attachNativeCodexAnimationHost(
+        let hostFrame = attachSourceLocalAnimatedIconHost(
             host,
             button: button,
             localIconRect: localIconRect
         )
-        if host.superview !== nil, host.superview !== button {
-            guard applyNativeCodexSourceIconCutout(
-                button: button,
-                localIconRect: localIconRect
-            ) else {
-                deactivateNativeCodexAnimation()
-                return false
-            }
-        } else {
-            clearNativeCodexSourceIconCutout()
-        }
 
         let scale = button.window?.backingScaleFactor ?? 2
         host.updateGeometry(frame: hostFrame, contentsScale: scale)
@@ -4115,7 +4143,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             host.removeRotationAnimation()
             host.isHidden = true
             host.removeFromSuperview()
-            clearNativeCodexSourceIconCutout()
+            clearSourceIconPunch()
             return false
         }
         host.isHidden = false
@@ -4127,22 +4155,53 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Places the transparent rotating host beside the status button so a
-    /// source-local icon cutout can hide the static GPT without clipping the
-    /// overlay. Falls back to a button child if AppKit has not installed a
-    /// container yet.
+    /// source-local punch can hide the static GPT without clipping the overlay
+    /// or masking the button layer. Falls back to a button child if AppKit has
+    /// not installed a container yet.
     @discardableResult
-    private func attachNativeCodexAnimationHost(
-        _ host: MenuBarNativeAnimatedIconHostView,
+    private func attachSourceLocalAnimatedIconHost(
+        _ host: NSView,
         button: NSStatusBarButton,
         localIconRect: NSRect
     ) -> NSRect {
         if let container = button.superview {
+            if !container.wantsLayer {
+                container.wantsLayer = true
+            }
+            button.wantsLayer = true
+            clearLeftoverSourceIconButtonMask(on: button)
+            let overlayFrame = button.convert(localIconRect, to: container)
+            let punch = sourceIconPunchView ?? {
+                let newPunch = MenuBarSourceIconPunchView(frame: overlayFrame)
+                sourceIconPunchView = newPunch
+                return newPunch
+            }()
+            punch.updateGeometry(frame: overlayFrame)
+            if punch.superview !== container {
+                punch.removeFromSuperview()
+                container.addSubview(punch, positioned: .above, relativeTo: button)
+            } else {
+                let views = container.subviews
+                if let buttonIndex = views.firstIndex(of: button),
+                   let punchIndex = views.firstIndex(of: punch),
+                   punchIndex < buttonIndex {
+                    container.addSubview(punch, positioned: .above, relativeTo: button)
+                }
+            }
             if host.superview !== container {
                 host.removeFromSuperview()
-                container.addSubview(host, positioned: .above, relativeTo: button)
+                container.addSubview(host, positioned: .above, relativeTo: punch)
+            } else {
+                let views = container.subviews
+                if let punchIndex = views.firstIndex(of: punch),
+                   let hostIndex = views.firstIndex(of: host),
+                   hostIndex < punchIndex {
+                    container.addSubview(host, positioned: .above, relativeTo: punch)
+                }
             }
-            return button.convert(localIconRect, to: container)
+            return overlayFrame
         }
+        clearSourceIconPunch()
         if host.superview !== button {
             host.removeFromSuperview()
             button.addSubview(host, positioned: .above, relativeTo: nil)
@@ -4150,114 +4209,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return localIconRect
     }
 
-    /// Hides only the source button's static GPT by masking the icon rect.
-    /// The canonical `button.image` is left unchanged for inactive replicants.
-    @discardableResult
-    private func applyNativeCodexSourceIconCutout(
-        button: NSStatusBarButton,
-        localIconRect: NSRect
-    ) -> Bool {
-        guard localIconRect.width > 0, localIconRect.height > 0 else {
-            return false
+    /// Removes the source-local punch and any leftover even-odd button mask
+    /// from a previous Performance/G cutout. Product code never writes
+    /// `button.layer.mask`.
+    private func clearSourceIconPunch() {
+        sourceIconPunchView?.removeFromSuperview()
+        sourceIconPunchView = nil
+        if let button = statusItem?.button {
+            clearLeftoverSourceIconButtonMask(on: button)
         }
-        button.wantsLayer = true
-        guard let buttonLayer = button.layer,
-              let iconRect = Self.nativeCodexIconRectInLayerCoordinates(
-                  button: button,
-                  buttonLayer: buttonLayer,
-                  localIconRect: localIconRect
-              ) else {
-            return false
-        }
-
-        let mask: CAShapeLayer
-        if let existingMask = nativeCodexSourceIconMask,
-           nativeCodexSourceIconMaskOwnerButton === button {
-            mask = existingMask
-        } else {
-            clearNativeCodexSourceIconCutout()
-            let newMask = CAShapeLayer()
-            nativeCodexSourceIconMask = newMask
-            nativeCodexSourceIconMaskOwnerButton = button
-            nativeCodexSourceIconPreviousMask = buttonLayer.mask
-            mask = newMask
-        }
-
-        if let currentMask = buttonLayer.mask,
-           currentMask !== mask,
-           currentMask !== nativeCodexSourceIconPreviousMask {
-            return false
-        }
-
-        let maskBounds = CGRect(origin: .zero, size: buttonLayer.bounds.size)
-        let path = CGMutablePath()
-        path.addRect(maskBounds)
-        path.addRect(iconRect)
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        mask.frame = buttonLayer.bounds
-        mask.path = path
-        mask.fillRule = .evenOdd
-        mask.fillColor = NSColor.black.cgColor
-        mask.isGeometryFlipped = buttonLayer.isGeometryFlipped
-        if buttonLayer.mask !== mask {
-            buttonLayer.mask = mask
-        }
-        CATransaction.commit()
-        return buttonLayer.mask === mask
     }
 
-    private static func nativeCodexIconRectInLayerCoordinates(
-        button: NSStatusBarButton,
-        buttonLayer: CALayer,
-        localIconRect: NSRect
-    ) -> CGRect? {
-        let viewBounds = button.bounds
-        let layerBounds = buttonLayer.bounds
-        guard viewBounds.width > 0,
-              viewBounds.height > 0,
-              layerBounds.width > 0,
-              layerBounds.height > 0 else {
-            return nil
+    private func clearLeftoverSourceIconButtonMask(on button: NSStatusBarButton) {
+        guard let mask = button.layer?.mask as? CAShapeLayer,
+              mask.fillRule == .evenOdd else {
+            return
         }
-        let clippedIconRect = localIconRect.intersection(viewBounds)
-        guard !clippedIconRect.isNull,
-              clippedIconRect.width > 0,
-              clippedIconRect.height > 0 else {
-            return nil
-        }
-
-        let xScale = layerBounds.width / viewBounds.width
-        let yScale = layerBounds.height / viewBounds.height
-        let x = (clippedIconRect.minX - viewBounds.minX) * xScale
-        let yInViewCoordinates: CGFloat
-        if button.isFlipped == buttonLayer.isGeometryFlipped {
-            yInViewCoordinates = clippedIconRect.minY - viewBounds.minY
-        } else {
-            yInViewCoordinates = viewBounds.maxY - clippedIconRect.maxY
-        }
-        let rect = CGRect(
-            x: x,
-            y: yInViewCoordinates * yScale,
-            width: clippedIconRect.width * xScale,
-            height: clippedIconRect.height * yScale
-        )
-        let maskBounds = CGRect(origin: .zero, size: layerBounds.size)
-        guard maskBounds.contains(rect) else { return nil }
-        return rect
-    }
-
-    private func clearNativeCodexSourceIconCutout() {
-        if let mask = nativeCodexSourceIconMask,
-           let ownerButton = nativeCodexSourceIconMaskOwnerButton,
-           let buttonLayer = ownerButton.layer,
-           buttonLayer.mask === mask {
-            buttonLayer.mask = nativeCodexSourceIconPreviousMask
-        }
-        nativeCodexSourceIconMask = nil
-        nativeCodexSourceIconMaskOwnerButton = nil
-        nativeCodexSourceIconPreviousMask = nil
+        button.layer?.mask = nil
     }
 
     /// Synchronizes the retained Claude sprite host at a bounded visual
@@ -4334,7 +4302,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func deactivateNativeCodexAnimation() {
-        clearNativeCodexSourceIconCutout()
+        clearSourceIconPunch()
         nativeCodexAnimatedIconHost?.removeRotationAnimation()
         nativeCodexAnimatedIconHost?.isHidden = true
         nativeCodexAnimatedIconHost?.removeFromSuperview()
@@ -4345,7 +4313,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// layer animation stays installed on the retained host, so reattachment
     /// continues at the layer-local compositor phase without a restart.
     private func detachNativeCodexAnimationHostForStatusItemReplacement() {
-        clearNativeCodexSourceIconCutout()
+        clearSourceIconPunch()
         nativeCodexAnimatedIconHost?.removeFromSuperview()
     }
 
@@ -4368,8 +4336,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// Performance/G: thinking sprite host on the current screen; native
     /// `button.image` keeps the complete static Grok+text bitmap so inactive
-    /// replicants still show the spark. Mirrors #312, not Claude's text-only
-    /// bitmap.
+    /// replicants still show the spark. Uses the same source-local punch as
+    /// Codex G, not Claude's text-only bitmap.
     @discardableResult
     private func synchronizeGrokThinkingAnimationHost() -> Bool {
         precondition(
@@ -4404,22 +4372,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return newHost
         }()
         host.timing = .grok
-        let hostFrame = attachGrokThinkingAnimationHost(
+        let hostFrame = attachSourceLocalAnimatedIconHost(
             host,
             button: button,
             localIconRect: localIconRect
         )
-        if host.superview !== nil, host.superview !== button {
-            guard applyNativeCodexSourceIconCutout(
-                button: button,
-                localIconRect: localIconRect
-            ) else {
-                deactivateGrokThinkingAnimationHost()
-                return false
-            }
-        } else {
-            clearNativeCodexSourceIconCutout()
-        }
 
         let scale = button.window?.backingScaleFactor ?? 2
         host.updateGeometry(frame: hostFrame, contentsScale: scale)
@@ -4438,7 +4395,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             host.removeThinkingAnimation()
             host.isHidden = true
             host.removeFromSuperview()
-            clearNativeCodexSourceIconCutout()
+            clearSourceIconPunch()
             return false
         }
         host.isHidden = false
@@ -4451,31 +4408,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return true
     }
 
-    @discardableResult
-    private func attachGrokThinkingAnimationHost(
-        _ host: MenuBarClaudeAnimatedIconHostView,
-        button: NSStatusBarButton,
-        localIconRect: NSRect
-    ) -> NSRect {
-        if let container = button.superview {
-            if host.superview !== container {
-                host.removeFromSuperview()
-                container.addSubview(host, positioned: .above, relativeTo: button)
-            }
-            return button.convert(localIconRect, to: container)
-        }
-        if host.superview !== button {
-            host.removeFromSuperview()
-            button.addSubview(host, positioned: .above, relativeTo: nil)
-        }
-        return localIconRect
-    }
-
     private func deactivateGrokThinkingAnimationHost() {
         grokThinkingAnimatedIconHost?.removeThinkingAnimation()
         grokThinkingAnimatedIconHost?.isHidden = true
         grokThinkingAnimatedIconHost?.removeFromSuperview()
-        clearNativeCodexSourceIconCutout()
+        clearSourceIconPunch()
     }
 
     private func deactivateGrokThinkingAnimation() {
@@ -4490,7 +4427,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func detachGrokThinkingAnimationHostForStatusItemReplacement() {
         grokThinkingAnimatedIconHost?.removeFromSuperview()
-        clearNativeCodexSourceIconCutout()
+        clearSourceIconPunch()
     }
 
     private func stopGrokThinkingStableBitmap() {

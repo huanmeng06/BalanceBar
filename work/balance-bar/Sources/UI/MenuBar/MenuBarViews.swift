@@ -634,6 +634,51 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
     }
 }
 
+/// Source-local hole punch for Performance/G. The status button keeps the
+/// complete template bitmap so inactive-display replicants still show the
+/// icon. This sibling layer uses `destinationOut` only inside the current
+/// status-item container; it never masks `NSStatusBarButton.layer`.
+final class MenuBarSourceIconPunchView: NSView {
+    static let compositingFilterName = "destinationOut"
+
+    override var isFlipped: Bool { true }
+    override var intrinsicContentSize: NSSize { .zero }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configurePunch()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configurePunch()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func updateGeometry(frame: NSRect) {
+        if self.frame != frame {
+            self.frame = frame
+        }
+        applyPunchLayer()
+    }
+
+    private func configurePunch() {
+        translatesAutoresizingMaskIntoConstraints = true
+        wantsLayer = true
+        layerUsesCoreImageFilters = true
+        applyPunchLayer()
+    }
+
+    private func applyPunchLayer() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.compositingFilter = Self.compositingFilterName
+        CATransaction.commit()
+    }
+}
+
 private extension Double {
     var wrappedPositiveRemainder: Double {
         let remainder = truncatingRemainder(dividingBy: 1)
