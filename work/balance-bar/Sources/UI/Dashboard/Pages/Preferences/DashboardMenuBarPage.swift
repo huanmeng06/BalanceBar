@@ -1311,9 +1311,9 @@ final class DashboardMenuBarPage {
                 minimumHeight: Self.previewRowHeight,
                 verticalPadding: Self.previewRowVerticalPadding
             ),
+            iconDisplayModeRow,
             overflowWarningRow,
-            runtimeOnlyWarningRow,
-            iconDisplayModeRow
+            runtimeOnlyWarningRow
         ], onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
             self?.previewRowsStack = rowsStack
             self?.previewCardHeightConstraint = cardHeightConstraint
@@ -2041,13 +2041,13 @@ final class DashboardMenuBarPage {
     }
 
     private func updatePreviewSeparators() {
-        // Current layout is always visible. Remaining rows, in order:
-        // overflow warning → runtime warning → menu bar display.
+        // Current layout and menu bar display stay visible. Warnings follow:
+        // current layout → menu bar display → overflow warning → runtime warning.
         let visibleRows = [
             true,
+            true,
             overflowWarningRow?.isHidden == false,
-            runtimeOnlyWarningRow?.isHidden == false,
-            iconDisplayModeRow?.isHidden == false
+            runtimeOnlyWarningRow?.isHidden == false
         ]
         for (index, separator) in previewSeparators.enumerated() {
             guard index + 1 < visibleRows.count else {
@@ -2075,10 +2075,7 @@ final class DashboardMenuBarPage {
     }
 
     private func revealIconDisplayModeSetting() {
-        let destination = iconDisplayModeRow?.isHidden == false
-            ? iconDisplayModeRow
-            : taskStatusIconRow
-        guard let destination else { return }
+        guard let destination = iconDisplayModeRow else { return }
         destination.window?.layoutIfNeeded()
 
         // Expand the requested rect by the available viewport margin so that
@@ -2183,7 +2180,7 @@ final class DashboardMenuBarPage {
         animationMode: MenuBarAnimationMode
     ) {
         let showDependentRows = showTaskStatusIcon
-        let showDelay = showDependentRows && displayMode == .onlyWhileRunning
+        let showDelay = displayMode == .onlyWhileRunning
         let showAnimationMode = showDependentRows && animationEnabled
         let showFallbackWarning = showAnimationMode
             && animationMode == .efficient
@@ -2197,7 +2194,6 @@ final class DashboardMenuBarPage {
         guard signature != lastIconTaskVisibilitySignature else { return }
         lastIconTaskVisibilitySignature = signature
         animationRow?.isHidden = !showDependentRows
-        iconDisplayModeRow?.isHidden = !showDependentRows
         iconDisplayDelayRow?.isHidden = !showDelay
         animationModeRow?.isHidden = !showAnimationMode
         animationModeControl?.isEnabled = showAnimationMode
@@ -2206,10 +2202,10 @@ final class DashboardMenuBarPage {
         updatePreviewSeparators()
 
         // Rows are ordered as task status → delay → animation → animation
-        // mode → fallback warning. Menu bar display now lives on the preview
-        // card. A separator is visible only when it separates two visible rows.
+        // mode → fallback warning. The task-status row is always visible;
+        // delay follows Only While Running, not the icon switch.
         let visibleRows = [
-            showTaskStatusIcon,
+            true,
             showDelay,
             showDependentRows,
             showAnimationMode,
