@@ -100,11 +100,12 @@ enum DevelopmentLunaReserveDemo {
     }
 }
 
-/// Supplies a deterministic 10-card banked-reset list only to the explicitly
-/// named demo bundle. Normal development and production bundles return nil.
+/// Supplies a deterministic banked-reset list only to the explicitly named
+/// demo bundle. Normal development and production bundles return nil.
 enum DevelopmentBankedResetDemo {
     enum Mode: String {
         case tenCards = "banked-reset-10"
+        case zeroCards = "banked-reset-0"
     }
 
     static let cardCount = 10
@@ -163,6 +164,8 @@ enum DevelopmentBankedResetDemo {
         switch mode {
         case .tenCards:
             cardList = cards(now: date)
+        case .zeroCards:
+            cardList = []
         }
         return .official(
             providerName,
