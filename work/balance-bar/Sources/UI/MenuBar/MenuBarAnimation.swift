@@ -250,6 +250,7 @@ final class RotatingTemplateImageView: PassthroughImageView {
     /// backing without changing this detached view's image every tick.
     var onAnimationFrameIndexChanged: ((Int) -> Void)?
     var isRotating: Bool { rotationTimer != nil }
+    var rotationTimerForTesting: Timer? { rotationTimer }
     var currentAnimationFrameIndex: Int { animationState.frameIndex }
 
     /// The already-rasterized frames for the current semantic source. The

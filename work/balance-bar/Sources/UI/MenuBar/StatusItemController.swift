@@ -2224,6 +2224,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
     private var suppressLayoutFromSourceImageChange = false
+    private var codexAnimationNeedsPostLayoutReconciliation = false
     private(set) var layoutStatusItemCallCountForTesting = 0
     private(set) var statusMenuRebuildCountForTesting = 0
     var statusMenuNeedsRebuildForTesting: Bool { statusMenuNeedsRebuild }
@@ -2385,6 +2386,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var nativeCodexAnimationIsRotatingForTesting: Bool {
         menuBarIconView.isRotating
+    }
+
+    var stableCodexAnimationTimerForTesting: Timer? {
+        menuBarIconView.rotationTimerForTesting
     }
 
     var menuBarSourceImageForTesting: NSImage? {
@@ -2676,6 +2681,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
+        codexAnimationNeedsPostLayoutReconciliation = false
         lastMenuBarGeometry = nil
         menuBarIconView.onSourceImageChanged = nil
         menuBarIconView.onFrameImageChanged = nil
@@ -2860,6 +2866,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         layout: Bool = true
     ) {
         let activeClientChanged = self.activeClient != activeClient
+        let deferCodexAnimationActivation = activeClientChanged
+            && activeClient == .codex
+            && !layout
         self.activeClient = activeClient
         self.isCodexTaskRunning = codexTaskRunning
         self.isClaudeTaskRunning = claudeTaskRunning
@@ -2867,12 +2876,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.animationEnabled = animationEnabled
         if activeClientChanged {
             stableCodexAnimationFrameBuffer.invalidate()
+            if activeClient != .codex {
+                codexAnimationNeedsPostLayoutReconciliation = false
+            }
         }
         let previousSuppressLayout = suppressLayoutFromSourceImageChange
         if !layout {
             suppressLayoutFromSourceImageChange = true
         }
-        updateActivityIcon()
+        if deferCodexAnimationActivation {
+            // A cached client switch deliberately lays out after this activity
+            // update. Replacing the semantic source invalidates the old
+            // client's bitmap first, so neither Codex backend can safely
+            // activate until that promised layout has rebuilt the cache.
+            codexAnimationNeedsPostLayoutReconciliation = true
+        }
+        updateActivityIcon(deferCodexAnimationActivation: deferCodexAnimationActivation)
         if !layout {
             suppressLayoutFromSourceImageChange = previousSuppressLayout
         } else if activeClientChanged {
@@ -3327,7 +3346,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         scheduleStatusItemAttachmentCheck(reason: "re-registered-\(statusItemReanchorAttempts)-\(reason)")
     }
 
-    private func updateActivityIcon() {
+    private func updateActivityIcon(deferCodexAnimationActivation: Bool = false) {
         switch activeClient {
         case .codex:
             deactivateClaudeThinkingAnimation()
@@ -3340,6 +3359,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
 
             guard shouldAnimate, settings.showIcon else {
+                stopCodexAnimationImplementation()
+                codexAnimationBackend = preferredCodexAnimationBackend
+                setCodexAnimationFallbackActive(false)
+                return
+            }
+
+            if deferCodexAnimationActivation {
+                // Keep the previous backend fully stopped while the cached
+                // client render establishes Codex-owned bitmap geometry. The
+                // layout boundary below will activate exactly one selected
+                // backend from a valid cache instead of treating the expected
+                // cache miss as a G failure or a D0 start failure.
                 stopCodexAnimationImplementation()
                 codexAnimationBackend = preferredCodexAnimationBackend
                 setCodexAnimationFallbackActive(false)
@@ -3677,6 +3708,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Frames are final here; snapshot the offscreen tree into the button
         // image so the real button carries no live view hierarchy.
         refreshMenuBarContentBitmap()
+        if codexAnimationNeedsPostLayoutReconciliation {
+            codexAnimationNeedsPostLayoutReconciliation = false
+            updateActivityIcon()
+        }
         if button.toolTip != effectiveSnapshot.menuBarToolTip {
             button.toolTip = effectiveSnapshot.menuBarToolTip
         }
