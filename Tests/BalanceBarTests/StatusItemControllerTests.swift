@@ -1754,6 +1754,191 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testCachedClientRoundTripReactivatesRunningCodexExactlyOnceForBothBackends() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Codex animation is disabled by the system reduce-motion setting"
+        )
+
+        for backend in [MenuBarCodexAnimationBackend.stableBitmap, .nativeCoreAnimation] {
+            let controller = makeController(codexAnimationBackend: backend)
+            let snapshot = Snapshot.balance(
+                "Provider",
+                80,
+                "USD",
+                nil,
+                Date(timeIntervalSince1970: 1_700_000_000)
+            )
+            let settings = makeSettings()
+            controller.start(
+                snapshot: snapshot,
+                refreshDate: snapshot.date,
+                menuInput: makeMenuInput(activeClient: .codex),
+                settings: settings
+            )
+
+            let codexIcon = makeSolidImage(
+                size: NSSize(width: 16, height: 16),
+                red: 0.2,
+                green: 0.4,
+                blue: 0.8
+            )
+            codexIcon.isTemplate = true
+            let claudeIcon = makeSolidImage(
+                size: NSSize(width: 16, height: 16),
+                red: 0.9,
+                green: 0.5,
+                blue: 0.2
+            )
+            claudeIcon.isTemplate = true
+            let claudeSprite = makeSolidImage(
+                size: NSSize(width: 16, height: 144),
+                red: 0.9,
+                green: 0.5,
+                blue: 0.2
+            )
+            claudeSprite.isTemplate = true
+            controller.setCodexIconForTesting(codexIcon)
+            controller.setClaudeAnimationAssetsForTesting(
+                staticImage: claudeIcon,
+                spriteImage: claudeSprite
+            )
+
+            controller.updateActivity(
+                activeClient: .codex,
+                codexTaskRunning: true,
+                claudeTaskRunning: false,
+                animationEnabled: true
+            )
+            let firstStableTimer = controller.stableCodexAnimationTimerForTesting
+            let nativeHost = controller.nativeCodexAnimationHostForTesting
+            XCTAssertEqual(
+                controller.nativeCodexAnimationInstallCountForTesting,
+                backend == .nativeCoreAnimation ? 1 : 0
+            )
+
+            controller.updateActivity(
+                activeClient: .claude,
+                codexTaskRunning: true,
+                claudeTaskRunning: false,
+                animationEnabled: true,
+                layout: false
+            )
+            XCTAssertTrue(controller.menuBarSourceImageForTesting === claudeIcon)
+            XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+            XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+            XCTAssertFalse(firstStableTimer?.isValid ?? false)
+            controller.update(
+                snapshot: snapshot,
+                refreshDate: snapshot.date,
+                menuInput: makeMenuInput(activeClient: .claude),
+                settings: settings
+            )
+
+            controller.updateActivity(
+                activeClient: .codex,
+                codexTaskRunning: true,
+                claudeTaskRunning: false,
+                animationEnabled: true,
+                layout: false
+            )
+            XCTAssertTrue(controller.menuBarSourceImageForTesting === codexIcon)
+            XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+            XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+            controller.update(
+                snapshot: snapshot,
+                refreshDate: snapshot.date,
+                menuInput: makeMenuInput(activeClient: .codex),
+                settings: settings
+            )
+
+            switch backend {
+            case .stableBitmap:
+                let resumedTimer = try XCTUnwrap(controller.stableCodexAnimationTimerForTesting)
+                XCTAssertTrue(resumedTimer.isValid)
+                XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+                XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+                controller.update(
+                    snapshot: snapshot,
+                    refreshDate: snapshot.date,
+                    menuInput: makeMenuInput(activeClient: .codex),
+                    settings: settings
+                )
+                XCTAssertTrue(controller.stableCodexAnimationTimerForTesting === resumedTimer)
+            case .nativeCoreAnimation:
+                XCTAssertTrue(controller.nativeCodexAnimationHostForTesting === nativeHost)
+                XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+                XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+                XCTAssertEqual(controller.nativeCodexAnimationInstallCountForTesting, 2)
+                controller.update(
+                    snapshot: snapshot,
+                    refreshDate: snapshot.date,
+                    menuInput: makeMenuInput(activeClient: .codex),
+                    settings: settings
+                )
+                XCTAssertEqual(controller.nativeCodexAnimationInstallCountForTesting, 2)
+            }
+
+            controller.updateActivity(
+                activeClient: .codex,
+                codexTaskRunning: false,
+                claudeTaskRunning: false,
+                animationEnabled: true
+            )
+            XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+            XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+
+            controller.updateActivity(
+                activeClient: .claude,
+                codexTaskRunning: false,
+                claudeTaskRunning: false,
+                animationEnabled: true,
+                layout: false
+            )
+            controller.update(
+                snapshot: snapshot,
+                refreshDate: snapshot.date,
+                menuInput: makeMenuInput(activeClient: .claude),
+                settings: settings
+            )
+            controller.updateActivity(
+                activeClient: .codex,
+                codexTaskRunning: false,
+                claudeTaskRunning: false,
+                animationEnabled: true,
+                layout: false
+            )
+            controller.update(
+                snapshot: snapshot,
+                refreshDate: snapshot.date,
+                menuInput: makeMenuInput(activeClient: .codex),
+                settings: settings
+            )
+            XCTAssertTrue(controller.menuBarSourceImageForTesting === codexIcon)
+            XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+            XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+
+            controller.updateActivity(
+                activeClient: .codex,
+                codexTaskRunning: true,
+                claudeTaskRunning: false,
+                animationEnabled: true
+            )
+            switch backend {
+            case .stableBitmap:
+                let restartedTimer = try XCTUnwrap(controller.stableCodexAnimationTimerForTesting)
+                XCTAssertTrue(restartedTimer.isValid)
+                XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+            case .nativeCoreAnimation:
+                XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+                XCTAssertEqual(controller.nativeCodexAnimationInstallCountForTesting, 3)
+            }
+
+            controller.teardown()
+        }
+    }
+
+    @MainActor
     func testCodexAnimationModeSwitchIsImmediateAndKeepsExactlyOneBackendActive() throws {
         try XCTSkipUnless(
             !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
