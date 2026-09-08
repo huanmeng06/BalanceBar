@@ -533,14 +533,15 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(bankedReset.cards.map(\.remainingIsWarning), [false, false])
     }
 
-    func testCodexBankedResetHidesMissingZeroOrUnusableCreditsWithoutFailingQuota() throws {
+    func testCodexBankedResetKeepsZeroCountAndStillFetchesWhenCountIsPositiveWithoutCredits() throws {
         let missing = try OfficialQuotaResponseParser.parse(
             object: standardCodexUsage(),
             client: .codex,
             now: now
         )
         XCTAssertEqual(missing.windows.map(\.kind), [.fiveHour, .sevenDay])
-        XCTAssertNil(missing.bankedReset)
+        XCTAssertEqual(missing.bankedReset?.availableCount, 0)
+        XCTAssertEqual(missing.bankedReset?.cards, [])
         XCTAssertFalse(missing.bankedResetNeedsCreditList)
 
         let zeroCount = try OfficialQuotaResponseParser.parse(
@@ -554,7 +555,8 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(zeroCount.windows.map(\.remaining), [80, 45])
-        XCTAssertNil(zeroCount.bankedReset)
+        XCTAssertEqual(zeroCount.bankedReset?.availableCount, 0)
+        XCTAssertEqual(zeroCount.bankedReset?.cards, [])
         XCTAssertFalse(zeroCount.bankedResetNeedsCreditList)
 
         let malformed = try OfficialQuotaResponseParser.parse(
@@ -719,6 +721,17 @@ final class ResponseParsersTests: XCTestCase {
                 now: now
             )
         )
+        let emptyList = try XCTUnwrap(
+            OfficialQuotaResponseParser.parseBankedResetCredits(
+                object: [
+                    "available_count": 0,
+                    "credits": []
+                ],
+                now: now
+            )
+        )
+        XCTAssertEqual(emptyList.availableCount, 0)
+        XCTAssertTrue(emptyList.cards.isEmpty)
     }
 
     func testCodexResetForecastParserReadsScoreAndFallsBack() {

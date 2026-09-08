@@ -150,8 +150,7 @@ struct CodexBankedReset: Equatable {
     let availableCount: Int
     let cards: [CodexBankedResetCard]
 
-    init?(cards: [CodexBankedResetCard]) {
-        guard !cards.isEmpty else { return nil }
+    init(cards: [CodexBankedResetCard]) {
         self.cards = cards
         self.availableCount = cards.count
     }
@@ -688,7 +687,6 @@ struct Snapshot {
         }
         let presentedBankedReset: CodexBankedReset? = {
             guard let bankedReset,
-                  bankedReset.availableCount > 0,
                   bankedReset.availableCount == bankedReset.cards.count else {
                 return nil
             }

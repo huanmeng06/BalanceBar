@@ -367,7 +367,7 @@ enum OfficialQuotaResponseParser {
         guard let credits = Self.creditDictionaries(from: source["credits"]) else {
             return nil
         }
-        return bankedReset(from: credits, now: now)
+        return bankedReset(from: credits, now: now) ?? CodexBankedReset(cards: [])
     }
 
     private static func parseCodexWindow(
@@ -505,6 +505,9 @@ enum OfficialQuotaResponseParser {
         from object: [String: Any],
         now: Date
     ) -> (reset: CodexBankedReset?, needsCreditList: Bool) {
+        guard object["rate_limit_reset_credits"] != nil else {
+            return (CodexBankedReset(cards: []), false)
+        }
         guard let creditsObject = object["rate_limit_reset_credits"] as? [String: Any] else {
             return (nil, false)
         }
@@ -515,7 +518,7 @@ enum OfficialQuotaResponseParser {
         if let count = nonNegativeInt(creditsObject["available_count"]), count > 0 {
             return (nil, true)
         }
-        return (nil, false)
+        return (CodexBankedReset(cards: []), false)
     }
 
     private static func creditDictionaries(from value: Any?) -> [[String: Any]]? {
@@ -538,6 +541,7 @@ enum OfficialQuotaResponseParser {
             cards.append(card)
         }
         cards.sort(by: bankedResetCardSort)
+        guard !cards.isEmpty else { return nil }
         return CodexBankedReset(cards: cards)
     }
 

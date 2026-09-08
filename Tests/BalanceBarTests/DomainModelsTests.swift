@@ -263,7 +263,7 @@ final class DomainModelsTests: XCTestCase {
             expiresAt: nil,
             expiresText: nil
         )
-        let bankedReset = try XCTUnwrap(CodexBankedReset(cards: [earlier, undated]))
+        let bankedReset = CodexBankedReset(cards: [earlier, undated])
 
         let official = Snapshot.official(
             "OpenAI",
@@ -318,6 +318,24 @@ final class DomainModelsTests: XCTestCase {
                 hideExhaustedQuota: false
             ).bankedReset
         )
+
+        let zeroCountOfficial = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            bankedReset: CodexBankedReset(cards: []),
+            resetProbability: .percent(12)
+        )
+        let zeroCountPresented = zeroCountOfficial.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
+        )
+        XCTAssertEqual(zeroCountPresented.bankedReset?.availableCount, 0)
+        XCTAssertEqual(zeroCountPresented.bankedReset?.cards, [])
+        XCTAssertEqual(zeroCountPresented.resetProbability, .percent(12))
 
         let balance = Snapshot.balance(
             "Custom",
