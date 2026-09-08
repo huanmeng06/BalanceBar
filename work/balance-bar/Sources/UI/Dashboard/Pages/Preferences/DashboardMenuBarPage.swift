@@ -293,11 +293,9 @@ private final class DashboardMenuBarPageActionTarget: NSObject {
     }
 }
 
-/// Keeps the FPS field and stepper aligned and commits on stepper clicks,
-/// Return, and focus loss.
+/// Commits the FPS field on Return and focus loss.
 private final class AnimationFrameRateEditor: NSObject, NSTextFieldDelegate {
     weak var field: NSTextField?
-    weak var stepper: NSStepper?
     var onChange: ((Int) -> Void)?
 
     func setDisplayedValue(_ fps: Int) {
@@ -305,11 +303,6 @@ private final class AnimationFrameRateEditor: NSObject, NSTextFieldDelegate {
         if field?.currentEditor() == nil {
             field?.integerValue = clamped
         }
-        stepper?.integerValue = clamped
-    }
-
-    @objc func stepperChanged(_ sender: NSStepper) {
-        commit(MenuBarAnimationTiming.clampedFrameRate(sender.integerValue))
     }
 
     @objc func fieldAction(_ sender: NSTextField) {
@@ -324,7 +317,6 @@ private final class AnimationFrameRateEditor: NSObject, NSTextFieldDelegate {
     private func commit(_ fps: Int) {
         let clamped = MenuBarAnimationTiming.clampedFrameRate(fps)
         field?.integerValue = clamped
-        stepper?.integerValue = clamped
         onChange?(clamped)
     }
 }
@@ -653,7 +645,6 @@ final class DashboardMenuBarPage {
     private let animationFrameRateEditor = AnimationFrameRateEditor()
     private weak var animationModeControl: NSPopUpButton?
     private weak var animationFrameRateField: NSTextField?
-    private weak var animationFrameRateStepper: NSStepper?
     private weak var animationFrameRateUnitLabel: NSTextField?
     private weak var animationFrameRateSubtitleLabel: NSTextField?
     private weak var taskStatusIconRow: NSView?
@@ -2300,7 +2291,6 @@ final class DashboardMenuBarPage {
         animationModeControl?.isEnabled = showAnimationMode
         animationFrameRateRow?.isHidden = !showAnimationMode
         animationFrameRateField?.isEnabled = showAnimationMode
-        animationFrameRateStepper?.isEnabled = showAnimationMode
         animationFallbackWarningRow?.isHidden = !showFallbackWarning
         animationFallbackWarningLabel?.stringValue = Self.animationFallbackWarningText()
         updatePreviewSeparators()
@@ -2639,19 +2629,6 @@ final class DashboardMenuBarPage {
         field.action = #selector(AnimationFrameRateEditor.fieldAction(_:))
         animationFrameRateField = field
 
-        let stepper = NSStepper()
-        stepper.identifier = NSUserInterfaceItemIdentifier(
-            Self.animationFrameRateIdentifier + "Stepper"
-        )
-        stepper.minValue = Double(MenuBarAnimationTiming.minimumFrameRate)
-        stepper.maxValue = Double(MenuBarAnimationTiming.maximumFrameRate)
-        stepper.increment = 1
-        stepper.valueWraps = false
-        stepper.integerValue = clamped
-        stepper.target = animationFrameRateEditor
-        stepper.action = #selector(AnimationFrameRateEditor.stepperChanged(_:))
-        animationFrameRateStepper = stepper
-
         let unit = NSTextField(labelWithString: tr(.keyDashboardMenuBarPageAnimationFrameRateUnit))
         unit.font = .systemFont(ofSize: 13)
         unit.setContentHuggingPriority(.required, for: .horizontal)
@@ -2659,12 +2636,11 @@ final class DashboardMenuBarPage {
         animationFrameRateUnitLabel = unit
 
         animationFrameRateEditor.field = field
-        animationFrameRateEditor.stepper = stepper
         animationFrameRateEditor.onChange = { [weak relay] fps in
             relay?.commitMenuBarAnimationFrameRate(fps)
         }
 
-        let stack = NSStackView(views: [field, stepper, unit])
+        let stack = NSStackView(views: [field, unit])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 6

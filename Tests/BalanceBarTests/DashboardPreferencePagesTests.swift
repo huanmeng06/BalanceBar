@@ -3892,14 +3892,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSTextField }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier }
         )
-        let stepper = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSStepper }
-                .first {
-                    $0.identifier?.rawValue
-                        == DashboardMenuBarPage.animationFrameRateIdentifier + "Stepper"
-                }
-        )
         let animationFrameRateRow = try XCTUnwrap(
             descendant(
                 withIdentifier: DashboardMenuBarPage.animationFrameRateRowIdentifier,
@@ -3921,11 +3913,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
         XCTAssertEqual(field.integerValue, 24)
-        XCTAssertEqual(stepper.integerValue, 24)
-        XCTAssertEqual(stepper.minValue, 6)
-        XCTAssertEqual(stepper.maxValue, 60)
-        XCTAssertEqual(stepper.increment, 1)
-        XCTAssertFalse(stepper.valueWraps)
         XCTAssertTrue(
             descendants(of: animationFrameRateRow)
                 .compactMap { $0 as? NSTextField }
@@ -3946,14 +3933,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             try XCTUnwrap(subtitleText()).contains("8%")
         )
 
-        stepper.integerValue = 10
-        guard let stepperTarget = stepper.target, let stepperAction = stepper.action else {
-            return XCTFail("FPS stepper is not wired")
-        }
-        _ = (stepperTarget as AnyObject).perform(stepperAction, with: stepper)
+        field.stringValue = "10"
+        field.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: field)
+        )
         XCTAssertEqual(preferences.menuBarAnimationFrameRate, 10)
         XCTAssertEqual(field.integerValue, 10)
-        XCTAssertEqual(stepper.integerValue, 10)
         XCTAssertEqual(
             subtitleText(),
             DashboardMenuBarPage.animationFrameRateSubtitle(mode: .synchronized, fps: 10)
@@ -3967,12 +3952,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
         XCTAssertEqual(field.integerValue, 24)
 
-        field.stringValue = "61"
+        field.stringValue = "31"
         field.delegate?.controlTextDidEndEditing?(
             Notification(name: NSControl.textDidEndEditingNotification, object: field)
         )
-        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 60)
-        XCTAssertEqual(field.integerValue, 60)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+        XCTAssertEqual(field.integerValue, 30)
 
         field.stringValue = "5"
         field.delegate?.controlTextDidEndEditing?(

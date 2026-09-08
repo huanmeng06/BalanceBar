@@ -335,7 +335,9 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(AppPreferences(defaults: defaults).menuBarAnimationFrameRate, 10)
 
         preferences.menuBarAnimationFrameRate = 61
-        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 60)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+        preferences.menuBarAnimationFrameRate = 31
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
         preferences.menuBarAnimationFrameRate = 5
         XCTAssertEqual(preferences.menuBarAnimationFrameRate, 6)
 

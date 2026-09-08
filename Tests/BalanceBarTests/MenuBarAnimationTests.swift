@@ -75,7 +75,9 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(MenuBarAnimationTiming.frameInterval(fps: 10), 0.1, accuracy: 0.000_001)
         XCTAssertEqual(MenuBarAnimationTiming.rotationDuration(fps: 10), 3.6, accuracy: 0.000_001)
         XCTAssertEqual(MenuBarAnimationTiming.clampedFrameRate(5), 6)
-        XCTAssertEqual(MenuBarAnimationTiming.clampedFrameRate(61), 60)
+        XCTAssertEqual(MenuBarAnimationTiming.clampedFrameRate(31), 30)
+        XCTAssertEqual(MenuBarAnimationTiming.clampedFrameRate(61), 30)
+        XCTAssertEqual(MenuBarAnimationTiming.maximumFrameRate, 30)
         XCTAssertEqual(
             MenuBarCodexAnimationBackend(mode: .efficient),
             .nativeCoreAnimation
@@ -1071,9 +1073,9 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 10), 5)
         XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 24), 8)
         XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .synchronized, fps: 30), 10)
+        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 6), 2)
         XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 24), 4)
         XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 30), 4)
-        XCTAssertEqual(MenuBarAnimationCPUEstimate.percent(mode: .efficient, fps: 60), 6)
     }
 
     func testAnimationFrameRateInputClampsIntegersAndDefaultsInvalidValues() {
@@ -1082,7 +1084,8 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("abc"), 24)
         XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("24.5"), 24)
         XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("5"), 6)
-        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("61"), 60)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("31"), 30)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("61"), 30)
         XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve("10"), 10)
         XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve(" 30 "), 30)
     }

@@ -32,7 +32,7 @@ struct MenuBarAnimationState: Equatable {
 enum MenuBarAnimationTiming {
     static let frameCount = 36
     static let minimumFrameRate = 6
-    static let maximumFrameRate = 60
+    static let maximumFrameRate = 30
     static let defaultFrameRate = 24
     static let validFrameRateRange = minimumFrameRate...maximumFrameRate
 

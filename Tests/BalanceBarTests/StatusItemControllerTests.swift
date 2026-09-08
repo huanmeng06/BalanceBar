@@ -22,7 +22,9 @@ final class StatusItemControllerTests: XCTestCase {
         controller.setAnimationFrameRate(10)
         XCTAssertEqual(controller.animationFrameRateForTesting, 10)
         controller.setAnimationFrameRate(61)
-        XCTAssertEqual(controller.animationFrameRateForTesting, 60)
+        XCTAssertEqual(controller.animationFrameRateForTesting, 30)
+        controller.setAnimationFrameRate(31)
+        XCTAssertEqual(controller.animationFrameRateForTesting, 30)
         controller.setAnimationFrameRate(5)
         XCTAssertEqual(controller.animationFrameRateForTesting, 6)
     }

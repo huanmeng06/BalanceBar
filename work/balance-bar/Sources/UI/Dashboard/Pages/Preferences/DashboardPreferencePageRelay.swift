@@ -100,10 +100,6 @@ final class DashboardPreferencePageRelay: NSObject {
         )
     }
 
-    @objc func menuBarAnimationFrameRateStepper(_ sender: NSStepper) {
-        commitMenuBarAnimationFrameRate(sender.integerValue)
-    }
-
     @objc func menuBarAnimationFrameRateField(_ sender: NSTextField) {
         commitMenuBarAnimationFrameRate(
             MenuBarAnimationFrameRateInput.resolve(sender.stringValue)
