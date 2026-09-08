@@ -708,8 +708,12 @@ final class LocalizationTests: XCTestCase {
     func testAnimationModeCopyOmitsFullStopsAcrossAllLanguages() {
         let fullStops = [".", "。", "．"]
         for language in allLanguages {
-            let description = tr(
-                .keyDashboardMenuBarPageAnimationModeDescription,
+            let efficientDescription = tr(
+                .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
+                language: language
+            )
+            let synchronizedDescription = tr(
+                .keyDashboardMenuBarPageAnimationModeDescriptionSynchronized,
                 language: language
             )
             let fallback = tr(
@@ -717,8 +721,12 @@ final class LocalizationTests: XCTestCase {
                 language: language
             )
             XCTAssertFalse(
-                description.contains { fullStops.contains(String($0)) },
-                "animation mode description contains a full stop in \(language.rawValue)"
+                efficientDescription.contains { fullStops.contains(String($0)) },
+                "efficient animation mode description contains a full stop in \(language.rawValue)"
+            )
+            XCTAssertFalse(
+                synchronizedDescription.contains { fullStops.contains(String($0)) },
+                "synchronized animation mode description contains a full stop in \(language.rawValue)"
             )
             XCTAssertFalse(
                 fallback.contains { fullStops.contains(String($0)) },
@@ -768,10 +776,31 @@ final class LocalizationTests: XCTestCase {
             XCTAssertTrue(name.contains(baseName))
             XCTAssertTrue(
                 tr(
-                    .keyDashboardMenuBarPageAnimationModeDescription,
+                    .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
                     language: language
                 ).contains(baseName),
-                "animation mode description must use the renamed mode in \(language.rawValue)"
+                "efficient animation mode description must use the renamed mode in \(language.rawValue)"
+            )
+            XCTAssertTrue(
+                tr(
+                    .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
+                    language: language
+                ).contains("Beta"),
+                "efficient animation mode description must keep Latin Beta in \(language.rawValue)"
+            )
+            XCTAssertTrue(
+                tr(
+                    .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
+                    language: language
+                ).contains("BalanceBar"),
+                "efficient animation mode description must keep the product name in \(language.rawValue)"
+            )
+            XCTAssertFalse(
+                tr(
+                    .keyDashboardMenuBarPageAnimationModeDescriptionSynchronized,
+                    language: language
+                ).contains("Beta"),
+                "synchronized animation mode description must not include the Performance Beta note in \(language.rawValue)"
             )
             XCTAssertTrue(
                 tr(
@@ -929,7 +958,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 495)
+        XCTAssertEqual(expectedKeys.count, 496)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

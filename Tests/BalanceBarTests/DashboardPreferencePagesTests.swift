@@ -3773,14 +3773,30 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
         let relay = DashboardPreferencePageRelay()
+        let controller = DashboardMenuBarPage()
+        func refreshPage() {
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+        }
         relay.onMenuBarAnimationModeChanged = { mode in
             preferences.menuBarAnimationMode = mode
+            refreshPage()
         }
-        let controller = DashboardMenuBarPage()
         let page = controller.make(.init(
             preferences: preferences,
-            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            snapshot: snapshot,
             menuBarSnapshot: { $0 },
             iconImage: nil,
             relay: relay
@@ -3804,14 +3820,54 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ]
         )
         XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeEfficient), "性能（Beta）")
+        let synchronizedSubtitle = "同步：所有显示器上的动画保持同步，但资源占用显著更高"
+        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，部分时候副屏图标会消失，重启 BalanceBar 即可解决问题"
         XCTAssertEqual(
-            tr(.keyDashboardMenuBarPageAnimationModeDescription),
-            "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\n同步：所有显示器上的动画保持同步，但资源占用更高"
+            DashboardMenuBarPage.animationModeDescription(
+                mode: .synchronized,
+                language: .simplifiedChinese
+            ),
+            synchronizedSubtitle
         )
+        XCTAssertEqual(
+            DashboardMenuBarPage.animationModeDescription(
+                mode: .efficient,
+                language: .simplifiedChinese
+            ),
+            efficientSubtitle
+        )
+        XCTAssertEqual(
+            DashboardMenuBarPage.animationModeDescription(
+                mode: .synchronized,
+                language: .english
+            ),
+            "Synchronized: Keeps animation in sync across all displays, but uses significantly more resources"
+        )
+        XCTAssertEqual(
+            DashboardMenuBarPage.animationModeDescription(
+                mode: .efficient,
+                language: .english
+            ),
+            "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nBeta: Because of macOS system limits, the secondary-display icon can sometimes disappear; restart BalanceBar to fix it"
+        )
+        func subtitleText() -> String? {
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeSubtitleIdentifier }?
+                .stringValue
+        }
+        XCTAssertEqual(subtitleText(), synchronizedSubtitle)
+        XCTAssertEqual(modeControl.toolTip, synchronizedSubtitle)
+        XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("性能："))
+        XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("Beta"))
 
         modeControl.selectItem(at: 1)
         relay.menuBarAnimationMode(modeControl)
         XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+        XCTAssertEqual(subtitleText(), efficientSubtitle)
+        XCTAssertEqual(modeControl.toolTip, efficientSubtitle)
+        XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("同步："))
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("Beta"))
 
         let warningRow = try XCTUnwrap(
             descendant(
@@ -3840,6 +3896,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
             animationEnabled: true,
             animationMode: .efficient
         )
+        XCTAssertTrue(warningRow.isHidden)
+        XCTAssertEqual(subtitleText(), efficientSubtitle)
+
+        modeControl.selectItem(at: 0)
+        relay.menuBarAnimationMode(modeControl)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
+        XCTAssertEqual(subtitleText(), synchronizedSubtitle)
+        XCTAssertEqual(modeControl.toolTip, synchronizedSubtitle)
+        XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("Beta"))
         XCTAssertTrue(warningRow.isHidden)
     }
 

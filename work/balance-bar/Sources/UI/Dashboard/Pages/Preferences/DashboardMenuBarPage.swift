@@ -332,6 +332,7 @@ final class DashboardMenuBarPage {
     static let iconDisplayModeIdentifier = AppPreferences.menuBarIconDisplayModeKey
     static let iconDisplayDelayIdentifier = AppPreferences.menuBarIconDisplayDelayKey
     static let animationModeIdentifier = AppPreferences.menuBarAnimationModeKey
+    static let animationModeSubtitleIdentifier = AppPreferences.menuBarAnimationModeKey + "Subtitle"
     static let animationFrameRateIdentifier = AppPreferences.menuBarAnimationFrameRateKey
     static let animationFrameRateRowIdentifier = AppPreferences.menuBarAnimationFrameRateKey + "Row"
     static let animationFallbackWarningIdentifier = "menuBarAnimationFallbackWarning"
@@ -472,9 +473,21 @@ final class DashboardMenuBarPage {
     }
 
     static func animationModeDescription(
-        for language: AppLanguage = .selected
+        mode: MenuBarAnimationMode,
+        language: AppLanguage = .selected
     ) -> String {
-        tr(.keyDashboardMenuBarPageAnimationModeDescription, language: language)
+        switch mode {
+        case .efficient:
+            return tr(
+                .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
+                language: language
+            )
+        case .synchronized:
+            return tr(
+                .keyDashboardMenuBarPageAnimationModeDescriptionSynchronized,
+                language: language
+            )
+        }
     }
 
     static func animationFallbackWarningText(
@@ -644,6 +657,7 @@ final class DashboardMenuBarPage {
     private var animationFrameRate = MenuBarAnimationTiming.defaultFrameRate
     private let animationFrameRateEditor = AnimationFrameRateEditor()
     private weak var animationModeControl: NSPopUpButton?
+    private weak var animationModeSubtitleLabel: NSTextField?
     private weak var animationFrameRateField: NSTextField?
     private weak var animationFrameRateUnitLabel: NSTextField?
     private weak var animationFrameRateSubtitleLabel: NSTextField?
@@ -1345,9 +1359,20 @@ final class DashboardMenuBarPage {
             control: animationToggle
         )
         self.animationRow = animationRow
+        let animationModeSubtitle = Self.animationModeDescription(
+            mode: input.preferences.menuBarAnimationMode
+        )
+        let animationModeSubtitleLabel = DashboardSettingsComponents.makeSubtitleLabel(
+            LocalizedSubtitle(text: animationModeSubtitle)
+        )
+        animationModeSubtitleLabel.identifier = NSUserInterfaceItemIdentifier(
+            Self.animationModeSubtitleIdentifier
+        )
+        self.animationModeSubtitleLabel = animationModeSubtitleLabel
         let animationModeRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuBarPageAnimation),
-            subtitle: Self.animationModeDescription(),
+            subtitle: animationModeSubtitle,
+            subtitleLabel: animationModeSubtitleLabel,
             control: animationModeControl
         )
         self.animationModeRow = animationModeRow
@@ -1854,7 +1879,18 @@ final class DashboardMenuBarPage {
                 animationModeControl.selectItem(at: selectedIndex)
             }
             animationModeControl.synchronizeTitleAndSelectedItem()
+            animationModeControl.toolTip = Self.animationModeDescription(
+                mode: preferences.menuBarAnimationMode
+            )
         }
+        DashboardSettingsComponents.updateSubtitleLabel(
+            animationModeSubtitleLabel,
+            with: LocalizedSubtitle(
+                text: Self.animationModeDescription(
+                    mode: preferences.menuBarAnimationMode
+                )
+            )
+        )
         animationFrameRate = preferences.menuBarAnimationFrameRate
         animationFrameRateEditor.setDisplayedValue(preferences.menuBarAnimationFrameRate)
         animationFrameRateUnitLabel?.stringValue = tr(
@@ -2603,7 +2639,7 @@ final class DashboardMenuBarPage {
         control.widthAnchor.constraint(
             greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
         ).isActive = true
-        control.toolTip = Self.animationModeDescription()
+        control.toolTip = Self.animationModeDescription(mode: value)
         return control
     }
 
