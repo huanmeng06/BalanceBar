@@ -1306,6 +1306,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let menuBehaviorIndex = try XCTUnwrap(labels.firstIndex(of: "菜单行为"))
         XCTAssertLessThan(progressBarIndex, bankedResetIndex)
         XCTAssertLessThan(bankedResetIndex, menuBehaviorIndex)
+        XCTAssertTrue(labels.contains("显示重置卡"))
+        XCTAssertTrue(labels.contains("关闭后，下拉菜单不再显示重置卡"))
         XCTAssertTrue(labels.contains("显示样式"))
         XCTAssertTrue(labels.contains("简洁只显示张数和重置概率，详细列出每张卡"))
 
@@ -1330,6 +1332,190 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(changedModes, [.compact])
         XCTAssertEqual(preferences.menuBankedResetDisplayMode, .compact)
         XCTAssertEqual(popup.indexOfSelectedItem, 0)
+    }
+
+    func testBankedResetMasterSwitchHidesDisplayStyleWithoutResettingMode() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.ShowBankedReset.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertTrue(preferences.showBankedReset)
+        let controller = DashboardMenuPage()
+        let relay = DashboardPreferencePageRelay()
+        relay.onToggle = { identifier, enabled in
+            if identifier == AppPreferences.showBankedResetKey {
+                preferences.showBankedReset = enabled
+                controller.refresh(preferences: preferences)
+            }
+        }
+        relay.onBankedResetDisplayModeChanged = { mode in
+            preferences.menuBankedResetDisplayMode = mode
+            controller.refresh(preferences: preferences)
+        }
+        let page = controller.make(.init(
+            preferences: preferences,
+            relay: relay,
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
+        let window = NSWindow(
+            contentRect: page.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        window.layoutIfNeeded()
+        defer {
+            window.contentView = nil
+            controller.teardown()
+        }
+
+        let bankedResetSection = try XCTUnwrap(
+            settingsSection(withTitle: tr(.keyCodexBankedResetTitle), in: page)
+        )
+        let bankedResetRows = settingsRows(in: bankedResetSection)
+        XCTAssertEqual(bankedResetRows.count, 2)
+        let rowsStack = try XCTUnwrap(bankedResetRows[0].superview as? NSStackView)
+        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let toggle = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == AppPreferences.showBankedResetKey }
+        )
+        XCTAssertTrue(bankedResetRows[0] === toggle.superview)
+        XCTAssertTrue(bankedResetRows.allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        let expandedHeight = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: rowsStack,
+            separators: separators
+        )
+        XCTAssertEqual(rowsStack.superview?.frame.height ?? 0, expandedHeight, accuracy: 0.5)
+
+        let popup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.bankedResetDisplayModeIdentifier }
+        )
+        popup.selectItem(at: 0)
+        _ = NSApp.sendAction(
+            try XCTUnwrap(popup.action),
+            to: popup.target,
+            from: popup
+        )
+        XCTAssertEqual(preferences.menuBankedResetDisplayMode, .compact)
+
+        toggle.state = .off
+        relay.toggle(toggle)
+        window.layoutIfNeeded()
+        XCTAssertFalse(preferences.showBankedReset)
+        XCTAssertFalse(bankedResetRows[0].isHidden)
+        XCTAssertTrue(bankedResetRows.dropFirst().allSatisfy(\.isHidden))
+        XCTAssertTrue(separators.allSatisfy(\.isHidden))
+        let collapsedHeight = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: rowsStack,
+            separators: separators
+        )
+        XCTAssertEqual(rowsStack.superview?.frame.height ?? 0, collapsedHeight, accuracy: 0.5)
+        XCTAssertLessThan(collapsedHeight + 8, expandedHeight)
+        XCTAssertEqual(preferences.menuBankedResetDisplayMode, .compact)
+        XCTAssertEqual(popup.indexOfSelectedItem, 0)
+
+        toggle.state = .on
+        relay.toggle(toggle)
+        window.layoutIfNeeded()
+        XCTAssertTrue(preferences.showBankedReset)
+        XCTAssertTrue(bankedResetRows.allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        XCTAssertEqual(preferences.menuBankedResetDisplayMode, .compact)
+        XCTAssertEqual(popup.indexOfSelectedItem, 0)
+    }
+
+    func testBankedResetShowToggleLocalizesAcrossSupportedLanguages() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let expectedTitles: [AppLanguage: String] = [
+            .simplifiedChinese: "显示重置卡",
+            .traditionalChineseTaiwan: "顯示重置卡",
+            .traditionalChineseHongKong: "顯示重置卡",
+            .english: "Show Reset Cards"
+        ]
+        let expectedSubtitles: [AppLanguage: String] = [
+            .simplifiedChinese: "关闭后，下拉菜单不再显示重置卡",
+            .traditionalChineseTaiwan: "關閉後，下拉選單不再顯示重置卡",
+            .traditionalChineseHongKong: "關閉後，下拉選單不再顯示重置卡",
+            .english: "When off, the dropdown menu no longer shows reset cards"
+        ]
+
+        for language in AppLanguage.allCases where language != .system {
+            AppLanguage.selected = language
+            XCTAssertFalse(
+                tr(.keyDashboardMenuPageShowBankedReset, language: language).hasPrefix("⟦"),
+                "localized show-reset-card title exists for \(language)"
+            )
+            XCTAssertFalse(
+                tr(.keyDashboardMenuPageShowBankedResetDescription, language: language).hasPrefix("⟦"),
+                "localized show-reset-card subtitle exists for \(language)"
+            )
+            if let expectedTitle = expectedTitles[language] {
+                XCTAssertEqual(
+                    tr(.keyDashboardMenuPageShowBankedReset, language: language),
+                    expectedTitle
+                )
+            }
+            if let expectedSubtitle = expectedSubtitles[language] {
+                XCTAssertEqual(
+                    tr(.keyDashboardMenuPageShowBankedResetDescription, language: language),
+                    expectedSubtitle
+                )
+            }
+
+            let suiteName = "DashboardPreferencePagesTests.ShowBankedResetCopy.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            let controller = DashboardMenuPage()
+            let page = controller.make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                relay: DashboardPreferencePageRelay(),
+                makeStatusLinksEditor: {
+                    StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+                },
+                onBalanceDisplayThresholdChanged: { _ in }
+            ))
+            defer {
+                controller.teardown()
+                defaults.removePersistentDomain(forName: suiteName)
+            }
+
+            let section = try XCTUnwrap(
+                settingsSection(withTitle: tr(.keyCodexBankedResetTitle, language: language), in: page)
+            )
+            let rows = settingsRows(in: section)
+            XCTAssertEqual(rows.count, 2, "reset-card row count for \(language)")
+            let firstRowText = nonEmptyTextFields(in: rows[0])
+            XCTAssertTrue(
+                firstRowText.contains(tr(.keyDashboardMenuPageShowBankedReset, language: language)),
+                "first reset-card row title for \(language)"
+            )
+            XCTAssertTrue(
+                firstRowText.contains(tr(.keyDashboardMenuPageShowBankedResetDescription, language: language)),
+                "first reset-card row subtitle for \(language)"
+            )
+            let secondRowText = nonEmptyTextFields(in: rows[1])
+            XCTAssertTrue(
+                secondRowText.contains(tr(.keyDashboardMenuPageBankedResetDisplayMode, language: language)),
+                "second reset-card row keeps display-style copy for \(language)"
+            )
+        }
     }
 
     func testProgressBarSectionLocalizesRowsAndPersistsControlsAcrossSupportedLanguages() throws {

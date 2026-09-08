@@ -2084,6 +2084,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let lunaReserveResetTimeMode: LunaReserveResetTimeMode
         let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
         let showQuotaProgressBar: Bool
+        let showBankedReset: Bool
 
         init(
             showIcon: Bool,
@@ -2105,7 +2106,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             autoSwitchLunaReserve: Bool = false,
             lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
             quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
-            showQuotaProgressBar: Bool = true
+            showQuotaProgressBar: Bool = true,
+            showBankedReset: Bool = true
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -2125,6 +2127,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
             self.quotaProgressColorConfiguration = quotaProgressColorConfiguration.normalized()
             self.showQuotaProgressBar = showQuotaProgressBar
+            self.showBankedReset = showBankedReset
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -5323,7 +5326,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lunaReserve?.remaining != nil,
             lunaReserveInsertionIndex: quotaPresentation.lunaReserveInsertionIndex,
             includesQuotaProgress: settings.showQuotaProgressBar,
-            includesBankedReset: snapshot.kind == .official && bankedReset != nil,
+            includesBankedReset: settings.showBankedReset
+                && snapshot.kind == .official
+                && bankedReset != nil,
             bankedResetCardCount: bankedReset?.cards.count ?? 0,
             bankedResetDisplayMode: menuInput.bankedResetDisplayMode
         )

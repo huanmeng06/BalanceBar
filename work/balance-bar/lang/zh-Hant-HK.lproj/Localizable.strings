@@ -363,6 +363,8 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "開啟後，顯示 🌙 %1$@ 時會隱藏選單中已歸零的配額";
 "dashboard.menu.page.low_balance_display_threshold" = "低餘額警示門檻";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "增值後若餘額仍低於此金額，進度條繼續顯示為紅色";
+"dashboard.menu.page.show_banked_reset" = "顯示重置卡";
+"dashboard.menu.page.show_banked_reset_description" = "關閉後，下拉選單不再顯示重置卡";
 "dashboard.menu.page.banked_reset_display_mode" = "顯示樣式";
 "dashboard.menu.page.banked_reset_display_mode_description" = "簡潔只顯示張數和重置機率，詳細列出每張卡";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "簡潔";

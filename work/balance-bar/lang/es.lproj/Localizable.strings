@@ -363,6 +363,8 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "Al activarlo, las cuotas al 0 %% se ocultan del menú cuando se muestra 🌙 %1$@";
 "dashboard.menu.page.low_balance_display_threshold" = "Umbral de advertencia de saldo bajo";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Después de una recarga, la barra de progreso permanece roja mientras el saldo sea inferior a este valor.";
+"dashboard.menu.page.show_banked_reset" = "Mostrar tarjetas de restablecimiento";
+"dashboard.menu.page.show_banked_reset_description" = "Al desactivarla, el menú desplegable ya no muestra las tarjetas de restablecimiento";
 "dashboard.menu.page.banked_reset_display_mode" = "Estilo de visualización";
 "dashboard.menu.page.banked_reset_display_mode_description" = "Compacto muestra el recuento y la probabilidad de reinicio; detallado lista cada tarjeta";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "Compacto";

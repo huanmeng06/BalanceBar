@@ -2847,6 +2847,148 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
+    func testOfficialCodexMenuCardHidesBankedResetWhenShowBankedResetIsOff() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false,
+            bankedResetDisplayMode: .detailed
+        )
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true,
+            showBankedReset: false
+        )
+        let date = Date()
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2d0h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "7d0h",
+                durationSeconds: 604_800
+            )
+        ]
+        let earlier = date.addingTimeInterval(6 * 3_600)
+        let bankedReset = try XCTUnwrap(
+            CodexBankedReset(cards: [
+                CodexBankedResetCard(
+                    id: "earlier",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    windowText: tr(.keyCodexBankedResetFullResetWindow),
+                    expiresAt: earlier,
+                    expiresText: CodexBankedResetFormatting.expiryText(
+                        for: earlier,
+                        relativeTo: date
+                    ),
+                    remainingText: "6h",
+                    remainingIsWarning: true
+                )
+            ])
+        )
+
+        controller.start(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                bankedReset: bankedReset,
+                resetProbability: .percent(24)
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let hiddenFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: false,
+            bankedResetCardCount: 1,
+            bankedResetDisplayMode: .detailed
+        )
+        let shownFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 1,
+            bankedResetDisplayMode: .detailed
+        )
+        XCTAssertEqual(overview.bounds.size, hiddenFrames.cardSize)
+        XCTAssertEqual(hiddenFrames.cardSize, OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows
+        ).cardSize)
+        XCTAssertGreaterThan(shownFrames.cardSize.height, hiddenFrames.cardSize.height)
+        XCTAssertNil(hiddenFrames.bankedResetSummaryRow)
+        XCTAssertTrue(hiddenFrames.bankedResetDetailRows.isEmpty)
+        let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
+        XCTAssertTrue(labels.contains(tr(.keyResponseParsers5HourQuota)))
+        XCTAssertTrue(labels.contains(tr(.keyResponseParsers7DayQuota2)))
+        XCTAssertTrue(labels.contains("80%"))
+        XCTAssertTrue(labels.contains("45%"))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetTitle)))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetFullResetTitle)))
+        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.count" })
+        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" })
+        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" })
+    }
+
     func testOfficialCodexMenuCardDetailedBankedResetClipsTicketsToTwoAndAHalfRows() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

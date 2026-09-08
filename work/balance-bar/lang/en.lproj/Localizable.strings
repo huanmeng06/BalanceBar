@@ -363,6 +363,8 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "When enabled, zeroed quotas are hidden from the menu when 🌙 %1$@ is shown";
 "dashboard.menu.page.low_balance_display_threshold" = "Low balance warning threshold";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "After a top-up, keep the progress bar red while the balance is below this amount";
+"dashboard.menu.page.show_banked_reset" = "Show Reset Cards";
+"dashboard.menu.page.show_banked_reset_description" = "When off, the dropdown menu no longer shows reset cards";
 "dashboard.menu.page.banked_reset_display_mode" = "Display style";
 "dashboard.menu.page.banked_reset_display_mode_description" = "Compact shows the count and reset probability; detailed lists each card";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "Compact";

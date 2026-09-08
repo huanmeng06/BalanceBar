@@ -1589,6 +1589,18 @@ final class OpenCodexRepositoryTests: XCTestCase {
         }
         XCTAssertEqual(frames.bankedResetDetailRows.count, 2)
         XCTAssertGreaterThan(frames.cardSize.height, baseline.cardSize.height)
+        let hidden = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: false,
+            bankedResetCardCount: 2
+        )
+        XCTAssertEqual(hidden.cardSize, baseline.cardSize)
+        XCTAssertNil(hidden.bankedResetSummaryRow)
+        XCTAssertTrue(hidden.bankedResetDetailRows.isEmpty)
+        XCTAssertEqual(hidden.quotaRows.map(\.quotaDetail), baseline.quotaRows.map(\.quotaDetail))
         XCTAssertEqual(summary.progress, .zero)
         XCTAssertGreaterThan(summary.amount.width, 0)
         XCTAssertEqual(
