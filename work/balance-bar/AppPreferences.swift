@@ -248,6 +248,8 @@ final class AppPreferences {
     static let quotaProgressRedUpperBoundKey = "quotaProgressRedUpperBound"
     static let quotaProgressOrangeUpperBoundKey = "quotaProgressOrangeUpperBound"
     static let quotaProgressYellowUpperBoundKey = "quotaProgressYellowUpperBound"
+    static let showQuotaProgressBarKey = "showQuotaProgressBar"
+    static let showQuotaProgressBarDefault = true
     static let updateChannelKey = "updateChannel"
     static let defaultUpdateChannel: UpdateChannel = .stable
     static let silentLaunchKey = "silentLaunch"
@@ -306,6 +308,10 @@ final class AppPreferences {
     var showMenuBarReset: Bool { get { bool("showMenuBarReset", default: true) } set { defaults.set(newValue, forKey: "showMenuBarReset") } }
     var showMenuBarIcon: Bool { get { bool("showMenuBarIcon", default: true) } set { defaults.set(newValue, forKey: "showMenuBarIcon") } }
     var showMenuBarAmount: Bool { get { bool("showMenuBarAmount", default: true) } set { defaults.set(newValue, forKey: "showMenuBarAmount") } }
+    var showQuotaProgressBar: Bool {
+        get { bool(Self.showQuotaProgressBarKey, default: Self.showQuotaProgressBarDefault) }
+        set { defaults.set(newValue, forKey: Self.showQuotaProgressBarKey) }
+    }
     var animateCodexActivity: Bool { get { bool("animateCodexActivity", default: true) } set { defaults.set(newValue, forKey: "animateCodexActivity") } }
     var activityPollInterval: TimeInterval { get { positiveDouble("activityPollInterval", default: 0.25) } set { defaults.set(newValue, forKey: "activityPollInterval") } }
     var codexUsageRefreshInterval: TimeInterval { get { positiveDouble("codexUsageRefreshInterval", default: 3) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }

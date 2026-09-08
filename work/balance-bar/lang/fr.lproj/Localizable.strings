@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "Ouvrir les réglages";
 "dashboard.menu.bar.page.runtime_only_warning" = "« Uniquement pendant l’exécution » est activé et le délai de masquage après la tâche est écoulé ; l’icône de la barre des menus est donc temporairement masquée.";
 "dashboard.menu.bar.page.set_now" = "Configurer maintenant";
-"dashboard.menu.bar.page.preview" = "Aperçu";
+"dashboard.menu.bar.page.preview" = "Aperçu et affichage";
 "dashboard.menu.bar.page.current_layout" = "Disposition actuelle";
 "dashboard.menu.bar.page.quota_and_reset" = "Quota et réinitialisation";
 "dashboard.menu.bar.page.icon_and_task_status" = "Icône et animation";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barre des menus est mise à jour en temps réel avec les données du fournisseur";
-"dashboard.menu.bar.page.icon_display_mode" = "Affichage de l’icône de la barre des menus";
+"dashboard.menu.bar.page.icon_display_mode" = "Affichage de la barre des menus";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Choisissez d’afficher l’icône toujours ou uniquement pendant l’exécution d’une tâche";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Toujours visible";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Uniquement pendant l’exécution";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Saisissez un montant d’au moins 0,01 avec au plus deux décimales";
 "dashboard.menu.page.balance_display" = "Affichage du solde";
 "dashboard.menu.page.progress_bar" = "Barre de progression";
+"dashboard.menu.page.show_quota_progress_bar" = "Afficher la barre de progression";
+"dashboard.menu.page.show_quota_progress_bar_description" = "Une fois désactivée, les menus et les cartes de quota n’affichent plus la barre de quota restant";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 Affichage de %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Choisissez quand afficher %1$@ dans le menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Ne pas afficher";

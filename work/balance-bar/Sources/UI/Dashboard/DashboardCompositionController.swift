@@ -452,7 +452,8 @@ final class DashboardCompositionController {
             refreshDate: useLastSuccessfulRefresh ? state.refreshDate() : refreshDate,
             revision: revision,
             currentProviderIsOfficial: state.currentProviderIsOfficial(),
-            quotaProgressColorConfiguration: state.preferences.quotaProgressColorConfiguration
+            quotaProgressColorConfiguration: state.preferences.quotaProgressColorConfiguration,
+            showQuotaProgressBar: state.preferences.showQuotaProgressBar
         )
     }
 

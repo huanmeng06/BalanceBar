@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "Открыть настройки";
 "dashboard.menu.bar.page.runtime_only_warning" = "Включён режим «Только во время работы», и задержка скрытия после задачи истекла, поэтому значок в строке меню временно скрыт.";
 "dashboard.menu.bar.page.set_now" = "Настроить сейчас";
-"dashboard.menu.bar.page.preview" = "Предпросмотр";
+"dashboard.menu.bar.page.preview" = "Предпросмотр и отображение";
 "dashboard.menu.bar.page.current_layout" = "Текущий макет";
 "dashboard.menu.bar.page.quota_and_reset" = "Квота и сброс";
 "dashboard.menu.bar.page.icon_and_task_status" = "Значок и анимация";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "Строка меню обновляется данными провайдера в реальном времени";
-"dashboard.menu.bar.page.icon_display_mode" = "Отображение значка в строке меню";
+"dashboard.menu.bar.page.icon_display_mode" = "Отображение в строке меню";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Выберите, показывать ли значок всегда или только во время выполнения задачи";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Всегда показывать";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Только во время работы";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Введите значение не менее 0,01 с точностью до двух знаков после запятой";
 "dashboard.menu.page.balance_display" = "Отображение баланса";
 "dashboard.menu.page.progress_bar" = "Индикатор выполнения";
+"dashboard.menu.page.show_quota_progress_bar" = "Показывать индикатор выполнения";
+"dashboard.menu.page.show_quota_progress_bar_description" = "Если выключено, меню и карточки квоты больше не показывают индикатор оставшейся квоты";
 "dashboard.menu.page.luna_reserve_display_mode" = "Отображение 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Выберите, когда показывать 🌙 %1$@ в меню";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Не показывать";

@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "설정 열기";
 "dashboard.menu.bar.page.runtime_only_warning" = "실행 중에만 표시가 활성화되어 작업 종료 후 숨김 지연 시간이 지나 메뉴 막대 아이콘이 일시적으로 숨겨졌습니다.";
 "dashboard.menu.bar.page.set_now" = "지금 설정";
-"dashboard.menu.bar.page.preview" = "미리보기";
+"dashboard.menu.bar.page.preview" = "미리보기 및 표시";
 "dashboard.menu.bar.page.current_layout" = "현재 레이아웃";
 "dashboard.menu.bar.page.quota_and_reset" = "할당량 및 재설정";
 "dashboard.menu.bar.page.icon_and_task_status" = "아이콘 및 애니메이션";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "메뉴 막대가 서비스 제공자 데이터에 따라 실시간으로 업데이트됩니다";
-"dashboard.menu.bar.page.icon_display_mode" = "메뉴 막대 아이콘 표시";
+"dashboard.menu.bar.page.icon_display_mode" = "메뉴 막대 표시";
 "dashboard.menu.bar.page.icon_display_mode_description" = "아이콘을 항상 표시하거나 작업 실행 중에만 표시하도록 선택";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "항상 표시";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "실행 중에만 표시";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "0.01 이상, 소수점 이하 두 자리까지의 금액을 입력하세요";
 "dashboard.menu.page.balance_display" = "잔액 표시";
 "dashboard.menu.page.progress_bar" = "진행률 막대";
+"dashboard.menu.page.show_quota_progress_bar" = "진행률 막대 표시";
+"dashboard.menu.page.show_quota_progress_bar_description" = "끄면 메뉴와 할당량 카드에 진행률 막대가 표시되지 않습니다";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ 표시 방식";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "메뉴에서 %1$@를 표시할 시점을 선택";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "표시 안 함";

@@ -1135,6 +1135,19 @@ final class DashboardComponentsTests: XCTestCase {
         card.layoutSubtreeIfNeeded()
         XCTAssertFalse(progressHost.isHidden)
         XCTAssertEqual(progressHost.frame.height, 6, accuracy: 0.5)
+
+        card.showsProgressBar = false
+        card.update(
+            quota: LunaReserveQuota(
+                status: .available,
+                remaining: 45,
+                reset: "1h30m"
+            )
+        )
+        card.layoutSubtreeIfNeeded()
+        XCTAssertTrue(descendantViews(of: card, as: QuotaProgressView.self).isEmpty)
+        XCTAssertTrue(progressHost.isHidden)
+        XCTAssertEqual(progressHost.frame.height, 0, accuracy: 0.5)
     }
 
     func testHoverLinkHoverHintSetsNativeTooltip() {

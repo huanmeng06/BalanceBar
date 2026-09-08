@@ -840,7 +840,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 487)
+        XCTAssertEqual(expectedKeys.count, 489)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -1413,7 +1413,7 @@ final class LocalizationTests: XCTestCase {
             equals: "Nach einer Aufladung bleibt der Fortschrittsbalken rot, solange das Guthaben unter diesem Wert liegt."
         )
         assertTranslation(.german, .keyLocalizationFollowSystem, equals: "Systemsprache verwenden")
-        assertTranslation(.german, .keyDashboardMenuBarPageIconDisplayMode, equals: "Anzeige des Menüleistensymbols")
+        assertTranslation(.german, .keyDashboardMenuBarPageIconDisplayMode, equals: "Anzeige der Menüleiste")
     }
 
     func testIssue254KoreanVisibleProviderTerminologyUsesServiceProvider() {
@@ -2045,18 +2045,18 @@ final class LocalizationTests: XCTestCase {
 
     func testDashboardTaskOrientedSectionTitlesAreLocalizedAcrossAllLanguages() {
         let expected: [AppLanguage: (quotaAndReset: String, iconAndTaskStatus: String, layout: String, menuBehavior: String, statusLinks: String, iconDisplayMode: String)] = [
-            .simplifiedChinese: ("额度与重置", "图标与动画", "布局", "菜单行为", "状态链接", "菜单栏图标显示"),
-            .traditionalChineseTaiwan: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
-            .traditionalChineseHongKong: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
-            .japanese: ("クォータとリセット", "アイコンとアニメーション", "レイアウト", "メニューの動作", "ステータスリンク", "メニューバーアイコンの表示"),
-            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Menu behavior", "Status Links", "Menu Bar Icon Display"),
-            .korean: ("할당량 및 재설정", "아이콘 및 애니메이션", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 아이콘 표시"),
-            .spanish: ("Cuota y reinicio", "Icono y animación", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Mostrar el icono de la barra de menús"),
-            .german: ("Kontingent und Zurücksetzung", "Symbol und Animation", "Layout", "Menüverhalten", "Statuslinks", "Anzeige des Menüleistensymbols"),
-            .french: ("Quota et réinitialisation", "Icône et animation", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de l’icône de la barre des menus"),
-            .portuguese: ("Cota e redefinição", "Ícone e animação", "Layout", "Comportamento do menu", "Links de status", "Exibição do ícone na barra de menus"),
-            .russian: ("Квота и сброс", "Значок и анимация", "Макет", "Поведение меню", "Ссылки статуса", "Отображение значка в строке меню"),
-            .italian: ("Quota e ripristino", "Icona e animazione", "Disposizione", "Comportamento del menu", "Collegamenti di stato", "Visualizzazione dell'icona nella barra dei menu")
+            .simplifiedChinese: ("额度与重置", "图标与动画", "布局", "菜单行为", "状态链接", "菜单栏显示"),
+            .traditionalChineseTaiwan: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列顯示"),
+            .traditionalChineseHongKong: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列顯示"),
+            .japanese: ("クォータとリセット", "アイコンとアニメーション", "レイアウト", "メニューの動作", "ステータスリンク", "メニューバーの表示"),
+            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Menu behavior", "Status Links", "Menu Bar Display"),
+            .korean: ("할당량 및 재설정", "아이콘 및 애니메이션", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 표시"),
+            .spanish: ("Cuota y reinicio", "Icono y animación", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Visualización de la barra de menús"),
+            .german: ("Kontingent und Zurücksetzung", "Symbol und Animation", "Layout", "Menüverhalten", "Statuslinks", "Anzeige der Menüleiste"),
+            .french: ("Quota et réinitialisation", "Icône et animation", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de la barre des menus"),
+            .portuguese: ("Cota e redefinição", "Ícone e animação", "Layout", "Comportamento do menu", "Links de status", "Exibição da barra de menus"),
+            .russian: ("Квота и сброс", "Значок и анимация", "Макет", "Поведение меню", "Ссылки статуса", "Отображение в строке меню"),
+            .italian: ("Quota e ripristino", "Icona e animazione", "Disposizione", "Comportamento del menu", "Collegamenti di stato", "Visualizzazione della barra dei menu")
         ]
 
         for language in allLanguages {

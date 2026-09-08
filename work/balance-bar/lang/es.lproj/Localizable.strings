@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "Abrir ajustes";
 "dashboard.menu.bar.page.runtime_only_warning" = "Solo durante la ejecución está activado y el retraso para ocultar tras la tarea ha terminado, por lo que el icono de la barra de menús está oculto temporalmente.";
 "dashboard.menu.bar.page.set_now" = "Configurar ahora";
-"dashboard.menu.bar.page.preview" = "Vista previa";
+"dashboard.menu.bar.page.preview" = "Vista previa y visualización";
 "dashboard.menu.bar.page.current_layout" = "Diseño actual";
 "dashboard.menu.bar.page.quota_and_reset" = "Cuota y reinicio";
 "dashboard.menu.bar.page.icon_and_task_status" = "Icono y animación";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barra de menús se actualiza en tiempo real con los datos del proveedor";
-"dashboard.menu.bar.page.icon_display_mode" = "Mostrar el icono de la barra de menús";
+"dashboard.menu.bar.page.icon_display_mode" = "Visualización de la barra de menús";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Elige mostrar siempre el icono o solo mientras se ejecuta una tarea";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Siempre visible";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Solo durante la ejecución";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Introduce un importe de al menos 0,01 con hasta dos decimales";
 "dashboard.menu.page.balance_display" = "Visualización del saldo";
 "dashboard.menu.page.progress_bar" = "Barra de progreso";
+"dashboard.menu.page.show_quota_progress_bar" = "Mostrar barra de progreso";
+"dashboard.menu.page.show_quota_progress_bar_description" = "Al desactivarla, los menús y las tarjetas de cuota ya no muestran la barra de cuota restante";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 Mostrar %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Elige cuándo mostrar %1$@ en el menú";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "No mostrar";

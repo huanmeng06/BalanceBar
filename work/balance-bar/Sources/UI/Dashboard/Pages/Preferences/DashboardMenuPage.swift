@@ -59,6 +59,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private weak var quotaColorSlider: QuotaColorThresholdSlider?
     private var quotaColorButtons: [QuotaProgressColor: NSButton] = [:]
     private var quotaColorConfiguration: QuotaProgressColorConfiguration = .default
+    private weak var showQuotaProgressBarSwitch: NSSwitch?
+    private var progressBarDetailRows: [NSView] = []
+    private weak var progressBarRowsStack: NSStackView?
+    private weak var progressBarCardHeightConstraint: NSLayoutConstraint?
+    private var progressBarSeparators: [NSView] = []
 
     func make(_ input: Input) -> NSView {
         balanceDisplayThresholdValue = input.preferences.balanceDisplayThreshold
@@ -72,6 +77,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         lunaReserveHideExhaustedQuotaRow = nil
         lunaReserveHideExhaustedQuotaSwitch = nil
         bankedResetDisplayModeControl = nil
+        showQuotaProgressBarSwitch = nil
+        progressBarDetailRows = []
+        progressBarRowsStack = nil
+        progressBarCardHeightConstraint = nil
+        progressBarSeparators = []
 
         let lunaReserveRows: [NSView]
         if LunaReserveUserFacing.isCurrentlyEnabled {
@@ -203,30 +213,53 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             ]
         )
 
+        let showQuotaProgressBarSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.showQuotaProgressBarKey,
+            isOn: input.preferences.showQuotaProgressBar,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        self.showQuotaProgressBarSwitch = showQuotaProgressBarSwitch
+        let showQuotaProgressBarRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuPageShowQuotaProgressBar),
+            subtitle: tr(.keyDashboardMenuPageShowQuotaProgressBarDescription),
+            control: showQuotaProgressBarSwitch
+        )
+        let colorRangesRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuPageProgressColorRanges),
+            subtitle: tr(.keyDashboardMenuPageProgressColorRangesDescription),
+            trailingControl: resetButton,
+            control: slider,
+            minimumHeight: 90,
+            controlWidthConstrainedToRow: true,
+            forceDedicatedControlRow: true
+        )
+        let displayedColorsRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuPageDisplayedColors),
+            subtitle: tr(.keyDashboardMenuPageDisplayedColorsDescription),
+            control: colorControls,
+            controlWidthConstrainedToRow: true
+        )
+        let thresholdRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
+            subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
+            control: balanceDisplayThreshold
+        )
+        progressBarDetailRows = [colorRangesRow, displayedColorsRow, thresholdRow]
         let progressBar = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuPageProgressBar),
             rows: [
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuPageProgressColorRanges),
-                    subtitle: tr(.keyDashboardMenuPageProgressColorRangesDescription),
-                    headerTrailingAccessory: resetButton,
-                    control: slider,
-                    minimumHeight: 90,
-                    controlWidthConstrainedToRow: true,
-                    forceDedicatedControlRow: true
-                ),
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuPageDisplayedColors),
-                    subtitle: tr(.keyDashboardMenuPageDisplayedColorsDescription),
-                    control: colorControls,
-                    controlWidthConstrainedToRow: true
-                ),
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
-                    subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
-                    control: balanceDisplayThreshold
-                )
-            ]
+                showQuotaProgressBarRow,
+                colorRangesRow,
+                displayedColorsRow,
+                thresholdRow
+            ],
+            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                self?.progressBarRowsStack = rowsStack
+                self?.progressBarCardHeightConstraint = cardHeightConstraint
+                self?.progressBarSeparators = separators
+                self?.updateProgressBarSettingsVisibility(input.preferences.showQuotaProgressBar)
+            }
         )
 
         let quickSwitch = DashboardSettingsComponents.makeSwitch(
@@ -370,6 +403,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         quotaColorConfiguration = preferences.quotaProgressColorConfiguration
         quotaColorSlider?.configuration = quotaColorConfiguration
         updateQuotaColorButtons()
+        showQuotaProgressBarSwitch?.state = preferences.showQuotaProgressBar ? .on : .off
+        updateProgressBarSettingsVisibility(preferences.showQuotaProgressBar)
         let statusLinks = preferences.statusLinks
         if statusLinksEditor?.links != statusLinks {
             statusLinksEditor?.updateLinks(statusLinks)
@@ -444,6 +479,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         quotaColorButtons = [:]
         quotaColorSlider?.teardown()
         quotaColorSlider = nil
+        showQuotaProgressBarSwitch = nil
+        progressBarDetailRows = []
+        progressBarRowsStack = nil
+        progressBarCardHeightConstraint = nil
+        progressBarSeparators = []
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
         statusSubtitleLabel = nil
@@ -477,7 +517,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     static func configureQuotaColorResetButton(_ button: NSButton) {
-        button.controlSize = .small
+        button.controlSize = .regular
         button.bezelStyle = .rounded
         // Resetting an already-default configuration is a harmless no-op; keep
         // the action visually consistent with the other settings buttons.
@@ -498,6 +538,33 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             separator.isHidden = !shouldShowHideOption
         }
         updateBalanceDisplayLayout()
+    }
+
+    private func updateProgressBarSettingsVisibility(_ visible: Bool) {
+        progressBarDetailRows.forEach { $0.isHidden = !visible }
+        let visibleRows = [true] + progressBarDetailRows.map { _ in visible }
+        for (index, separator) in progressBarSeparators.enumerated() {
+            guard index < visibleRows.count - 1 else {
+                separator.isHidden = true
+                continue
+            }
+            let hasVisibleRowAfter = visibleRows[(index + 1)...].contains(true)
+            separator.isHidden = !(visibleRows[index] && hasVisibleRowAfter)
+        }
+        updateProgressBarLayout()
+    }
+
+    private func updateProgressBarLayout() {
+        guard let progressBarRowsStack,
+              let progressBarCardHeightConstraint else { return }
+        progressBarRowsStack.needsLayout = true
+        progressBarCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: progressBarRowsStack,
+            separators: progressBarSeparators
+        )
+        progressBarRowsStack.superview?.invalidateIntrinsicContentSize()
+        progressBarRowsStack.superview?.needsLayout = true
+        progressBarRowsStack.superview?.superview?.needsLayout = true
     }
 
     private func updateBalanceDisplayLayout() {

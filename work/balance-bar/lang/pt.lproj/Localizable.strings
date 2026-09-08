@@ -276,12 +276,12 @@
 "dashboard.menu.bar.page.open_settings" = "Abrir configurações";
 "dashboard.menu.bar.page.runtime_only_warning" = "Somente durante a execução está ativado e o atraso para ocultar após a tarefa terminou; o ícone da barra de menus está temporariamente oculto.";
 "dashboard.menu.bar.page.set_now" = "Configurar agora";
-"dashboard.menu.bar.page.preview" = "Pré-visualização";
+"dashboard.menu.bar.page.preview" = "Pré-visualização e exibição";
 "dashboard.menu.bar.page.current_layout" = "Disposição atual";
 "dashboard.menu.bar.page.quota_and_reset" = "Cota e redefinição";
 "dashboard.menu.bar.page.icon_and_task_status" = "Ícone e animação";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "A barra de menus é atualizada com dados do provedor em tempo real";
-"dashboard.menu.bar.page.icon_display_mode" = "Exibição do ícone na barra de menus";
+"dashboard.menu.bar.page.icon_display_mode" = "Exibição da barra de menus";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Escolha se o ícone deve ser sempre exibido ou somente durante a execução de uma tarefa";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Sempre visível";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Somente durante a execução";
@@ -352,6 +352,8 @@
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Insira um valor de pelo menos 0,01 com até duas casas decimais";
 "dashboard.menu.page.balance_display" = "Exibição do saldo";
 "dashboard.menu.page.progress_bar" = "Barra de progresso";
+"dashboard.menu.page.show_quota_progress_bar" = "Mostrar barra de progresso";
+"dashboard.menu.page.show_quota_progress_bar_description" = "Quando desativada, os menus e os cartões de cota não mostram mais a barra de cota restante";
 "dashboard.menu.page.luna_reserve_display_mode" = "Exibição da 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Escolha quando a 🌙 %1$@ será exibida no menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Não mostrar";
