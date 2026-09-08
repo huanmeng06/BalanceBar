@@ -852,36 +852,39 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 delayRow.isHidden,
                 "the delay selector is hidden while Always Visible is selected in (language)"
             )
-            let iconTaskStatusRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
+            let iconTaskStatusRowsStack = try XCTUnwrap(taskStatusRow.superview as? NSStackView)
             let iconRows = iconTaskStatusRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
             XCTAssertTrue(
-                zip(iconRows, [taskStatusRow, delayRow, animationRow, animationModeRow])
+                zip(iconRows, [taskStatusRow, animationRow, animationModeRow])
                     .allSatisfy { $0.0 === $0.1 },
-                "icon/task rows follow task status, delay, animation, mode order in (language)"
+                "icon/task rows follow task status, animation, mode order in (language)"
             )
             XCTAssertFalse(
                 iconRows.contains { $0 === modeRow },
                 "menu bar display moved out of icon/task in (language)"
             )
+            XCTAssertFalse(
+                iconRows.contains { $0 === delayRow },
+                "hide delay moved out of icon/task in (language)"
+            )
             let previewRowsStack = try XCTUnwrap(modeRow.superview as? NSStackView)
             let previewRows = previewRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
-            XCTAssertEqual(previewRows.count, 4)
+            let previewSeparators = previewRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+            XCTAssertEqual(previewRows.count, 5)
             XCTAssertTrue(
                 previewRows[1] === modeRow,
                 "menu bar display sits directly under current layout in (language)"
             )
-            let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-            XCTAssertEqual(iconTaskStatusSeparators.count, 4)
-            XCTAssertFalse(
-                iconTaskStatusSeparators[0].isHidden,
-                "the divider after task status bridges the hidden delay row in (language)"
-            )
             XCTAssertTrue(
-                iconTaskStatusSeparators[1].isHidden,
-                "the divider inside the hidden delay row is collapsed in (language)"
+                previewRows[2] === delayRow,
+                "hide delay sits directly under menu bar display in (language)"
             )
-            XCTAssertFalse(iconTaskStatusSeparators[2].isHidden)
-            XCTAssertTrue(iconTaskStatusSeparators[3].isHidden)
+            let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+            XCTAssertEqual(iconTaskStatusSeparators.count, 3)
+            XCTAssertFalse(iconTaskStatusSeparators[0].isHidden)
+            XCTAssertFalse(iconTaskStatusSeparators[1].isHidden)
+            XCTAssertTrue(iconTaskStatusSeparators[2].isHidden)
+            XCTAssertEqual(previewSeparators.map(\.isHidden), [false, true, true, true])
             XCTAssertFalse(taskStatusRow.isHidden)
             XCTAssertFalse(animationRow.isHidden)
             XCTAssertFalse(modeRow.isHidden)
@@ -946,10 +949,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 delayRow.isHidden,
                 "changing to Only While Running reveals the delay selector immediately in (language)"
             )
-            XCTAssertTrue(
-                iconTaskStatusSeparators.dropLast().allSatisfy { !$0.isHidden },
-                "all display dividers are visible with the delay selector in (language)"
-            )
+            XCTAssertTrue(previewRows[2] === delayRow)
+            XCTAssertEqual(previewSeparators.map(\.isHidden), [false, false, true, true])
+            XCTAssertFalse(iconTaskStatusSeparators[0].isHidden)
+            XCTAssertFalse(iconTaskStatusSeparators[1].isHidden)
+            XCTAssertTrue(iconTaskStatusSeparators[2].isHidden)
 
             delayPopup.selectItem(at: 0)
             relay.menuBarIconDisplayDelay(delayPopup)
@@ -976,16 +980,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             window.layoutIfNeeded()
             XCTAssertTrue(delayRow.isHidden, "switching back hides the delay selector in (language)")
-            XCTAssertFalse(
-                iconTaskStatusSeparators[0].isHidden,
-                "the divider after task status remains visible after switching back in (language)"
-            )
-            XCTAssertTrue(
-                iconTaskStatusSeparators[1].isHidden,
-                "the hidden delay row remains collapsed after switching back in (language)"
-            )
-            XCTAssertFalse(iconTaskStatusSeparators[2].isHidden)
-            XCTAssertTrue(iconTaskStatusSeparators[3].isHidden)
+            XCTAssertEqual(previewSeparators.map(\.isHidden), [false, true, true, true])
+            XCTAssertFalse(iconTaskStatusSeparators[0].isHidden)
+            XCTAssertFalse(iconTaskStatusSeparators[1].isHidden)
+            XCTAssertTrue(iconTaskStatusSeparators[2].isHidden)
 
             relay.onToggle = { identifier, enabled in
                 guard identifier == "showMenuBarIcon" else { return }
@@ -1120,23 +1118,24 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let previewRowsStack = try XCTUnwrap(modeRow.superview as? NSStackView)
         let previewRows = previewRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
-        XCTAssertEqual(previewRows.count, 4)
+        XCTAssertEqual(previewRows.count, 5)
         XCTAssertTrue(previewRows[1] === modeRow)
-        XCTAssertTrue(previewRows[2] === overflowRow)
-        XCTAssertTrue(previewRows[3] === runtimeRow)
+        XCTAssertTrue(previewRows[2] === delayRow)
+        XCTAssertTrue(previewRows[3] === overflowRow)
+        XCTAssertTrue(previewRows[4] === runtimeRow)
         XCTAssertFalse(modeRow.isHidden)
         XCTAssertFalse(overflowRow.isHidden)
         XCTAssertTrue(runtimeRow.isHidden)
         XCTAssertFalse(delayRow.isHidden)
 
-        let iconTaskStatusRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
-        XCTAssertTrue(
-            iconTaskStatusRowsStack.arrangedSubviews.contains { $0 === delayRow },
-            "hide delay stays in Icon & Animation"
-        )
+        let iconTaskStatusRowsStack = try XCTUnwrap(animationRow.superview as? NSStackView)
         XCTAssertFalse(
+            iconTaskStatusRowsStack.arrangedSubviews.contains { $0 === delayRow },
+            "hide delay left Icon & Animation"
+        )
+        XCTAssertTrue(
             previewRows.contains { $0 === delayRow },
-            "hide delay does not move into the preview card"
+            "hide delay sits in the preview card under menu bar display"
         )
 
         taskStatusSwitch.state = .off
@@ -1147,15 +1146,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(preferences.showMenuBarIcon)
         XCTAssertFalse(modeRow.isHidden)
         XCTAssertTrue(previewRows[1] === modeRow)
+        XCTAssertTrue(previewRows[2] === delayRow)
         XCTAssertFalse(overflowRow.isHidden)
         XCTAssertFalse(delayRow.isHidden)
         XCTAssertTrue(animationRow.isHidden)
         let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-        XCTAssertFalse(iconTaskStatusSeparators[0].isHidden)
-        XCTAssertTrue(iconTaskStatusSeparators.dropFirst().allSatisfy(\.isHidden))
+        XCTAssertTrue(iconTaskStatusSeparators.allSatisfy(\.isHidden))
         XCTAssertEqual(
             previewRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }.map(\.isHidden),
-            [false, false, true]
+            [false, false, false, true]
         )
 
         controller.refresh(
@@ -1169,12 +1168,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         page.layoutSubtreeIfNeeded()
         XCTAssertFalse(modeRow.isHidden)
         XCTAssertTrue(previewRows[1] === modeRow)
+        XCTAssertTrue(previewRows[2] === delayRow)
         XCTAssertTrue(overflowRow.isHidden)
         XCTAssertTrue(runtimeRow.isHidden)
         XCTAssertFalse(delayRow.isHidden)
         XCTAssertEqual(
             previewRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }.map(\.isHidden),
-            [false, true, true]
+            [false, false, true, true]
         )
     }
 
@@ -2368,22 +2368,28 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let rowsStack = try XCTUnwrap(overflowRow.superview as? NSStackView)
         let previewCard = try XCTUnwrap(rowsStack.superview)
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-        XCTAssertEqual(separators.count, 3)
+        XCTAssertEqual(separators.count, 4)
         let previewRows = rowsStack.arrangedSubviews.filter { !($0 is NSBox) }
         let iconDisplayModeControl = try XCTUnwrap(
             descendant(withIdentifier: AppPreferences.menuBarIconDisplayModeKey, in: page)
         )
         let iconDisplayModeRow = try XCTUnwrap(iconDisplayModeControl.superview)
-        XCTAssertEqual(previewRows.count, 4)
+        let iconDisplayDelayControl = try XCTUnwrap(
+            descendant(withIdentifier: AppPreferences.menuBarIconDisplayDelayKey, in: page)
+        )
+        let iconDisplayDelayRow = try XCTUnwrap(iconDisplayDelayControl.superview)
+        XCTAssertEqual(previewRows.count, 5)
         XCTAssertTrue(previewRows[1] === iconDisplayModeRow)
-        XCTAssertTrue(previewRows[2] === overflowRow)
-        XCTAssertTrue(previewRows[3] === runtimeRow)
+        XCTAssertTrue(previewRows[2] === iconDisplayDelayRow)
+        XCTAssertTrue(previewRows[3] === overflowRow)
+        XCTAssertTrue(previewRows[4] === runtimeRow)
+        XCTAssertTrue(iconDisplayDelayRow.isHidden)
 
         let cases: [(StatusItemVisibility, Bool, Bool, [Bool])] = [
-            (.unknown, false, false, [false, true, true]),
-            (.hiddenByMenuBarSpace, true, false, [false, false, true]),
-            (.hiddenByRuntimePolicy, false, true, [false, false, true]),
-            (.hiddenByMenuBarSpaceAndRuntimePolicy, true, true, [false, false, false])
+            (.unknown, false, false, [false, true, true, true]),
+            (.hiddenByMenuBarSpace, true, false, [false, false, true, true]),
+            (.hiddenByRuntimePolicy, false, true, [false, false, true, true]),
+            (.hiddenByMenuBarSpaceAndRuntimePolicy, true, true, [false, false, true, false])
         ]
         for (visibility, showsOverflow, showsRuntime, separatorHidden) in cases {
             controller.refresh(
@@ -2780,16 +2786,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(quotaRowIndices, quotaRowIndices.sorted())
             let previewRowTitles = [
                 tr(.keyDashboardMenuBarPageCurrentLayout, language: language),
-                tr(.keyDashboardMenuBarPageIconDisplayMode, language: language)
+                tr(.keyDashboardMenuBarPageIconDisplayMode, language: language),
+                tr(.keyDashboardMenuBarPageIconDisplayDelay, language: language)
             ]
             let previewRowIndices = previewRowTitles.compactMap { labelStrings.firstIndex(of: $0) }
             XCTAssertEqual(previewRowIndices.count, previewRowTitles.count)
             XCTAssertEqual(previewRowIndices, previewRowIndices.sorted())
             XCTAssertLessThan(previewIndex, previewRowIndices[0])
-            XCTAssertLessThan(previewRowIndices[1], quotaAndResetIndex)
+            XCTAssertLessThan(previewRowIndices[2], quotaAndResetIndex)
             let iconRowTitles = [
                 tr(.keyDashboardMenuBarPageAgentIcon, language: language),
-                tr(.keyDashboardMenuBarPageIconDisplayDelay, language: language),
                 animationRowTitle,
                 tr(.keyDashboardMenuBarPageAnimation, language: language)
             ]
