@@ -4030,7 +4030,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeEfficient), "性能（Beta）")
         let synchronizedSubtitle = "同步：所有显示器上的动画保持同步，但资源占用显著更高"
-        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，运行时副屏图标会消失，仅保留数值部分。如有不便，敬请谅解"
+        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，部分时候副屏图标会消失，重启 BalanceBar 即可解决问题"
         XCTAssertEqual(
             DashboardMenuBarPage.animationModeDescription(
                 mode: .synchronized,
@@ -4057,7 +4057,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 mode: .efficient,
                 language: .english
             ),
-            "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nBeta: Because of macOS system limits, the secondary-display icon disappears at runtime, leaving only the numeric portion. Sorry for the inconvenience"
+            "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nBeta: Because of macOS system limits, the secondary-display icon can sometimes disappear; restart BalanceBar to fix it"
         )
         func subtitleText() -> String? {
             descendants(of: page)
@@ -4246,12 +4246,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testPerformanceSubtitleIsPlainTextWithoutRestartLinkOrSheet() throws {
+    func testPerformanceSubtitleRestartLinkPresentsNativeAlertWithoutRelaunching() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
 
-        let suiteName = "DashboardPreferencePagesTests.AnimationBetaCopy.\(UUID().uuidString)"
+        let suiteName = "DashboardPreferencePagesTests.AnimationRestartLink.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -4269,6 +4269,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let relay = DashboardPreferencePageRelay()
         let controller = DashboardMenuBarPage()
+        var relaunchCount = 0
+        var recordedTokens: [DashboardRestoreToken] = []
+        controller.relaunchApplication = { relaunchCount += 1 }
+        controller.restoreSnapshotProvider = {
+            DashboardRestoreToken(section: .menuBar, scrollOffsetY: 96)
+        }
+        controller.persistRestoreToken = { recordedTokens.append($0) }
         defer { controller.teardown() }
         func refreshPage() {
             controller.refresh(
@@ -4310,51 +4317,209 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
         )
-        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，运行时副屏图标会消失，仅保留数值部分。如有不便，敬请谅解"
-        let synchronizedSubtitle = "同步：所有显示器上的动画保持同步，但资源占用显著更高"
 
-        func assertPlainSubtitle(_ expected: String) {
-            XCTAssertEqual(subtitle.stringValue, expected)
-            XCTAssertEqual(modeControl.toolTip, expected)
-            XCTAssertFalse(subtitle.hasLink)
-            XCTAssertTrue(subtitle.linkHitRect.isEmpty)
-            XCTAssertEqual(subtitle.linkRange.location, NSNotFound)
-            subtitle.mouseDown(with: makeMouseEvent(
-                type: .leftMouseDown,
-                location: subtitle.convert(
-                    NSPoint(x: subtitle.bounds.midX, y: subtitle.bounds.midY),
-                    to: nil
-                )
-            ))
-            XCTAssertNil(window.attachedSheet)
+        XCTAssertEqual(subtitle.stringValue, DashboardMenuBarPage.animationModeDescription(mode: .synchronized))
+        XCTAssertFalse(subtitle.hasLink)
+        XCTAssertTrue(subtitle.linkHitRect.isEmpty)
+
+        modeControl.selectItem(at: 1)
+        relay.menuBarAnimationMode(modeControl)
+        window.layoutIfNeeded()
+        subtitle.layout()
+
+        let phrase = DashboardMenuBarPage.animationModeRestartLinkPhrase()
+        XCTAssertEqual(phrase, "重启 BalanceBar")
+        XCTAssertTrue(subtitle.stringValue.contains(phrase))
+        XCTAssertEqual(
+            subtitle.linkRange,
+            (subtitle.stringValue as NSString).range(of: phrase)
+        )
+        XCTAssertTrue(subtitle.hasLink)
+        XCTAssertFalse(subtitle.linkHitRect.isEmpty)
+
+        let outsideLink = NSPoint(x: subtitle.bounds.minX + 4, y: subtitle.bounds.maxY - 4)
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(outsideLink, to: nil)
+        ))
+        XCTAssertNil(window.attachedSheet)
+        XCTAssertNil(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(relaunchCount, 0)
+
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let alert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(NSStringFromClass(type(of: alert)), "NSAlert")
+        XCTAssertEqual(window.attachedSheet, alert.window)
+        XCTAssertEqual(alert.alertStyle, .informational)
+        XCTAssertNil(alert.accessoryView)
+        XCTAssertEqual(alert.messageText, "是否立即重启 BalanceBar？")
+        XCTAssertEqual(alert.buttons.map(\.title), ["重启", "取消"])
+        XCTAssertEqual(alert.window.defaultButtonCell, alert.buttons[0].cell)
+        XCTAssertEqual(alert.buttons[1].keyEquivalent, "\u{1b}")
+
+        let escapeEvent = try XCTUnwrap(
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: alert.window.windowNumber,
+                context: nil,
+                characters: "\u{1b}",
+                charactersIgnoringModifiers: "\u{1b}",
+                isARepeat: false,
+                keyCode: 53
+            )
+        )
+        XCTAssertTrue(alert.window.performKeyEquivalent(with: escapeEvent))
+        XCTAssertNil(window.attachedSheet)
+        XCTAssertNil(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(relaunchCount, 0)
+        XCTAssertTrue(recordedTokens.isEmpty)
+
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let restartAlert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(window.attachedSheet, restartAlert.window)
+        XCTAssertEqual(restartAlert.messageText, "是否立即重启 BalanceBar？")
+        XCTAssertEqual(restartAlert.buttons[1].title, "取消")
+        restartAlert.buttons[1].performClick(nil)
+        XCTAssertNil(window.attachedSheet)
+        XCTAssertEqual(relaunchCount, 0)
+        XCTAssertTrue(recordedTokens.isEmpty, "cancel must not persist a restore token")
+
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let confirmAlert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(window.attachedSheet, confirmAlert.window)
+        XCTAssertEqual(confirmAlert.buttons[0].title, "重启")
+        confirmAlert.buttons[0].performClick(nil)
+        XCTAssertEqual(relaunchCount, 1)
+        XCTAssertEqual(
+            recordedTokens,
+            [DashboardRestoreToken(section: .menuBar, scrollOffsetY: 96)]
+        )
+        XCTAssertNil(window.attachedSheet)
+        XCTAssertNil(controller.restartConfirmationAlertForTesting)
+    }
+
+    func testConfirmingRestartRecordsLiveMenuBarSectionAndScrollOffset() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let defaults = UserDefaults.standard
+        let previousMode = defaults.object(forKey: AppPreferences.menuBarAnimationModeKey)
+        let previousIcon = defaults.object(forKey: "showMenuBarIcon")
+        let previousAnimate = defaults.object(forKey: "animateCodexActivity")
+        defaults.set(
+            MenuBarAnimationMode.efficient.rawValue,
+            forKey: AppPreferences.menuBarAnimationModeKey
+        )
+        defaults.set(true, forKey: "showMenuBarIcon")
+        defaults.set(true, forKey: "animateCodexActivity")
+        defer {
+            if let previousMode {
+                defaults.set(previousMode, forKey: AppPreferences.menuBarAnimationModeKey)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.menuBarAnimationModeKey)
+            }
+            if let previousIcon {
+                defaults.set(previousIcon, forKey: "showMenuBarIcon")
+            } else {
+                defaults.removeObject(forKey: "showMenuBarIcon")
+            }
+            if let previousAnimate {
+                defaults.set(previousAnimate, forKey: "animateCodexActivity")
+            } else {
+                defaults.removeObject(forKey: "animateCodexActivity")
+            }
         }
 
-        XCTAssertEqual(subtitle.stringValue, synchronizedSubtitle)
-        assertPlainSubtitle(synchronizedSubtitle)
-
-        modeControl.selectItem(at: 1)
-        relay.menuBarAnimationMode(modeControl)
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-357-restore-scroll.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer {
+            composition.teardownForTesting()
+            for _ in 0..<8 {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            }
+        }
+        composition.start()
+        var recordedTokens: [DashboardRestoreToken] = []
+        var relaunchCount = 0
+        composition.setPersistRestoreTokenForTesting { recordedTokens.append($0) }
+        composition.setRelaunchApplicationForTesting { relaunchCount += 1 }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
+        window.setContentSize(NSSize(width: 880, height: 620))
         window.layoutIfNeeded()
-        subtitle.layout()
-        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
-        assertPlainSubtitle(efficientSubtitle)
-        XCTAssertTrue(subtitle.stringValue.contains("Beta"))
-        XCTAssertFalse(subtitle.stringValue.contains("重启"))
+        window.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 
-        modeControl.selectItem(at: 0)
-        relay.menuBarAnimationMode(modeControl)
+        DashboardPageScrollPosition.restore(visualOffsetY: 140, in: composition.contentHost)
         window.layoutIfNeeded()
-        subtitle.layout()
-        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
-        assertPlainSubtitle(synchronizedSubtitle)
-        XCTAssertFalse(subtitle.stringValue.contains("Beta"))
+        let capturedOffset = composition.pageScrollOffsetY()
+        XCTAssertEqual(composition.section, .menuBar)
+        XCTAssertGreaterThan(
+            capturedOffset,
+            20,
+            "menu bar page must be tall enough to keep a restored scroll offset"
+        )
 
-        modeControl.selectItem(at: 1)
-        relay.menuBarAnimationMode(modeControl)
-        window.layoutIfNeeded()
+        let subtitle = try XCTUnwrap(
+            descendants(of: composition.contentHost)
+                .compactMap { $0 as? InlineRangeLinkTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeSubtitleIdentifier }
+        )
         subtitle.layout()
-        assertPlainSubtitle(efficientSubtitle)
+        XCTAssertTrue(subtitle.hasLink)
+
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let cancelSheet = try XCTUnwrap(window.attachedSheet)
+        cancelSheet.sheetParent?.endSheet(cancelSheet, returnCode: .alertSecondButtonReturn)
+        XCTAssertTrue(recordedTokens.isEmpty)
+        XCTAssertEqual(relaunchCount, 0, "cancel must not relaunch the test host")
+
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let confirmSheet = try XCTUnwrap(window.attachedSheet)
+        confirmSheet.sheetParent?.endSheet(confirmSheet, returnCode: .alertFirstButtonReturn)
+        XCTAssertEqual(recordedTokens.count, 1)
+        XCTAssertEqual(recordedTokens[0].section, .menuBar)
+        XCTAssertEqual(recordedTokens[0].scrollOffsetY, Double(capturedOffset), accuracy: 1)
+        XCTAssertEqual(relaunchCount, 1, "confirm must request relaunch without terminating the test host")
     }
+
 
     func testAnimationFrameRateRowCommitsValuesAndUpdatesCPUEstimate() throws {
         let previousLanguage = AppLanguage.selected
