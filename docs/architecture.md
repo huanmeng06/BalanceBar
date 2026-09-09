@@ -40,7 +40,7 @@ a network request by itself.
 | Area | Current paths | Responsibility |
 | --- | --- | --- |
 | Entry and app state | work/balance-bar/BalanceBar.swift, work/balance-bar/AppPreferences.swift | AppKit entry point, AppDelegate, lifecycle, shared application state, preferences, logging, and composition wiring. |
-| AppCore | work/balance-bar/Sources/AppCore/ | Cross-cutting UI-independent rules such as localization and dashboard scroll-bound calculations. |
+| AppCore | work/balance-bar/Sources/AppCore/ | Cross-cutting UI-independent rules such as localization, dashboard scroll-bound calculations, and the XCTest host presentation policy. |
 | Domain | work/balance-bar/Sources/Domain/ | Value types and pure planning rules: AssistantClient, BalanceQuery, provider models, Snapshot, StatusLink, and OpenCodex card planning. |
 | Services | work/balance-bar/Sources/Services/ | CC Switch SQLite access/watchers, credential readers, URL sessions, balance/quota clients, response parsing, provider refresh, OpenCodex refresh, and provider switching. |
 | Monitoring | work/balance-bar/Sources/Monitoring/ | Codex/Claude activity observation and ActivityCoordinator, including process, SQLite, NSWorkspace, timer, and notification integration. |

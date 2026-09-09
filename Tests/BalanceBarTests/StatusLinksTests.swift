@@ -58,7 +58,7 @@ private final class TrackingStatusLinksTableView: NSTableView {
 }
 
 @MainActor
-private final class TrackingStatusLinksWindow: NSWindow {
+private final class TrackingStatusLinksWindow: NSPanel {
     private(set) var selectedRowsWhenTableBecameFirstResponder: [Int] = []
 
     override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
@@ -82,9 +82,9 @@ final class StatusLinksTests: XCTestCase {
         providedWindow: NSWindow? = nil
     ) -> NSWindow {
         _ = NSApplication.shared
-        let window = providedWindow ?? NSWindow(
+        let window = providedWindow ?? TrackingStatusLinksWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
-            styleMask: [.titled],
+            styleMask: [.titled, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -96,9 +96,8 @@ final class StatusLinksTests: XCTestCase {
             editor.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             editor.topAnchor.constraint(equalTo: contentView.topAnchor)
         ])
-        window.makeKeyAndOrderFront(nil)
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
+        ApplicationWindowPresentation.presentInBackground(window)
+        window.makeKey()
         return window
     }
 
@@ -1053,7 +1052,7 @@ final class StatusLinksTests: XCTestCase {
         let table = TrackingStatusLinksTableView()
         let trackingWindow = TrackingStatusLinksWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 320),
-            styleMask: [.titled],
+            styleMask: [.titled, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )

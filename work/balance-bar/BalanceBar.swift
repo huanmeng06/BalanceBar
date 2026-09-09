@@ -2133,7 +2133,10 @@ final class ApplicationLifecycleState {
 @main
 enum BalanceBarMain {
     static func main() {
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+        if AutomatedTestHost.isRunning {
+            // Keep the default launch path so XCTest can attach. The test
+            // bundle then switches the host to accessory and parks windows
+            // off-screen so later presentation does not steal focus.
             NSApplication.shared.run()
             return
         }

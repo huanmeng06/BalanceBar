@@ -1801,8 +1801,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
 
         window.contentView?.addSubview(view)
-        window.orderFrontRegardless()
-        window.displayIfNeeded()
+        ApplicationWindowPresentation.presentInBackground(window)
 
         XCTAssertTrue(view.isScrollable)
         XCTAssertEqual(view.scrollOffset, 0, accuracy: 0.001)

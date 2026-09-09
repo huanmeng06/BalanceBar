@@ -226,14 +226,13 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         if !window.isVisible {
             window.center()
         }
-        window.makeKeyAndOrderFront(nil)
+        ApplicationWindowPresentation.present(window)
         window.contentView?.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         render()
         DispatchQueue.main.async { [weak self] in
             self?.relayoutAfterPresentation()
         }
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     func refreshForCurrentLanguage() {

@@ -191,11 +191,12 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     ) {
         guard !isTornDown else { return }
         start()
-        NSApp.setActivationPolicy(.regular)
+        if !AutomatedTestHost.isRunning {
+            NSApp.setActivationPolicy(.regular)
+        }
 
         if let window {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            ApplicationWindowPresentation.present(window)
             return
         }
 
@@ -234,8 +235,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         installLayout(in: window)
         installMouseMonitor()
         showSection(initialSection)
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        ApplicationWindowPresentation.present(window)
         if scrollOffsetY != nil {
             window.makeFirstResponder(nil)
         }
