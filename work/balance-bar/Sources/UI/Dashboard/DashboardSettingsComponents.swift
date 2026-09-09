@@ -584,6 +584,7 @@ private final class DashboardSettingsRowView: NSView {
 private final class DashboardSettingsSubtitleLabel: NSTextField {
     private var localizedSubtitle: LocalizedSubtitle?
     private var isApplyingLayoutText = false
+    private var isApplyingEmphasis = false
     private var lastAppliedWidth: CGFloat = -1
 
     override init(frame frameRect: NSRect) {
@@ -612,6 +613,22 @@ private final class DashboardSettingsSubtitleLabel: NSTextField {
         }
     }
 
+    override var font: NSFont? {
+        get { super.font }
+        set {
+            super.font = newValue
+            applyEmphasisFontsIfNeeded()
+        }
+    }
+
+    override var textColor: NSColor? {
+        get { super.textColor }
+        set {
+            super.textColor = newValue
+            applyEmphasisFontsIfNeeded()
+        }
+    }
+
     func setLocalizedSubtitle(_ subtitle: LocalizedSubtitle) {
         localizedSubtitle = subtitle
         lastAppliedWidth = -1
@@ -619,6 +636,7 @@ private final class DashboardSettingsSubtitleLabel: NSTextField {
         super.stringValue = subtitle.text
         isApplyingLayoutText = false
         applyLayoutTextIfNeeded()
+        applyEmphasisFontsIfNeeded()
         invalidateIntrinsicContentSize()
     }
 
@@ -641,6 +659,7 @@ private final class DashboardSettingsSubtitleLabel: NSTextField {
                 super.stringValue = localizedSubtitle.text
                 isApplyingLayoutText = false
             }
+            applyEmphasisFontsIfNeeded()
             return
         }
         guard abs(width - lastAppliedWidth) > 0.5 || super.stringValue == localizedSubtitle.text else {
@@ -654,13 +673,49 @@ private final class DashboardSettingsSubtitleLabel: NSTextField {
         )
         guard layoutText != super.stringValue else {
             lastAppliedWidth = width
+            applyEmphasisFontsIfNeeded()
             return
         }
         isApplyingLayoutText = true
         super.stringValue = layoutText
         isApplyingLayoutText = false
         lastAppliedWidth = width
+        applyEmphasisFontsIfNeeded()
         invalidateIntrinsicContentSize()
+    }
+
+    private func applyEmphasisFontsIfNeeded() {
+        guard !isApplyingLayoutText, !isApplyingEmphasis else { return }
+        guard let localizedSubtitle, !localizedSubtitle.emphasisGroups.isEmpty else { return }
+        let displayed = super.stringValue
+        guard !displayed.isEmpty else { return }
+        let font = self.font ?? NSFont.systemFont(ofSize: 12)
+        let attributed = NSMutableAttributedString(
+            string: displayed,
+            attributes: [
+                .font: font,
+                .foregroundColor: textColor ?? NSColor.secondaryLabelColor
+            ]
+        )
+        let bold = NSFont.systemFont(ofSize: font.pointSize, weight: .bold)
+        let source = localizedSubtitle.text as NSString
+        let layout = displayed as NSString
+        for range in localizedSubtitle.emphasisGroups {
+            guard range.location >= 0,
+                  range.length > 0,
+                  NSMaxRange(range) <= source.length else {
+                continue
+            }
+            let token = source.substring(with: range)
+            let found = layout.range(of: token)
+            guard found.location != NSNotFound else { continue }
+            attributed.addAttribute(.font, value: bold, range: found)
+        }
+        isApplyingEmphasis = true
+        isApplyingLayoutText = true
+        attributedStringValue = attributed
+        isApplyingLayoutText = false
+        isApplyingEmphasis = false
     }
 }
 
@@ -1289,14 +1344,14 @@ enum DashboardSettingsComponents {
             } else {
                 detail = NSTextField(wrappingLabelWithString: subtitleText)
             }
+            detail.font = .systemFont(ofSize: 12)
+            detail.textColor = .secondaryLabelColor
             if let subtitleContent,
                let semanticLabel = detail as? DashboardSettingsSubtitleLabel {
                 semanticLabel.setLocalizedSubtitle(subtitleContent)
             } else {
                 detail.stringValue = subtitleText
             }
-            detail.font = .systemFont(ofSize: 12)
-            detail.textColor = .secondaryLabelColor
             detail.isEditable = false
             detail.isSelectable = false
             // `subtitleLabel` is part of the public row contract. Callers
