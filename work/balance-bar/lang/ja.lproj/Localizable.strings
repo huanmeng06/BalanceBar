@@ -309,7 +309,7 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "元のクォータ";
 "dashboard.menu.bar.page.animation" = "アニメーションモード";
-"dashboard.menu.bar.page.animation_mode_description_efficient" = "パフォーマンス：システムリソースの使用量を大幅に抑えます；複数のディスプレイを使用している場合、アクティブでないディスプレイではアニメーションが一時停止して点灯します\nBeta：macOS のシステム制限により、実行中はサブディスプレイのアイコンが消え、数値部分のみが残ります。ご不便をおかけして申し訳ありません";
+"dashboard.menu.bar.page.animation_mode_description_efficient" = "パフォーマンス：システムリソースの使用量を大幅に抑えます；複数のディスプレイを使用している場合、アクティブでないディスプレイではアニメーションが一時停止して点灯します\nBeta：macOS のシステム制限により、実行中はサブディスプレイのアイコンが消え、数値部分のみが残ります、ご不便をおかけして申し訳ありません";
 "dashboard.menu.bar.page.animation_mode_description_synchronized" = "同期：すべてのディスプレイでアニメーションを同期しますが、システムリソースの使用量が大幅に増えます";
 "dashboard.menu.bar.page.animation_mode_efficient" = "パフォーマンス（Beta）";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "同期";

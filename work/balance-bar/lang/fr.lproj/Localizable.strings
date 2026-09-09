@@ -309,7 +309,7 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Quota d’origine";
 "dashboard.menu.bar.page.animation" = "Mode d’animation";
-"dashboard.menu.bar.page.animation_mode_description_efficient" = "Performances : réduit nettement l’utilisation des ressources système ; avec plusieurs écrans, l’animation est mise en pause et s’allume sur les écrans inactifs\nBeta : en raison des limites du système macOS, l’icône de l’écran secondaire disparaît à l’exécution, ne laissant que la partie numérique. Désolé pour la gêne occasionnée";
+"dashboard.menu.bar.page.animation_mode_description_efficient" = "Performances : réduit nettement l’utilisation des ressources système ; avec plusieurs écrans, l’animation est mise en pause et s’allume sur les écrans inactifs\nBeta : en raison des limites du système macOS, l’icône de l’écran secondaire disparaît à l’exécution, ne laissant que la partie numérique ; désolé pour la gêne occasionnée";
 "dashboard.menu.bar.page.animation_mode_description_synchronized" = "Synchronisé : maintient l’animation synchronisée sur tous les écrans, mais utilise nettement plus de ressources système";
 "dashboard.menu.bar.page.animation_mode_efficient" = "Performances (Beta)";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Synchronisé";

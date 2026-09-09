@@ -309,7 +309,7 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Cota original";
 "dashboard.menu.bar.page.animation" = "Modo de animação";
-"dashboard.menu.bar.page.animation_mode_description_efficient" = "Desempenho: reduz significativamente a utilização de recursos do sistema; ao utilizar vários monitores, a animação é pausada e acende nos monitores que não estão ativos\nBeta: devido a limitações do sistema macOS, o ícone do monitor secundário desaparece em tempo de execução, restando apenas a parte numérica. Pedimos desculpa pelo incómodo";
+"dashboard.menu.bar.page.animation_mode_description_efficient" = "Desempenho: reduz significativamente a utilização de recursos do sistema; ao utilizar vários monitores, a animação é pausada e acende nos monitores que não estão ativos\nBeta: devido a limitações do sistema macOS, o ícone do monitor secundário desaparece em tempo de execução, restando apenas a parte numérica; pedimos desculpa pelo incómodo";
 "dashboard.menu.bar.page.animation_mode_description_synchronized" = "Sincronizado: mantém a animação sincronizada em todos os monitores, mas utiliza significativamente mais recursos do sistema";
 "dashboard.menu.bar.page.animation_mode_efficient" = "Desempenho (Beta)";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Sincronizado";
