@@ -388,8 +388,8 @@
 "dashboard.menu.page.the_open_main_window_item_is_always_shown" = "Пункт «Открыть главное окно» всегда отображается";
 "dashboard.menu.page.open_main_window" = "Открыть главное окно";
 "dashboard.menu.page.show_the_balancebar_main_window" = "Показывать главное окно BalanceBar";
-"dashboard.menu.page.open_chatgpt" = "Открыть ChatGPT";
-"dashboard.menu.page.show_chatgpt" = "Показывать ChatGPT";
+"dashboard.menu.page.open_chatgpt" = "Открыть текущего Agent";
+"dashboard.menu.page.show_chatgpt" = "Пункт меню следует за текущим значком и открывает соответствующее приложение или терминал";
 "dashboard.menu.page.open_cc_switch" = "Открыть CC Switch";
 "dashboard.menu.page.show_the_cc_switch_main_window" = "Показывать главное окно CC Switch";
 "dashboard.menu.page.open_opencodex" = "Открыть OpenCodex";
@@ -447,6 +447,8 @@
 "status.item.controller.open_main_window" = "Открыть главное окно";
 "status.item.controller.update_available_badge" = "1 обновление";
 "status.item.controller.open_chatgpt" = "Открыть ChatGPT";
+"status.item.controller.open_grok" = "Открыть Grok";
+"status.item.controller.open_claude" = "Открыть Claude";
 "status.item.controller.open_cc_switch" = "Открыть CC Switch";
 "status.item.controller.open_opencodex" = "Открыть OpenCodex";
 "status.item.controller.quit_balancebar" = "Выйти из BalanceBar";

@@ -354,6 +354,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let preferences = AppPreferences()
     private let launchAtLoginController: LaunchAtLoginController
     private let launchWithChatGPTController: LaunchWithChatGPTController
+    private lazy var currentAgentOpener = CurrentAgentOpener.live(
+        openChatGPT: { [weak self] in self?.openChatGPTApplication() }
+    )
     private let updateService: UpdateService
     private lazy var updateNotesWindowController = UpdateNotesWindowController(
         onInstall: { [weak self] in self?.updateService.installAvailableUpdate() },
@@ -583,7 +586,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self?.openDashboard()
                 },
                 openChatGPT: { [weak self] in
-                    self?.openChatGPT()
+                    self?.openCurrentAgent()
                 },
                 openCCSwitch: { [weak self] in
                     self?.openCCSwitch()
@@ -988,7 +991,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateStatusItem(for: snapshot)
     }
 
-    @objc private func openChatGPT() {
+    private func openCurrentAgent() {
+        currentAgentOpener.open(client: activeClient)
+    }
+
+    private func openChatGPTApplication() {
         let applicationURLs: [URL] = ChatGPTApplicationIdentity.bundleIdentifiers.compactMap {
             NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
         } + [

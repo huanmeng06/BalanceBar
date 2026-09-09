@@ -5120,6 +5120,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func openDashboard() { actions.openDashboard() }
     @objc private func openChatGPT() { actions.openChatGPT() }
+
+    private func openCurrentAgentMenuTitle() -> String {
+        switch menuInput.activeClient {
+        case .codex:
+            return tr(.keyStatusItemControllerOpenChatgpt)
+        case .claude:
+            return tr(.keyStatusItemControllerOpenClaude)
+        case .grok:
+            return tr(.keyStatusItemControllerOpenGrok)
+        }
+    }
     @objc private func openCCSwitch() { actions.openCCSwitch() }
     @objc private func openOpenCodex() { actions.openOpenCodex() }
     @objc private func quit() { actions.quit() }
@@ -5184,7 +5195,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusMenu.addItem(makeOpenDashboardMenuItem())
         if menuInput.showOpenChatGPTMenu {
             statusMenu.addItem(
-                withTitle: tr(.keyStatusItemControllerOpenChatgpt),
+                withTitle: openCurrentAgentMenuTitle(),
                 action: #selector(openChatGPT),
                 keyEquivalent: ""
             ).target = self

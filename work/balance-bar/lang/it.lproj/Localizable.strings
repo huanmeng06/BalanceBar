@@ -388,8 +388,8 @@
 "dashboard.menu.page.the_open_main_window_item_is_always_shown" = "La voce “Apri finestra principale” è sempre mostrata";
 "dashboard.menu.page.open_main_window" = "Apri finestra principale";
 "dashboard.menu.page.show_the_balancebar_main_window" = "Mostra la finestra principale di BalanceBar";
-"dashboard.menu.page.open_chatgpt" = "Apri ChatGPT";
-"dashboard.menu.page.show_chatgpt" = "Mostra ChatGPT";
+"dashboard.menu.page.open_chatgpt" = "Apri l’Agent attuale";
+"dashboard.menu.page.show_chatgpt" = "La voce di menu segue l’icona attuale e apre l’app o il terminale corrispondente";
 "dashboard.menu.page.open_cc_switch" = "Apri CC Switch";
 "dashboard.menu.page.show_the_cc_switch_main_window" = "Mostra la finestra principale di CC Switch";
 "dashboard.menu.page.open_opencodex" = "Apri OpenCodex";
@@ -447,6 +447,8 @@
 "status.item.controller.open_main_window" = "Apri finestra principale";
 "status.item.controller.update_available_badge" = "1 aggiornamento";
 "status.item.controller.open_chatgpt" = "Apri ChatGPT";
+"status.item.controller.open_grok" = "Apri Grok";
+"status.item.controller.open_claude" = "Apri Claude";
 "status.item.controller.open_cc_switch" = "Apri CC Switch";
 "status.item.controller.open_opencodex" = "Apri OpenCodex";
 "status.item.controller.quit_balancebar" = "Esci da BalanceBar";

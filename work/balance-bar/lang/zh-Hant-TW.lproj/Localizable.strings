@@ -388,8 +388,8 @@
 "dashboard.menu.page.the_open_main_window_item_is_always_shown" = "「開啟主視窗」一律顯示";
 "dashboard.menu.page.open_main_window" = "開啟主視窗";
 "dashboard.menu.page.show_the_balancebar_main_window" = "顯示 BalanceBar 主視窗";
-"dashboard.menu.page.open_chatgpt" = "開啟 ChatGPT";
-"dashboard.menu.page.show_chatgpt" = "顯示 ChatGPT";
+"dashboard.menu.page.open_chatgpt" = "開啟目前的 Agent";
+"dashboard.menu.page.show_chatgpt" = "選單項目會隨目前圖示變化，點一下即可開啟對應的應用程式或終端機";
 "dashboard.menu.page.open_cc_switch" = "開啟 CC Switch";
 "dashboard.menu.page.show_the_cc_switch_main_window" = "顯示 CC Switch 主視窗";
 "dashboard.menu.page.open_opencodex" = "開啟 OpenCodex";
@@ -447,6 +447,8 @@
 "status.item.controller.open_main_window" = "開啟主視窗";
 "status.item.controller.update_available_badge" = "1 項更新";
 "status.item.controller.open_chatgpt" = "開啟 ChatGPT";
+"status.item.controller.open_grok" = "開啟 Grok";
+"status.item.controller.open_claude" = "開啟 Claude";
 "status.item.controller.open_cc_switch" = "開啟 CC Switch";
 "status.item.controller.open_opencodex" = "開啟 OpenCodex";
 "status.item.controller.quit_balancebar" = "結束 BalanceBar";

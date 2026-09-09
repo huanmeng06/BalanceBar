@@ -159,6 +159,128 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenCurrentAgentMenuTitleFollowsActiveClient() {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let settings = makeSettings()
+
+        let expected: [(AssistantClient, LocalizationKey)] = [
+            (.codex, .keyStatusItemControllerOpenChatgpt),
+            (.grok, .keyStatusItemControllerOpenGrok),
+            (.claude, .keyStatusItemControllerOpenClaude)
+        ]
+        for (client, key) in expected {
+            controller.start(
+                snapshot: .placeholder,
+                refreshDate: nil,
+                menuInput: makeMenuInput(activeClient: client, showOpenChatGPTMenu: true),
+                settings: settings
+            )
+            XCTAssertEqual(
+                openCurrentAgentMenuItem(in: controller)?.title,
+                tr(key),
+                "menu title must follow \(client.rawValue)"
+            )
+            XCTAssertEqual(
+                controller.menuItemsForTesting.first { $0.title == tr(.keyStatusItemControllerOpenMainWindow) }?.title,
+                tr(.keyStatusItemControllerOpenMainWindow)
+            )
+        }
+    }
+
+    @MainActor
+    func testOpenCurrentAgentMenuTitleUpdatesOnNextMenuOpenAfterClientSwitch() {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let settings = makeSettings()
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(activeClient: .grok, showOpenChatGPTMenu: true),
+            settings: settings
+        )
+        XCTAssertEqual(
+            openCurrentAgentMenuItem(in: controller)?.title,
+            tr(.keyStatusItemControllerOpenGrok)
+        )
+
+        controller.update(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(activeClient: .claude, showOpenChatGPTMenu: true),
+            settings: settings,
+            deferMenuRebuild: true
+        )
+        XCTAssertEqual(
+            openCurrentAgentMenuItem(in: controller)?.title,
+            tr(.keyStatusItemControllerOpenGrok),
+            "deferred rebuild must keep the previous title until the menu opens"
+        )
+
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertEqual(
+            openCurrentAgentMenuItem(in: controller)?.title,
+            tr(.keyStatusItemControllerOpenClaude)
+        )
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    @MainActor
+    func testOpenCurrentAgentMenuPreferenceHidesTheItemForEveryClient() {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let settings = makeSettings()
+        for client in [AssistantClient.codex, .grok, .claude] {
+            controller.start(
+                snapshot: .placeholder,
+                refreshDate: nil,
+                menuInput: makeMenuInput(activeClient: client, showOpenChatGPTMenu: false),
+                settings: settings
+            )
+            XCTAssertNil(openCurrentAgentMenuItem(in: controller))
+            XCTAssertFalse(
+                controller.menuItemsForTesting.contains {
+                    $0.title == tr(.keyStatusItemControllerOpenChatgpt)
+                        || $0.title == tr(.keyStatusItemControllerOpenGrok)
+                        || $0.title == tr(.keyStatusItemControllerOpenClaude)
+                }
+            )
+        }
+    }
+
+    @MainActor
+    func testOpenCurrentAgentMenuItemInvokesTheSharedAction() throws {
+        var openCount = 0
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: { openCount += 1 },
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(activeClient: .grok, showOpenChatGPTMenu: true),
+            settings: makeSettings()
+        )
+        let item = try XCTUnwrap(openCurrentAgentMenuItem(in: controller))
+        XCTAssertEqual(item.action, NSSelectorFromString("openChatGPT"))
+        XCTAssertTrue(item.target === controller)
+        XCTAssertTrue(NSApp.sendAction(item.action!, to: item.target, from: item))
+        XCTAssertEqual(openCount, 1)
+    }
+
+    @MainActor
     func testStatusItemContentIsAlwaysRenderedFromTheOffscreenBitmapTree() {
         let controller = makeController()
         defer { controller.teardown() }
@@ -2146,7 +2268,8 @@ final class StatusItemControllerTests: XCTestCase {
 
     private func makeMenuInput(
         activeClient: AssistantClient = .codex,
-        showQuickSwitchMenu: Bool = false
+        showQuickSwitchMenu: Bool = false,
+        showOpenChatGPTMenu: Bool = false
     ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
             openCodexCards: [],
@@ -2160,11 +2283,22 @@ final class StatusItemControllerTests: XCTestCase {
             openAIAccount: nil,
             statusLinks: [],
             showQuickSwitchMenu: showQuickSwitchMenu,
-            showOpenChatGPTMenu: false,
+            showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: false,
             showOpenCodexMenu: false,
             showStatusMenu: false
         )
+    }
+
+    private func openCurrentAgentMenuItem(
+        in controller: StatusItemController
+    ) -> NSMenuItem? {
+        let titles: Set<String> = [
+            tr(.keyStatusItemControllerOpenChatgpt),
+            tr(.keyStatusItemControllerOpenGrok),
+            tr(.keyStatusItemControllerOpenClaude)
+        ]
+        return controller.menuItemsForTesting.first { titles.contains($0.title) }
     }
 
     private func makeSettings() -> StatusItemController.MenuBarSettings {
