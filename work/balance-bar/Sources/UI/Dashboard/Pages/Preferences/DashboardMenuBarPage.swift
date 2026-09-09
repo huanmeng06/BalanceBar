@@ -524,21 +524,10 @@ final class DashboardMenuBarPage {
         }
     }
 
-    static func animationModeRestartLinkPhrase(
-        language: AppLanguage = .selected
-    ) -> String {
-        tr(.keyDashboardMenuBarPageAnimationModeRestartLink, language: language)
-    }
-
     static func animationModeTitle(
         language: AppLanguage = .selected
     ) -> String {
         tr(.keyDashboardMenuBarPageAnimation, language: language)
-    }
-
-    static func relaunchCurrentApplication() {
-        let relauncher = LiveUpdateApplicationRelauncher()
-        try? relauncher.relaunchApplication(at: Bundle.main.bundleURL)
     }
 
     static func animationFallbackWarningText(
@@ -710,17 +699,6 @@ final class DashboardMenuBarPage {
     private weak var animationModeControl: NSPopUpButton?
     private weak var animationModeTitleLabel: NSTextField?
     private weak var animationModeSubtitleLabel: InlineRangeLinkTextField?
-    var relaunchApplication: () -> Void = DashboardMenuBarPage.relaunchCurrentApplication
-    var restoreSnapshotProvider: () -> DashboardRestoreToken = {
-        DashboardRestoreToken(section: .menuBar, scrollOffsetY: 0)
-    }
-    var persistRestoreToken: (DashboardRestoreToken) -> Void = { token in
-        DashboardRestoreStore.record(token)
-    }
-    private var restartConfirmationAlert: NSAlert?
-    var restartConfirmationAlertForTesting: NSAlert? {
-        restartConfirmationAlert
-    }
     private weak var animationFrameRateField: NSTextField?
     private weak var animationFrameRateUnitLabel: NSTextField?
     private weak var animationFrameRateSubtitleLabel: NSTextField?
@@ -797,7 +775,6 @@ final class DashboardMenuBarPage {
         lastPreviewSpriteImage = nil
         resetRefreshSignatures()
         pageActionTarget.onRevealIconDisplayModeSetting = nil
-        dismissRestartConfirmation()
     }
 
     private func resetRefreshSignatures() {
@@ -2686,54 +2663,16 @@ final class DashboardMenuBarPage {
     private func applyAnimationModeSubtitle(mode: MenuBarAnimationMode) {
         animationModeTitleLabel?.stringValue = Self.animationModeTitle()
         let text = Self.animationModeDescription(mode: mode)
-        let phrase = mode == .efficient ? Self.animationModeRestartLinkPhrase() : nil
         let subtitleChanged = animationModeSubtitleLabel?.stringValue != text
-            || (animationModeSubtitleLabel?.hasLink ?? false) != (phrase != nil)
+            || (animationModeSubtitleLabel?.hasLink ?? false)
         animationModeSubtitleLabel?.setContent(
             text,
-            linkPhrase: phrase,
-            onActivate: { [weak self] in
-                self?.presentAnimationRestartConfirmation()
-            }
+            linkPhrase: nil,
+            onActivate: nil
         )
         guard subtitleChanged else { return }
         DashboardSettingsComponents.notifySettingsRowContentChanged(animationModeSubtitleLabel)
         updateIconTaskStatusCardLayout()
-    }
-
-    func presentAnimationRestartConfirmation() {
-        if restartConfirmationAlert?.window.sheetParent != nil {
-            return
-        }
-        let hostWindow = animationModeSubtitleLabel?.window
-            ?? animationModeRow?.window
-        guard let hostWindow else { return }
-
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation)
-        alert.addButton(withTitle: tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm))
-        alert.addButton(withTitle: tr(.keyDashboardMenuBarPageAnimationModeRestartCancel))
-        alert.buttons[0].keyEquivalent = "\r"
-        alert.buttons[1].keyEquivalent = "\u{1b}"
-        alert.buttons[1].keyEquivalentModifierMask = []
-        restartConfirmationAlert = alert
-        alert.beginSheetModal(for: hostWindow) { [weak self] response in
-            guard let self else { return }
-            self.restartConfirmationAlert = nil
-            if response == .alertFirstButtonReturn {
-                self.persistRestoreToken(self.restoreSnapshotProvider())
-                self.relaunchApplication()
-            }
-        }
-    }
-
-    private func dismissRestartConfirmation() {
-        guard let alert = restartConfirmationAlert else { return }
-        if let parent = alert.window.sheetParent {
-            parent.endSheet(alert.window, returnCode: .abort)
-        }
-        restartConfirmationAlert = nil
     }
 
     private func makeAnimationModeControl(

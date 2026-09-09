@@ -799,13 +799,6 @@ final class LocalizationTests: XCTestCase {
                 ).contains("Beta"),
                 "efficient animation mode description must keep Latin Beta in \(language.rawValue)"
             )
-            XCTAssertTrue(
-                tr(
-                    .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
-                    language: language
-                ).contains("BalanceBar"),
-                "efficient animation mode description must keep the product name in \(language.rawValue)"
-            )
             XCTAssertFalse(
                 tr(
                     .keyDashboardMenuBarPageAnimationModeDescriptionSynchronized,
@@ -823,30 +816,42 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
-    func testAnimationModeRestartLinkPhraseIsExactSubstringOfEfficientDescription() {
-        let expectedPhrases: [AppLanguage: String] = [
-            .simplifiedChinese: "重启 BalanceBar",
-            .traditionalChineseTaiwan: "重新啟動 BalanceBar",
-            .traditionalChineseHongKong: "重新啟動 BalanceBar",
-            .japanese: "BalanceBar を再起動",
-            .english: "restart BalanceBar",
-            .korean: "BalanceBar를 다시 시작",
-            .spanish: "reinicia BalanceBar",
-            .german: "starte BalanceBar neu",
-            .french: "redémarre BalanceBar",
-            .portuguese: "reinicia o BalanceBar",
-            .russian: "перезапустите BalanceBar",
-            .italian: "riavvia BalanceBar"
+    func testPerformanceBetaCopyIsPlainTextWithoutRestartHintInEveryLanguage() {
+        let expectedEfficient: [AppLanguage: String] = [
+            .simplifiedChinese: "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，运行时副屏图标会消失，仅保留数值部分。如有不便，敬请谅解",
+            .english: "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nBeta: Because of macOS system limits, the secondary-display icon disappears at runtime, leaving only the numeric portion. Sorry for the inconvenience"
         ]
-        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation, language: .simplifiedChinese), "是否立即重启 BalanceBar？")
-        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation, language: .english), "Restart BalanceBar now?")
-        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm, language: .simplifiedChinese), "重启")
-        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm, language: .english), "Restart")
-        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartCancel, language: .simplifiedChinese), "取消")
-        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartCancel, language: .english), "Cancel")
+        let firstLines: [AppLanguage: String] = [
+            .simplifiedChinese: "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起",
+            .traditionalChineseTaiwan: "效能：大幅降低系統資源用量；使用多部顯示器時，非目前使用中的顯示器會暫停動畫並亮起",
+            .traditionalChineseHongKong: "效能：大幅降低系統資源用量；使用多個顯示器時，非目前使用中的顯示器會暫停動畫並亮起",
+            .japanese: "パフォーマンス：システムリソースの使用量を大幅に抑えます；複数のディスプレイを使用している場合、アクティブでないディスプレイではアニメーションが一時停止して点灯します",
+            .english: "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active",
+            .korean: "성능: 시스템 리소스 사용량을 크게 줄입니다; 여러 디스플레이를 사용할 때 현재 활성화되지 않은 디스플레이에서는 애니메이션이 일시 정지되고 켜집니다",
+            .spanish: "Rendimiento: reduce considerablemente el uso de recursos del sistema; al usar varias pantallas, la animación se pausa y se ilumina en las pantallas que no estén activas",
+            .german: "Leistung: Reduziert die Nutzung von Systemressourcen deutlich; bei mehreren Displays wird die Animation auf nicht aktiven Displays angehalten und leuchtet auf",
+            .french: "Performances : réduit nettement l’utilisation des ressources système ; avec plusieurs écrans, l’animation est mise en pause et s’allume sur les écrans inactifs",
+            .portuguese: "Desempenho: reduz significativamente a utilização de recursos do sistema; ao utilizar vários monitores, a animação é pausada e acende nos monitores que não estão ativos",
+            .russian: "Производительность: значительно снижает использование системных ресурсов; при работе с несколькими дисплеями анимация на неактивных дисплеях приостанавливается и загорается",
+            .italian: "Prestazioni: riduce in modo significativo l’uso delle risorse di sistema; se utilizzi più schermi, l’animazione viene messa in pausa e si illumina sugli schermi non attivi"
+        ]
+        let removedKeys = [
+            "dashboard.menu.bar.page.animation_mode_restart_link",
+            "dashboard.menu.bar.page.animation_mode_restart_confirmation",
+            "dashboard.menu.bar.page.animation_mode_restart_confirm",
+            "dashboard.menu.bar.page.animation_mode_restart_cancel"
+        ]
+        XCTAssertFalse(LocalizationKey.allCases.contains { removedKeys.contains($0.rawKey) })
+        XCTAssertEqual(
+            tr(.keyDashboardMenuBarPageAnimationModeDescriptionEfficient, language: .simplifiedChinese),
+            expectedEfficient[.simplifiedChinese]
+        )
+        XCTAssertEqual(
+            tr(.keyDashboardMenuBarPageAnimationModeDescriptionEfficient, language: .english),
+            expectedEfficient[.english]
+        )
 
         for language in allLanguages {
-            let phrase = tr(.keyDashboardMenuBarPageAnimationModeRestartLink, language: language)
             let efficient = tr(
                 .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
                 language: language
@@ -855,20 +860,29 @@ final class LocalizationTests: XCTestCase {
                 .keyDashboardMenuBarPageAnimationModeDescriptionSynchronized,
                 language: language
             )
-            XCTAssertEqual(phrase, expectedPhrases[language])
-            XCTAssertFalse(phrase.isEmpty)
-            XCTAssertTrue(
-                efficient.contains(phrase),
-                "restart phrase must be an exact substring of the Performance subtitle in \(language.rawValue)"
+            let lines = efficient.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            XCTAssertEqual(lines.count, 2, "Performance subtitle must stay two lines in \(language.rawValue)")
+            XCTAssertEqual(
+                lines[0],
+                firstLines[language],
+                "Performance first line must stay unchanged in \(language.rawValue)"
             )
-            XCTAssertFalse(
-                synchronized.contains(phrase),
-                "Synchronized subtitle must not contain the restart link phrase in \(language.rawValue)"
-            )
-            XCTAssertTrue(phrase.contains("BalanceBar"))
-            XCTAssertFalse(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation, language: language).hasPrefix("⟦"))
-            XCTAssertFalse(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm, language: language).hasPrefix("⟦"))
-            XCTAssertFalse(tr(.keyDashboardMenuBarPageAnimationModeRestartCancel, language: language).hasPrefix("⟦"))
+            XCTAssertTrue(lines[1].hasPrefix("Beta"), "Beta line must keep Latin Beta in \(language.rawValue)")
+            XCTAssertFalse(synchronized.contains("Beta"))
+            XCTAssertFalse(efficient.hasPrefix("⟦"))
+            let restartHints = [
+                "重启", "重新啟動", "再起動", "다시 시작",
+                "restart", "Restart", "redémarre", "Redémarrer",
+                "reinicia", "Reiniciar", "riavvia", "Riavvia",
+                "starte BalanceBar neu", "neu starten",
+                "перезапуст"
+            ]
+            for hint in restartHints {
+                XCTAssertFalse(
+                    efficient.localizedCaseInsensitiveContains(hint),
+                    "Performance subtitle still mentions restart (\(hint)) in \(language.rawValue)"
+                )
+            }
         }
     }
 
@@ -1045,7 +1059,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 503)
+        XCTAssertEqual(expectedKeys.count, 499)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

@@ -177,13 +177,11 @@ final class DashboardCompositionController {
 
     func start() {
         windowController.start()
-        installMenuBarRestoreSnapshotProvider()
     }
     func open(
         initialSection: DashboardSection = .general,
         scrollOffsetY: CGFloat? = nil
     ) {
-        installMenuBarRestoreSnapshotProvider()
         windowController.open(initialSection: initialSection, scrollOffsetY: scrollOffsetY)
         refreshLaunchAtLogin()
         refreshLaunchWithChatGPT()
@@ -408,7 +406,6 @@ final class DashboardCompositionController {
     }
 
     func makeWindowForTesting(showing section: DashboardSection) -> NSWindow? {
-        installMenuBarRestoreSnapshotProvider()
         windowController.open(initialSection: section)
         return windowController.window
     }
@@ -419,28 +416,6 @@ final class DashboardCompositionController {
 
     func pageScrollOffsetY() -> CGFloat {
         windowController.pageScrollOffsetY()
-    }
-
-    func setPersistRestoreTokenForTesting(
-        _ persist: @escaping (DashboardRestoreToken) -> Void
-    ) {
-        dashboardPreferencePages.setPersistRestoreToken(persist)
-    }
-
-    func setRelaunchApplicationForTesting(_ relaunch: @escaping () -> Void) {
-        dashboardPreferencePages.setRelaunchApplication(relaunch)
-    }
-
-    private func installMenuBarRestoreSnapshotProvider() {
-        dashboardPreferencePages.setRestoreSnapshotProvider { [weak self] in
-            guard let self else {
-                return DashboardRestoreToken(section: .menuBar, scrollOffsetY: 0)
-            }
-            return DashboardRestoreToken(
-                section: self.section,
-                scrollOffsetY: Double(self.windowController.pageScrollOffsetY())
-            )
-        }
     }
 
     func teardownForTesting() { teardown() }
