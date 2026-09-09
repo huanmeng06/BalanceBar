@@ -304,6 +304,18 @@ final class DashboardPreferencePages {
         )
     }
 
+    func setRestoreSnapshotProvider(_ provider: @escaping () -> DashboardRestoreToken) {
+        menuBarPage.restoreSnapshotProvider = provider
+    }
+
+    func setPersistRestoreToken(_ persist: @escaping (DashboardRestoreToken) -> Void) {
+        menuBarPage.persistRestoreToken = persist
+    }
+
+    func setRelaunchApplication(_ relaunch: @escaping () -> Void) {
+        menuBarPage.relaunchApplication = relaunch
+    }
+
     func teardown() {
         menuBarPage.teardown()
         menuPage.teardown()

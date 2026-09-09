@@ -309,11 +309,15 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Исходная квота";
 "dashboard.menu.bar.page.animation" = "Режим анимации";
-"dashboard.menu.bar.page.animation_mode_description_efficient" = "Производительность: значительно снижает использование системных ресурсов; при работе с несколькими дисплеями анимация на неактивных дисплеях приостанавливается и загорается\nBeta: из-за ограничений системы macOS значок на дополнительном дисплее исчезает во время работы, остаётся только числовая часть. Извините за неудобства";
+"dashboard.menu.bar.page.animation_mode_description_efficient" = "Производительность: значительно снижает использование системных ресурсов; при работе с несколькими дисплеями анимация на неактивных дисплеях приостанавливается и загорается\nBeta: из-за ограничений системы macOS значок на дополнительном дисплее иногда может пропадать; перезапустите BalanceBar, чтобы это исправить";
 "dashboard.menu.bar.page.animation_mode_description_synchronized" = "Синхронный: синхронизирует анимацию на всех дисплеях, но требует значительно больше системных ресурсов";
 "dashboard.menu.bar.page.animation_mode_efficient" = "Производительность (Beta)";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Синхронный";
 "dashboard.menu.bar.page.animation_mode_fallback" = "Сейчас анимация не может корректно работать в режиме «Производительность», поэтому временно используется режим «Синхронный»";
+"dashboard.menu.bar.page.animation_mode_restart_link" = "перезапустите BalanceBar";
+"dashboard.menu.bar.page.animation_mode_restart_confirmation" = "Перезапустить BalanceBar сейчас?";
+"dashboard.menu.bar.page.animation_mode_restart_confirm" = "Перезапустить";
+"dashboard.menu.bar.page.animation_mode_restart_cancel" = "Отмена";
 "dashboard.menu.bar.page.animation_frame_rate" = "Частота анимации";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "Ниже — меньше нагрузка и расход энергии; выше — плавнее, но тяжелее";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "Около %1$@ %% одного ядра CPU (оценка)";

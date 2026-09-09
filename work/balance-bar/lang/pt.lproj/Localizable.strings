@@ -309,11 +309,15 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Cota original";
 "dashboard.menu.bar.page.animation" = "Modo de animação";
-"dashboard.menu.bar.page.animation_mode_description_efficient" = "Desempenho: reduz significativamente a utilização de recursos do sistema; ao utilizar vários monitores, a animação é pausada e acende nos monitores que não estão ativos\nBeta: devido a limitações do sistema macOS, o ícone do monitor secundário desaparece em tempo de execução, restando apenas a parte numérica. Pedimos desculpa pelo incómodo";
+"dashboard.menu.bar.page.animation_mode_description_efficient" = "Desempenho: reduz significativamente a utilização de recursos do sistema; ao utilizar vários monitores, a animação é pausada e acende nos monitores que não estão ativos\nBeta: devido a limitações do sistema macOS, o ícone do monitor secundário por vezes desaparece; reinicia o BalanceBar para resolver";
 "dashboard.menu.bar.page.animation_mode_description_synchronized" = "Sincronizado: mantém a animação sincronizada em todos os monitores, mas utiliza significativamente mais recursos do sistema";
 "dashboard.menu.bar.page.animation_mode_efficient" = "Desempenho (Beta)";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Sincronizado";
 "dashboard.menu.bar.page.animation_mode_fallback" = "Neste momento, o modo Desempenho não consegue reproduzir corretamente a animação, por isso o modo Sincronizado está a ser utilizado temporariamente";
+"dashboard.menu.bar.page.animation_mode_restart_link" = "reinicia o BalanceBar";
+"dashboard.menu.bar.page.animation_mode_restart_confirmation" = "Reiniciar o BalanceBar agora?";
+"dashboard.menu.bar.page.animation_mode_restart_confirm" = "Reiniciar";
+"dashboard.menu.bar.page.animation_mode_restart_cancel" = "Cancelar";
 "dashboard.menu.bar.page.animation_frame_rate" = "Taxa de animação";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "Taxas mais baixas poupam energia e CPU. Taxas mais altas ficam mais suaves, mas usam mais";
 "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "Cerca de %1$@ %% de um núcleo de CPU (apenas indicativo)";
