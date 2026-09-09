@@ -4030,7 +4030,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeEfficient), "性能（Beta）")
         let synchronizedSubtitle = "同步：所有显示器上的动画保持同步，但资源占用显著更高"
-        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，部分时候副屏图标会消失，重启 BalanceBar 即可解决问题"
+        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，部分时候副屏图标会消失，重启 BalanceBar 可能解决问题"
         XCTAssertEqual(
             DashboardMenuBarPage.animationModeDescription(
                 mode: .synchronized,
