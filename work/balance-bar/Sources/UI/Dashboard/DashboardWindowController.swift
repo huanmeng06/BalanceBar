@@ -236,6 +236,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         showSection(initialSection)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        if scrollOffsetY != nil {
+            window.makeFirstResponder(nil)
+        }
         if let scrollOffsetY {
             restorePageScrollOffsetY(scrollOffsetY)
         }
@@ -249,6 +252,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window?.layoutIfNeeded()
         contentHost.layoutSubtreeIfNeeded()
         DashboardPageScrollPosition.restore(visualOffsetY: offset, in: contentHost)
+        window?.makeFirstResponder(nil)
     }
 
     func rebuild() {

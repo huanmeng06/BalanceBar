@@ -1092,6 +1092,8 @@ final class AppDelegateCompositionTests: XCTestCase {
         let previousSilentLaunch = defaults.object(forKey: AppPreferences.silentLaunchKey)
         let previousSection = defaults.object(forKey: DashboardRestoreStore.sectionKey)
         let previousOffset = defaults.object(forKey: DashboardRestoreStore.scrollOffsetKey)
+        let previousIcon = defaults.object(forKey: "showMenuBarIcon")
+        let previousAnimate = defaults.object(forKey: "animateCodexActivity")
         defer {
             if let previousSilentLaunch {
                 defaults.set(previousSilentLaunch, forKey: AppPreferences.silentLaunchKey)
@@ -1108,9 +1110,21 @@ final class AppDelegateCompositionTests: XCTestCase {
             } else {
                 defaults.removeObject(forKey: DashboardRestoreStore.scrollOffsetKey)
             }
+            if let previousIcon {
+                defaults.set(previousIcon, forKey: "showMenuBarIcon")
+            } else {
+                defaults.removeObject(forKey: "showMenuBarIcon")
+            }
+            if let previousAnimate {
+                defaults.set(previousAnimate, forKey: "animateCodexActivity")
+            } else {
+                defaults.removeObject(forKey: "animateCodexActivity")
+            }
         }
 
         defaults.set(true, forKey: AppPreferences.silentLaunchKey)
+        defaults.set(true, forKey: "showMenuBarIcon")
+        defaults.set(true, forKey: "animateCodexActivity")
         DashboardRestoreStore.record(
             DashboardRestoreToken(section: .menuBar, scrollOffsetY: 88)
         )
@@ -1137,6 +1151,23 @@ final class AppDelegateCompositionTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         firstComposition.restorePageScrollOffsetY(88)
         XCTAssertEqual(firstComposition.pageScrollOffsetY(), 88, accuracy: 8)
+
+        let window = try XCTUnwrap(firstComposition.window)
+        let fpsField = try XCTUnwrap(
+            firstControl(of: firstComposition.contentHost, as: NSTextField.self) {
+                $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier
+            },
+            "menu bar restore must include the animation frame rate editor"
+        )
+        XCTAssertTrue(fpsField.isEditable)
+        XCTAssertNil(
+            fpsField.currentEditor(),
+            "restore-open must not select the FPS field"
+        )
+        XCTAssertFalse(
+            window.firstResponder === fpsField,
+            "restore-open must not make the FPS field first responder"
+        )
 
         XCTAssertNil(
             DashboardRestoreStore.peek(),
@@ -2578,6 +2609,22 @@ final class AppDelegateCompositionTests: XCTestCase {
         return try Dictionary(uniqueKeysWithValues: files.map { name, path in
             (name, try String(contentsOf: repositoryRoot.appendingPathComponent(path), encoding: .utf8))
         })
+    }
+
+    private func firstControl<T: NSView>(
+        of view: NSView,
+        as type: T.Type,
+        where predicate: (T) -> Bool
+    ) -> T? {
+        for child in view.subviews {
+            if let match = child as? T, predicate(match) {
+                return match
+            }
+            if let match = firstControl(of: child, as: type, where: predicate) {
+                return match
+            }
+        }
+        return nil
     }
 }
 
