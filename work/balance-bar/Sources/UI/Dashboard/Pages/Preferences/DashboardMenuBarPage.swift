@@ -331,6 +331,22 @@ private final class AnimationFrameRateEditor: NSObject, NSTextFieldDelegate {
         commit(MenuBarAnimationFrameRateInput.resolve(field.stringValue))
     }
 
+    func control(
+        _ control: NSControl,
+        textView: NSTextView,
+        doCommandBy commandSelector: Selector
+    ) -> Bool {
+        if commandSelector == #selector(NSResponder.moveUp(_:)) {
+            commit(MenuBarAnimationFrameRateInput.step(1, from: control.stringValue))
+            return true
+        }
+        if commandSelector == #selector(NSResponder.moveDown(_:)) {
+            commit(MenuBarAnimationFrameRateInput.step(-1, from: control.stringValue))
+            return true
+        }
+        return false
+    }
+
     private func commit(_ fps: Int) {
         let clamped = MenuBarAnimationTiming.clampedFrameRate(fps)
         field?.integerValue = clamped

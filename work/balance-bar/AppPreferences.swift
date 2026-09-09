@@ -152,7 +152,7 @@ enum MenuBarAnimationMode: String, CaseIterable, Equatable {
     case efficient
     case synchronized
 
-    static let defaultValue: Self = .synchronized
+    static let defaultValue: Self = .efficient
 
     /// Dropdown order is explicit so it does not depend on enum declaration
     /// order. Internal `rawValue` values stay `efficient` / `synchronized`.

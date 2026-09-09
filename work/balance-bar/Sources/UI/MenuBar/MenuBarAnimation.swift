@@ -62,6 +62,12 @@ enum MenuBarAnimationFrameRateInput {
         }
         return MenuBarAnimationTiming.clampedFrameRate(value)
     }
+
+    static func step(_ delta: Int, from raw: String) -> Int {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = Int(trimmed) ?? MenuBarAnimationTiming.defaultFrameRate
+        return MenuBarAnimationTiming.clampedFrameRate(base + delta)
+    }
 }
 
 /// Static single-core occupancy estimate shown under the FPS control.

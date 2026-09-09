@@ -3762,7 +3762,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
     }
 
-    func testAnimationModeSelectorDefaultsToSynchronizedAndControlsFallbackWarning() throws {
+    func testAnimationModeSelectorDefaultsToEfficientAndControlsFallbackWarning() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -3807,7 +3807,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
         )
-        XCTAssertEqual(modeControl.indexOfSelectedItem, 0)
+        XCTAssertEqual(modeControl.indexOfSelectedItem, 1)
         XCTAssertEqual(
             modeControl.itemArray.compactMap { $0.representedObject as? String },
             MenuBarAnimationMode.displayOrder.map(\.rawValue)
@@ -3856,6 +3856,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeSubtitleIdentifier }?
                 .stringValue
         }
+        XCTAssertEqual(subtitleText(), efficientSubtitle)
+        XCTAssertEqual(modeControl.toolTip, efficientSubtitle)
+        XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("同步："))
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("Beta"))
+
+        modeControl.selectItem(at: 0)
+        relay.menuBarAnimationMode(modeControl)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
         XCTAssertEqual(subtitleText(), synchronizedSubtitle)
         XCTAssertEqual(modeControl.toolTip, synchronizedSubtitle)
         XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("性能："))
@@ -3920,10 +3928,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defaults.removePersistentDomain(forName: suiteName)
             defer { defaults.removePersistentDomain(forName: suiteName) }
 
-            var preferences = AppPreferences(defaults: defaults)
+            let preferences = AppPreferences(defaults: defaults)
             preferences.showMenuBarIcon = true
             preferences.animateCodexActivity = true
-            preferences.menuBarAnimationMode = .synchronized
             let snapshot = Snapshot.official(
                 "OpenAI",
                 72,
@@ -4013,13 +4020,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 )
             }
 
-            XCTAssertEqual(modeControl.indexOfSelectedItem, 0)
-            assertMode(.synchronized)
-
-            modeControl.selectItem(at: 1)
-            relay.menuBarAnimationMode(modeControl)
-            window.layoutIfNeeded()
-            XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+            XCTAssertEqual(modeControl.indexOfSelectedItem, 1)
             assertMode(.efficient)
 
             modeControl.selectItem(at: 0)
@@ -4027,6 +4028,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             window.layoutIfNeeded()
             XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
             assertMode(.synchronized)
+
+            modeControl.selectItem(at: 1)
+            relay.menuBarAnimationMode(modeControl)
+            window.layoutIfNeeded()
+            XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+            assertMode(.efficient)
         }
     }
 
@@ -4262,10 +4269,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
         XCTAssertEqual(field.integerValue, 24)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
         XCTAssertTrue(
             descendants(of: animationFrameRateRow)
                 .compactMap { $0 as? NSTextField }
                 .contains { $0.stringValue == "帧/秒" }
+        )
+        XCTAssertTrue(
+            descendants(of: animationFrameRateRow)
+                .compactMap { $0 as? NSStepper }
+                .isEmpty
         )
         let subtitleIdentifier = DashboardMenuBarPage.animationFrameRateIdentifier + "Subtitle"
         func subtitleText() -> String? {
@@ -4274,6 +4287,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.identifier?.rawValue == subtitleIdentifier }?
                 .stringValue
         }
+        XCTAssertEqual(
+            subtitleText(),
+            DashboardMenuBarPage.animationFrameRateSubtitle(mode: .efficient, fps: 24)
+        )
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("4%"))
+        XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("–"))
+
+        let modeControl = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
+        )
+        XCTAssertEqual(modeControl.indexOfSelectedItem, 1)
+        modeControl.selectItem(at: 0)
+        relay.menuBarAnimationMode(modeControl)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
         XCTAssertEqual(
             subtitleText(),
             DashboardMenuBarPage.animationFrameRateSubtitle(mode: .synchronized, fps: 24)
@@ -4337,11 +4366,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarAnimationFrameRate, 6)
         XCTAssertEqual(field.integerValue, 6)
 
-        let modeControl = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSPopUpButton }
-                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
-        )
         modeControl.selectItem(at: 1)
         relay.menuBarAnimationMode(modeControl)
         XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
@@ -4382,6 +4406,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let preferences = AppPreferences(defaults: defaults)
+        preferences.menuBarAnimationMode = .synchronized
         let snapshot = Snapshot.official(
             "OpenAI",
             72,
@@ -4469,6 +4494,114 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(field.stringValue, "5")
         XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+    }
+
+    func testAnimationFrameRateFieldStepsWithArrowKeysWithoutStepper() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.AnimationFrameRateArrows.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let relay = DashboardPreferencePageRelay()
+        let controller = DashboardMenuBarPage()
+        func refreshPage() {
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+        }
+        relay.onMenuBarAnimationFrameRateChanged = { fps in
+            preferences.menuBarAnimationFrameRate = fps
+            refreshPage()
+        }
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+        let field = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier }
+        )
+        let animationFrameRateRow = try XCTUnwrap(
+            descendant(
+                withIdentifier: DashboardMenuBarPage.animationFrameRateRowIdentifier,
+                in: page
+            )
+        )
+        XCTAssertTrue(
+            descendants(of: animationFrameRateRow)
+                .compactMap { $0 as? NSStepper }
+                .isEmpty
+        )
+        let subtitleIdentifier = DashboardMenuBarPage.animationFrameRateIdentifier + "Subtitle"
+        func subtitleText() -> String? {
+            descendants(of: animationFrameRateRow)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == subtitleIdentifier }?
+                .stringValue
+        }
+        func sendCommand(_ selector: Selector) -> Bool {
+            field.delegate?.control?(
+                field,
+                textView: NSTextView(),
+                doCommandBy: selector
+            ) ?? false
+        }
+
+        XCTAssertEqual(field.integerValue, 24)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+        XCTAssertTrue(sendCommand(#selector(NSResponder.moveUp(_:))))
+        XCTAssertEqual(field.integerValue, 25)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 25)
+        XCTAssertEqual(
+            subtitleText(),
+            DashboardMenuBarPage.animationFrameRateSubtitle(mode: .efficient, fps: 25)
+        )
+
+        XCTAssertTrue(sendCommand(#selector(NSResponder.moveDown(_:))))
+        XCTAssertEqual(field.integerValue, 24)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
+
+        field.integerValue = 30
+        XCTAssertTrue(sendCommand(#selector(NSResponder.moveUp(_:))))
+        XCTAssertEqual(field.integerValue, 30)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+
+        field.integerValue = 6
+        XCTAssertTrue(sendCommand(#selector(NSResponder.moveDown(_:))))
+        XCTAssertEqual(field.integerValue, 6)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 6)
+
+        field.stringValue = ""
+        XCTAssertTrue(sendCommand(#selector(NSResponder.moveUp(_:))))
+        XCTAssertEqual(field.integerValue, 25)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 25)
+
+        field.stringValue = "abc"
+        XCTAssertTrue(sendCommand(#selector(NSResponder.moveDown(_:))))
+        XCTAssertEqual(field.integerValue, 23)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 23)
+
+        XCTAssertFalse(sendCommand(#selector(NSResponder.moveLeft(_:))))
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 23)
     }
 
     func testRelayRoutesOffsetAdjustAndResetOnce() {

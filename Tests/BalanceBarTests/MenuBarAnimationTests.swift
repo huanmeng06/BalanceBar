@@ -1092,6 +1092,17 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(MenuBarAnimationFrameRateInput.resolve(" 30 "), 30)
     }
 
+    func testAnimationFrameRateInputStepsFromCurrentOrDefaultAndClamps() {
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.step(1, from: "24"), 25)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.step(-1, from: "24"), 23)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.step(1, from: "30"), 30)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.step(-1, from: "6"), 6)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.step(1, from: ""), 25)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.step(-1, from: "abc"), 23)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.step(1, from: "1"), 6)
+        XCTAssertEqual(MenuBarAnimationFrameRateInput.step(-1, from: "  "), 23)
+    }
+
     func testSynchronizedRotationTimerFollowsFrameRateWithoutResettingFrameIndex() throws {
         let imageView = RotatingTemplateImageView(
             frame: NSRect(x: 0, y: 0, width: 16, height: 16)

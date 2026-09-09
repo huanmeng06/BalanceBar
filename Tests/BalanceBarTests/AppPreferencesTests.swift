@@ -282,12 +282,12 @@ final class AppPreferencesTests: XCTestCase {
         )
     }
 
-    func testMenuBarAnimationModeDefaultsToSynchronizedAndPreservesSavedEfficient() {
+    func testMenuBarAnimationModeDefaultsToEfficientAndPreservesSavedSynchronized() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
-        XCTAssertEqual(MenuBarAnimationMode.defaultValue, .synchronized)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+        XCTAssertEqual(MenuBarAnimationMode.defaultValue, .efficient)
         XCTAssertEqual(
             MenuBarAnimationMode.displayOrder.map(\.rawValue),
             ["synchronized", "efficient"]
@@ -306,7 +306,17 @@ final class AppPreferencesTests: XCTestCase {
         )
 
         defaults.set("unsupported", forKey: AppPreferences.menuBarAnimationModeKey)
-        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+
+        defaults.set(
+            MenuBarAnimationMode.synchronized.rawValue,
+            forKey: AppPreferences.menuBarAnimationModeKey
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarAnimationMode,
+            .synchronized,
+            "already-saved Synchronized must not be migrated to Performance"
+        )
 
         defaults.set(
             MenuBarAnimationMode.efficient.rawValue,
@@ -315,7 +325,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(
             AppPreferences(defaults: defaults).menuBarAnimationMode,
             .efficient,
-            "already-saved Performance must not be migrated to Synchronized"
+            "already-saved Performance must stay Performance"
         )
     }
 
