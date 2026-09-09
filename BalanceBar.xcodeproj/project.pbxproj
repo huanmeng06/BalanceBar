@@ -114,6 +114,9 @@
 		A10000000000000000000124 /* LaunchAtLoginServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */; };
 		A10000000000000000000126 /* ServiceManagement.framework in Test Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000123 /* ServiceManagement.framework */; };
 		A10000000000000200000001 /* InitialLaunchPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000010 /* InitialLaunchPresentation.swift */; };
+		A10000000000000300000001 /* AutomatedTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000010 /* AutomatedTestHost.swift */; };
+		A10000000000000300000021 /* BackgroundTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000020 /* BackgroundTestHost.swift */; };
+		A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000030 /* AutomatedTestHostTests.swift */; };
 		A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */; };
 		A10000000000000200000003 /* ChatGPTLaunchDecision.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000012 /* ChatGPTLaunchDecision.swift */; };
 		A10000000000000200000004 /* ChatGPTLaunchAgentRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */; };
@@ -254,6 +257,9 @@
 		A10000000000000000000123 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
 		A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginServiceTests.swift; sourceTree = "<group>"; };
 		A10000000000000200000010 /* InitialLaunchPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/InitialLaunchPresentation.swift"; sourceTree = "<group>"; };
+		A10000000000000300000010 /* AutomatedTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/AutomatedTestHost.swift"; sourceTree = "<group>"; };
+		A10000000000000300000020 /* BackgroundTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTestHost.swift; sourceTree = "<group>"; };
+		A10000000000000300000030 /* AutomatedTestHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomatedTestHostTests.swift; sourceTree = "<group>"; };
 		A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/ChatGPTApplicationIdentity.swift"; sourceTree = "<group>"; };
 		A10000000000000200000012 /* ChatGPTLaunchDecision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/ChatGPTLaunchDecision.swift"; sourceTree = "<group>"; };
 		A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/ChatGPTLaunchAgentRuntime.swift"; sourceTree = "<group>"; };
@@ -317,6 +323,7 @@
 				A10000000000000000000041 /* Localization.swift */,
 				A100000000000000000000F7 /* LocalizationKeys.swift */,
 				A10000000000000200000010 /* InitialLaunchPresentation.swift */,
+				A10000000000000300000010 /* AutomatedTestHost.swift */,
 				A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */,
 				A10000000000000200000012 /* ChatGPTLaunchDecision.swift */,
 				A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */,
@@ -377,6 +384,8 @@
 		A1000000000000000000002B /* BalanceBarTests */ = {
 			isa = PBXGroup;
 			children = (
+				A10000000000000300000020 /* BackgroundTestHost.swift */,
+				A10000000000000300000030 /* AutomatedTestHostTests.swift */,
 				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
 				A33700000000000000000004 /* QuickSwitchTitleLayoutTests.swift */,
 				A10000000000000000000131 /* StatusItemControllerTests.swift */,
@@ -614,6 +623,7 @@
 				A10000000000000000000033 /* Sources */,
 				A10000000000000000000034 /* Frameworks */,
 				A10000000000000000000035 /* Resources */,
+				A10000000000000300000040 /* Patch XCTest host activation */,
 			);
 			buildRules = (
 			);
@@ -773,6 +783,22 @@
 			shellPath = /bin/sh;
 			shellScript = "set -e\nlaunch_agents_dir=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Library/LaunchAgents\"\nmkdir -p \"$launch_agents_dir\"\ncp \"$BUILT_PRODUCTS_DIR/BalanceBarChatGPTLaunchAgent\" \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\ncp \"$SRCROOT/work/balancebar-chatgpt-launch-agent/balancebar-chatgpt-launch-agent.plist\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\n/usr/bin/plutil -replace Label -string \"${PRODUCT_BUNDLE_IDENTIFIER}.chatgpt-launch-agent\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\nchmod +x \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\n";
 		};
+		A10000000000000300000040 /* Patch XCTest host activation */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/BalanceBar.app/Contents/Info.plist",
+			);
+			name = "Patch XCTest host activation";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nhost_app=\"$BUILT_PRODUCTS_DIR/BalanceBar.app\"\nhost_plist=\"$host_app/Contents/Info.plist\"\nif [ ! -f \"$host_plist\" ]; then\n  echo \"error: XCTest host Info.plist missing at $host_plist\" >&2\n  exit 1\nfi\n/usr/bin/plutil -replace LSUIElement -bool true \"$host_plist\"\n/usr/bin/plutil -replace LSMultipleInstancesProhibited -bool false \"$host_plist\"\nlsregister=\"/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister\"\nif [ -x \"$lsregister\" ]; then\n  \"$lsregister\" -f \"$host_app\"\nfi\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -833,6 +859,7 @@
 				A10000000000000000000102 /* UpdateNotesWindowController.swift in Sources */,
 				A10000000000000000000120 /* LaunchAtLoginService.swift in Sources */,
 				A10000000000000200000001 /* InitialLaunchPresentation.swift in Sources */,
+				A10000000000000300000001 /* AutomatedTestHost.swift in Sources */,
 				A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */,
 				A10000000000000200000003 /* ChatGPTLaunchDecision.swift in Sources */,
 				A10000000000000200000004 /* ChatGPTLaunchAgentRuntime.swift in Sources */,
@@ -855,6 +882,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000300000021 /* BackgroundTestHost.swift in Sources */,
+				A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */,
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
 				A33700000000000000000003 /* QuickSwitchTitleLayoutTests.swift in Sources */,
 				A10000000000000000000130 /* StatusItemControllerTests.swift in Sources */,

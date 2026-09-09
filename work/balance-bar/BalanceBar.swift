@@ -792,7 +792,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let regularPolicyApplied: Bool
         switch initialPresentation {
         case .dashboard:
-            regularPolicyApplied = NSApp.setActivationPolicy(.regular)
+            regularPolicyApplied = AutomatedTestHost.isRunning
+                ? NSApp.setActivationPolicy(.accessory)
+                : NSApp.setActivationPolicy(.regular)
             showDashboard(restore: pendingRestore)
         case .background:
             regularPolicyApplied = NSApp.setActivationPolicy(.accessory)
@@ -2133,7 +2135,11 @@ final class ApplicationLifecycleState {
 @main
 enum BalanceBarMain {
     static func main() {
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+        if AutomatedTestHost.isRunning {
+            // XCTest still needs the default run loop to attach. Switch to
+            // accessory and yield key focus before any window is created so
+            // launch does not steal the user's input method.
+            AutomatedTestHost.becomeBackgroundHost()
             NSApplication.shared.run()
             return
         }

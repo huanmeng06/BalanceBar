@@ -224,16 +224,22 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         guard let window else { return }
         adoptDashboardAppearance()
         if !window.isVisible {
-            window.center()
+            if AutomatedTestHost.isRunning {
+                ApplicationWindowPresentation.prepare(window)
+            } else {
+                window.center()
+            }
         }
-        window.makeKeyAndOrderFront(nil)
+        ApplicationWindowPresentation.present(window)
         window.contentView?.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         render()
         DispatchQueue.main.async { [weak self] in
             self?.relayoutAfterPresentation()
+            if AutomatedTestHost.isRunning, let window = self?.window {
+                ApplicationWindowPresentation.presentInBackground(window)
+            }
         }
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     func refreshForCurrentLanguage() {
