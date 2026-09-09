@@ -23,6 +23,7 @@ trap 'rm -rf "$probe_dir"' EXIT
         '    static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"' \
         '    static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"' \
         '    static let menuBarAnimationModeKey = "menuBarAnimationMode"' \
+        '    static let menuBarAnimationFrameRateKey = "menuBarAnimationFrameRate"' \
         '    static let menuBarFontSizePresetKey = "menuBarFontSizePreset"' \
         '    static let menuBarFontSizeKey = "menuBarFontSize"' \
         '    static let menuBarIconSizePresetKey = "menuBarIconSizePreset"' \
