@@ -202,6 +202,8 @@ final class QuotaProgressView: NSView {
     private var interpolator: OverviewNumericInterpolator?
     private var pendingAnimatedPercentage: Double?
 
+    var hasPendingAnimationForTesting: Bool { pendingAnimatedPercentage != nil }
+
     init(percentage: Double, colorConfiguration: QuotaProgressColorConfiguration = .default) {
         self.percentage = min(100, max(0, percentage))
         self.colorConfiguration = colorConfiguration.normalized()

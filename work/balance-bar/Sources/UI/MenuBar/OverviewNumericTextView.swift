@@ -109,7 +109,11 @@ final class OverviewNumericTextView: NSView {
     private(set) var currentValue: Double
     private(set) var sample: OverviewNumericSample?
     private var pendingPlan: OverviewNumericTransitionPlan?
+    private var interpolator: OverviewNumericInterpolator?
     private var finishWorkItem: DispatchWorkItem?
+
+    var hasPendingAnimationForTesting: Bool { pendingPlan?.animates == true }
+    var isValueInterpolatingForTesting: Bool { interpolator != nil }
 
     init(text: String, font: NSFont, value: Double) {
         currentValue = value
@@ -139,6 +143,7 @@ final class OverviewNumericTextView: NSView {
 
     deinit {
         finishWorkItem?.cancel()
+        interpolator?.cancel()
     }
 
     override func layout() {
@@ -190,6 +195,12 @@ final class OverviewNumericTextView: NSView {
 
     private func play(_ plan: OverviewNumericTransitionPlan) {
         finishWorkItem?.cancel()
+        interpolator?.cancel()
+        interpolator = nil
+        if case .currency = plan.format {
+            playInterpolated(plan)
+            return
+        }
         currentValue = plan.toValue
         model.countsDown = plan.toValue < plan.fromValue
         model.text = plan.startText
@@ -212,9 +223,36 @@ final class OverviewNumericTextView: NSView {
         }
     }
 
+    private func playInterpolated(_ plan: OverviewNumericTransitionPlan) {
+        guard let sample else {
+            applyImmediate(text: plan.endText, value: plan.toValue)
+            return
+        }
+        hostingView.isHidden = true
+        textField.alphaValue = 1
+        currentValue = plan.startValue
+        let startText = sample.format.displayText(for: plan.startValue)
+        textField.stringValue = startText
+        model.text = startText
+        let interpolator = OverviewNumericInterpolator(
+            from: plan.fromValue,
+            to: plan.toValue
+        ) { [weak self] current in
+            guard let self else { return }
+            self.currentValue = current
+            let text = sample.format.displayText(for: current)
+            self.textField.stringValue = text
+            self.model.text = text
+        }
+        self.interpolator = interpolator
+        interpolator.start()
+    }
+
     private func applyImmediate(text: String, value: Double) {
         finishWorkItem?.cancel()
         finishWorkItem = nil
+        interpolator?.cancel()
+        interpolator = nil
         currentValue = value
         model.text = text
         textField.stringValue = text

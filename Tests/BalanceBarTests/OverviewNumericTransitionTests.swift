@@ -81,6 +81,13 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(OverviewNumericFormat.integerPercent.displayText(for: 84.9), "84%")
         XCTAssertEqual(OverviewNumericFormat.integerPercent.displayText(for: 71), "71%")
         XCTAssertEqual(
+            OverviewNumericFormat.currency(unit: "CNY").displayText(for: 1.70),
+            StatusItemController.formatBalanceSummary(1.70, unit: "CNY")
+        )
+        XCTAssertEqual(OverviewNumericFormat.currency(unit: "CNY").displayText(for: 1.70), "¥1.70")
+        XCTAssertEqual(OverviewNumericFormat.currency(unit: "CNY").displayText(for: 1.69), "¥1.69")
+        XCTAssertEqual(OverviewNumericFormat.currency(unit: "CNY").displayText(for: 1.50), "¥1.50")
+        XCTAssertEqual(
             OverviewNumericFormat.currency(unit: "CNY").displayText(for: 1.5),
             StatusItemController.formatBalanceSummary(1.5, unit: "CNY")
         )
@@ -88,6 +95,7 @@ final class OverviewNumericTransitionTests: XCTestCase {
             OverviewNumericFormat.currency(unit: "USD").displayText(for: 1.7),
             StatusItemController.formatBalanceSummary(1.7, unit: "USD")
         )
+        XCTAssertEqual(OverviewNumericFormat.currency(unit: "USD").displayText(for: 1.70), "$1.70")
         XCTAssertEqual(OverviewNumericFormat.integerCount.displayText(for: 2), "2")
     }
 
@@ -168,6 +176,69 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(balanceSamples[0].displayText, "¥1.70")
     }
 
+    func testSameIdentityCurrencyTransitionAnimatesAndUnchangedValueDoesNot() {
+        let previous = balanceSample(amount: 1.70, progress: 40)
+        let current = balanceSample(amount: 1.50, progress: 30)
+
+        let changed = OverviewNumericTransition.plan(
+            previous: previous,
+            current: current,
+            reduceMotion: false
+        )
+        XCTAssertTrue(changed.animates)
+        XCTAssertEqual(changed.startText, "¥1.70")
+        XCTAssertEqual(changed.endText, "¥1.50")
+        XCTAssertEqual(changed.startProgress, 40)
+        XCTAssertEqual(changed.toProgress, 30)
+        XCTAssertEqual(
+            changed.format.displayText(for: 1.69),
+            StatusItemController.formatBalanceSummary(1.69, unit: "CNY")
+        )
+
+        let unchanged = OverviewNumericTransition.plan(
+            previous: previous,
+            current: previous,
+            reduceMotion: false
+        )
+        XCTAssertFalse(unchanged.animates)
+        XCTAssertEqual(unchanged.startText, "¥1.70")
+        XCTAssertEqual(unchanged.endText, "¥1.70")
+        XCTAssertEqual(unchanged.startProgress, 40)
+    }
+
+    func testCurrencyTextViewInterpolatesFormattedValuesInsteadOfReplacingTheWholeString() {
+        let previous = balanceSample(amount: 1.70, progress: 40)
+        let current = balanceSample(amount: 1.50, progress: 30)
+        let plan = OverviewNumericTransition.plan(
+            previous: previous,
+            current: current,
+            reduceMotion: false
+        )
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+        let view = OverviewNumericTextView(
+            text: plan.startText,
+            font: font,
+            value: plan.startValue
+        )
+        view.configure(plan: plan, sample: current)
+        XCTAssertEqual(view.textField.stringValue, "¥1.70")
+        XCTAssertTrue(view.hasPendingAnimationForTesting)
+        XCTAssertFalse(view.isValueInterpolatingForTesting)
+
+        view.playPendingIfNeeded()
+        XCTAssertFalse(view.hasPendingAnimationForTesting)
+        XCTAssertTrue(view.isValueInterpolatingForTesting)
+        XCTAssertEqual(view.textField.alphaValue, 1)
+        XCTAssertEqual(
+            view.textField.stringValue,
+            StatusItemController.formatBalanceSummary(view.currentValue, unit: "CNY")
+        )
+        XCTAssertGreaterThanOrEqual(view.currentValue, 1.50)
+        XCTAssertLessThanOrEqual(view.currentValue, 1.70)
+        XCTAssertNotEqual(view.textField.stringValue, "1.70")
+        XCTAssertTrue(view.textField.stringValue.hasPrefix("¥"))
+    }
+
     private var fiveHour: OverviewNumericIdentity {
         .officialWindow(provider: "OpenAI Official", kind: .fiveHour)
     }
@@ -185,6 +256,15 @@ final class OverviewNumericTransitionTests: XCTestCase {
             format: .integerPercent,
             value: value,
             progressPercentage: value
+        )
+    }
+
+    private func balanceSample(amount: Double, progress: Double) -> OverviewNumericSample {
+        OverviewNumericSample(
+            identity: .thirdPartyBalance(provider: "Provider", unit: "CNY"),
+            format: .currency(unit: "CNY"),
+            value: amount,
+            progressPercentage: progress
         )
     }
 }
@@ -263,6 +343,84 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertEqual(progressValues(in: switched), [30])
     }
 
+    func testThirdPartyBalanceReopenStartsFromLastSeenAmountAndProgress() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = false
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let input = makeMenuInput(activeClient: .grok)
+        let settings = makeSettings()
+
+        controller.start(
+            snapshot: Snapshot.balance("Provider", 1.70, "CNY", nil, date, progressPercentage: 40),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let firstOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertEqual(amountTexts(in: firstOverview), ["¥1.70"])
+        XCTAssertEqual(progressValues(in: firstOverview), [40])
+        XCTAssertFalse(amountViews(in: firstOverview).contains { $0.hasPendingAnimationForTesting })
+
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertEqual(
+            controller.lastSeenOverviewNumericsForTesting[thirdPartyBalance]?.displayText,
+            "¥1.70"
+        )
+        XCTAssertEqual(
+            controller.lastSeenOverviewNumericsForTesting[thirdPartyBalance]?.progressPercentage,
+            40
+        )
+
+        controller.update(
+            snapshot: Snapshot.balance("Provider", 1.50, "CNY", nil, date, progressPercentage: 30),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let secondOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertEqual(amountTexts(in: secondOverview), ["¥1.70"])
+        XCTAssertEqual(progressValues(in: secondOverview), [40])
+        XCTAssertTrue(amountViews(in: secondOverview).contains { $0.hasPendingAnimationForTesting })
+        XCTAssertTrue(progressViews(in: secondOverview).contains { $0.hasPendingAnimationForTesting })
+        XCTAssertEqual(
+            controller.menuBarPrimaryTextForTesting,
+            Snapshot.balance("Provider", 1.50, "CNY", nil, date, progressPercentage: 30).menuBarPrimary
+        )
+        XCTAssertNotEqual(controller.menuBarPrimaryTextForTesting, "¥1.70")
+    }
+
+    func testThirdPartyBalanceUnchangedValueDoesNotAnimate() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = false
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let input = makeMenuInput(activeClient: .grok)
+        let settings = makeSettings()
+        let snapshot = Snapshot.balance("Provider", 1.70, "CNY", nil, date, progressPercentage: 40)
+
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertEqual(amountTexts(in: overview), ["¥1.70"])
+        XCTAssertEqual(progressValues(in: overview), [40])
+        XCTAssertFalse(amountViews(in: overview).contains { $0.hasPendingAnimationForTesting })
+        XCTAssertFalse(progressViews(in: overview).contains { $0.hasPendingAnimationForTesting })
+    }
+
     func testProgressBarHiddenStillRollsNumbersAndLeavesNoBar() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -299,12 +457,24 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         .officialWindow(provider: "OpenAI Official", kind: .fiveHour)
     }
 
+    private var thirdPartyBalance: OverviewNumericIdentity {
+        .thirdPartyBalance(provider: "Provider", unit: "CNY")
+    }
+
+    private func amountViews(in view: NSView) -> [OverviewNumericTextView] {
+        descendantViews(of: view, as: OverviewNumericTextView.self)
+    }
+
     private func amountTexts(in view: NSView) -> [String] {
-        descendantViews(of: view, as: OverviewNumericTextView.self).map(\.textField.stringValue)
+        amountViews(in: view).map(\.textField.stringValue)
+    }
+
+    private func progressViews(in view: NSView) -> [QuotaProgressView] {
+        descendantViews(of: view, as: QuotaProgressView.self)
     }
 
     private func progressValues(in view: NSView) -> [Double] {
-        descendantViews(of: view, as: QuotaProgressView.self).map(\.percentage)
+        progressViews(in: view).map(\.percentage)
     }
 
     private func descendantViews<T: NSView>(of view: NSView, as type: T.Type) -> [T] {
