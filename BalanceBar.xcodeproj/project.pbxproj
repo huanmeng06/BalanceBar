@@ -69,6 +69,9 @@
 		A10000000000000000000085 /* MenuBarAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000082 /* MenuBarAnimation.swift */; };
 		A33700000000000000000001 /* QuickSwitchTitleLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33700000000000000000002 /* QuickSwitchTitleLayout.swift */; };
 		A10000000000000000000087 /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000088 /* StatusItemController.swift */; };
+		A37000000000000000000002 /* OverviewNumericTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A37000000000000000000001 /* OverviewNumericTransition.swift */; };
+		A37000000000000000000004 /* OverviewNumericTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A37000000000000000000003 /* OverviewNumericTextView.swift */; };
+		A37000000000000000000006 /* OverviewNumericTransitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A37000000000000000000005 /* OverviewNumericTransitionTests.swift */; };
 		A10000000000000000000090 /* DashboardComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000091 /* DashboardComponents.swift */; };
 		A26400000000000000000001 /* QuotaColorThresholdSlider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26400000000000000000002 /* QuotaColorThresholdSlider.swift */; };
 		A26400000000000000000003 /* QuotaProgressColorConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26400000000000000000004 /* QuotaProgressColorConfigurationTests.swift */; };
@@ -217,6 +220,9 @@
 		A10000000000000000000082 /* MenuBarAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarAnimation.swift; sourceTree = "<group>"; };
 		A33700000000000000000002 /* QuickSwitchTitleLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitchTitleLayout.swift; sourceTree = "<group>"; };
 		A10000000000000000000088 /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemController.swift; sourceTree = "<group>"; };
+		A37000000000000000000001 /* OverviewNumericTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewNumericTransition.swift; sourceTree = "<group>"; };
+		A37000000000000000000003 /* OverviewNumericTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewNumericTextView.swift; sourceTree = "<group>"; };
+		A37000000000000000000005 /* OverviewNumericTransitionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewNumericTransitionTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000091 /* DashboardComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardComponents.swift; sourceTree = "<group>"; };
 		A26400000000000000000002 /* QuotaColorThresholdSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaColorThresholdSlider.swift; sourceTree = "<group>"; };
 		A26400000000000000000004 /* QuotaProgressColorConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaProgressColorConfigurationTests.swift; sourceTree = "<group>"; };
@@ -386,6 +392,7 @@
 				A10000000000000300000030 /* AutomatedTestHostTests.swift */,
 				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
 				A33700000000000000000004 /* QuickSwitchTitleLayoutTests.swift */,
+				A37000000000000000000005 /* OverviewNumericTransitionTests.swift */,
 				A10000000000000000000131 /* StatusItemControllerTests.swift */,
 				A10000000000000000000111 /* MenuBarAnimationTests.swift */,
 				A100000000000000000000D1 /* AppDelegateCompositionTests.swift */,
@@ -564,6 +571,8 @@
 				A10000000000000000000081 /* MenuBarGeometry.swift */,
 				A10000000000000000000082 /* MenuBarAnimation.swift */,
 				A33700000000000000000002 /* QuickSwitchTitleLayout.swift */,
+				A37000000000000000000001 /* OverviewNumericTransition.swift */,
+				A37000000000000000000003 /* OverviewNumericTextView.swift */,
 				A10000000000000000000088 /* StatusItemController.swift */,
 			);
 			name = MenuBar;
@@ -827,6 +836,8 @@
 				A10000000000000000000084 /* MenuBarGeometry.swift in Sources */,
 				A10000000000000000000085 /* MenuBarAnimation.swift in Sources */,
 				A33700000000000000000001 /* QuickSwitchTitleLayout.swift in Sources */,
+				A37000000000000000000002 /* OverviewNumericTransition.swift in Sources */,
+				A37000000000000000000004 /* OverviewNumericTextView.swift in Sources */,
 				A10000000000000000000087 /* StatusItemController.swift in Sources */,
 				A10000000000000000000090 /* DashboardComponents.swift in Sources */,
 				A26400000000000000000001 /* QuotaColorThresholdSlider.swift in Sources */,
@@ -880,6 +891,7 @@
 				A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */,
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
 				A33700000000000000000003 /* QuickSwitchTitleLayoutTests.swift in Sources */,
+				A37000000000000000000006 /* OverviewNumericTransitionTests.swift in Sources */,
 				A10000000000000000000130 /* StatusItemControllerTests.swift in Sources */,
 				A10000000000000000000110 /* MenuBarAnimationTests.swift in Sources */,
 				A100000000000000000000D0 /* AppDelegateCompositionTests.swift in Sources */,

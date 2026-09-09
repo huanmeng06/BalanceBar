@@ -190,8 +190,20 @@ final class DashboardNavigationRowView: NSView {
 }
 
 final class QuotaProgressView: NSView {
-    let percentage: Double
+    private(set) var percentage: Double {
+        didSet {
+            if oldValue != percentage {
+                needsDisplay = true
+            }
+        }
+    }
+    var fillRatio: Double { percentage / 100 }
     let colorConfiguration: QuotaProgressColorConfiguration
+    private var interpolator: OverviewNumericInterpolator?
+    private var pendingAnimatedPercentage: Double?
+    private var pendingAnimatedDuration: TimeInterval = OverviewNumericTransition.duration
+
+    var hasPendingAnimationForTesting: Bool { pendingAnimatedPercentage != nil }
 
     init(percentage: Double, colorConfiguration: QuotaProgressColorConfiguration = .default) {
         self.percentage = min(100, max(0, percentage))
@@ -200,6 +212,53 @@ final class QuotaProgressView: NSView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    deinit {
+        interpolator?.cancel()
+    }
+
+    func setPercentage(
+        _ value: Double,
+        animated: Bool,
+        duration: TimeInterval = OverviewNumericTransition.duration
+    ) {
+        let clamped = min(100, max(0, value))
+        interpolator?.cancel()
+        interpolator = nil
+        pendingAnimatedPercentage = nil
+        if abs(clamped - percentage) < 0.0001 {
+            percentage = clamped
+            return
+        }
+        if !animated {
+            percentage = clamped
+            return
+        }
+        if window == nil {
+            pendingAnimatedPercentage = clamped
+            pendingAnimatedDuration = duration
+            return
+        }
+        animate(to: clamped, duration: duration)
+    }
+
+    func playPendingAnimationIfNeeded() {
+        guard let pending = pendingAnimatedPercentage else { return }
+        pendingAnimatedPercentage = nil
+        setPercentage(pending, animated: true, duration: pendingAnimatedDuration)
+    }
+
+    private func animate(to value: Double, duration: TimeInterval) {
+        let interpolator = OverviewNumericInterpolator(
+            from: percentage,
+            to: value,
+            duration: duration
+        ) { [weak self] current in
+            self?.percentage = current
+        }
+        self.interpolator = interpolator
+        interpolator.start()
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         let track = bounds
@@ -329,7 +388,7 @@ final class LunaReserveCardView: NSView {
     }
 }
 
-final class HoverLinkTextField: NSTextField {
+class HoverLinkTextField: NSTextField {
     enum InteractionMode: Equatable {
         case normal
         case menuHosted

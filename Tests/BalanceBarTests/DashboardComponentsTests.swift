@@ -1047,6 +1047,20 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(QuotaProgressView.progressColor(for: 50.01).isEqual(NSColor.systemGreen))
     }
 
+    func testQuotaProgressSetPercentageUpdatesFillRatioWithoutAnimation() {
+        let view = QuotaProgressView(percentage: 84)
+        XCTAssertEqual(view.percentage, 84)
+        XCTAssertEqual(view.fillRatio, 0.84, accuracy: 0.0001)
+
+        view.setPercentage(71, animated: false)
+        XCTAssertEqual(view.percentage, 71)
+        XCTAssertEqual(view.fillRatio, 0.71, accuracy: 0.0001)
+
+        view.setPercentage(71, animated: true)
+        XCTAssertEqual(view.percentage, 71)
+        XCTAssertEqual(view.fillRatio, 0.71, accuracy: 0.0001)
+    }
+
     func testLunaReserveCardShowsLocalizedStatusRemainingResetAndCollapsesWithoutProgress() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

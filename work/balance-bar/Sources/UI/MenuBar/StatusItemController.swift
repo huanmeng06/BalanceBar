@@ -2204,6 +2204,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
+    private var lastSeenOverviewNumerics: [OverviewNumericIdentity: OverviewNumericSample] = [:]
+    private var presentedOverviewNumerics: [OverviewNumericSample] = []
+    private var overviewMenuWasSeen = false
+    private var overviewNumericOpenWorkItem: DispatchWorkItem?
+    var overviewNumericReduceMotionForTesting: Bool?
+    var lastSeenOverviewNumericsForTesting: [OverviewNumericIdentity: OverviewNumericSample] {
+        lastSeenOverviewNumerics
+    }
     private var suppressLayoutFromSourceImageChange = false
     private var codexAnimationNeedsPostLayoutReconciliation = false
     private(set) var layoutStatusItemCallCountForTesting = 0
@@ -2662,6 +2670,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
+        overviewMenuWasSeen = false
+        cancelPendingOverviewNumericTransitions()
+        lastSeenOverviewNumerics = [:]
+        presentedOverviewNumerics = []
         codexAnimationNeedsPostLayoutReconciliation = false
         lastMenuBarGeometry = nil
         menuBarIconView.onSourceImageChanged = nil
@@ -2719,6 +2731,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             updateActivityIcon()
         }
         rebuildOrDeferMenu(forceDefer: deferMenuRebuild)
+        applyInPlaceOverviewNumericUpdatesIfTracking()
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
     }
 
@@ -2911,13 +2924,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             rebuildStatusMenu()
         }
         isStatusMenuTracking = true
+        overviewMenuWasSeen = true
+        playPendingOverviewNumericTransitions()
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
     }
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        if overviewMenuWasSeen {
+            lastSeenOverviewNumerics = OverviewNumericTransition.commitSeenValues(
+                presentedOverviewNumerics
+            )
+            overviewMenuWasSeen = false
+        }
         isStatusMenuTracking = false
+        cancelPendingOverviewNumericTransitions()
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
         guard statusMenuNeedsRebuild else { return }
@@ -5257,6 +5279,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func makeOverviewMenuItem(for snapshot: Snapshot) -> NSMenuItem {
         if snapshot.kind == .error {
+            presentedOverviewNumerics = []
             return makeOverviewErrorMenuItem(for: snapshot)
         }
         let item = NSMenuItem()
@@ -5293,6 +5316,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             bankedResetDisplayMode: menuInput.bankedResetDisplayMode
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        view.wantsLayer = true
+        view.clipsToBounds = true
+        view.layer?.masksToBounds = true
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
 
@@ -5316,25 +5342,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
 
+        presentedOverviewNumerics = currentOverviewNumericSamples()
         if !layout.quotaRows.isEmpty
             || layout.lunaReserveRow != nil
             || layout.bankedResetSummaryRow != nil {
             for (window, row) in zip(officialQuotaWindows, layout.quotaRows) {
+                let sample = OverviewNumericSample(
+                    identity: OverviewNumericPresentation.identity(
+                        for: window,
+                        provider: snapshot.provider
+                    ),
+                    format: .integerPercent,
+                    value: window.remaining,
+                    progressPercentage: window.remaining
+                )
+                let plan = overviewNumericPlan(for: sample)
                 if settings.showQuotaProgressBar {
-                    let progress = QuotaProgressView(percentage: window.remaining, colorConfiguration: settings.quotaProgressColorConfiguration)
-                    progress.frame = row.progress
-                    view.addSubview(progress)
+                    view.addSubview(
+                        makeOverviewNumericProgress(
+                            plan: plan,
+                            frame: row.progress
+                        )
+                    )
                 }
 
-                let amount = makeOverviewLabel(
-                    "\(Int(window.remaining))%",
-                    font: .monospacedDigitSystemFont(
-                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
-                        weight: .semibold
-                    )
-                )
-                amount.alignment = .right
-                amount.frame = row.amount
+                let amount = makeOverviewNumericAmount(plan: plan, sample: sample, frame: row.amount)
                 view.addSubview(amount)
 
                 let quotaDetail = makeMarqueeOverviewLabel(
@@ -5344,7 +5376,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         weight: .medium
                     ),
                     textColor: .labelColor,
-                    frame: overviewMarqueeFrame(row.quotaDetail, avoiding: amount)
+                    frame: overviewMarqueeFrame(
+                        row.quotaDetail,
+                        avoidingAmountFrame: amount.frame,
+                        amountText: plan.layoutReservationText
+                    )
                 )
                 view.addSubview(quotaDetail)
 
@@ -5358,27 +5394,52 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         weight: .regular
                     ),
                     textColor: .secondaryLabelColor,
-                    frame: overviewMarqueeFrame(row.reset, avoiding: amount)
+                    frame: overviewMarqueeFrame(
+                        row.reset,
+                        avoidingAmountFrame: amount.frame,
+                        amountText: plan.layoutReservationText
+                    )
                 )
                 view.addSubview(reset)
             }
             if let lunaReserve,
                let row = layout.lunaReserveRow {
-                if settings.showQuotaProgressBar, let remaining = lunaReserve.remaining {
-                    let progress = QuotaProgressView(percentage: remaining, colorConfiguration: settings.quotaProgressColorConfiguration)
-                    progress.frame = row.progress
-                    view.addSubview(progress)
-                }
-
-                let amount = makeOverviewLabel(
-                    lunaReserve.remaining.map { "\(Int($0))%" } ?? "—",
-                    font: .monospacedDigitSystemFont(
-                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
-                        weight: .semibold
-                    )
+                let amountFont = NSFont.monospacedDigitSystemFont(
+                    ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                    weight: .semibold
                 )
-                amount.alignment = .right
-                amount.frame = row.amount
+                let amount: NSView
+                let marqueeAmountText: String
+                if let remaining = lunaReserve.remaining {
+                    let sample = OverviewNumericSample(
+                        identity: .lunaReserve(provider: snapshot.provider),
+                        format: .integerPercent,
+                        value: remaining,
+                        progressPercentage: remaining
+                    )
+                    let plan = overviewNumericPlan(for: sample)
+                    if settings.showQuotaProgressBar {
+                        view.addSubview(
+                            makeOverviewNumericProgress(
+                                plan: plan,
+                                frame: row.progress
+                            )
+                        )
+                    }
+                    let numeric = makeOverviewNumericAmount(
+                        plan: plan,
+                        sample: sample,
+                        frame: row.amount
+                    )
+                    amount = numeric
+                    marqueeAmountText = plan.layoutReservationText
+                } else {
+                    let label = makeOverviewLabel("—", font: amountFont)
+                    label.alignment = .right
+                    label.frame = row.amount
+                    amount = label
+                    marqueeAmountText = "—"
+                }
                 view.addSubview(amount)
 
                 let quotaDetail = makeMarqueeOverviewLabel(
@@ -5388,7 +5449,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         weight: .medium
                     ),
                     textColor: .labelColor,
-                    frame: overviewMarqueeFrame(row.quotaDetail, avoiding: amount)
+                    frame: overviewMarqueeFrame(
+                        row.quotaDetail,
+                        avoidingAmountFrame: amount.frame,
+                        amountText: marqueeAmountText,
+                        amountFont: amountFont
+                    )
                 )
                 view.addSubview(quotaDetail)
 
@@ -5399,7 +5465,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         weight: .regular
                     ),
                     textColor: .secondaryLabelColor,
-                    frame: overviewMarqueeFrame(row.reset, avoiding: amount)
+                    frame: overviewMarqueeFrame(
+                        row.reset,
+                        avoidingAmountFrame: amount.frame,
+                        amountText: marqueeAmountText,
+                        amountFont: amountFont
+                    )
                 )
                 view.addSubview(reset)
             }
@@ -5407,16 +5478,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                let summaryRow = layout.bankedResetSummaryRow {
                 let isCompactBankedReset = menuInput.bankedResetDisplayMode == .compact
                 if summaryRow.amount.width > 0 {
-                    let amount = makeOverviewLabel(
-                        "\(bankedReset.availableCount)",
-                        font: .monospacedDigitSystemFont(
-                            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
-                            weight: .semibold
-                        )
+                    let sample = OverviewNumericSample(
+                        identity: .bankedResetCount(provider: snapshot.provider),
+                        format: .integerCount,
+                        value: Double(bankedReset.availableCount),
+                        progressPercentage: nil
                     )
-                    amount.alignment = .right
-                    amount.frame = summaryRow.amount
-                    amount.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.count")
+                    let plan = overviewNumericPlan(for: sample)
+                    let amount = makeOverviewNumericAmount(
+                        plan: plan,
+                        sample: sample,
+                        frame: summaryRow.amount
+                    )
                     view.addSubview(amount)
                     view.addSubview(
                         makeMarqueeOverviewLabel(
@@ -5426,7 +5499,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                                 weight: .medium
                             ),
                             textColor: .labelColor,
-                            frame: overviewMarqueeFrame(summaryRow.quotaDetail, avoiding: amount)
+                            frame: overviewMarqueeFrame(
+                                summaryRow.quotaDetail,
+                                avoidingAmountFrame: amount.frame,
+                                amountText: plan.layoutReservationText
+                            )
                         )
                     )
                 }
@@ -5462,7 +5539,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     view.addSubview(prefix)
 
                     let percentText = quotaPresentation.resetProbability.displayText
-                    let link = HoverLinkTextField(text: percentText)
+                    let link: HoverLinkTextField
+                    let reservedPercentText: String
+                    if case .percent(let percent) = quotaPresentation.resetProbability {
+                        let sample = OverviewNumericSample(
+                            identity: .bankedResetProbability(provider: snapshot.provider),
+                            format: .integerPercent,
+                            value: Double(percent),
+                            progressPercentage: nil
+                        )
+                        let plan = overviewNumericPlan(for: sample)
+                        let numericLink = OverviewNumericHoverLinkTextField(text: plan.startText)
+                        numericLink.configure(plan: plan, sample: sample)
+                        link = numericLink
+                        reservedPercentText = plan.layoutReservationText
+                    } else {
+                        link = HoverLinkTextField(text: percentText)
+                        reservedPercentText = percentText
+                    }
                     link.lineBreakMode = .byClipping
                     link.usesSingleLineMode = true
                     link.sizeToFit()
@@ -5470,7 +5564,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     let linkWidth = max(
                         ceil(link.frame.width) + 4,
                         ceil(link.attributedStringValue.size().width) + 8,
-                        ceil(AccountMarqueeView.textWidth(of: percentText, font: linkFont)) + 8
+                        ceil(AccountMarqueeView.textWidth(of: reservedPercentText, font: linkFont)) + 8
                     )
                     link.frame = CGRect(
                         x: prefix.frame.maxX,
@@ -5590,23 +5684,43 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             view.addSubview(provider)
         } else {
-            if settings.showQuotaProgressBar,
-               let percentage = snapshot.progressPercentage,
-               let progressFrame = layout.progress {
-                let progress = QuotaProgressView(percentage: percentage, colorConfiguration: settings.quotaProgressColorConfiguration)
-                progress.frame = progressFrame
-                view.addSubview(progress)
-            }
-
-            let amount = makeOverviewLabel(
-                snapshot.overviewLargeAmount,
-                font: .monospacedDigitSystemFont(
-                    ofSize: OpenCodexCardLayout.quotaAmountPointSize,
-                    weight: .semibold
-                )
+            let amountFont = NSFont.monospacedDigitSystemFont(
+                ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                weight: .semibold
             )
-            amount.alignment = .right
-            amount.frame = layout.amount
+            let amount: NSView
+            let marqueeAmountText: String
+            if snapshot.kind == .balance, let sample = presentedOverviewNumerics.first {
+                let plan = overviewNumericPlan(for: sample)
+                if settings.showQuotaProgressBar,
+                   sample.progressPercentage != nil,
+                   let progressFrame = layout.progress {
+                    view.addSubview(
+                        makeOverviewNumericProgress(
+                            plan: plan,
+                            frame: progressFrame
+                        )
+                    )
+                }
+                amount = makeOverviewNumericAmount(plan: plan, sample: sample, frame: layout.amount)
+                marqueeAmountText = plan.layoutReservationText
+            } else {
+                if settings.showQuotaProgressBar,
+                   let percentage = snapshot.progressPercentage,
+                   let progressFrame = layout.progress {
+                    let progress = QuotaProgressView(
+                        percentage: percentage,
+                        colorConfiguration: settings.quotaProgressColorConfiguration
+                    )
+                    progress.frame = progressFrame
+                    view.addSubview(progress)
+                }
+                let label = makeOverviewLabel(snapshot.overviewLargeAmount, font: amountFont)
+                label.alignment = .right
+                label.frame = layout.amount
+                amount = label
+                marqueeAmountText = snapshot.overviewLargeAmount
+            }
             let quotaDetail = makeMarqueeOverviewLabel(
                 snapshot.overviewQuotaDetail,
                 font: .systemFont(
@@ -5614,7 +5728,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     weight: .medium
                 ),
                 textColor: .labelColor,
-                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: amount)
+                frame: overviewMarqueeFrame(
+                    layout.quotaDetail,
+                    avoidingAmountFrame: amount.frame,
+                    amountText: marqueeAmountText,
+                    amountFont: amountFont
+                )
             )
             if isBalance {
                 let linkPrefix = makeOverviewLabel(
@@ -5639,7 +5758,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         weight: .regular
                     ),
                     textColor: .secondaryLabelColor,
-                    frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: amount)
+                    frame: overviewMarqueeFrame(
+                        layout.reset ?? .zero,
+                        avoidingAmountFrame: amount.frame,
+                        amountText: marqueeAmountText,
+                        amountFont: amountFont
+                    )
                 )
                 view.addSubview(reset)
             }
@@ -5733,7 +5857,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func overviewMarqueeFrame(
         _ baseFrame: NSRect,
-        avoiding amountLabel: NSTextField
+        avoidingAmountFrame amountFrame: NSRect,
+        amountText: String,
+        amountFont: NSFont = .monospacedDigitSystemFont(
+            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+            weight: .semibold
+        )
     ) -> NSRect {
         guard baseFrame.width > 0 else { return baseFrame }
 
@@ -5744,14 +5873,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // leading edge, keep the viewport bounded by the actual safe gap and
         // let the marquee scroll. This keeps scrolling as the overflow
         // fallback, rather than the first response to a barely-overlong
-        // translation.
-        let amountFont = amountLabel.font ?? .systemFont(ofSize: 13)
+        // translation. Reservation text is the wider of the animation start
+        // and end so intermediate digit widths do not shove the marquee.
         let amountTextWidth = AccountMarqueeView.textWidth(
-            of: amountLabel.stringValue,
+            of: amountText,
             font: amountFont
         )
-        let renderedAmountMinX = amountLabel.frame.maxX - amountTextWidth
-        let safeAmountMinX = max(amountLabel.frame.minX, renderedAmountMinX)
+        let renderedAmountMinX = amountFrame.maxX - amountTextWidth
+        let safeAmountMinX = max(amountFrame.minX, renderedAmountMinX)
         let availableWidth = max(0, safeAmountMinX - baseFrame.minX)
         // Give the marquee the whole safe viewport. Its horizontal mask owns
         // the final fade inset, so the transparent edge ends exactly at the
@@ -5763,6 +5892,179 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             width: expandedWidth,
             height: baseFrame.height
         )
+    }
+
+    private func currentOverviewNumericSamples() -> [OverviewNumericSample] {
+        OverviewNumericPresentation.samples(
+            snapshot: snapshot,
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showBankedReset: settings.showBankedReset
+        )
+    }
+
+    private func shouldReduceOverviewNumericMotion() -> Bool {
+        overviewNumericReduceMotionForTesting
+            ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private func overviewNumericPlan(
+        for sample: OverviewNumericSample
+    ) -> OverviewNumericTransitionPlan {
+        OverviewNumericTransition.plan(
+            previous: lastSeenOverviewNumerics[sample.identity],
+            current: sample,
+            reduceMotion: shouldReduceOverviewNumericMotion()
+        )
+    }
+
+    private func makeOverviewNumericAmount(
+        plan: OverviewNumericTransitionPlan,
+        sample: OverviewNumericSample,
+        frame: NSRect
+    ) -> OverviewNumericTextView {
+        let font = NSFont.monospacedDigitSystemFont(
+            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+            weight: .semibold
+        )
+        let view = OverviewNumericTextView(
+            text: plan.startText,
+            font: font,
+            value: plan.startValue
+        )
+        view.frame = frame
+        view.identifier = OverviewNumericPresentation.amountIdentifier(for: sample.identity)
+        view.textField.identifier = view.identifier
+        view.configure(plan: plan, sample: sample)
+        return view
+    }
+
+    private func makeOverviewNumericProgress(
+        plan: OverviewNumericTransitionPlan,
+        frame: NSRect
+    ) -> QuotaProgressView {
+        let start = plan.startProgress ?? plan.toProgress ?? 0
+        let progress = QuotaProgressView(
+            percentage: start,
+            colorConfiguration: settings.quotaProgressColorConfiguration
+        )
+        progress.frame = frame
+        progress.identifier = OverviewNumericPresentation.progressIdentifier(for: plan.identity)
+        if plan.animates, let target = plan.toProgress {
+            progress.setPercentage(
+                target,
+                animated: true,
+                duration: OverviewNumericTransition.duration(for: plan.format)
+            )
+        }
+        return progress
+    }
+
+    private func cancelPendingOverviewNumericTransitions() {
+        overviewNumericOpenWorkItem?.cancel()
+        overviewNumericOpenWorkItem = nil
+    }
+
+    private func playPendingOverviewNumericTransitions() {
+        guard statusMenu.items.first?.view != nil else { return }
+        cancelPendingOverviewNumericTransitions()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isStatusMenuTracking,
+                  let overview = self.statusMenu.items.first?.view else { return }
+            self.overviewNumericOpenWorkItem = nil
+            self.playOverviewNumericTransitions(in: overview)
+        }
+        overviewNumericOpenWorkItem = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + OverviewNumericTransition.openDelay,
+            execute: work
+        )
+    }
+
+    private func playOverviewNumericTransitions(in overview: NSView) {
+        for view in overviewNumericTextViews(in: overview) {
+            view.playPendingIfNeeded()
+        }
+        for link in overviewNumericLinkFields(in: overview) {
+            link.playPendingIfNeeded()
+        }
+        for progress in overviewNumericProgressViews(in: overview) {
+            progress.playPendingAnimationIfNeeded()
+        }
+    }
+
+    private func applyInPlaceOverviewNumericUpdatesIfTracking() {
+        guard isStatusMenuTracking, let overview = statusMenu.items.first?.view else { return }
+        let samples = currentOverviewNumericSamples()
+        presentedOverviewNumerics = samples
+        let reduceMotion = shouldReduceOverviewNumericMotion()
+        let amountViews = overviewNumericTextViews(in: overview)
+        let linkViews = overviewNumericLinkFields(in: overview)
+        let progressViews = overviewNumericProgressViews(in: overview)
+        for sample in samples {
+            let displayed: OverviewNumericSample?
+            if let view = amountViews.first(where: { $0.sample?.identity == sample.identity }),
+               let current = view.sample {
+                displayed = OverviewNumericSample(
+                    identity: current.identity,
+                    format: current.format,
+                    value: view.currentValue,
+                    progressPercentage: current.progressPercentage
+                )
+                let plan = OverviewNumericTransition.plan(
+                    previous: displayed,
+                    current: sample,
+                    reduceMotion: reduceMotion
+                )
+                view.apply(plan: plan, sample: sample)
+            } else if let link = linkViews.first(where: { $0.sample?.identity == sample.identity }),
+                      let current = link.sample {
+                displayed = OverviewNumericSample(
+                    identity: current.identity,
+                    format: current.format,
+                    value: link.currentValue,
+                    progressPercentage: nil
+                )
+                let plan = OverviewNumericTransition.plan(
+                    previous: displayed,
+                    current: sample,
+                    reduceMotion: reduceMotion
+                )
+                link.apply(plan: plan, sample: sample)
+            }
+            if let progress = progressViews.first(where: {
+                $0.identifier == OverviewNumericPresentation.progressIdentifier(for: sample.identity)
+            }), let target = sample.progressPercentage {
+                progress.setPercentage(
+                    target,
+                    animated: !reduceMotion,
+                    duration: OverviewNumericTransition.duration(for: sample.format)
+                )
+            }
+        }
+    }
+
+    private func overviewNumericTextViews(in view: NSView) -> [OverviewNumericTextView] {
+        descendantViews(of: view, as: OverviewNumericTextView.self)
+    }
+
+    private func overviewNumericLinkFields(in view: NSView) -> [OverviewNumericHoverLinkTextField] {
+        descendantViews(of: view, as: OverviewNumericHoverLinkTextField.self)
+    }
+
+    private func overviewNumericProgressViews(in view: NSView) -> [QuotaProgressView] {
+        descendantViews(of: view, as: QuotaProgressView.self)
+    }
+
+    private func descendantViews<T: NSView>(of view: NSView, as type: T.Type) -> [T] {
+        var matches: [T] = []
+        if let match = view as? T {
+            matches.append(match)
+        }
+        for child in view.subviews {
+            matches.append(contentsOf: descendantViews(of: child, as: type))
+        }
+        return matches
     }
 
     private func makeSubscriptionLabel(_ text: String, frame: NSRect) -> NSTextField {
