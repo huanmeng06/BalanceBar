@@ -306,6 +306,15 @@
 "dashboard.menu.bar.page.font_size_position" = "Schriftgröße und Position";
 "dashboard.menu.bar.page.spacing_and_width" = "Abstand und Breite";
 "dashboard.menu.bar.page.layout" = "Layout";
+"dashboard.menu.bar.page.behavior" = "Verhalten";
+"dashboard.menu.bar.page.right_click" = "Rechtsklick";
+"dashboard.menu.bar.page.right_click_description" = "Wählen Sie, was beim Rechtsklick auf das Menüleistensymbol geschehen soll";
+"dashboard.menu.bar.page.right_click_match_left_click" = "Wie Linksklick";
+"dashboard.menu.bar.page.right_click_open_main_menu" = "Hauptfenster öffnen";
+"dashboard.menu.bar.page.right_click_open_agent" = "Agent öffnen";
+"dashboard.menu.bar.page.right_click_open_cc_switch" = "CC Switch öffnen";
+"dashboard.menu.bar.page.reverse_mouse_buttons" = "Links- und Rechtsklick tauschen";
+"dashboard.menu.bar.page.reverse_mouse_buttons_description" = "Wenn aktiviert, führt der Linksklick die gewählte Aktion aus und der Rechtsklick öffnet das Menü";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Schriftgröße der Menüleiste";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Passt die Textgröße der Menüleiste an";
 "dashboard.menu.bar.page.menu_bar_icon_size" = "Symbolgröße der Menüleiste";

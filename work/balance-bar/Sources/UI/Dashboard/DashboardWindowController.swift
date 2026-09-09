@@ -191,15 +191,26 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     ) {
         guard !isTornDown else { return }
         start()
-        if !AutomatedTestHost.isRunning {
-            NSApp.setActivationPolicy(.regular)
+
+        let isNewWindow = window == nil
+        if isNewWindow {
+            createDashboardWindow(initialSection: initialSection)
         }
 
-        if let window {
-            ApplicationWindowPresentation.present(window)
-            return
-        }
+        // Become regular only after the dashboard window exists. Switching
+        // accessory → regular with no key window lets a leftover menu-bar
+        // click highlight Window.
+        presentOpenedDashboardWindow()
 
+        if isNewWindow, scrollOffsetY != nil {
+            window?.makeFirstResponder(nil)
+            if let scrollOffsetY {
+                restorePageScrollOffsetY(scrollOffsetY)
+            }
+        }
+    }
+
+    private func createDashboardWindow(initialSection: DashboardSection) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -239,13 +250,25 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         installLayout(in: window)
         installMouseMonitor()
         showSection(initialSection)
+    }
+
+    private func presentOpenedDashboardWindow() {
+        guard let window else { return }
+        dismissApplicationMenuTracking()
+        if !AutomatedTestHost.isRunning {
+            _ = NSApp.setActivationPolicy(.regular)
+        }
         ApplicationWindowPresentation.present(window)
-        if scrollOffsetY != nil {
-            window.makeFirstResponder(nil)
+        dismissApplicationMenuTracking()
+        guard !AutomatedTestHost.isRunning else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.dismissApplicationMenuTracking()
         }
-        if let scrollOffsetY {
-            restorePageScrollOffsetY(scrollOffsetY)
-        }
+    }
+
+    private func dismissApplicationMenuTracking() {
+        NSApp.mainMenu?.cancelTracking()
+        NSApp.windowsMenu?.cancelTracking()
     }
 
     func pageScrollOffsetY() -> CGFloat {

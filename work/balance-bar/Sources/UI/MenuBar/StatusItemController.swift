@@ -2059,6 +2059,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showReset: Bool
         let iconDisplayMode: MenuBarIconDisplayMode
         let iconDisplayDelay: MenuBarIconDisplayDelay
+        let rightClickAction: MenuBarRightClickAction
+        let reverseMouseButtons: Bool
         let horizontalPadding: CGFloat
         let keepMenuOpenAfterRefresh: Bool
         let iconOffsetX: CGFloat
@@ -2088,6 +2090,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             keepMenuOpenAfterRefresh: Bool,
             iconDisplayMode: MenuBarIconDisplayMode = .defaultValue,
             iconDisplayDelay: MenuBarIconDisplayDelay = .defaultValue,
+            rightClickAction: MenuBarRightClickAction = .defaultValue,
+            reverseMouseButtons: Bool = false,
             iconOffsetX: CGFloat = 0,
             iconOffsetY: CGFloat = 0,
             amountOffsetX: CGFloat = 0,
@@ -2108,6 +2112,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showReset = showReset
             self.iconDisplayMode = iconDisplayMode
             self.iconDisplayDelay = iconDisplayDelay
+            self.rightClickAction = rightClickAction
+            self.reverseMouseButtons = reverseMouseButtons
             self.horizontalPadding = horizontalPadding
             self.keepMenuOpenAfterRefresh = keepMenuOpenAfterRefresh
             self.iconOffsetX = iconOffsetX
@@ -2287,6 +2293,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         horizontalPadding: 6,
         keepMenuOpenAfterRefresh: true
     )
+    private var rightClickMonitor: Any?
+    private var isRightClickPressActive = false
+    private var isLeftClickPressActive = false
     private var activeClient: AssistantClient = .codex
     private var isCodexTaskRunning = false
     private var isClaudeTaskRunning = false
@@ -2550,6 +2559,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // behavior while the status menu is tracking.
     var statusMenuForTesting: NSMenu { statusMenu }
 
+    var rightClickActionForTesting: MenuBarRightClickAction { settings.rightClickAction }
+
+    var reverseMouseButtonsForTesting: Bool { settings.reverseMouseButtons }
+
+    var areMouseButtonsReversedForTesting: Bool { areMouseButtonsReversed }
+
+    private(set) var rightClickMenuPresentationCountForTesting = 0
+
+    var statusItemButtonIsHighlightedForTesting: Bool {
+        statusItem?.button?.isHighlighted ?? false
+    }
+
+    func handleConfiguredRightClickForTesting() {
+        performConfiguredRightClickAction()
+    }
+
+    func handleStatusItemRightMouseDownForTesting() {
+        handleRightClickMouseDown()
+    }
+
+    func handleStatusItemRightMouseUpForTesting() {
+        handleRightClickMouseUp()
+    }
+
+    func handleStatusItemLeftMouseDownForTesting() {
+        handleLeftClickMouseDown()
+    }
+
+    func handleStatusItemLeftMouseUpForTesting() {
+        handleLeftClickMouseUp()
+    }
+
     var startupDiagnostic: String {
         let statusWindow = statusItem?.button?.window
         return "status_visible=\(isVisible); menu_bound=\(statusItem?.menu === statusMenu); menu_items=\(statusMenu.items.count); button_window=\(statusWindow != nil)"
@@ -2600,6 +2641,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     deinit {
+        removeRightClickMonitor()
         removeStatusItemWindowObservation()
         if let screenParametersObserver {
             NotificationCenter.default.removeObserver(screenParametersObserver)
@@ -2674,6 +2716,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         cancelPendingOverviewNumericTransitions()
         lastSeenOverviewNumerics = [:]
         presentedOverviewNumerics = []
+        isRightClickPressActive = false
+        rightClickMenuPresentationCountForTesting = 0
         codexAnimationNeedsPostLayoutReconciliation = false
         lastMenuBarGeometry = nil
         menuBarIconView.onSourceImageChanged = nil
@@ -2684,6 +2728,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarContentStack.removeFromSuperview()
         statusMenu.delegate = nil
         statusMenu.removeAllItems()
+        removeRightClickMonitor()
         if let statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
         }
@@ -3183,7 +3228,167 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         self.statusItem = statusItem
         statusItem.menu = statusMenu
+        installRightClickMonitorIfNeeded()
         configureStatusItem()
+    }
+
+    private var areMouseButtonsReversed: Bool {
+        settings.reverseMouseButtons && settings.rightClickAction != .matchLeftClick
+    }
+
+    private func installRightClickMonitorIfNeeded() {
+        guard rightClickMonitor == nil else { return }
+        // Right-click is always intercepted. Left-click is only consumed when
+        // reverse is on; otherwise it keeps the normal NSStatusItem path,
+        // including Control-click.
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp]
+        ) { [weak self] event in
+            guard let self else { return event }
+            return self.handlePotentialStatusItemClick(event)
+        }
+    }
+
+    private func removeRightClickMonitor() {
+        if let rightClickMonitor {
+            NSEvent.removeMonitor(rightClickMonitor)
+            self.rightClickMonitor = nil
+        }
+        isRightClickPressActive = false
+        isLeftClickPressActive = false
+    }
+
+    private func handlePotentialStatusItemClick(_ event: NSEvent) -> NSEvent? {
+        switch event.type {
+        case .leftMouseDown:
+            if event.modifierFlags.contains(.control) { return event }
+            guard areMouseButtonsReversed, isEventInStatusItem(event) else { return event }
+            isLeftClickPressActive = true
+            let generation = lifecycleGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.lifecycleGeneration == generation else { return }
+                self.handleLeftClickMouseDown()
+            }
+            return nil
+        case .leftMouseUp:
+            guard isLeftClickPressActive else { return event }
+            isLeftClickPressActive = false
+            let generation = lifecycleGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.lifecycleGeneration == generation else { return }
+                self.handleLeftClickMouseUp()
+            }
+            return nil
+        case .rightMouseDown:
+            guard isEventInStatusItem(event) else { return event }
+            isRightClickPressActive = true
+            let generation = lifecycleGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.lifecycleGeneration == generation else { return }
+                self.handleRightClickMouseDown()
+            }
+            return nil
+        case .rightMouseUp:
+            guard isRightClickPressActive else { return event }
+            isRightClickPressActive = false
+            let generation = lifecycleGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.lifecycleGeneration == generation else { return }
+                self.handleRightClickMouseUp()
+            }
+            return nil
+        default:
+            return event
+        }
+    }
+
+    private func isEventInStatusItem(_ event: NSEvent) -> Bool {
+        guard let button = statusItem?.button, event.window === button.window else {
+            return false
+        }
+        let location = button.convert(event.locationInWindow, from: nil)
+        return button.bounds.contains(location)
+    }
+
+    private func handleLeftClickMouseDown() {
+        guard areMouseButtonsReversed else { return }
+        setStatusItemHighlighted(true)
+    }
+
+    private func handleLeftClickMouseUp() {
+        setStatusItemHighlighted(false)
+        guard areMouseButtonsReversed else { return }
+        performConfiguredRightClickAction()
+    }
+
+    private func handleRightClickMouseDown() {
+        if areMouseButtonsReversed || settings.rightClickAction == .matchLeftClick {
+            presentStatusItemMenuFromRightClick()
+            return
+        }
+        setStatusItemHighlighted(true)
+    }
+
+    private func handleRightClickMouseUp() {
+        guard !areMouseButtonsReversed, settings.rightClickAction != .matchLeftClick else {
+            return
+        }
+        setStatusItemHighlighted(false)
+        performConfiguredRightClickAction()
+    }
+
+    private func presentStatusItemMenuFromRightClick() {
+        rightClickMenuPresentationCountForTesting += 1
+        // performClick is the supported left-click path: it draws the status
+        // item highlight and opens `statusItem.menu`. popUpMenu(_:) is
+        // deprecated and skips that highlight. Skip the AppKit click during
+        // XCTest; menu tracking is modal and would stall the suite.
+        guard !AutomatedTestHost.isRunning else { return }
+        statusItem?.button?.performClick(nil)
+    }
+
+    private func setStatusItemHighlighted(_ highlighted: Bool) {
+        statusItem?.button?.highlight(highlighted)
+    }
+
+    private func performConfiguredRightClickAction() {
+        switch settings.rightClickAction {
+        case .matchLeftClick:
+            break
+        case .openMainWindow:
+            openMainWindowFromRightClick()
+        case .openAgent:
+            cancelMenuBarTracking()
+            actions.openChatGPT()
+        case .openCCSwitch:
+            cancelMenuBarTracking()
+            actions.openCCSwitch()
+        }
+    }
+
+    private func openMainWindowFromRightClick() {
+        cancelMenuBarTracking()
+        if AutomatedTestHost.isRunning {
+            actions.openDashboard()
+            return
+        }
+        // The right-click was swallowed so AppKit would not track the status
+        // menu. Wait one more turn after mouse-up so becoming a regular app
+        // cannot treat that leftover menu-bar click as selecting Window.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.cancelMenuBarTracking()
+            self.actions.openDashboard()
+            DispatchQueue.main.async { [weak self] in
+                self?.cancelMenuBarTracking()
+            }
+        }
+    }
+
+    private func cancelMenuBarTracking() {
+        statusMenu.cancelTracking()
+        NSApp.mainMenu?.cancelTracking()
+        NSApp.windowsMenu?.cancelTracking()
     }
 
     private func scheduleStatusItemAttachmentCheck(

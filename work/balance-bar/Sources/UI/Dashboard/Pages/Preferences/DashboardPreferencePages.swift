@@ -17,6 +17,7 @@ struct DashboardPreferencePageActions {
     let onMenuBarIconSizePreset: (MenuBarIconSizePreset) -> Void
     let onMenuBarIconDisplayModeChanged: (MenuBarIconDisplayMode) -> Void
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
+    let onMenuBarRightClickActionChanged: (MenuBarRightClickAction) -> Void
     let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
     let onMenuBarAnimationFrameRateChanged: (Int) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
@@ -74,6 +75,7 @@ final class DashboardPreferencePages {
         relay.onMenuBarIconSizePreset = actions.onMenuBarIconSizePreset
         relay.onMenuBarIconDisplayModeChanged = actions.onMenuBarIconDisplayModeChanged
         relay.onMenuBarIconDisplayDelayChanged = actions.onMenuBarIconDisplayDelayChanged
+        relay.onMenuBarRightClickActionChanged = actions.onMenuBarRightClickActionChanged
         relay.onMenuBarAnimationModeChanged = actions.onMenuBarAnimationModeChanged
         relay.onMenuBarAnimationFrameRateChanged = actions.onMenuBarAnimationFrameRateChanged
         relay.onMenuBarQuotaWindowPreferenceChanged = actions.onMenuBarQuotaWindowPreferenceChanged

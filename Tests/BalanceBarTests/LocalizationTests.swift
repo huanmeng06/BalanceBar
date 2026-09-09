@@ -1085,7 +1085,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 453)
+        XCTAssertEqual(expectedKeys.count, 462)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -2227,19 +2227,19 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testDashboardTaskOrientedSectionTitlesAreLocalizedAcrossAllLanguages() {
-        let expected: [AppLanguage: (quotaAndReset: String, iconAndTaskStatus: String, layout: String, menuBehavior: String, statusLinks: String, iconDisplayMode: String)] = [
-            .simplifiedChinese: ("额度与重置", "图标与动画", "布局", "菜单行为", "状态链接", "菜单栏显示"),
-            .traditionalChineseTaiwan: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列顯示"),
-            .traditionalChineseHongKong: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列顯示"),
-            .japanese: ("クォータとリセット", "アイコンとアニメーション", "レイアウト", "メニューの動作", "ステータスリンク", "メニューバーの表示"),
-            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Menu behavior", "Status Links", "Menu Bar Display"),
-            .korean: ("할당량 및 재설정", "아이콘 및 애니메이션", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 표시"),
-            .spanish: ("Cuota y reinicio", "Icono y animación", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Visualización de la barra de menús"),
-            .german: ("Kontingent und Zurücksetzung", "Symbol und Animation", "Layout", "Menüverhalten", "Statuslinks", "Anzeige der Menüleiste"),
-            .french: ("Quota et réinitialisation", "Icône et animation", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de la barre des menus"),
-            .portuguese: ("Cota e redefinição", "Ícone e animação", "Layout", "Comportamento do menu", "Links de status", "Exibição da barra de menus"),
-            .russian: ("Квота и сброс", "Значок и анимация", "Макет", "Поведение меню", "Ссылки статуса", "Отображение в строке меню"),
-            .italian: ("Quota e ripristino", "Icona e animazione", "Disposizione", "Comportamento del menu", "Collegamenti di stato", "Visualizzazione della barra dei menu")
+        let expected: [AppLanguage: (quotaAndReset: String, iconAndTaskStatus: String, layout: String, behavior: String, menuBehavior: String, statusLinks: String, iconDisplayMode: String)] = [
+            .simplifiedChinese: ("额度与重置", "图标与动画", "布局", "行为", "菜单行为", "状态链接", "菜单栏显示"),
+            .traditionalChineseTaiwan: ("配額與重設", "圖示與動畫", "版面", "行為", "選單行為", "狀態連結", "選單列顯示"),
+            .traditionalChineseHongKong: ("配額與重設", "圖示與動畫", "版面", "行為", "選單行為", "狀態連結", "選單列顯示"),
+            .japanese: ("クォータとリセット", "アイコンとアニメーション", "レイアウト", "動作", "メニューの動作", "ステータスリンク", "メニューバーの表示"),
+            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Behavior", "Menu behavior", "Status Links", "Menu Bar Display"),
+            .korean: ("할당량 및 재설정", "아이콘 및 애니메이션", "레이아웃", "동작", "메뉴 동작", "상태 링크", "메뉴 막대 표시"),
+            .spanish: ("Cuota y reinicio", "Icono y animación", "Diseño", "Comportamiento", "Comportamiento del menú", "Enlaces de estado", "Visualización de la barra de menús"),
+            .german: ("Kontingent und Zurücksetzung", "Symbol und Animation", "Layout", "Verhalten", "Menüverhalten", "Statuslinks", "Anzeige der Menüleiste"),
+            .french: ("Quota et réinitialisation", "Icône et animation", "Disposition", "Comportement", "Comportement du menu", "Liens d’état", "Affichage de la barre des menus"),
+            .portuguese: ("Cota e redefinição", "Ícone e animação", "Layout", "Comportamento", "Comportamento do menu", "Links de status", "Exibição da barra de menus"),
+            .russian: ("Квота и сброс", "Значок и анимация", "Макет", "Поведение", "Поведение меню", "Ссылки статуса", "Отображение в строке меню"),
+            .italian: ("Quota e ripristino", "Icona e animazione", "Disposizione", "Comportamento", "Comportamento del menu", "Collegamenti di stato", "Visualizzazione della barra dei menu")
         ]
 
         for language in allLanguages {
@@ -2260,6 +2260,11 @@ final class LocalizationTests: XCTestCase {
                 "layout section title for \(language)"
             )
             XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageBehavior, language: language),
+                values?.behavior,
+                "behavior section title for \(language)"
+            )
+            XCTAssertEqual(
                 tr(.keyDashboardMenuPageMenuBehavior, language: language),
                 values?.menuBehavior,
                 "menu behavior section title for \(language)"
@@ -2273,6 +2278,208 @@ final class LocalizationTests: XCTestCase {
                 tr(.keyDashboardMenuBarPageIconDisplayMode, language: language),
                 values?.iconDisplayMode,
                 "icon display title for \(language)"
+            )
+        }
+    }
+
+    func testMenuBarRightClickActionCopyIsLocalizedAcrossAllLanguages() {
+        let expected: [AppLanguage: (title: String, subtitle: String, matchLeftClick: String, openMainWindow: String, openAgent: String, openCCSwitch: String)] = [
+            .simplifiedChinese: (
+                "右键点击",
+                "选择右键点击菜单栏图标时执行的操作",
+                "同左键",
+                "打开主窗口",
+                "打开 Agent",
+                "打开 CC Switch"
+            ),
+            .traditionalChineseTaiwan: (
+                "右鍵點擊",
+                "選擇右鍵點擊選單列圖示時執行的操作",
+                "同左鍵",
+                "開啟主視窗",
+                "開啟 Agent",
+                "開啟 CC Switch"
+            ),
+            .traditionalChineseHongKong: (
+                "右鍵點擊",
+                "選擇右鍵點擊選單列圖示時執行的操作",
+                "同左鍵",
+                "開啟主視窗",
+                "開啟 Agent",
+                "開啟 CC Switch"
+            ),
+            .japanese: (
+                "右クリック",
+                "メニューバーのアイコンを右クリックしたときの動作を選択",
+                "左クリックと同じ",
+                "メインウインドウを開く",
+                "Agent を開く",
+                "CC Switch を開く"
+            ),
+            .english: (
+                "Right-click",
+                "Choose what happens when you right-click the menu bar icon",
+                "Same as Left-Click",
+                "Open Main Window",
+                "Open Agent",
+                "Open CC Switch"
+            ),
+            .korean: (
+                "오른쪽 클릭",
+                "메뉴 막대 아이콘을 오른쪽 클릭했을 때 수행할 동작을 선택",
+                "왼쪽 클릭과 동일",
+                "주 윈도우 열기",
+                "Agent 열기",
+                "CC Switch 열기"
+            ),
+            .spanish: (
+                "Clic derecho",
+                "Elige qué ocurre al hacer clic derecho en el icono de la barra de menús",
+                "Igual que el clic izquierdo",
+                "Abrir ventana principal",
+                "Abrir Agent",
+                "Abrir CC Switch"
+            ),
+            .german: (
+                "Rechtsklick",
+                "Wählen Sie, was beim Rechtsklick auf das Menüleistensymbol geschehen soll",
+                "Wie Linksklick",
+                "Hauptfenster öffnen",
+                "Agent öffnen",
+                "CC Switch öffnen"
+            ),
+            .french: (
+                "Clic droit",
+                "Choisissez l’action effectuée lors d’un clic droit sur l’icône de la barre des menus",
+                "Identique au clic gauche",
+                "Ouvrir la fenêtre principale",
+                "Ouvrir Agent",
+                "Ouvrir CC Switch"
+            ),
+            .portuguese: (
+                "Clique com o botão direito",
+                "Escolha o que acontece ao clicar com o botão direito no ícone da barra de menus",
+                "Igual ao clique esquerdo",
+                "Abrir janela principal",
+                "Abrir o Agent",
+                "Abrir o CC Switch"
+            ),
+            .russian: (
+                "Щелчок правой кнопкой",
+                "Выберите действие при щелчке правой кнопкой по значку в строке меню",
+                "Как левая кнопка",
+                "Открыть главное окно",
+                "Открыть Agent",
+                "Открыть CC Switch"
+            ),
+            .italian: (
+                "Clic destro",
+                "Scegli cosa succede quando fai clic con il pulsante destro sull'icona nella barra dei menu",
+                "Come il clic sinistro",
+                "Apri finestra principale",
+                "Apri Agent",
+                "Apri CC Switch"
+            )
+        ]
+
+        for language in allLanguages {
+            let values = expected[language]
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageRightClick, language: language),
+                values?.title,
+                "right-click title for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageRightClickDescription, language: language),
+                values?.subtitle,
+                "right-click subtitle for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageRightClickMatchLeftClick, language: language),
+                values?.matchLeftClick,
+                "match-left-click option for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageRightClickOpenMainMenu, language: language),
+                values?.openMainWindow,
+                "open-main-window option for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageRightClickOpenAgent, language: language),
+                values?.openAgent,
+                "open-agent option for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageRightClickOpenCCSwitch, language: language),
+                values?.openCCSwitch,
+                "open-cc-switch option for \(language)"
+            )
+        }
+    }
+
+    func testMenuBarReverseMouseButtonsCopyIsLocalizedAcrossAllLanguages() {
+        let expected: [AppLanguage: (title: String, subtitle: String)] = [
+            .simplifiedChinese: (
+                "反转左右按键",
+                "开启后，左键执行所选操作，右键打开菜单"
+            ),
+            .traditionalChineseTaiwan: (
+                "反轉左右按鍵",
+                "開啟後，左鍵執行所選操作，右鍵打開選單"
+            ),
+            .traditionalChineseHongKong: (
+                "反轉左右按鍵",
+                "開啟後，左鍵執行所選操作，右鍵打開選單"
+            ),
+            .japanese: (
+                "左右クリックを入れ替え",
+                "オンにすると、左クリックで上の操作を実行し、右クリックでメニューを開きます"
+            ),
+            .english: (
+                "Reverse Left and Right Click",
+                "When on, left-click runs the action above and right-click opens the menu"
+            ),
+            .korean: (
+                "좌우 클릭 전환",
+                "켜면 왼쪽 클릭이 위에서 선택한 동작을 수행하고 오른쪽 클릭이 메뉴를 엽니다"
+            ),
+            .spanish: (
+                "Invertir clic izquierdo y derecho",
+                "Al activarlo, el clic izquierdo ejecuta la acción de arriba y el clic derecho abre el menú"
+            ),
+            .german: (
+                "Links- und Rechtsklick tauschen",
+                "Wenn aktiviert, führt der Linksklick die gewählte Aktion aus und der Rechtsklick öffnet das Menü"
+            ),
+            .french: (
+                "Inverser les clics gauche et droit",
+                "Une fois activé, le clic gauche exécute l’action ci-dessus et le clic droit ouvre le menu"
+            ),
+            .portuguese: (
+                "Inverter clique esquerdo e direito",
+                "Quando ativado, o clique esquerdo executa a ação acima e o clique direito abre o menu"
+            ),
+            .russian: (
+                "Поменять кнопки мыши местами",
+                "Если включено, левая кнопка выполняет выбранное действие, правая открывает меню"
+            ),
+            .italian: (
+                "Inverti clic sinistro e destro",
+                "Se attivo, il clic sinistro esegue l’azione sopra e il clic destro apre il menu"
+            )
+        ]
+
+        for language in allLanguages {
+            let values = expected[language]
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageReverseMouseButtons, language: language),
+                values?.title,
+                "reverse-mouse-buttons title for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuBarPageReverseMouseButtonsDescription, language: language),
+                values?.subtitle,
+                "reverse-mouse-buttons subtitle for \(language)"
             )
         }
     }

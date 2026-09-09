@@ -306,6 +306,15 @@
 "dashboard.menu.bar.page.font_size_position" = "字号与位置";
 "dashboard.menu.bar.page.spacing_and_width" = "间距与宽度";
 "dashboard.menu.bar.page.layout" = "布局";
+"dashboard.menu.bar.page.behavior" = "行为";
+"dashboard.menu.bar.page.right_click" = "右键点击";
+"dashboard.menu.bar.page.right_click_description" = "选择右键点击菜单栏图标时执行的操作";
+"dashboard.menu.bar.page.right_click_match_left_click" = "同左键";
+"dashboard.menu.bar.page.right_click_open_main_menu" = "打开主窗口";
+"dashboard.menu.bar.page.right_click_open_agent" = "打开 Agent";
+"dashboard.menu.bar.page.right_click_open_cc_switch" = "打开 CC Switch";
+"dashboard.menu.bar.page.reverse_mouse_buttons" = "反转左右按键";
+"dashboard.menu.bar.page.reverse_mouse_buttons_description" = "开启后，左键执行所选操作，右键打开菜单";
 "dashboard.menu.bar.page.menu_bar_font_size" = "菜单栏字号";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "调整菜单栏文字大小";
 "dashboard.menu.bar.page.menu_bar_icon_size" = "菜单栏图标大小";

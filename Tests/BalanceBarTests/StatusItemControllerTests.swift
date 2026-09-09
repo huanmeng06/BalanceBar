@@ -14,6 +14,279 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testRightClickOpenAgentOpensCurrentAgentWithoutOpeningCCSwitch() {
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openAgent)
+        )
+        XCTAssertEqual(controller.rightClickActionForTesting, .openAgent)
+        controller.handleConfiguredRightClickForTesting()
+        XCTAssertEqual(agentOpens, 1)
+        XCTAssertEqual(ccSwitchOpens, 0)
+    }
+
+    @MainActor
+    func testRightClickOpenCCSwitchOpensCCSwitchWithoutOpeningAgent() {
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openCCSwitch)
+        )
+        controller.handleConfiguredRightClickForTesting()
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 1)
+    }
+
+    @MainActor
+    func testRightClickMatchLeftClickDoesNotOpenAgentOrCCSwitch() {
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .matchLeftClick)
+        )
+        controller.handleConfiguredRightClickForTesting()
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+    }
+
+    @MainActor
+    func testRightClickOpenMainWindowOpensDashboardWithoutOpeningAgentOrCCSwitch() {
+        var dashboardOpens = 0
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openDashboard: { dashboardOpens += 1 },
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openMainWindow)
+        )
+        controller.handleConfiguredRightClickForTesting()
+        XCTAssertEqual(dashboardOpens, 1)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+    }
+
+    @MainActor
+    func testRightClickOpenMainWindowHighlightsOnMouseDownAndOpensOnMouseUp() {
+        var dashboardOpens = 0
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openDashboard: { dashboardOpens += 1 },
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openMainWindow)
+        )
+        controller.handleStatusItemRightMouseDownForTesting()
+        XCTAssertTrue(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertEqual(dashboardOpens, 0)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+
+        controller.handleStatusItemRightMouseUpForTesting()
+        XCTAssertFalse(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(dashboardOpens, 1)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+    }
+
+    @MainActor
+    func testRightClickMatchLeftClickPresentsTheStatusItemMenuOnMouseDown() {
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .matchLeftClick)
+        )
+        controller.handleStatusItemRightMouseDownForTesting()
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 1)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+    }
+
+    @MainActor
+    func testRightClickOpenAgentHighlightsOnMouseDownAndOpensOnMouseUp() {
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openAgent)
+        )
+        controller.handleStatusItemRightMouseDownForTesting()
+        XCTAssertTrue(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+
+        controller.handleStatusItemRightMouseUpForTesting()
+        XCTAssertFalse(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(agentOpens, 1)
+        XCTAssertEqual(ccSwitchOpens, 0)
+    }
+
+    @MainActor
+    func testRightClickOpenCCSwitchHighlightsOnMouseDownAndOpensOnMouseUp() {
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openCCSwitch)
+        )
+        controller.handleStatusItemRightMouseDownForTesting()
+        XCTAssertTrue(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+
+        controller.handleStatusItemRightMouseUpForTesting()
+        XCTAssertFalse(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 1)
+    }
+
+    @MainActor
+    func testReversedClicksOpenConfiguredActionOnLeftAndMenuOnRight() {
+        var dashboardOpens = 0
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openDashboard: { dashboardOpens += 1 },
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(
+                rightClickAction: .openMainWindow,
+                reverseMouseButtons: true
+            )
+        )
+        XCTAssertTrue(controller.areMouseButtonsReversedForTesting)
+
+        controller.handleStatusItemLeftMouseDownForTesting()
+        XCTAssertTrue(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertEqual(dashboardOpens, 0)
+
+        controller.handleStatusItemLeftMouseUpForTesting()
+        XCTAssertFalse(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(dashboardOpens, 1)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+
+        controller.handleStatusItemRightMouseDownForTesting()
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 1)
+        XCTAssertEqual(dashboardOpens, 1)
+        controller.handleStatusItemRightMouseUpForTesting()
+        XCTAssertEqual(dashboardOpens, 1)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+    }
+
+    @MainActor
+    func testReverseIsIgnoredWhenRightClickMatchesLeftClick() {
+        var dashboardOpens = 0
+        let controller = makeController(
+            openDashboard: { dashboardOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(
+                rightClickAction: .matchLeftClick,
+                reverseMouseButtons: true
+            )
+        )
+        XCTAssertTrue(controller.reverseMouseButtonsForTesting)
+        XCTAssertFalse(controller.areMouseButtonsReversedForTesting)
+
+        controller.handleStatusItemLeftMouseDownForTesting()
+        XCTAssertFalse(controller.statusItemButtonIsHighlightedForTesting)
+        controller.handleStatusItemLeftMouseUpForTesting()
+        XCTAssertEqual(dashboardOpens, 0)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+
+        controller.handleStatusItemRightMouseDownForTesting()
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 1)
+        XCTAssertEqual(dashboardOpens, 0)
+    }
+
+    @MainActor
     func testSetAnimationFrameRateClampsAndTakesEffectImmediately() {
         let controller = makeController()
         defer { controller.teardown() }
@@ -2233,14 +2506,17 @@ final class StatusItemControllerTests: XCTestCase {
 
     private func makeController(
         codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap,
-        forceNativeCodexAnimationFailureForTesting: Bool = false
+        forceNativeCodexAnimationFailureForTesting: Bool = false,
+        openDashboard: @escaping () -> Void = {},
+        openChatGPT: @escaping () -> Void = {},
+        openCCSwitch: @escaping () -> Void = {}
     ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
                 manualRefresh: {},
-                openDashboard: {},
-                openChatGPT: {},
-                openCCSwitch: {},
+                openDashboard: openDashboard,
+                openChatGPT: openChatGPT,
+                openCCSwitch: openCCSwitch,
                 quit: {},
                 switchProvider: { _ in },
                 openProviderWebsite: {},
@@ -2283,13 +2559,18 @@ final class StatusItemControllerTests: XCTestCase {
         return controller.menuItemsForTesting.first { titles.contains($0.title) }
     }
 
-    private func makeSettings() -> StatusItemController.MenuBarSettings {
+    private func makeSettings(
+        rightClickAction: MenuBarRightClickAction = .defaultValue,
+        reverseMouseButtons: Bool = false
+    ) -> StatusItemController.MenuBarSettings {
         StatusItemController.MenuBarSettings(
             showIcon: true,
             showAmount: true,
             showReset: true,
             horizontalPadding: 6,
-            keepMenuOpenAfterRefresh: true
+            keepMenuOpenAfterRefresh: true,
+            rightClickAction: rightClickAction,
+            reverseMouseButtons: reverseMouseButtons
         )
     }
 

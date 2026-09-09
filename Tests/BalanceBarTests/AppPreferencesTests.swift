@@ -279,6 +279,62 @@ final class AppPreferencesTests: XCTestCase {
         )
     }
 
+    func testMenuBarRightClickActionDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuBarRightClickAction, .matchLeftClick)
+        XCTAssertNil(defaults.string(forKey: AppPreferences.menuBarRightClickActionKey))
+        XCTAssertEqual(
+            MenuBarRightClickAction.allCases,
+            [.matchLeftClick, .openMainWindow, .openAgent, .openCCSwitch]
+        )
+
+        preferences.menuBarRightClickAction = .openAgent
+        XCTAssertEqual(preferences.menuBarRightClickAction, .openAgent)
+        XCTAssertEqual(
+            defaults.string(forKey: AppPreferences.menuBarRightClickActionKey),
+            MenuBarRightClickAction.openAgent.rawValue
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarRightClickAction,
+            .openAgent
+        )
+
+        preferences.menuBarRightClickAction = .openCCSwitch
+        XCTAssertEqual(preferences.menuBarRightClickAction, .openCCSwitch)
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarRightClickAction,
+            .openCCSwitch
+        )
+
+        defaults.set("unsupported", forKey: AppPreferences.menuBarRightClickActionKey)
+        XCTAssertEqual(preferences.menuBarRightClickAction, .matchLeftClick)
+    }
+
+    func testMenuBarReverseMouseButtonsDefaultsOffAndRoundTrips() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertFalse(preferences.menuBarReverseMouseButtons)
+        XCTAssertNil(defaults.object(forKey: AppPreferences.menuBarReverseMouseButtonsKey))
+        XCTAssertTrue(
+            PreferencesMigrationPlan.allKeys.contains(AppPreferences.menuBarReverseMouseButtonsKey)
+        )
+
+        preferences.menuBarReverseMouseButtons = true
+        XCTAssertTrue(preferences.menuBarReverseMouseButtons)
+        XCTAssertEqual(
+            defaults.object(forKey: AppPreferences.menuBarReverseMouseButtonsKey) as? Bool,
+            true
+        )
+        XCTAssertTrue(AppPreferences(defaults: defaults).menuBarReverseMouseButtons)
+
+        preferences.menuBarReverseMouseButtons = false
+        XCTAssertFalse(preferences.menuBarReverseMouseButtons)
+        XCTAssertFalse(AppPreferences(defaults: defaults).menuBarReverseMouseButtons)
+    }
+
     func testMenuBarAnimationModeDefaultsToEfficientAndPreservesSavedSynchronized() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

@@ -964,6 +964,204 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testMenuBarRightClickActionIsLocalizedFitsAndPersistsAcrossRefresh() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let cases: [(AppLanguage, String, String, String, String, [String])] = [
+            (
+                .simplifiedChinese,
+                "行为",
+                "布局",
+                "右键点击",
+                "选择右键点击菜单栏图标时执行的操作",
+                ["同左键", "打开主窗口", "打开 Agent", "打开 CC Switch"]
+            ),
+            (
+                .english,
+                "Behavior",
+                "Layout",
+                "Right-click",
+                "Choose what happens when you right-click the menu bar icon",
+                ["Same as Left-Click", "Open Main Window", "Open Agent", "Open CC Switch"]
+            ),
+            (
+                .japanese,
+                "動作",
+                "レイアウト",
+                "右クリック",
+                "メニューバーのアイコンを右クリックしたときの動作を選択",
+                ["左クリックと同じ", "メインウインドウを開く", "Agent を開く", "CC Switch を開く"]
+            )
+        ]
+
+        for (language, sectionTitle, layoutTitle, title, subtitle, optionTitles) in cases {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.MenuBarRightClick.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            let preferences = AppPreferences(defaults: defaults)
+            let relay = DashboardPreferencePageRelay()
+            relay.onMenuBarRightClickActionChanged = { action in
+                preferences.menuBarRightClickAction = action
+            }
+            let page = DashboardMenuBarPage().make(.init(
+                preferences: preferences,
+                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: relay,
+                statusItemVisibility: .unknown
+            ))
+
+            let popup = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.rightClickActionIdentifier }
+            )
+            XCTAssertEqual(popup.itemTitles, optionTitles, "option titles for \(language)")
+            XCTAssertEqual(popup.indexOfSelectedItem, 0)
+            XCTAssertEqual(
+                popup.itemArray.compactMap { $0.representedObject as? String },
+                MenuBarRightClickAction.allCases.map(\.rawValue)
+            )
+            XCTAssertGreaterThanOrEqual(popup.fittingSize.width, 108)
+
+            let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+            XCTAssertTrue(labels.contains { $0.stringValue == sectionTitle }, "section title for \(language)")
+            XCTAssertTrue(labels.contains { $0.stringValue == title }, "title for \(language)")
+            XCTAssertTrue(labels.contains { $0.stringValue == subtitle }, "subtitle for \(language)")
+            let labelTexts = labels.map(\.stringValue)
+            let behaviorIndex = try XCTUnwrap(
+                labelTexts.firstIndex(of: sectionTitle),
+                "behavior section index for \(language)"
+            )
+            let layoutIndex = try XCTUnwrap(
+                labelTexts.firstIndex(of: layoutTitle),
+                "layout section index for \(language)"
+            )
+            XCTAssertLessThan(behaviorIndex, layoutIndex, "behavior precedes layout for \(language)")
+
+            popup.selectItem(at: 2)
+            relay.menuBarRightClickAction(popup)
+            XCTAssertEqual(preferences.menuBarRightClickAction, .openAgent)
+            XCTAssertEqual(
+                defaults.string(forKey: AppPreferences.menuBarRightClickActionKey),
+                MenuBarRightClickAction.openAgent.rawValue
+            )
+
+            let rebuiltPage = DashboardMenuBarPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay(),
+                statusItemVisibility: .unknown
+            ))
+            let rebuiltPopup = try XCTUnwrap(
+                descendants(of: rebuiltPage)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.rightClickActionIdentifier }
+            )
+            XCTAssertEqual(rebuiltPopup.indexOfSelectedItem, 2, "reloaded selection for \(language)")
+        }
+    }
+
+    func testMenuBarReverseMouseButtonsSwitchIsHiddenUnlessRightClickDiffersFromLeftClick() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.ReverseMouseButtons.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let controller = DashboardMenuBarPage()
+        let relay = DashboardPreferencePageRelay()
+        relay.onMenuBarRightClickActionChanged = { action in
+            preferences.menuBarRightClickAction = action
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+        }
+        relay.onToggle = { identifier, enabled in
+            XCTAssertEqual(identifier, DashboardMenuBarPage.reverseMouseButtonsIdentifier)
+            preferences.menuBarReverseMouseButtons = enabled
+        }
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay,
+            statusItemVisibility: .unknown
+        ))
+
+        let reverseSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.reverseMouseButtonsIdentifier }
+        )
+        let reverseRow = try XCTUnwrap(reverseSwitch.superview)
+        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertEqual(reverseSwitch.state, .off)
+
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        XCTAssertTrue(labels.contains { $0.stringValue == "反转左右按键" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "开启后，左键执行所选操作，右键打开菜单" })
+
+        let popup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.rightClickActionIdentifier }
+        )
+        popup.selectItem(at: 1)
+        relay.menuBarRightClickAction(popup)
+        XCTAssertEqual(preferences.menuBarRightClickAction, .openMainWindow)
+        XCTAssertFalse(reverseRow.isHidden)
+
+        reverseSwitch.state = .on
+        relay.toggle(reverseSwitch)
+        XCTAssertTrue(preferences.menuBarReverseMouseButtons)
+
+        popup.selectItem(at: 0)
+        relay.menuBarRightClickAction(popup)
+        XCTAssertEqual(preferences.menuBarRightClickAction, .matchLeftClick)
+        XCTAssertTrue(reverseRow.isHidden)
+
+        preferences.menuBarRightClickAction = .openAgent
+        preferences.menuBarReverseMouseButtons = true
+        let rebuiltPage = DashboardMenuBarPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .unknown
+        ))
+        let rebuiltSwitch = try XCTUnwrap(
+            descendants(of: rebuiltPage)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.reverseMouseButtonsIdentifier }
+        )
+        XCTAssertFalse(try XCTUnwrap(rebuiltSwitch.superview).isHidden)
+        XCTAssertEqual(rebuiltSwitch.state, .on)
+    }
+
     func testMenuBarIconDisplayDelaySelectorIsConditionalLocalizedFitsAndPersists() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

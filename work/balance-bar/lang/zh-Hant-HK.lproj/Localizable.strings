@@ -306,6 +306,15 @@
 "dashboard.menu.bar.page.font_size_position" = "字號與位置";
 "dashboard.menu.bar.page.spacing_and_width" = "間距與寬度";
 "dashboard.menu.bar.page.layout" = "版面";
+"dashboard.menu.bar.page.behavior" = "行為";
+"dashboard.menu.bar.page.right_click" = "右鍵點擊";
+"dashboard.menu.bar.page.right_click_description" = "選擇右鍵點擊選單列圖示時執行的操作";
+"dashboard.menu.bar.page.right_click_match_left_click" = "同左鍵";
+"dashboard.menu.bar.page.right_click_open_main_menu" = "開啟主視窗";
+"dashboard.menu.bar.page.right_click_open_agent" = "開啟 Agent";
+"dashboard.menu.bar.page.right_click_open_cc_switch" = "開啟 CC Switch";
+"dashboard.menu.bar.page.reverse_mouse_buttons" = "反轉左右按鍵";
+"dashboard.menu.bar.page.reverse_mouse_buttons_description" = "開啟後，左鍵執行所選操作，右鍵打開選單";
 "dashboard.menu.bar.page.menu_bar_font_size" = "選單列字型大小";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "調整選單列文字大小";
 "dashboard.menu.bar.page.menu_bar_icon_size" = "選單列圖示大小";

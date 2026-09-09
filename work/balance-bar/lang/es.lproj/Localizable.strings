@@ -306,6 +306,15 @@
 "dashboard.menu.bar.page.font_size_position" = "Tamaño y posición de la fuente";
 "dashboard.menu.bar.page.spacing_and_width" = "Espaciado y anchura";
 "dashboard.menu.bar.page.layout" = "Diseño";
+"dashboard.menu.bar.page.behavior" = "Comportamiento";
+"dashboard.menu.bar.page.right_click" = "Clic derecho";
+"dashboard.menu.bar.page.right_click_description" = "Elige qué ocurre al hacer clic derecho en el icono de la barra de menús";
+"dashboard.menu.bar.page.right_click_match_left_click" = "Igual que el clic izquierdo";
+"dashboard.menu.bar.page.right_click_open_main_menu" = "Abrir ventana principal";
+"dashboard.menu.bar.page.right_click_open_agent" = "Abrir Agent";
+"dashboard.menu.bar.page.right_click_open_cc_switch" = "Abrir CC Switch";
+"dashboard.menu.bar.page.reverse_mouse_buttons" = "Invertir clic izquierdo y derecho";
+"dashboard.menu.bar.page.reverse_mouse_buttons_description" = "Al activarlo, el clic izquierdo ejecuta la acción de arriba y el clic derecho abre el menú";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Tamaño de fuente de la barra de menús";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Ajusta el tamaño del texto de la barra de menús";
 "dashboard.menu.bar.page.menu_bar_icon_size" = "Tamaño del icono de la barra de menús";
