@@ -97,7 +97,6 @@ final class StatusLinksTests: XCTestCase {
             editor.topAnchor.constraint(equalTo: contentView.topAnchor)
         ])
         ApplicationWindowPresentation.presentInBackground(window)
-        window.makeKey()
         return window
     }
 

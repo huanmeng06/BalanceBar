@@ -128,11 +128,15 @@ watcher behavior, credential readers, balance/quota/OpenCodex clients, and
 Codex/Claude activity monitoring. Network-facing tests inject URL loading
 stubs; they are not a substitute for GUI testing.
 
-The XCTest host does not activate or steal the user's frontmost window. Layout
-and Core Animation still run, but test windows are transparent and ignore mouse
-events. Do not add `NSApp.activate(ignoringOtherApps:)` or `makeKeyAndOrderFront`
-to tests; use `ApplicationWindowPresentation` when a window must be connected to
-the window server.
+The XCTest host is patched at build time to `LSUIElement` so LaunchServices
+does not activate it on launch, and `LSMultipleInstancesProhibited` is cleared
+so tests can run while the production app is open. `main()` then switches the
+host to accessory and yields key focus before XCTest attaches. Layout and Core
+Animation still run, but test windows are transparent, ignore mouse events, and
+must not become key. Do not add `NSApp.activate(ignoringOtherApps:)`,
+`makeKeyAndOrderFront`, or `makeKey()` to tests; use
+`ApplicationWindowPresentation` when a window must be connected to the window
+server.
 
 ### 5. Repository hygiene and path checks
 

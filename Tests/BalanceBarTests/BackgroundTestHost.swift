@@ -1,16 +1,15 @@
-import AppKit
-import ObjectiveC
 import XCTest
+@testable import BalanceBar
 
-/// Keeps the XCTest host from becoming a regular, frontmost app while tests run.
+/// Re-applies the background host policy as XCTest starts each case.
 private final class BackgroundTestHostObserver: NSObject, XCTestObservation {
     func testBundleWillStart(_ testBundle: Bundle) {
         _ = backgroundTestHostInstalled
-        BackgroundTestHost.install()
+        AutomatedTestHost.becomeBackgroundHost()
     }
 
     func testCaseWillStart(_ testCase: XCTestCase) {
-        BackgroundTestHost.keepHostInBackground()
+        AutomatedTestHost.becomeBackgroundHost()
     }
 }
 
@@ -20,47 +19,12 @@ private enum BackgroundTestHost {
 
     static func install() {
         guard !didInstall else {
-            keepHostInBackground()
+            AutomatedTestHost.becomeBackgroundHost()
             return
         }
         didInstall = true
         XCTestObservationCenter.shared.addTestObserver(observer)
-        swizzleActivation()
-        keepHostInBackground()
-    }
-
-    static func keepHostInBackground() {
-        _ = NSApp.setActivationPolicy(.accessory)
-    }
-
-    private static func swizzleActivation() {
-        swizzle(
-            NSApplication.self,
-            original: #selector(NSApplication.activate(ignoringOtherApps:)),
-            swizzled: #selector(NSApplication.balanceBar_testHost_activateIgnoringOtherApps(_:))
-        )
-        swizzle(
-            NSApplication.self,
-            original: NSSelectorFromString("activate"),
-            swizzled: #selector(NSApplication.balanceBar_testHost_activate)
-        )
-    }
-
-    private static func swizzle(_ cls: AnyClass, original: Selector, swizzled: Selector) {
-        guard let originalMethod = class_getInstanceMethod(cls, original),
-              let swizzledMethod = class_getInstanceMethod(cls, swizzled)
-        else { return }
-        method_exchangeImplementations(originalMethod, swizzledMethod)
-    }
-}
-
-private extension NSApplication {
-    @objc func balanceBar_testHost_activateIgnoringOtherApps(_ flag: Bool) {
-        // Tests must not steal the user's frontmost app.
-    }
-
-    @objc func balanceBar_testHost_activate() {
-        // Tests must not steal the user's frontmost app.
+        AutomatedTestHost.becomeBackgroundHost()
     }
 }
 

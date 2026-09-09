@@ -2134,9 +2134,10 @@ final class ApplicationLifecycleState {
 enum BalanceBarMain {
     static func main() {
         if AutomatedTestHost.isRunning {
-            // Keep the default launch path so XCTest can attach. The test
-            // bundle then switches the host to accessory and parks windows
-            // off-screen so later presentation does not steal focus.
+            // XCTest still needs the default run loop to attach. Switch to
+            // accessory and yield key focus before any window is created so
+            // launch does not steal the user's input method.
+            AutomatedTestHost.becomeBackgroundHost()
             NSApplication.shared.run()
             return
         }

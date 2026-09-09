@@ -27,6 +27,21 @@ final class AutomatedTestHostTests: XCTestCase {
         XCTAssertTrue(window.ignoresMouseEvents)
     }
 
+    func testBackgroundHostStaysAccessoryAndInactive() {
+        AutomatedTestHost.becomeBackgroundHost()
+        XCTAssertEqual(NSApp.activationPolicy(), .accessory)
+        XCTAssertFalse(NSApp.isActive)
+    }
+
+    func testHostInfoPlistDoesNotActivateOnLaunch() {
+        let uiElement = Bundle.main.object(forInfoDictionaryKey: "LSUIElement") as? NSNumber
+        XCTAssertEqual(uiElement?.boolValue, true)
+        let multipleInstancesProhibited = Bundle.main.object(
+            forInfoDictionaryKey: "LSMultipleInstancesProhibited"
+        ) as? NSNumber
+        XCTAssertEqual(multipleInstancesProhibited?.boolValue, false)
+    }
+
     func testDashboardOpenStaysOffScreenDuringAutomatedTests() throws {
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
