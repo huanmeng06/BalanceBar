@@ -1042,8 +1042,51 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(popup.identifier?.rawValue, "factory.popup")
         XCTAssertEqual(popup.indexOfSelectedItem, 1)
         XCTAssertEqual(popup.item(at: 1)?.representedObject as? String, "second")
+        XCTAssertEqual(target.popupActionCount, 0)
         _ = target.perform(popup.action, with: popup)
         XCTAssertEqual(target.popupActionCount, 1)
+    }
+
+    func testRebuildDisconnectsExistingPopUpButtonActions() {
+        final class ActionTarget: NSObject {
+            var popupActionCount = 0
+
+            @objc func popupChanged(_ sender: NSPopUpButton) {
+                popupActionCount += 1
+            }
+        }
+
+        let target = ActionTarget()
+        let popup = DashboardSettingsComponents.makePopUpButton(
+            items: [
+                .init(title: "Spanish", representedObject: AppLanguage.spanish.rawValue),
+                .init(title: "Chinese", representedObject: AppLanguage.simplifiedChinese.rawValue)
+            ],
+            selectedIndex: 0,
+            target: target,
+            action: #selector(ActionTarget.popupChanged(_:))
+        )
+        let controller = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in NSView() },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        controller.open()
+        defer { controller.teardown() }
+        controller.contentHost.addSubview(popup)
+        XCTAssertTrue(popup.target === target)
+        XCTAssertEqual(popup.action, #selector(ActionTarget.popupChanged(_:)))
+
+        controller.rebuild()
+        XCTAssertNil(popup.target)
+        XCTAssertNil(popup.action)
+        XCTAssertEqual(target.popupActionCount, 0)
     }
 
     func testStatusMenuEntryFollowsShowStatusMenuPreferenceInMainMenu() {

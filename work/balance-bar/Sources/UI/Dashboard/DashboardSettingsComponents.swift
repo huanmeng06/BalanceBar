@@ -1472,19 +1472,30 @@ enum DashboardSettingsComponents {
         return control
     }
 
+    static func disconnectPopUpButtonActions(in view: NSView?) {
+        guard let view else { return }
+        if let popup = view as? NSPopUpButton {
+            popup.target = nil
+            popup.action = nil
+        }
+        for subview in view.subviews {
+            disconnectPopUpButtonActions(in: subview)
+        }
+    }
+
     static func makePopUpButton(
         identifier: String? = nil,
         items: [PopUpItem],
         selectedIndex: Int? = nil,
         target: AnyObject?,
-        action: Selector?
+        action: Selector?,
+        ignoresScrollWheel: Bool = false
     ) -> NSPopUpButton {
-        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        let popup = DashboardSettingsPopUpButton(frame: .zero, pullsDown: false)
+        popup.ignoresScrollWheel = ignoresScrollWheel
         if let identifier {
             popup.identifier = NSUserInterfaceItemIdentifier(identifier)
         }
-        popup.target = target
-        popup.action = action
         for (index, item) in items.enumerated() {
             popup.addItem(withTitle: item.title)
             popup.item(at: index)?.representedObject = item.representedObject
@@ -1492,6 +1503,10 @@ enum DashboardSettingsComponents {
         if let selectedIndex {
             popup.selectItem(at: selectedIndex)
         }
+        // Bind after the initial selection so programmatic selectItem cannot
+        // deliver a leftover action from the previous language.
+        popup.target = target
+        popup.action = action
         return popup
     }
 
@@ -1537,4 +1552,18 @@ final class DashboardSettingsDocumentView: NSView {
 /// participate in user scrolling.
 final class DashboardSettingsPageView: NSView {
     override var isFlipped: Bool { true }
+}
+
+/// NSPopUpButton changes the selected item on scroll-wheel. Language must not
+/// persist unless the user actually chose a menu item.
+final class DashboardSettingsPopUpButton: NSPopUpButton {
+    var ignoresScrollWheel = false
+
+    override func scrollWheel(with event: NSEvent) {
+        guard ignoresScrollWheel else {
+            super.scrollWheel(with: event)
+            return
+        }
+        nextResponder?.scrollWheel(with: event)
+    }
 }
