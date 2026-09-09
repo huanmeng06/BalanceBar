@@ -220,6 +220,11 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(unchanged.startProgress, 40)
     }
 
+    func testOpenDelayHoldsLastSeenValueForAShortBeat() {
+        XCTAssertGreaterThanOrEqual(OverviewNumericTransition.openDelay, 0.18)
+        XCTAssertLessThanOrEqual(OverviewNumericTransition.openDelay, 0.25)
+    }
+
     func testCurrencyTextViewUsesDigitRollInsteadOfCountingFormattedValues() {
         let previous = balanceSample(amount: 1.70, progress: 40)
         let current = balanceSample(amount: 1.50, progress: 30)
@@ -239,10 +244,16 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(view.textField.stringValue, "¥1.70")
         XCTAssertTrue(view.hasPendingAnimationForTesting)
         XCTAssertFalse(view.isDigitRollingForTesting)
+        XCTAssertTrue(view.isHostingVisibleForTesting)
+        XCTAssertTrue(view.clipsToBounds)
+        XCTAssertTrue(view.hostingClipsToBoundsForTesting)
+        XCTAssertEqual(view.layer?.masksToBounds, true)
 
         view.playPendingIfNeeded()
         XCTAssertFalse(view.hasPendingAnimationForTesting)
         XCTAssertTrue(view.isDigitRollingForTesting)
+        XCTAssertTrue(view.isHostingVisibleForTesting)
+        XCTAssertTrue(view.textField.isHidden)
         XCTAssertEqual(view.textField.alphaValue, 0)
         XCTAssertEqual(view.currentValue, 1.50)
         XCTAssertEqual(view.textField.stringValue, "¥1.50")
@@ -400,6 +411,46 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             Snapshot.balance("Provider", 1.50, "CNY", nil, date, progressPercentage: 30).menuBarPrimary
         )
         XCTAssertNotEqual(controller.menuBarPrimaryTextForTesting, "¥1.70")
+    }
+
+    func testMenuOpenHoldsLastSeenValuesUntilOpenDelayElapses() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = false
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let input = makeMenuInput(activeClient: .grok)
+        let settings = makeSettings()
+
+        controller.start(
+            snapshot: Snapshot.balance("Provider", 1.70, "CNY", nil, date, progressPercentage: 40),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.update(
+            snapshot: Snapshot.balance("Provider", 1.50, "CNY", nil, date, progressPercentage: 30),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertEqual(amountTexts(in: overview), ["¥1.70"])
+        XCTAssertEqual(progressValues(in: overview), [40])
+        XCTAssertTrue(amountViews(in: overview).contains { $0.hasPendingAnimationForTesting })
+        XCTAssertFalse(amountViews(in: overview).contains { $0.isDigitRollingForTesting })
+        XCTAssertTrue(amountViews(in: overview).allSatisfy(\.isHostingVisibleForTesting))
+        XCTAssertTrue(progressViews(in: overview).contains { $0.hasPendingAnimationForTesting })
+        XCTAssertTrue(overview.clipsToBounds)
+        XCTAssertEqual(overview.layer?.masksToBounds, true)
+        XCTAssertEqual(
+            controller.menuBarPrimaryTextForTesting,
+            Snapshot.balance("Provider", 1.50, "CNY", nil, date, progressPercentage: 30).menuBarPrimary
+        )
     }
 
     func testThirdPartyBalanceUnchangedValueDoesNotAnimate() throws {

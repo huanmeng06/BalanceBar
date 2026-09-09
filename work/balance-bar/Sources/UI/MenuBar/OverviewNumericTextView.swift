@@ -116,10 +116,13 @@ private struct OverviewNumericTextRoot: View {
         .font(Font(font))
         .foregroundStyle(Color(color))
         .monospacedDigit()
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         .multilineTextAlignment(.trailing)
         .lineLimit(1)
         .minimumScaleFactor(1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .geometryGroup()
+        .compositingGroup()
+        .clipped()
     }
 
     @ViewBuilder
@@ -143,9 +146,12 @@ final class OverviewNumericTextView: NSView {
     private(set) var sample: OverviewNumericSample?
     private var pendingPlan: OverviewNumericTransitionPlan?
     private var finishWorkItem: DispatchWorkItem?
+    private var isDigitRolling = false
 
     var hasPendingAnimationForTesting: Bool { pendingPlan?.animates == true }
-    var isDigitRollingForTesting: Bool { !hostingView.isHidden && textField.alphaValue == 0 }
+    var isDigitRollingForTesting: Bool { isDigitRolling }
+    var isHostingVisibleForTesting: Bool { !hostingView.isHidden }
+    var hostingClipsToBoundsForTesting: Bool { hostingView.clipsToBounds }
 
     init(text: String, font: NSFont, value: Double) {
         currentValue = value
@@ -155,6 +161,9 @@ final class OverviewNumericTextView: NSView {
         textField.alignment = .right
         textField.lineBreakMode = .byClipping
         textField.usesSingleLineMode = true
+        textField.isHidden = true
+        textField.alphaValue = 0
+        textField.setAccessibilityElement(false)
         model = OverviewNumericTextModel(amount: value)
         hostingView = NSHostingView(
             rootView: OverviewNumericTextRoot(
@@ -164,9 +173,10 @@ final class OverviewNumericTextView: NSView {
             )
         )
         super.init(frame: .zero)
-        wantsLayer = true
         hostingView.sizingOptions = []
-        hostingView.isHidden = true
+        hostingView.safeAreaRegions = []
+        applyTransitionClipping(self)
+        applyTransitionClipping(hostingView)
         addSubview(textField)
         addSubview(hostingView)
     }
@@ -179,6 +189,8 @@ final class OverviewNumericTextView: NSView {
 
     override func layout() {
         super.layout()
+        applyTransitionClipping(self)
+        applyTransitionClipping(hostingView)
         syncInnerFrames()
     }
 
@@ -195,6 +207,12 @@ final class OverviewNumericTextView: NSView {
     private func syncInnerFrames() {
         textField.frame = bounds
         hostingView.frame = bounds
+    }
+
+    private func applyTransitionClipping(_ view: NSView) {
+        view.wantsLayer = true
+        view.clipsToBounds = true
+        view.layer?.masksToBounds = true
     }
 
     func configure(plan: OverviewNumericTransitionPlan, sample: OverviewNumericSample) {
@@ -226,6 +244,7 @@ final class OverviewNumericTextView: NSView {
 
     private func play(_ plan: OverviewNumericTransitionPlan) {
         finishWorkItem?.cancel()
+        isDigitRolling = true
         currentValue = plan.toValue
         let parts = plan.format.displayParts
         var startTransaction = Transaction()
@@ -238,6 +257,7 @@ final class OverviewNumericTextView: NSView {
             )
         }
         hostingView.isHidden = false
+        textField.isHidden = true
         textField.alphaValue = 0
         textField.stringValue = plan.endText
         DispatchQueue.main.async { [weak self] in
@@ -245,7 +265,33 @@ final class OverviewNumericTextView: NSView {
             withAnimation(Self.digitRollAnimation(for: plan.format)) {
                 self.model.amount = plan.toValue
             }
+            let finish = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.settle(plan)
+            }
+            self.finishWorkItem = finish
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + OverviewNumericTransition.duration(for: plan.format),
+                execute: finish
+            )
         }
+    }
+
+    private func settle(_ plan: OverviewNumericTransitionPlan) {
+        isDigitRolling = false
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            model.apply(
+                parts: plan.format.displayParts,
+                amount: plan.toValue,
+                countsDown: plan.toValue < plan.fromValue
+            )
+        }
+        hostingView.isHidden = false
+        textField.isHidden = true
+        textField.alphaValue = 0
+        textField.stringValue = plan.endText
     }
 
     private static func digitRollAnimation(for format: OverviewNumericFormat) -> Animation {
@@ -260,6 +306,7 @@ final class OverviewNumericTextView: NSView {
     private func applyImmediate(text: String, value: Double) {
         finishWorkItem?.cancel()
         finishWorkItem = nil
+        isDigitRolling = false
         currentValue = value
         if let sample {
             var transaction = Transaction()
@@ -273,8 +320,9 @@ final class OverviewNumericTextView: NSView {
             }
         }
         textField.stringValue = text
-        textField.alphaValue = 1
-        hostingView.isHidden = true
+        textField.isHidden = true
+        textField.alphaValue = 0
+        hostingView.isHidden = false
     }
 }
 

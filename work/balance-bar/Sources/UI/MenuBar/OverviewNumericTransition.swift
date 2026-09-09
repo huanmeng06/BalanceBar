@@ -107,6 +107,8 @@ struct OverviewNumericTransitionPlan: Equatable {
 enum OverviewNumericTransition {
     static let duration: TimeInterval = 0.72
     static let currencyDigitRollDuration: TimeInterval = 0.32
+    /// Hold the last-seen overview values after the menu appears, then roll.
+    static let openDelay: TimeInterval = 0.22
 
     static func duration(for format: OverviewNumericFormat) -> TimeInterval {
         switch format {

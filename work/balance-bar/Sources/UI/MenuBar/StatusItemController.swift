@@ -2207,6 +2207,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var lastSeenOverviewNumerics: [OverviewNumericIdentity: OverviewNumericSample] = [:]
     private var presentedOverviewNumerics: [OverviewNumericSample] = []
     private var overviewMenuWasSeen = false
+    private var overviewNumericOpenWorkItem: DispatchWorkItem?
     var overviewNumericReduceMotionForTesting: Bool?
     var lastSeenOverviewNumericsForTesting: [OverviewNumericIdentity: OverviewNumericSample] {
         lastSeenOverviewNumerics
@@ -2670,6 +2671,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
         overviewMenuWasSeen = false
+        cancelPendingOverviewNumericTransitions()
         lastSeenOverviewNumerics = [:]
         presentedOverviewNumerics = []
         codexAnimationNeedsPostLayoutReconciliation = false
@@ -2937,6 +2939,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             overviewMenuWasSeen = false
         }
         isStatusMenuTracking = false
+        cancelPendingOverviewNumericTransitions()
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
         guard statusMenuNeedsRebuild else { return }
@@ -5313,6 +5316,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             bankedResetDisplayMode: menuInput.bankedResetDisplayMode
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        view.wantsLayer = true
+        view.clipsToBounds = true
+        view.layer?.masksToBounds = true
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
 
@@ -5954,12 +5960,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return progress
     }
 
+    private func cancelPendingOverviewNumericTransitions() {
+        overviewNumericOpenWorkItem?.cancel()
+        overviewNumericOpenWorkItem = nil
+    }
+
     private func playPendingOverviewNumericTransitions() {
-        guard let overview = statusMenu.items.first?.view else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.isStatusMenuTracking else { return }
+        guard statusMenu.items.first?.view != nil else { return }
+        cancelPendingOverviewNumericTransitions()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isStatusMenuTracking,
+                  let overview = self.statusMenu.items.first?.view else { return }
+            self.overviewNumericOpenWorkItem = nil
             self.playOverviewNumericTransitions(in: overview)
         }
+        overviewNumericOpenWorkItem = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + OverviewNumericTransition.openDelay,
+            execute: work
+        )
     }
 
     private func playOverviewNumericTransitions(in overview: NSView) {

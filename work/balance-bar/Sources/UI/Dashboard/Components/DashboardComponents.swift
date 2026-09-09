@@ -201,6 +201,7 @@ final class QuotaProgressView: NSView {
     let colorConfiguration: QuotaProgressColorConfiguration
     private var interpolator: OverviewNumericInterpolator?
     private var pendingAnimatedPercentage: Double?
+    private var pendingAnimatedDuration: TimeInterval = OverviewNumericTransition.duration
 
     var hasPendingAnimationForTesting: Bool { pendingAnimatedPercentage != nil }
 
@@ -235,6 +236,7 @@ final class QuotaProgressView: NSView {
         }
         if window == nil {
             pendingAnimatedPercentage = clamped
+            pendingAnimatedDuration = duration
             return
         }
         animate(to: clamped, duration: duration)
@@ -243,7 +245,7 @@ final class QuotaProgressView: NSView {
     func playPendingAnimationIfNeeded() {
         guard let pending = pendingAnimatedPercentage else { return }
         pendingAnimatedPercentage = nil
-        setPercentage(pending, animated: true)
+        setPercentage(pending, animated: true, duration: pendingAnimatedDuration)
     }
 
     private func animate(to value: Double, duration: TimeInterval) {
