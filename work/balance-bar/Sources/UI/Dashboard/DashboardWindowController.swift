@@ -185,7 +185,10 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    func open() {
+    func open(
+        initialSection: DashboardSection = .general,
+        scrollOffsetY: CGFloat? = nil
+    ) {
         guard !isTornDown else { return }
         start()
         NSApp.setActivationPolicy(.regular)
@@ -202,7 +205,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = DashboardSection.general.title
+        window.title = initialSection.title
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -230,9 +233,22 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         windowCreationCount += 1
         installLayout(in: window)
         installMouseMonitor()
-        showSection(.general)
+        showSection(initialSection)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        if let scrollOffsetY {
+            restorePageScrollOffsetY(scrollOffsetY)
+        }
+    }
+
+    func pageScrollOffsetY() -> CGFloat {
+        DashboardPageScrollPosition.visualOffsetY(in: contentHost)
+    }
+
+    func restorePageScrollOffsetY(_ offset: CGFloat) {
+        window?.layoutIfNeeded()
+        contentHost.layoutSubtreeIfNeeded()
+        DashboardPageScrollPosition.restore(visualOffsetY: offset, in: contentHost)
     }
 
     func rebuild() {

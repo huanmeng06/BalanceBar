@@ -163,6 +163,57 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(state.isZoomed)
     }
 
+    func testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral() throws {
+        func makeTallPage() -> NSView {
+            let filler = NSView()
+            filler.translatesAutoresizingMaskIntoConstraints = false
+            filler.heightAnchor.constraint(equalToConstant: 1800).isActive = true
+            return DashboardSettingsComponents.makeSettingsPage([
+                DashboardSettingsComponents.makeSettingsSection("Tall", rows: [filler])
+            ])
+        }
+
+        let restoring = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in makeTallPage() },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { restoring.teardown() }
+
+        restoring.open(initialSection: .menuBar, scrollOffsetY: 160)
+        let window = try XCTUnwrap(restoring.window)
+        window.setContentSize(NSSize(width: 880, height: 620))
+        window.layoutIfNeeded()
+        window.contentView?.layoutSubtreeIfNeeded()
+        restoring.contentHost.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        restoring.restorePageScrollOffsetY(160)
+
+        XCTAssertEqual(restoring.section, .menuBar)
+        XCTAssertEqual(restoring.pageScrollOffsetY(), 160, accuracy: 2)
+
+        let fresh = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in makeTallPage() },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { fresh.teardown() }
+        fresh.open()
+        XCTAssertEqual(fresh.section, .general)
+    }
+
     func testRepeatedStartAndOpenKeepOneObserverMonitorAndWindow() {
         var shownPageCount = 0
         let choices = [

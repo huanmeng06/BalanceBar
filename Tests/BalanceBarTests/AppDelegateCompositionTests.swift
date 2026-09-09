@@ -1086,18 +1086,98 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     @MainActor
-    func testSilentStartupChecksUpdatesAndSchedulesIndependentBackgroundTimer() throws {
+    func testPendingDashboardRestoreOpensSavedSectionEvenWhenSilentLaunchIsEnabled() throws {
         _ = NSApplication.shared
         let defaults = UserDefaults.standard
         let previousSilentLaunch = defaults.object(forKey: AppPreferences.silentLaunchKey)
+        let previousSection = defaults.object(forKey: DashboardRestoreStore.sectionKey)
+        let previousOffset = defaults.object(forKey: DashboardRestoreStore.scrollOffsetKey)
         defer {
             if let previousSilentLaunch {
                 defaults.set(previousSilentLaunch, forKey: AppPreferences.silentLaunchKey)
             } else {
                 defaults.removeObject(forKey: AppPreferences.silentLaunchKey)
             }
+            if let previousSection {
+                defaults.set(previousSection, forKey: DashboardRestoreStore.sectionKey)
+            } else {
+                defaults.removeObject(forKey: DashboardRestoreStore.sectionKey)
+            }
+            if let previousOffset {
+                defaults.set(previousOffset, forKey: DashboardRestoreStore.scrollOffsetKey)
+            } else {
+                defaults.removeObject(forKey: DashboardRestoreStore.scrollOffsetKey)
+            }
+        }
+
+        defaults.set(true, forKey: AppPreferences.silentLaunchKey)
+        DashboardRestoreStore.record(
+            DashboardRestoreToken(section: .menuBar, scrollOffsetY: 88)
+        )
+
+        let first = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-357-restore-first.db")
+            )
+        )
+        first.presentInitialDashboardForTesting()
+        let firstComposition = first.dashboardCompositionForTesting
+        defer { firstComposition.teardownForTesting() }
+        XCTAssertTrue(
+            firstComposition.isVisible,
+            "one-shot restore must open Dashboard even when silent launch is enabled"
+        )
+        XCTAssertEqual(firstComposition.section, .menuBar)
+        XCTAssertNil(
+            DashboardRestoreStore.peek(),
+            "restore token must be consumed so the next launch is not forced to 菜单栏"
+        )
+        firstComposition.window?.layoutIfNeeded()
+        firstComposition.contentHost.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        firstComposition.restorePageScrollOffsetY(88)
+        XCTAssertEqual(firstComposition.pageScrollOffsetY(), 88, accuracy: 8)
+
+        XCTAssertNil(
+            DashboardRestoreStore.peek(),
+            "restore token must stay consumed after the restoring process exits"
+        )
+        XCTAssertEqual(
+            InitialLaunchPresentation.resolve(
+                silentLaunch: true,
+                pendingDashboardRestore: DashboardRestoreStore.peek() != nil
+            ),
+            .background,
+            "a later silent launch without the token must not force 菜单栏"
+        )
+    }
+
+    @MainActor
+    func testSilentStartupChecksUpdatesAndSchedulesIndependentBackgroundTimer() throws {
+        _ = NSApplication.shared
+        let defaults = UserDefaults.standard
+        let previousSilentLaunch = defaults.object(forKey: AppPreferences.silentLaunchKey)
+        let previousSection = defaults.object(forKey: DashboardRestoreStore.sectionKey)
+        let previousOffset = defaults.object(forKey: DashboardRestoreStore.scrollOffsetKey)
+        defer {
+            if let previousSilentLaunch {
+                defaults.set(previousSilentLaunch, forKey: AppPreferences.silentLaunchKey)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.silentLaunchKey)
+            }
+            if let previousSection {
+                defaults.set(previousSection, forKey: DashboardRestoreStore.sectionKey)
+            } else {
+                defaults.removeObject(forKey: DashboardRestoreStore.sectionKey)
+            }
+            if let previousOffset {
+                defaults.set(previousOffset, forKey: DashboardRestoreStore.scrollOffsetKey)
+            } else {
+                defaults.removeObject(forKey: DashboardRestoreStore.scrollOffsetKey)
+            }
         }
         defaults.set(true, forKey: AppPreferences.silentLaunchKey)
+        DashboardRestoreStore.clear()
 
         let ignoreSuiteName = "AppDelegateCompositionTests.update-badge.\(UUID().uuidString)"
         let ignoreDefaults = try XCTUnwrap(UserDefaults(suiteName: ignoreSuiteName))

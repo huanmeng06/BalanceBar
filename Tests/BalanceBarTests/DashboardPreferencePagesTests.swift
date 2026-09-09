@@ -4061,7 +4061,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let relay = DashboardPreferencePageRelay()
         let controller = DashboardMenuBarPage()
         var relaunchCount = 0
+        var recordedTokens: [DashboardRestoreToken] = []
         controller.relaunchApplication = { relaunchCount += 1 }
+        controller.restoreSnapshotProvider = {
+            DashboardRestoreToken(section: .menuBar, scrollOffsetY: 96)
+        }
+        controller.persistRestoreToken = { recordedTokens.append($0) }
         defer { controller.teardown() }
         func refreshPage() {
             controller.refresh(
@@ -4167,6 +4172,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertNil(window.attachedSheet)
         XCTAssertNil(controller.restartConfirmationAlertForTesting)
         XCTAssertEqual(relaunchCount, 0)
+        XCTAssertTrue(recordedTokens.isEmpty)
 
         subtitle.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
@@ -4182,6 +4188,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         restartAlert.buttons[1].performClick(nil)
         XCTAssertNil(window.attachedSheet)
         XCTAssertEqual(relaunchCount, 0)
+        XCTAssertTrue(recordedTokens.isEmpty, "cancel must not persist a restore token")
 
         subtitle.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
@@ -4195,8 +4202,104 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(confirmAlert.buttons[0].title, "重启")
         confirmAlert.buttons[0].performClick(nil)
         XCTAssertEqual(relaunchCount, 1)
+        XCTAssertEqual(
+            recordedTokens,
+            [DashboardRestoreToken(section: .menuBar, scrollOffsetY: 96)]
+        )
         XCTAssertNil(window.attachedSheet)
         XCTAssertNil(controller.restartConfirmationAlertForTesting)
+    }
+
+    func testConfirmingRestartRecordsLiveMenuBarSectionAndScrollOffset() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let defaults = UserDefaults.standard
+        let previousMode = defaults.object(forKey: AppPreferences.menuBarAnimationModeKey)
+        let previousIcon = defaults.object(forKey: "showMenuBarIcon")
+        let previousAnimate = defaults.object(forKey: "animateCodexActivity")
+        defaults.set(
+            MenuBarAnimationMode.efficient.rawValue,
+            forKey: AppPreferences.menuBarAnimationModeKey
+        )
+        defaults.set(true, forKey: "showMenuBarIcon")
+        defaults.set(true, forKey: "animateCodexActivity")
+        defer {
+            if let previousMode {
+                defaults.set(previousMode, forKey: AppPreferences.menuBarAnimationModeKey)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.menuBarAnimationModeKey)
+            }
+            if let previousIcon {
+                defaults.set(previousIcon, forKey: "showMenuBarIcon")
+            } else {
+                defaults.removeObject(forKey: "showMenuBarIcon")
+            }
+            if let previousAnimate {
+                defaults.set(previousAnimate, forKey: "animateCodexActivity")
+            } else {
+                defaults.removeObject(forKey: "animateCodexActivity")
+            }
+        }
+
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-357-restore-scroll.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        composition.start()
+        var recordedTokens: [DashboardRestoreToken] = []
+        composition.setPersistRestoreTokenForTesting { recordedTokens.append($0) }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
+        window.setContentSize(NSSize(width: 880, height: 620))
+        window.layoutIfNeeded()
+        window.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+
+        DashboardPageScrollPosition.restore(visualOffsetY: 140, in: composition.contentHost)
+        window.layoutIfNeeded()
+        let capturedOffset = composition.pageScrollOffsetY()
+        XCTAssertEqual(composition.section, .menuBar)
+        XCTAssertGreaterThan(
+            capturedOffset,
+            20,
+            "menu bar page must be tall enough to keep a restored scroll offset"
+        )
+
+        let subtitle = try XCTUnwrap(
+            descendants(of: composition.contentHost)
+                .compactMap { $0 as? InlineRangeLinkTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeSubtitleIdentifier }
+        )
+        subtitle.layout()
+        XCTAssertTrue(subtitle.hasLink)
+
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let cancelSheet = try XCTUnwrap(window.attachedSheet)
+        cancelSheet.sheetParent?.endSheet(cancelSheet, returnCode: .alertSecondButtonReturn)
+        XCTAssertTrue(recordedTokens.isEmpty)
+
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(
+                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
+                to: nil
+            )
+        ))
+        let confirmSheet = try XCTUnwrap(window.attachedSheet)
+        confirmSheet.sheetParent?.endSheet(confirmSheet, returnCode: .alertFirstButtonReturn)
+        XCTAssertEqual(recordedTokens.count, 1)
+        XCTAssertEqual(recordedTokens[0].section, .menuBar)
+        XCTAssertEqual(recordedTokens[0].scrollOffsetY, Double(capturedOffset), accuracy: 1)
     }
 
     func testAnimationFrameRateRowCommitsValuesAndUpdatesCPUEstimate() throws {

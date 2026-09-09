@@ -780,14 +780,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         configureApplicationMenu()
         NSApp.appearance = nil
         dashboardComposition.start()
+        let pendingRestore = DashboardRestoreStore.peek()
         let initialPresentation = InitialLaunchPresentation.resolve(
-            silentLaunch: preferences.silentLaunch
+            silentLaunch: preferences.silentLaunch,
+            pendingDashboardRestore: pendingRestore != nil
         )
         let regularPolicyApplied: Bool
         switch initialPresentation {
         case .dashboard:
             regularPolicyApplied = NSApp.setActivationPolicy(.regular)
-            showDashboard()
+            showDashboard(restore: pendingRestore)
         case .background:
             regularPolicyApplied = NSApp.setActivationPolicy(.accessory)
         }
@@ -1431,6 +1433,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     var backgroundUpdateTimerForTesting: Timer? { updateCheckTimer }
 
+    func presentInitialDashboardForTesting() {
+        dashboardComposition.start()
+        let pendingRestore = DashboardRestoreStore.peek()
+        if InitialLaunchPresentation.resolve(
+            silentLaunch: preferences.silentLaunch,
+            pendingDashboardRestore: pendingRestore != nil
+        ) == .dashboard {
+            showDashboard(restore: pendingRestore)
+        }
+    }
+
     func handleLaunchAtLoginActionForTesting(enabled: Bool) {
         handleLaunchAtLoginAction(enabled: enabled)
     }
@@ -1439,8 +1452,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         handleLaunchWithChatGPTAction(enabled: enabled)
     }
 
-    private func showDashboard() {
-        dashboardComposition.open()
+    private func showDashboard(restore: DashboardRestoreToken? = nil) {
+        dashboardComposition.open(
+            initialSection: restore?.section ?? .general,
+            scrollOffsetY: restore.map { CGFloat($0.scrollOffsetY) }
+        )
+        if restore != nil {
+            DashboardRestoreStore.clear()
+        }
+        if let restore {
+            let offset = CGFloat(restore.scrollOffsetY)
+            DispatchQueue.main.async { [weak self] in
+                self?.dashboardComposition.restorePageScrollOffsetY(offset)
+            }
+        }
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
 
@@ -2107,7 +2132,10 @@ enum BalanceBarMain {
             return
         }
         let app = NSApplication.shared
-        if InitialLaunchPresentation.resolve(silentLaunch: AppPreferences().silentLaunch) == .background {
+        if InitialLaunchPresentation.resolve(
+            silentLaunch: AppPreferences().silentLaunch,
+            pendingDashboardRestore: DashboardRestoreStore.peek() != nil
+        ) == .background {
             _ = app.setActivationPolicy(.accessory)
         }
         let delegate = AppDelegate()

@@ -175,6 +175,58 @@ struct DashboardScrollGeometry {
     }
 }
 
+enum DashboardPageScrollPosition {
+    static func firstScrollView(in root: NSView) -> NSScrollView? {
+        if let scrollView = root as? NSScrollView {
+            return scrollView
+        }
+        for child in root.subviews {
+            if let scrollView = firstScrollView(in: child) {
+                return scrollView
+            }
+        }
+        return nil
+    }
+
+    static func visualOffsetY(in root: NSView) -> CGFloat {
+        guard let scrollView = firstScrollView(in: root),
+              let document = scrollView.documentView
+        else { return 0 }
+        let visible = scrollView.contentView.convert(
+            scrollView.contentView.bounds,
+            to: document
+        )
+        return DashboardScrollGeometry(
+            documentBounds: document.bounds,
+            viewportHeight: scrollView.contentView.bounds.height,
+            isDocumentFlipped: document.isFlipped
+        ).visualOffset(for: visible)
+    }
+
+    static func restore(visualOffsetY: CGFloat, in root: NSView) {
+        guard let scrollView = firstScrollView(in: root),
+              let document = scrollView.documentView
+        else { return }
+        let contentView = scrollView.contentView
+        let geometry = DashboardScrollGeometry(
+            documentBounds: document.bounds,
+            viewportHeight: contentView.bounds.height,
+            isDocumentFlipped: document.isFlipped
+        )
+        let targetRect = geometry.visibleDocumentRect(forVisualOffset: visualOffsetY)
+        let targetDocumentY = geometry.contentOriginDocumentY(
+            for: targetRect,
+            contentViewIsFlipped: contentView.isFlipped
+        )
+        let targetContentY = document.convert(
+            NSPoint(x: document.bounds.minX, y: targetDocumentY),
+            to: contentView
+        ).y
+        contentView.scroll(to: NSPoint(x: contentView.bounds.minX, y: targetContentY))
+        scrollView.reflectScrolledClipView(contentView)
+    }
+}
+
 /// Kept as a named type for composition/test seams. It intentionally has no
 /// scrolling overrides: ordinary settings pages use AppKit's native
 /// NSClipView momentum, deceleration, and legal-bounds behavior.

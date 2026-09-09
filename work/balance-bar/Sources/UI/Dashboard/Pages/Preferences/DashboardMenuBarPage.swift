@@ -711,6 +711,12 @@ final class DashboardMenuBarPage {
     private weak var animationModeTitleLabel: NSTextField?
     private weak var animationModeSubtitleLabel: InlineRangeLinkTextField?
     var relaunchApplication: () -> Void = DashboardMenuBarPage.relaunchCurrentApplication
+    var restoreSnapshotProvider: () -> DashboardRestoreToken = {
+        DashboardRestoreToken(section: .menuBar, scrollOffsetY: 0)
+    }
+    var persistRestoreToken: (DashboardRestoreToken) -> Void = { token in
+        DashboardRestoreStore.record(token)
+    }
     private var restartConfirmationAlert: NSAlert?
     var restartConfirmationAlertForTesting: NSAlert? {
         restartConfirmationAlert
@@ -2716,6 +2722,7 @@ final class DashboardMenuBarPage {
             guard let self else { return }
             self.restartConfirmationAlert = nil
             if response == .alertFirstButtonReturn {
+                self.persistRestoreToken(self.restoreSnapshotProvider())
                 self.relaunchApplication()
             }
         }

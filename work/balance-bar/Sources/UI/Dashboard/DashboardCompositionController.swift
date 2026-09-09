@@ -175,9 +175,16 @@ final class DashboardCompositionController {
     var section: DashboardSection { windowController.section }
     var selectedProviderID: String? { windowController.selectedProviderID }
 
-    func start() { windowController.start() }
-    func open() {
-        windowController.open()
+    func start() {
+        windowController.start()
+        installMenuBarRestoreSnapshotProvider()
+    }
+    func open(
+        initialSection: DashboardSection = .general,
+        scrollOffsetY: CGFloat? = nil
+    ) {
+        installMenuBarRestoreSnapshotProvider()
+        windowController.open(initialSection: initialSection, scrollOffsetY: scrollOffsetY)
         refreshLaunchAtLogin()
         refreshLaunchWithChatGPT()
     }
@@ -401,9 +408,35 @@ final class DashboardCompositionController {
     }
 
     func makeWindowForTesting(showing section: DashboardSection) -> NSWindow? {
-        windowController.open()
-        windowController.showSection(section)
+        installMenuBarRestoreSnapshotProvider()
+        windowController.open(initialSection: section)
         return windowController.window
+    }
+
+    func restorePageScrollOffsetY(_ offset: CGFloat) {
+        windowController.restorePageScrollOffsetY(offset)
+    }
+
+    func pageScrollOffsetY() -> CGFloat {
+        windowController.pageScrollOffsetY()
+    }
+
+    func setPersistRestoreTokenForTesting(
+        _ persist: @escaping (DashboardRestoreToken) -> Void
+    ) {
+        dashboardPreferencePages.setPersistRestoreToken(persist)
+    }
+
+    private func installMenuBarRestoreSnapshotProvider() {
+        dashboardPreferencePages.setRestoreSnapshotProvider { [weak self] in
+            guard let self else {
+                return DashboardRestoreToken(section: .menuBar, scrollOffsetY: 0)
+            }
+            return DashboardRestoreToken(
+                section: self.section,
+                scrollOffsetY: Double(self.windowController.pageScrollOffsetY())
+            )
+        }
     }
 
     func teardownForTesting() { teardown() }

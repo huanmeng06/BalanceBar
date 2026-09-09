@@ -574,5 +574,45 @@ final class LaunchAtLoginServiceTests: XCTestCase {
     func testInitialLaunchPresentationMapsSilentPreferenceToBackgroundOnly() {
         XCTAssertEqual(InitialLaunchPresentation.resolve(silentLaunch: false), .dashboard)
         XCTAssertEqual(InitialLaunchPresentation.resolve(silentLaunch: true), .background)
+        XCTAssertEqual(
+            InitialLaunchPresentation.resolve(
+                silentLaunch: true,
+                pendingDashboardRestore: true
+            ),
+            .dashboard
+        )
+        XCTAssertEqual(
+            InitialLaunchPresentation.resolve(
+                silentLaunch: false,
+                pendingDashboardRestore: true
+            ),
+            .dashboard
+        )
+        XCTAssertEqual(
+            InitialLaunchPresentation.resolve(
+                silentLaunch: true,
+                pendingDashboardRestore: false
+            ),
+            .background
+        )
+    }
+
+    func testDashboardRestoreStoreRecordsPeeksAndClearsOneShotToken() {
+        let suiteName = "LaunchAtLoginServiceTests.DashboardRestore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertNil(DashboardRestoreStore.peek(defaults: defaults))
+
+        let token = DashboardRestoreToken(section: .menuBar, scrollOffsetY: 128)
+        DashboardRestoreStore.record(token, defaults: defaults)
+        XCTAssertEqual(DashboardRestoreStore.peek(defaults: defaults), token)
+
+        DashboardRestoreStore.clear(defaults: defaults)
+        XCTAssertNil(DashboardRestoreStore.peek(defaults: defaults))
+
+        defaults.set(99, forKey: DashboardRestoreStore.sectionKey)
+        XCTAssertNil(DashboardRestoreStore.peek(defaults: defaults))
     }
 }
