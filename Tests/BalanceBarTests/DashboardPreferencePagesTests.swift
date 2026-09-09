@@ -64,6 +64,215 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.updateChannel, .beta)
     }
 
+    func testLanguageChangeGateIgnoresNoOpAndStaleValuesDuringRebuild() {
+        let gate = DashboardLanguageChangeGate()
+        var persisted: [AppLanguage] = []
+
+        XCTAssertTrue(
+            DashboardLanguageChange.apply(
+                .simplifiedChinese,
+                currentlySelected: .spanish,
+                gate: gate
+            ) { persisted.append($0) }
+        )
+        XCTAssertEqual(persisted, [.simplifiedChinese])
+        XCTAssertTrue(gate.isIgnoringCallbacks)
+
+        XCTAssertFalse(
+            DashboardLanguageChange.apply(
+                .spanish,
+                currentlySelected: .simplifiedChinese,
+                gate: gate
+            ) { persisted.append($0) }
+        )
+        XCTAssertFalse(
+            DashboardLanguageChange.apply(
+                .simplifiedChinese,
+                currentlySelected: .simplifiedChinese,
+                gate: gate
+            ) { persisted.append($0) }
+        )
+        XCTAssertEqual(persisted, [.simplifiedChinese])
+
+        gate.endIgnoringCallbacks()
+        XCTAssertFalse(
+            DashboardLanguageChange.apply(
+                .simplifiedChinese,
+                currentlySelected: .simplifiedChinese,
+                gate: gate
+            ) { persisted.append($0) }
+        )
+        XCTAssertTrue(
+            DashboardLanguageChange.apply(
+                .spanish,
+                currentlySelected: .simplifiedChinese,
+                gate: gate
+            ) { persisted.append($0) }
+        )
+        XCTAssertEqual(persisted, [.simplifiedChinese, .spanish])
+    }
+
+    func testStaleLanguagePopupActionAfterSimplifiedChineseDoesNotPersistSpanish() {
+        let previousLanguage = AppLanguage.selected
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 80))
+        let window = NSWindow(
+            contentRect: host.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = host
+        let gate = DashboardLanguageChangeGate()
+        var persisted: [AppLanguage] = []
+        let relay = DashboardPreferencePageRelay()
+        defer {
+            DashboardSettingsComponents.disconnectPopUpButtonActions(in: host)
+            relay.onLanguage = nil
+            window.orderOut(nil)
+            AppLanguage.selected = previousLanguage
+        }
+        AppLanguage.selected = .spanish
+        relay.onLanguage = { language in
+            let applied = DashboardLanguageChange.apply(
+                language,
+                currentlySelected: AppLanguage.selected,
+                gate: gate
+            ) { selected in
+                AppLanguage.selected = selected
+                persisted.append(selected)
+            }
+            if applied {
+                gate.endIgnoringCallbacksAfterCurrentRunLoopTurns()
+            }
+        }
+
+        let livePopup = languagePopUpButton(selected: .simplifiedChinese, relay: relay)
+        host.addSubview(livePopup)
+        relay.language(livePopup)
+        XCTAssertEqual(AppLanguage.selected, .simplifiedChinese)
+        XCTAssertEqual(persisted, [.simplifiedChinese])
+        XCTAssertTrue(gate.isIgnoringCallbacks)
+
+        let detachedStalePopup = languagePopUpButton(selected: .spanish, relay: relay)
+        DashboardSettingsComponents.disconnectPopUpButtonActions(in: detachedStalePopup)
+        relay.language(detachedStalePopup)
+        XCTAssertEqual(AppLanguage.selected, .simplifiedChinese)
+        XCTAssertEqual(persisted, [.simplifiedChinese])
+
+        let attachedStalePopup = languagePopUpButton(selected: .spanish, relay: relay)
+        host.addSubview(attachedStalePopup)
+        relay.language(attachedStalePopup)
+        XCTAssertEqual(AppLanguage.selected, .simplifiedChinese)
+        XCTAssertEqual(persisted, [.simplifiedChinese])
+
+        gate.endIgnoringCallbacks()
+        XCTAssertFalse(gate.isIgnoringCallbacks)
+
+        let explicitSpanish = languagePopUpButton(selected: .spanish, relay: relay)
+        host.addSubview(explicitSpanish)
+        relay.language(explicitSpanish)
+        XCTAssertEqual(AppLanguage.selected, .spanish)
+        XCTAssertEqual(persisted, [.simplifiedChinese, .spanish])
+    }
+
+    func testLanguageChangeGateEndsIgnoringAfterRunLoopTurns() {
+        let gate = DashboardLanguageChangeGate()
+        gate.beginIgnoringCallbacks()
+        gate.endIgnoringCallbacksAfterCurrentRunLoopTurns()
+        XCTAssertTrue(gate.isIgnoringCallbacks)
+
+        let settled = expectation(description: "language rebuild gate settles")
+        DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                XCTAssertFalse(gate.isIgnoringCallbacks)
+                settled.fulfill()
+            }
+        }
+        wait(for: [settled], timeout: 1)
+    }
+
+    func testLanguagePopupConstructionDoesNotFirePreviousLanguageAction() {
+        final class ActionTarget: NSObject {
+            var languages: [AppLanguage] = []
+
+            @objc func languageChanged(_ sender: NSPopUpButton) {
+                guard let rawValue = sender.selectedItem?.representedObject as? String,
+                      let language = AppLanguage(rawValue: rawValue) else { return }
+                languages.append(language)
+            }
+        }
+
+        let target = ActionTarget()
+        let popup = DashboardSettingsComponents.makePopUpButton(
+            identifier: AppLanguage.preferenceKey,
+            items: AppLanguage.allCases.map {
+                DashboardSettingsComponents.PopUpItem(
+                    title: $0.rawValue,
+                    representedObject: $0.rawValue
+                )
+            },
+            selectedIndex: AppLanguage.allCases.firstIndex(of: .simplifiedChinese),
+            target: target,
+            action: #selector(ActionTarget.languageChanged(_:))
+        )
+        defer {
+            popup.target = nil
+            popup.action = nil
+        }
+
+        XCTAssertEqual(popup.indexOfSelectedItem, AppLanguage.allCases.firstIndex(of: .simplifiedChinese))
+        XCTAssertEqual(popup.selectedItem?.representedObject as? String, AppLanguage.simplifiedChinese.rawValue)
+        XCTAssertTrue(target.languages.isEmpty)
+        XCTAssertTrue(popup.target === target)
+        XCTAssertEqual(popup.action, #selector(ActionTarget.languageChanged(_:)))
+    }
+
+    func testDetachedLanguagePopupCannotWriteSelectedLanguage() {
+        var applied: [AppLanguage] = []
+        let relay = DashboardPreferencePageRelay()
+        relay.onLanguage = { applied.append($0) }
+
+        let popup = languagePopUpButton(selected: .spanish, relay: relay)
+        XCTAssertNil(popup.window)
+        relay.language(popup)
+        XCTAssertTrue(applied.isEmpty)
+    }
+
+    func testGeneralPageLanguagePopupIgnoresScrollWheel() throws {
+        let previousLanguage = AppLanguage.selected
+        let suiteName = "DashboardPreferencePagesTests.LanguageScroll.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let relay = DashboardPreferencePageRelay()
+        var applied: [AppLanguage] = []
+        relay.onLanguage = { applied.append($0) }
+        defer {
+            relay.onLanguage = nil
+            defaults.removePersistentDomain(forName: suiteName)
+            AppLanguage.selected = previousLanguage
+        }
+        AppLanguage.selected = .simplifiedChinese
+        let page = DashboardGeneralPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+        ))
+        defer { DashboardSettingsComponents.disconnectPopUpButtonActions(in: page) }
+        let popup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppLanguage.preferenceKey }
+        )
+        let languagePopup = try XCTUnwrap(popup as? DashboardSettingsPopUpButton)
+        XCTAssertTrue(languagePopup.ignoresScrollWheel)
+        XCTAssertEqual(languagePopup.indexOfSelectedItem, AppLanguage.allCases.firstIndex(of: .simplifiedChinese))
+
+        languagePopup.scrollWheel(with: try makeScrollWheelEvent())
+        XCTAssertEqual(languagePopup.indexOfSelectedItem, AppLanguage.allCases.firstIndex(of: .simplifiedChinese))
+        XCTAssertTrue(applied.isEmpty)
+    }
+
     func testLaunchAtLoginGeneralRowReflectsStatesAndRoutesToggle() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -7141,6 +7350,39 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
+    }
+
+    private func languagePopUpButton(
+        selected: AppLanguage,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        DashboardSettingsComponents.makePopUpButton(
+            identifier: AppLanguage.preferenceKey,
+            items: AppLanguage.allCases.map {
+                DashboardSettingsComponents.PopUpItem(
+                    title: $0.rawValue,
+                    representedObject: $0.rawValue
+                )
+            },
+            selectedIndex: AppLanguage.allCases.firstIndex(of: selected),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.language(_:)),
+            ignoresScrollWheel: true
+        )
+    }
+
+    private func makeScrollWheelEvent() throws -> NSEvent {
+        let cgEvent = try XCTUnwrap(
+            CGEvent(
+                scrollWheelEvent2Source: nil,
+                units: .pixel,
+                wheelCount: 1,
+                wheel1: 30,
+                wheel2: 0,
+                wheel3: 0
+            )
+        )
+        return try XCTUnwrap(NSEvent(cgEvent: cgEvent))
     }
 
     private func makeMouseEvent(

@@ -257,6 +257,10 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     func rebuild() {
         guard let window, !isTornDown else { return }
+        // Delayed AppKit popup actions can fire after the page is replaced.
+        // Clear target/action first so a leftover language cannot be written.
+        DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
+        DashboardSettingsComponents.disconnectPopUpButtonActions(in: window.contentView)
         let selectedSection = section
         let selectedProviderID = selectedProviderID
         installLayout(in: window)
@@ -332,6 +336,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func replacePage(makePage: () -> NSView) {
+        DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
         actions.prepareForPageReplacement()
         contentHost.subviews.forEach { $0.removeFromSuperview() }
         let page = makePage()

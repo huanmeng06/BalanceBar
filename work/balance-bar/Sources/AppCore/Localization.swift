@@ -60,19 +60,21 @@ enum AppLanguage: String, CaseIterable {
         }
     }
 
+    static let preferenceKey = "appLanguage"
+
     static var selected: AppLanguage {
         get {
-            guard let rawValue = UserDefaults.standard.string(forKey: "appLanguage"),
+            guard let rawValue = UserDefaults.standard.string(forKey: preferenceKey),
                   let language = AppLanguage(rawValue: rawValue) else {
                 return .system
             }
             if rawValue == Self.legacyTraditionalChineseRawValue {
-                UserDefaults.standard.set(language.rawValue, forKey: "appLanguage")
+                UserDefaults.standard.set(language.rawValue, forKey: preferenceKey)
             }
             return language
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: "appLanguage")
+            UserDefaults.standard.set(newValue.rawValue, forKey: preferenceKey)
         }
     }
 

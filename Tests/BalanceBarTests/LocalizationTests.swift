@@ -52,6 +52,17 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testSystemSelectionResolvesZhHansCNToSimplifiedChineseNotSpanish() {
+        XCTAssertEqual(
+            AppLanguage.resolved(for: .system, preferredLanguages: ["zh-Hans-CN"]),
+            .simplifiedChinese
+        )
+        XCTAssertNotEqual(
+            AppLanguage.resolved(for: .system, preferredLanguages: ["zh-Hans-CN"]),
+            .spanish
+        )
+    }
+
     func testSystemSelectionMatchesTaiwanTraditionalChineseIdentifiers() {
         for preferred in ["zh-Hant", "zh-TW", "zh-Hant-TW", "zh_TW"] {
             XCTAssertEqual(

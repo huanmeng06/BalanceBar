@@ -315,6 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     )
     private var dashboardIsVisible: Bool { dashboardComposition.isVisible }
     private var dashboardSection: DashboardSection { dashboardComposition.section }
+    private let languageChangeGate = DashboardLanguageChangeGate()
     private var timer: Timer?
     private var updateCheckTimer: Timer?
     private var activityCoordinator: ActivityCoordinator!
@@ -920,16 +921,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func applyLanguage(_ language: AppLanguage) {
-        SwitchLog.write(
-            "language changed; value=\(language.rawValue)",
-            category: "configuration"
-        )
-        AppLanguage.selected = language
+        let applied = DashboardLanguageChange.apply(
+            language,
+            currentlySelected: AppLanguage.selected,
+            gate: languageChangeGate
+        ) { selected in
+            SwitchLog.write(
+                "language changed; value=\(selected.rawValue)",
+                category: "configuration"
+            )
+            AppLanguage.selected = selected
+        }
+        guard applied else { return }
         configureApplicationMenu()
         rebuildDashboardForLanguageChange()
         render(snapshot)
         refresh(reason: .configurationChanged)
         providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
+        languageChangeGate.endIgnoringCallbacksAfterCurrentRunLoopTurns()
     }
 
     private func configureApplicationMenu() {

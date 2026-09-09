@@ -1,5 +1,57 @@
 import AppKit
 
+/// Drops language popup actions that arrive while Dashboard rebuilds after a
+/// language change, including the following run-loop turns.
+final class DashboardLanguageChangeGate {
+    private(set) var isIgnoringCallbacks = false
+
+    func beginIgnoringCallbacks() {
+        isIgnoringCallbacks = true
+    }
+
+    func endIgnoringCallbacks() {
+        isIgnoringCallbacks = false
+    }
+
+    func endIgnoringCallbacksAfterCurrentRunLoopTurns() {
+        DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                self?.endIgnoringCallbacks()
+            }
+        }
+    }
+
+    func shouldApply(_ language: AppLanguage, currentlySelected: AppLanguage) -> Bool {
+        !isIgnoringCallbacks && language != currentlySelected
+    }
+}
+
+enum DashboardLanguageChange {
+    static func language(from sender: NSPopUpButton) -> AppLanguage? {
+        guard sender.window != nil else { return nil }
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let language = AppLanguage(rawValue: rawValue) else {
+            return nil
+        }
+        return language
+    }
+
+    @discardableResult
+    static func apply(
+        _ language: AppLanguage,
+        currentlySelected: AppLanguage,
+        gate: DashboardLanguageChangeGate,
+        persist: (AppLanguage) -> Void
+    ) -> Bool {
+        guard gate.shouldApply(language, currentlySelected: currentlySelected) else {
+            return false
+        }
+        gate.beginIgnoringCallbacks()
+        persist(language)
+        return true
+    }
+}
+
 /// The page modules own their controls; AppDelegate supplies these callbacks
 /// so preference writes and application actions remain explicit and testable.
 final class DashboardPreferencePageRelay: NSObject {
@@ -59,8 +111,7 @@ final class DashboardPreferencePageRelay: NSObject {
     }
 
     @objc func language(_ sender: NSPopUpButton) {
-        guard let rawValue = sender.selectedItem?.representedObject as? String,
-              let language = AppLanguage(rawValue: rawValue) else { return }
+        guard let language = DashboardLanguageChange.language(from: sender) else { return }
         onLanguage?(language)
     }
 

@@ -471,6 +471,7 @@ final class DashboardGeneralPage {
         ])
 
         let languagePopup = DashboardSettingsComponents.makePopUpButton(
+            identifier: AppLanguage.preferenceKey,
             items: AppLanguage.allCases.map {
                 DashboardSettingsComponents.PopUpItem(
                     title: $0.localizedTitle,
@@ -479,7 +480,8 @@ final class DashboardGeneralPage {
             },
             selectedIndex: AppLanguage.allCases.firstIndex(of: AppLanguage.selected),
             target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.language(_:))
+            action: #selector(DashboardPreferencePageRelay.language(_:)),
+            ignoresScrollWheel: true
         )
         let updatePresentation = DashboardUpdatePresentation.make(for: input.updateState)
         let updateBadge = DashboardUpdateBadgeView()
