@@ -23,17 +23,21 @@ struct DashboardRestoreToken: Equatable {
 enum DashboardRestoreStore {
     static let sectionKey = "dashboardRestoreOnceSection"
     static let scrollOffsetKey = "dashboardRestoreOnceScrollOffset"
+    /// Production keeps `.standard`. Tests may swap a suite so one-shot tokens do not leak.
+    static var defaults = UserDefaults.standard
 
     static func record(
         _ token: DashboardRestoreToken,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults? = nil
     ) {
+        let defaults = defaults ?? Self.defaults
         defaults.set(token.section.rawValue, forKey: sectionKey)
         defaults.set(token.scrollOffsetY, forKey: scrollOffsetKey)
         defaults.synchronize()
     }
 
-    static func peek(defaults: UserDefaults = .standard) -> DashboardRestoreToken? {
+    static func peek(defaults: UserDefaults? = nil) -> DashboardRestoreToken? {
+        let defaults = defaults ?? Self.defaults
         guard defaults.object(forKey: sectionKey) != nil else { return nil }
         guard let section = DashboardSection(rawValue: defaults.integer(forKey: sectionKey)) else {
             return nil
@@ -42,7 +46,8 @@ enum DashboardRestoreStore {
         return DashboardRestoreToken(section: section, scrollOffsetY: offset)
     }
 
-    static func clear(defaults: UserDefaults = .standard) {
+    static func clear(defaults: UserDefaults? = nil) {
+        let defaults = defaults ?? Self.defaults
         defaults.removeObject(forKey: sectionKey)
         defaults.removeObject(forKey: scrollOffsetKey)
         defaults.synchronize()

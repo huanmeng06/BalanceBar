@@ -312,6 +312,10 @@ final class DashboardPreferencePages {
         menuBarPage.persistRestoreToken = persist
     }
 
+    func setRelaunchApplication(_ relaunch: @escaping () -> Void) {
+        menuBarPage.relaunchApplication = relaunch
+    }
+
     func teardown() {
         menuBarPage.teardown()
         menuPage.teardown()

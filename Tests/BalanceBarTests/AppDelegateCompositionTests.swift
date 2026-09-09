@@ -3,6 +3,16 @@ import XCTest
 @testable import BalanceBar
 
 final class AppDelegateCompositionTests: XCTestCase {
+    override func tearDown() {
+        let restoreDefaults = DashboardRestoreStore.defaults
+        DashboardRestoreStore.defaults = .standard
+        if restoreDefaults !== UserDefaults.standard {
+            DashboardRestoreStore.clear(defaults: restoreDefaults)
+        }
+        drainMainRunLoop()
+        super.tearDown()
+    }
+
     func testAppDelegateBoundaryContainsOnlyCompositionResponsibilities() throws {
         let source = try balanceBarSource()
         let appDelegateStart = try XCTUnwrap(
@@ -1088,40 +1098,15 @@ final class AppDelegateCompositionTests: XCTestCase {
     @MainActor
     func testPendingDashboardRestoreOpensSavedSectionEvenWhenSilentLaunchIsEnabled() throws {
         _ = NSApplication.shared
+        let restoreSuiteName = "AppDelegateCompositionTests.DashboardRestore.\(UUID().uuidString)"
+        let restoreDefaults = try XCTUnwrap(UserDefaults(suiteName: restoreSuiteName))
+        restoreDefaults.removePersistentDomain(forName: restoreSuiteName)
+        DashboardRestoreStore.defaults = restoreDefaults
+
         let defaults = UserDefaults.standard
         let previousSilentLaunch = defaults.object(forKey: AppPreferences.silentLaunchKey)
-        let previousSection = defaults.object(forKey: DashboardRestoreStore.sectionKey)
-        let previousOffset = defaults.object(forKey: DashboardRestoreStore.scrollOffsetKey)
         let previousIcon = defaults.object(forKey: "showMenuBarIcon")
         let previousAnimate = defaults.object(forKey: "animateCodexActivity")
-        defer {
-            if let previousSilentLaunch {
-                defaults.set(previousSilentLaunch, forKey: AppPreferences.silentLaunchKey)
-            } else {
-                defaults.removeObject(forKey: AppPreferences.silentLaunchKey)
-            }
-            if let previousSection {
-                defaults.set(previousSection, forKey: DashboardRestoreStore.sectionKey)
-            } else {
-                defaults.removeObject(forKey: DashboardRestoreStore.sectionKey)
-            }
-            if let previousOffset {
-                defaults.set(previousOffset, forKey: DashboardRestoreStore.scrollOffsetKey)
-            } else {
-                defaults.removeObject(forKey: DashboardRestoreStore.scrollOffsetKey)
-            }
-            if let previousIcon {
-                defaults.set(previousIcon, forKey: "showMenuBarIcon")
-            } else {
-                defaults.removeObject(forKey: "showMenuBarIcon")
-            }
-            if let previousAnimate {
-                defaults.set(previousAnimate, forKey: "animateCodexActivity")
-            } else {
-                defaults.removeObject(forKey: "animateCodexActivity")
-            }
-        }
-
         defaults.set(true, forKey: AppPreferences.silentLaunchKey)
         defaults.set(true, forKey: "showMenuBarIcon")
         defaults.set(true, forKey: "animateCodexActivity")
@@ -1134,9 +1119,31 @@ final class AppDelegateCompositionTests: XCTestCase {
                 databaseURL: URL(fileURLWithPath: "/nonexistent/issue-357-restore-first.db")
             )
         )
-        first.presentInitialDashboardForTesting()
         let firstComposition = first.dashboardCompositionForTesting
-        defer { firstComposition.teardownForTesting() }
+        defer {
+            drainMainRunLoop()
+            firstComposition.teardownForTesting()
+            drainMainRunLoop()
+            DashboardRestoreStore.clear(defaults: restoreDefaults)
+            DashboardRestoreStore.defaults = .standard
+            restoreDefaults.removePersistentDomain(forName: restoreSuiteName)
+            if let previousSilentLaunch {
+                defaults.set(previousSilentLaunch, forKey: AppPreferences.silentLaunchKey)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.silentLaunchKey)
+            }
+            if let previousIcon {
+                defaults.set(previousIcon, forKey: "showMenuBarIcon")
+            } else {
+                defaults.removeObject(forKey: "showMenuBarIcon")
+            }
+            if let previousAnimate {
+                defaults.set(previousAnimate, forKey: "animateCodexActivity")
+            } else {
+                defaults.removeObject(forKey: "animateCodexActivity")
+            }
+        }
+        first.presentInitialDashboardForTesting()
         XCTAssertTrue(
             firstComposition.isVisible,
             "one-shot restore must open Dashboard even when silent launch is enabled"
@@ -1186,26 +1193,22 @@ final class AppDelegateCompositionTests: XCTestCase {
     @MainActor
     func testSilentStartupChecksUpdatesAndSchedulesIndependentBackgroundTimer() throws {
         _ = NSApplication.shared
+        drainMainRunLoop()
+        let restoreSuiteName = "AppDelegateCompositionTests.SilentStartupRestore.\(UUID().uuidString)"
+        let restoreDefaults = try XCTUnwrap(UserDefaults(suiteName: restoreSuiteName))
+        restoreDefaults.removePersistentDomain(forName: restoreSuiteName)
+        DashboardRestoreStore.defaults = restoreDefaults
         let defaults = UserDefaults.standard
         let previousSilentLaunch = defaults.object(forKey: AppPreferences.silentLaunchKey)
-        let previousSection = defaults.object(forKey: DashboardRestoreStore.sectionKey)
-        let previousOffset = defaults.object(forKey: DashboardRestoreStore.scrollOffsetKey)
         defer {
             if let previousSilentLaunch {
                 defaults.set(previousSilentLaunch, forKey: AppPreferences.silentLaunchKey)
             } else {
                 defaults.removeObject(forKey: AppPreferences.silentLaunchKey)
             }
-            if let previousSection {
-                defaults.set(previousSection, forKey: DashboardRestoreStore.sectionKey)
-            } else {
-                defaults.removeObject(forKey: DashboardRestoreStore.sectionKey)
-            }
-            if let previousOffset {
-                defaults.set(previousOffset, forKey: DashboardRestoreStore.scrollOffsetKey)
-            } else {
-                defaults.removeObject(forKey: DashboardRestoreStore.scrollOffsetKey)
-            }
+            DashboardRestoreStore.clear(defaults: restoreDefaults)
+            DashboardRestoreStore.defaults = .standard
+            restoreDefaults.removePersistentDomain(forName: restoreSuiteName)
         }
         defaults.set(true, forKey: AppPreferences.silentLaunchKey)
         DashboardRestoreStore.clear()
@@ -1234,6 +1237,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             appDelegate.applicationWillTerminate(
                 Notification(name: NSApplication.willTerminateNotification)
             )
+            drainMainRunLoop()
         }
 
         appDelegate.applicationDidFinishLaunching(
@@ -1267,7 +1271,11 @@ final class AppDelegateCompositionTests: XCTestCase {
                 ]
             )
         ]))
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let availableDeadline = Date().addingTimeInterval(0.5)
+        while Date() < availableDeadline {
+            if case .available = service.state { break }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
         guard case .available = service.state else {
             XCTFail("the startup check should publish the available state")
             return
@@ -2609,6 +2617,12 @@ final class AppDelegateCompositionTests: XCTestCase {
         return try Dictionary(uniqueKeysWithValues: files.map { name, path in
             (name, try String(contentsOf: repositoryRoot.appendingPathComponent(path), encoding: .utf8))
         })
+    }
+
+    private func drainMainRunLoop() {
+        for _ in 0..<8 {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
     }
 
     private func firstControl<T: NSView>(

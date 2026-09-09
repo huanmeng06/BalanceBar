@@ -4249,10 +4249,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
         )
         let composition = appDelegate.dashboardCompositionForTesting
-        defer { composition.teardownForTesting() }
+        defer {
+            composition.teardownForTesting()
+            for _ in 0..<8 {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            }
+        }
         composition.start()
         var recordedTokens: [DashboardRestoreToken] = []
+        var relaunchCount = 0
         composition.setPersistRestoreTokenForTesting { recordedTokens.append($0) }
+        composition.setRelaunchApplicationForTesting { relaunchCount += 1 }
         let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
         window.setContentSize(NSSize(width: 880, height: 620))
         window.layoutIfNeeded()
@@ -4287,6 +4294,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cancelSheet = try XCTUnwrap(window.attachedSheet)
         cancelSheet.sheetParent?.endSheet(cancelSheet, returnCode: .alertSecondButtonReturn)
         XCTAssertTrue(recordedTokens.isEmpty)
+        XCTAssertEqual(relaunchCount, 0, "cancel must not relaunch the test host")
 
         subtitle.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
@@ -4300,6 +4308,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(recordedTokens.count, 1)
         XCTAssertEqual(recordedTokens[0].section, .menuBar)
         XCTAssertEqual(recordedTokens[0].scrollOffsetY, Double(capturedOffset), accuracy: 1)
+        XCTAssertEqual(relaunchCount, 1, "confirm must request relaunch without terminating the test host")
     }
 
     func testAnimationFrameRateRowCommitsValuesAndUpdatesCPUEstimate() throws {

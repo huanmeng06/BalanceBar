@@ -427,6 +427,10 @@ final class DashboardCompositionController {
         dashboardPreferencePages.setPersistRestoreToken(persist)
     }
 
+    func setRelaunchApplicationForTesting(_ relaunch: @escaping () -> Void) {
+        dashboardPreferencePages.setRelaunchApplication(relaunch)
+    }
+
     private func installMenuBarRestoreSnapshotProvider() {
         dashboardPreferencePages.setRestoreSnapshotProvider { [weak self] in
             guard let self else {

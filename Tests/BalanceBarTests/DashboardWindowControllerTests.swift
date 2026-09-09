@@ -198,7 +198,10 @@ final class DashboardWindowControllerTests: XCTestCase {
                 didResize: {}
             )
         )
-        defer { restoring.teardown() }
+        defer {
+            restoring.teardown()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
 
         restoring.open(initialSection: .menuBar, scrollOffsetY: 160)
         let window = try XCTUnwrap(restoring.window)
@@ -243,7 +246,10 @@ final class DashboardWindowControllerTests: XCTestCase {
                 didResize: {}
             )
         )
-        defer { fresh.teardown() }
+        defer {
+            fresh.teardown()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
         fresh.open()
         XCTAssertEqual(fresh.section, .general)
     }
