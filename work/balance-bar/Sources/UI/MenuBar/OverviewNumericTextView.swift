@@ -76,11 +76,25 @@ final class OverviewNumericInterpolator: NSObject {
 }
 
 private final class OverviewNumericTextModel: ObservableObject {
-    @Published var text: String
-    var countsDown = false
+    @Published var amount: Double
+    @Published var prefix: String
+    @Published var suffix: String
+    @Published var fractionLength: Int
+    @Published var countsDown = false
 
-    init(text: String) {
-        self.text = text
+    init(amount: Double) {
+        self.amount = amount
+        prefix = ""
+        suffix = ""
+        fractionLength = 0
+    }
+
+    func apply(parts: OverviewNumericDisplayParts, amount: Double, countsDown: Bool) {
+        self.prefix = parts.prefix
+        self.suffix = parts.suffix
+        self.fractionLength = parts.fractionLength
+        self.amount = amount
+        self.countsDown = countsDown
     }
 }
 
@@ -90,15 +104,34 @@ private struct OverviewNumericTextRoot: View {
     let color: NSColor
 
     var body: some View {
-        Text(model.text)
-            .font(Font(font))
-            .foregroundStyle(Color(color))
-            .monospacedDigit()
-            .contentTransition(.numericText(countsDown: model.countsDown))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-            .multilineTextAlignment(.trailing)
-            .lineLimit(1)
-            .minimumScaleFactor(1)
+        HStack(spacing: 0) {
+            if !model.prefix.isEmpty {
+                Text(model.prefix)
+            }
+            numericValue
+            if !model.suffix.isEmpty {
+                Text(model.suffix)
+            }
+        }
+        .font(Font(font))
+        .foregroundStyle(Color(color))
+        .monospacedDigit()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .multilineTextAlignment(.trailing)
+        .lineLimit(1)
+        .minimumScaleFactor(1)
+    }
+
+    @ViewBuilder
+    private var numericValue: some View {
+        if model.fractionLength > 0 {
+            Text(model.amount, format: .number.precision(.fractionLength(model.fractionLength)))
+                .contentTransition(.numericText(countsDown: model.countsDown))
+                .animation(.snappy(duration: OverviewNumericTransition.currencyDigitRollDuration, extraBounce: 0), value: model.amount)
+        } else {
+            Text(verbatim: "\(Int(model.amount))")
+                .contentTransition(.numericText(countsDown: model.countsDown))
+        }
     }
 }
 
@@ -109,11 +142,10 @@ final class OverviewNumericTextView: NSView {
     private(set) var currentValue: Double
     private(set) var sample: OverviewNumericSample?
     private var pendingPlan: OverviewNumericTransitionPlan?
-    private var interpolator: OverviewNumericInterpolator?
     private var finishWorkItem: DispatchWorkItem?
 
     var hasPendingAnimationForTesting: Bool { pendingPlan?.animates == true }
-    var isValueInterpolatingForTesting: Bool { interpolator != nil }
+    var isDigitRollingForTesting: Bool { !hostingView.isHidden && textField.alphaValue == 0 }
 
     init(text: String, font: NSFont, value: Double) {
         currentValue = value
@@ -123,7 +155,7 @@ final class OverviewNumericTextView: NSView {
         textField.alignment = .right
         textField.lineBreakMode = .byClipping
         textField.usesSingleLineMode = true
-        model = OverviewNumericTextModel(text: text)
+        model = OverviewNumericTextModel(amount: value)
         hostingView = NSHostingView(
             rootView: OverviewNumericTextRoot(
                 model: model,
@@ -143,7 +175,6 @@ final class OverviewNumericTextView: NSView {
 
     deinit {
         finishWorkItem?.cancel()
-        interpolator?.cancel()
     }
 
     override func layout() {
@@ -195,66 +226,52 @@ final class OverviewNumericTextView: NSView {
 
     private func play(_ plan: OverviewNumericTransitionPlan) {
         finishWorkItem?.cancel()
-        interpolator?.cancel()
-        interpolator = nil
-        if case .currency = plan.format {
-            playInterpolated(plan)
-            return
-        }
         currentValue = plan.toValue
-        model.countsDown = plan.toValue < plan.fromValue
-        model.text = plan.startText
+        let parts = plan.format.displayParts
+        var startTransaction = Transaction()
+        startTransaction.disablesAnimations = true
+        withTransaction(startTransaction) {
+            model.apply(
+                parts: parts,
+                amount: plan.startValue,
+                countsDown: plan.toValue < plan.fromValue
+            )
+        }
         hostingView.isHidden = false
         textField.alphaValue = 0
+        textField.stringValue = plan.endText
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            withAnimation(.easeOut(duration: OverviewNumericTransition.duration)) {
-                self.model.text = plan.endText
+            withAnimation(Self.digitRollAnimation(for: plan.format)) {
+                self.model.amount = plan.toValue
             }
-            self.textField.stringValue = plan.endText
-            let work = DispatchWorkItem { [weak self] in
-                self?.applyImmediate(text: plan.endText, value: plan.toValue)
-            }
-            self.finishWorkItem = work
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + OverviewNumericTransition.duration,
-                execute: work
-            )
         }
     }
 
-    private func playInterpolated(_ plan: OverviewNumericTransitionPlan) {
-        guard let sample else {
-            applyImmediate(text: plan.endText, value: plan.toValue)
-            return
+    private static func digitRollAnimation(for format: OverviewNumericFormat) -> Animation {
+        switch format {
+        case .currency:
+            return .snappy(duration: OverviewNumericTransition.currencyDigitRollDuration, extraBounce: 0)
+        case .integerPercent, .integerCount:
+            return .easeOut(duration: OverviewNumericTransition.duration)
         }
-        hostingView.isHidden = true
-        textField.alphaValue = 1
-        currentValue = plan.startValue
-        let startText = sample.format.displayText(for: plan.startValue)
-        textField.stringValue = startText
-        model.text = startText
-        let interpolator = OverviewNumericInterpolator(
-            from: plan.fromValue,
-            to: plan.toValue
-        ) { [weak self] current in
-            guard let self else { return }
-            self.currentValue = current
-            let text = sample.format.displayText(for: current)
-            self.textField.stringValue = text
-            self.model.text = text
-        }
-        self.interpolator = interpolator
-        interpolator.start()
     }
 
     private func applyImmediate(text: String, value: Double) {
         finishWorkItem?.cancel()
         finishWorkItem = nil
-        interpolator?.cancel()
-        interpolator = nil
         currentValue = value
-        model.text = text
+        if let sample {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                model.apply(
+                    parts: sample.format.displayParts,
+                    amount: value,
+                    countsDown: false
+                )
+            }
+        }
         textField.stringValue = text
         textField.alphaValue = 1
         hostingView.isHidden = true

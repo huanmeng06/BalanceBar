@@ -36,6 +36,30 @@ enum OverviewNumericFormat: Equatable {
             return StatusItemController.formatBalanceSummary(value, unit: unit)
         }
     }
+
+    var displayParts: OverviewNumericDisplayParts {
+        switch self {
+        case .integerPercent:
+            return OverviewNumericDisplayParts(prefix: "", suffix: "%", fractionLength: 0)
+        case .integerCount:
+            return OverviewNumericDisplayParts(prefix: "", suffix: "", fractionLength: 0)
+        case .currency(let unit):
+            switch unit.uppercased() {
+            case "USD":
+                return OverviewNumericDisplayParts(prefix: "$", suffix: "", fractionLength: 2)
+            case "CNY", "CNH", "RMB":
+                return OverviewNumericDisplayParts(prefix: "¥", suffix: "", fractionLength: 2)
+            default:
+                return OverviewNumericDisplayParts(prefix: "", suffix: " \(unit)", fractionLength: 2)
+            }
+        }
+    }
+}
+
+struct OverviewNumericDisplayParts: Equatable {
+    let prefix: String
+    let suffix: String
+    let fractionLength: Int
 }
 
 struct OverviewNumericSample: Equatable {
@@ -82,6 +106,16 @@ struct OverviewNumericTransitionPlan: Equatable {
 
 enum OverviewNumericTransition {
     static let duration: TimeInterval = 0.72
+    static let currencyDigitRollDuration: TimeInterval = 0.32
+
+    static func duration(for format: OverviewNumericFormat) -> TimeInterval {
+        switch format {
+        case .currency:
+            return currencyDigitRollDuration
+        case .integerPercent, .integerCount:
+            return duration
+        }
+    }
 
     static func plan(
         previous: OverviewNumericSample?,

@@ -97,6 +97,20 @@ final class OverviewNumericTransitionTests: XCTestCase {
         )
         XCTAssertEqual(OverviewNumericFormat.currency(unit: "USD").displayText(for: 1.70), "$1.70")
         XCTAssertEqual(OverviewNumericFormat.integerCount.displayText(for: 2), "2")
+
+        let cnyParts = OverviewNumericFormat.currency(unit: "CNY").displayParts
+        XCTAssertEqual(cnyParts.prefix, "¥")
+        XCTAssertEqual(cnyParts.suffix, "")
+        XCTAssertEqual(cnyParts.fractionLength, 2)
+        XCTAssertEqual(
+            cnyParts.prefix
+                + 1.70.formatted(.number.precision(.fractionLength(2)))
+                + cnyParts.suffix,
+            StatusItemController.formatBalanceSummary(1.70, unit: "CNY")
+        )
+        XCTAssertEqual(OverviewNumericFormat.currency(unit: "USD").displayParts.prefix, "$")
+        XCTAssertEqual(OverviewNumericFormat.integerPercent.displayParts.suffix, "%")
+        XCTAssertEqual(OverviewNumericFormat.integerPercent.displayParts.fractionLength, 0)
     }
 
     func testFiveHourAndSevenDayCachesDoNotOverwriteEachOther() {
@@ -206,7 +220,7 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(unchanged.startProgress, 40)
     }
 
-    func testCurrencyTextViewInterpolatesFormattedValuesInsteadOfReplacingTheWholeString() {
+    func testCurrencyTextViewUsesDigitRollInsteadOfCountingFormattedValues() {
         let previous = balanceSample(amount: 1.70, progress: 40)
         let current = balanceSample(amount: 1.50, progress: 30)
         let plan = OverviewNumericTransition.plan(
@@ -214,6 +228,7 @@ final class OverviewNumericTransitionTests: XCTestCase {
             current: current,
             reduceMotion: false
         )
+        XCTAssertEqual(OverviewNumericTransition.duration(for: plan.format), 0.32)
         let font = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
         let view = OverviewNumericTextView(
             text: plan.startText,
@@ -223,20 +238,16 @@ final class OverviewNumericTransitionTests: XCTestCase {
         view.configure(plan: plan, sample: current)
         XCTAssertEqual(view.textField.stringValue, "¥1.70")
         XCTAssertTrue(view.hasPendingAnimationForTesting)
-        XCTAssertFalse(view.isValueInterpolatingForTesting)
+        XCTAssertFalse(view.isDigitRollingForTesting)
 
         view.playPendingIfNeeded()
         XCTAssertFalse(view.hasPendingAnimationForTesting)
-        XCTAssertTrue(view.isValueInterpolatingForTesting)
-        XCTAssertEqual(view.textField.alphaValue, 1)
-        XCTAssertEqual(
-            view.textField.stringValue,
-            StatusItemController.formatBalanceSummary(view.currentValue, unit: "CNY")
-        )
-        XCTAssertGreaterThanOrEqual(view.currentValue, 1.50)
-        XCTAssertLessThanOrEqual(view.currentValue, 1.70)
-        XCTAssertNotEqual(view.textField.stringValue, "1.70")
-        XCTAssertTrue(view.textField.stringValue.hasPrefix("¥"))
+        XCTAssertTrue(view.isDigitRollingForTesting)
+        XCTAssertEqual(view.textField.alphaValue, 0)
+        XCTAssertEqual(view.currentValue, 1.50)
+        XCTAssertEqual(view.textField.stringValue, "¥1.50")
+        XCTAssertEqual(plan.format.displayParts.prefix, "¥")
+        XCTAssertEqual(plan.format.displayParts.fractionLength, 2)
     }
 
     private var fiveHour: OverviewNumericIdentity {

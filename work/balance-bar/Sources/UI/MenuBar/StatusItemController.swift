@@ -5945,7 +5945,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         progress.frame = frame
         progress.identifier = OverviewNumericPresentation.progressIdentifier(for: plan.identity)
         if plan.animates, let target = plan.toProgress {
-            progress.setPercentage(target, animated: true)
+            progress.setPercentage(
+                target,
+                animated: true,
+                duration: OverviewNumericTransition.duration(for: plan.format)
+            )
         }
         return progress
     }
@@ -6012,7 +6016,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let progress = progressViews.first(where: {
                 $0.identifier == OverviewNumericPresentation.progressIdentifier(for: sample.identity)
             }), let target = sample.progressPercentage {
-                progress.setPercentage(target, animated: !reduceMotion)
+                progress.setPercentage(
+                    target,
+                    animated: !reduceMotion,
+                    duration: OverviewNumericTransition.duration(for: sample.format)
+                )
             }
         }
     }
