@@ -4030,7 +4030,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeEfficient), "性能（Beta）")
         let synchronizedSubtitle = "同步：所有显示器上的动画保持同步，但资源占用显著更高"
-        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，运行时副屏图标会消失，仅保留数值部分，如有不便，敬请谅解"
+        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，运行时副屏图标会消失，仅保留数值部分。如有不便，敬请谅解"
         XCTAssertEqual(
             DashboardMenuBarPage.animationModeDescription(
                 mode: .synchronized,
@@ -4057,7 +4057,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 mode: .efficient,
                 language: .english
             ),
-            "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nBeta: Because of macOS system limits, the secondary-display icon disappears at runtime, leaving only the numeric portion; sorry for the inconvenience"
+            "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nBeta: Because of macOS system limits, the secondary-display icon disappears at runtime, leaving only the numeric portion. Sorry for the inconvenience"
         )
         func subtitleText() -> String? {
             descendants(of: page)
@@ -4310,7 +4310,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
         )
-        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，运行时副屏图标会消失，仅保留数值部分，如有不便，敬请谅解"
+        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，运行时副屏图标会消失，仅保留数值部分。如有不便，敬请谅解"
         let synchronizedSubtitle = "同步：所有显示器上的动画保持同步，但资源占用显著更高"
 
         func assertPlainSubtitle(_ expected: String) {

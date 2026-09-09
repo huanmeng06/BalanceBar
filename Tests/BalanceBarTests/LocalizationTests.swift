@@ -716,33 +716,24 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
-    func testAnimationModeCopyOmitsFullStopsAcrossAllLanguages() {
-        let fullStops = [".", "。", "．"]
+    func testAnimationRelatedCopyAllowsMidSentenceFullStopsButNotTrailingOnes() {
+        let fullStops: Set<Character> = [".", "。", "．"]
+        let keys: [LocalizationKey] = [
+            .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
+            .keyDashboardMenuBarPageAnimationModeDescriptionSynchronized,
+            .keyDashboardMenuBarPageAnimationModeFallback,
+            .keyDashboardMenuBarPageAnimationFrameRateDescription,
+            .keyDashboardMenuBarPageAnimationFrameRateCPUEstimate,
+            .keyDashboardMenuBarPageAnimationFrameRateCPUEstimateRange
+        ]
         for language in allLanguages {
-            let efficientDescription = tr(
-                .keyDashboardMenuBarPageAnimationModeDescriptionEfficient,
-                language: language
-            )
-            let synchronizedDescription = tr(
-                .keyDashboardMenuBarPageAnimationModeDescriptionSynchronized,
-                language: language
-            )
-            let fallback = tr(
-                .keyDashboardMenuBarPageAnimationModeFallback,
-                language: language
-            )
-            XCTAssertFalse(
-                efficientDescription.contains { fullStops.contains(String($0)) },
-                "efficient animation mode description contains a full stop in \(language.rawValue)"
-            )
-            XCTAssertFalse(
-                synchronizedDescription.contains { fullStops.contains(String($0)) },
-                "synchronized animation mode description contains a full stop in \(language.rawValue)"
-            )
-            XCTAssertFalse(
-                fallback.contains { fullStops.contains(String($0)) },
-                "animation mode fallback contains a full stop in \(language.rawValue)"
-            )
+            for key in keys {
+                let value = tr(key, language: language)
+                XCTAssertFalse(
+                    value.last.map(fullStops.contains) ?? false,
+                    "\(key.rawKey) ends with a full stop in \(language.rawValue): \(value)"
+                )
+            }
         }
     }
 
@@ -818,8 +809,8 @@ final class LocalizationTests: XCTestCase {
 
     func testPerformanceBetaCopyIsPlainTextWithoutRestartHintInEveryLanguage() {
         let expectedEfficient: [AppLanguage: String] = [
-            .simplifiedChinese: "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，运行时副屏图标会消失，仅保留数值部分，如有不便，敬请谅解",
-            .english: "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nBeta: Because of macOS system limits, the secondary-display icon disappears at runtime, leaving only the numeric portion; sorry for the inconvenience"
+            .simplifiedChinese: "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，运行时副屏图标会消失，仅保留数值部分。如有不便，敬请谅解",
+            .english: "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nBeta: Because of macOS system limits, the secondary-display icon disappears at runtime, leaving only the numeric portion. Sorry for the inconvenience"
         ]
         let firstLines: [AppLanguage: String] = [
             .simplifiedChinese: "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起",
@@ -943,7 +934,7 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["8"],
                 language: .simplifiedChinese
             ),
-            "当前设置下，动画运行时大约占用单核 8%。"
+            "当前设置下，动画运行时大约占用单核 8%"
         )
         XCTAssertEqual(
             tr(
@@ -951,7 +942,7 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["8"],
                 language: .english
             ),
-            "At this setting, animation uses about 8% of one CPU core."
+            "At this setting, animation uses about 8% of one CPU core"
         )
         XCTAssertEqual(
             tr(
@@ -959,7 +950,7 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["8", "13"],
                 language: .simplifiedChinese
             ),
-            "当前设置下，动画运行时大约占用单核 8%–13%。"
+            "当前设置下，动画运行时大约占用单核 8%–13%"
         )
         XCTAssertEqual(
             tr(
@@ -967,21 +958,21 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["8", "13"],
                 language: .english
             ),
-            "At this setting, animation uses about 8%–13% of one CPU core."
+            "At this setting, animation uses about 8%–13% of one CPU core"
         )
         XCTAssertEqual(
             tr(
                 .keyDashboardMenuBarPageAnimationFrameRateDescription,
                 language: .simplifiedChinese
             ),
-            "帧率越低越省电、占用越少；帧率越高动画越顺，但占用更高。"
+            "帧率越低越省电、占用越少；帧率越高动画越顺，但占用更高"
         )
         XCTAssertEqual(
             tr(
                 .keyDashboardMenuBarPageAnimationFrameRateDescription,
                 language: .english
             ),
-            "Lower frame rates use less power and CPU. Higher frame rates look smoother, but use more."
+            "Lower frame rates use less power and CPU. Higher frame rates look smoother, but use more"
         )
     }
 
