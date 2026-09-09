@@ -4449,7 +4449,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
             DashboardMenuBarPage.animationFrameRateSubtitle(mode: .efficient, fps: 24)
         )
         XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("4%"))
+        XCTAssertTrue(try XCTUnwrap(subtitleText()).contains("仅供参考"))
         XCTAssertFalse(try XCTUnwrap(subtitleText()).contains("–"))
+        let subtitleField = try XCTUnwrap(
+            descendants(of: animationFrameRateRow)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == subtitleIdentifier }
+        )
+        let percentRange = (subtitleField.attributedStringValue.string as NSString).range(of: "4%")
+        XCTAssertNotEqual(percentRange.location, NSNotFound)
+        let percentFont = try XCTUnwrap(
+            subtitleField.attributedStringValue.attribute(
+                .font,
+                at: percentRange.location,
+                effectiveRange: nil
+            ) as? NSFont
+        )
+        XCTAssertTrue(
+            percentFont.fontDescriptor.symbolicTraits.contains(.bold),
+            "CPU percent must be bold"
+        )
 
         let modeControl = try XCTUnwrap(
             descendants(of: page)

@@ -316,8 +316,8 @@
 "dashboard.menu.bar.page.animation_mode_fallback" = "현재 성능 모드에서 애니메이션을 정상적으로 재생할 수 없어 일시적으로 동기화 모드를 사용하고 있습니다";
 "dashboard.menu.bar.page.animation_frame_rate" = "애니메이션 프레임 속도";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "프레임 속도가 낮을수록 전력과 점유가 줄고, 높을수록 더 부드럽지만 점유가 커집니다";
-"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "현재 설정에서 애니메이션은 단일 코어의 약 %1$@%%를 사용합니다";
-"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "현재 설정에서 애니메이션은 단일 코어의 약 %1$@%%–%2$@%%를 사용합니다";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "CPU 단일 코어 약 %1$@%% 사용 (참고용)";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "CPU 단일 코어 약 %1$@%%–%2$@%% 사용 (참고용)";
 "dashboard.menu.bar.page.animation_frame_rate_unit" = "FPS";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "작업 실행 중 아이콘 애니메이션";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "작업 실행 중 메뉴 막대에서 아이콘 애니메이션을 재생합니다; 기기 성능이 낮다면 끄면 리소스 사용량을 줄일 수 있습니다";

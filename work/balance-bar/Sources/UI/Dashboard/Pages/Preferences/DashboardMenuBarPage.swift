@@ -1424,13 +1424,12 @@ final class DashboardMenuBarPage {
         )
         self.animationModeRow = animationModeRow
         applyAnimationModeSubtitle(mode: input.preferences.menuBarAnimationMode)
+        let animationFrameRateSubtitle = Self.animationFrameRateSubtitleContent(
+            mode: input.preferences.menuBarAnimationMode,
+            fps: input.preferences.menuBarAnimationFrameRate
+        )
         let animationFrameRateSubtitleLabel = DashboardSettingsComponents.makeSubtitleLabel(
-            LocalizedSubtitle(
-                text: Self.animationFrameRateSubtitle(
-                    mode: input.preferences.menuBarAnimationMode,
-                    fps: input.preferences.menuBarAnimationFrameRate
-                )
-            )
+            animationFrameRateSubtitle
         )
         animationFrameRateSubtitleLabel.identifier = NSUserInterfaceItemIdentifier(
             Self.animationFrameRateIdentifier + "Subtitle"
@@ -1438,10 +1437,7 @@ final class DashboardMenuBarPage {
         self.animationFrameRateSubtitleLabel = animationFrameRateSubtitleLabel
         let animationFrameRateRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuBarPageAnimationFrameRate),
-            subtitle: Self.animationFrameRateSubtitle(
-                mode: input.preferences.menuBarAnimationMode,
-                fps: input.preferences.menuBarAnimationFrameRate
-            ),
+            subtitleContent: animationFrameRateSubtitle,
             subtitleLabel: animationFrameRateSubtitleLabel,
             control: animationFrameRateControl
         )
@@ -1939,11 +1935,9 @@ final class DashboardMenuBarPage {
         )
         DashboardSettingsComponents.updateSubtitleLabel(
             animationFrameRateSubtitleLabel,
-            with: LocalizedSubtitle(
-                text: Self.animationFrameRateSubtitle(
-                    mode: preferences.menuBarAnimationMode,
-                    fps: preferences.menuBarAnimationFrameRate
-                )
+            with: Self.animationFrameRateSubtitleContent(
+                mode: preferences.menuBarAnimationMode,
+                fps: preferences.menuBarAnimationFrameRate
             )
         )
         updateIconAndTaskStatusVisibility(
@@ -2746,6 +2740,14 @@ final class DashboardMenuBarPage {
         fps: Int,
         language: AppLanguage = .selected
     ) -> String {
+        animationFrameRateSubtitleContent(mode: mode, fps: fps, language: language).text
+    }
+
+    static func animationFrameRateSubtitleContent(
+        mode: MenuBarAnimationMode,
+        fps: Int,
+        language: AppLanguage = .selected
+    ) -> LocalizedSubtitle {
         let line1 = tr(
             .keyDashboardMenuBarPageAnimationFrameRateDescription,
             language: language
@@ -2767,7 +2769,24 @@ final class DashboardMenuBarPage {
                 language: language
             )
         }
-        return "\(line1)\n\(line2)"
+        let text = "\(line1)\n\(line2)"
+        let offset = (line1 as NSString).length + 1
+        let emphasis = Self.cpuEstimatePercentRanges(in: line2).map { range in
+            NSRange(location: range.location + offset, length: range.length)
+        }
+        return LocalizedSubtitle(text: text, emphasisGroups: emphasis)
+    }
+
+    private static let cpuEstimatePercentRegex = try! NSRegularExpression(
+        pattern: #"\d+\s*%(?:–\d+\s*%)?"#
+    )
+
+    private static func cpuEstimatePercentRanges(in text: String) -> [NSRange] {
+        let nsText = text as NSString
+        return cpuEstimatePercentRegex.matches(
+            in: text,
+            range: NSRange(location: 0, length: nsText.length)
+        ).map(\.range)
     }
 
     private func makeQuotaResetDisplayModeControl(

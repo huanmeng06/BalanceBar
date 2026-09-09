@@ -916,6 +916,10 @@ final class LocalizationTests: XCTestCase {
             XCTAssertTrue(estimate.contains("8"))
             XCTAssertTrue(estimate.contains("%"))
             XCTAssertFalse(estimate.contains("–"))
+            XCTAssertTrue(
+                estimate.contains("（") || estimate.contains("("),
+                "CPU estimate must mark itself as approximate in \(language.rawValue)"
+            )
             let range = tr(
                 .keyDashboardMenuBarPageAnimationFrameRateCPUEstimateRange,
                 arguments: ["8", "13"],
@@ -926,6 +930,10 @@ final class LocalizationTests: XCTestCase {
             XCTAssertTrue(range.contains("13"))
             XCTAssertTrue(range.contains("%"))
             XCTAssertTrue(range.contains("–"))
+            XCTAssertTrue(
+                range.contains("（") || range.contains("("),
+                "CPU estimate range must mark itself as approximate in \(language.rawValue)"
+            )
         }
 
         XCTAssertEqual(
@@ -934,7 +942,7 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["8"],
                 language: .simplifiedChinese
             ),
-            "当前设置下，动画运行时大约占用单核 8%"
+            "大约占用 CPU 单核 8%（仅供参考）"
         )
         XCTAssertEqual(
             tr(
@@ -942,7 +950,7 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["8"],
                 language: .english
             ),
-            "At this setting, animation uses about 8% of one CPU core"
+            "About 8% of one CPU core (estimate only)"
         )
         XCTAssertEqual(
             tr(
@@ -950,7 +958,7 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["8", "13"],
                 language: .simplifiedChinese
             ),
-            "当前设置下，动画运行时大约占用单核 8%–13%"
+            "大约占用 CPU 单核 8%–13%（仅供参考）"
         )
         XCTAssertEqual(
             tr(
@@ -958,7 +966,7 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["8", "13"],
                 language: .english
             ),
-            "At this setting, animation uses about 8%–13% of one CPU core"
+            "About 8%–13% of one CPU core (estimate only)"
         )
         XCTAssertEqual(
             tr(
@@ -974,6 +982,47 @@ final class LocalizationTests: XCTestCase {
             ),
             "Lower frame rates use less power and CPU. Higher frame rates look smoother, but use more"
         )
+    }
+
+    func testAnimationFrameRateCPUEstimateMarksPercentForEmphasisAcrossLanguages() {
+        for language in allLanguages {
+            let single = DashboardMenuBarPage.animationFrameRateSubtitleContent(
+                mode: .efficient,
+                fps: 24,
+                language: language
+            )
+            XCTAssertEqual(
+                single.emphasisGroups.count,
+                1,
+                "single-core estimate must bold the percent in \(language.rawValue)"
+            )
+            guard let singleRange = single.emphasisGroups.first else { continue }
+            let singleToken = (single.text as NSString).substring(with: singleRange)
+            XCTAssertTrue(
+                singleToken.contains("4") && singleToken.contains("%"),
+                "\(language.rawValue) single emphasis should be 4%: \(singleToken)"
+            )
+            XCTAssertFalse(
+                single.text.hasSuffix(".") || single.text.hasSuffix("。") || single.text.hasSuffix("．")
+            )
+
+            let range = DashboardMenuBarPage.animationFrameRateSubtitleContent(
+                mode: .synchronized,
+                fps: 24,
+                language: language
+            )
+            XCTAssertEqual(
+                range.emphasisGroups.count,
+                1,
+                "range estimate must bold the percent span in \(language.rawValue)"
+            )
+            guard let rangeEmphasis = range.emphasisGroups.first else { continue }
+            let rangeToken = (range.text as NSString).substring(with: rangeEmphasis)
+            XCTAssertTrue(
+                rangeToken.contains("%") && rangeToken.contains("–"),
+                "\(language.rawValue) range emphasis should keep the percent span: \(rangeToken)"
+            )
+        }
     }
 
     func testTaskAnimationTitleAndSubtitleAreLocalizedAcrossAllLanguages() {

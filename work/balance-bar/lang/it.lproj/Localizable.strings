@@ -316,8 +316,8 @@
 "dashboard.menu.bar.page.animation_mode_fallback" = "Al momento l’animazione non può essere riprodotta correttamente in modalità Prestazioni, quindi viene usata temporaneamente la modalità Sincronizzata";
 "dashboard.menu.bar.page.animation_frame_rate" = "Frequenza animazione";
 "dashboard.menu.bar.page.animation_frame_rate_description" = "Un valore più basso risparmia energia e CPU. Uno più alto è più fluido, ma usa di più";
-"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "Con questa impostazione, l’animazione usa circa il %1$@ %% di un core CPU";
-"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "Con questa impostazione, l’animazione usa circa il %1$@ %%–%2$@ %% di un core CPU";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate" = "Circa il %1$@ %% di un core CPU (solo indicativo)";
+"dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range" = "Circa il %1$@ %%–%2$@ %% di un core CPU (solo indicativo)";
 "dashboard.menu.bar.page.animation_frame_rate_unit" = "FPS";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animazione dell’icona durante l’attività";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Riproduce l’animazione dell’icona nella barra dei menu durante un’attività; disattivala per ridurre l’uso delle risorse sui dispositivi meno potenti";

@@ -271,17 +271,20 @@ struct LocalizedSubtitle: Equatable {
     let semanticGroups: [NSRange]
     let atomicGroups: [NSRange]
     let lineBreakBeforeSemanticGroups: [NSRange]
+    let emphasisGroups: [NSRange]
 
     init(
         text: String,
         semanticGroups: [NSRange] = [],
         atomicGroups: [NSRange] = [],
-        lineBreakBeforeSemanticGroups: [NSRange] = []
+        lineBreakBeforeSemanticGroups: [NSRange] = [],
+        emphasisGroups: [NSRange] = []
     ) {
         self.text = text
         self.semanticGroups = semanticGroups
         self.atomicGroups = atomicGroups
         self.lineBreakBeforeSemanticGroups = lineBreakBeforeSemanticGroups
+        self.emphasisGroups = emphasisGroups
     }
 
     /// Compatibility-friendly aliases for callers that describe these as
