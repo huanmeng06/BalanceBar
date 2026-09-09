@@ -149,4 +149,29 @@ final class CurrentAgentOpenPlannerTests: XCTestCase {
         XCTAssertEqual(chatGPTOpens, 0)
         XCTAssertEqual(activated, [])
     }
+
+    func testBringToFrontRejectsPIDsThatAreNotRunningApplications() {
+        XCTAssertFalse(CurrentAgentApplicationActivator.bringToFront(pid: Int32.max))
+    }
+
+    func testAppleScriptActivateSourceTargetsTheApplicationId() {
+        XCTAssertEqual(
+            CurrentAgentApplicationActivator.appleScriptSource(
+                bundleIdentifier: "com.mitchellh.ghostty"
+            ),
+            "tell application id \"com.mitchellh.ghostty\" to activate"
+        )
+        XCTAssertEqual(
+            CurrentAgentApplicationActivator.appleScriptSource(
+                bundleIdentifier: "com.apple.Terminal"
+            ),
+            "tell application id \"com.apple.Terminal\" to activate"
+        )
+        XCTAssertEqual(
+            CurrentAgentApplicationActivator.appleScriptSource(
+                bundleIdentifier: #"app"id"#
+            ),
+            #"tell application id "app\"id" to activate"#
+        )
+    }
 }

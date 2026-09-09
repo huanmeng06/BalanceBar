@@ -71,6 +71,91 @@ enum CurrentAgentOpenPlanner {
     }
 }
 
+/// Brings the terminal that owns the current Grok/Claude process to the
+/// front. A status-item menu action runs while BalanceBar is `.accessory`
+/// and the menu is still tearing down, so a synchronous
+/// `NSRunningApplication.activate()` is swallowed and the window stays
+/// behind. Match the ChatGPT / CC Switch path: yield activation, then
+/// `NSWorkspace.openApplication` after the menu has closed.
+enum CurrentAgentApplicationActivator {
+    static let menuTeardownDelay: TimeInterval = 0.12
+
+    @discardableResult
+    static func bringToFront(pid: Int32) -> Bool {
+        guard let app = NSRunningApplication(processIdentifier: pid) else {
+            return false
+        }
+        let bundleURL = app.bundleURL
+        let bundleIdentifier = app.bundleIdentifier
+        DispatchQueue.main.async {
+            performBringToFront(
+                pid: pid,
+                bundleURL: bundleURL,
+                bundleIdentifier: bundleIdentifier,
+                openWithWorkspace: true
+            )
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + menuTeardownDelay) {
+            performBringToFront(
+                pid: pid,
+                bundleURL: bundleURL,
+                bundleIdentifier: bundleIdentifier,
+                openWithWorkspace: false
+            )
+        }
+        return true
+    }
+
+    static func performBringToFront(
+        pid: Int32,
+        bundleURL: URL?,
+        bundleIdentifier: String?,
+        openWithWorkspace: Bool
+    ) {
+        if let app = NSRunningApplication(processIdentifier: pid) {
+            NSApp.yieldActivation(to: app)
+            _ = app.activate(from: NSRunningApplication.current)
+            _ = app.activate()
+            _ = app.unhide()
+        }
+        if let bundleIdentifier {
+            activateWithAppleScript(bundleIdentifier: bundleIdentifier)
+        }
+        guard openWithWorkspace, let bundleURL else { return }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { _, error in
+            if let error {
+                SwitchLog.write(
+                    "open current agent terminal workspace failed; pid=\(pid); path=\(bundleURL.path); error=\(error.localizedDescription)",
+                    level: .warning,
+                    category: "ui.menu"
+                )
+            }
+        }
+    }
+
+    static func appleScriptSource(bundleIdentifier: String) -> String {
+        let escaped = bundleIdentifier
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "tell application id \"\(escaped)\" to activate"
+    }
+
+    private static func activateWithAppleScript(bundleIdentifier: String) {
+        var error: NSDictionary?
+        _ = NSAppleScript(source: appleScriptSource(bundleIdentifier: bundleIdentifier))?
+            .executeAndReturnError(&error)
+        if let error {
+            SwitchLog.write(
+                "open current agent terminal AppleScript failed; bundle=\(bundleIdentifier); error=\(error)",
+                level: .debug,
+                category: "ui.menu"
+            )
+        }
+    }
+}
+
 struct CurrentAgentOpener {
     var loadSnapshot: () -> TerminalCLIProcessSnapshot?
     var runningApplicationPIDs: () -> Set<Int32>
@@ -94,7 +179,7 @@ struct CurrentAgentOpener {
             },
             openChatGPT: openChatGPT,
             activateApplication: { pid in
-                NSRunningApplication(processIdentifier: pid)?.activate() ?? false
+                CurrentAgentApplicationActivator.bringToFront(pid: pid)
             }
         )
     }
