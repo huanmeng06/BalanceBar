@@ -79,7 +79,6 @@ final class DashboardPreferencePageRelay: NSObject {
     var onCheckForUpdates: (() -> Void)?
     var onInstallUpdate: (() -> Void)?
     var onOpenUpdateNotes: (() -> Void)?
-    var onOpenOpenCodex: (() -> Void)?
     var onRefreshLog: (() -> Void)?
     var onRevealLog: (() -> Void)?
     var onOffsetAdjust: ((String, Int) -> Void)?
@@ -216,10 +215,6 @@ final class DashboardPreferencePageRelay: NSObject {
 
     @objc func openUpdateNotes(_ sender: NSButton) {
         onOpenUpdateNotes?()
-    }
-
-    @objc func openOpenCodex(_ sender: NSButton) {
-        onOpenOpenCodex?()
     }
 
     @objc func refreshLog(_ sender: NSButton) {

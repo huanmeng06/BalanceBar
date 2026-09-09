@@ -2006,10 +2006,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let openDashboard: () -> Void
         let openChatGPT: () -> Void
         let openCCSwitch: () -> Void
-        let openOpenCodex: () -> Void
         let quit: () -> Void
         let switchProvider: (String) -> Void
-        let switchOpenCodexPreference: (OpenCodexPreference) -> Void
         let openProviderWebsite: () -> Void
         let openStatusLink: (URL) -> Void
         let iconChanged: (NSImage?) -> Void
@@ -2025,10 +2023,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             openDashboard: @escaping () -> Void,
             openChatGPT: @escaping () -> Void,
             openCCSwitch: @escaping () -> Void,
-            openOpenCodex: @escaping () -> Void,
             quit: @escaping () -> Void,
             switchProvider: @escaping (String) -> Void,
-            switchOpenCodexPreference: @escaping (OpenCodexPreference) -> Void,
             openProviderWebsite: @escaping () -> Void,
             openStatusLink: @escaping (URL) -> Void,
             iconChanged: @escaping (NSImage?) -> Void,
@@ -2043,10 +2039,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.openDashboard = openDashboard
             self.openChatGPT = openChatGPT
             self.openCCSwitch = openCCSwitch
-            self.openOpenCodex = openOpenCodex
             self.quit = quit
             self.switchProvider = switchProvider
-            self.switchOpenCodexPreference = switchOpenCodexPreference
             self.openProviderWebsite = openProviderWebsite
             self.openStatusLink = openStatusLink
             self.iconChanged = iconChanged
@@ -2139,9 +2133,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     struct MenuInput: Equatable {
-        let openCodexCards: [OpenCodexModelCard]
-        let openCodexState: OpenCodexRuntimeState?
-        let openCodexSwitchInFlight: Bool
         let choices: [ProviderChoice]
         let quickSwitchSummaries: [String: String]
         let activeClient: AssistantClient
@@ -2150,7 +2141,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showQuickSwitchMenu: Bool
         let showOpenChatGPTMenu: Bool
         let showOpenCCSwitchMenu: Bool
-        let showOpenCodexMenu: Bool
         let showStatusMenu: Bool
         let lunaReserveDisplayMode: LunaReserveDisplayMode
         let lunaReserveHideExhaustedQuota: Bool
@@ -2158,9 +2148,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showsAvailableUpdateBadge: Bool
 
         init(
-            openCodexCards: [OpenCodexModelCard],
-            openCodexState: OpenCodexRuntimeState?,
-            openCodexSwitchInFlight: Bool,
             choices: [ProviderChoice],
             quickSwitchSummaries: [String: String],
             activeClient: AssistantClient,
@@ -2169,16 +2156,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showQuickSwitchMenu: Bool,
             showOpenChatGPTMenu: Bool,
             showOpenCCSwitchMenu: Bool,
-            showOpenCodexMenu: Bool,
             showStatusMenu: Bool,
             lunaReserveDisplayMode: LunaReserveDisplayMode = .defaultValue,
             lunaReserveHideExhaustedQuota: Bool = false,
             bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
             showsAvailableUpdateBadge: Bool = false
         ) {
-            self.openCodexCards = openCodexCards
-            self.openCodexState = openCodexState
-            self.openCodexSwitchInFlight = openCodexSwitchInFlight
             self.choices = choices
             self.quickSwitchSummaries = quickSwitchSummaries
             self.activeClient = activeClient
@@ -2187,7 +2170,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showQuickSwitchMenu = showQuickSwitchMenu
             self.showOpenChatGPTMenu = showOpenChatGPTMenu
             self.showOpenCCSwitchMenu = showOpenCCSwitchMenu
-            self.showOpenCodexMenu = showOpenCodexMenu
             self.showStatusMenu = showStatusMenu
             self.lunaReserveDisplayMode = lunaReserveDisplayMode
             self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
@@ -2196,10 +2178,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.openCodexCards == rhs.openCodexCards
-                && lhs.openCodexState == rhs.openCodexState
-                && lhs.openCodexSwitchInFlight == rhs.openCodexSwitchInFlight
-                && lhs.choices.elementsEqual(rhs.choices) { left, right in
+            lhs.choices.elementsEqual(rhs.choices) { left, right in
                     left.id == right.id
                         && left.name == right.name
                         && left.isCurrent == right.isCurrent
@@ -2211,7 +2190,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showQuickSwitchMenu == rhs.showQuickSwitchMenu
                 && lhs.showOpenChatGPTMenu == rhs.showOpenChatGPTMenu
                 && lhs.showOpenCCSwitchMenu == rhs.showOpenCCSwitchMenu
-                && lhs.showOpenCodexMenu == rhs.showOpenCodexMenu
                 && lhs.showStatusMenu == rhs.showStatusMenu
                 && lhs.lunaReserveDisplayMode == rhs.lunaReserveDisplayMode
                 && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
@@ -2283,9 +2261,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var snapshot = Snapshot.placeholder
     private var refreshDate: Date?
     private var menuInput = MenuInput(
-        openCodexCards: [],
-        openCodexState: nil,
-        openCodexSwitchInFlight: false,
         choices: [],
         quickSwitchSummaries: [:],
         activeClient: .codex,
@@ -2294,7 +2269,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         showQuickSwitchMenu: true,
         showOpenChatGPTMenu: true,
         showOpenCCSwitchMenu: true,
-        showOpenCodexMenu: true,
         showStatusMenu: true,
         showsAvailableUpdateBadge: false
     )
@@ -3905,7 +3879,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         switch effectiveSnapshot.kind {
         case .official, .balance:
             return true
-        case .placeholder, .openCodex, .error:
+        case .placeholder, .error:
             return false
         }
     }
@@ -4713,7 +4687,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .placeholder: snapshotKind = "placeholder"
         case .official: snapshotKind = "official"
         case .balance: snapshotKind = "balance"
-        case .openCodex: snapshotKind = "openCodex"
         case .error: snapshotKind = "error"
         }
         let effectiveSnapshotSignature = MenuBarBitmapAnimationSnapshotSignature(
@@ -5065,48 +5038,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {
-        let effective = OpenCodexCardPresentation.menuBarSnapshot(
-            for: snapshot,
-            cards: menuInput.openCodexCards
-        )
-        let resolved = effective.menuBarSnapshot(
+        snapshot.menuBarSnapshot(
             preferredQuotaWindow: settings.quotaWindowPreference,
             automaticallyUseLunaReserve: settings.autoSwitchLunaReserve
         )
-        guard snapshot.kind == .openCodex else { return resolved }
-        let match = OpenCodexCardPresentation.menuBarCardMatch(from: menuInput.openCodexCards)
-        let cardSummary = menuInput.openCodexCards.enumerated()
-            .map { index, card in
-                "\(index){selector=\(card.selector),isCurrent=\(card.isCurrent),data=\(card.data.diagnosticName)}"
-            }
-            .joined(separator: ";")
-        let selection = match.card?.selector ?? "none"
-        let signature = [
-            snapshot.unit ?? "none",
-            cardSummary,
-            match.diagnosticReason,
-            snapshotKindDiagnosticName(resolved.kind),
-            resolved.menuBarPrimary,
-            resolved.menuBarSecondary
-        ].joined(separator: "|")
-        SwitchLog.write(
-            "OpenCodex menu bar resolution; runtime_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(resolved.kind)); primary=\(resolved.menuBarPrimary); secondary=\(resolved.menuBarSecondary)",
-            level: .debug,
-            category: "open-codex.menu-bar",
-            throttleKey: "open-codex-menu-resolution-\(signature)",
-            minimumInterval: 1
-        )
-        return resolved
-    }
-
-    private func snapshotKindDiagnosticName(_ kind: Snapshot.Kind) -> String {
-        switch kind {
-        case .placeholder: return "placeholder"
-        case .official: return "official"
-        case .balance: return "balance"
-        case .openCodex: return "openCodex"
-        case .error: return "error"
-        }
     }
 
     @objc private func manualRefresh() {
@@ -5132,17 +5067,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
     @objc private func openCCSwitch() { actions.openCCSwitch() }
-    @objc private func openOpenCodex() { actions.openOpenCodex() }
     @objc private func quit() { actions.quit() }
 
     @objc private func switchProvider(_ sender: NSMenuItem) {
         guard let providerID = sender.representedObject as? String else { return }
         actions.switchProvider(providerID)
-    }
-
-    @objc private func switchOpenCodexPreference(_ sender: NSMenuItem) {
-        guard let preference = sender.representedObject as? OpenCodexPreference else { return }
-        actions.switchOpenCodexPreference(preference)
     }
 
     @objc private func openStatusLink(_ sender: NSMenuItem) {
@@ -5168,20 +5097,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func rebuildStatusMenu() {
         statusMenuRebuildCountForTesting += 1
         statusMenu.removeAllItems()
-        if snapshot.kind == .openCodex {
-            if menuInput.openCodexCards.isEmpty {
-                statusMenu.addItem(makeOpenCodexEmptyMenuItem())
-            } else {
-                for (index, card) in menuInput.openCodexCards.enumerated() {
-                    statusMenu.addItem(makeOpenCodexCardMenuItem(card))
-                    if index < menuInput.openCodexCards.count - 1 {
-                        statusMenu.addItem(.separator())
-                    }
-                }
-            }
-        } else {
-            statusMenu.addItem(makeOverviewMenuItem(for: snapshot))
-        }
+        statusMenu.addItem(makeOverviewMenuItem(for: snapshot))
         statusMenu.addItem(.separator())
         if menuInput.showQuickSwitchMenu {
             statusMenu.addItem(makeQuickSwitchMenuItem())
@@ -5204,13 +5120,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             statusMenu.addItem(
                 withTitle: tr(.keyStatusItemControllerOpenCcSwitch),
                 action: #selector(openCCSwitch),
-                keyEquivalent: ""
-            ).target = self
-        }
-        if menuInput.showOpenCodexMenu {
-            statusMenu.addItem(
-                withTitle: tr(.keyStatusItemControllerOpenOpencodex),
-                action: #selector(openOpenCodex),
                 keyEquivalent: ""
             ).target = self
         }
@@ -5736,180 +5645,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             [provider, quotaDetail, amount].forEach(view.addSubview)
         }
-        item.view = view
-        return item
-    }
-
-    private func makeOpenCodexEmptyMenuItem() -> NSMenuItem {
-        let item = NSMenuItem()
-        item.isEnabled = false
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 68))
-        let title = makeOverviewLabel(
-            tr(.keyStatusItemControllerOpencodex),
-            font: .systemFont(ofSize: 15, weight: .semibold)
-        )
-        title.frame = NSRect(x: 14, y: 38, width: 220, height: 20)
-        let status: String
-        if let state = menuInput.openCodexState?.managementAvailable, !state {
-            status = tr(.keyStatusItemControllerOpencodexManagementApiIsUnavailable)
-        } else if menuInput.openCodexState?.preferenceDataAvailable == false {
-            status = tr(.keyStatusItemControllerOpencodexFeaturedModelsAreNotAvailableYet)
-        } else {
-            status = tr(.keyStatusItemControllerNoOpencodexFeaturedModelsAreConfigured)
-        }
-        let detail = makeOverviewLabel(status, font: .systemFont(ofSize: 12))
-        detail.textColor = .secondaryLabelColor
-        detail.frame = NSRect(x: 14, y: 14, width: 312, height: 18)
-        [title, detail].forEach(view.addSubview)
-        item.view = view
-        return item
-    }
-
-    private func makeOpenCodexCardMenuItem(_ card: OpenCodexModelCard) -> NSMenuItem {
-        let item = NSMenuItem()
-        let category = card.data.category
-        let layout = OpenCodexCardLayout.frames(
-            for: category,
-            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
-            includesQuotaProgress: settings.showQuotaProgressBar
-        )
-        let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
-        let titleText = OpenCodexCardPresentation.identity(for: card)
-            + (card.isCurrent ? tr(.keyStatusItemControllerCurrent) : "")
-        let provider = makeOverviewLabel(titleText, font: .systemFont(ofSize: 15, weight: .semibold))
-        provider.frame = layout.title
-        let updatedAt: Date?
-        switch card.data {
-        case .official(_, _, _, let date), .officialWithWindow(_, let date), .balance(_, _, _, _, let date):
-            updatedAt = date
-        case .loading, .unavailable:
-            updatedAt = nil
-        }
-        let refreshTime = makeOverviewLabel(
-            updatedAt.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--",
-            font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        )
-        refreshTime.textColor = .secondaryLabelColor
-        refreshTime.alignment = .right
-        refreshTime.frame = layout.refreshTime
-
-        let primary: NSTextField
-        let detail: NSView
-        let secondary: NSView
-        var progress: QuotaProgressView?
-        var websiteLink: HoverLinkTextField?
-        switch card.data {
-        case .official, .officialWithWindow:
-            let window = card.data.officialWindow!
-            let remaining = window.remaining
-            let label = window.label
-            if settings.showQuotaProgressBar {
-                progress = QuotaProgressView(percentage: remaining, colorConfiguration: settings.quotaProgressColorConfiguration)
-                progress?.frame = layout.progress ?? .zero
-            }
-            primary = makeOverviewLabel(
-                "\(Int(remaining))%",
-                font: .monospacedDigitSystemFont(
-                    ofSize: OpenCodexCardLayout.quotaAmountPointSize,
-                    weight: .semibold
-                )
-            )
-            primary.alignment = .right
-            primary.frame = layout.amount
-            detail = makeMarqueeOverviewLabel(
-                label,
-                font: .systemFont(
-                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                    weight: .medium
-                ),
-                textColor: .labelColor,
-                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
-            )
-            secondary = makeMarqueeOverviewLabel(
-                window.resetDisplayText().map {
-                    tr(.keyStatusItemControllerResetValue, arguments: [String(describing: $0)])
-                } ?? tr(.keyStatusItemControllerResetTimeUnavailable),
-                font: .systemFont(
-                    ofSize: OpenCodexCardLayout.quotaResetPointSize,
-                    weight: .regular
-                ),
-                textColor: .secondaryLabelColor,
-                frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: primary)
-            )
-        case .balance(let amount, let unit, let progressPercentage, let websiteURL, _):
-            if settings.showQuotaProgressBar {
-                progress = QuotaProgressView(percentage: progressPercentage, colorConfiguration: settings.quotaProgressColorConfiguration)
-                progress?.frame = layout.progress ?? .zero
-            }
-            primary = makeOverviewLabel(Self.formatBalanceSummary(amount, unit: unit), font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
-            primary.alignment = .right
-            primary.frame = layout.amount
-            detail = makeMarqueeOverviewLabel(
-                tr(.keyStatusItemControllerRemainingBalance),
-                font: .systemFont(ofSize: 13, weight: .medium),
-                textColor: .labelColor,
-                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
-            )
-            let linkPrefix = makeOverviewLabel(
-                tr(.keyStatusItemControllerOfficialLink2),
-                font: .systemFont(ofSize: 12, weight: .regular)
-            )
-            linkPrefix.textColor = .secondaryLabelColor
-            linkPrefix.frame = layout.linkPrefix ?? .zero
-            secondary = linkPrefix
-            if let websiteURL, let linkFrame = layout.link {
-                let link = HoverLinkTextField(text: card.provider)
-                link.frame = linkFrame
-                link.onActivate = { NSWorkspace.shared.open(websiteURL) }
-                websiteLink = link
-            }
-        case .loading:
-            primary = makeOverviewLabel("—", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
-            primary.alignment = .right
-            primary.frame = layout.amount
-            detail = makeMarqueeOverviewLabel(
-                category == .quota ? tr(.keyStatusItemControllerReadingQuota) : tr(.keyStatusItemControllerReadingBalance),
-                font: .systemFont(ofSize: 13, weight: .medium),
-                textColor: .labelColor,
-                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
-            )
-            secondary = makeMarqueeOverviewLabel(
-                tr(.keyStatusItemControllerNoLiveDataReceivedYet),
-                font: .systemFont(ofSize: 13, weight: .regular),
-                textColor: .secondaryLabelColor,
-                frame: overviewMarqueeFrame(layout.reset ?? layout.linkPrefix ?? .zero, avoiding: primary)
-            )
-        case .unavailable(_, let reason):
-            primary = makeOverviewLabel("—", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
-            primary.alignment = .right
-            primary.frame = layout.amount
-            detail = makeMarqueeOverviewLabel(
-                category.unavailableTitle,
-                font: .systemFont(ofSize: 13, weight: .medium),
-                textColor: .labelColor,
-                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
-            )
-            secondary = makeMarqueeOverviewLabel(
-                reason,
-                font: .systemFont(ofSize: 12, weight: .regular),
-                textColor: .secondaryLabelColor,
-                frame: overviewMarqueeFrame(layout.reset ?? layout.linkPrefix ?? .zero, avoiding: primary)
-            )
-        }
-        [provider, refreshTime, primary, detail, secondary].forEach(view.addSubview)
-        if let progress { view.addSubview(progress) }
-        if let websiteLink {
-            view.addSubview(websiteLink)
-            view.track(websiteLink)
-        }
-        let preference = menuInput.openCodexState?.preferences.first { $0.selector == card.selector }
-        item.target = self
-        item.action = #selector(switchOpenCodexPreference(_:))
-        item.representedObject = preference
-        item.state = card.isCurrent ? .on : .off
-        item.isEnabled = preference != nil
-            && menuInput.openCodexState?.managementAvailable == true
-            && !menuInput.openCodexSwitchInFlight
         item.view = view
         return item
     }

@@ -26,7 +26,6 @@ implementation.
 | --- | ---: | --- |
 | `DashboardCompositionController` | 333 | Dashboard window/page composition, Provider/preference page mounting, Status Links editor and scroll lifecycle |
 | `ProviderRefreshCoordinator` | 276 | Standard balance/quota requests, cadence, quick-switch summaries, fallback snapshots |
-| `OpenCodexRefreshCoordinator` | 265 | OpenCodex recognition, preference switching, card planning and card requests |
 | `ActivityCoordinator` | 171 | Codex/Claude monitor polling, frontmost-app observer and activity timer |
 | `ProviderSwitchCoordinator` | 68 | CC Switch stop/write/reopen transaction and Provider validation |
 | `CCSwitchDatabaseWatcher` | 73 | SQLite/WAL/directory file watchers and coalesced change callback |

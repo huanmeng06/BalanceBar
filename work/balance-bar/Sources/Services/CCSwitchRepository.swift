@@ -7,7 +7,6 @@ struct CCSwitchProvider {
     let isOfficial: Bool
     let query: BalanceQuery?
     let queryFailure: BalanceQueryFailure?
-    let openCodexCandidate: OpenCodexEndpointCandidate?
 }
 
 final class CCSwitchRepository {
@@ -80,8 +79,7 @@ final class CCSwitchRepository {
                 name: name,
                 isOfficial: true,
                 query: nil,
-                queryFailure: nil,
-                openCodexCandidate: nil
+                queryFailure: nil
             )
         }
 
@@ -98,8 +96,7 @@ final class CCSwitchRepository {
             name: name,
             isOfficial: false,
             query: query,
-            queryFailure: queryFailure,
-            openCodexCandidate: OpenCodexEndpointCandidate.parse(settingsConfig: configText)
+            queryFailure: queryFailure
         )
     }
 
@@ -229,7 +226,6 @@ final class CCSwitchRepository {
                     isOfficial: true,
                     query: nil,
                     officialAccessToken: accessToken,
-                    openCodexCandidate: nil,
                     websiteURL: websiteURL
                 ))
             } else {
@@ -245,9 +241,6 @@ final class CCSwitchRepository {
                     isOfficial: false,
                     query: query,
                     officialAccessToken: nil,
-                    openCodexCandidate: appType == "codex"
-                        ? OpenCodexEndpointCandidate.parse(settingsConfig: settingsText)
-                        : nil,
                     websiteURL: websiteURL
                 ))
             }

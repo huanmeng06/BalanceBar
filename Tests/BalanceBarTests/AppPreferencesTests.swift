@@ -48,7 +48,6 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.animateCodexActivity)
         XCTAssertTrue(preferences.showQuickSwitchMenu)
         XCTAssertTrue(preferences.showOpenCCSwitchMenu)
-        XCTAssertTrue(preferences.showOpenCodexMenu)
         XCTAssertTrue(preferences.showOpenChatGPTMenu)
         XCTAssertTrue(preferences.showStatusMenu)
         XCTAssertTrue(preferences.keepMenuOpenAfterRefresh)
@@ -58,7 +57,6 @@ final class AppPreferencesTests: XCTestCase {
         preferences.animateCodexActivity = false
         preferences.showQuickSwitchMenu = false
         preferences.showOpenCCSwitchMenu = false
-        preferences.showOpenCodexMenu = false
         preferences.showOpenChatGPTMenu = false
         preferences.showStatusMenu = false
         preferences.keepMenuOpenAfterRefresh = false
@@ -68,7 +66,6 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.animateCodexActivity)
         XCTAssertFalse(preferences.showQuickSwitchMenu)
         XCTAssertFalse(preferences.showOpenCCSwitchMenu)
-        XCTAssertFalse(preferences.showOpenCodexMenu)
         XCTAssertFalse(preferences.showOpenChatGPTMenu)
         XCTAssertFalse(preferences.showStatusMenu)
         XCTAssertFalse(preferences.keepMenuOpenAfterRefresh)
@@ -645,68 +642,6 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertNil(MenuBarIconSizePreset(segmentIndex: 3))
     }
 
-    func testOpenCodexDashboardPortOverridePersistsOnlyValidPorts() {
-        let (preferences, defaults, suite) = makePreferences()
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        XCTAssertNil(preferences.openCodexDashboardPortOverride)
-        for port in [1, 10100, 65535] {
-            preferences.openCodexDashboardPortOverride = port
-            XCTAssertEqual(preferences.openCodexDashboardPortOverride, port)
-            XCTAssertEqual(
-                defaults.integer(forKey: AppPreferences.openCodexDashboardPortOverrideKey),
-                port
-            )
-        }
-
-        preferences.openCodexDashboardPortOverride = 0
-        XCTAssertEqual(preferences.openCodexDashboardPortOverride, 65535)
-        preferences.openCodexDashboardPortOverride = 65536
-        XCTAssertEqual(preferences.openCodexDashboardPortOverride, 65535)
-        preferences.openCodexDashboardPortOverride = nil
-        XCTAssertNil(preferences.openCodexDashboardPortOverride)
-        XCTAssertNil(defaults.object(forKey: AppPreferences.openCodexDashboardPortOverrideKey))
-    }
-
-    func testOpenCodexDashboardPortOverrideIgnoresInvalidPersistedNumber() {
-        let (preferences, defaults, suite) = makePreferences()
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        defaults.set(65536, forKey: AppPreferences.openCodexDashboardPortOverrideKey)
-        XCTAssertNil(preferences.openCodexDashboardPortOverride)
-        defaults.set(10100.5, forKey: AppPreferences.openCodexDashboardPortOverrideKey)
-        XCTAssertNil(preferences.openCodexDashboardPortOverride)
-    }
-
-    func testOpenCodexDashboardAutomaticDetectionDefaultsOnAndPersistsMode() {
-        let (preferences, defaults, suite) = makePreferences()
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        XCTAssertTrue(preferences.openCodexDashboardAutomaticDetection)
-        preferences.openCodexDashboardAutomaticDetection = false
-        XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
-        XCTAssertEqual(
-            defaults.object(forKey: AppPreferences.openCodexDashboardAutomaticDetectionKey) as? Bool,
-            false
-        )
-
-        let reloaded = AppPreferences(defaults: defaults)
-        XCTAssertFalse(reloaded.openCodexDashboardAutomaticDetection)
-
-        reloaded.openCodexDashboardAutomaticDetection = true
-        XCTAssertTrue(reloaded.openCodexDashboardAutomaticDetection)
-    }
-
-    func testExistingPortOverrideKeepsManualModeUntilExplicitlyEnabled() {
-        let (preferences, defaults, suite) = makePreferences()
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        defaults.set(23456, forKey: AppPreferences.openCodexDashboardPortOverrideKey)
-        XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
-        preferences.openCodexDashboardAutomaticDetection = true
-        XCTAssertTrue(preferences.openCodexDashboardAutomaticDetection)
-    }
-
     func testInvalidIntervalsAndStatusLinkNormalization() throws {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -770,9 +705,6 @@ final class AppPreferencesTests: XCTestCase {
             AppPreferences.updateChannelKey: UpdateChannel.beta.rawValue,
             "showMenuBarIcon": false,
             "activityPollInterval": 4.0,
-            AppPreferences.showOpenCodexMenuKey: false,
-            AppPreferences.openCodexDashboardPortOverrideKey: 23456,
-            AppPreferences.openCodexDashboardAutomaticDetectionKey: false,
             AppPreferences.menuBarFontSizePresetKey: MenuBarFontSizePreset.medium.rawValue,
             AppPreferences.menuBarIconSizePresetKey: MenuBarIconSizePreset.large.rawValue,
             AppPreferences.menuBarPrimaryFontSizeKey: 14.2,
@@ -786,9 +718,6 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.showMenuBarIcon)
         XCTAssertEqual(preferences.updateChannel, .beta)
         XCTAssertEqual(preferences.activityPollInterval, 4)
-        XCTAssertFalse(preferences.showOpenCodexMenu)
-        XCTAssertEqual(preferences.openCodexDashboardPortOverride, 23456)
-        XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
         XCTAssertEqual(preferences.menuBarFontSizePreset, .medium)
         XCTAssertEqual(preferences.menuBarIconSizePreset, .large)
         XCTAssertEqual(preferences.menuBarIconDisplayMode, .onlyWhileRunning)

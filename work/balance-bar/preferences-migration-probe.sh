@@ -13,7 +13,6 @@ trap 'rm -rf "$probe_dir"' EXIT
         'enum AppPreferences {' \
         '    static let updateChannelKey = "updateChannel"' \
         '    static let silentLaunchKey = "silentLaunch"' \
-        '    static let showOpenCodexMenuKey = "showOpenCodexMenu"' \
         '    static let menuBarIconOffsetXKey = "menuBarIconOffsetX"' \
         '    static let menuBarIconOffsetYKey = "menuBarIconOffsetY"' \
         '    static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"' \

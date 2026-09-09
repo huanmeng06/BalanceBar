@@ -31,9 +31,7 @@ struct DashboardPreferencePageActions {
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
     let onOpenUpdateNotes: () -> Void
-    let onOpenOpenCodex: () -> Void
     let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
-    let onOpenCodexModeChanged: (OpenCodexDashboardMode) -> Void
     let onClamp: () -> Void
 }
 
@@ -90,7 +88,6 @@ final class DashboardPreferencePages {
         relay.onCheckForUpdates = actions.onCheckForUpdates
         relay.onInstallUpdate = actions.onInstallUpdate
         relay.onOpenUpdateNotes = actions.onOpenUpdateNotes
-        relay.onOpenOpenCodex = actions.onOpenOpenCodex
         relay.onRevealLog = { [weak self] in self?.logsPage.reveal() }
         relay.onRefreshLog = { [weak self] in self?.logsPage.refresh() }
     }
@@ -108,8 +105,6 @@ final class DashboardPreferencePages {
         animationKind: MenuBarCompositorAnimationKind? = nil,
         animationSpriteImage: NSImage? = nil,
         animationFallbackActive: Bool = false,
-        currentOpenCodexResolution: OpenCodexDashboardResolution?,
-        runtimeCandidate: OpenCodexEndpointCandidate?,
         updateState: UpdateCheckState
     ) -> NSView {
         switch section {
@@ -146,17 +141,8 @@ final class DashboardPreferencePages {
             ))
         case .advanced:
             return advancedPage.make(.init(
-                preferences: preferences,
-                mode: OpenCodexDashboardMode(
-                    automaticDetection: preferences.openCodexDashboardAutomaticDetection,
-                    manualPort: preferences.openCodexDashboardPortOverride
-                ),
-                currentResolution: currentOpenCodexResolution,
-                runtimeCandidate: runtimeCandidate,
                 relay: relay,
-                logViewer: logsPage.makeViewer(),
-                onModeChanged: actions.onOpenCodexModeChanged,
-                onClamp: actions.onClamp
+                logViewer: logsPage.makeViewer()
             ))
         case .about:
             return DashboardAboutPage.make(
@@ -252,16 +238,6 @@ final class DashboardPreferencePages {
         menuBarPage.restoreRequiredToggle(identifier: identifier)
     }
 
-    func refreshAdvanced(
-        currentOpenCodexResolution: OpenCodexDashboardResolution?,
-        runtimeCandidate: OpenCodexEndpointCandidate?
-    ) {
-        advancedPage.refresh(
-            currentResolution: currentOpenCodexResolution,
-            runtimeCandidate: runtimeCandidate
-        )
-    }
-
     func refreshUpdateState(_ updateState: UpdateCheckState) {
         generalPage.refresh(updateState: updateState)
     }
@@ -280,10 +256,6 @@ final class DashboardPreferencePages {
 
     func refreshLaunchWithChatGPT(_ state: LaunchWithChatGPTState) {
         generalPage.refreshLaunchWithChatGPT(state)
-    }
-
-    func handleAutomaticDetection(_ enabled: Bool) {
-        advancedPage.handleAutomaticDetection(enabled)
     }
 
     func updateMenuStatusVisibility(_ visible: Bool, animated: Bool) {

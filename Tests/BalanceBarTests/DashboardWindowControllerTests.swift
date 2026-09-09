@@ -696,16 +696,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
     }
 
-    func testMenuPageHasOnePersistentOpenCodexSwitchIndependentFromCCSwitch() throws {
+    func testMenuPageDoesNotExposeOpenCodexSwitchAndKeepsCCSwitchIndependent() throws {
         let defaults = UserDefaults.standard
-        let previousOpenCodexValue = defaults.object(forKey: AppPreferences.showOpenCodexMenuKey)
         let previousCCSwitchValue = defaults.object(forKey: "showOpenCCSwitchMenu")
         defer {
-            if let previousOpenCodexValue {
-                defaults.set(previousOpenCodexValue, forKey: AppPreferences.showOpenCodexMenuKey)
-            } else {
-                defaults.removeObject(forKey: AppPreferences.showOpenCodexMenuKey)
-            }
             if let previousCCSwitchValue {
                 defaults.set(previousCCSwitchValue, forKey: "showOpenCCSwitchMenu")
             } else {
@@ -713,7 +707,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         }
 
-        defaults.set(true, forKey: AppPreferences.showOpenCodexMenuKey)
         defaults.set(true, forKey: "showOpenCCSwitchMenu")
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-109-menu.db"))
@@ -722,26 +715,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
 
         let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
         layoutDescendants(of: page)
-        let openCodexSwitches = allControls(of: page, as: NSSwitch.self).filter {
-            $0.identifier?.rawValue == AppPreferences.showOpenCodexMenuKey
+        XCTAssertTrue(
+            allControls(of: page, as: NSSwitch.self)
+                .filter { $0.identifier?.rawValue == "showOpenCodexMenu" }
+                .isEmpty
+        )
+        XCTAssertFalse(
+            allControls(of: page, as: NSTextField.self)
+                .contains { $0.stringValue.localizedCaseInsensitiveContains("OpenCodex") }
+        )
+        let ccSwitchSwitches = allControls(of: page, as: NSSwitch.self).filter {
+            $0.identifier?.rawValue == "showOpenCCSwitchMenu"
         }
-        XCTAssertEqual(openCodexSwitches.count, 1)
-        let openCodexSwitch = try XCTUnwrap(openCodexSwitches.first)
-        XCTAssertEqual(openCodexSwitch.state, .on)
-
-        openCodexSwitch.state = .off
-        let target = try XCTUnwrap(openCodexSwitch.target as? NSObject)
-        _ = target.perform(openCodexSwitch.action, with: openCodexSwitch)
-        XCTAssertFalse(AppPreferences(defaults: defaults).showOpenCodexMenu)
+        XCTAssertEqual(ccSwitchSwitches.count, 1)
+        XCTAssertEqual(ccSwitchSwitches.first?.state, .on)
         XCTAssertTrue(AppPreferences(defaults: defaults).showOpenCCSwitchMenu)
-
-        let reopenedPage = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
-        layoutDescendants(of: reopenedPage)
-        let reloadedOpenCodexSwitches = allControls(of: reopenedPage, as: NSSwitch.self).filter {
-            $0.identifier?.rawValue == AppPreferences.showOpenCodexMenuKey
-        }
-        XCTAssertEqual(reloadedOpenCodexSwitches.count, 1)
-        XCTAssertEqual(reloadedOpenCodexSwitches.first?.state, .off)
     }
 
     func testProductionSettingsPagesPreserveSectionRowGeometryAndNativeActions() throws {
@@ -1096,10 +1084,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -1115,9 +1101,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             keepMenuOpenAfterRefresh: true
         )
         let baseInput = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -1128,7 +1111,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: false
         )
         controller.start(
@@ -1144,9 +1126,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         let visibleInput = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -1157,7 +1136,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         controller.updateMenu(input: visibleInput)
@@ -1187,10 +1165,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -1207,9 +1183,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         func input(account: OpenAIAccountPresentation?) -> StatusItemController.MenuInput {
             StatusItemController.MenuInput(
-                openCodexCards: [],
-                openCodexState: nil,
-                openCodexSwitchInFlight: false,
                 choices: [],
                 quickSwitchSummaries: [:],
                 activeClient: .codex,
@@ -1218,7 +1191,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 showQuickSwitchMenu: false,
                 showOpenChatGPTMenu: false,
                 showOpenCCSwitchMenu: false,
-                showOpenCodexMenu: false,
                 showStatusMenu: false
             )
         }
@@ -1862,10 +1834,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -1881,9 +1851,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             keepMenuOpenAfterRefresh: true
         )
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -1895,7 +1862,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: false,
             showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false,
-            showOpenCodexMenu: false,
             showStatusMenu: false
         )
         let shortQuota = "7-Tage-Kontingent"
@@ -1989,10 +1955,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -2005,9 +1969,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             lunaReserveHideExhaustedQuota: Bool = false
         ) -> StatusItemController.MenuInput {
             StatusItemController.MenuInput(
-                openCodexCards: [],
-                openCodexState: nil,
-                openCodexSwitchInFlight: false,
                 choices: [],
                 quickSwitchSummaries: [:],
                 activeClient: .codex,
@@ -2016,7 +1977,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 showQuickSwitchMenu: false,
                 showOpenChatGPTMenu: false,
                 showOpenCCSwitchMenu: false,
-                showOpenCodexMenu: false,
                 showStatusMenu: false,
                 lunaReserveDisplayMode: lunaReserveDisplayMode,
                 lunaReserveHideExhaustedQuota: lunaReserveHideExhaustedQuota
@@ -2391,10 +2351,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -2403,9 +2361,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         defer { controller.teardown() }
 
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -2414,7 +2369,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: false,
             showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false,
-            showOpenCodexMenu: false,
             showStatusMenu: false,
             lunaReserveDisplayMode: .always,
             lunaReserveHideExhaustedQuota: false
@@ -2506,10 +2460,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -2518,9 +2470,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         defer { controller.teardown() }
 
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -2529,7 +2478,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: false,
             showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false,
-            showOpenCodexMenu: false,
             showStatusMenu: false,
             lunaReserveDisplayMode: .always
         )
@@ -2834,10 +2782,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -2846,9 +2792,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         defer { controller.teardown() }
 
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -2857,7 +2800,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: false,
             showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false,
-            showOpenCodexMenu: false,
             showStatusMenu: false,
             bankedResetDisplayMode: .compact
         )
@@ -2987,10 +2929,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -2999,9 +2939,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         defer { controller.teardown() }
 
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -3010,7 +2947,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: false,
             showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false,
-            showOpenCodexMenu: false,
             showStatusMenu: false,
             bankedResetDisplayMode: .detailed
         )
@@ -3159,10 +3095,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                     openDashboard: {},
                     openChatGPT: {},
                     openCCSwitch: {},
-                    openOpenCodex: {},
                     quit: {},
                     switchProvider: { _ in },
-                    switchOpenCodexPreference: { _ in },
                     openProviderWebsite: {},
                     openStatusLink: { _ in },
                     iconChanged: { _ in }
@@ -3171,9 +3105,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             defer { controller.teardown() }
 
             let input = StatusItemController.MenuInput(
-                openCodexCards: [],
-                openCodexState: nil,
-                openCodexSwitchInFlight: false,
                 choices: [],
                 quickSwitchSummaries: [:],
                 activeClient: .codex,
@@ -3182,7 +3113,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 showQuickSwitchMenu: false,
                 showOpenChatGPTMenu: false,
                 showOpenCCSwitchMenu: false,
-                showOpenCodexMenu: false,
                 showStatusMenu: false,
                 bankedResetDisplayMode: mode
             )
@@ -3255,10 +3185,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -3267,9 +3195,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         defer { controller.teardown() }
 
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -3278,7 +3203,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: false,
             showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false,
-            showOpenCodexMenu: false,
             showStatusMenu: false
         )
         let settings = StatusItemController.MenuBarSettings(
@@ -3413,101 +3337,72 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(countField.stringValue, "10")
     }
 
-    func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {
-        for openCodexIsCurrent in [true, false] {
-            for showOpenCodexMenu in [true, false] {
-                for showOpenCCSwitchMenu in [true, false] {
-                    var activationCount = 0
-                    let controller = StatusItemController(
-                        actions: StatusItemController.Actions(
-                            manualRefresh: {},
-                            openDashboard: {},
-                            openChatGPT: {},
-                            openCCSwitch: {},
-                            openOpenCodex: { activationCount += 1 },
-                            quit: {},
-                            switchProvider: { _ in },
-                            switchOpenCodexPreference: { _ in },
-                            openProviderWebsite: {},
-                            openStatusLink: { _ in },
-                            iconChanged: { _ in }
-                        )
-                    )
-                    defer { controller.teardown() }
+    func testCCSwitchMenuItemStaysIndependentAndOpenCodexMenuItemIsAbsent() throws {
+        for showOpenCCSwitchMenu in [true, false] {
+            let controller = StatusItemController(
+                actions: StatusItemController.Actions(
+                    manualRefresh: {},
+                    openDashboard: {},
+                    openChatGPT: {},
+                    openCCSwitch: {},
+                    quit: {},
+                    switchProvider: { _ in },
+                    openProviderWebsite: {},
+                    openStatusLink: { _ in },
+                    iconChanged: { _ in }
+                )
+            )
+            defer { controller.teardown() }
 
-                    let choices = [
-                        ProviderChoice(
-                            id: "opencodex",
-                            name: "OpenCodex",
-                            isCurrent: openCodexIsCurrent
-                        ),
+            controller.start(
+                snapshot: .placeholder,
+                refreshDate: nil,
+                menuInput: StatusItemController.MenuInput(
+                    choices: [
                         ProviderChoice(
                             id: "other",
                             name: "Other Provider",
-                            isCurrent: !openCodexIsCurrent
+                            isCurrent: true
                         )
-                    ]
-                    controller.start(
-                        snapshot: .placeholder,
-                        refreshDate: nil,
-                        menuInput: StatusItemController.MenuInput(
-                            openCodexCards: [],
-                            openCodexState: nil,
-                            openCodexSwitchInFlight: false,
-                            choices: choices,
-                            quickSwitchSummaries: [:],
-                            activeClient: .claude,
-                            openAIAccount: nil,
-                            statusLinks: [
-                                StatusLink(title: "Status", url: "https://status.example")
-                            ],
-                            showQuickSwitchMenu: true,
-                            showOpenChatGPTMenu: true,
-                            showOpenCCSwitchMenu: showOpenCCSwitchMenu,
-                            showOpenCodexMenu: showOpenCodexMenu,
-                            showStatusMenu: true
-                        ),
-                        settings: StatusItemController.MenuBarSettings(
-                            showIcon: true,
-                            showAmount: true,
-                            showReset: true,
-                            horizontalPadding: 6,
-                            keepMenuOpenAfterRefresh: true
-                        )
-                    )
+                    ],
+                    quickSwitchSummaries: [:],
+                    activeClient: .claude,
+                    openAIAccount: nil,
+                    statusLinks: [
+                        StatusLink(title: "Status", url: "https://status.example")
+                    ],
+                    showQuickSwitchMenu: true,
+                    showOpenChatGPTMenu: true,
+                    showOpenCCSwitchMenu: showOpenCCSwitchMenu,
+                    showStatusMenu: true
+                ),
+                settings: StatusItemController.MenuBarSettings(
+                    showIcon: true,
+                    showAmount: true,
+                    showReset: true,
+                    horizontalPadding: 6,
+                    keepMenuOpenAfterRefresh: true
+                )
+            )
 
-                    XCTAssertEqual(
-                        controller.menuItemsForTesting.filter { $0.title.contains("OpenCodex") }.count,
-                        showOpenCodexMenu ? 1 : 0
-                    )
-                    if showOpenCodexMenu {
-                        let openItem = try XCTUnwrap(
-                            controller.menuItemsForTesting.first {
-                                $0.title.contains("OpenCodex")
-                            }
-                        )
-                        XCTAssertTrue(openItem.isEnabled)
-                        let target = try XCTUnwrap(openItem.target as? NSObject)
-                        _ = target.perform(openItem.action, with: openItem)
-                        XCTAssertEqual(activationCount, 1)
-                    } else {
-                        XCTAssertEqual(activationCount, 0)
-                    }
-                    XCTAssertEqual(
-                        controller.menuItemsForTesting.contains {
-                            $0.title == "打开 CC Switch" || $0.title == "Open CC Switch"
-                        },
-                        showOpenCCSwitchMenu
-                    )
-
-                    let statusMenuItem = try XCTUnwrap(
-                        controller.menuItemsForTesting.first {
-                            $0.title == "查看状态" || $0.title == "View Status"
-                        }
-                    )
-                    XCTAssertEqual(statusMenuItem.submenu?.items.map(\.title), ["Status"])
+            XCTAssertFalse(
+                controller.menuItemsForTesting.contains {
+                    $0.title.localizedCaseInsensitiveContains("OpenCodex")
                 }
-            }
+            )
+            XCTAssertEqual(
+                controller.menuItemsForTesting.contains {
+                    $0.title == "打开 CC Switch" || $0.title == "Open CC Switch"
+                },
+                showOpenCCSwitchMenu
+            )
+
+            let statusMenuItem = try XCTUnwrap(
+                controller.menuItemsForTesting.first {
+                    $0.title == "查看状态" || $0.title == "View Status"
+                }
+            )
+            XCTAssertEqual(statusMenuItem.submenu?.items.map(\.title), ["Status"])
         }
     }
 

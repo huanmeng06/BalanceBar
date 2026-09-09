@@ -4,7 +4,7 @@
 
 [![Build and Test](https://github.com/huanmeng06/BalanceBar/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/huanmeng06/BalanceBar/actions/workflows/build-and-test.yml)  ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple)  ![Swift 5](https://img.shields.io/badge/Swift-5-F05138?logo=swift&logoColor=white)
 
-BalanceBar 是一款基于 CC Switch 的原生 macOS 菜单栏工具。它会跟随当前使用的 Codex 或 Claude Code 供应商，在菜单栏中显示官方账号剩余额度或第三方 API 余额，并提供任务状态动画、供应商快速切换、OpenCodex 集成、手动刷新和可定制的状态链接。
+BalanceBar 是一款基于 CC Switch 的原生 macOS 菜单栏工具。它会跟随当前使用的 Codex 或 Claude Code 供应商，在菜单栏中显示官方账号剩余额度或第三方 API 余额，并提供任务状态动画、供应商快速切换、手动刷新和可定制的状态链接。
 
 ![BalanceBar 通用设置与当前供应商](docs/images/readme/general.png)
 
@@ -15,7 +15,6 @@ BalanceBar 是一款基于 CC Switch 的原生 macOS 菜单栏工具。它会跟
 - **任务状态提示**：Codex 或 Grok 执行任务时旋转图标；Claude Code 执行任务时播放思考动画。
 - **跟随 CC Switch**：监听 `~/.cc-switch/cc-switch.db` 的变化，供应商切换后自动刷新，并以定时轮询兜底。
 - **快速切换供应商**：无需离开菜单栏即可查看各供应商余量并切换当前供应商。
-- **OpenCodex 集成**：可自动发现或手动配置本地 OpenCodex 仪表盘，并在菜单中展示、切换精选模型。
 - **原生设置窗口**：可调整菜单栏显示项、刷新策略、下拉菜单入口、供应商排序、状态链接及语言。
 - **多语言界面**：支持跟随系统、简体中文、繁體中文（台灣）、繁體中文（香港）、日本語、한국어、Español、Deutsch、Français、Português、Русский 和 Italiano。
 
@@ -106,7 +105,6 @@ BalanceBar 在本机完成配置读取、状态监听和界面展示：
 - 读取 CC Switch 的数据库与设置：`~/.cc-switch/cc-switch.db`、`~/.cc-switch/settings.json`。
 - 读取本机 Codex / Claude Code 凭据，以直接请求相应官方额度接口。
 - 查询第三方余额时，会向 CC Switch 中相应供应商配置指定的接口发送请求，以更新当前余额和快速切换摘要。
-- 识别到 OpenCodex 时，可读取其本地配置并访问回环地址上的管理接口，用于展示精选模型和执行切换。
 - 使用“快速切换”时，会更新 CC Switch 当前供应商，并按其配置同步 `~/.codex` 或 `~/.claude` 下的客户端配置。
 - 凭据不会写入本仓库；运行日志主要记录状态、耗时和错误原因，不应记录令牌正文。
 

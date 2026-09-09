@@ -124,7 +124,7 @@ xcodebuild -project BalanceBar.xcodeproj \
 The test target is BalanceBarTests. Its files cover composition-root wiring,
 AppKit dashboard/window behavior, menu-bar geometry, preferences and
 localization, pure domain models, response parsers, CC Switch repository and
-watcher behavior, credential readers, balance/quota/OpenCodex clients, and
+watcher behavior, credential readers, balance/quota clients, and
 Codex/Claude activity monitoring. Network-facing tests inject URL loading
 stubs; they are not a substitute for GUI testing.
 
