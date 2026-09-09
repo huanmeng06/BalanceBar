@@ -388,8 +388,8 @@
 "dashboard.menu.page.the_open_main_window_item_is_always_shown" = "「メインウインドウを開く」項目は常に表示されます";
 "dashboard.menu.page.open_main_window" = "メインウインドウを開く";
 "dashboard.menu.page.show_the_balancebar_main_window" = "BalanceBar のメインウインドウを表示";
-"dashboard.menu.page.open_chatgpt" = "ChatGPT を開く";
-"dashboard.menu.page.show_chatgpt" = "ChatGPT を表示";
+"dashboard.menu.page.open_chatgpt" = "現在の Agent を開く";
+"dashboard.menu.page.show_chatgpt" = "メニュー項目は現在のアイコンに合わせて変化し、対応するアプリまたはターミナルを開きます";
 "dashboard.menu.page.open_cc_switch" = "CC Switch を開く";
 "dashboard.menu.page.show_the_cc_switch_main_window" = "CC Switch のメインウインドウを表示";
 "dashboard.menu.page.open_opencodex" = "OpenCodex を開く";
@@ -447,6 +447,8 @@
 "status.item.controller.open_main_window" = "メインウインドウを開く";
 "status.item.controller.update_available_badge" = "1件のアップデート";
 "status.item.controller.open_chatgpt" = "ChatGPT を開く";
+"status.item.controller.open_grok" = "Grok を開く";
+"status.item.controller.open_claude" = "Claude を開く";
 "status.item.controller.open_cc_switch" = "CC Switch を開く";
 "status.item.controller.open_opencodex" = "OpenCodex を開く";
 "status.item.controller.quit_balancebar" = "BalanceBar を終了";

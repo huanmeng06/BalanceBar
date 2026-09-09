@@ -2370,28 +2370,28 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, [String], [String])] = [
             (
                 .simplifiedChinese,
-                ["打开主窗口", "打开 ChatGPT", "打开 CC Switch", "打开 OpenCodex"],
-                ["显示 BalanceBar 主窗口", "显示 ChatGPT", "显示 CC Switch 主窗口", "显示 OpenCodex 控制台"]
+                ["打开主窗口", "打开当前 Agent", "打开 CC Switch", "打开 OpenCodex"],
+                ["显示 BalanceBar 主窗口", "菜单项随当前图标变化，点击打开对应应用或终端", "显示 CC Switch 主窗口", "显示 OpenCodex 控制台"]
             ),
             (
                 .traditionalChineseTaiwan,
-                ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
-                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 控制台"]
+                ["開啟主視窗", "開啟目前的 Agent", "開啟 CC Switch", "開啟 OpenCodex"],
+                ["顯示 BalanceBar 主視窗", "選單項目會隨目前圖示變化，點一下即可開啟對應的應用程式或終端機", "顯示 CC Switch 主視窗", "顯示 OpenCodex 控制台"]
             ),
             (
                 .traditionalChineseHongKong,
-                ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
-                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 控制台"]
+                ["開啟主視窗", "開啟目前的 Agent", "開啟 CC Switch", "開啟 OpenCodex"],
+                ["顯示 BalanceBar 主視窗", "選單項目會隨目前圖示變化，點一下即可開啟對應的應用程式或終端機", "顯示 CC Switch 主視窗", "顯示 OpenCodex 控制台"]
             ),
             (
                 .japanese,
-                ["メインウインドウを開く", "ChatGPT を開く", "CC Switch を開く", "OpenCodex を開く"],
-                ["BalanceBar のメインウインドウを表示", "ChatGPT を表示", "CC Switch のメインウインドウを表示", "OpenCodex コンソールを表示"]
+                ["メインウインドウを開く", "現在の Agent を開く", "CC Switch を開く", "OpenCodex を開く"],
+                ["BalanceBar のメインウインドウを表示", "メニュー項目は現在のアイコンに合わせて変化し、対応するアプリまたはターミナルを開きます", "CC Switch のメインウインドウを表示", "OpenCodex コンソールを表示"]
             ),
             (
                 .english,
-                ["Open Main Window", "Open ChatGPT", "Open CC Switch", "Open OpenCodex"],
-                ["Show the BalanceBar main window", "Show ChatGPT", "Show the CC Switch main window", "Show the OpenCodex console"]
+                ["Open Main Window", "Open Current Agent", "Open CC Switch", "Open OpenCodex"],
+                ["Show the BalanceBar main window", "The menu item follows the current icon and opens the matching app or terminal", "Show the CC Switch main window", "Show the OpenCodex console"]
             )
         ]
 

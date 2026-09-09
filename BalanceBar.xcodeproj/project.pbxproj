@@ -63,6 +63,8 @@
 		A31800000000000000000006 /* ActivityCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000005 /* ActivityCoordinatorTests.swift */; };
 		A31800000000000000000012 /* TerminalSessionIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000011 /* TerminalSessionIdentity.swift */; };
 		A31800000000000000000014 /* TerminalSessionIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000013 /* TerminalSessionIdentityTests.swift */; };
+		A36200000000000000000002 /* CurrentAgentOpenPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A36200000000000000000001 /* CurrentAgentOpenPlanner.swift */; };
+		A36200000000000000000004 /* CurrentAgentOpenPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A36200000000000000000003 /* CurrentAgentOpenPlannerTests.swift */; };
 		A10000000000000000000083 /* MenuBarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000080 /* MenuBarViews.swift */; };
 		A10000000000000000000084 /* MenuBarGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000081 /* MenuBarGeometry.swift */; };
 		A10000000000000000000085 /* MenuBarAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000082 /* MenuBarAnimation.swift */; };
@@ -207,6 +209,8 @@
 		A31800000000000000000005 /* ActivityCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCoordinatorTests.swift; sourceTree = "<group>"; };
 		A31800000000000000000011 /* TerminalSessionIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSessionIdentity.swift; sourceTree = "<group>"; };
 		A31800000000000000000013 /* TerminalSessionIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSessionIdentityTests.swift; sourceTree = "<group>"; };
+		A36200000000000000000001 /* CurrentAgentOpenPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrentAgentOpenPlanner.swift; sourceTree = "<group>"; };
+		A36200000000000000000003 /* CurrentAgentOpenPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrentAgentOpenPlannerTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000080 /* MenuBarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViews.swift; sourceTree = "<group>"; };
 		A10000000000000000000081 /* MenuBarGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarGeometry.swift; sourceTree = "<group>"; };
 		A10000000000000000000082 /* MenuBarAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarAnimation.swift; sourceTree = "<group>"; };
@@ -398,6 +402,7 @@
 				A31800000000000000000003 /* GrokActivityMonitorTests.swift */,
 				A31800000000000000000005 /* ActivityCoordinatorTests.swift */,
 				A31800000000000000000013 /* TerminalSessionIdentityTests.swift */,
+				A36200000000000000000003 /* CurrentAgentOpenPlannerTests.swift */,
 				A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */,
 				A100000000000000000000C9 /* DashboardProviderPagesTests.swift */,
 				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
@@ -471,6 +476,7 @@
 				A1000000000000000000007D /* ClaudeCodeActivityMonitor.swift */,
 				A31800000000000000000001 /* GrokActivityMonitor.swift */,
 				A31800000000000000000011 /* TerminalSessionIdentity.swift */,
+				A36200000000000000000001 /* CurrentAgentOpenPlanner.swift */,
 			);
 			name = Monitoring;
 			path = "Sources/Monitoring";
@@ -795,6 +801,7 @@
 				A1000000000000000000007B /* ClaudeCodeActivityMonitor.swift in Sources */,
 				A31800000000000000000002 /* GrokActivityMonitor.swift in Sources */,
 				A31800000000000000000012 /* TerminalSessionIdentity.swift in Sources */,
+				A36200000000000000000002 /* CurrentAgentOpenPlanner.swift in Sources */,
 				A10000000000000000000083 /* MenuBarViews.swift in Sources */,
 				A10000000000000000000084 /* MenuBarGeometry.swift in Sources */,
 				A10000000000000000000085 /* MenuBarAnimation.swift in Sources */,
@@ -873,6 +880,7 @@
 				A31800000000000000000004 /* GrokActivityMonitorTests.swift in Sources */,
 				A31800000000000000000006 /* ActivityCoordinatorTests.swift in Sources */,
 				A31800000000000000000014 /* TerminalSessionIdentityTests.swift in Sources */,
+				A36200000000000000000004 /* CurrentAgentOpenPlannerTests.swift in Sources */,
 				A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */,
 				A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */,
 				A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */,

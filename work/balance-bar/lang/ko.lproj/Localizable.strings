@@ -388,8 +388,8 @@
 "dashboard.menu.page.the_open_main_window_item_is_always_shown" = "주 윈도우 열기 항목은 항상 표시됩니다";
 "dashboard.menu.page.open_main_window" = "주 윈도우 열기";
 "dashboard.menu.page.show_the_balancebar_main_window" = "BalanceBar 주 윈도우 표시";
-"dashboard.menu.page.open_chatgpt" = "ChatGPT 열기";
-"dashboard.menu.page.show_chatgpt" = "ChatGPT 표시";
+"dashboard.menu.page.open_chatgpt" = "현재 Agent 열기";
+"dashboard.menu.page.show_chatgpt" = "메뉴 항목이 현재 아이콘에 따라 바뀌며, 클릭하면 해당 앱 또는 터미널을 엽니다";
 "dashboard.menu.page.open_cc_switch" = "CC Switch 열기";
 "dashboard.menu.page.show_the_cc_switch_main_window" = "CC Switch 주 윈도우 표시";
 "dashboard.menu.page.open_opencodex" = "OpenCodex 열기";
@@ -447,6 +447,8 @@
 "status.item.controller.open_main_window" = "주 윈도우 열기";
 "status.item.controller.update_available_badge" = "업데이트 1개";
 "status.item.controller.open_chatgpt" = "ChatGPT 열기";
+"status.item.controller.open_grok" = "Grok 열기";
+"status.item.controller.open_claude" = "Claude 열기";
 "status.item.controller.open_cc_switch" = "CC Switch 열기";
 "status.item.controller.open_opencodex" = "OpenCodex 열기";
 "status.item.controller.quit_balancebar" = "BalanceBar 종료";

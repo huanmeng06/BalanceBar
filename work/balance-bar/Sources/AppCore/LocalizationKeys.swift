@@ -458,6 +458,8 @@
     case keyStatusItemControllerOpenMainWindow = "status.item.controller.open_main_window"
     case keyStatusItemControllerUpdateAvailableBadge = "status.item.controller.update_available_badge"
     case keyStatusItemControllerOpenChatgpt = "status.item.controller.open_chatgpt"
+    case keyStatusItemControllerOpenGrok = "status.item.controller.open_grok"
+    case keyStatusItemControllerOpenClaude = "status.item.controller.open_claude"
     case keyStatusItemControllerOpenCcSwitch = "status.item.controller.open_cc_switch"
     case keyStatusItemControllerOpenOpencodex = "status.item.controller.open_opencodex"
     case keyStatusItemControllerQuitBalancebar = "status.item.controller.quit_balancebar"
