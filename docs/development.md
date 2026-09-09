@@ -132,11 +132,14 @@ The XCTest host is patched at build time to `LSUIElement` so LaunchServices
 does not activate it on launch, and `LSMultipleInstancesProhibited` is cleared
 so tests can run while the production app is open. `main()` then switches the
 host to accessory and yields key focus before XCTest attaches. Layout and Core
-Animation still run, but test windows are transparent, ignore mouse events, and
-must not become key. Do not add `NSApp.activate(ignoringOtherApps:)`,
-`makeKeyAndOrderFront`, or `makeKey()` to tests; use
-`ApplicationWindowPresentation` when a window must be connected to the window
-server.
+Animation still run, but test windows stay transparent, below other apps'
+normal windows, and must not become key. Do not add
+`NSApp.activate(ignoringOtherApps:)`, `setActivationPolicy(.regular)`,
+`makeKeyAndOrderFront`, `makeKey()`, `orderFront`, or `orderFrontRegardless`
+to tests; use `ApplicationWindowPresentation` when a window must be connected
+to the window server. `orderFrontRegardless` is swizzled because it stacks a
+window above every other app. Already-visible windows are re-parked without
+that call so each test case cannot force them back to the top.
 
 ### 5. Repository hygiene and path checks
 

@@ -792,7 +792,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let regularPolicyApplied: Bool
         switch initialPresentation {
         case .dashboard:
-            regularPolicyApplied = NSApp.setActivationPolicy(.regular)
+            regularPolicyApplied = AutomatedTestHost.isRunning
+                ? NSApp.setActivationPolicy(.accessory)
+                : NSApp.setActivationPolicy(.regular)
             showDashboard(restore: pendingRestore)
         case .background:
             regularPolicyApplied = NSApp.setActivationPolicy(.accessory)

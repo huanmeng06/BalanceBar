@@ -221,7 +221,11 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.isOpaque = false
         window.hasShadow = true
         window.appearance = nil
-        window.center()
+        if AutomatedTestHost.isRunning {
+            ApplicationWindowPresentation.prepare(window)
+        } else {
+            window.center()
+        }
         window.isReleasedWhenClosed = false
         window.delegate = self
 
@@ -271,6 +275,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             showSection(selectedSection)
         }
         window.displayIfNeeded()
+        if AutomatedTestHost.isRunning {
+            ApplicationWindowPresentation.presentInBackground(window)
+        }
     }
 
     func showSection(_ section: DashboardSection) {
@@ -349,6 +356,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         contentHost.layoutSubtreeIfNeeded()
         window?.displayIfNeeded()
         actions.didShowPage()
+        if AutomatedTestHost.isRunning, let window {
+            ApplicationWindowPresentation.presentInBackground(window)
+        }
     }
 
     private func updateNavigationSelection(selectedSection: DashboardSection?) {
