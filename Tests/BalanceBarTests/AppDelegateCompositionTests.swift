@@ -80,7 +80,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         let start = try XCTUnwrap(source.range(of: "private func setActiveClient(_ client: AssistantClient)"))
         let end = try XCTUnwrap(
             source.range(
-                of: "private func snapshotKindDiagnosticName",
+                of: "private func menuBarSnapshot",
                 range: start.upperBound..<source.endIndex
             )
         )
@@ -100,7 +100,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         let start = try XCTUnwrap(source.range(of: "private func setActiveClient(_ client: AssistantClient)"))
         let end = try XCTUnwrap(
             source.range(
-                of: "private func snapshotKindDiagnosticName",
+                of: "private func menuBarSnapshot",
                 range: start.upperBound..<source.endIndex
             )
         )
@@ -125,7 +125,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         let toggleStart = try XCTUnwrap(source.range(of: "case \"animateCodexActivity\":"))
         let toggleEnd = try XCTUnwrap(
             source.range(
-                of: "case \"openCodexAutomaticDetection\":",
+                of: "default:",
                 range: toggleStart.upperBound..<source.endIndex
             )
         )
@@ -180,11 +180,8 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(provider.contains("BalanceAPIClient"))
         XCTAssertTrue(provider.contains("OfficialQuotaClient"))
         XCTAssertTrue(provider.contains("fetchBalance"))
-
-        let openCodex = try XCTUnwrap(sources["OpenCodexRefreshCoordinator.swift"])
-        XCTAssertTrue(openCodex.contains("OpenCodexRepository"))
-        XCTAssertTrue(openCodex.contains("OpenCodexCardPlanner"))
-        XCTAssertTrue(openCodex.contains("fetchOfficialCard"))
+        XCTAssertFalse(provider.contains("OpenCodexRepository"))
+        XCTAssertFalse(provider.contains("isOpenCodexConfirmed"))
 
         let activity = try XCTUnwrap(sources["ActivityCoordinator.swift"])
         XCTAssertTrue(activity.contains("CodexActivityMonitor"))
@@ -199,6 +196,26 @@ final class AppDelegateCompositionTests: XCTestCase {
         let switching = try XCTUnwrap(sources["ProviderSwitchCoordinator.swift"])
         XCTAssertTrue(switching.contains("switchCurrent"))
         XCTAssertTrue(switching.contains("com.ccswitch.desktop"))
+
+        let testFile = URL(fileURLWithPath: String(describing: #filePath))
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: repositoryRoot
+                    .appendingPathComponent("work/balance-bar/Sources/Services/OpenCodexRefreshCoordinator.swift")
+                    .path
+            )
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: repositoryRoot
+                    .appendingPathComponent("work/balance-bar/Sources/Services/OpenCodexRepository.swift")
+                    .path
+            )
+        )
     }
 
     @MainActor
@@ -819,19 +836,14 @@ final class AppDelegateCompositionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
             )
         )
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -840,7 +852,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         let settings = StatusItemController.MenuBarSettings(
@@ -949,10 +960,8 @@ final class AppDelegateCompositionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -961,9 +970,6 @@ final class AppDelegateCompositionTests: XCTestCase {
         defer { controller.teardown() }
 
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [ProviderChoice(id: "provider", name: "Provider", isCurrent: true)],
             quickSwitchSummaries: ["provider": "$1.00"],
             activeClient: .codex,
@@ -972,7 +978,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         let settings = StatusItemController.MenuBarSettings(
@@ -1012,10 +1017,8 @@ final class AppDelegateCompositionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -1298,19 +1301,14 @@ final class AppDelegateCompositionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
             )
         )
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -1319,7 +1317,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         let makeSettings: (MenuBarIconDisplayMode) -> StatusItemController.MenuBarSettings = { mode in
@@ -1393,19 +1390,14 @@ final class AppDelegateCompositionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
             )
         )
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -1414,7 +1406,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         let date = Date(timeIntervalSince1970: 1_700_000_000)
@@ -1505,10 +1496,8 @@ final class AppDelegateCompositionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -1517,9 +1506,6 @@ final class AppDelegateCompositionTests: XCTestCase {
         defer { controller.teardown() }
 
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -1528,7 +1514,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         let date = Date(timeIntervalSince1970: 1_700_000_000)
@@ -1628,10 +1613,8 @@ final class AppDelegateCompositionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -1640,9 +1623,6 @@ final class AppDelegateCompositionTests: XCTestCase {
         defer { controller.teardown() }
 
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -1651,7 +1631,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true,
             lunaReserveDisplayMode: .always
         )
@@ -1716,19 +1695,14 @@ final class AppDelegateCompositionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
             )
         )
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -1737,7 +1711,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         let now = Date()
@@ -1812,19 +1785,14 @@ final class AppDelegateCompositionTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
             )
         )
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -1833,7 +1801,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         let scenarios: [(Snapshot, Bool)] = [
@@ -2583,9 +2550,6 @@ final class AppDelegateCompositionTests: XCTestCase {
         showsAvailableUpdateBadge: Bool
     ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -2594,7 +2558,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true,
             showsAvailableUpdateBadge: showsAvailableUpdateBadge
         )
@@ -2609,7 +2572,6 @@ final class AppDelegateCompositionTests: XCTestCase {
         let files = [
             "DashboardCompositionController.swift": "work/balance-bar/Sources/UI/Dashboard/DashboardCompositionController.swift",
             "ProviderRefreshCoordinator.swift": "work/balance-bar/Sources/Services/ProviderRefreshCoordinator.swift",
-            "OpenCodexRefreshCoordinator.swift": "work/balance-bar/Sources/Services/OpenCodexRefreshCoordinator.swift",
             "ActivityCoordinator.swift": "work/balance-bar/Sources/Monitoring/ActivityCoordinator.swift",
             "CCSwitchDatabaseWatcher.swift": "work/balance-bar/Sources/Services/CCSwitchDatabaseWatcher.swift",
             "ProviderSwitchCoordinator.swift": "work/balance-bar/Sources/Services/ProviderSwitchCoordinator.swift"

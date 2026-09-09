@@ -432,7 +432,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
                 ?? LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
         case .error:
             quota = LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
-        case .balance, .openCodex:
+        case .balance:
             lunaReserveCard.isHidden = true
             return
         }

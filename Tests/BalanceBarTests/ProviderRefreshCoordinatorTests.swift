@@ -77,7 +77,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 }
             },
             quickSwitchSummaryChanged: { _ in },
-            isOpenCodexConfirmed: { _ in false }
         )
         let coordinator = ProviderRefreshCoordinator(
             repository: repository,
@@ -131,7 +130,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 recorder.store(snapshot, client: client, providerID: providerID)
             },
             quickSwitchSummaryChanged: { _ in callbackCompleted.fulfill() },
-            isOpenCodexConfirmed: { _ in false }
         )
         let coordinator = ProviderRefreshCoordinator(
             repository: repository,
@@ -405,7 +403,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 },
                 storeClientSnapshot: { _, _, _ in },
                 quickSwitchSummaryChanged: { _ in },
-                isOpenCodexConfirmed: { _ in false }
             )
         )
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
@@ -489,7 +486,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 },
                 storeClientSnapshot: { _, _, _ in },
                 quickSwitchSummaryChanged: { _ in },
-                isOpenCodexConfirmed: { _ in false }
             )
         )
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
@@ -578,7 +574,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 },
                 storeClientSnapshot: { _, _, _ in },
                 quickSwitchSummaryChanged: { _ in },
-                isOpenCodexConfirmed: { _ in false }
             )
         )
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
@@ -653,7 +648,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 },
                 storeClientSnapshot: { _, _, _ in },
                 quickSwitchSummaryChanged: { _ in },
-                isOpenCodexConfirmed: { _ in false }
             )
         )
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
@@ -925,7 +919,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             render: { _ in },
             storeClientSnapshot: { _, _, _ in },
             quickSwitchSummaryChanged: quickSwitchSummaryChanged,
-            isOpenCodexConfirmed: { _ in false }
         )
     }
 

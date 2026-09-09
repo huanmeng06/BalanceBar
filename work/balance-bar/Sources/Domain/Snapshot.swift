@@ -428,7 +428,7 @@ enum CodexBankedResetFormatting {
 }
 
 struct Snapshot {
-    enum Kind { case placeholder, official, balance, openCodex, error }
+    enum Kind { case placeholder, official, balance, error }
     let kind: Kind
     let provider: String
     let amount: Double?
@@ -558,20 +558,6 @@ struct Snapshot {
             message: nil,
             websiteURL: websiteURL,
             balanceProgressPercentage: progressPercentage,
-            officialQuotaWindows: []
-        )
-    }
-
-    static func openCodex(_ provider: String, selector: String?, status: String, _ date: Date) -> Snapshot {
-        Snapshot(
-            kind: .openCodex,
-            provider: provider,
-            amount: nil,
-            unit: selector,
-            date: date,
-            message: status,
-            websiteURL: nil,
-            balanceProgressPercentage: nil,
             officialQuotaWindows: []
         )
     }
@@ -795,7 +781,6 @@ struct Snapshot {
         case .placeholder: return " …"
         case .official: return " \(Int(amount ?? 0))%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return " \(format(amount ?? 0, unit ?? "USD"))"
-        case .openCodex: return " \(unit ?? "OpenCodex")"
         case .error: return " !"
         }
     }
@@ -805,7 +790,6 @@ struct Snapshot {
         case .placeholder: return "…"
         case .official: return "\(Int(amount ?? 0))%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return format(amount ?? 0, unit ?? "USD")
-        case .openCodex: return unit ?? "OpenCodex"
         case .error: return "!"
         }
     }
@@ -845,10 +829,7 @@ struct Snapshot {
     }
 
     var menuBarToolTip: String {
-        guard kind == .official || kind == .openCodex else { return title }
-        if kind == .openCodex {
-            return tr(.keySnapshotValueValue, arguments: [String(describing: title), String(describing: message ?? tr(.keyLocalizationStatusUnknown))])
-        }
+        guard kind == .official else { return title }
         let reset = String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))
         guard LunaReserveUserFacing.isCurrentlyEnabled, let lunaReserve else {
             return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), reset])
@@ -865,7 +846,7 @@ struct Snapshot {
     var overviewProvider: String {
         switch kind {
         case .placeholder: return "CC Switch"
-        case .official, .balance, .openCodex: return provider
+        case .official, .balance: return provider
         case .error: return provider.isEmpty ? "CC Switch" : provider
         }
     }
@@ -876,8 +857,6 @@ struct Snapshot {
             return tr(.keySnapshotResetValue, arguments: [String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))])
         case .balance:
             return tr(.keySnapshotLastRefreshedValue, arguments: [String(describing: formatter.string(from: refreshDate ?? date ?? Date()))])
-        case .openCodex:
-            return message ?? tr(.keySnapshotOpencodexStatusIsUnknown)
         case .placeholder:
             return tr(.keySnapshotLoadingTheCurrentProvider)
         case .error:
@@ -889,7 +868,6 @@ struct Snapshot {
         switch kind {
         case .official: return tr(.keySnapshotAvailableQuota)
         case .balance: return tr(.keySnapshotAvailableBalance)
-        case .openCodex: return tr(.keySnapshotOpencodex)
         case .placeholder, .error: return tr(.keySnapshotBalanceStatus)
         }
     }
@@ -898,7 +876,6 @@ struct Snapshot {
         switch kind {
         case .official: return unit ?? tr(.keySnapshot7DayQuota)
         case .balance: return tr(.keySnapshotRemainingBalance)
-        case .openCodex: return tr(.keySnapshotCurrentProviderModel)
         case .placeholder: return tr(.keySnapshotWaitingToRefresh)
         case .error: return tr(.keySnapshotLoadFailed)
         }
@@ -908,7 +885,6 @@ struct Snapshot {
         switch kind {
         case .official: return "\(Int(amount ?? 0))%"
         case .balance: return format(amount ?? 0, unit ?? "USD")
-        case .openCodex: return unit ?? "—"
         case .placeholder: return "—"
         case .error:
             guard let amount, let unit else { return "—" }
@@ -924,7 +900,7 @@ struct Snapshot {
         switch kind {
         case .official: return amount
         case .balance: return balanceProgressPercentage
-        case .placeholder, .openCodex, .error: return nil
+        case .placeholder, .error: return nil
         }
     }
 
@@ -936,8 +912,6 @@ struct Snapshot {
             return tr(.keySnapshotValueRemainingValueValue, arguments: [String(describing: provider), String(describing: Int(amount ?? 0)), String(describing: unit ?? tr(.keyLocalizationQuota))])
         case .balance:
             return tr(.keySnapshotValueRemainingValue, arguments: [String(describing: provider), String(describing: format(amount ?? 0, unit ?? "USD"))])
-        case .openCodex:
-            return tr(.keySnapshotValueValue2, arguments: [String(describing: provider), String(describing: unit ?? "OpenCodex")])
         case .error:
             return tr(.keySnapshotFailedToLoadBalance2)
         }
@@ -970,8 +944,6 @@ struct Snapshot {
                 tr(.keySnapshotResetValue3, arguments: [String(describing: $0)])
             } ?? ""
             return tr(.keySnapshotOfficialQuotaUpdatesEveryMinutevalue, arguments: [String(describing: resetText)])
-        case .openCodex:
-            return message ?? tr(.keySnapshotWaitingForOpencodexStatus)
         case .error: return message ?? tr(.keySnapshotUnknownError)
         case .placeholder: return tr(.keySnapshotWaitingForCcSwitchStatus)
         }

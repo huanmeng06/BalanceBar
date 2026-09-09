@@ -206,7 +206,6 @@ struct ProviderRefreshActions {
     let render: (Snapshot) -> Void
     let storeClientSnapshot: (AssistantClient, String, Snapshot) -> Void
     let quickSwitchSummaryChanged: (String) -> Void
-    let isOpenCodexConfirmed: (String) -> Bool
 }
 
 /// Owns standard Provider balance/quota requests, request cadence, quick
@@ -374,9 +373,6 @@ final class ProviderRefreshCoordinator {
             guard force || due else { return }
             self.lastQuickSwitchFetch = currentDate
             for source in self.repository.loadSummarySources(appType: client.appType) {
-                if client == .codex,
-                   source.openCodexCandidate != nil,
-                   self.actions.isOpenCodexConfirmed(source.id) { continue }
                 if source.isOfficial {
                     if client != .codex { continue }
                     self.officialQuotaClient.fetchQuota(

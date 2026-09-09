@@ -305,12 +305,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
-        let openCodex = DashboardSettingsComponents.makeSwitch(
-            identifier: AppPreferences.showOpenCodexMenuKey,
-            isOn: input.preferences.showOpenCodexMenu,
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.toggle(_:))
-        )
         let keepOpen = DashboardSettingsComponents.makeSwitch(
             identifier: "keepMenuOpenAfterRefresh",
             isOn: input.preferences.keepMenuOpenAfterRefresh,
@@ -360,11 +354,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 tr(.keyDashboardMenuPageOpenCcSwitch),
                 subtitle: tr(.keyDashboardMenuPageShowTheCcSwitchMainWindow),
                 control: openCC
-            ),
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardMenuPageOpenOpencodex),
-                subtitle: tr(.keyDashboardMenuPageShowTheOpencodexDashboard),
-                control: openCodex
             )
         ]
         let statusSubtitle = NSTextField(wrappingLabelWithString: "")

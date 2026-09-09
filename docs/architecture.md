@@ -23,7 +23,6 @@ BalanceBarMain
         -> DashboardCompositionController
             -> DashboardWindowController and page/component views
         -> ProviderRefreshCoordinator
-        -> OpenCodexRefreshCoordinator
         -> ProviderSwitchCoordinator
         -> ActivityCoordinator
         -> CCSwitchDatabaseWatcher
@@ -41,8 +40,8 @@ a network request by itself.
 | --- | --- | --- |
 | Entry and app state | work/balance-bar/BalanceBar.swift, work/balance-bar/AppPreferences.swift | AppKit entry point, AppDelegate, lifecycle, shared application state, preferences, logging, and composition wiring. |
 | AppCore | work/balance-bar/Sources/AppCore/ | Cross-cutting UI-independent rules such as localization, dashboard scroll-bound calculations, and the XCTest host presentation policy. |
-| Domain | work/balance-bar/Sources/Domain/ | Value types and pure planning rules: AssistantClient, BalanceQuery, provider models, Snapshot, StatusLink, and OpenCodex card planning. |
-| Services | work/balance-bar/Sources/Services/ | CC Switch SQLite access/watchers, credential readers, URL sessions, balance/quota clients, response parsing, provider refresh, OpenCodex refresh, and provider switching. |
+| Domain | work/balance-bar/Sources/Domain/ | Value types and pure planning rules: AssistantClient, BalanceQuery, provider models, Snapshot, StatusLink, and official/balance overview card layout. |
+| Services | work/balance-bar/Sources/Services/ | CC Switch SQLite access/watchers, credential readers, URL sessions, balance/quota clients, response parsing, provider refresh, and provider switching. |
 | Monitoring | work/balance-bar/Sources/Monitoring/ | Codex/Claude activity observation and ActivityCoordinator, including process, SQLite, NSWorkspace, timer, and notification integration. |
 | Menu-bar UI | work/balance-bar/Sources/UI/MenuBar/ | NSStatusItem, status menu content, menu-bar geometry, views, and activity animation. |
 | Dashboard UI | work/balance-bar/Sources/UI/Dashboard/ | Dashboard composition, native window/delegate, components, preference/provider pages, and the status-link editor. The status-link editor is the existing SwiftUI island hosted by AppKit. |
@@ -96,8 +95,8 @@ or to move its business rules into BalanceBar.swift.
 
 Put reusable I/O and external-state access in Sources/Services/. Examples in
 the current tree are CCSwitchRepository, CCSwitchDatabaseWatcher,
-CredentialReader, BalanceAPIClient, OfficialQuotaClient, and
-OpenCodexRepository. Keep transport and file/process seams injectable when the
+CredentialReader, BalanceAPIClient, and OfficialQuotaClient. Keep transport
+and file/process seams injectable when the
 behavior can be tested without the real system.
 
 Put recurring activity observation in Sources/Monitoring/; the current
@@ -112,8 +111,8 @@ Keep provider-neutral value types and provider identifiers in
 Sources/Domain/ProviderModels.swift and BalanceQuery.swift. Keep JSON/data
 interpretation in Sources/Services/Parsing/ResponseParsers.swift, where the
 parsers are pure and fixture-testable. Keep HTTP, credential, endpoint, and
-retry behavior in the corresponding service client (BalanceAPIClient,
-OfficialQuotaClient, or OpenCodexRepository). Provider pages consume the
+retry behavior in the corresponding service client (BalanceAPIClient or
+OfficialQuotaClient). Provider pages consume the
 resulting models; they do not parse response payloads.
 
 ### A native window or AppKit capability

@@ -15,8 +15,6 @@ struct DashboardCompositionState {
     let menuBarSnapshot: (Snapshot) -> Snapshot
     let iconImage: () -> NSImage?
     let statusItemVisibility: () -> StatusItemVisibility
-    let currentOpenCodexResolution: () -> OpenCodexDashboardResolution?
-    let runtimeCandidate: () -> OpenCodexEndpointCandidate?
     let updateState: () -> UpdateCheckState
     let statusLinks: () -> [StatusLink]
     let defaultStatusLinks: () -> [StatusLink]
@@ -59,8 +57,6 @@ struct DashboardCompositionActions {
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
     let onOpenUpdateNotes: () -> Void
-    let onOpenOpenCodex: () -> Void
-    let onOpenCodexModeChanged: (OpenCodexDashboardMode) -> Void
     let onClamp: () -> Void
     let onStatusLinksChanged: () -> Void
     let onDidShowPage: () -> Void
@@ -124,12 +120,10 @@ final class DashboardCompositionController {
             onCheckForUpdates: actions.onCheckForUpdates,
             onInstallUpdate: actions.onInstallUpdate,
             onOpenUpdateNotes: actions.onOpenUpdateNotes,
-            onOpenOpenCodex: actions.onOpenOpenCodex,
             makeStatusLinksEditor: { [weak self] in
                 self?.makeStatusLinksEditor()
                     ?? StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
-            onOpenCodexModeChanged: actions.onOpenCodexModeChanged,
             onClamp: actions.onClamp
         ),
         launchAtLoginController: launchAtLoginController,
@@ -207,7 +201,6 @@ final class DashboardCompositionController {
             )
         )
         refreshMenuBarPage(snapshot: snapshot)
-        refreshOpenCodexSettings()
     }
 
     func refreshMenuBarPage(snapshot: Snapshot) {
@@ -348,14 +341,6 @@ final class DashboardCompositionController {
         )
     }
 
-    func refreshOpenCodexSettings() {
-        guard window?.isVisible == true, section == .advanced else { return }
-        dashboardPreferencePages.refreshAdvanced(
-            currentOpenCodexResolution: state.currentOpenCodexResolution(),
-            runtimeCandidate: state.runtimeCandidate()
-        )
-    }
-
     func refreshUpdateState() {
         let updateState = state.updateState()
         dashboardPreferencePages.refreshUpdateState(updateState)
@@ -390,10 +375,6 @@ final class DashboardCompositionController {
 
     func restoreRequiredMenuBarToggle(identifier: String) {
         dashboardPreferencePages.restoreRequiredMenuBarToggle(identifier: identifier)
-    }
-
-    func handleAutomaticDetection(_ enabled: Bool) {
-        dashboardPreferencePages.handleAutomaticDetection(enabled)
     }
 
     func clampScrollBounds() {
@@ -463,8 +444,6 @@ final class DashboardCompositionController {
             animationKind: menuBarPreviewAnimationKind,
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive,
-            currentOpenCodexResolution: state.currentOpenCodexResolution(),
-            runtimeCandidate: state.runtimeCandidate(),
             updateState: state.updateState()
         )
     }

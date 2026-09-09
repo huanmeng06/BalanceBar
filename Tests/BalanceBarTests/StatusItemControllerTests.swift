@@ -257,10 +257,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: { openCount += 1 },
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -840,10 +838,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in },
@@ -853,9 +849,6 @@ final class StatusItemControllerTests: XCTestCase {
         defer { controller.teardown() }
 
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
@@ -864,7 +857,6 @@ final class StatusItemControllerTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
-            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         func settings(for mode: MenuBarIconDisplayMode) -> StatusItemController.MenuBarSettings {
@@ -1186,10 +1178,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in },
@@ -2145,10 +2135,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in },
@@ -2253,10 +2241,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -2272,9 +2258,6 @@ final class StatusItemControllerTests: XCTestCase {
         showOpenChatGPTMenu: Bool = false
     ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: showQuickSwitchMenu
                 ? [ProviderChoice(id: "provider", name: "Provider", isCurrent: true)]
                 : [],
@@ -2285,7 +2268,6 @@ final class StatusItemControllerTests: XCTestCase {
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: false,
-            showOpenCodexMenu: false,
             showStatusMenu: false
         )
     }

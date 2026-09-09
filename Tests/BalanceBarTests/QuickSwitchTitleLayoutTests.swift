@@ -106,10 +106,8 @@ final class QuickSwitchTitleLayoutTests: XCTestCase {
                 openDashboard: {},
                 openChatGPT: {},
                 openCCSwitch: {},
-                openOpenCodex: {},
                 quit: {},
                 switchProvider: { _ in },
-                switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
@@ -119,9 +117,6 @@ final class QuickSwitchTitleLayoutTests: XCTestCase {
 
         let longName = "OpenAI Official (very-long-account@example.com)"
         let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
             choices: [
                 ProviderChoice(id: "short-official", name: "Right Code", isCurrent: true),
                 ProviderChoice(id: "long-official", name: longName, isCurrent: false),
@@ -138,7 +133,6 @@ final class QuickSwitchTitleLayoutTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false,
-            showOpenCodexMenu: false,
             showStatusMenu: false
         )
         controller.start(

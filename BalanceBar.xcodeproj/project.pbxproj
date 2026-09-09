@@ -47,8 +47,7 @@
 		A10000000000000000000062 /* CredentialReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000063 /* CredentialReaderTests.swift */; };
 		A10000000000000000000064 /* BalanceAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000065 /* BalanceAPIClient.swift */; };
 		A10000000000000000000066 /* BalanceAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000067 /* BalanceAPIClientTests.swift */; };
-		A10000000000000000000069 /* OpenCodexRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000068 /* OpenCodexRepository.swift */; };
-		A1000000000000000000006B /* OpenCodexRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006A /* OpenCodexRepositoryTests.swift */; };
+		A1000000000000000000006B /* OpenCodexCardLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006A /* OpenCodexCardLayoutTests.swift */; };
 		A1000000000000000000006C /* DashboardScrollClamping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006D /* DashboardScrollClamping.swift */; };
 		A1000000000000000000006E /* DashboardScrollClampingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006F /* DashboardScrollClampingTests.swift */; };
 		A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000071 /* OfficialQuotaClient.swift */; };
@@ -93,7 +92,7 @@
 		A100000000000000000000D0 /* AppDelegateCompositionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D1 /* AppDelegateCompositionTests.swift */; };
 		A100000000000000000000D2 /* ActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D3 /* ActivityCoordinator.swift */; };
 		A100000000000000000000D4 /* CCSwitchDatabaseWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */; };
-		A100000000000000000000D6 /* OpenCodexRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D7 /* OpenCodexRefreshCoordinator.swift */; };
+
 		A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */; };
 		A100000000000000000000EB /* ProviderBalanceProgressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000EC /* ProviderBalanceProgressStore.swift */; };
 		A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DB /* ProviderSwitchCoordinator.swift */; };
@@ -196,8 +195,7 @@
 		A10000000000000000000063 /* CredentialReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialReaderTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000065 /* BalanceAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceAPIClient.swift; sourceTree = "<group>"; };
 		A10000000000000000000067 /* BalanceAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceAPIClientTests.swift; sourceTree = "<group>"; };
-		A10000000000000000000068 /* OpenCodexRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexRepository.swift; sourceTree = "<group>"; };
-		A1000000000000000000006A /* OpenCodexRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexRepositoryTests.swift; sourceTree = "<group>"; };
+		A1000000000000000000006A /* OpenCodexCardLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexCardLayoutTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000006D /* DashboardScrollClamping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/DashboardScrollClamping.swift"; sourceTree = "<group>"; };
 		A1000000000000000000006F /* DashboardScrollClampingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardScrollClampingTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000071 /* OfficialQuotaClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClient.swift; sourceTree = "<group>"; };
@@ -242,7 +240,7 @@
 		A100000000000000000000D1 /* AppDelegateCompositionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegateCompositionTests.swift; sourceTree = "<group>"; };
 		A100000000000000000000D3 /* ActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCoordinator.swift; sourceTree = "<group>"; };
 		A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchDatabaseWatcher.swift; sourceTree = "<group>"; };
-		A100000000000000000000D7 /* OpenCodexRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexRefreshCoordinator.swift; sourceTree = "<group>"; };
+
 		A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderRefreshCoordinator.swift; sourceTree = "<group>"; };
 		A100000000000000000000EC /* ProviderBalanceProgressStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderBalanceProgressStore.swift; sourceTree = "<group>"; };
 		A100000000000000000000DB /* ProviderSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSwitchCoordinator.swift; sourceTree = "<group>"; };
@@ -404,7 +402,7 @@
 				A1000000000000000000005F /* CCSwitchRepositoryTests.swift */,
 				A10000000000000000000063 /* CredentialReaderTests.swift */,
 				A10000000000000000000067 /* BalanceAPIClientTests.swift */,
-				A1000000000000000000006A /* OpenCodexRepositoryTests.swift */,
+				A1000000000000000000006A /* OpenCodexCardLayoutTests.swift */,
 				A10000000000000000000073 /* OfficialQuotaClientTests.swift */,
 				A10000000000000000000077 /* CodexActivityMonitorTests.swift */,
 				A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */,
@@ -439,14 +437,12 @@
 			isa = PBXGroup;
 			children = (
 				A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */,
-				A100000000000000000000D7 /* OpenCodexRefreshCoordinator.swift */,
 				A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */,
 				A100000000000000000000EC /* ProviderBalanceProgressStore.swift */,
 				A100000000000000000000DB /* ProviderSwitchCoordinator.swift */,
 				A1000000000000000000005E /* CCSwitchRepository.swift */,
 				A10000000000000000000061 /* CredentialReader.swift */,
 				A10000000000000000000065 /* BalanceAPIClient.swift */,
-				A10000000000000000000068 /* OpenCodexRepository.swift */,
 				A10000000000000000000071 /* OfficialQuotaClient.swift */,
 				A100000000000000000000E8 /* UpdateService.swift */,
 				A10000000000000000000105 /* ReleaseNotes.swift */,
@@ -821,7 +817,6 @@
 				A1000000000000000000005B /* CCSwitchRepository.swift in Sources */,
 				A10000000000000000000060 /* CredentialReader.swift in Sources */,
 				A10000000000000000000064 /* BalanceAPIClient.swift in Sources */,
-				A10000000000000000000069 /* OpenCodexRepository.swift in Sources */,
 				A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */,
 				A10000000000000000000074 /* CodexActivityMonitor.swift in Sources */,
 				A1000000000000000000007B /* ClaudeCodeActivityMonitor.swift in Sources */,
@@ -849,7 +844,6 @@
 				A100000000000000000000C3 /* DashboardProviderPages.swift in Sources */,
 				A100000000000000000000D2 /* ActivityCoordinator.swift in Sources */,
 				A100000000000000000000D4 /* CCSwitchDatabaseWatcher.swift in Sources */,
-				A100000000000000000000D6 /* OpenCodexRefreshCoordinator.swift in Sources */,
 				A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */,
 				A100000000000000000000EB /* ProviderBalanceProgressStore.swift in Sources */,
 				A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */,
@@ -902,7 +896,7 @@
 				A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */,
 				A10000000000000000000062 /* CredentialReaderTests.swift in Sources */,
 				A10000000000000000000066 /* BalanceAPIClientTests.swift in Sources */,
-				A1000000000000000000006B /* OpenCodexRepositoryTests.swift in Sources */,
+				A1000000000000000000006B /* OpenCodexCardLayoutTests.swift in Sources */,
 				A10000000000000000000072 /* OfficialQuotaClientTests.swift in Sources */,
 				A10000000000000000000075 /* CodexActivityMonitorTests.swift in Sources */,
 				A1000000000000000000007C /* ClaudeCodeActivityMonitorTests.swift in Sources */,

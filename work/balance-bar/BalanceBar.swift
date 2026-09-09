@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey]
+    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -201,8 +201,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             statusItemVisibility: { [weak self] in
                 self?.statusItemController?.statusItemVisibility ?? .unknown
             },
-            currentOpenCodexResolution: { [weak self] in self?.currentOpenCodexDashboardResolution() },
-            runtimeCandidate: { [weak self] in self?.openCodexState?.state.candidate },
             updateState: { [weak self] in self?.updateService.state ?? .failed(.invalidCurrentVersion) },
             statusLinks: { [weak self] in self?.statusLinks ?? [] },
             defaultStatusLinks: { [weak self] in self?.defaultStatusLinks ?? [] },
@@ -282,11 +280,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
             onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
             onOpenUpdateNotes: { [weak self] in self?.showUpdateNotes() },
-            onOpenOpenCodex: { [weak self] in self?.openOpenCodex() },
-            onOpenCodexModeChanged: { [weak self] mode in
-                self?.openCodexDashboardAutomaticDetection = mode.automaticDetection
-                self?.openCodexDashboardPortOverride = mode.manualPort
-            },
             onClamp: { [weak self] in self?.clampDashboardScrollViewBounds() },
             onStatusLinksChanged: { [weak self] in
                 guard let self else { return }
@@ -323,13 +316,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var lastSuccessfulRefresh: Date?
     private var dashboardProviderPageRevision: UInt64 = 0
     private var lastProviderID: String?
-    private var lastOpenCodexFetch: Date?
     private var clientSnapshots: [
         AssistantClient: (providerID: String, snapshot: Snapshot)
     ] = [:]
-    private var openCodexState: (providerID: String, state: OpenCodexRuntimeState)?
-    private var openCodexCards: [OpenCodexModelCard] = []
-    private var openCodexSwitchInFlight = false
     private var snapshot = Snapshot.placeholder
     private var activeProviderWebsite: URL?
     private var activeClient: AssistantClient = .codex
@@ -350,7 +339,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let balanceAPIClient = BalanceAPIClient()
     private let balanceProgressStore = ProviderBalanceProgressStore()
     private var providerRefreshCoordinator: ProviderRefreshCoordinator!
-    private var openCodexRefreshCoordinator: OpenCodexRefreshCoordinator!
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
     private let launchAtLoginController: LaunchAtLoginController
@@ -376,7 +364,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var postCodexRefreshDuration: TimeInterval { get { preferences.postCodexRefreshDuration } set { preferences.postCodexRefreshDuration = newValue } }
     private var showQuickSwitchMenu: Bool { get { preferences.showQuickSwitchMenu } set { preferences.showQuickSwitchMenu = newValue } }
     private var showOpenCCSwitchMenu: Bool { get { preferences.showOpenCCSwitchMenu } set { preferences.showOpenCCSwitchMenu = newValue } }
-    private var showOpenCodexMenu: Bool { get { preferences.showOpenCodexMenu } set { preferences.showOpenCodexMenu = newValue } }
     private var showOpenChatGPTMenu: Bool { get { preferences.showOpenChatGPTMenu } set { preferences.showOpenChatGPTMenu = newValue } }
     private var showStatusMenu: Bool { get { preferences.showStatusMenu } set { preferences.showStatusMenu = newValue } }
     private var statusLinks: [StatusLink] { get { preferences.statusLinks } set { preferences.statusLinks = newValue } }
@@ -416,25 +403,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarStatusItemPhysicalWidthAdjustment: Double {
         menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
     }
-    private var openCodexDashboardPortOverride: Int? {
-        get { preferences.openCodexDashboardPortOverride }
-        set { preferences.openCodexDashboardPortOverride = newValue }
-    }
-    private var openCodexDashboardAutomaticDetection: Bool {
-        get { preferences.openCodexDashboardAutomaticDetection }
-        set { preferences.openCodexDashboardAutomaticDetection = newValue }
-    }
-    private var openCodexDashboardMode: OpenCodexDashboardMode {
-        OpenCodexDashboardMode(
-            automaticDetection: openCodexDashboardAutomaticDetection,
-            manualPort: openCodexDashboardPortOverride
-        )
-    }
 
     init(
         repository: CCSwitchRepository = CCSwitchRepository(),
         officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
-        openCodexRepository: OpenCodexRepository = OpenCodexRepository(),
         updateService: UpdateService? = nil,
         launchAtLoginService: LaunchAtLoginService = SystemLaunchAtLoginService(),
         launchWithChatGPTService: LaunchWithChatGPTService = SystemLaunchWithChatGPTService()
@@ -488,42 +460,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 quickSwitchSummaryChanged: { [weak self] providerID in
                     self?.publishQuickSwitchSummary(providerID: providerID)
-                },
-                isOpenCodexConfirmed: { [weak self] providerID in
-                    guard let self,
-                          let current = self.ccSwitchRepository.loadCurrent(appType: AssistantClient.codex.appType),
-                          let candidate = current.openCodexCandidate else { return false }
-                    return self.openCodexRefreshCoordinator?.isConfirmed(providerID: providerID, candidate: candidate) ?? false
-                }
-            )
-        )
-        openCodexRefreshCoordinator = OpenCodexRefreshCoordinator(
-            repository: repository,
-            officialQuotaClient: officialQuotaClient,
-            balanceAPIClient: balanceAPIClient,
-            balanceProgressStore: balanceProgressStore,
-            openCodexRepository: openCodexRepository,
-            queue: DispatchQueue(label: "local.balancebar.open-codex-refresh"),
-            actions: OpenCodexRefreshActions(
-                activeClient: { [weak self] in self?.activeClient ?? .codex },
-                currentProvider: { [weak self] client in self?.ccSwitchRepository.loadCurrent(appType: client.appType) },
-                setState: { [weak self] providerID, state in
-                    DispatchQueue.main.async {
-                        self?.openCodexState = state.map { (providerID, $0) }
-                        self?.openCodexSwitchInFlight = false
-                    }
-                },
-                setCards: { [weak self] cards in
-                    DispatchQueue.main.async { self?.openCodexCards = cards }
-                },
-                refreshMenu: { [weak self] in
-                    DispatchQueue.main.async { self?.refreshOpenCodexMenuBar() }
-                },
-                render: { [weak self] snapshot, providerID, client in
-                    self?.renderOpenCodexSnapshot(snapshot, providerID: providerID, client: client)
-                },
-                refreshStandard: { [weak self] current, client, reason, switched in
-                    self?.providerRefreshCoordinator.refreshStandardProvider(current: current, client: client, forceBalance: reason.forcesStandardProviderBalance, switched: switched)
                 }
             )
         )
@@ -534,13 +470,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     guard let self else { return }
                     self.providerRefreshCoordinator.resetCadence()
                     self.lastProviderID = nil
-                    self.lastOpenCodexFetch = nil
-                    self.openCodexRefreshCoordinator.clear()
                     DispatchQueue.main.async {
                         self.refreshStatusItemMenuInput()
-                        self.openCodexState = nil
-                        self.openCodexCards = []
-                        self.openCodexSwitchInFlight = false
                     }
                     self.refresh(reason: .providerChanged)
                 },
@@ -592,15 +523,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 openCCSwitch: { [weak self] in
                     self?.openCCSwitch()
                 },
-                openOpenCodex: { [weak self] in
-                    self?.openOpenCodex()
-                },
                 quit: { NSApp.terminate(nil) },
                 switchProvider: { [weak self] providerID in
                     self?.switchProvider(providerID)
-                },
-                switchOpenCodexPreference: { [weak self] preference in
-                    self?.performOpenCodexPreferenceSwitch(preference)
                 },
                 openProviderWebsite: { [weak self] in
                     self?.openProviderWebsite()
@@ -664,9 +589,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
         )
         return StatusItemController.MenuInput(
-            openCodexCards: openCodexCards,
-            openCodexState: openCodexState?.state,
-            openCodexSwitchInFlight: openCodexSwitchInFlight,
             choices: ccSwitchRepository.loadChoices(appType: activeClient.appType),
             quickSwitchSummaries: quickSwitchSummariesSnapshot(),
             activeClient: activeClient,
@@ -675,7 +597,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
-            showOpenCodexMenu: showOpenCodexMenu,
             showStatusMenu: showStatusMenu,
             lunaReserveDisplayMode: LunaReserveUserFacing.isCurrentlyEnabled
                 ? preferences.menuLunaReserveDisplayMode
@@ -843,7 +764,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         guard lifecycle.beginTerminate() else { return }
         SwitchLog.write("session terminating", category: "lifecycle")
-        openCodexRefreshCoordinator.teardown()
         timer?.invalidate()
         updateCheckTimer?.invalidate()
         updateCheckTimer = nil
@@ -902,21 +822,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             providerName: providerName
         )
     }
-    private func performOpenCodexPreferenceSwitch(_ preference: OpenCodexPreference) {
-        guard activeClient == .codex,
-              !openCodexSwitchInFlight,
-              let entry = openCodexState,
-              let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType),
-              current.id == entry.providerID,
-              current.openCodexCandidate != nil else { return }
-
-        openCodexSwitchInFlight = true
-        openCodexRefreshCoordinator.switchPreference(
-            preference,
-            providerID: entry.providerID,
-            oldState: entry.state
-        )
-    }
 
     @objc private func quit() {
         NSApp.terminate(nil)
@@ -967,39 +872,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in }
-    }
-
-    @objc private func openOpenCodex() {
-        let resolution = openCodexDashboardLaunchResolution()
-        SwitchLog.write(
-            "OpenCodex Dashboard launch requested; source=\(String(describing: resolution.source)); port=\(resolution.port); path=\(resolution.url.path); fragment=\(resolution.url.fragment ?? "none")",
-            category: "open-codex.dashboard"
-        )
-        NSWorkspace.shared.open(resolution.url)
-    }
-
-    private func currentOpenCodexDashboardResolution() -> OpenCodexDashboardResolution? {
-        guard let runtimeCandidate = openCodexDashboardCandidate() else { return nil }
-        return OpenCodexDashboardResolver.resolve(
-            manualPort: openCodexDashboardMode.effectiveManualPort,
-            runtimeCandidate: runtimeCandidate
-        )
-    }
-
-    private func openCodexDashboardLaunchResolution() -> OpenCodexDashboardResolution {
-        OpenCodexDashboardResolver.resolve(
-            manualPort: openCodexDashboardMode.effectiveManualPort,
-            runtimeCandidate: openCodexDashboardCandidate()
-        )
-    }
-
-    private func openCodexDashboardCandidate() -> OpenCodexEndpointCandidate? {
-        openCodexRefreshCoordinator.currentCandidate
-    }
-
-    private func refreshOpenCodexMenuBar() {
-        guard snapshot.kind == .openCodex else { return }
-        updateStatusItem(for: snapshot)
     }
 
     private func openCurrentAgent() {
@@ -1098,9 +970,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case "showOpenCCSwitchMenu":
             showOpenCCSwitchMenu = enabled
             render(snapshot)
-        case "showOpenCodexMenu":
-            showOpenCodexMenu = enabled
-            render(snapshot)
         case "showOpenChatGPTMenu":
             showOpenChatGPTMenu = enabled
             render(snapshot)
@@ -1118,8 +987,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             animateCodexActivity = enabled
             setCodexTaskRunning(isCodexTaskRunning, force: true)
             refreshDashboardMenuBarPage()
-        case "openCodexAutomaticDetection":
-            dashboardComposition.handleAutomaticDetection(enabled)
         default:
             break
         }
@@ -1539,10 +1406,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
-    private func refreshDashboardOpenCodexSettings() {
-        dashboardComposition.refreshOpenCodexSettings()
-    }
-
     private func configureRefreshTimers() {
         timer?.invalidate()
 
@@ -1762,12 +1625,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         SwitchLog.write("active client changed; client=\(client.rawValue)")
         lastProviderID = nil
         providerRefreshCoordinator.resetCadence()
-        lastOpenCodexFetch = nil
-        openCodexState = nil
-        openCodexCards = []
-        openCodexRefreshCoordinator.clear()
-        refreshOpenCodexMenuBar()
-        openCodexSwitchInFlight = false
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
         let lifecycle = activityRefreshLifecycle(for: activeClient)
@@ -1800,56 +1657,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
-    private func snapshotKindDiagnosticName(_ kind: Snapshot.Kind) -> String {
-        switch kind {
-        case .placeholder: return "placeholder"
-        case .official: return "official"
-        case .balance: return "balance"
-        case .openCodex: return "openCodex"
-        case .error: return "error"
-        }
-    }
-
-    private func openCodexCardDiagnostic(
-        _ card: OpenCodexModelCard,
-        index: Int
-    ) -> String {
-        "\(index){selector=\(card.selector),isCurrent=\(card.isCurrent),data=\(card.data.diagnosticName)}"
-    }
-
     private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {
-        let effective = OpenCodexCardPresentation.menuBarSnapshot(
-            for: snapshot,
-            cards: openCodexCards
-        )
-        let resolved = effective.menuBarSnapshot(
+        snapshot.menuBarSnapshot(
             preferredQuotaWindow: menuBarQuotaWindowPreference,
             automaticallyUseLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
                 && preferences.menuBarAutoSwitchLunaReserve
         )
-        guard snapshot.kind == .openCodex else { return resolved }
-
-        let match = OpenCodexCardPresentation.menuBarCardMatch(from: openCodexCards)
-        let cardSummary = openCodexCards.enumerated()
-            .map { openCodexCardDiagnostic($0.element, index: $0.offset) }
-            .joined(separator: ";")
-        let selection = match.card?.selector ?? "none"
-        let signature = [
-            snapshot.unit ?? "none",
-            cardSummary,
-            match.diagnosticReason,
-            snapshotKindDiagnosticName(resolved.kind),
-            resolved.menuBarPrimary,
-            resolved.menuBarSecondary
-        ].joined(separator: "|")
-        SwitchLog.write(
-            "OpenCodex menu bar resolution; runtime_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(resolved.kind)); primary=\(resolved.menuBarPrimary); secondary=\(resolved.menuBarSecondary)",
-            level: .debug,
-            category: "open-codex.menu-bar",
-            throttleKey: "open-codex-menu-resolution-\(signature)",
-            minimumInterval: 1
-        )
-        return resolved
     }
 
     private func updateDashboard(for snapshot: Snapshot, refreshDate: Date?) {
@@ -1883,69 +1696,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             let switched = current.id != self.lastProviderID
             if switched {
                 SwitchLog.write("provider observed; app=\(client.appType); id=\(current.id); name=\(current.name); source=database watcher/poll")
-                self.lastOpenCodexFetch = nil
-                self.openCodexRefreshCoordinator.clear()
-                DispatchQueue.main.async { [weak self] in
-                    guard let self, self.activeClient == client else { return }
-                    self.openCodexState = nil
-                    self.openCodexSwitchInFlight = false
-                    self.openCodexCards = []
-                    self.refreshOpenCodexMenuBar()
-                }
             }
             self.lastProviderID = current.id
-            if client == .codex, let candidate = current.openCodexCandidate {
-                let due = self.lastOpenCodexFetch.map {
-                    Date().timeIntervalSince($0) >= 5
-                } ?? true
-                guard reason.forcesStandardProviderBalance || switched || due else { return }
-                self.lastOpenCodexFetch = Date()
-                self.openCodexRefreshCoordinator.refresh(
-                    providerID: current.id,
-                    providerName: current.name,
-                    candidate: candidate,
-                    client: client,
-                    reason: reason,
-                    switched: switched
-                )
-                return
-            }
-
-            if client == .codex {
-                self.openCodexRefreshCoordinator.clear()
-                DispatchQueue.main.async { [weak self] in
-                    guard let self,
-                          self.openCodexState?.providerID == current.id else { return }
-                    self.openCodexState = nil
-                    self.openCodexCards = []
-                    self.openCodexSwitchInFlight = false
-                    self.refreshOpenCodexMenuBar()
-                }
-            }
-
             self.providerRefreshCoordinator.refreshStandardProvider(
                 current: current,
                 client: client,
                 forceBalance: reason.forcesStandardProviderBalance,
                 switched: switched
             )
-        }
-    }
-
-    private func renderOpenCodexSnapshot(
-        _ next: Snapshot,
-        providerID: String,
-        client: AssistantClient
-    ) {
-        providerRefreshCoordinator.performAsync { [weak self] in
-            guard let self,
-                  self.ccSwitchRepository.loadCurrent(appType: client.appType)?.id == providerID
-            else { return }
-            DispatchQueue.main.async {
-                guard self.activeClient == client,
-                      self.lastProviderID == providerID else { return }
-                self.render(next)
-            }
         }
     }
 

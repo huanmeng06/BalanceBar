@@ -296,7 +296,7 @@ final class LocalizationTests: XCTestCase {
         ]
         for (language, colon) in cases {
             let prefix = tr(.keyCodexBankedResetProbabilityPrefix, language: language)
-            let official = tr(.keyStatusItemControllerOfficialLink2, language: language)
+            let official = tr(.keyStatusItemControllerOfficialLink, language: language)
             XCTAssertTrue(
                 prefix.hasSuffix(colon),
                 "\(language.rawValue) probability prefix \(prefix) should end with \(colon)"
@@ -1085,7 +1085,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 503)
+        XCTAssertEqual(expectedKeys.count, 453)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -1611,12 +1611,6 @@ final class LocalizationTests: XCTestCase {
         }
 
         assertTranslation(.japanese, .keySnapshotRemainingBalance, equals: "残りの残高")
-        assertTranslation(.japanese, .keyStatusItemControllerRemainingBalance, equals: "残りの残高")
-        assertTranslation(
-            .japanese,
-            .keyStatusItemControllerNoLiveDataReceivedYet,
-            equals: "リアルタイムデータはまだ受信されていません"
-        )
 
         assertTranslation(.korean, .keyDashboardProviderPagesThisProviderIsNoLongerAvailable, equals: "이 서비스 제공자는 더 이상 사용할 수 없습니다")
         assertTranslation(.korean, .keyDashboardProviderPagesThisProviderDisappearedFromCcSwitch, equals: "이 서비스 제공자는 더 이상 CC Switch에 없습니다")
@@ -1669,13 +1663,7 @@ final class LocalizationTests: XCTestCase {
                 ["Codex"],
                 "현재 CC Switch Codex 서비스 제공자를 찾을 수 없습니다"
             ),
-            (
-                .keyProviderModelsTheUpstreamProviderIdentityWasNotRead,
-                [],
-                "상위 서비스 제공자 식별자를 읽지 못했습니다"
-            ),
             (.keySnapshotLoadingTheCurrentProvider, [], "현재 서비스 제공자를 불러오는 중…"),
-            (.keySnapshotCurrentProviderModel, [], "현재 서비스 제공자/모델"),
             (.keyCCSwitchRepositoryProviderDoesNotExist, [], "서비스 제공자가 존재하지 않습니다"),
             (
                 .keyCCSwitchRepositoryTheProviderSClaudeConfigurationIsIncomplete,
@@ -1739,14 +1727,8 @@ final class LocalizationTests: XCTestCase {
         let store = LocalizationResourceStore(bundle: testBundle)
         let languages: [AppLanguage] = [.traditionalChineseTaiwan, .traditionalChineseHongKong]
         let expectations: [(key: LocalizationKey, arguments: [String], expected: String)] = [
-            (
-                .keyProviderModelsTheUpstreamProviderIdentityWasNotRead,
-                [],
-                "未讀取到上游服務商身分"
-            ),
             (.keySnapshotBalanceStatus, [], "餘額狀態"),
             (.keySnapshotRemainingBalance, [], "剩餘餘額"),
-            (.keySnapshotCurrentProviderModel, [], "目前服務商／模型"),
             (
                 .keySnapshotUpdatedValueFollowsCcSwitchAutomatically,
                 ["19:30"],
@@ -1761,19 +1743,7 @@ final class LocalizationTests: XCTestCase {
                 .keyDashboardProviderPagesFollowingCurrentProvider,
                 [],
                 "正在與目前服務商自動同步"
-            ),
-            (
-                .keyStatusItemControllerOpencodexFeaturedModelsAreNotAvailableYet,
-                [],
-                "尚未讀取到 OpenCodex 精選模型"
-            ),
-            (
-                .keyStatusItemControllerNoOpencodexFeaturedModelsAreConfigured,
-                [],
-                "未設定 OpenCodex 精選模型"
-            ),
-            (.keyStatusItemControllerRemainingBalance, [], "剩餘餘額"),
-            (.keyStatusItemControllerNoLiveDataReceivedYet, [], "尚未收到即時資料")
+            )
         ]
 
         for language in languages {
@@ -1791,31 +1761,16 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
-    func testIssue254FeaturedModelsKeysAndCopyAcrossAllTwelveLanguages() throws {
-        let store = LocalizationResourceStore(bundle: testBundle)
-        let unavailableKey = LocalizationKey.keyStatusItemControllerOpencodexFeaturedModelsAreNotAvailableYet
-        let configuredKey = LocalizationKey.keyStatusItemControllerNoOpencodexFeaturedModelsAreConfigured
-        let oldRawKeys = [
+    func testOpenCodexUserFacingCopyIsAbsentAcrossAllTwelveLanguages() throws {
+        let removedRawKeys = [
+            "status.item.controller.opencodex_featured_models_are_not_available_yet",
+            "status.item.controller.no_opencodex_featured_models_are_configured",
             "status.item.controller.opencodex_chosen_models_are_not_available_yet",
-            "status.item.controller.no_opencodex_chosen_models_are_configured"
+            "status.item.controller.no_opencodex_chosen_models_are_configured",
+            "dashboard.menu.page.open_opencodex",
+            "dashboard.advanced.page.opencodex"
         ]
-        let expected: [(AppLanguage, String, String)] = [
-            (.simplifiedChinese, "暂未读取到 OpenCodex 精选模型", "未配置 OpenCodex 精选模型"),
-            (.traditionalChineseTaiwan, "尚未讀取到 OpenCodex 精選模型", "未設定 OpenCodex 精選模型"),
-            (.traditionalChineseHongKong, "尚未讀取到 OpenCodex 精選模型", "未設定 OpenCodex 精選模型"),
-            (.english, "OpenCodex Featured Models are not available yet", "No OpenCodex Featured Models are configured"),
-            (.japanese, "OpenCodex のおすすめモデルはまだ利用できません", "OpenCodex のおすすめモデルが設定されていません"),
-            (.korean, "OpenCodex 추천 모델을 아직 사용할 수 없습니다", "구성된 OpenCodex 추천 모델이 없습니다"),
-            (.spanish, "Los modelos destacados de OpenCodex aún no están disponibles", "No hay modelos destacados de OpenCodex configurados"),
-            (.portuguese, "Os modelos em destaque do OpenCodex ainda não estão disponíveis", "Nenhum modelo em destaque do OpenCodex foi configurado"),
-            (.french, "Les modèles en vedette d’OpenCodex ne sont pas encore disponibles", "Aucun modèle en vedette d’OpenCodex n’est configuré"),
-            (.german, "Empfohlene OpenCodex-Modelle sind noch nicht verfügbar", "Keine empfohlenen OpenCodex-Modelle sind konfiguriert"),
-            (.russian, "Рекомендуемые модели OpenCodex пока недоступны", "Рекомендуемые модели OpenCodex не настроены"),
-            (.italian, "I modelli in evidenza di OpenCodex non sono ancora disponibili", "Non sono configurati modelli in evidenza di OpenCodex")
-        ]
-
-        XCTAssertEqual(expected.count, resourceDirectories.count)
-        XCTAssertFalse(LocalizationKey.allCases.contains { oldRawKeys.contains($0.rawKey) })
+        XCTAssertFalse(LocalizationKey.allCases.contains { removedRawKeys.contains($0.rawKey) })
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(
@@ -1826,32 +1781,15 @@ final class LocalizationTests: XCTestCase {
                 String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
             )
 
-            for oldRawKey in oldRawKeys {
+            for rawKey in removedRawKeys {
                 XCTAssertFalse(
-                    raw.contains("\"\(oldRawKey)\" ="),
-                    "old chosen-model localization key remains in \(directory) (\(language))"
+                    raw.contains("\"\(rawKey)\" ="),
+                    "OpenCodex localization key remains in \(directory) (\(language))"
                 )
             }
-            XCTAssertTrue(
-                raw.contains("\"\(unavailableKey.rawKey)\" ="),
-                "missing featured-model localization key in \(directory) (\(language))"
-            )
-            XCTAssertTrue(
-                raw.contains("\"\(configuredKey.rawKey)\" ="),
-                "missing featured-model localization key in \(directory) (\(language))"
-            )
-        }
-
-        for (language, unavailable, configured) in expected {
-            XCTAssertEqual(
-                store.localized(key: unavailableKey, language: language),
-                unavailable,
-                "featured-model availability copy for \(language)"
-            )
-            XCTAssertEqual(
-                store.localized(key: configuredKey, language: language),
-                configured,
-                "featured-model configuration copy for \(language)"
+            XCTAssertFalse(
+                raw.localizedCaseInsensitiveContains("OpenCodex"),
+                "OpenCodex copy remains in \(directory) (\(language))"
             )
         }
     }
