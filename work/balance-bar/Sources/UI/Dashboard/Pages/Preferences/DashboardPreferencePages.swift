@@ -18,6 +18,7 @@ struct DashboardPreferencePageActions {
     let onMenuBarIconDisplayModeChanged: (MenuBarIconDisplayMode) -> Void
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
     let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
+    let onMenuBarAnimationFrameRateChanged: (Int) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
     let onMenuBarLunaReserveResetTimeModeChanged: (LunaReserveResetTimeMode) -> Void
@@ -76,6 +77,7 @@ final class DashboardPreferencePages {
         relay.onMenuBarIconDisplayModeChanged = actions.onMenuBarIconDisplayModeChanged
         relay.onMenuBarIconDisplayDelayChanged = actions.onMenuBarIconDisplayDelayChanged
         relay.onMenuBarAnimationModeChanged = actions.onMenuBarAnimationModeChanged
+        relay.onMenuBarAnimationFrameRateChanged = actions.onMenuBarAnimationFrameRateChanged
         relay.onMenuBarQuotaWindowPreferenceChanged = actions.onMenuBarQuotaWindowPreferenceChanged
         relay.onMenuBarQuotaResetDisplayModeChanged = actions.onMenuBarQuotaResetDisplayModeChanged
         relay.onMenuBarLunaReserveResetTimeModeChanged = actions.onMenuBarLunaReserveResetTimeModeChanged
@@ -300,6 +302,18 @@ final class DashboardPreferencePages {
             selectLastRow: selectLastRow,
             completion: completion
         )
+    }
+
+    func setRestoreSnapshotProvider(_ provider: @escaping () -> DashboardRestoreToken) {
+        menuBarPage.restoreSnapshotProvider = provider
+    }
+
+    func setPersistRestoreToken(_ persist: @escaping (DashboardRestoreToken) -> Void) {
+        menuBarPage.persistRestoreToken = persist
+    }
+
+    func setRelaunchApplication(_ relaunch: @escaping () -> Void) {
+        menuBarPage.relaunchApplication = relaunch
     }
 
     func teardown() {

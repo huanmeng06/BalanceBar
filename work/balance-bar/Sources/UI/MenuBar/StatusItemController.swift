@@ -2252,6 +2252,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// the user's saved preference.
     private var codexAnimationBackend: MenuBarCodexAnimationBackend
     private var preferredCodexAnimationBackend: MenuBarCodexAnimationBackend
+    private var animationFrameRate: Int
     private var codexAnimationFallbackActive = false
     private var nativeCodexAnimatedIconHost: MenuBarNativeAnimatedIconHostView?
     private var nativeCodexAnimationIsActive = false
@@ -2575,16 +2576,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     init(
         actions: Actions,
         codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap,
+        animationFrameRate: Int = MenuBarAnimationTiming.defaultFrameRate,
         forceNativeCodexAnimationFailureForTesting: Bool = false
     ) {
         self.actions = actions
         self.preferredCodexAnimationBackend = codexAnimationBackend
         self.codexAnimationBackend = codexAnimationBackend
+        self.animationFrameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
         self.forceNativeCodexAnimationFailureForTesting = forceNativeCodexAnimationFailureForTesting
         self.menuBarIconView = RotatingTemplateImageView(
             frame: .zero
         )
         super.init()
+        menuBarIconView.setFrameRate(self.animationFrameRate)
         bitmapRenderContainer.onEffectiveAppearanceChanged = { [weak self] in
             self?.handleBitmapEffectiveAppearanceChanged()
         }
@@ -2978,6 +2982,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             updateActivityIcon()
         }
     }
+
+    /// Applies the shared runtime FPS immediately. 36 discrete states stay
+    /// fixed; only the D0 timer interval, G CA duration, and Grok thinking
+    /// cadence change. Claude is intentionally not retimed.
+    func setAnimationFrameRate(_ fps: Int) {
+        precondition(Thread.isMainThread, "Animation frame rate must be changed on the main thread")
+        let clamped = MenuBarAnimationTiming.clampedFrameRate(fps)
+        guard animationFrameRate != clamped else { return }
+        animationFrameRate = clamped
+        menuBarIconView.setFrameRate(clamped)
+        nativeCodexAnimatedIconHost?.rotationDuration = MenuBarAnimationTiming.rotationDuration(
+            fps: clamped
+        )
+        if let grokHost = grokThinkingAnimatedIconHost {
+            grokHost.timing = .grok(frameRate: clamped)
+        }
+        restartGrokThinkingFrameTimerIfNeeded()
+    }
+
+    var animationFrameRateForTesting: Int { animationFrameRate }
 
     private func rebuildOrDeferMenu(forceDefer: Bool = false) {
         guard statusItem != nil else { return }
@@ -4119,8 +4143,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return false
         }
         host.isHidden = false
+        host.rotationDuration = MenuBarAnimationTiming.rotationDuration(fps: animationFrameRate)
         // Existing animation is deliberately retained across geometry,
         // appearance, backing-scale, and status-item reattachment changes.
+        // FPS changes replace the duration through `rotationDuration`.
         host.installRotationAnimation()
         publishNativeCodexAnimationStateIfNeeded(true)
         return true
@@ -4403,7 +4429,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             grokThinkingAnimatedIconHost = newHost
             return newHost
         }()
-        host.timing = .grok
+        host.timing = .grok(frameRate: animationFrameRate)
         let hostFrame = attachGrokThinkingAnimationHost(
             host,
             button: button,
@@ -4618,9 +4644,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func startGrokThinkingFrameTimerIfNeeded() {
-        guard grokThinkingFrameTimer == nil else { return }
+        let interval = GrokThinkingAnimationTiming.frameDuration(fps: animationFrameRate)
+        if let grokThinkingFrameTimer {
+            if abs(grokThinkingFrameTimer.timeInterval - interval) < 0.000_001 {
+                return
+            }
+            grokThinkingFrameTimer.invalidate()
+            self.grokThinkingFrameTimer = nil
+        }
         let timer = Timer(
-            timeInterval: GrokThinkingAnimationTiming.frameDuration,
+            timeInterval: interval,
             repeats: true
         ) { [weak self] _ in
             guard let self else { return }
@@ -4630,6 +4663,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         RunLoop.main.add(timer, forMode: .common)
         grokThinkingFrameTimer = timer
+    }
+
+    private func restartGrokThinkingFrameTimerIfNeeded() {
+        guard grokThinkingFrameTimer != nil else { return }
+        grokThinkingFrameTimer?.invalidate()
+        grokThinkingFrameTimer = nil
+        startGrokThinkingFrameTimerIfNeeded()
     }
 
     private func publishGrokThinkingAnimationStateIfNeeded(

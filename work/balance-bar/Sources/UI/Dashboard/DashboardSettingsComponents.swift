@@ -336,9 +336,9 @@ private final class DashboardSettingsRowView: NSView {
         DashboardSettingsLayoutMetrics.preferredHeightMeasurements += 1
         labelsView.layoutSubtreeIfNeeded()
         let visibleLabels = labelsView.arrangedSubviews.filter { !$0.isHidden }
+        let contentWidth = max(1, labelsView.bounds.width > 1 ? labelsView.bounds.width : bounds.width - 40)
         let labelHeight = visibleLabels.reduce(CGFloat(0)) { total, view in
-            let height = view.fittingSize.height
-            return total + height
+            return total + measuredArrangedLabelHeight(view, contentWidth: contentWidth)
         } + max(0, CGFloat(visibleLabels.count - 1)) * labelsView.spacing
         let controlHeight = controlFittingSize().height
         let trailingHeight = trailingControlFittingSize().height
@@ -354,6 +354,58 @@ private final class DashboardSettingsRowView: NSView {
         }
         cachedPreferredHeight = height
         return height
+    }
+
+    private func measuredArrangedLabelHeight(_ view: NSView, contentWidth: CGFloat) -> CGFloat {
+        if let textField = view as? NSTextField {
+            return measuredTextHeight(textField, fallbackWidth: contentWidth)
+        }
+        let fitting = view.fittingSize.height
+        if fitting > 1 {
+            return fitting
+        }
+        if let stack = view as? NSStackView {
+            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
+            if stack.orientation == .vertical {
+                let nested = visible.reduce(CGFloat(0)) { total, child in
+                    total + measuredArrangedLabelHeight(child, contentWidth: contentWidth)
+                }
+                return nested + max(0, CGFloat(visible.count - 1)) * stack.spacing
+            }
+            if let title = visible.first as? NSTextField {
+                return measuredTextHeight(title, fallbackWidth: titleWidth(at: contentWidth))
+            }
+        }
+        return max(0, fitting)
+    }
+
+    private func measuredTextHeight(_ textField: NSTextField, fallbackWidth: CGFloat) -> CGFloat {
+        let fitting = textField.fittingSize.height
+        if textField.stringValue.isEmpty {
+            return max(0, fitting)
+        }
+
+        let frameHeight = textField.bounds.height
+        let laidOutWidth = textField.bounds.width
+        let measureWidth = laidOutWidth > 1 ? laidOutWidth : max(1, fallbackWidth)
+        let cellHeight = textField.cell?.cellSize(
+            forBounds: NSRect(
+                x: 0,
+                y: 0,
+                width: measureWidth,
+                height: .greatestFiniteMagnitude
+            )
+        ).height ?? 0
+
+        // In-place subtitle updates can compress a wrapping title to zero.
+        // Measure the real text so the row can grow instead of hiding it.
+        if frameHeight <= 1 || fitting <= 1 {
+            return max(1, cellHeight, fitting)
+        }
+        if cellHeight > frameHeight + 2 {
+            return cellHeight
+        }
+        return max(fitting, frameHeight)
     }
 
     private func controlFittingSize() -> NSSize {
@@ -491,6 +543,17 @@ private final class DashboardSettingsRowView: NSView {
         dedicatedControlConstraints = dedicated
         controlPlacement = forceDedicatedControlRow ? .dedicatedRow : .horizontal
         NSLayoutConstraint.activate(forceDedicatedControlRow ? dedicated : sideBySide)
+    }
+
+    fileprivate func invalidateAfterContentChange() {
+        lastContentIdentity = nil
+        invalidateContentCaches()
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+        superview?.needsLayout = true
+        cardView?.markHeightDirty()
+        cardView?.needsLayout = true
+        cardView?.updateHeightIfNeeded()
     }
 
     private func updateControlPlacementIfNeeded(_ placement: DashboardSettingsControlPlacement) {
@@ -846,6 +909,20 @@ enum DashboardSettingsComponents {
         }
         label?.invalidateIntrinsicContentSize()
         label?.superview?.needsLayout = true
+        notifySettingsRowContentChanged(label)
+    }
+
+    static func notifySettingsRowContentChanged(_ view: NSView?) {
+        var ancestor = view
+        while let current = ancestor {
+            if let row = current as? DashboardSettingsRowView {
+                row.invalidateAfterContentChange()
+                return
+            }
+            ancestor = current.superview
+        }
+        view?.invalidateIntrinsicContentSize()
+        view?.superview?.needsLayout = true
     }
 
     private static func sourceRangeIsValid(_ range: NSRange, in source: NSString) -> Bool {
@@ -1168,6 +1245,8 @@ enum DashboardSettingsComponents {
         label.cell?.isScrollable = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .vertical)
+        label.setContentHuggingPriority(.defaultHigh, for: .vertical)
         let titleView: NSView
         if let titleAccessory {
             let titleStack = NSStackView(views: [label, titleAccessory])

@@ -282,26 +282,87 @@ final class AppPreferencesTests: XCTestCase {
         )
     }
 
-    func testMenuBarAnimationModeDefaultsToEfficientAndPersistsAcrossReload() {
+    func testMenuBarAnimationModeDefaultsToEfficientAndPreservesSavedSynchronized() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
 
         XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+        XCTAssertEqual(MenuBarAnimationMode.defaultValue, .efficient)
+        XCTAssertEqual(
+            MenuBarAnimationMode.displayOrder.map(\.rawValue),
+            ["synchronized", "efficient"]
+        )
         XCTAssertNil(defaults.string(forKey: AppPreferences.menuBarAnimationModeKey))
 
-        preferences.menuBarAnimationMode = .synchronized
-        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
+        preferences.menuBarAnimationMode = .efficient
+        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
         XCTAssertEqual(
             defaults.string(forKey: AppPreferences.menuBarAnimationModeKey),
-            MenuBarAnimationMode.synchronized.rawValue
+            MenuBarAnimationMode.efficient.rawValue
         )
         XCTAssertEqual(
             AppPreferences(defaults: defaults).menuBarAnimationMode,
-            .synchronized
+            .efficient
         )
 
         defaults.set("unsupported", forKey: AppPreferences.menuBarAnimationModeKey)
         XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+
+        defaults.set(
+            MenuBarAnimationMode.synchronized.rawValue,
+            forKey: AppPreferences.menuBarAnimationModeKey
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarAnimationMode,
+            .synchronized,
+            "already-saved Synchronized must not be migrated to Performance"
+        )
+
+        defaults.set(
+            MenuBarAnimationMode.efficient.rawValue,
+            forKey: AppPreferences.menuBarAnimationModeKey
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarAnimationMode,
+            .efficient,
+            "already-saved Performance must stay Performance"
+        )
+    }
+
+    func testMenuBarAnimationFrameRateDefaultsBoundsAndPersistsAcrossReload() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
+        XCTAssertNil(defaults.object(forKey: AppPreferences.menuBarAnimationFrameRateKey))
+        XCTAssertTrue(
+            PreferencesMigrationPlan.allKeys.contains(AppPreferences.menuBarAnimationFrameRateKey)
+        )
+
+        preferences.menuBarAnimationFrameRate = 10
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 10)
+        XCTAssertEqual(defaults.integer(forKey: AppPreferences.menuBarAnimationFrameRateKey), 10)
+        XCTAssertEqual(AppPreferences(defaults: defaults).menuBarAnimationFrameRate, 10)
+
+        preferences.menuBarAnimationFrameRate = 61
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+        preferences.menuBarAnimationFrameRate = 31
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 30)
+        preferences.menuBarAnimationFrameRate = 5
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 6)
+
+        defaults.set("unsupported", forKey: AppPreferences.menuBarAnimationFrameRateKey)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
+        defaults.set(0, forKey: AppPreferences.menuBarAnimationFrameRateKey)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
+        defaults.set(61, forKey: AppPreferences.menuBarAnimationFrameRateKey)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
+        defaults.set(true, forKey: AppPreferences.menuBarAnimationFrameRateKey)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
+        defaults.set(24.5, forKey: AppPreferences.menuBarAnimationFrameRateKey)
+        XCTAssertEqual(preferences.menuBarAnimationFrameRate, 24)
+        defaults.set(30, forKey: AppPreferences.menuBarAnimationFrameRateKey)
+        XCTAssertEqual(AppPreferences(defaults: defaults).menuBarAnimationFrameRate, 30)
     }
 
     func testNumericPreferencesDefaultsBoundsAndRoundTrips() {

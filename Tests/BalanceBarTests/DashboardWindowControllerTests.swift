@@ -163,6 +163,97 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(state.isZoomed)
     }
 
+    func testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral() throws {
+        func textFields(in view: NSView) -> [NSTextField] {
+            view.subviews.flatMap { child -> [NSTextField] in
+                ([child].compactMap { $0 as? NSTextField }) + textFields(in: child)
+            }
+        }
+        func makeTallPage() -> NSView {
+            let filler = NSView()
+            filler.translatesAutoresizingMaskIntoConstraints = false
+            filler.heightAnchor.constraint(equalToConstant: 1800).isActive = true
+            let fpsField = NSTextField()
+            fpsField.translatesAutoresizingMaskIntoConstraints = false
+            fpsField.identifier = NSUserInterfaceItemIdentifier(
+                DashboardMenuBarPage.animationFrameRateIdentifier
+            )
+            fpsField.isEditable = true
+            fpsField.isSelectable = true
+            fpsField.stringValue = "30"
+            fpsField.widthAnchor.constraint(equalToConstant: 44).isActive = true
+            return DashboardSettingsComponents.makeSettingsPage([
+                DashboardSettingsComponents.makeSettingsSection("Tall", rows: [filler, fpsField])
+            ])
+        }
+
+        let restoring = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in makeTallPage() },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer {
+            restoring.teardown()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+
+        restoring.open(initialSection: .menuBar, scrollOffsetY: 160)
+        let window = try XCTUnwrap(restoring.window)
+        window.setContentSize(NSSize(width: 880, height: 620))
+        window.layoutIfNeeded()
+        window.contentView?.layoutSubtreeIfNeeded()
+        restoring.contentHost.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        restoring.restorePageScrollOffsetY(160)
+
+        XCTAssertEqual(restoring.section, .menuBar)
+        XCTAssertEqual(restoring.pageScrollOffsetY(), 160, accuracy: 2)
+        let fpsField = try XCTUnwrap(
+            textFields(in: restoring.contentHost).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier
+            }
+        )
+        XCTAssertTrue(fpsField.isEditable)
+        XCTAssertNil(
+            fpsField.currentEditor(),
+            "restore-open must not leave the FPS field selected"
+        )
+        XCTAssertFalse(
+            window.firstResponder === fpsField,
+            "restore-open must not make the FPS field first responder"
+        )
+        if window.makeFirstResponder(fpsField) {
+            restoring.restorePageScrollOffsetY(160)
+            XCTAssertNil(fpsField.currentEditor())
+            XCTAssertFalse(window.firstResponder === fpsField)
+        }
+        XCTAssertTrue(fpsField.isEditable)
+
+        let fresh = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in makeTallPage() },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer {
+            fresh.teardown()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        fresh.open()
+        XCTAssertEqual(fresh.section, .general)
+    }
+
     func testRepeatedStartAndOpenKeepOneObserverMonitorAndWindow() {
         var shownPageCount = 0
         let choices = [

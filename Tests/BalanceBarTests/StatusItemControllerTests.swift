@@ -14,6 +14,22 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testSetAnimationFrameRateClampsAndTakesEffectImmediately() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        XCTAssertEqual(controller.animationFrameRateForTesting, 24)
+        controller.setAnimationFrameRate(10)
+        XCTAssertEqual(controller.animationFrameRateForTesting, 10)
+        controller.setAnimationFrameRate(61)
+        XCTAssertEqual(controller.animationFrameRateForTesting, 30)
+        controller.setAnimationFrameRate(31)
+        XCTAssertEqual(controller.animationFrameRateForTesting, 30)
+        controller.setAnimationFrameRate(5)
+        XCTAssertEqual(controller.animationFrameRateForTesting, 6)
+    }
+
+    @MainActor
     func testClientSwitchLayoutsOnceAndDefersMenuRebuildUntilOpen() {
         let controller = makeController()
         defer { controller.teardown() }

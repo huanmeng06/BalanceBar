@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey]
+    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -253,6 +253,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onMenuBarAnimationModeChanged: { [weak self] mode in
                 self?.handleDashboardMenuBarAnimationModeChanged(mode)
+            },
+            onMenuBarAnimationFrameRateChanged: { [weak self] fps in
+                self?.handleDashboardMenuBarAnimationFrameRateChanged(fps)
             },
             onMenuBarQuotaWindowPreferenceChanged: { [weak self] preference in
                 self?.handleDashboardQuotaWindowPreferenceChanged(preference)
@@ -639,7 +642,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
                 mode: preferences.menuBarAnimationMode
-            )
+            ),
+            animationFrameRate: preferences.menuBarAnimationFrameRate
         )
     }
 
@@ -776,14 +780,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         configureApplicationMenu()
         NSApp.appearance = nil
         dashboardComposition.start()
+        let pendingRestore = DashboardRestoreStore.peek()
         let initialPresentation = InitialLaunchPresentation.resolve(
-            silentLaunch: preferences.silentLaunch
+            silentLaunch: preferences.silentLaunch,
+            pendingDashboardRestore: pendingRestore != nil
         )
         let regularPolicyApplied: Bool
         switch initialPresentation {
         case .dashboard:
             regularPolicyApplied = NSApp.setActivationPolicy(.regular)
-            showDashboard()
+            showDashboard(restore: pendingRestore)
         case .background:
             regularPolicyApplied = NSApp.setActivationPolicy(.accessory)
         }
@@ -1199,6 +1205,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         refreshDashboardMenuBarPage()
     }
 
+    private func handleDashboardMenuBarAnimationFrameRateChanged(_ fps: Int) {
+        let clamped = MenuBarAnimationTiming.clampedFrameRate(fps)
+        preferences.menuBarAnimationFrameRate = clamped
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuBarAnimationFrameRateKey); value=\(clamped)",
+            category: "configuration"
+        )
+        statusItemController.setAnimationFrameRate(clamped)
+        refreshDashboardMenuBarPage()
+    }
+
     private func handleDashboardQuotaResetDisplayModeChanged(
         _ mode: OfficialQuotaResetDisplayMode
     ) {
@@ -1416,6 +1433,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     var backgroundUpdateTimerForTesting: Timer? { updateCheckTimer }
 
+    func presentInitialDashboardForTesting() {
+        dashboardComposition.start()
+        let pendingRestore = DashboardRestoreStore.peek()
+        if InitialLaunchPresentation.resolve(
+            silentLaunch: preferences.silentLaunch,
+            pendingDashboardRestore: pendingRestore != nil
+        ) == .dashboard {
+            showDashboard(restore: pendingRestore)
+        }
+    }
+
     func handleLaunchAtLoginActionForTesting(enabled: Bool) {
         handleLaunchAtLoginAction(enabled: enabled)
     }
@@ -1424,8 +1452,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         handleLaunchWithChatGPTAction(enabled: enabled)
     }
 
-    private func showDashboard() {
-        dashboardComposition.open()
+    private func showDashboard(restore: DashboardRestoreToken? = nil) {
+        dashboardComposition.open(
+            initialSection: restore?.section ?? .general,
+            scrollOffsetY: restore.map { CGFloat($0.scrollOffsetY) }
+        )
+        if restore != nil {
+            DashboardRestoreStore.clear()
+        }
+        if let restore {
+            let offset = CGFloat(restore.scrollOffsetY)
+            DispatchQueue.main.async { [weak self] in
+                self?.dashboardComposition.restorePageScrollOffsetY(offset)
+            }
+        }
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
 
@@ -2092,7 +2132,10 @@ enum BalanceBarMain {
             return
         }
         let app = NSApplication.shared
-        if InitialLaunchPresentation.resolve(silentLaunch: AppPreferences().silentLaunch) == .background {
+        if InitialLaunchPresentation.resolve(
+            silentLaunch: AppPreferences().silentLaunch,
+            pendingDashboardRestore: DashboardRestoreStore.peek() != nil
+        ) == .background {
             _ = app.setActivationPolicy(.accessory)
         }
         let delegate = AppDelegate()

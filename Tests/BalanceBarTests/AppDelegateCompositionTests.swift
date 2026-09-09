@@ -3,6 +3,16 @@ import XCTest
 @testable import BalanceBar
 
 final class AppDelegateCompositionTests: XCTestCase {
+    override func tearDown() {
+        let restoreDefaults = DashboardRestoreStore.defaults
+        DashboardRestoreStore.defaults = .standard
+        if restoreDefaults !== UserDefaults.standard {
+            DashboardRestoreStore.clear(defaults: restoreDefaults)
+        }
+        drainMainRunLoop()
+        super.tearDown()
+    }
+
     func testAppDelegateBoundaryContainsOnlyCompositionResponsibilities() throws {
         let source = try balanceBarSource()
         let appDelegateStart = try XCTUnwrap(
@@ -1086,8 +1096,108 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     @MainActor
+    func testPendingDashboardRestoreOpensSavedSectionEvenWhenSilentLaunchIsEnabled() throws {
+        _ = NSApplication.shared
+        let restoreSuiteName = "AppDelegateCompositionTests.DashboardRestore.\(UUID().uuidString)"
+        let restoreDefaults = try XCTUnwrap(UserDefaults(suiteName: restoreSuiteName))
+        restoreDefaults.removePersistentDomain(forName: restoreSuiteName)
+        DashboardRestoreStore.defaults = restoreDefaults
+
+        let defaults = UserDefaults.standard
+        let previousSilentLaunch = defaults.object(forKey: AppPreferences.silentLaunchKey)
+        let previousIcon = defaults.object(forKey: "showMenuBarIcon")
+        let previousAnimate = defaults.object(forKey: "animateCodexActivity")
+        defaults.set(true, forKey: AppPreferences.silentLaunchKey)
+        defaults.set(true, forKey: "showMenuBarIcon")
+        defaults.set(true, forKey: "animateCodexActivity")
+        DashboardRestoreStore.record(
+            DashboardRestoreToken(section: .menuBar, scrollOffsetY: 88)
+        )
+
+        let first = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-357-restore-first.db")
+            )
+        )
+        let firstComposition = first.dashboardCompositionForTesting
+        defer {
+            drainMainRunLoop()
+            firstComposition.teardownForTesting()
+            drainMainRunLoop()
+            DashboardRestoreStore.clear(defaults: restoreDefaults)
+            DashboardRestoreStore.defaults = .standard
+            restoreDefaults.removePersistentDomain(forName: restoreSuiteName)
+            if let previousSilentLaunch {
+                defaults.set(previousSilentLaunch, forKey: AppPreferences.silentLaunchKey)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.silentLaunchKey)
+            }
+            if let previousIcon {
+                defaults.set(previousIcon, forKey: "showMenuBarIcon")
+            } else {
+                defaults.removeObject(forKey: "showMenuBarIcon")
+            }
+            if let previousAnimate {
+                defaults.set(previousAnimate, forKey: "animateCodexActivity")
+            } else {
+                defaults.removeObject(forKey: "animateCodexActivity")
+            }
+        }
+        first.presentInitialDashboardForTesting()
+        XCTAssertTrue(
+            firstComposition.isVisible,
+            "one-shot restore must open Dashboard even when silent launch is enabled"
+        )
+        XCTAssertEqual(firstComposition.section, .menuBar)
+        XCTAssertNil(
+            DashboardRestoreStore.peek(),
+            "restore token must be consumed so the next launch is not forced to 菜单栏"
+        )
+        firstComposition.window?.layoutIfNeeded()
+        firstComposition.contentHost.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        firstComposition.restorePageScrollOffsetY(88)
+        XCTAssertEqual(firstComposition.pageScrollOffsetY(), 88, accuracy: 8)
+
+        let window = try XCTUnwrap(firstComposition.window)
+        let fpsField = try XCTUnwrap(
+            firstControl(of: firstComposition.contentHost, as: NSTextField.self) {
+                $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier
+            },
+            "menu bar restore must include the animation frame rate editor"
+        )
+        XCTAssertTrue(fpsField.isEditable)
+        XCTAssertNil(
+            fpsField.currentEditor(),
+            "restore-open must not select the FPS field"
+        )
+        XCTAssertFalse(
+            window.firstResponder === fpsField,
+            "restore-open must not make the FPS field first responder"
+        )
+
+        XCTAssertNil(
+            DashboardRestoreStore.peek(),
+            "restore token must stay consumed after the restoring process exits"
+        )
+        XCTAssertEqual(
+            InitialLaunchPresentation.resolve(
+                silentLaunch: true,
+                pendingDashboardRestore: DashboardRestoreStore.peek() != nil
+            ),
+            .background,
+            "a later silent launch without the token must not force 菜单栏"
+        )
+    }
+
+    @MainActor
     func testSilentStartupChecksUpdatesAndSchedulesIndependentBackgroundTimer() throws {
         _ = NSApplication.shared
+        drainMainRunLoop()
+        let restoreSuiteName = "AppDelegateCompositionTests.SilentStartupRestore.\(UUID().uuidString)"
+        let restoreDefaults = try XCTUnwrap(UserDefaults(suiteName: restoreSuiteName))
+        restoreDefaults.removePersistentDomain(forName: restoreSuiteName)
+        DashboardRestoreStore.defaults = restoreDefaults
         let defaults = UserDefaults.standard
         let previousSilentLaunch = defaults.object(forKey: AppPreferences.silentLaunchKey)
         defer {
@@ -1096,8 +1206,12 @@ final class AppDelegateCompositionTests: XCTestCase {
             } else {
                 defaults.removeObject(forKey: AppPreferences.silentLaunchKey)
             }
+            DashboardRestoreStore.clear(defaults: restoreDefaults)
+            DashboardRestoreStore.defaults = .standard
+            restoreDefaults.removePersistentDomain(forName: restoreSuiteName)
         }
         defaults.set(true, forKey: AppPreferences.silentLaunchKey)
+        DashboardRestoreStore.clear()
 
         let ignoreSuiteName = "AppDelegateCompositionTests.update-badge.\(UUID().uuidString)"
         let ignoreDefaults = try XCTUnwrap(UserDefaults(suiteName: ignoreSuiteName))
@@ -1123,6 +1237,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             appDelegate.applicationWillTerminate(
                 Notification(name: NSApplication.willTerminateNotification)
             )
+            drainMainRunLoop()
         }
 
         appDelegate.applicationDidFinishLaunching(
@@ -1156,7 +1271,11 @@ final class AppDelegateCompositionTests: XCTestCase {
                 ]
             )
         ]))
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let availableDeadline = Date().addingTimeInterval(0.5)
+        while Date() < availableDeadline {
+            if case .available = service.state { break }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
         guard case .available = service.state else {
             XCTFail("the startup check should publish the available state")
             return
@@ -2498,6 +2617,28 @@ final class AppDelegateCompositionTests: XCTestCase {
         return try Dictionary(uniqueKeysWithValues: files.map { name, path in
             (name, try String(contentsOf: repositoryRoot.appendingPathComponent(path), encoding: .utf8))
         })
+    }
+
+    private func drainMainRunLoop() {
+        for _ in 0..<8 {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+    }
+
+    private func firstControl<T: NSView>(
+        of view: NSView,
+        as type: T.Type,
+        where predicate: (T) -> Bool
+    ) -> T? {
+        for child in view.subviews {
+            if let match = child as? T, predicate(match) {
+                return match
+            }
+            if let match = firstControl(of: child, as: type, where: predicate) {
+                return match
+            }
+        }
+        return nil
     }
 }
 

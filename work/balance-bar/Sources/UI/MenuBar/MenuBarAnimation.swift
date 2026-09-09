@@ -26,14 +26,104 @@ struct MenuBarAnimationState: Equatable {
     }
 }
 
-/// Product animation timing is fixed at 36 discrete states over one 1.2 s
-/// revolution (30 Hz).  There is intentionally no user-selectable cadence:
-/// both the efficient and synchronized Codex modes share the same visual
-/// contract.
+/// Product animation keeps 36 discrete rotation states. Cadence is a shared
+/// user preference: `frameInterval = 1 / fps` and one revolution lasts
+/// `36 / fps`. Missing values use 24 fps.
 enum MenuBarAnimationTiming {
     static let frameCount = 36
-    static let rotationDuration: TimeInterval = 1.2
-    static let frameInterval = rotationDuration / Double(frameCount)
+    static let minimumFrameRate = 6
+    static let maximumFrameRate = 30
+    static let defaultFrameRate = 24
+    static let validFrameRateRange = minimumFrameRate...maximumFrameRate
+
+    static func clampedFrameRate(_ value: Int) -> Int {
+        min(max(value, minimumFrameRate), maximumFrameRate)
+    }
+
+    static func frameInterval(fps: Int = defaultFrameRate) -> TimeInterval {
+        1 / Double(clampedFrameRate(fps))
+    }
+
+    static func rotationDuration(fps: Int = defaultFrameRate) -> TimeInterval {
+        Double(frameCount) / Double(clampedFrameRate(fps))
+    }
+
+    static var frameInterval: TimeInterval { frameInterval() }
+    static var rotationDuration: TimeInterval { rotationDuration() }
+}
+
+/// Parses the runtime FPS field. Empty or non-integer input becomes the
+/// default; in-range integers are kept; out-of-range integers are clamped.
+enum MenuBarAnimationFrameRateInput {
+    static func resolve(_ raw: String) -> Int {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let value = Int(trimmed) else {
+            return MenuBarAnimationTiming.defaultFrameRate
+        }
+        return MenuBarAnimationTiming.clampedFrameRate(value)
+    }
+
+    static func step(_ delta: Int, from raw: String) -> Int {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = Int(trimmed) ?? MenuBarAnimationTiming.defaultFrameRate
+        return MenuBarAnimationTiming.clampedFrameRate(base + delta)
+    }
+}
+
+/// Static single-core occupancy estimate shown under the FPS control.
+/// This table is a snapshot of the current D0/G implementation, not live
+/// sampling. Retune it in the same PR that changes animation cost.
+enum MenuBarAnimationCPUEstimate {
+    struct Range: Equatable {
+        let low: Int
+        let high: Int
+    }
+
+    private static let synchronizedAnchors: [(fps: Int, low: Double, high: Double)] = [
+        (15, 8, 13),
+        (20, 10, 15),
+        (30, 16, 20),
+    ]
+
+    static func percent(mode: MenuBarAnimationMode, fps: Int) -> Int {
+        let rate = MenuBarAnimationTiming.clampedFrameRate(fps)
+        switch mode {
+        case .synchronized:
+            return synchronizedRange(fps: rate).low
+        case .efficient:
+            return Int((2 + 2 * Double(rate) / 30).rounded())
+        }
+    }
+
+    static func synchronizedRange(fps: Int) -> Range {
+        let rate = MenuBarAnimationTiming.clampedFrameRate(fps)
+        let first = synchronizedAnchors[0]
+        let second = synchronizedAnchors[1]
+        if rate <= first.fps {
+            let span = Double(second.fps - first.fps)
+            let delta = Double(rate - first.fps)
+            return Range(
+                low: nearestInt(first.low + ((second.low - first.low) / span) * delta),
+                high: nearestInt(first.high + ((second.high - first.high) / span) * delta)
+            )
+        }
+        for index in 0..<(synchronizedAnchors.count - 1) {
+            let left = synchronizedAnchors[index]
+            let right = synchronizedAnchors[index + 1]
+            guard rate <= right.fps else { continue }
+            let t = Double(rate - left.fps) / Double(right.fps - left.fps)
+            return Range(
+                low: nearestInt(left.low + t * (right.low - left.low)),
+                high: nearestInt(left.high + t * (right.high - left.high))
+            )
+        }
+        let last = synchronizedAnchors[synchronizedAnchors.count - 1]
+        return Range(low: Int(last.low.rounded()), high: Int(last.high.rounded()))
+    }
+
+    private static func nearestInt(_ value: Double) -> Int {
+        Int(value.rounded(.toNearestOrAwayFromZero))
+    }
 }
 
 /// Strengthens the Codex template mark used by inactive-display replicants.
@@ -202,12 +292,16 @@ struct MenuBarSpriteAnimationTiming: Equatable {
         animationKey: "balancebar.claudeThinking"
     )
 
-    static let grok = MenuBarSpriteAnimationTiming(
-        frameCount: GrokThinkingAnimationTiming.frameCount,
-        restingFrameIndex: GrokThinkingAnimationTiming.restingFrameIndex,
-        frameDurations: GrokThinkingAnimationTiming.frameDurations,
-        animationKey: "balancebar.grokThinking"
-    )
+    static func grok(
+        frameRate: Int = MenuBarAnimationTiming.defaultFrameRate
+    ) -> MenuBarSpriteAnimationTiming {
+        MenuBarSpriteAnimationTiming(
+            frameCount: GrokThinkingAnimationTiming.frameCount,
+            restingFrameIndex: GrokThinkingAnimationTiming.restingFrameIndex,
+            frameDurations: GrokThinkingAnimationTiming.frameDurations(fps: frameRate),
+            animationKey: "balancebar.grokThinking"
+        )
+    }
 }
 
 enum MenuBarActivityAnimationPolicy {
@@ -229,12 +323,13 @@ enum MenuBarActivityAnimationPolicy {
 }
 
 final class RotatingTemplateImageView: PassthroughImageView {
-    /// D0 uses 36 discrete frames over a 1.2 s rotation = 30 fps. The native
-    /// Core Animation backend uses the same visual timing without entering
-    /// this timer path.
+    /// D0 uses 36 discrete frames. The timer interval follows the shared FPS
+    /// preference; the native Core Animation backend uses the same cadence
+    /// without entering this timer path.
     static let frameCount = MenuBarAnimationTiming.frameCount
-    static let rotationDuration: TimeInterval = MenuBarAnimationTiming.rotationDuration
-    static let rotationFrameInterval = MenuBarAnimationTiming.frameInterval
+    static var rotationDuration: TimeInterval { MenuBarAnimationTiming.rotationDuration }
+    static var rotationFrameInterval: TimeInterval { MenuBarAnimationTiming.frameInterval }
+    private var frameRate = MenuBarAnimationTiming.defaultFrameRate
     private var sourceImage: NSImage?
     private var rotationFrames: [NSImage] = []
     private var rotationTimer: Timer?
@@ -252,6 +347,21 @@ final class RotatingTemplateImageView: PassthroughImageView {
     var isRotating: Bool { rotationTimer != nil }
     var rotationTimerForTesting: Timer? { rotationTimer }
     var currentAnimationFrameIndex: Int { animationState.frameIndex }
+    var frameRateForTesting: Int { frameRate }
+
+    func setCurrentAnimationFrameIndexForTesting(_ index: Int) {
+        animationState.setFrameIndex(index, frameCount: max(rotationFrames.count, 1))
+    }
+
+    func setFrameRate(_ fps: Int) {
+        let clamped = MenuBarAnimationTiming.clampedFrameRate(fps)
+        guard frameRate != clamped else { return }
+        frameRate = clamped
+        guard rotationTimer != nil else { return }
+        rotationTimer?.invalidate()
+        rotationTimer = nil
+        installRotationTimer()
+    }
 
     /// The already-rasterized frames for the current semantic source. The
     /// controller uses these to build complete button-ready bitmaps when the
@@ -321,7 +431,10 @@ final class RotatingTemplateImageView: PassthroughImageView {
 
     private func installRotationTimer() {
         guard rotationTimer == nil, !rotationFrames.isEmpty else { return }
-        let runningTimer = Timer(timeInterval: Self.rotationFrameInterval, repeats: true) { [weak self] _ in
+        let runningTimer = Timer(
+            timeInterval: MenuBarAnimationTiming.frameInterval(fps: frameRate),
+            repeats: true
+        ) { [weak self] _ in
             self?.advanceRotation()
         }
         runningTimer.tolerance = 0.002
@@ -661,22 +774,40 @@ enum GrokThinkingAnimationTiming {
     /// 0-based strip index of `frame_016`, the Grok spark. Frame 0 is the
     /// ring and must not be the Performance inactive rest pose.
     static let restingFrameIndex = 15
-    static let frameDuration: TimeInterval = 0.08
-    static let frameDurations: [TimeInterval] = Array(
-        repeating: frameDuration,
-        count: frameCount
-    )
-    static let duration: TimeInterval = frameDurations.reduce(0, +)
+
+    static func frameDuration(
+        fps: Int = MenuBarAnimationTiming.defaultFrameRate
+    ) -> TimeInterval {
+        MenuBarAnimationTiming.frameInterval(fps: fps)
+    }
+
+    static var frameDuration: TimeInterval { frameDuration() }
+
+    static func frameDurations(
+        fps: Int = MenuBarAnimationTiming.defaultFrameRate
+    ) -> [TimeInterval] {
+        Array(repeating: frameDuration(fps: fps), count: frameCount)
+    }
+
+    static var frameDurations: [TimeInterval] { frameDurations() }
+
+    static func duration(
+        fps: Int = MenuBarAnimationTiming.defaultFrameRate
+    ) -> TimeInterval {
+        frameDuration(fps: fps) * Double(frameCount)
+    }
+
+    static var duration: TimeInterval { duration() }
 
     static func translationValue(frameIndex: Int, frameHeight: CGFloat) -> CGFloat {
-        MenuBarSpriteAnimationTiming.grok.translationValue(
+        MenuBarSpriteAnimationTiming.grok().translationValue(
             frameIndex: frameIndex,
             frameHeight: frameHeight
         )
     }
 
     static func translationValues(frameHeight: CGFloat) -> [NSNumber] {
-        MenuBarSpriteAnimationTiming.grok.translationValues(frameHeight: frameHeight)
+        MenuBarSpriteAnimationTiming.grok().translationValues(frameHeight: frameHeight)
     }
 }
 
