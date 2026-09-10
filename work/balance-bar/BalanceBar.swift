@@ -882,6 +882,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     @objc private func openCCSwitch() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else { return }
+        if let app = NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.ccswitch.desktop"
+        ).first {
+            NSApp.yieldActivation(to: app)
+        }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in }

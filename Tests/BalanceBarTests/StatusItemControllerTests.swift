@@ -131,6 +131,54 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(dashboardOpens, 1)
         XCTAssertEqual(agentOpens, 0)
         XCTAssertEqual(ccSwitchOpens, 0)
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+    }
+
+    @MainActor
+    func testRightClickOpenMainWindowDetachesStatusMenuUntilMouseUp() {
+        var dashboardOpens = 0
+        let controller = makeController(openDashboard: { dashboardOpens += 1 })
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openMainWindow)
+        )
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+
+        controller.handleStatusItemRightMouseDownForTesting()
+        XCTAssertFalse(controller.isStatusMenuBoundForTesting)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertEqual(dashboardOpens, 0)
+
+        controller.handleStatusItemRightMouseUpForTesting()
+        XCTAssertEqual(dashboardOpens, 1)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+    }
+
+    @MainActor
+    func testRapidRightClickOpenMainWindowDoesNotPresentTheStatusMenu() {
+        var dashboardOpens = 0
+        let controller = makeController(openDashboard: { dashboardOpens += 1 })
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openMainWindow)
+        )
+        for _ in 0..<3 {
+            controller.handleStatusItemRightMouseDownForTesting()
+            XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+            controller.handleStatusItemRightMouseUpForTesting()
+        }
+        XCTAssertEqual(dashboardOpens, 3)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
     }
 
     @MainActor
@@ -284,6 +332,197 @@ final class StatusItemControllerTests: XCTestCase {
         controller.handleStatusItemRightMouseDownForTesting()
         XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 1)
         XCTAssertEqual(dashboardOpens, 0)
+    }
+
+    @MainActor
+    func testReversedRightClickIsRewrittenToANativeLeftClick() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(
+                rightClickAction: .openMainWindow,
+                reverseMouseButtons: true
+            )
+        )
+        let down = makeMouseEvent(.rightMouseDown)
+        let rewrittenDown = controller.rewriteReversedRightClickEventForTesting(down)
+        XCTAssertEqual(rewrittenDown?.type, .leftMouseDown)
+
+        let up = makeMouseEvent(.rightMouseUp)
+        let rewrittenUp = controller.rewriteReversedRightClickEventForTesting(up)
+        XCTAssertEqual(rewrittenUp?.type, .leftMouseUp)
+    }
+
+    @MainActor
+    func testRightClickIsNotRewrittenWhenReverseIsOff() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openMainWindow)
+        )
+        XCTAssertNil(
+            controller.rewriteReversedRightClickEventForTesting(
+                makeMouseEvent(.rightMouseDown)
+            )
+        )
+    }
+
+    @MainActor
+    func testControlClickOpenMainWindowHighlightsOnMouseDownAndOpensOnMouseUp() {
+        var dashboardOpens = 0
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openDashboard: { dashboardOpens += 1 },
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openMainWindow)
+        )
+        controller.handleStatusItemControlClickMouseDownForTesting()
+        XCTAssertTrue(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertEqual(dashboardOpens, 0)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+
+        controller.handleStatusItemControlClickMouseUpForTesting()
+        XCTAssertFalse(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(dashboardOpens, 1)
+        XCTAssertEqual(agentOpens, 0)
+        XCTAssertEqual(ccSwitchOpens, 0)
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+    }
+
+    @MainActor
+    func testControlClickOpenMainWindowDetachesStatusMenuUntilMouseUp() {
+        var dashboardOpens = 0
+        let controller = makeController(openDashboard: { dashboardOpens += 1 })
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openMainWindow)
+        )
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+
+        controller.handleStatusItemControlClickMouseDownForTesting()
+        XCTAssertFalse(controller.isStatusMenuBoundForTesting)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertEqual(dashboardOpens, 0)
+
+        controller.handleStatusItemControlClickMouseUpForTesting()
+        XCTAssertEqual(dashboardOpens, 1)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+    }
+
+    @MainActor
+    func testControlClickOpenAgentHighlightsOnMouseDownAndOpensOnMouseUp() {
+        var agentOpens = 0
+        var ccSwitchOpens = 0
+        let controller = makeController(
+            openChatGPT: { agentOpens += 1 },
+            openCCSwitch: { ccSwitchOpens += 1 }
+        )
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openAgent)
+        )
+        controller.handleStatusItemControlClickMouseDownForTesting()
+        XCTAssertTrue(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertEqual(agentOpens, 0)
+
+        controller.handleStatusItemControlClickMouseUpForTesting()
+        XCTAssertEqual(agentOpens, 1)
+        XCTAssertEqual(ccSwitchOpens, 0)
+    }
+
+    @MainActor
+    func testControlClickIsPassedThroughWhenRightClickMatchesLeftClick() {
+        var dashboardOpens = 0
+        let controller = makeController(openDashboard: { dashboardOpens += 1 })
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .matchLeftClick)
+        )
+        let down = makeMouseEvent(.leftMouseDown, modifiers: .control)
+        XCTAssertTrue(controller.handleStatusItemEventForTesting(down) === down)
+        controller.handleStatusItemControlClickMouseDownForTesting()
+        XCTAssertFalse(controller.statusItemButtonIsHighlightedForTesting)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+        XCTAssertEqual(dashboardOpens, 0)
+    }
+
+    @MainActor
+    func testControlClickIsPassedThroughWhenButtonsAreReversed() {
+        var dashboardOpens = 0
+        let controller = makeController(openDashboard: { dashboardOpens += 1 })
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(
+                rightClickAction: .openMainWindow,
+                reverseMouseButtons: true
+            )
+        )
+        let down = makeMouseEvent(.leftMouseDown, modifiers: .control)
+        XCTAssertTrue(controller.handleStatusItemEventForTesting(down) === down)
+        controller.handleStatusItemControlClickMouseDownForTesting()
+        XCTAssertEqual(dashboardOpens, 0)
+        XCTAssertEqual(controller.rightClickMenuPresentationCountForTesting, 0)
+    }
+
+    @MainActor
+    func testControlClickCustomActionSwallowsTheLeftClickEvent() {
+        var dashboardOpens = 0
+        let controller = makeController(openDashboard: { dashboardOpens += 1 })
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openMainWindow)
+        )
+        let down = makeMouseEvent(.leftMouseDown, modifiers: .control)
+        XCTAssertNil(controller.handleStatusItemEventForTesting(down))
+        XCTAssertFalse(controller.isStatusMenuBoundForTesting)
+        XCTAssertEqual(dashboardOpens, 0)
+
+        let plainLeft = makeMouseEvent(.leftMouseDown)
+        XCTAssertTrue(controller.handleStatusItemEventForTesting(plainLeft) === plainLeft)
+
+        let up = makeMouseEvent(.leftMouseUp, modifiers: .control)
+        XCTAssertNil(controller.handleStatusItemEventForTesting(up))
     }
 
     @MainActor
@@ -2572,6 +2811,23 @@ final class StatusItemControllerTests: XCTestCase {
             rightClickAction: rightClickAction,
             reverseMouseButtons: reverseMouseButtons
         )
+    }
+
+    private func makeMouseEvent(
+        _ type: NSEvent.EventType,
+        modifiers: NSEvent.ModifierFlags = []
+    ) -> NSEvent {
+        NSEvent.mouseEvent(
+            with: type,
+            location: NSPoint(x: 1, y: 1),
+            modifierFlags: modifiers,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 1
+        )!
     }
 
     private func makeVisualSignature(
