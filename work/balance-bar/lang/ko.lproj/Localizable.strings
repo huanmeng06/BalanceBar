@@ -306,6 +306,15 @@
 "dashboard.menu.bar.page.font_size_position" = "글꼴 크기 및 위치";
 "dashboard.menu.bar.page.spacing_and_width" = "간격 및 너비";
 "dashboard.menu.bar.page.layout" = "레이아웃";
+"dashboard.menu.bar.page.behavior" = "동작";
+"dashboard.menu.bar.page.right_click" = "오른쪽 클릭";
+"dashboard.menu.bar.page.right_click_description" = "메뉴 막대 아이콘을 오른쪽 클릭했을 때 수행할 동작을 선택";
+"dashboard.menu.bar.page.right_click_match_left_click" = "왼쪽 클릭과 동일";
+"dashboard.menu.bar.page.right_click_open_main_menu" = "주 윈도우 열기";
+"dashboard.menu.bar.page.right_click_open_agent" = "Agent 열기";
+"dashboard.menu.bar.page.right_click_open_cc_switch" = "CC Switch 열기";
+"dashboard.menu.bar.page.reverse_mouse_buttons" = "좌우 클릭 전환";
+"dashboard.menu.bar.page.reverse_mouse_buttons_description" = "켜면 왼쪽 클릭이 위에서 선택한 동작을 수행하고 오른쪽 클릭이 메뉴를 엽니다";
 "dashboard.menu.bar.page.menu_bar_font_size" = "메뉴 막대 글꼴 크기";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "메뉴 막대 글자 크기 조정";
 "dashboard.menu.bar.page.menu_bar_icon_size" = "메뉴 막대 아이콘 크기";

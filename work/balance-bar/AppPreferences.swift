@@ -123,6 +123,15 @@ enum MenuBarIconDisplayMode: String, CaseIterable, Equatable {
     static let defaultValue: Self = .alwaysVisible
 }
 
+enum MenuBarRightClickAction: String, CaseIterable, Equatable {
+    case matchLeftClick
+    case openMainWindow
+    case openAgent
+    case openCCSwitch
+
+    static let defaultValue: Self = .matchLeftClick
+}
+
 enum MenuBarIconDisplayDelay: String, CaseIterable, Equatable {
     case zeroSeconds
     case tenSeconds
@@ -279,6 +288,10 @@ final class AppPreferences {
     static let menuBarIconDisplayModeDefault: MenuBarIconDisplayMode = .defaultValue
     static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"
     static let menuBarIconDisplayDelayDefault: MenuBarIconDisplayDelay = .defaultValue
+    static let menuBarRightClickActionKey = "menuBarRightClickAction"
+    static let menuBarRightClickActionDefault: MenuBarRightClickAction = .defaultValue
+    static let menuBarReverseMouseButtonsKey = "menuBarReverseMouseButtons"
+    static let menuBarReverseMouseButtonsDefault = false
     static let menuBarAnimationModeKey = "menuBarAnimationMode"
     static let menuBarAnimationModeDefault: MenuBarAnimationMode = .defaultValue
     static let menuBarAnimationFrameRateKey = "menuBarAnimationFrameRate"
@@ -437,6 +450,26 @@ final class AppPreferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuBarIconDisplayDelayKey)
+        }
+    }
+    var menuBarRightClickAction: MenuBarRightClickAction {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarRightClickActionKey),
+                  let action = MenuBarRightClickAction(rawValue: rawValue) else {
+                return Self.menuBarRightClickActionDefault
+            }
+            return action
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarRightClickActionKey)
+        }
+    }
+    var menuBarReverseMouseButtons: Bool {
+        get {
+            bool(Self.menuBarReverseMouseButtonsKey, default: Self.menuBarReverseMouseButtonsDefault)
+        }
+        set {
+            defaults.set(newValue, forKey: Self.menuBarReverseMouseButtonsKey)
         }
     }
     var menuBarAnimationMode: MenuBarAnimationMode {

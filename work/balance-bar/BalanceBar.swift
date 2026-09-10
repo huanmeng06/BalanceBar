@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey]
+    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -248,6 +248,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onMenuBarIconDisplayDelayChanged: { [weak self] delay in
                 self?.handleDashboardMenuBarIconDisplayDelayChanged(delay)
+            },
+            onMenuBarRightClickActionChanged: { [weak self] action in
+                self?.handleDashboardMenuBarRightClickActionChanged(action)
             },
             onMenuBarAnimationModeChanged: { [weak self] mode in
                 self?.handleDashboardMenuBarAnimationModeChanged(mode)
@@ -391,6 +394,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarIconDisplayDelay: MenuBarIconDisplayDelay {
         get { preferences.menuBarIconDisplayDelay }
         set { preferences.menuBarIconDisplayDelay = newValue }
+    }
+    private var menuBarRightClickAction: MenuBarRightClickAction {
+        get { preferences.menuBarRightClickAction }
+        set { preferences.menuBarRightClickAction = newValue }
+    }
+    private var menuBarReverseMouseButtons: Bool {
+        get { preferences.menuBarReverseMouseButtons }
+        set { preferences.menuBarReverseMouseButtons = newValue }
     }
     private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
     private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
@@ -650,6 +661,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             keepMenuOpenAfterRefresh: keepMenuOpenAfterRefresh,
             iconDisplayMode: menuBarIconDisplayMode,
             iconDisplayDelay: menuBarIconDisplayDelay,
+            rightClickAction: menuBarRightClickAction,
+            reverseMouseButtons: menuBarReverseMouseButtons,
             iconOffsetX: CGFloat(menuBarIconOffsetX),
             iconOffsetY: CGFloat(menuBarIconOffsetY),
             amountOffsetX: CGFloat(menuBarAmountOffsetX),
@@ -869,6 +882,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     @objc private func openCCSwitch() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else { return }
+        if let app = NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.ccswitch.desktop"
+        ).first {
+            NSApp.yieldActivation(to: app)
+        }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in }
@@ -983,6 +1001,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             keepMenuOpenAfterRefresh = enabled
         case AppPreferences.silentLaunchKey:
             preferences.silentLaunch = enabled
+        case AppPreferences.menuBarReverseMouseButtonsKey:
+            menuBarReverseMouseButtons = enabled
+            updateStatusItem(for: snapshot)
         case "animateCodexActivity":
             animateCodexActivity = enabled
             setCodexTaskRunning(isCodexTaskRunning, force: true)
@@ -1071,6 +1092,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         menuBarIconDisplayDelay = delay
         SwitchLog.write(
             "preference changed; key=\(AppPreferences.menuBarIconDisplayDelayKey); value=\(delay.rawValue)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
+    }
+
+    private func handleDashboardMenuBarRightClickActionChanged(
+        _ action: MenuBarRightClickAction
+    ) {
+        menuBarRightClickAction = action
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuBarRightClickActionKey); value=\(action.rawValue)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
