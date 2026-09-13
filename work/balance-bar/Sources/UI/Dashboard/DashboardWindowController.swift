@@ -13,6 +13,26 @@ func makeDashboardGlassEffectView(contentView: NSView, cornerRadius: CGFloat) ->
     return glassView
 }
 
+final class DashboardTopFadeView: NSVisualEffectView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        material = .underWindowBackground
+        blendingMode = .withinWindow
+        state = .active
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.masksToBounds = true
+        let mask = CAGradientLayer()
+        mask.colors = [NSColor.white.cgColor, NSColor.white.withAlphaComponent(0.72).cgColor, NSColor.clear.cgColor]
+        mask.locations = [0, 0.42, 1]
+        mask.startPoint = CGPoint(x: 0.5, y: 1)
+        mask.endPoint = CGPoint(x: 0.5, y: 0)
+        layer?.mask = mask
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func layout() { super.layout(); layer?.mask?.frame = bounds }
+}
+
 struct DashboardWindowControllerActions {
     let makeSectionPage: (DashboardSection) -> NSView
     let makeProviderPage: (ProviderChoice) -> NSView
@@ -420,6 +440,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         root.addSubview(contentSurface)
         root.addSubview(sidebar)
         root.addSubview(contentHost)
+        let topFade = DashboardTopFadeView()
+        root.addSubview(topFade)
         NSLayoutConstraint.activate([
             contentSurface.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             contentSurface.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -432,7 +454,11 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             contentHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             contentHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             contentHost.topAnchor.constraint(equalTo: root.topAnchor),
-            contentHost.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+            contentHost.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            topFade.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+            topFade.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            topFade.topAnchor.constraint(equalTo: root.topAnchor),
+            topFade.heightAnchor.constraint(equalToConstant: 92)
         ])
 
         window.contentView = root
