@@ -190,6 +190,102 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(balanceSamples[0].displayText, "¥1.70")
     }
 
+    func testBankedResetForecastSamplesSplit24hAnd48hAndSkipPlaceholders() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let official = Snapshot.official(
+            "OpenAI",
+            45,
+            "7 day",
+            "2d",
+            date,
+            windows: [
+                OfficialQuotaWindow(
+                    kind: .sevenDay,
+                    remaining: 45,
+                    label: "7 day",
+                    daysText: "7d",
+                    reset: "2d",
+                    durationSeconds: 604_800
+                )
+            ],
+            bankedReset: CodexBankedReset(cards: [
+                CodexBankedResetCard(
+                    id: "card",
+                    resetType: "codex_rate_limits",
+                    titleText: "Full reset",
+                    expiresAt: date.addingTimeInterval(86_400),
+                    expiresText: "later"
+                )
+            ]),
+            resetForecast: .demo(updatedAt: date)
+        )
+        let samples = OverviewNumericPresentation.samples(
+            snapshot: official,
+            lunaReserveDisplayMode: .disabled,
+            hideExhaustedQuota: false,
+            showBankedReset: true
+        )
+        XCTAssertEqual(
+            samples.map(\.identity),
+            [
+                .officialWindow(provider: "OpenAI", kind: .sevenDay),
+                .bankedResetCount(provider: "OpenAI"),
+                .bankedResetProbability24h(provider: "OpenAI"),
+                .bankedResetProbability48h(provider: "OpenAI")
+            ]
+        )
+        XCTAssertEqual(samples.last?.displayText, "42%")
+        let first24 = OverviewNumericTransition.plan(
+            previous: nil,
+            current: samples[2],
+            reduceMotion: false
+        )
+        XCTAssertFalse(first24.animates)
+        let unchanged24 = OverviewNumericTransition.plan(
+            previous: samples[2],
+            current: samples[2],
+            reduceMotion: false
+        )
+        XCTAssertFalse(unchanged24.animates)
+        let changed24 = OverviewNumericTransition.plan(
+            previous: samples[2],
+            current: OverviewNumericSample(
+                identity: .bankedResetProbability24h(provider: "OpenAI"),
+                format: .integerPercent,
+                value: 40,
+                progressPercentage: nil
+            ),
+            reduceMotion: false
+        )
+        XCTAssertTrue(changed24.animates)
+        XCTAssertEqual(changed24.startText, "24%")
+        XCTAssertEqual(changed24.endText, "40%")
+
+        let placeholders = Snapshot.official(
+            "OpenAI",
+            45,
+            "7 day",
+            "2d",
+            date,
+            windows: official.officialQuotaWindows,
+            bankedReset: official.bankedReset,
+            resetForecast: .unavailable
+        )
+        let placeholderSamples = OverviewNumericPresentation.samples(
+            snapshot: placeholders,
+            lunaReserveDisplayMode: .disabled,
+            hideExhaustedQuota: false,
+            showBankedReset: true
+        )
+        XCTAssertEqual(
+            placeholderSamples.map(\.identity),
+            [
+                .officialWindow(provider: "OpenAI", kind: .sevenDay),
+                .bankedResetCount(provider: "OpenAI")
+            ]
+        )
+    }
+
     func testSameIdentityCurrencyTransitionAnimatesAndUnchangedValueDoesNot() {
         let previous = balanceSample(amount: 1.70, progress: 40)
         let current = balanceSample(amount: 1.50, progress: 30)

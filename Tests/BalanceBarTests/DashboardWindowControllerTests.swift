@@ -2556,7 +2556,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 windows: windows,
                 lunaReserve: LunaReserveQuota(status: .available, remaining: 61, reset: "2h"),
                 bankedReset: bankedReset,
-                resetProbability: .percent(75)
+                resetForecast: .demo(updatedAt: date)
             ),
             refreshDate: date,
             menuInput: input,
@@ -2583,7 +2583,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertFalse(labels.contains("2%"))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetTitle)))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
-        XCTAssertTrue(labels.contains("75%"))
+        XCTAssertTrue(labels.contains("24%"))
+        XCTAssertTrue(labels.contains("42%"))
+        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetConfidenceLow)))
         XCTAssertFalse(labels.contains("--%"))
         XCTAssertFalse(labels.contains { $0.contains("重...") || $0.hasSuffix("...") })
         let largeAmounts = allControls(of: overview, as: NSTextField.self).filter {
@@ -2652,10 +2654,17 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.bankedReset.probability"
             }
         )
-        XCTAssertEqual(probabilityLink.stringValue, "75%")
-        XCTAssertTrue(probabilityLink.stringValue.hasSuffix("%"))
-        XCTAssertEqual(probabilityLink.hoverHint, tr(.keyCodexBankedResetProbabilitySource))
-        XCTAssertEqual(probabilityLink.toolTip, tr(.keyCodexBankedResetProbabilitySource))
+        XCTAssertEqual(probabilityLink.stringValue, tr(.keyCodexBankedResetProbabilityPrefix))
+        XCTAssertEqual(
+            probabilityLink.hoverHintDelay,
+            OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            probabilityLink.hoverHint,
+            StatusItemController.codexResetForecastHint(for: .demo(updatedAt: date))
+        )
+        XCTAssertNil(probabilityLink.toolTip)
         XCTAssertEqual(
             probabilityLink.identifier?.rawValue,
             "codex.bankedReset.probability"
@@ -2664,7 +2673,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             probabilityLink.frame.width,
             AccountMarqueeView.textWidth(
-                of: "75%",
+                of: tr(.keyCodexBankedResetProbabilityPrefix),
                 font: probabilityLink.font ?? .systemFont(ofSize: 12, weight: .medium)
             ) + 4
         )
@@ -2676,36 +2685,41 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ) as? NSColor,
             NSColor.linkColor
         )
-        let probabilityPrefix = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probabilityPrefix"
+        XCTAssertFalse(
+            allControls(of: overview, as: HoverLinkTextField.self).contains {
+                $0.stringValue.hasSuffix("%")
             }
         )
-        XCTAssertEqual(probabilityPrefix.stringValue, tr(.keyCodexBankedResetProbabilityPrefix))
-        XCTAssertFalse(probabilityPrefix is HoverLinkTextField)
-        XCTAssertEqual(probabilityPrefix.textColor, NSColor.secondaryLabelColor)
-        XCTAssertEqual(probabilityPrefix.lineBreakMode, .byClipping)
-        XCTAssertGreaterThanOrEqual(
-            probabilityPrefix.frame.width,
-            AccountMarqueeView.textWidth(
-                of: tr(.keyCodexBankedResetProbabilityPrefix),
-                font: probabilityPrefix.font ?? .systemFont(ofSize: 12, weight: .regular)
-            ) + 4
+        let percent24 = try XCTUnwrap(
+            allControls(of: overview, as: OverviewNumericTextView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probability24h"
+            }
         )
-        XCTAssertEqual(
-            probabilityLink.frame.minX,
-            probabilityPrefix.frame.maxX,
-            accuracy: 0.5
+        let percent48 = try XCTUnwrap(
+            allControls(of: overview, as: OverviewNumericTextView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probability48h"
+            }
         )
+        XCTAssertEqual(percent24.textField.stringValue, "24%")
+        XCTAssertEqual(percent48.textField.stringValue, "42%")
+        XCTAssertEqual(percent24.textField.textColor, NSColor.secondaryLabelColor)
+        XCTAssertEqual(percent48.textField.textColor, NSColor.secondaryLabelColor)
+        let confidence = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.confidence"
+            }
+        )
+        XCTAssertEqual(confidence.stringValue, tr(.keyCodexBankedResetConfidenceLow))
+        XCTAssertEqual(confidence.textColor, NSColor.secondaryLabelColor)
+        XCTAssertFalse(confidence is HoverLinkTextField)
         let firstChrome = try XCTUnwrap(chromes.first)
         XCTAssertGreaterThan(
-            probabilityPrefix.frame.minY,
+            probabilityLink.frame.minY,
             firstChrome.frame.maxY
         )
-        XCTAssertLessThanOrEqual(
-            probabilityPrefix.frame.minY - firstChrome.frame.maxY,
-            OpenCodexCardLayout.bankedResetSummaryDetailGap + 4
-        )
+        XCTAssertGreaterThan(probabilityLink.frame.minY, percent24.frame.minY)
+        XCTAssertGreaterThan(percent24.frame.minY, confidence.frame.minY)
+        XCTAssertGreaterThan(confidence.frame.minY, firstChrome.frame.maxY)
         let tickets = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.ticket"
         }
@@ -2868,7 +2882,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 date,
                 windows: windows,
                 bankedReset: bankedReset,
-                resetProbability: .percent(24)
+                resetForecast: .demo(updatedAt: date)
             ),
             refreshDate: date,
             menuInput: input,
@@ -2891,6 +2905,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetTitle)))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
         XCTAssertTrue(labels.contains("24%"))
+        XCTAssertTrue(labels.contains("42%"))
         XCTAssertTrue(labels.contains("2"))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetFullResetTitle)))
         XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.badge" })
@@ -2911,11 +2926,17 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.bankedReset.probability"
             }
         )
-        XCTAssertEqual(probabilityLink.stringValue, "24%")
+        XCTAssertEqual(probabilityLink.stringValue, tr(.keyCodexBankedResetProbabilityPrefix))
+        XCTAssertEqual(
+            probabilityLink.hoverHintDelay,
+            OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay,
+            accuracy: 0.001
+        )
         XCTAssertEqual(
             probabilityLink.hoverHint,
-            tr(.keyCodexBankedResetProbabilitySource)
+            StatusItemController.codexResetForecastHint(for: .demo(updatedAt: date))
         )
+        XCTAssertNil(probabilityLink.toolTip)
     }
 
     func testOfficialCodexMenuCardHidesBankedResetWhenShowBankedResetIsOff() throws {
@@ -3003,7 +3024,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 date,
                 windows: windows,
                 bankedReset: bankedReset,
-                resetProbability: .percent(24)
+                resetForecast: .demo(updatedAt: date)
             ),
             refreshDate: date,
             menuInput: input,
@@ -3125,7 +3146,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                     date,
                     windows: windows,
                     bankedReset: CodexBankedReset(cards: []),
-                    resetProbability: .percent(24)
+                    resetForecast: .demo(updatedAt: date)
                 ),
                 refreshDate: date,
                 menuInput: input,
@@ -3262,7 +3283,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 date,
                 windows: windows,
                 bankedReset: bankedReset,
-                resetProbability: .percent(23)
+                resetForecast: .demo(updatedAt: date)
             ),
             refreshDate: date,
             menuInput: input,

@@ -449,8 +449,15 @@
 "codex.banked_reset.remaining_days" = "%1$@ 天";
 "codex.banked_reset.remaining_days_hours" = "%1$@ 天 %2$@ 小時";
 "codex.banked_reset.remaining_minutes" = "%1$@ 分鐘";
-"codex.banked_reset.probability_prefix" = "重置機率：";
-"codex.banked_reset.probability_source" = "資料來源：willcodexquotareset.com";
+"codex.banked_reset.probability_prefix" = "重置機率";
+"codex.banked_reset.probability_source" = "資料來源：codex-reset.com";
+"codex.banked_reset.probability_hint" = "預測未來 24 小時和 48 小時內出現額外全域重置的可能性。資料來源：codex-reset.com。來源更新於 %1$@。這是第三方對全域額外重置的預測，不是目前帳戶週額度的確定重置時間，也不保證發放重置卡。置信度為模型分類，不代表預測一定準確。";
+"codex.banked_reset.probability_24h" = "24 小時內";
+"codex.banked_reset.probability_48h" = "48 小時內";
+"codex.banked_reset.confidence_prefix" = "置信度：";
+"codex.banked_reset.confidence_low" = "低";
+"codex.banked_reset.confidence_medium" = "中";
+"codex.banked_reset.confidence_high" = "高";
 "dashboard.menu.page.progress_color_ranges" = "進度條顏色區間";
 "dashboard.menu.page.progress_color_ranges_description" = "拖曳分界點，調整不同剩餘百分比對應的顏色";
 "dashboard.menu.page.displayed_colors" = "顯示顏色";

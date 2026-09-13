@@ -200,6 +200,8 @@ struct OpenCodexCardFrames: Equatable {
     let quotaRows: [OpenCodexQuotaRowFrames]
     let lunaReserveRow: OpenCodexQuotaRowFrames?
     let bankedResetSummaryRow: OpenCodexQuotaRowFrames?
+    let bankedResetForecastMetrics: CGRect?
+    let bankedResetForecastConfidence: CGRect?
     let bankedResetDetailRows: [OpenCodexQuotaRowFrames]
     /// Host-coordinate clip for the detailed ticket list. Nil when the
     /// overview has no tickets. 1–2 tickets fill this rect; 3+ clip to
@@ -289,6 +291,23 @@ enum OpenCodexCardLayout {
     static let bankedResetChromeCornerRadius: CGFloat = 10
     /// Gap between the probability line and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
+    /// Extra compact subtitle rows for 24h/48h and confidence. Height follows
+    /// the existing reset-line metric so translations can be measured in UI
+    /// without locking Chinese glyph widths into the card geometry.
+    static let bankedResetForecastLineGap: CGFloat = 2
+    static let bankedResetProbabilityHoverHintDelay: TimeInterval = 0.5
+
+    static func bankedResetForecastLineHeight() -> CGFloat {
+        quotaResetHeight
+    }
+
+    static func bankedResetForecastExtraHeight() -> CGFloat {
+        2 * (bankedResetForecastLineHeight() + bankedResetForecastLineGap)
+    }
+
+    static func bankedResetSummaryHeight() -> CGFloat {
+        lunaReserveNoProgressRowHeight + bankedResetForecastExtraHeight()
+    }
     /// Detailed ticket list shows at most two full rows plus half of a
     /// third so leftover cards remain obvious. 1–2 cards stay unclipped.
     static let bankedResetVisibleTicketLimit: CGFloat = 2.5
@@ -408,6 +427,8 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
+                bankedResetForecastMetrics: nil,
+                bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil
             )
@@ -444,6 +465,8 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
+                bankedResetForecastMetrics: nil,
+                bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil
             )
@@ -482,8 +505,12 @@ enum OpenCodexCardLayout {
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
         let bankedSummaryHeight = includesBankedReset
-            ? lunaReserveNoProgressRowHeight
+            ? bankedResetSummaryHeight()
             : 0
+        let forecastExtraHeight = includesBankedReset
+            ? bankedResetForecastExtraHeight()
+            : 0
+        let forecastLineHeight = bankedResetForecastLineHeight()
         let bankedDetailHeight = bankedResetDetailRowHeight
         let bankedVisibleTicketStackHeight = bankedResetVisibleTicketStackHeight(
             cardCount: bankedDetailCount
@@ -616,29 +643,54 @@ enum OpenCodexCardLayout {
                 // Banked reset is always a compact no-progress row. Do not
                 // inherit the quota-window rowHeight, or hiding window
                 // progress bars lifts 重置卡 into the last window's gap.
+                // Extra forecast lines sit below the original two-line box.
                 let bankedContentShift = quotaRowHeight - lunaReserveNoProgressRowHeight
                 return OpenCodexQuotaRowFrames(
                     quotaDetail: CGRect(
                         x: horizontalInset,
-                        y: bankedSummaryY + quotaDetailOffset - bankedContentShift,
+                        y: bankedSummaryY
+                            + forecastExtraHeight
+                            + quotaDetailOffset
+                            - bankedContentShift,
                         width: 128,
                         height: quotaDetailHeight
                     ),
                     reset: CGRect(
                         x: horizontalInset,
-                        y: bankedSummaryY + quotaResetOffset - bankedContentShift,
+                        y: bankedSummaryY
+                            + forecastExtraHeight
+                            + quotaResetOffset
+                            - bankedContentShift,
                         width: 128,
                         height: quotaResetHeight
                     ),
                     amount: CGRect(
                         x: amountX,
-                        y: bankedSummaryY + max(0, quotaAmountOffset - bankedContentShift),
+                        y: bankedSummaryY
+                            + forecastExtraHeight
+                            + max(0, quotaAmountOffset - bankedContentShift),
                         width: amountWidth,
                         height: lunaReserveNoProgressAmountHeight
                     ),
                     progress: .zero
                 )
             }()
+            : nil
+        let bankedResetForecastMetrics = includesBankedReset
+            ? CGRect(
+                x: horizontalInset,
+                y: bankedSummaryY + forecastLineHeight + bankedResetForecastLineGap,
+                width: contentWidth,
+                height: forecastLineHeight
+            )
+            : nil
+        let bankedResetForecastConfidence = includesBankedReset
+            ? CGRect(
+                x: horizontalInset,
+                y: bankedSummaryY,
+                width: contentWidth,
+                height: forecastLineHeight
+            )
             : nil
         let bankedResetDetailRows: [OpenCodexQuotaRowFrames] = {
             guard includesBankedReset, bankedDetailCount > 0 else { return [] }
@@ -731,6 +783,8 @@ enum OpenCodexCardLayout {
             quotaRows: rows,
             lunaReserveRow: lunaReserveRow,
             bankedResetSummaryRow: bankedResetSummaryRow,
+            bankedResetForecastMetrics: bankedResetForecastMetrics,
+            bankedResetForecastConfidence: bankedResetForecastConfidence,
             bankedResetDetailRows: bankedResetDetailRows,
             bankedResetTicketViewport: bankedDetailCount > 0
                 ? CGRect(

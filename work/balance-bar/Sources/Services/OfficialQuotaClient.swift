@@ -282,10 +282,10 @@ final class OfficialQuotaClient {
         task.resume()
     }
 
-    /// Public 48-hour Codex reset likelihood. No credentials. Failure is
-    /// `--%` and never fails the official quota snapshot.
+    /// Public Codex reset forecast. No credentials. Failure is placeholders
+    /// and never fails the official quota snapshot.
     func fetchCodexResetForecast(
-        completion: @escaping (CodexResetProbability) -> Void
+        completion: @escaping (CodexResetForecast) -> Void
     ) {
         var request = URLRequest(url: CodexResetForecastParser.forecastURL)
         request.httpMethod = "GET"

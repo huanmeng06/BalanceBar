@@ -279,7 +279,7 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .italian), "Usa la lingua di sistema")
     }
 
-    func testBankedResetProbabilityPrefixUsesEachLanguageColon() {
+    func testBankedResetForecastCopyUsesCodexResetSourceAndLocalizedMetrics() {
         let cases: [(AppLanguage, String)] = [
             (.simplifiedChinese, "："),
             (.traditionalChineseTaiwan, "："),
@@ -294,46 +294,70 @@ final class LocalizationTests: XCTestCase {
             (.russian, ":"),
             (.italian, ":")
         ]
-        for (language, colon) in cases {
-            let prefix = tr(.keyCodexBankedResetProbabilityPrefix, language: language)
-            let official = tr(.keyStatusItemControllerOfficialLink, language: language)
-            XCTAssertTrue(
-                prefix.hasSuffix(colon),
-                "\(language.rawValue) probability prefix \(prefix) should end with \(colon)"
-            )
-            XCTAssertTrue(
-                official.hasSuffix(colon),
-                "\(language.rawValue) official link \(official) should end with \(colon)"
-            )
-            XCTAssertEqual(
-                String(prefix.suffix(colon.count)),
-                String(official.suffix(colon.count)),
-                "\(language.rawValue) should use the same colon as the official-link label"
-            )
-        }
         XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilityPrefix, language: .simplifiedChinese),
-            "重置概率："
+            "重置概率"
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilityPrefix, language: .english),
-            "Reset probability:"
+            "Reset probability"
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilitySource, language: .simplifiedChinese),
-            "数据来源：willcodexquotareset.com"
+            "数据来源：codex-reset.com"
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilitySource, language: .english),
-            "Data source: willcodexquotareset.com"
+            "Data source: codex-reset.com"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetProbability24h, language: .simplifiedChinese),
+            "24 小时内"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetProbability48h, language: .simplifiedChinese),
+            "48 小时内"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetConfidencePrefix, language: .simplifiedChinese),
+            "置信度："
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetConfidenceLow, language: .simplifiedChinese),
+            "低"
         )
         for (language, colon) in cases {
+            let title = tr(.keyCodexBankedResetProbabilityPrefix, language: language)
+            XCTAssertFalse(
+                title.hasSuffix(colon),
+                "\(language.rawValue) title \(title) should not end with a colon"
+            )
             let source = tr(.keyCodexBankedResetProbabilitySource, language: language)
             XCTAssertTrue(
                 source.contains(colon),
                 "\(language.rawValue) source \(source) should use \(colon)"
             )
-            XCTAssertTrue(source.contains("willcodexquotareset.com"))
+            XCTAssertTrue(source.contains("codex-reset.com"))
+            XCTAssertFalse(source.contains("willcodexquotareset.com"))
+            let hint = tr(
+                .keyCodexBankedResetProbabilityHint,
+                arguments: ["2026-09-13"],
+                language: language
+            )
+            XCTAssertTrue(hint.contains("codex-reset.com"))
+            XCTAssertTrue(hint.contains("2026-09-13"))
+            XCTAssertFalse(hint.contains("walk-forward"))
+            XCTAssertFalse(hint.contains("hint_copy"))
+            XCTAssertFalse(tr(.keyCodexBankedResetProbability24h, language: language).isEmpty)
+            XCTAssertFalse(tr(.keyCodexBankedResetProbability48h, language: language).isEmpty)
+            let confidencePrefix = tr(.keyCodexBankedResetConfidencePrefix, language: language)
+            XCTAssertTrue(
+                confidencePrefix.contains(colon),
+                "\(language.rawValue) confidence prefix \(confidencePrefix) should use \(colon)"
+            )
+            XCTAssertFalse(tr(.keyCodexBankedResetConfidenceLow, language: language).isEmpty)
+            XCTAssertFalse(tr(.keyCodexBankedResetConfidenceMedium, language: language).isEmpty)
+            XCTAssertFalse(tr(.keyCodexBankedResetConfidenceHigh, language: language).isEmpty)
         }
     }
 
@@ -1085,7 +1109,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 462)
+        XCTAssertEqual(expectedKeys.count, 469)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

@@ -7,7 +7,8 @@ enum OverviewNumericIdentity: Hashable {
     case lunaReserve(provider: String)
     case thirdPartyBalance(provider: String, unit: String)
     case bankedResetCount(provider: String)
-    case bankedResetProbability(provider: String)
+    case bankedResetProbability24h(provider: String)
+    case bankedResetProbability48h(provider: String)
 }
 
 enum OverviewNumericFormat: Equatable {
@@ -205,10 +206,20 @@ enum OverviewNumericPresentation {
                         progressPercentage: nil
                     )
                 )
-                if case .percent(let percent) = presentation.resetProbability {
+                if case .percent(let percent) = presentation.resetForecast.probability24h {
                     samples.append(
                         OverviewNumericSample(
-                            identity: .bankedResetProbability(provider: snapshot.provider),
+                            identity: .bankedResetProbability24h(provider: snapshot.provider),
+                            format: .integerPercent,
+                            value: Double(percent),
+                            progressPercentage: nil
+                        )
+                    )
+                }
+                if case .percent(let percent) = presentation.resetForecast.probability48h {
+                    samples.append(
+                        OverviewNumericSample(
+                            identity: .bankedResetProbability48h(provider: snapshot.provider),
                             format: .integerPercent,
                             value: Double(percent),
                             progressPercentage: nil
@@ -240,8 +251,10 @@ enum OverviewNumericPresentation {
         switch identity {
         case .bankedResetCount:
             return NSUserInterfaceItemIdentifier("codex.bankedReset.count")
-        case .bankedResetProbability:
-            return NSUserInterfaceItemIdentifier("codex.bankedReset.probability")
+        case .bankedResetProbability24h:
+            return NSUserInterfaceItemIdentifier("codex.bankedReset.probability24h")
+        case .bankedResetProbability48h:
+            return NSUserInterfaceItemIdentifier("codex.bankedReset.probability48h")
         default:
             return NSUserInterfaceItemIdentifier("overview.numeric.amount.\(progressKey(for: identity))")
         }
@@ -259,8 +272,10 @@ enum OverviewNumericPresentation {
             return "balance"
         case .bankedResetCount:
             return "bankedReset.count"
-        case .bankedResetProbability:
-            return "bankedReset.probability"
+        case .bankedResetProbability24h:
+            return "bankedReset.probability24h"
+        case .bankedResetProbability48h:
+            return "bankedReset.probability48h"
         }
     }
 }

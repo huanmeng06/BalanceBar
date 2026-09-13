@@ -449,8 +449,15 @@
 "codex.banked_reset.remaining_days" = "%1$@ jours";
 "codex.banked_reset.remaining_days_hours" = "%1$@ j %2$@ h";
 "codex.banked_reset.remaining_minutes" = "%1$@ minutes";
-"codex.banked_reset.probability_prefix" = "Probabilité de reset :";
-"codex.banked_reset.probability_source" = "Source des données : willcodexquotareset.com";
+"codex.banked_reset.probability_prefix" = "Probabilité de reset";
+"codex.banked_reset.probability_source" = "Source des données : codex-reset.com";
+"codex.banked_reset.probability_hint" = "Prévision d’un reset global supplémentaire dans les 24 et 48 prochaines heures. Source des données : codex-reset.com. Source mise à jour le %1$@. Il s’agit d’une prévision tierce d’un reset global supplémentaire, pas d’une heure de reset garantie pour le quota hebdomadaire de ce compte, et elle ne garantit pas une carte de reset. La confiance est une catégorie du modèle, pas une promesse d’exactitude.";
+"codex.banked_reset.probability_24h" = "Sous 24 h";
+"codex.banked_reset.probability_48h" = "Sous 48 h";
+"codex.banked_reset.confidence_prefix" = "Confiance :";
+"codex.banked_reset.confidence_low" = "Faible";
+"codex.banked_reset.confidence_medium" = "Moyenne";
+"codex.banked_reset.confidence_high" = "Élevée";
 "dashboard.menu.page.progress_color_ranges" = "Plages de couleur de la barre";
 "dashboard.menu.page.progress_color_ranges_description" = "Faites glisser les seuils pour choisir la couleur de chaque plage de pourcentage restant";
 "dashboard.menu.page.displayed_colors" = "Couleurs affichées";

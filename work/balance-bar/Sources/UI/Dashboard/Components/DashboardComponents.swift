@@ -399,19 +399,29 @@ class HoverLinkTextField: NSTextField {
     /// is the Dashboard fallback; menu hosts present a popover instead.
     var hoverHint: String = "" {
         didSet {
-            toolTip = hoverHint.isEmpty ? nil : hoverHint
+            refreshNativeTooltip()
             if hoverHint.isEmpty {
+                cancelPendingHoverHint()
                 dismissHoverHint()
             }
+        }
+    }
+    /// Instance-level delay before the menu popover. Default 0 keeps other
+    /// links immediate. Moving inside the same target does not reset.
+    var hoverHintDelay: TimeInterval = 0 {
+        didSet {
+            refreshNativeTooltip()
         }
     }
     private(set) var interactionMode: InteractionMode = .normal
     private(set) var visibleTextHitRect = NSRect.zero
     private(set) var isHoverHintVisible = false
+    private(set) var isHoverHintScheduled = false
     private var trackingAreaReference: NSTrackingArea?
     private var isHovered = false
     private var isApplyingStyle = false
     private var hintPopover: NSPopover?
+    private var hoverHintTimer: Timer?
 
     override var stringValue: String {
         didSet {
@@ -589,8 +599,9 @@ class HoverLinkTextField: NSTextField {
             NSCursor.arrow.set()
         }
         if hovered {
-            presentHoverHintIfNeeded()
+            scheduleHoverHintIfNeeded()
         } else {
+            cancelPendingHoverHint()
             dismissHoverHint()
         }
     }
@@ -606,6 +617,7 @@ class HoverLinkTextField: NSTextField {
 
     private func tearDownInteraction() {
         removeTrackingAreaReference()
+        cancelPendingHoverHint()
         dismissHoverHint()
         if isHovered {
             isHovered = false
@@ -616,8 +628,46 @@ class HoverLinkTextField: NSTextField {
         }
     }
 
+    private func refreshNativeTooltip() {
+        if hoverHintDelay > 0 || hoverHint.isEmpty {
+            toolTip = nil
+        } else {
+            toolTip = hoverHint
+        }
+    }
+
+    private func scheduleHoverHintIfNeeded() {
+        guard !hoverHint.isEmpty else { return }
+        if hoverHintDelay <= 0 {
+            presentHoverHintIfNeeded()
+            return
+        }
+        guard hoverHintTimer == nil, !isHoverHintVisible else { return }
+        let timer = Timer(timeInterval: hoverHintDelay, repeats: false) { [weak self] _ in
+            self?.hoverHintTimer = nil
+            self?.isHoverHintScheduled = false
+            self?.presentHoverHintIfNeeded()
+        }
+        hoverHintTimer = timer
+        isHoverHintScheduled = true
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func cancelPendingHoverHint() {
+        hoverHintTimer?.invalidate()
+        hoverHintTimer = nil
+        isHoverHintScheduled = false
+    }
+
+    func firePendingHoverHintForTesting() {
+        hoverHintTimer?.fire()
+        cancelPendingHoverHint()
+    }
+
     private func presentHoverHintIfNeeded() {
+        cancelPendingHoverHint()
         guard interactionMode == .menuHosted,
+              isHovered,
               !hoverHint.isEmpty,
               window != nil,
               hintPopover == nil else {
@@ -634,7 +684,9 @@ class HoverLinkTextField: NSTextField {
         popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
         guard popover.isShown else {
             hintPopover = nil
-            toolTip = hoverHint
+            if hoverHintDelay <= 0 {
+                toolTip = hoverHint
+            }
             isHoverHintVisible = false
             return
         }
@@ -645,9 +697,7 @@ class HoverLinkTextField: NSTextField {
         hintPopover?.close()
         hintPopover = nil
         isHoverHintVisible = false
-        if !hoverHint.isEmpty {
-            toolTip = hoverHint
-        }
+        refreshNativeTooltip()
     }
 
     private func isPointInsideVisibleText(for event: NSEvent) -> Bool {
