@@ -17,7 +17,7 @@ final class DashboardTopFadeView: NSVisualEffectView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         material = .underWindowBackground
-        blendingMode = .withinWindow
+        blendingMode = .behindWindow
         state = .active
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
