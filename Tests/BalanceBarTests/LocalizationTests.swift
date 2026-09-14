@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import BalanceBar
 
@@ -358,6 +359,72 @@ final class LocalizationTests: XCTestCase {
             XCTAssertFalse(tr(.keyCodexBankedResetConfidenceLow, language: language).isEmpty)
             XCTAssertFalse(tr(.keyCodexBankedResetConfidenceMedium, language: language).isEmpty)
             XCTAssertFalse(tr(.keyCodexBankedResetConfidenceHigh, language: language).isEmpty)
+        }
+    }
+
+    func testBankedResetForecastMetricCopyFitsMeasuredSubtitleWidthInEveryLanguage() {
+        let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
+        let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
+        let contentWidth = OpenCodexCardLayout.contentWidth
+        let gap: CGFloat = 4
+        XCTAssertEqual(OpenCodexCardLayout.quotaResetPointSize, 13, accuracy: 0.001)
+        XCTAssertEqual(
+            OpenCodexCardLayout.bankedResetForecastLineHeight(),
+            ceil(subtitleFont.ascender - subtitleFont.descender + 2),
+            accuracy: 0.001
+        )
+        for language in allLanguages {
+            let prefix24 = tr(.keyCodexBankedResetProbability24h, language: language)
+            let prefix48 = tr(.keyCodexBankedResetProbability48h, language: language)
+            let confidencePrefix = tr(.keyCodexBankedResetConfidencePrefix, language: language)
+            let row24 = AccountMarqueeView.textWidth(of: prefix24, font: subtitleFont)
+                + 2
+                + gap
+                + AccountMarqueeView.textWidth(of: "100%", font: numericFont)
+                + 4
+            let row48 = AccountMarqueeView.textWidth(of: prefix48, font: subtitleFont)
+                + 2
+                + gap
+                + AccountMarqueeView.textWidth(of: "100%", font: numericFont)
+                + 4
+            let longestConfidence = [
+                tr(.keyCodexBankedResetConfidenceLow, language: language),
+                tr(.keyCodexBankedResetConfidenceMedium, language: language),
+                tr(.keyCodexBankedResetConfidenceHigh, language: language),
+                "--"
+            ].map { AccountMarqueeView.textWidth(of: $0, font: subtitleFont) }.max() ?? 0
+            let confidenceRow = AccountMarqueeView.textWidth(
+                of: confidencePrefix,
+                font: subtitleFont
+            ) + 2 + gap + longestConfidence + 4
+            XCTAssertLessThanOrEqual(
+                row24,
+                contentWidth,
+                "24h \(language.rawValue) \(prefix24) 100%"
+            )
+            XCTAssertLessThanOrEqual(
+                row48,
+                contentWidth,
+                "48h \(language.rawValue) \(prefix48) 100%"
+            )
+            XCTAssertLessThanOrEqual(
+                confidenceRow,
+                contentWidth,
+                "confidence \(language.rawValue) \(confidencePrefix)"
+            )
+            let hint = tr(
+                .keyCodexBankedResetProbabilityHint,
+                arguments: ["2026-09-13 22:35"],
+                language: language
+            )
+            let unwrapped = (hint as NSString).size(
+                withAttributes: [.font: DashboardTextTooltip.font]
+            ).width
+            XCTAssertGreaterThan(
+                unwrapped,
+                DashboardTextTooltipLayout.maximumTextWidth,
+                "\(language.rawValue) hint should be long enough to wrap"
+            )
         }
     }
 

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 struct ProviderBalanceSnapshotCache {
@@ -200,7 +201,8 @@ struct OpenCodexCardFrames: Equatable {
     let quotaRows: [OpenCodexQuotaRowFrames]
     let lunaReserveRow: OpenCodexQuotaRowFrames?
     let bankedResetSummaryRow: OpenCodexQuotaRowFrames?
-    let bankedResetForecastMetrics: CGRect?
+    let bankedResetForecast24h: CGRect?
+    let bankedResetForecast48h: CGRect?
     let bankedResetForecastConfidence: CGRect?
     let bankedResetDetailRows: [OpenCodexQuotaRowFrames]
     /// Host-coordinate clip for the detailed ticket list. Nil when the
@@ -291,18 +293,29 @@ enum OpenCodexCardLayout {
     static let bankedResetChromeCornerRadius: CGFloat = 10
     /// Gap between the probability line and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
-    /// Extra compact subtitle rows for 24h/48h and confidence. Height follows
-    /// the existing reset-line metric so translations can be measured in UI
-    /// without locking Chinese glyph widths into the card geometry.
+    /// Extra compact subtitle rows for 24h, 48h, and confidence. Height
+    /// follows the measured 13pt subtitle font, not a hardcoded Chinese
+    /// glyph width or the 17pt quota reset line box.
     static let bankedResetForecastLineGap: CGFloat = 2
+    static let bankedResetForecastLineCount = 3
     static let bankedResetProbabilityHoverHintDelay: TimeInterval = 0.5
 
+    static var bankedResetForecastSubtitleFont: NSFont {
+        NSFont.systemFont(ofSize: quotaResetPointSize, weight: .regular)
+    }
+
+    static var bankedResetForecastNumericFont: NSFont {
+        NSFont.monospacedDigitSystemFont(ofSize: quotaResetPointSize, weight: .regular)
+    }
+
     static func bankedResetForecastLineHeight() -> CGFloat {
-        quotaResetHeight
+        let font = bankedResetForecastSubtitleFont
+        return ceil(font.ascender - font.descender + 2)
     }
 
     static func bankedResetForecastExtraHeight() -> CGFloat {
-        2 * (bankedResetForecastLineHeight() + bankedResetForecastLineGap)
+        CGFloat(bankedResetForecastLineCount)
+            * (bankedResetForecastLineHeight() + bankedResetForecastLineGap)
     }
 
     static func bankedResetSummaryHeight() -> CGFloat {
@@ -427,7 +440,8 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
-                bankedResetForecastMetrics: nil,
+                bankedResetForecast24h: nil,
+                bankedResetForecast48h: nil,
                 bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil
@@ -465,7 +479,8 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
-                bankedResetForecastMetrics: nil,
+                bankedResetForecast24h: nil,
+                bankedResetForecast48h: nil,
                 bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil
@@ -676,7 +691,15 @@ enum OpenCodexCardLayout {
                 )
             }()
             : nil
-        let bankedResetForecastMetrics = includesBankedReset
+        let bankedResetForecastConfidence = includesBankedReset
+            ? CGRect(
+                x: horizontalInset,
+                y: bankedSummaryY,
+                width: contentWidth,
+                height: forecastLineHeight
+            )
+            : nil
+        let bankedResetForecast48h = includesBankedReset
             ? CGRect(
                 x: horizontalInset,
                 y: bankedSummaryY + forecastLineHeight + bankedResetForecastLineGap,
@@ -684,10 +707,10 @@ enum OpenCodexCardLayout {
                 height: forecastLineHeight
             )
             : nil
-        let bankedResetForecastConfidence = includesBankedReset
+        let bankedResetForecast24h = includesBankedReset
             ? CGRect(
                 x: horizontalInset,
-                y: bankedSummaryY,
+                y: bankedSummaryY + 2 * (forecastLineHeight + bankedResetForecastLineGap),
                 width: contentWidth,
                 height: forecastLineHeight
             )
@@ -783,7 +806,8 @@ enum OpenCodexCardLayout {
             quotaRows: rows,
             lunaReserveRow: lunaReserveRow,
             bankedResetSummaryRow: bankedResetSummaryRow,
-            bankedResetForecastMetrics: bankedResetForecastMetrics,
+            bankedResetForecast24h: bankedResetForecast24h,
+            bankedResetForecast48h: bankedResetForecast48h,
             bankedResetForecastConfidence: bankedResetForecastConfidence,
             bankedResetDetailRows: bankedResetDetailRows,
             bankedResetTicketViewport: bankedDetailCount > 0

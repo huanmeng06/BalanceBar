@@ -1212,6 +1212,78 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(activations, 1)
     }
 
+    func testDashboardTextTooltipLayoutKeepsShortHintsCompactAndWrapsLongHints() throws {
+        let font = DashboardTextTooltip.font
+        let short = DashboardTextTooltipLayout.make(for: "codex-reset.com", font: font)
+        XCTAssertFalse(short.wraps)
+        XCTAssertLessThan(
+            short.contentSize.width,
+            AccountEmailTooltipLayout.minimumTextWidth
+        )
+        XCTAssertLessThanOrEqual(short.textWidth, DashboardTextTooltipLayout.maximumTextWidth)
+        XCTAssertEqual(
+            short.textHeight,
+            max(
+                ceil(font.ascender - font.descender + 2),
+                ceil(("codex-reset.com" as NSString).size(withAttributes: [.font: font]).height)
+            ),
+            accuracy: 0.001
+        )
+
+        let shortController = DashboardTextTooltipViewController(text: "codex-reset.com")
+        shortController.loadViewIfNeeded()
+        XCTAssertEqual(shortController.view.frame.size, short.contentSize)
+        let shortLabel = try XCTUnwrap(shortController.view.subviews.first as? NSTextField)
+        XCTAssertNotEqual(shortLabel.lineBreakMode, .byWordWrapping)
+        XCTAssertLessThan(shortController.view.frame.width, 160)
+
+        let longHint = tr(
+            .keyCodexBankedResetProbabilityHint,
+            arguments: ["2026-09-13 22:35"],
+            language: .simplifiedChinese
+        )
+        let long = DashboardTextTooltipLayout.make(for: longHint, font: font)
+        XCTAssertTrue(long.wraps)
+        XCTAssertEqual(long.textWidth, DashboardTextTooltipLayout.maximumTextWidth)
+        XCTAssertGreaterThan(long.textHeight, short.textHeight)
+        XCTAssertEqual(
+            long.contentSize.width,
+            DashboardTextTooltipLayout.maximumTextWidth
+                + DashboardTextTooltipLayout.horizontalInset * 2
+        )
+        XCTAssertGreaterThan(long.contentSize.height, short.contentSize.height)
+
+        let longController = DashboardTextTooltipViewController(text: longHint)
+        longController.loadViewIfNeeded()
+        XCTAssertEqual(longController.view.frame.size, long.contentSize)
+        XCTAssertLessThanOrEqual(
+            longController.view.frame.width,
+            DashboardTextTooltipLayout.maximumTextWidth
+                + DashboardTextTooltipLayout.horizontalInset * 2
+        )
+        let longLabel = try XCTUnwrap(longController.view.subviews.first as? NSTextField)
+        XCTAssertEqual(longLabel.lineBreakMode, .byWordWrapping)
+        XCTAssertEqual(longLabel.maximumNumberOfLines, 0)
+        XCTAssertEqual(longLabel.preferredMaxLayoutWidth, long.textWidth)
+
+        for language in AppLanguage.allCases where language != .system {
+            let localizedHint = tr(
+                .keyCodexBankedResetProbabilityHint,
+                arguments: ["2026-09-13 22:35"],
+                language: language
+            )
+            let layout = DashboardTextTooltipLayout.make(for: localizedHint, font: font)
+            XCTAssertTrue(layout.wraps, "hint should wrap for \(language.rawValue)")
+            XCTAssertEqual(layout.textWidth, DashboardTextTooltipLayout.maximumTextWidth)
+            XCTAssertGreaterThan(
+                layout.textHeight,
+                short.textHeight,
+                "wrapped hint height for \(language.rawValue)"
+            )
+        }
+        XCTAssertEqual(AccountEmailTextField.tooltipDelay, 0.15, accuracy: 0.001)
+    }
+
     func testHoverLinkHoverHintSetsNativeTooltip() {
         let link = HoverLinkTextField(text: "24%")
         XCTAssertEqual(link.hoverHint, "")
