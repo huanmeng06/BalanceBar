@@ -201,8 +201,7 @@ struct OpenCodexCardFrames: Equatable {
     let quotaRows: [OpenCodexQuotaRowFrames]
     let lunaReserveRow: OpenCodexQuotaRowFrames?
     let bankedResetSummaryRow: OpenCodexQuotaRowFrames?
-    let bankedResetForecast24h: CGRect?
-    let bankedResetForecast48h: CGRect?
+    let bankedResetForecastMetrics: CGRect?
     let bankedResetForecastConfidence: CGRect?
     let bankedResetDetailRows: [OpenCodexQuotaRowFrames]
     /// Host-coordinate clip for the detailed ticket list. Nil when the
@@ -293,11 +292,17 @@ enum OpenCodexCardLayout {
     static let bankedResetChromeCornerRadius: CGFloat = 10
     /// Gap between the probability line and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
-    /// Extra compact subtitle rows for 24h, 48h, and confidence. Height
-    /// follows the measured 13pt subtitle font, not a hardcoded Chinese
-    /// glyph width or the 17pt quota reset line box.
+    /// Extra compact subtitle rows: 24h+48h on one line, confidence below.
+    /// Height follows the measured 13pt subtitle font, not a hardcoded
+    /// Chinese glyph width or the 17pt quota reset line box. The metrics
+    /// row uses a slightly smaller inset so longer locales still fit on
+    /// one line without ellipsis.
     static let bankedResetForecastLineGap: CGFloat = 2
-    static let bankedResetForecastLineCount = 3
+    static let bankedResetForecastLineCount = 2
+    static let bankedResetForecastMetricsInset: CGFloat = 6
+    static var bankedResetForecastMetricsWidth: CGFloat {
+        cardWidth - bankedResetForecastMetricsInset * 2
+    }
     static let bankedResetProbabilityHoverHintDelay: TimeInterval = 0.5
 
     static var bankedResetForecastSubtitleFont: NSFont {
@@ -316,6 +321,87 @@ enum OpenCodexCardLayout {
     static func bankedResetForecastExtraHeight() -> CGFloat {
         CGFloat(bankedResetForecastLineCount)
             * (bankedResetForecastLineHeight() + bankedResetForecastLineGap)
+    }
+
+    static func forecastTextWidth(_ text: String, font: NSFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    /// Left-to-right packing for `24h 24% · 48h 42%` on one subtitle row.
+    /// Prefers spaced copy, then tightens gap/separator so longer locales
+    /// still fit the metrics width without truncation.
+    struct BankedResetForecastMetricsPacking: Equatable {
+        static let preferredSeparator = " · "
+        static let compactSeparator = "·"
+
+        let gap: CGFloat
+        let separator: String
+        let prefix24Width: CGFloat
+        let percent24Width: CGFloat
+        let separatorWidth: CGFloat
+        let prefix48Width: CGFloat
+        let percent48Width: CGFloat
+
+        var totalWidth: CGFloat {
+            prefix24Width + gap + percent24Width
+                + separatorWidth
+                + prefix48Width + gap + percent48Width
+        }
+
+        static func make(
+            prefix24: String,
+            percent24: String,
+            prefix48: String,
+            percent48: String,
+            availableWidth: CGFloat = OpenCodexCardLayout.bankedResetForecastMetricsWidth
+        ) -> Self {
+            let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
+            let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
+            let prefix24Width = OpenCodexCardLayout.forecastTextWidth(prefix24, font: subtitleFont)
+            let percent24Width = OpenCodexCardLayout.forecastTextWidth(percent24, font: numericFont)
+            let prefix48Width = OpenCodexCardLayout.forecastTextWidth(prefix48, font: subtitleFont)
+            let percent48Width = OpenCodexCardLayout.forecastTextWidth(percent48, font: numericFont)
+            let candidates: [(CGFloat, String)] = [
+                (4, preferredSeparator),
+                (2, preferredSeparator),
+                (2, compactSeparator),
+                (1, compactSeparator),
+                (0, compactSeparator)
+            ]
+            for (gap, separator) in candidates {
+                let separatorWidth = OpenCodexCardLayout.forecastTextWidth(
+                    separator,
+                    font: subtitleFont
+                )
+                let total = prefix24Width + gap + percent24Width
+                    + separatorWidth
+                    + prefix48Width + gap + percent48Width
+                if total <= availableWidth {
+                    return Self(
+                        gap: gap,
+                        separator: separator,
+                        prefix24Width: prefix24Width,
+                        percent24Width: percent24Width,
+                        separatorWidth: separatorWidth,
+                        prefix48Width: prefix48Width,
+                        percent48Width: percent48Width
+                    )
+                }
+            }
+            let separatorWidth = OpenCodexCardLayout.forecastTextWidth(
+                compactSeparator,
+                font: subtitleFont
+            )
+            return Self(
+                gap: 0,
+                separator: compactSeparator,
+                prefix24Width: prefix24Width,
+                percent24Width: percent24Width,
+                separatorWidth: separatorWidth,
+                prefix48Width: prefix48Width,
+                percent48Width: percent48Width
+            )
+        }
     }
 
     static func bankedResetSummaryHeight() -> CGFloat {
@@ -440,8 +526,7 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
-                bankedResetForecast24h: nil,
-                bankedResetForecast48h: nil,
+                bankedResetForecastMetrics: nil,
                 bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil
@@ -479,8 +564,7 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
-                bankedResetForecast24h: nil,
-                bankedResetForecast48h: nil,
+                bankedResetForecastMetrics: nil,
                 bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil
@@ -699,19 +783,11 @@ enum OpenCodexCardLayout {
                 height: forecastLineHeight
             )
             : nil
-        let bankedResetForecast48h = includesBankedReset
+        let bankedResetForecastMetrics = includesBankedReset
             ? CGRect(
-                x: horizontalInset,
+                x: bankedResetForecastMetricsInset,
                 y: bankedSummaryY + forecastLineHeight + bankedResetForecastLineGap,
-                width: contentWidth,
-                height: forecastLineHeight
-            )
-            : nil
-        let bankedResetForecast24h = includesBankedReset
-            ? CGRect(
-                x: horizontalInset,
-                y: bankedSummaryY + 2 * (forecastLineHeight + bankedResetForecastLineGap),
-                width: contentWidth,
+                width: bankedResetForecastMetricsWidth,
                 height: forecastLineHeight
             )
             : nil
@@ -806,8 +882,7 @@ enum OpenCodexCardLayout {
             quotaRows: rows,
             lunaReserveRow: lunaReserveRow,
             bankedResetSummaryRow: bankedResetSummaryRow,
-            bankedResetForecast24h: bankedResetForecast24h,
-            bankedResetForecast48h: bankedResetForecast48h,
+            bankedResetForecastMetrics: bankedResetForecastMetrics,
             bankedResetForecastConfidence: bankedResetForecastConfidence,
             bankedResetDetailRows: bankedResetDetailRows,
             bankedResetTicketViewport: bankedDetailCount > 0

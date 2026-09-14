@@ -364,10 +364,9 @@ final class LocalizationTests: XCTestCase {
 
     func testBankedResetForecastMetricCopyFitsMeasuredSubtitleWidthInEveryLanguage() {
         let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
-        let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
         let contentWidth = OpenCodexCardLayout.contentWidth
-        let gap: CGFloat = 4
         XCTAssertEqual(OpenCodexCardLayout.quotaResetPointSize, 13, accuracy: 0.001)
+        XCTAssertEqual(OpenCodexCardLayout.bankedResetForecastLineCount, 2)
         XCTAssertEqual(
             OpenCodexCardLayout.bankedResetForecastLineHeight(),
             ceil(subtitleFont.ascender - subtitleFont.descender + 2),
@@ -377,16 +376,28 @@ final class LocalizationTests: XCTestCase {
             let prefix24 = tr(.keyCodexBankedResetProbability24h, language: language)
             let prefix48 = tr(.keyCodexBankedResetProbability48h, language: language)
             let confidencePrefix = tr(.keyCodexBankedResetConfidencePrefix, language: language)
-            let row24 = AccountMarqueeView.textWidth(of: prefix24, font: subtitleFont)
-                + 2
-                + gap
-                + AccountMarqueeView.textWidth(of: "100%", font: numericFont)
-                + 4
-            let row48 = AccountMarqueeView.textWidth(of: prefix48, font: subtitleFont)
-                + 2
-                + gap
-                + AccountMarqueeView.textWidth(of: "100%", font: numericFont)
-                + 4
+            let packing = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
+                prefix24: prefix24,
+                percent24: "100%",
+                prefix48: prefix48,
+                percent48: "100%"
+            )
+            XCTAssertLessThanOrEqual(
+                packing.totalWidth,
+                OpenCodexCardLayout.bankedResetForecastMetricsWidth,
+                "24h+48h \(language.rawValue) \(prefix24) 100% \(packing.separator) \(prefix48) 100%"
+            )
+            let demoPacking = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
+                prefix24: prefix24,
+                percent24: "24%",
+                prefix48: prefix48,
+                percent48: "42%"
+            )
+            XCTAssertLessThanOrEqual(
+                demoPacking.totalWidth,
+                OpenCodexCardLayout.bankedResetForecastMetricsWidth,
+                "24h+48h demo \(language.rawValue)"
+            )
             let longestConfidence = [
                 tr(.keyCodexBankedResetConfidenceLow, language: language),
                 tr(.keyCodexBankedResetConfidenceMedium, language: language),
@@ -396,17 +407,7 @@ final class LocalizationTests: XCTestCase {
             let confidenceRow = AccountMarqueeView.textWidth(
                 of: confidencePrefix,
                 font: subtitleFont
-            ) + 2 + gap + longestConfidence + 4
-            XCTAssertLessThanOrEqual(
-                row24,
-                contentWidth,
-                "24h \(language.rawValue) \(prefix24) 100%"
-            )
-            XCTAssertLessThanOrEqual(
-                row48,
-                contentWidth,
-                "48h \(language.rawValue) \(prefix48) 100%"
-            )
+            ) + 4 + longestConfidence + 4
             XCTAssertLessThanOrEqual(
                 confidenceRow,
                 contentWidth,

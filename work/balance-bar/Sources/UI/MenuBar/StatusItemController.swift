@@ -5950,26 +5950,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     view.track(title)
                 }
 
-                if let frame24h = layout.bankedResetForecast24h {
-                    addBankedResetForecastProbability(
+                if let metricsFrame = layout.bankedResetForecastMetrics {
+                    addBankedResetForecastMetrics(
                         to: view,
-                        frame: frame24h,
-                        prefix: tr(.keyCodexBankedResetProbability24h),
-                        prefixIdentifier: "codex.bankedReset.probability24hPrefix",
-                        probability: quotaPresentation.resetForecast.probability24h,
-                        identity: .bankedResetProbability24h(provider: snapshot.provider),
-                        valueIdentifier: "codex.bankedReset.probability24h"
-                    )
-                }
-                if let frame48h = layout.bankedResetForecast48h {
-                    addBankedResetForecastProbability(
-                        to: view,
-                        frame: frame48h,
-                        prefix: tr(.keyCodexBankedResetProbability48h),
-                        prefixIdentifier: "codex.bankedReset.probability48hPrefix",
-                        probability: quotaPresentation.resetForecast.probability48h,
-                        identity: .bankedResetProbability48h(provider: snapshot.provider),
-                        valueIdentifier: "codex.bankedReset.probability48h"
+                        frame: metricsFrame,
+                        forecast: quotaPresentation.resetForecast,
+                        provider: snapshot.provider
                     )
                 }
                 if let confidenceFrame = layout.bankedResetForecastConfidence {
@@ -6333,25 +6319,116 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return tr(.keyCodexBankedResetProbabilityHint, arguments: [updatedText])
     }
 
-    private func addBankedResetForecastProbability(
+    private func addBankedResetForecastMetrics(
         to view: MenuHoverLinkHostView,
         frame: NSRect,
-        prefix: String,
-        prefixIdentifier: String,
-        probability: CodexResetProbability,
-        identity: OverviewNumericIdentity,
-        valueIdentifier: String
+        forecast: CodexResetForecast,
+        provider: String
     ) {
         let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
         let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
-        let prefixLabel = addBankedResetForecastPrefix(
+        let prefix24 = tr(.keyCodexBankedResetProbability24h)
+        let prefix48 = tr(.keyCodexBankedResetProbability48h)
+        let percent24View = makeBankedResetForecastPercentView(
+            probability: forecast.probability24h,
+            identity: .bankedResetProbability24h(provider: provider),
+            identifier: "codex.bankedReset.probability24h",
+            font: numericFont
+        )
+        let percent48View = makeBankedResetForecastPercentView(
+            probability: forecast.probability48h,
+            identity: .bankedResetProbability48h(provider: provider),
+            identifier: "codex.bankedReset.probability48h",
+            font: numericFont
+        )
+        let packing = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
+            prefix24: prefix24,
+            percent24: bankedResetForecastPercentReservation(
+                probability: forecast.probability24h,
+                identity: .bankedResetProbability24h(provider: provider)
+            ),
+            prefix48: prefix48,
+            percent48: bankedResetForecastPercentReservation(
+                probability: forecast.probability48h,
+                identity: .bankedResetProbability48h(provider: provider)
+            ),
+            availableWidth: frame.width
+        )
+        var x = frame.minX
+        let prefix24Label = addBankedResetForecastPrefix(
             to: view,
             frame: frame,
-            text: prefix,
-            identifier: prefixIdentifier,
+            x: x,
+            width: packing.prefix24Width,
+            text: prefix24,
+            identifier: "codex.bankedReset.probability24hPrefix",
             font: subtitleFont
         )
-        let percentView: NSView
+        x = prefix24Label.frame.maxX + packing.gap
+        percent24View.frame = CGRect(
+            x: x,
+            y: frame.minY,
+            width: packing.percent24Width,
+            height: frame.height
+        )
+        view.addSubview(percent24View)
+        x = percent24View.frame.maxX
+        let separatorLabel = makeOverviewLabel(packing.separator, font: subtitleFont)
+        separatorLabel.textColor = .secondaryLabelColor
+        separatorLabel.lineBreakMode = .byClipping
+        separatorLabel.usesSingleLineMode = true
+        separatorLabel.identifier = NSUserInterfaceItemIdentifier(
+            "codex.bankedReset.probabilitySeparator"
+        )
+        separatorLabel.frame = CGRect(
+            x: x,
+            y: frame.minY,
+            width: packing.separatorWidth,
+            height: frame.height
+        )
+        view.addSubview(separatorLabel)
+        x = separatorLabel.frame.maxX
+        let prefix48Label = addBankedResetForecastPrefix(
+            to: view,
+            frame: frame,
+            x: x,
+            width: packing.prefix48Width,
+            text: prefix48,
+            identifier: "codex.bankedReset.probability48hPrefix",
+            font: subtitleFont
+        )
+        x = prefix48Label.frame.maxX + packing.gap
+        percent48View.frame = CGRect(
+            x: x,
+            y: frame.minY,
+            width: packing.percent48Width,
+            height: frame.height
+        )
+        view.addSubview(percent48View)
+    }
+
+    private func bankedResetForecastPercentReservation(
+        probability: CodexResetProbability,
+        identity: OverviewNumericIdentity
+    ) -> String {
+        guard case .percent(let percent) = probability else {
+            return probability.displayText
+        }
+        let sample = OverviewNumericSample(
+            identity: identity,
+            format: .integerPercent,
+            value: Double(percent),
+            progressPercentage: nil
+        )
+        return overviewNumericPlan(for: sample).layoutReservationText
+    }
+
+    private func makeBankedResetForecastPercentView(
+        probability: CodexResetProbability,
+        identity: OverviewNumericIdentity,
+        identifier: String,
+        font: NSFont
+    ) -> NSView {
         if case .percent(let percent) = probability {
             let sample = OverviewNumericSample(
                 identity: identity,
@@ -6362,7 +6439,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let plan = overviewNumericPlan(for: sample)
             let numeric = OverviewNumericTextView(
                 text: plan.startText,
-                font: numericFont,
+                font: font,
                 value: plan.startValue,
                 textColor: .secondaryLabelColor,
                 alignment: .left
@@ -6371,21 +6448,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             numeric.identifier = OverviewNumericPresentation.amountIdentifier(for: identity)
             numeric.textField.identifier = numeric.identifier
             numeric.textField.lineBreakMode = .byClipping
-            percentView = numeric
-        } else {
-            let label = makeOverviewLabel(probability.displayText, font: numericFont)
-            label.textColor = .secondaryLabelColor
-            label.lineBreakMode = .byClipping
-            label.usesSingleLineMode = true
-            label.identifier = NSUserInterfaceItemIdentifier(valueIdentifier)
-            percentView = label
+            return numeric
         }
-        addBankedResetForecastValue(
-            percentView,
-            to: view,
-            frame: frame,
-            after: prefixLabel
-        )
+        let label = makeOverviewLabel(probability.displayText, font: font)
+        label.textColor = .secondaryLabelColor
+        label.lineBreakMode = .byClipping
+        label.usesSingleLineMode = true
+        label.identifier = NSUserInterfaceItemIdentifier(identifier)
+        return label
     }
 
     private func addBankedResetForecastConfidence(
@@ -6396,9 +6466,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
         let prefix = tr(.keyCodexBankedResetConfidencePrefix)
         let value = forecast.confidence.displayText()
+        let prefixWidth = min(
+            frame.width,
+            OpenCodexCardLayout.forecastTextWidth(prefix, font: subtitleFont)
+        )
         let prefixLabel = addBankedResetForecastPrefix(
             to: view,
             frame: frame,
+            x: frame.minX,
+            width: prefixWidth,
             text: prefix,
             identifier: "codex.bankedReset.confidencePrefix",
             font: subtitleFont
@@ -6422,23 +6498,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func addBankedResetForecastPrefix(
         to view: MenuHoverLinkHostView,
         frame: NSRect,
+        x: CGFloat,
+        width: CGFloat,
         text: String,
         identifier: String,
         font: NSFont
     ) -> NSTextField {
-        let prefixWidth = min(
-            frame.width,
-            ceil(AccountMarqueeView.textWidth(of: text, font: font)) + 2
-        )
         let prefixLabel = makeOverviewLabel(text, font: font)
         prefixLabel.textColor = .secondaryLabelColor
         prefixLabel.lineBreakMode = .byClipping
         prefixLabel.usesSingleLineMode = true
         prefixLabel.identifier = NSUserInterfaceItemIdentifier(identifier)
         prefixLabel.frame = CGRect(
-            x: frame.minX,
+            x: x,
             y: frame.minY,
-            width: prefixWidth,
+            width: max(0, width),
             height: frame.height
         )
         view.addSubview(prefixLabel)

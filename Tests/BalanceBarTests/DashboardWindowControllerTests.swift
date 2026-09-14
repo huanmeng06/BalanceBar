@@ -2590,7 +2590,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetConfidencePrefix)))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetConfidenceLow)))
         XCTAssertFalse(labels.contains("--%"))
-        XCTAssertFalse(labels.contains(" · "))
+        XCTAssertTrue(labels.contains(" · ") || labels.contains("·"))
         XCTAssertFalse(labels.contains { $0.contains("…") || $0.hasSuffix("...") })
         let largeAmounts = allControls(of: overview, as: NSTextField.self).filter {
             $0.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize
@@ -2755,8 +2755,25 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             firstChrome.frame.maxY
         )
         XCTAssertGreaterThan(probabilityLink.frame.minY, percent24.frame.minY)
-        XCTAssertGreaterThan(percent24.frame.minY, percent48.frame.minY)
-        XCTAssertGreaterThan(percent48.frame.minY, confidence.frame.minY)
+        XCTAssertEqual(percent24.frame.minY, percent48.frame.minY, accuracy: 0.001)
+        XCTAssertLessThan(percent24.frame.maxX, percent48.frame.minX)
+        let separator = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator"
+            }
+        )
+        XCTAssertTrue(
+            separator.stringValue == " · " || separator.stringValue == "·",
+            "separator should be a middot, got \(separator.stringValue)"
+        )
+        assertBankedResetForecastSubtitleFullyVisible(
+            separator,
+            expected: separator.stringValue
+        )
+        XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
+        XCTAssertEqual(separator.frame.minX, percent24.frame.maxX, accuracy: 0.001)
+        XCTAssertEqual(separator.frame.maxX, prefix48.frame.minX, accuracy: 0.001)
+        XCTAssertGreaterThan(percent24.frame.minY, confidence.frame.minY)
         XCTAssertGreaterThan(confidence.frame.minY, firstChrome.frame.maxY)
         let tickets = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.ticket"
@@ -2949,7 +2966,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetConfidencePrefix)))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetConfidenceLow)))
         XCTAssertTrue(labels.contains("2"))
-        XCTAssertFalse(labels.contains(" · "))
+        XCTAssertTrue(labels.contains(" · ") || labels.contains("·"))
         XCTAssertFalse(labels.contains { $0.contains("…") || $0.hasSuffix("...") })
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetFullResetTitle)))
         XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.badge" })
@@ -3027,8 +3044,23 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             confidence,
             expected: tr(.keyCodexBankedResetConfidenceLow)
         )
-        XCTAssertGreaterThan(percent24.frame.minY, percent48.frame.minY)
-        XCTAssertGreaterThan(percent48.frame.minY, confidence.frame.minY)
+        XCTAssertEqual(percent24.frame.minY, percent48.frame.minY, accuracy: 0.001)
+        XCTAssertLessThan(percent24.frame.maxX, percent48.frame.minX)
+        let separator = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator"
+            }
+        )
+        XCTAssertTrue(
+            separator.stringValue == " · " || separator.stringValue == "·",
+            "separator should be a middot, got \(separator.stringValue)"
+        )
+        assertBankedResetForecastSubtitleFullyVisible(
+            separator,
+            expected: separator.stringValue
+        )
+        XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
+        XCTAssertGreaterThan(percent24.frame.minY, confidence.frame.minY)
     }
 
     func testOfficialCodexMenuBankedResetForecastCopyFitsEveryBundledLanguage() throws {
@@ -3102,7 +3134,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         ])
         let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
         let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
-        let gap: CGFloat = 4
         for language in AppLanguage.allCases where language != .system {
             AppLanguage.selected = language
             controller.start(
@@ -3177,22 +3208,34 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 percent48.frame.width,
                 AccountMarqueeView.textWidth(of: "42%", font: numericFont)
             )
-            XCTAssertLessThanOrEqual(
-                prefix24.frame.width
-                    + gap
-                    + AccountMarqueeView.textWidth(of: "100%", font: numericFont)
-                    + 4,
-                OpenCodexCardLayout.contentWidth,
-                "24h row overflow in \(language.rawValue)"
+            let packing = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
+                prefix24: tr(.keyCodexBankedResetProbability24h, language: language),
+                percent24: "100%",
+                prefix48: tr(.keyCodexBankedResetProbability48h, language: language),
+                percent48: "100%"
             )
             XCTAssertLessThanOrEqual(
-                prefix48.frame.width
-                    + gap
-                    + AccountMarqueeView.textWidth(of: "100%", font: numericFont)
-                    + 4,
-                OpenCodexCardLayout.contentWidth,
-                "48h row overflow in \(language.rawValue)"
+                packing.totalWidth,
+                OpenCodexCardLayout.bankedResetForecastMetricsWidth,
+                "24h+48h overflow in \(language.rawValue)"
             )
+            XCTAssertEqual(percent24.frame.minY, percent48.frame.minY, accuracy: 0.001)
+            XCTAssertLessThan(percent24.frame.maxX, percent48.frame.minX)
+            let separator = try XCTUnwrap(
+                allControls(of: overview, as: NSTextField.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator"
+                }
+            )
+            XCTAssertTrue(
+                separator.stringValue == " · " || separator.stringValue == "·",
+                "separator should be a middot in \(language.rawValue), got \(separator.stringValue)"
+            )
+            assertBankedResetForecastSubtitleFullyVisible(
+                separator,
+                expected: separator.stringValue
+            )
+            XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
+            XCTAssertGreaterThan(percent24.frame.minY, confidence.frame.minY)
             let longestConfidence = [
                 tr(.keyCodexBankedResetConfidenceLow, language: language),
                 tr(.keyCodexBankedResetConfidenceMedium, language: language),
@@ -3200,12 +3243,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 "--"
             ].map { AccountMarqueeView.textWidth(of: $0, font: subtitleFont) }.max() ?? 0
             XCTAssertLessThanOrEqual(
-                confidencePrefix.frame.width + gap + longestConfidence + 4,
+                confidencePrefix.frame.width + 4 + longestConfidence + 4,
                 OpenCodexCardLayout.contentWidth,
                 "confidence row overflow in \(language.rawValue)"
             )
-            XCTAssertGreaterThan(percent24.frame.minY, percent48.frame.minY)
-            XCTAssertGreaterThan(percent48.frame.minY, confidence.frame.minY)
             let hint = StatusItemController.codexResetForecastHint(
                 for: .demo(updatedAt: date)
             )

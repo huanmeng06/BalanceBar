@@ -504,8 +504,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         )
         XCTAssertEqual(hidden.cardSize, baseline.cardSize)
         XCTAssertNil(hidden.bankedResetSummaryRow)
-        XCTAssertNil(hidden.bankedResetForecast24h)
-        XCTAssertNil(hidden.bankedResetForecast48h)
+        XCTAssertNil(hidden.bankedResetForecastMetrics)
         XCTAssertNil(hidden.bankedResetForecastConfidence)
         XCTAssertTrue(hidden.bankedResetDetailRows.isEmpty)
         XCTAssertEqual(hidden.quotaRows.map(\.quotaDetail), baseline.quotaRows.map(\.quotaDetail))
@@ -606,8 +605,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
                 ),
             accuracy: 0.001
         )
-        let metrics24h = try XCTUnwrap(frames.bankedResetForecast24h)
-        let metrics48h = try XCTUnwrap(frames.bankedResetForecast48h)
+        let metrics = try XCTUnwrap(frames.bankedResetForecastMetrics)
         let confidence = try XCTUnwrap(frames.bankedResetForecastConfidence)
         let measuredLineHeight = ceil(
             OpenCodexCardLayout.bankedResetForecastSubtitleFont.ascender
@@ -625,17 +623,40 @@ final class OpenCodexCardLayoutTests: XCTestCase {
                 * (measuredLineHeight + OpenCodexCardLayout.bankedResetForecastLineGap),
             accuracy: 0.001
         )
-        XCTAssertEqual(OpenCodexCardLayout.bankedResetForecastLineCount, 3)
-        XCTAssertEqual(metrics24h.height, measuredLineHeight, accuracy: 0.001)
-        XCTAssertEqual(metrics48h.height, measuredLineHeight, accuracy: 0.001)
+        XCTAssertEqual(OpenCodexCardLayout.bankedResetForecastLineCount, 2)
+        XCTAssertEqual(metrics.height, measuredLineHeight, accuracy: 0.001)
         XCTAssertEqual(confidence.height, measuredLineHeight, accuracy: 0.001)
-        XCTAssertEqual(metrics24h.width, OpenCodexCardLayout.contentWidth, accuracy: 0.001)
-        XCTAssertEqual(metrics48h.width, OpenCodexCardLayout.contentWidth, accuracy: 0.001)
+        XCTAssertEqual(
+            metrics.width,
+            OpenCodexCardLayout.bankedResetForecastMetricsWidth,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(metrics.minX, OpenCodexCardLayout.bankedResetForecastMetricsInset, accuracy: 0.001)
         XCTAssertEqual(confidence.width, OpenCodexCardLayout.contentWidth, accuracy: 0.001)
-        XCTAssertGreaterThan(summary.reset.minY, metrics24h.minY)
-        XCTAssertGreaterThan(metrics24h.minY, metrics48h.minY)
-        XCTAssertGreaterThan(metrics48h.minY, confidence.minY)
+        XCTAssertGreaterThan(summary.reset.minY, metrics.minY)
+        XCTAssertGreaterThan(metrics.minY, confidence.minY)
         XCTAssertGreaterThan(confidence.minY, frames.bankedResetDetailRows[0].chrome.maxY)
+        let chinesePacking = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
+            prefix24: "24 小时内",
+            percent24: "24%",
+            prefix48: "48 小时内",
+            percent48: "42%"
+        )
+        XCTAssertEqual(
+            chinesePacking.separator,
+            OpenCodexCardLayout.BankedResetForecastMetricsPacking.preferredSeparator
+        )
+        let germanPacking = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
+            prefix24: "Innerhalb 24 Std.",
+            percent24: "100%",
+            prefix48: "Innerhalb 48 Std.",
+            percent48: "100%"
+        )
+        XCTAssertLessThanOrEqual(
+            germanPacking.totalWidth,
+            OpenCodexCardLayout.bankedResetForecastMetricsWidth
+        )
+        XCTAssertGreaterThan(germanPacking.totalWidth, OpenCodexCardLayout.contentWidth)
         XCTAssertLessThan(
             summary.quotaDetail.minY - summary.reset.maxY,
             4
