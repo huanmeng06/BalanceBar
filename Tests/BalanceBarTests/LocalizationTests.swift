@@ -384,7 +384,7 @@ final class LocalizationTests: XCTestCase {
             )
             XCTAssertLessThanOrEqual(
                 packing.totalWidth,
-                OpenCodexCardLayout.bankedResetForecastMetricsWidth,
+                OpenCodexCardLayout.cardWidth - OpenCodexCardLayout.horizontalInset,
                 "24h+48h \(language.rawValue) \(prefix24) 100% \(packing.separator) \(prefix48) 100%"
             )
             let demoPacking = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
@@ -395,7 +395,7 @@ final class LocalizationTests: XCTestCase {
             )
             XCTAssertLessThanOrEqual(
                 demoPacking.totalWidth,
-                OpenCodexCardLayout.bankedResetForecastMetricsWidth,
+                OpenCodexCardLayout.contentWidth,
                 "24h+48h demo \(language.rawValue)"
             )
             let longestConfidence = [

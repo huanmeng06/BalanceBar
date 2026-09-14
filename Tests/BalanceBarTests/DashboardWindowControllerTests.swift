@@ -2775,6 +2775,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(separator.frame.maxX, prefix48.frame.minX, accuracy: 0.001)
         XCTAssertGreaterThan(percent24.frame.minY, confidence.frame.minY)
         XCTAssertGreaterThan(confidence.frame.minY, firstChrome.frame.maxY)
+        let resetTitle = try XCTUnwrap(
+            allControls(of: overview, as: AccountMarqueeView.self).first {
+                $0.accountLabel.stringValue == tr(.keyCodexBankedResetTitle)
+            }
+        )
+        assertBankedResetSummaryLeadingAligned(
+            in: overview,
+            title: resetTitle,
+            probabilityLink: probabilityLink,
+            prefix24: prefix24,
+            confidencePrefix: confidencePrefix
+        )
         let tickets = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.ticket"
         }
@@ -3061,6 +3073,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
         XCTAssertGreaterThan(percent24.frame.minY, confidence.frame.minY)
+        let resetTitle = try XCTUnwrap(
+            allControls(of: overview, as: AccountMarqueeView.self).first {
+                $0.accountLabel.stringValue == tr(.keyCodexBankedResetTitle)
+            }
+        )
+        assertBankedResetSummaryLeadingAligned(
+            in: overview,
+            title: resetTitle,
+            probabilityLink: probabilityLink,
+            prefix24: prefix24,
+            confidencePrefix: confidencePrefix
+        )
     }
 
     func testOfficialCodexMenuBankedResetForecastCopyFitsEveryBundledLanguage() throws {
@@ -3216,7 +3240,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             XCTAssertLessThanOrEqual(
                 packing.totalWidth,
-                OpenCodexCardLayout.bankedResetForecastMetricsWidth,
+                OpenCodexCardLayout.cardWidth - OpenCodexCardLayout.horizontalInset,
                 "24h+48h overflow in \(language.rawValue)"
             )
             XCTAssertEqual(percent24.frame.minY, percent48.frame.minY, accuracy: 0.001)
@@ -3236,6 +3260,22 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
             XCTAssertGreaterThan(percent24.frame.minY, confidence.frame.minY)
+            let resetTitle = try XCTUnwrap(
+                allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.accountLabel.stringValue == tr(.keyCodexBankedResetTitle, language: language)
+                }
+            )
+            assertBankedResetSummaryLeadingAligned(
+                in: overview,
+                title: resetTitle,
+                probabilityLink: try XCTUnwrap(
+                    allControls(of: overview, as: HoverLinkTextField.self).first {
+                        $0.identifier?.rawValue == "codex.bankedReset.probability"
+                    }
+                ),
+                prefix24: prefix24,
+                confidencePrefix: confidencePrefix
+            )
             let longestConfidence = [
                 tr(.keyCodexBankedResetConfidenceLow, language: language),
                 tr(.keyCodexBankedResetConfidenceMedium, language: language),
@@ -3852,6 +3892,56 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             field.frame.width,
             AccountMarqueeView.textWidth(of: expected, font: font),
             "\(expected) clipped in \(field.identifier?.rawValue ?? "label")",
+            file: file,
+            line: line
+        )
+    }
+
+    private func visualTextMinX(of view: NSView, in host: NSView) -> CGFloat {
+        if let marquee = view as? AccountMarqueeView {
+            return visualTextMinX(of: marquee.accountLabel, in: host)
+        }
+        if let field = view as? NSTextField, let cell = field.cell {
+            return field.convert(cell.titleRect(forBounds: field.bounds).origin, to: host).x
+        }
+        return host.convert(NSPoint(x: view.bounds.minX, y: view.bounds.minY), from: view).x
+    }
+
+    private func assertBankedResetSummaryLeadingAligned(
+        in overview: NSView,
+        title: AccountMarqueeView,
+        probabilityLink: HoverLinkTextField,
+        prefix24: NSTextField,
+        confidencePrefix: NSTextField,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let expected = OpenCodexCardLayout.horizontalInset
+        XCTAssertEqual(title.frame.minX, expected, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(prefix24.frame.minX, expected, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(confidencePrefix.frame.minX, expected, accuracy: 0.001, file: file, line: line)
+        let titleX = visualTextMinX(of: title, in: overview)
+        XCTAssertEqual(
+            visualTextMinX(of: probabilityLink, in: overview),
+            titleX,
+            accuracy: 0.5,
+            "重置概率 visual minX",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            visualTextMinX(of: prefix24, in: overview),
+            titleX,
+            accuracy: 0.5,
+            "24h prefix visual minX",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            visualTextMinX(of: confidencePrefix, in: overview),
+            titleX,
+            accuracy: 0.5,
+            "confidence prefix visual minX",
             file: file,
             line: line
         )

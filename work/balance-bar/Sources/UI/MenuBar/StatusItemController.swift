@@ -5936,6 +5936,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         width: titleWidth,
                         height: max(title.frame.height, summaryRow.reset.height)
                     )
+                    // NSTextField cells can draw glyphs inset of the view
+                    // frame. Shift the link so its visible text shares the
+                    // 重置卡 leading edge instead of looking indented.
+                    let titleTextInset = title.cell?
+                        .titleRect(forBounds: title.bounds).minX ?? 0
+                    if titleTextInset != 0 {
+                        title.frame.origin.x = summaryRow.reset.minX - titleTextInset
+                    }
                     title.identifier = NSUserInterfaceItemIdentifier(
                         "codex.bankedReset.probability"
                     )

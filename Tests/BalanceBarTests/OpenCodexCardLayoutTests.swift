@@ -631,8 +631,16 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             OpenCodexCardLayout.bankedResetForecastMetricsWidth,
             accuracy: 0.001
         )
-        XCTAssertEqual(metrics.minX, OpenCodexCardLayout.bankedResetForecastMetricsInset, accuracy: 0.001)
+        XCTAssertEqual(metrics.minX, OpenCodexCardLayout.horizontalInset, accuracy: 0.001)
+        XCTAssertEqual(metrics.minX, summary.quotaDetail.minX, accuracy: 0.001)
+        XCTAssertEqual(metrics.minX, summary.reset.minX, accuracy: 0.001)
+        XCTAssertEqual(confidence.minX, OpenCodexCardLayout.horizontalInset, accuracy: 0.001)
         XCTAssertEqual(confidence.width, OpenCodexCardLayout.contentWidth, accuracy: 0.001)
+        XCTAssertEqual(
+            OpenCodexCardLayout.bankedResetForecastMetricsWidth,
+            OpenCodexCardLayout.contentWidth,
+            accuracy: 0.001
+        )
         XCTAssertGreaterThan(summary.reset.minY, metrics.minY)
         XCTAssertGreaterThan(metrics.minY, confidence.minY)
         XCTAssertGreaterThan(confidence.minY, frames.bankedResetDetailRows[0].chrome.maxY)
@@ -654,7 +662,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         )
         XCTAssertLessThanOrEqual(
             germanPacking.totalWidth,
-            OpenCodexCardLayout.bankedResetForecastMetricsWidth
+            OpenCodexCardLayout.cardWidth - OpenCodexCardLayout.horizontalInset
         )
         XCTAssertGreaterThan(germanPacking.totalWidth, OpenCodexCardLayout.contentWidth)
         XCTAssertLessThan(

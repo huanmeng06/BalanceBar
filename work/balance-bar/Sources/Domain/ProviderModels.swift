@@ -294,14 +294,13 @@ enum OpenCodexCardLayout {
     static let bankedResetSummaryDetailGap: CGFloat = 6
     /// Extra compact subtitle rows: 24h+48h on one line, confidence below.
     /// Height follows the measured 13pt subtitle font, not a hardcoded
-    /// Chinese glyph width or the 17pt quota reset line box. The metrics
-    /// row uses a slightly smaller inset so longer locales still fit on
-    /// one line without ellipsis.
+    /// Chinese glyph width or the 17pt quota reset line box. Both forecast
+    /// rows share the title's leading inset; longer locales pack by
+    /// tightening gap/separator instead of shifting left.
     static let bankedResetForecastLineGap: CGFloat = 2
     static let bankedResetForecastLineCount = 2
-    static let bankedResetForecastMetricsInset: CGFloat = 6
     static var bankedResetForecastMetricsWidth: CGFloat {
-        cardWidth - bankedResetForecastMetricsInset * 2
+        contentWidth
     }
     static let bankedResetProbabilityHoverHintDelay: TimeInterval = 0.5
 
@@ -785,7 +784,7 @@ enum OpenCodexCardLayout {
             : nil
         let bankedResetForecastMetrics = includesBankedReset
             ? CGRect(
-                x: bankedResetForecastMetricsInset,
+                x: horizontalInset,
                 y: bankedSummaryY + forecastLineHeight + bankedResetForecastLineGap,
                 width: bankedResetForecastMetricsWidth,
                 height: forecastLineHeight
