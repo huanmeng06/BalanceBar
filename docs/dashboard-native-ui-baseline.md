@@ -70,7 +70,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 2. Appearance 组：Menu Bar、Menu
 3. System 组：Advanced、About
 
-侧栏导航是 `NSOutlineView` source-list（`DashboardSourceListController`）。可导航项是 `DashboardSidebarNode` 数据模型；Appearance / System 是不可选择的 group header。选中由 outline view 原生管理，不再维护平行的 `navigationButtons` / `navigationRows` 或自定义 `isSelected` 背景。source-list 随侧栏宽度拉伸；#385 的 split-view 尺寸/折叠契约不变。
+侧栏导航是 `NSOutlineView` source-list（`DashboardSourceListController`）。可导航项是 `DashboardSidebarNode` 数据模型；Appearance / System 是不可选择的 group header。选中由 outline view 原生管理，不再维护平行的 `navigationButtons` / `navigationRows` 或自定义 `isSelected` 背景。source-list 随侧栏宽度拉伸；#385 的 split-view 尺寸/折叠契约不变。鼠标点击 group 行（含标题右侧空白）不得改变 selection、不得导航。↑/↓ 由 outline 的 `moveUp`/`moveDown` 在五个可选项间移动并跳过 group；不得把 group proposal 重映射到相邻 section（那条路径同样处理鼠标）。
 
 - 打开窗口默认选中 General。
 - `showSection` 同步原生 selection，但不通过 delegate 再次切页。
@@ -157,7 +157,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 - `DashboardComponentsTests.testDashboardSectionsPreserveNavigationOrderAndMetadata`
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
 - `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
-- `DashboardSourceListContractTests`：原生 outline 选中、group 不可选、Provider 清空 selection、badge / rebuild / teardown 所有权
+- `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权
 
 ## 明确不在本基线内
 

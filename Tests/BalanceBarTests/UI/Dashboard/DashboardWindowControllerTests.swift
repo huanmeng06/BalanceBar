@@ -1049,13 +1049,17 @@ final class DashboardSourceListContractTests: XCTestCase {
         )
     }
 
-    func testGroupHeadersAreNotSelectableAndKeyboardProposalSkipsThem() throws {
-        let controller = makeController()
+    func testMouseClickOnGroupHeaderDoesNotChangeSelectionOrNavigate() throws {
+        var pageShows = 0
+        let controller = makeController(didShowPage: { pageShows += 1 })
         defer { controller.teardown() }
         controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
         let sourceList = try XCTUnwrap(controller.sourceListForTesting)
         let outline = sourceList.outlineView
-
         let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
         let system = try XCTUnwrap(sourceList.roots.first { $0.group == .system })
         XCTAssertTrue(sourceList.outlineView(outline, isGroupItem: appearance))
@@ -1068,38 +1072,95 @@ final class DashboardSourceListContractTests: XCTestCase {
         let appearanceRow = outline.row(forItem: appearance)
         let systemRow = outline.row(forItem: system)
         let generalRow = try XCTUnwrap(sourceList.row(for: .general))
-        let menuBarRow = try XCTUnwrap(sourceList.row(for: .menuBar))
-        let menuRow = try XCTUnwrap(sourceList.row(for: .menu))
-        let advancedRow = try XCTUnwrap(sourceList.row(for: .advanced))
         XCTAssertGreaterThanOrEqual(appearanceRow, 0)
-        XCTAssertGreaterThan(menuBarRow, appearanceRow)
+        XCTAssertGreaterThan(try XCTUnwrap(sourceList.row(for: .menuBar)), appearanceRow)
+        XCTAssertGreaterThan(outline.rect(ofRow: appearanceRow).width, 0)
+        XCTAssertGreaterThan(outline.rect(ofRow: appearanceRow).height, 0)
+        XCTAssertGreaterThan(outline.rect(ofRow: systemRow).width, 0)
 
         sourceList.applySelection(.general)
+        let afterGeneral = pageShows
         XCTAssertEqual(
             sourceList.outlineView(outline, selectionIndexesForProposedSelection: IndexSet(integer: appearanceRow)),
-            IndexSet(integer: menuBarRow)
+            IndexSet(integer: generalRow)
         )
-        sourceList.applySelection(.menu)
         XCTAssertEqual(
             sourceList.outlineView(outline, selectionIndexesForProposedSelection: IndexSet(integer: systemRow)),
-            IndexSet(integer: advancedRow)
+            IndexSet(integer: generalRow)
         )
-        sourceList.applySelection(.general)
         XCTAssertEqual(
             sourceList.outlineView(outline, selectionIndexesForProposedSelection: IndexSet()),
             IndexSet(integer: generalRow)
         )
 
-        let accepted = sourceList.outlineView(
-            outline,
-            selectionIndexesForProposedSelection: IndexSet(integer: appearanceRow)
-        )
-        outline.selectRowIndexes(accepted, byExtendingSelection: false)
-        XCTAssertEqual(accepted, IndexSet(integer: menuBarRow))
-        XCTAssertEqual(sourceList.selectedSection(), .menuBar)
+        clickTrailingBlank(of: appearanceRow, in: outline)
+        XCTAssertEqual(sourceList.selectedSection(), .general)
+        XCTAssertEqual(controller.section, .general)
         XCTAssertFalse(outline.isRowSelected(appearanceRow))
+        XCTAssertEqual(pageShows, afterGeneral)
+
+        controller.showSection(.menu)
+        let afterMenu = pageShows
+        let menuRow = try XCTUnwrap(sourceList.row(for: .menu))
+        XCTAssertEqual(sourceList.selectedSection(), .menu)
+        XCTAssertEqual(
+            sourceList.outlineView(outline, selectionIndexesForProposedSelection: IndexSet(integer: systemRow)),
+            IndexSet(integer: menuRow)
+        )
+        clickTrailingBlank(of: systemRow, in: outline)
+        XCTAssertEqual(sourceList.selectedSection(), .menu)
+        XCTAssertEqual(controller.section, .menu)
+        XCTAssertFalse(outline.isRowSelected(systemRow))
+        XCTAssertEqual(pageShows, afterMenu)
+    }
+
+    func testKeyboardArrowsSkipGroupHeaders() throws {
+        var pageShows = 0
+        let controller = makeController(didShowPage: { pageShows += 1 })
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let outline = sourceList.outlineView
+        XCTAssertTrue(window.makeFirstResponder(outline))
+        sourceList.applySelection(.general)
+        let afterGeneral = pageShows
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .menuBar)
         XCTAssertEqual(controller.section, .menuBar)
-        XCTAssertFalse(outline.isRowSelected(menuRow))
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .menu)
+        XCTAssertEqual(controller.section, .menu)
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .advanced)
+        XCTAssertEqual(controller.section, .advanced)
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .about)
+        XCTAssertEqual(controller.section, .about)
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .about)
+        XCTAssertEqual(controller.section, .about)
+
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .advanced)
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .menu)
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .menuBar)
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .general)
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .general)
+        XCTAssertEqual(controller.section, .general)
+        XCTAssertEqual(pageShows, afterGeneral + 8)
     }
 
     func testSourceListAccessibilityUsesNativeLabelsWithoutDuplicateIcons() throws {
@@ -1186,6 +1247,41 @@ final class DashboardSourceListContractTests: XCTestCase {
             matches.append(contentsOf: buttons(in: child))
         }
         return matches
+    }
+
+    private func clickTrailingBlank(of row: Int, in outline: NSOutlineView) {
+        let rowRect = outline.rect(ofRow: row)
+        let local = NSPoint(x: max(rowRect.maxX - 8, rowRect.midX), y: rowRect.midY)
+        let locationInWindow = outline.convert(local, to: nil)
+        let windowNumber = outline.window?.windowNumber ?? 0
+        let down = NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: locationInWindow,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 1
+        )
+        if let down {
+            outline.mouseDown(with: down)
+        }
+        let up = NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: locationInWindow,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: windowNumber,
+            context: nil,
+            eventNumber: 2,
+            clickCount: 1,
+            pressure: 1
+        )
+        if let up {
+            outline.mouseUp(with: up)
+        }
     }
 }
 

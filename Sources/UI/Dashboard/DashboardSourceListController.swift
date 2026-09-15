@@ -72,6 +72,39 @@ final class DashboardSidebarNode: NSObject {
 final class DashboardSourceListOutlineView: NSOutlineView {
     override var acceptsFirstResponder: Bool { true }
     override var canBecomeKeyView: Bool { true }
+
+    /// `selectionIndexesForProposedSelection` must not remap group rows: that
+    /// path also handles mouse clicks. Arrow keys therefore skip here.
+    override func moveUp(_ sender: Any?) {
+        selectAdjacentSelectableRow(direction: -1)
+    }
+
+    override func moveDown(_ sender: Any?) {
+        selectAdjacentSelectableRow(direction: 1)
+    }
+
+    private func selectAdjacentSelectableRow(direction: Int) {
+        var row = selectedRow
+        if row < 0 {
+            row = direction > 0 ? -1 : numberOfRows
+        }
+        row += direction
+        while row >= 0 && row < numberOfRows {
+            if isSelectableRow(row) {
+                selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                return
+            }
+            row += direction
+        }
+    }
+
+    func isSelectableRow(_ row: Int) -> Bool {
+        guard let item = item(atRow: row) else { return false }
+        if let shouldSelect = delegate?.outlineView?(self, shouldSelectItem: item) {
+            return shouldSelect
+        }
+        return (item as? DashboardSidebarNode)?.section != nil
+    }
 }
 
 final class DashboardSourceListCellView: NSTableCellView {
@@ -279,25 +312,10 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         if isApplyingProgrammaticSelection {
             return selectable
         }
-        if proposedSelectionIndexes.isEmpty {
-            return outlineView.selectedRowIndexes
-        }
-        if !selectable.isEmpty {
-            return selectable
-        }
-        guard let proposedRow = proposedSelectionIndexes.first else {
-            return outlineView.selectedRowIndexes
-        }
-        let current = outlineView.selectedRow
-        let direction = proposedRow >= current ? 1 : -1
-        var row = proposedRow
-        while row >= 0 && row < outlineView.numberOfRows {
-            if (outlineView.item(atRow: row) as? DashboardSidebarNode)?.section != nil {
-                return IndexSet(integer: row)
-            }
-            row += direction
-        }
-        return outlineView.selectedRowIndexes
+        // Keep the current selection when the proposal is empty or only group
+        // rows. Remapping a group onto the next section would make a mouse
+        // click on Appearance/System (including trailing blank space) navigate.
+        return selectable.isEmpty ? outlineView.selectedRowIndexes : selectable
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
