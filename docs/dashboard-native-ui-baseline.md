@@ -47,7 +47,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 最小尺寸 | 代码写入 `minSize` 800×540；安装 unified toolbar 后 AppKit 把 frame 高度下限抬到 **560**（XCTest 在 macOS 26.5 上测得）。宽度下限仍为 800。 | 创建窗口后的运行时 `window.minSize` |
 | 样式 | `.titled` `.closable` `.miniaturizable` `.resizable` `.fullSizeContentView` | 同上 |
 | 标题 | `titleVisibility = .hidden`；`window.title` 仍写入当前页标题 | 同上；`showSection` / `showProvider` |
-| 标题栏 | 透明、无分隔线；`toolbarStyle = .unified`；icon-only、不可自定义的工具栏，含系统 `NSToolbarItem.Identifier.toggleSidebar`（`NSSplitViewController.toggleSidebar(_:)`） | 同上 |
+| 标题栏 | 透明、无分隔线；`toolbarStyle = .unified`；icon-only、不可自定义的空工具栏。系统 sidebar toggle 属于 #409。 | 同上 |
 | 背景 | `isOpaque = false`，`backgroundColor = .clear`，`hasShadow = true` | 同上；测试宿主会改 alpha/shadow，不能用 XCTest 证明最终像素 |
 | 外观 | `appearance = nil`，跟随系统；`AppleInterfaceThemeChangedNotification` 后异步 `rebuild()` | `start()` / `createDashboardWindow` |
 | 缩放按钮 | **可见但 `isEnabled = false`** | 创建窗口后立刻禁用 |
@@ -55,7 +55,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 拖拽 | `isMovableByWindowBackground = false`；仅标题栏带（`contentLayoutRect` 以上）可拖；侧栏内容、卡片空隙、滚动区不能拖窗口 | `DashboardWindowDragPolicy` |
 | 双击标题栏 | 调用 `toggleWindowZoom()`：在当前 frame 与 `screen.visibleFrame` 之间切换，带动画；**不是** AppKit `zoom:` / `toggleFullScreen:` | `DashboardWindowZoomState` |
 | 全屏 | 生产窗口未实现 `windowShouldZoom` / `windowWillEnterFullScreen`，也未设置 fullscreen collection behavior。处于 `.fullScreen` 时标题栏拖拽 `hitTest` 返回 `nil`，双击被抑制 | `DashboardTitlebarDragView.hitTest` |
-| 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。其 `view` 是挂载中的 `DashboardContentRootView`：material `.underWindowBackground`，圆角 16。全宽 `contentSurface` 叠在透明 `NSSplitView` 下方；左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。打开时侧栏约 216pt（sidebar 视图一次性 frame seed，不是 `preferredThicknessFraction`）；`minimumThickness` 约 212、`maximumThickness` 320；`canCollapse = true`；折叠/展开走 `isCollapsed` 与 `toggleSidebar(_:)`。不把 divider 厚度锁成 0，也不另造 hit strip；窗口缩放由 factory content `holdingPriority`（`.defaultLow`）吸收。 | `installLayout` / `DashboardSplitViewController` |
+| 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。其 `view` 是挂载中的 `DashboardContentRootView`：material `.underWindowBackground`，圆角 16。全宽 `contentSurface` 叠在透明 `NSSplitView` 下方；左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。原生 `NSSplitView` 为 `isVertical = true`、`.thin` divider。打开时侧栏约 216pt（sidebar 视图一次性 frame seed，不是 `preferredThicknessFraction`）；`minimumThickness` 约 212、`maximumThickness` 320；`canCollapse = true`。折叠/展开走 `isCollapsed` 与 `toggleSidebar(_:)`（用户可见 toolbar 按钮属 #409）。不把 divider 厚度锁成 0，也不另造 hit strip；`holdingPriority` 为 sidebar 251 / content `.defaultLow`。 | `installLayout` / `DashboardSplitViewController` |
 | 侧栏材质 | macOS 26+ 动态 `NSGlassEffectView`，否则 `.sidebar` visual effect；圆角 22 | `makeSidebar` |
 | 点击编辑 | 窗口级 `leftMouseDown` monitor：点在可编辑 `NSTextField` 内保持编辑，点在标签/卡片/空白处 `makeFirstResponder(nil)` | `installMouseMonitor` |
 
@@ -148,7 +148,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 这些已有或本次新增的测试是回归闸门，不是视觉通过证明：
 
-- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、透明标题栏、unified toolbar（含系统 toggleSidebar）、绿钮禁用、`NSSplitViewController` 外壳、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、内容表面浅 82% / 深 20%、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
+- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、透明标题栏、unified 空工具栏、绿钮禁用、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、内容表面浅 82% / 深 20%、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
 - `DashboardWindowControllerTests.testWindowDisablesNativeZoomButStaysResizable`
 - `DashboardWindowControllerTests.testWindowZoomStateUsesTargetFrameAndRestoresRepeatedly`
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`

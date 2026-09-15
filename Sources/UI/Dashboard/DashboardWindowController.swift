@@ -75,10 +75,9 @@ final class DashboardContentRootView: NSVisualEffectView {
 /// Native Dashboard shell. The split view owns the sidebar/content geometry;
 /// page controllers remain responsible only for their own content.
 final class DashboardSplitViewController: NSSplitViewController {
-    /// One-time opening width from the #383/#384 baseline, seeded via the
-    /// sidebar view's initial frame. Not `preferredThicknessFraction` (that
-    /// factory value is a size *fraction* used for first layout / divider
-    /// double-click, currently 0.15).
+    /// Opening width from the #383/#384 baseline, seeded via the sidebar
+    /// view's initial frame. `preferredThicknessFraction` is a size fraction
+    /// of the split view, not an absolute point width, and is left at factory.
     static let preferredSidebarThickness: CGFloat = 216
     static let sidebarThickness: CGFloat = preferredSidebarThickness
     /// 168pt navigation rows plus the current 14pt stack and 8pt panel insets.
@@ -87,6 +86,12 @@ final class DashboardSplitViewController: NSSplitViewController {
     /// Product cap for divider resizing. Factory sidebar maximum is
     /// `unspecifiedDimension`; 320 is the actual upper bound.
     static let maximumSidebarThickness: CGFloat = 320
+    /// Sidebar holds its current width; content uses `.defaultLow` so window
+    /// resize is absorbed by the content pane.
+    static let sidebarHoldingPriority = NSLayoutConstraint.Priority(
+        rawValue: NSLayoutConstraint.Priority.defaultLow.rawValue + 1
+    )
+    static let contentHoldingPriority = NSLayoutConstraint.Priority.defaultLow
     static let contentSurfaceIdentifier = NSUserInterfaceItemIdentifier("dashboardContentSurface")
 
     let sidebarController: NSViewController
@@ -98,6 +103,11 @@ final class DashboardSplitViewController: NSSplitViewController {
         self.contentController = content
         super.init(nibName: nil, bundle: nil)
 
+        let split = NSSplitView()
+        split.isVertical = true
+        split.dividerStyle = .thin
+        splitView = split
+
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.canCollapse = true
         sidebarItem.canCollapseFromWindowResize = false
@@ -107,12 +117,11 @@ final class DashboardSplitViewController: NSSplitViewController {
             Self.minimumSidebarThickness
         )
         sidebarItem.maximumThickness = Self.maximumSidebarThickness
-        // Factory holdingPriority is already sidebar 260 / content 250
-        // (`defaultLow` + 10 vs `defaultLow`), so window resize is absorbed
-        // by the content item without a magic content priority of 1.
+        sidebarItem.holdingPriority = Self.sidebarHoldingPriority
 
         let contentItem = NSSplitViewItem(viewController: content)
         contentItem.canCollapse = false
+        contentItem.holdingPriority = Self.contentHoldingPriority
         addSplitViewItem(sidebarItem)
         addSplitViewItem(contentItem)
     }
@@ -244,7 +253,7 @@ enum DashboardWindowDragPolicy {
     }
 }
 
-final class DashboardWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
+final class DashboardWindowController: NSObject, NSWindowDelegate {
     private let actions: DashboardWindowControllerActions
     private(set) var window: NSWindow?
     private(set) var contentHost = NSView()
@@ -327,7 +336,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, NSToolbarDele
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         let dashboardToolbar = NSToolbar(identifier: NSToolbar.Identifier("BalanceBarDashboardToolbar"))
-        dashboardToolbar.delegate = self
         dashboardToolbar.displayMode = .iconOnly
         dashboardToolbar.allowsUserCustomization = false
         dashboardToolbar.autosavesConfiguration = false
@@ -468,23 +476,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, NSToolbarDele
               resizedWindow === window else { return }
         DashboardScrollTrace.marker("window-resize", source: "DashboardWindowController")
         actions.didResize()
-    }
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar]
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar]
-    }
-
-    func toolbar(
-        _ toolbar: NSToolbar,
-        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-        willBeInsertedIntoToolbar flag: Bool
-    ) -> NSToolbarItem? {
-        guard itemIdentifier == .toggleSidebar else { return nil }
-        return NSToolbarItem(itemIdentifier: .toggleSidebar)
     }
 
     private func replacePage(makePage: () -> NSView) {

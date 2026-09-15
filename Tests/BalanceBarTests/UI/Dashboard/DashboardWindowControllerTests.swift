@@ -374,6 +374,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(contentItem.viewController === splitController.contentController)
         XCTAssertEqual(sidebarItem.behavior, .sidebar)
         XCTAssertNotEqual(contentItem.behavior, .sidebar)
+        XCTAssertTrue(splitController.splitView.isVertical)
+        XCTAssertEqual(splitController.splitView.dividerStyle, .thin)
         XCTAssertTrue(sidebarItem.canCollapse)
         XCTAssertFalse(sidebarItem.canCollapseFromWindowResize)
         XCTAssertTrue(sidebarItem.allowsFullHeightLayout)
@@ -401,11 +403,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
         XCTAssertGreaterThan(sidebarItem.holdingPriority.rawValue, contentItem.holdingPriority.rawValue)
         XCTAssertLessThan(sidebarItem.holdingPriority.rawValue, 900)
-        XCTAssertEqual(
-            contentItem.holdingPriority,
-            .defaultLow,
-            "Content should keep the factory/defaultLow holding priority so window resize is absorbed there"
-        )
+        XCTAssertEqual(contentItem.holdingPriority, .defaultLow)
         XCTAssertEqual(sidebarItem.viewController.view.frame.width, 216, accuracy: 1)
         XCTAssertGreaterThan(contentItem.viewController.view.frame.width, 0)
         XCTAssertTrue(sidebarItem.viewController.view.isDescendant(of: splitController.splitView))
@@ -470,10 +468,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertNotNil(window.toolbar)
         XCTAssertEqual(window.toolbar?.displayMode, .iconOnly)
         XCTAssertFalse(window.toolbar?.allowsUserCustomization ?? true)
-        XCTAssertEqual(
-            window.toolbar?.items.map(\.itemIdentifier),
-            [.toggleSidebar]
-        )
+        XCTAssertTrue(window.toolbar?.items.isEmpty ?? false)
         XCTAssertNil(window.appearance)
         XCTAssertFalse(window.isMovableByWindowBackground)
 
@@ -552,6 +547,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let contentItem = splitController.splitViewItems[1]
         XCTAssertEqual(sidebarItem.behavior, .sidebar)
         XCTAssertNotEqual(contentItem.behavior, .sidebar)
+        XCTAssertTrue(splitController.splitView.isVertical)
+        XCTAssertEqual(splitController.splitView.dividerStyle, .thin)
         XCTAssertFalse(contentItem.canCollapse)
         XCTAssertFalse(
             hasFixedWidthConstraint(in: sidebarItem.viewController.view, constant: 216),
@@ -637,6 +634,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             window.contentViewController as? DashboardSplitViewController
         )
         let sidebarItem = splitController.splitViewItems[0]
+        XCTAssertTrue(splitController.splitView.isVertical)
         XCTAssertTrue(sidebarItem.canCollapse)
         XCTAssertFalse(sidebarItem.isCollapsed)
 
