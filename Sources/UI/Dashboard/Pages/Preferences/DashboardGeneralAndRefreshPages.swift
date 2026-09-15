@@ -347,10 +347,10 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
-        let silentLaunchRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardGeneralAndRefreshPagesSilentLaunch),
-            subtitle: tr(.keyDashboardGeneralAndRefreshPagesSilentLaunchDescription),
-            control: silentLaunchSwitch
+        let silentLaunchRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesSilentLaunch),
+            detail: tr(.keyDashboardGeneralAndRefreshPagesSilentLaunchDescription),
+            accessoryView: silentLaunchSwitch
         )
 
         let launchWithChatGPTSwitch = DashboardSettingsComponents.makeSwitch(
@@ -555,7 +555,7 @@ final class DashboardGeneralPage {
                 controlWidthConstrainedToRow: true
             )
         ])
-        return DashboardSettingsComponents.makeSettingsPage([system, refreshing, startup, app])
+        return DashboardSettingsComponents.makeSettingsPageContent([system, refreshing, startup, app])
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {

@@ -194,14 +194,14 @@ final class DashboardWindowControllerTests: XCTestCase {
             fpsField.isSelectable = true
             fpsField.stringValue = "30"
             fpsField.widthAnchor.constraint(equalToConstant: 44).isActive = true
-            return DashboardSettingsComponents.makeSettingsPage([
+            return DashboardSettingsComponents.makeSettingsPageContent([
                 DashboardSettingsComponents.makeSettingsSection("Tall", rows: [filler, fpsField])
             ])
         }
 
         let restoring = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in DashboardHostedPageViewController(wrapping: makeTallPage()) },
+                makeSectionPage: { _ in DashboardScrollablePageViewController(wrapping: makeTallPage()) },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
@@ -249,7 +249,7 @@ final class DashboardWindowControllerTests: XCTestCase {
 
         let fresh = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in DashboardHostedPageViewController(wrapping: makeTallPage()) },
+                makeSectionPage: { _ in DashboardScrollablePageViewController(wrapping: makeTallPage()) },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
@@ -835,6 +835,10 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         window.displayIfNeeded()
         try assertNativeDashboardToolbar(window)
         XCTAssertTrue(window.contentViewController is DashboardSplitViewController)
+        XCTAssertTrue(
+            window.toolbar?.delegate is DashboardToolbarController,
+            "rebuild must keep DashboardToolbarController as the single toolbar owner"
+        )
     }
 
     func testSidebarSelectionAndProviderClearingMatchCurrentNativeBaseline() throws {
@@ -1016,8 +1020,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in
-                    DashboardHostedPageViewController(
-                        wrapping: DashboardSettingsComponents.makeSettingsPage([
+                    DashboardScrollablePageViewController(
+                        wrapping: DashboardSettingsComponents.makeSettingsPageContent([
                             DashboardSettingsComponents.makeSettingsSection(
                                 "Usage",
                                 rows: [DashboardSettingsComponents.makeSettingsRow("Remaining")]
@@ -1040,6 +1044,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         line: UInt = #line
     ) throws {
         let toolbar = try XCTUnwrap(window.toolbar, file: file, line: line)
+        XCTAssertFalse(toolbar.items.isEmpty, "Dashboard toolbar must not be an empty unified placeholder", file: file, line: line)
         XCTAssertEqual(toolbar.identifier, DashboardToolbarController.identifier, file: file, line: line)
         XCTAssertEqual(toolbar.displayMode, .iconOnly, file: file, line: line)
         XCTAssertFalse(toolbar.allowsUserCustomization, file: file, line: line)
