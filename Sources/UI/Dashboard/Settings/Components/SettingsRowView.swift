@@ -7,8 +7,13 @@ protocol SettingsRowHeightInvalidating: AnyObject {
 }
 
 /// Native Auto Layout settings row: title, optional detail, trailing control.
-/// Height comes from stack intrinsic content size, not a custom measurement cache.
-final class SettingsRowView: NSStackView {
+///
+/// The row itself is an `NSView` so the 62pt floor can live on the outer view
+/// (centerY + inequality padding), matching `DashboardSettingsRowView`. Making
+/// `SettingsRowView` an `NSStackView` stretched the nested labels stack to the
+/// inner 40pt and then stretched the title field, which kept a 2pt *frame* gap
+/// while the drawn glyphs sat much farther apart.
+final class SettingsRowView: NSView {
     static var minimumHeight: CGFloat { DashboardSettingsComponents.standardRowHeight }
     static let horizontalPadding: CGFloat = 20
     static let verticalPadding: CGFloat = 11
@@ -19,7 +24,8 @@ final class SettingsRowView: NSStackView {
     let detailLabel: NSTextField
     private(set) var accessoryView: NSView?
 
-    private let labelsStack = NSStackView()
+    let contentStack = NSStackView()
+    let labelsStack = NSStackView()
 
     init(
         title: String,
@@ -37,9 +43,33 @@ final class SettingsRowView: NSStackView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    static func enclosing(_ view: NSView) -> SettingsRowView? {
+        var current: NSView? = view
+        while let candidate = current {
+            if let row = candidate as? SettingsRowView {
+                return row
+            }
+            current = candidate.superview
+        }
+        return nil
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let widthChanged = abs(newSize.width - bounds.width) > 0.5
+        super.setFrameSize(newSize)
+        if widthChanged {
+            applyWrappingWidths()
+            needsLayout = true
+        }
+    }
+
     override func layout() {
         super.layout()
-        let wrappingWidth = max(0, labelsStack.bounds.width)
+        applyWrappingWidths()
+    }
+
+    private func applyWrappingWidths() {
+        let wrappingWidth = wrappingWidthForLabels()
         guard wrappingWidth > 1 else { return }
 
         var wrappingChanged = false
@@ -57,24 +87,26 @@ final class SettingsRowView: NSStackView {
         notifyHeightHost()
     }
 
+    private func wrappingWidthForLabels() -> CGFloat {
+        var reserved = Self.horizontalPadding * 2
+        if let accessoryView, !accessoryView.isHidden {
+            let accessoryWidth = accessoryView.bounds.width > 1
+                ? accessoryView.bounds.width
+                : accessoryView.fittingSize.width
+            reserved += accessoryWidth + Self.contentSpacing
+        }
+        if bounds.width > 1 {
+            return max(0, bounds.width - reserved)
+        }
+        return max(0, labelsStack.bounds.width)
+    }
+
     private func configure(
         title: String,
         detail: String?,
         accessoryView: NSView?
     ) {
-        orientation = .horizontal
-        alignment = .centerY
-        distribution = .fill
-        spacing = Self.contentSpacing
-        edgeInsets = NSEdgeInsets(
-            top: Self.verticalPadding,
-            left: Self.horizontalPadding,
-            bottom: Self.verticalPadding,
-            right: Self.horizontalPadding
-        )
         translatesAutoresizingMaskIntoConstraints = false
-        setHuggingPriority(.defaultLow, for: .horizontal)
-        setHuggingPriority(.required, for: .vertical)
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         setContentHuggingPriority(.required, for: .vertical)
@@ -97,15 +129,9 @@ final class SettingsRowView: NSStackView {
 
         labelsStack.orientation = .vertical
         labelsStack.alignment = .leading
-        labelsStack.distribution = .fill
         labelsStack.spacing = Self.labelSpacing
         labelsStack.translatesAutoresizingMaskIntoConstraints = false
-        labelsStack.setHuggingPriority(.defaultLow, for: .horizontal)
-        // Keep the labels at their intrinsic height. A 62pt row floor would
-        // otherwise stretch this stack and open extra space between title
-        // and detail via gravity areas.
         labelsStack.setHuggingPriority(.required, for: .vertical)
-        labelsStack.setClippingResistancePriority(.required, for: .vertical)
         labelsStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
         labelsStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         labelsStack.setContentHuggingPriority(.required, for: .vertical)
@@ -115,17 +141,51 @@ final class SettingsRowView: NSStackView {
             labelsStack.addArrangedSubview(detailLabel)
         }
 
-        addArrangedSubview(labelsStack)
+        contentStack.orientation = .horizontal
+        contentStack.alignment = .centerY
+        contentStack.distribution = .fill
+        contentStack.spacing = Self.contentSpacing
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.setHuggingPriority(.required, for: .vertical)
+        contentStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        contentStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        contentStack.setContentHuggingPriority(.required, for: .vertical)
+        contentStack.setContentCompressionResistancePriority(.required, for: .vertical)
+        contentStack.addArrangedSubview(labelsStack)
         if let accessoryView {
             accessoryView.translatesAutoresizingMaskIntoConstraints = false
             accessoryView.setContentHuggingPriority(.required, for: .horizontal)
             accessoryView.setContentCompressionResistancePriority(.required, for: .horizontal)
             accessoryView.setContentHuggingPriority(.defaultHigh, for: .vertical)
             accessoryView.setContentCompressionResistancePriority(.required, for: .vertical)
-            addArrangedSubview(accessoryView)
+            contentStack.addArrangedSubview(accessoryView)
         }
 
-        heightAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumHeight).isActive = true
+        addSubview(contentStack)
+        NSLayoutConstraint.activate([
+            contentStack.leadingAnchor.constraint(
+                equalTo: leadingAnchor,
+                constant: Self.horizontalPadding
+            ),
+            contentStack.trailingAnchor.constraint(
+                equalTo: trailingAnchor,
+                constant: -Self.horizontalPadding
+            ),
+            contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            contentStack.topAnchor.constraint(
+                greaterThanOrEqualTo: topAnchor,
+                constant: Self.verticalPadding
+            ),
+            contentStack.bottomAnchor.constraint(
+                lessThanOrEqualTo: bottomAnchor,
+                constant: -Self.verticalPadding
+            ),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumHeight),
+            heightAnchor.constraint(
+                greaterThanOrEqualTo: contentStack.heightAnchor,
+                constant: Self.verticalPadding * 2
+            )
+        ])
     }
 
     private func configureLabel(
