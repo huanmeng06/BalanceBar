@@ -458,7 +458,7 @@ final class MenuBarAnimationTests: XCTestCase {
     func testClaudeRestingFrameIndexMatchesTheRenderedSVGPeak() throws {
         let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let sourceURL = repositoryRoot.appendingPathComponent(
-            "Resources/ClaudeThinking.svg"
+            "Resources/images/ClaudeThinking.svg"
         )
         let svg = try String(contentsOf: sourceURL, encoding: .utf8)
         let frames = try XCTUnwrap(ClaudeThinkingSprite.makeFrames(from: svg))
@@ -488,7 +488,7 @@ final class MenuBarAnimationTests: XCTestCase {
     func testClaudeThinkingSpriteBuilderPreservesTheBundledNineFrameStrip() throws {
         let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let sourceURL = repositoryRoot.appendingPathComponent(
-            "Resources/ClaudeThinking.svg"
+            "Resources/images/ClaudeThinking.svg"
         )
 
         let sprite = try XCTUnwrap(
@@ -521,27 +521,27 @@ final class MenuBarAnimationTests: XCTestCase {
     func testGrokIdleIconLoadsRelocatedFrame16VectorSVG() throws {
         let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let idleURL = repositoryRoot.appendingPathComponent(
-            "Resources/GrokIdle.svg"
+            "Resources/images/GrokIdle.svg"
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: idleURL.path))
         XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "Resources/GrokThinking"
+                    "Resources/images/GrokThinking"
                 ).path
             )
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "Resources/GrokThinking.png"
+                    "Resources/images/GrokThinking.png"
                 ).path
             )
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "Resources/GrokThinking.gif"
+                    "Resources/images/GrokThinking.gif"
                 ).path
             )
         )
@@ -593,7 +593,7 @@ final class MenuBarAnimationTests: XCTestCase {
     func testGrokThinkingSpriteLoadsVectorSVGPack() throws {
         let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let directoryURL = repositoryRoot.appendingPathComponent(
-            "Resources/GrokThinking"
+            "Resources/images/GrokThinking"
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: directoryURL.path))
         XCTAssertEqual(GrokThinkingAnimationTiming.frameCount, 30)
@@ -941,21 +941,21 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "Resources/GrokThinking"
+                    "Resources/images/GrokThinking"
                 ).path
             )
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "Resources/GrokThinking.png"
+                    "Resources/images/GrokThinking.png"
                 ).path
             )
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "Resources/GrokThinking.gif"
+                    "Resources/images/GrokThinking.gif"
                 ).path
             )
         )

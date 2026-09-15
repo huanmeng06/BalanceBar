@@ -6,6 +6,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 sources_dir="$repo_root/Sources"
 resources_src="$repo_root/Resources"
+images_src="$resources_src/images"
+lang_src="$resources_src/lang"
 usage() {
     cat <<'EOF'
 Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0]
@@ -174,15 +176,15 @@ trap 'status=$?; printf "build-balancebar: command failed at line %s (exit %s): 
 
 for required_file in \
     "$resources_src/Info.plist" \
-    "$resources_src/BalanceBar.icns" \
-    "$resources_src/GitHub.svg" \
-    "$resources_src/BankedResetTicket.svg" \
-    "$resources_src/CodexIcon.svg" \
-    "$resources_src/Claude.svg" \
-    "$resources_src/ClaudeThinking.svg" \
-    "$resources_src/Grok.svg" \
-    "$resources_src/Grok.png" \
-    "$resources_src/GrokIdle.svg" \
+    "$images_src/BalanceBar.icns" \
+    "$images_src/GitHub.svg" \
+    "$images_src/BankedResetTicket.svg" \
+    "$images_src/CodexIcon.svg" \
+    "$images_src/Claude.svg" \
+    "$images_src/ClaudeThinking.svg" \
+    "$images_src/Grok.svg" \
+    "$images_src/Grok.png" \
+    "$images_src/GrokIdle.svg" \
     "$launch_agent_source_dir/ChatGPTLaunchAgentMain.swift" \
     "$launch_agent_source_dir/balancebar-chatgpt-launch-agent.plist"
 do
@@ -190,15 +192,15 @@ do
 done
 for frame_index in $(seq 1 30)
 do
-    required_frame="$(printf '%s/GrokThinking/frame_%03d.svg' "$resources_src" "$frame_index")"
+    required_frame="$(printf '%s/GrokThinking/frame_%03d.svg' "$images_src" "$frame_index")"
     [[ -f "$required_frame" ]] || die "required input is missing: $required_frame"
 done
 localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj fr.lproj pt.lproj ru.lproj it.lproj)
 for localization_directory in "${localization_directories[@]}"
 do
-    localization_file="$resources_src/$localization_directory/Localizable.strings"
+    localization_file="$lang_src/$localization_directory/Localizable.strings"
     [[ -f "$localization_file" ]] || die "required localization resource is missing: $localization_file"
-    infoplist_file="$resources_src/$localization_directory/InfoPlist.strings"
+    infoplist_file="$lang_src/$localization_directory/InfoPlist.strings"
     [[ -f "$infoplist_file" ]] || die "required InfoPlist.strings is missing: $infoplist_file"
 done
 
@@ -296,18 +298,18 @@ bundle_program="$(plutil -extract BundleProgram raw -o - "$launch_agent_plist")"
     || die "ChatGPT launch agent plist has an invalid BundleProgram: $bundle_program"
 for resource_file in BalanceBar.icns GitHub.svg BankedResetTicket.svg CodexIcon.svg Claude.svg ClaudeThinking.svg Grok.svg Grok.png GrokIdle.svg
 do
-    cp "$resources_src/$resource_file" "$resources_dir/$resource_file"
+    cp "$images_src/$resource_file" "$resources_dir/$resource_file"
 done
 mkdir -p "$resources_dir/GrokThinking"
-cp "$resources_src/GrokThinking"/frame_*.svg "$resources_dir/GrokThinking/"
+cp "$images_src/GrokThinking"/frame_*.svg "$resources_dir/GrokThinking/"
 [[ "$(ls -1 "$resources_dir/GrokThinking"/frame_*.svg | wc -l | tr -d ' ')" == "30" ]] \
     || die "GrokThinking SVG directory must contain 30 frames"
 for localization_directory in "${localization_directories[@]}"
 do
     mkdir -p "$resources_dir/$localization_directory"
-    cp "$resources_src/$localization_directory/Localizable.strings" \
+    cp "$lang_src/$localization_directory/Localizable.strings" \
         "$resources_dir/$localization_directory/Localizable.strings"
-    cp "$resources_src/$localization_directory/InfoPlist.strings" \
+    cp "$lang_src/$localization_directory/InfoPlist.strings" \
         "$resources_dir/$localization_directory/InfoPlist.strings"
 done
 

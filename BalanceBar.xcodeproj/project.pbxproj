@@ -363,6 +363,15 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000011 /* Info.plist */,
+				A40000000000000000000019 /* images */,
+				A4000000000000000000001A /* lang */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000019 /* images */ = {
+			isa = PBXGroup;
+			children = (
 				A10000000000000000000012 /* BalanceBar.icns */,
 				A10000000000000000000013 /* CodexIcon.svg */,
 				A10000000000000000000014 /* Claude.svg */,
@@ -373,10 +382,17 @@
 				A31900000000000000000001 /* GrokThinking */,
 				A100000000000000000000E0 /* GitHub.svg */,
 				A34000000000000000000001 /* BankedResetTicket.svg */,
+			);
+			path = images;
+			sourceTree = "<group>";
+		};
+		A4000000000000000000001A /* lang */ = {
+			isa = PBXGroup;
+			children = (
 				A100000000000000000000F6 /* Localizable.strings */,
 				A32000000000000000000010 /* InfoPlist.strings */,
 			);
-			path = Resources;
+			path = lang;
 			sourceTree = "<group>";
 		};
 		A1000000000000000000001D /* Frameworks */ = {

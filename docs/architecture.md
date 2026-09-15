@@ -46,7 +46,7 @@ a network request by itself.
 | Menu-bar UI | Sources/UI/MenuBar/ | NSStatusItem, status menu content, menu-bar geometry, views, and activity animation. |
 | Dashboard UI | Sources/UI/Dashboard/ | Dashboard composition, native window/delegate, components, preference/provider pages, and the status-link editor. The status-link editor is the existing SwiftUI island hosted by AppKit. |
 | Tests | Tests/BalanceBarTests/ | XCTest coverage for domain rules, parsers, clients, repositories, monitoring, menu-bar geometry, dashboard components/pages/window behavior, preferences, and composition wiring. |
-| Packaging inputs | scripts/build.sh, Resources/Info.plist, and the four image files in Resources/ | CLI compilation, bundle metadata, and resources. These are build inputs, not feature ownership. |
+| Packaging inputs | scripts/build.sh, Resources/Info.plist, Resources/images/, and Resources/lang/ | CLI compilation, bundle metadata, and resources. These are build inputs, not feature ownership. |
 
 The Xcode groups mirror these paths. The target source list is declared in
 [BalanceBar.xcodeproj/project.pbxproj](../BalanceBar.xcodeproj/project.pbxproj);

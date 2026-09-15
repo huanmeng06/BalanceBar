@@ -123,6 +123,9 @@ Sources/Services/       数据库、网络、凭据与刷新协调
 Sources/Monitoring/     Codex 与 Claude Code 任务状态监听
 Sources/UI/MenuBar/     菜单栏布局、菜单和活动动画
 Sources/UI/Dashboard/   主窗口、设置页和供应商页面
+Resources/Info.plist    应用元数据
+Resources/images/       图标、品牌图与思考动画帧
+Resources/lang/         本地化 `.lproj`
 Tests/BalanceBarTests/                   XCTest 单元测试
 ```
 

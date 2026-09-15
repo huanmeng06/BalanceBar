@@ -385,7 +385,7 @@ for (failure, simplifiedChinese, english, traditionalChineseTaiwan, traditionalC
 SWIFT
 } | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 
-BALANCEBAR_LOCALIZATION_ROOT="$resources_src" "$probe_binary"
+BALANCEBAR_LOCALIZATION_ROOT="$resources_src/lang" "$probe_binary"
 
 ui_render_block="$(sed -n '/func refreshStandardProvider(/,/func prefetchCurrentBalance/p' "$sources_dir/Services/ProviderRefreshCoordinator.swift")"
 [[ "$ui_render_block" == *"failure.userVisibleReason"* ]] || {

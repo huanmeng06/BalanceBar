@@ -123,4 +123,4 @@ print("network error localization probe: PASS; six stable URL error mappings; al
 SWIFT
 } | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 
-BALANCEBAR_LOCALIZATION_ROOT="$resources_src" "$probe_binary"
+BALANCEBAR_LOCALIZATION_ROOT="$resources_src/lang" "$probe_binary"

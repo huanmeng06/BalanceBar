@@ -162,6 +162,8 @@ for path in \
   Sources/UI \
   Sources/LaunchAgent \
   Resources \
+  Resources/images \
+  Resources/lang \
   Tests/BalanceBarTests \
   .github/workflows/build-and-test.yml
 do
