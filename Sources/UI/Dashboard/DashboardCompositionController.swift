@@ -134,10 +134,12 @@ final class DashboardCompositionController {
     private lazy var windowController = DashboardWindowController(
         actions: DashboardWindowControllerActions(
             makeSectionPage: { [weak self] section in
-                self?.makeSectionPage(for: section) ?? NSView()
+                self?.makeSectionPageController(for: section)
+                    ?? DashboardHostedPageViewController()
             },
             makeProviderPage: { [weak self] choice in
-                self?.makeProviderPage(for: choice) ?? NSView()
+                self?.makeProviderPageController(for: choice)
+                    ?? DashboardHostedPageViewController()
             },
             providerChoices: { [weak self] in self?.state.providerChoices() ?? [] },
             prepareForPageReplacement: { [weak self] in self?.prepareForPageReplacement() },
@@ -170,6 +172,9 @@ final class DashboardCompositionController {
     var contentHost: NSView { windowController.contentHost }
     var section: DashboardSection { windowController.section }
     var selectedProviderID: String? { windowController.selectedProviderID }
+    var pageContainerForTesting: DashboardPageContainerViewController {
+        windowController.pageContainerForTesting
+    }
 
     func start() {
         windowController.start()
@@ -431,6 +436,14 @@ final class DashboardCompositionController {
     private func prepareForPageReplacement() {
         dashboardProviderPages.unmount()
         dashboardPreferencePages.teardown()
+    }
+
+    private func makeSectionPageController(for section: DashboardSection) -> NSViewController {
+        DashboardHostedPageViewController(wrapping: makeSectionPage(for: section))
+    }
+
+    private func makeProviderPageController(for choice: ProviderChoice) -> NSViewController {
+        DashboardHostedPageViewController(wrapping: makeProviderPage(for: choice))
     }
 
     private func makeSectionPage(for section: DashboardSection) -> NSView {

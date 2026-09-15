@@ -31,8 +31,8 @@ final class DashboardWindowControllerTests: XCTestCase {
     func testWindowDisablesNativeZoomButStaysResizable() throws {
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
                 didShowPage: {},
@@ -52,8 +52,8 @@ final class DashboardWindowControllerTests: XCTestCase {
     func testGeneralNavigationShowsAndHidesUpdateBadgeWithUpdateState() throws {
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
                 didShowPage: {},
@@ -125,7 +125,12 @@ final class DashboardWindowControllerTests: XCTestCase {
             window.setContentSize(NSSize(width: 800, height: 540))
             window.layoutIfNeeded()
             window.displayIfNeeded()
-            let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
+            let page = try XCTUnwrap(
+                appDelegate.dashboardCompositionForTesting.pageContainerForTesting.currentPage?.view
+            )
+            XCTAssertTrue(
+                page === appDelegate.dashboardCompositionForTesting.contentHost.subviews.first
+            )
             fittingWidths[language] = page.fittingSize.width
         }
 
@@ -211,8 +216,8 @@ final class DashboardWindowControllerTests: XCTestCase {
 
         let restoring = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in makeTallPage() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController(wrapping: makeTallPage()) },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
                 didShowPage: {},
@@ -259,8 +264,8 @@ final class DashboardWindowControllerTests: XCTestCase {
 
         let fresh = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in makeTallPage() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController(wrapping: makeTallPage()) },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
                 didShowPage: {},
@@ -284,8 +289,8 @@ final class DashboardWindowControllerTests: XCTestCase {
         ]
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { choices },
                 prepareForPageReplacement: {},
                 didShowPage: { shownPageCount += 1 },
@@ -321,8 +326,8 @@ final class DashboardWindowControllerTests: XCTestCase {
         var preparedPageCount = 0
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { choices },
                 prepareForPageReplacement: { preparedPageCount += 1 },
                 didShowPage: {},
@@ -355,8 +360,8 @@ final class DashboardWindowControllerTests: XCTestCase {
         var closeCount = 0
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
                 didShowPage: {},
@@ -371,6 +376,90 @@ final class DashboardWindowControllerTests: XCTestCase {
 
         XCTAssertNil(controller.window)
         XCTAssertEqual(closeCount, 0)
+    }
+
+    func testReplacePageSourceUsesChildControllerContainment() throws {
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardWindowController.swift"
+            ),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(
+            source.range(of: "private func replacePage(makePage: () -> NSViewController) {")
+        )
+        let end = try XCTUnwrap(source.range(of: "private func installMouseMonitor()"))
+        let replacePageSource = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(replacePageSource.contains("pageContainer.replacePage"))
+        XCTAssertFalse(replacePageSource.contains("contentHost.subviews.forEach"))
+        XCTAssertFalse(replacePageSource.contains("removeFromSuperview()"))
+        XCTAssertFalse(replacePageSource.contains("addSubview"))
+    }
+
+    func testSectionAndProviderNavigationOwnsOneChildController() throws {
+        let choices = [
+            ProviderChoice(id: "current", name: "Current", isCurrent: true)
+        ]
+        let controller = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { section in
+                    let page = DashboardHostedPageViewController()
+                    page.view.identifier = NSUserInterfaceItemIdentifier("section-\(section.rawValue)")
+                    return page
+                },
+                makeProviderPage: { choice in
+                    let page = DashboardHostedPageViewController()
+                    page.view.identifier = NSUserInterfaceItemIdentifier("provider-\(choice.id)")
+                    return page
+                },
+                providerChoices: { choices },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        let container = controller.pageContainerForTesting
+        XCTAssertTrue(splitController.contentController === container)
+
+        let generalPage = try XCTUnwrap(container.currentPage)
+        XCTAssertTrue(generalPage.parent === container)
+        XCTAssertEqual(container.children.count, 1)
+        XCTAssertTrue(container.children.first === generalPage)
+        XCTAssertTrue(generalPage.view === container.view.subviews.first)
+        XCTAssertEqual(generalPage.view.identifier?.rawValue, "section-\(DashboardSection.general.rawValue)")
+
+        controller.showSection(.menu)
+        let menuPage = try XCTUnwrap(container.currentPage)
+        XCTAssertFalse(menuPage === generalPage)
+        XCTAssertNil(generalPage.parent)
+        XCTAssertNil(generalPage.view.superview)
+        XCTAssertTrue(menuPage.parent === container)
+        XCTAssertEqual(container.children.count, 1)
+        XCTAssertTrue(container.children.first === menuPage)
+        XCTAssertEqual(menuPage.view.identifier?.rawValue, "section-\(DashboardSection.menu.rawValue)")
+
+        controller.showProvider("current")
+        let providerPage = try XCTUnwrap(container.currentPage)
+        XCTAssertNil(menuPage.parent)
+        XCTAssertNil(menuPage.view.superview)
+        XCTAssertTrue(providerPage.parent === container)
+        XCTAssertEqual(container.children.count, 1)
+        XCTAssertEqual(providerPage.view.identifier?.rawValue, "provider-current")
+
+        controller.teardown()
+        XCTAssertNil(container.currentPage)
+        XCTAssertTrue(container.children.isEmpty)
+        XCTAssertNil(providerPage.parent)
+        XCTAssertNil(providerPage.view.superview)
     }
 }
 
@@ -396,6 +485,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let contentItem = splitController.splitViewItems[1]
         XCTAssertTrue(sidebarItem.viewController === splitController.sidebarController)
         XCTAssertTrue(contentItem.viewController === splitController.contentController)
+        XCTAssertTrue(splitController.contentController is DashboardPageContainerViewController)
+        XCTAssertTrue(splitController.contentController === controller.pageContainerForTesting)
         XCTAssertEqual(sidebarItem.behavior, .sidebar)
         XCTAssertNotEqual(contentItem.behavior, .sidebar)
         XCTAssertTrue(splitController.splitView.isVertical)
@@ -804,7 +895,10 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             window.layoutIfNeeded()
             window.displayIfNeeded()
             let page = try XCTUnwrap(
-                appDelegate.dashboardCompositionForTesting.contentHost.subviews.first
+                appDelegate.dashboardCompositionForTesting.pageContainerForTesting.currentPage?.view
+            )
+            XCTAssertTrue(
+                page === appDelegate.dashboardCompositionForTesting.contentHost.subviews.first
             )
             let scrollView = try XCTUnwrap(
                 firstDescendant(of: page, as: NSScrollView.self),
@@ -822,7 +916,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         window.layoutIfNeeded()
         window.displayIfNeeded()
         let aboutPage = try XCTUnwrap(
-            appDelegate.dashboardCompositionForTesting.contentHost.subviews.first
+            appDelegate.dashboardCompositionForTesting.pageContainerForTesting.currentPage?.view
         )
         XCTAssertNil(
             firstDescendant(of: aboutPage, as: NSScrollView.self),
@@ -843,10 +937,53 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         providerController.showProvider("current")
         let providerWindow = try XCTUnwrap(providerController.window)
         providerWindow.layoutIfNeeded()
-        let providerPage = try XCTUnwrap(providerController.contentHost.subviews.first)
+        let providerPage = try XCTUnwrap(providerController.pageContainerForTesting.currentPage?.view)
         XCTAssertNotNil(firstDescendant(of: providerPage, as: NSScrollView.self))
         XCTAssertEqual(providerWindow.title, "Current")
         assertSidebarSelection(in: providerWindow, selected: nil)
+    }
+
+    func testReplacedPagesKeepAccessibilityDescendants() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-388-page-containment.db")
+            )
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let composition = appDelegate.dashboardCompositionForTesting
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let generalPage = try XCTUnwrap(composition.pageContainerForTesting.currentPage?.view)
+        XCTAssertTrue(generalPage.superview === composition.pageContainerForTesting.view)
+        let generalSwitch = try XCTUnwrap(firstDescendant(of: generalPage, as: NSSwitch.self))
+        XCTAssertNotNil(generalSwitch.accessibilityRole())
+
+        composition.showSection(.about)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let aboutPage = try XCTUnwrap(composition.pageContainerForTesting.currentPage?.view)
+        XCTAssertFalse(aboutPage === generalPage)
+        XCTAssertNil(generalPage.superview)
+        let githubButton = try XCTUnwrap(
+            firstDescendant(of: aboutPage, as: DashboardAboutGitHubButton.self)
+        )
+        XCTAssertEqual(githubButton.accessibilityRole(), .button)
+
+        composition.showSection(.general)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let restoredGeneral = try XCTUnwrap(composition.pageContainerForTesting.currentPage?.view)
+        XCTAssertNotNil(firstDescendant(of: restoredGeneral, as: NSSwitch.self))
+        XCTAssertEqual(
+            composition.pageContainerForTesting.children.count,
+            1
+        )
+        XCTAssertTrue(
+            composition.pageContainerForTesting.currentPage?.parent
+                === composition.pageContainerForTesting
+        )
     }
 
     private func makeController(
@@ -854,14 +991,16 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
     ) -> DashboardWindowController {
         DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in
-                    DashboardSettingsComponents.makeSettingsPage([
-                        DashboardSettingsComponents.makeSettingsSection(
-                            "Usage",
-                            rows: [DashboardSettingsComponents.makeSettingsRow("Remaining")]
-                        )
-                    ])
+                    DashboardHostedPageViewController(
+                        wrapping: DashboardSettingsComponents.makeSettingsPage([
+                            DashboardSettingsComponents.makeSettingsSection(
+                                "Usage",
+                                rows: [DashboardSettingsComponents.makeSettingsRow("Remaining")]
+                            )
+                        ])
+                    )
                 },
                 providerChoices: { providerChoices },
                 prepareForPageReplacement: {},
@@ -1344,8 +1483,8 @@ final class DashboardSourceListContractTests: XCTestCase {
     ) -> DashboardWindowController {
         DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { providerChoices },
                 prepareForPageReplacement: {},
                 didShowPage: didShowPage,
@@ -1938,7 +2077,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 firstDescendant(of: firstSection, as: NSTextField.self)
             )
             let firstHeadingRect = firstHeading.convert(firstHeading.bounds, to: document)
-            let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
+            let page = try XCTUnwrap(
+                appDelegate.dashboardCompositionForTesting.pageContainerForTesting.currentPage?.view
+            )
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
             XCTAssertTrue(document.isFlipped)
             XCTAssertEqual(
@@ -1985,7 +2126,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             let contentView = scrollView.contentView
             let document = try XCTUnwrap(scrollView.documentView)
-            let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
+            let page = try XCTUnwrap(
+                appDelegate.dashboardCompositionForTesting.pageContainerForTesting.currentPage?.view
+            )
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
             let stack = try XCTUnwrap(firstDescendant(of: document, as: NSStackView.self))
             let firstHeading = try XCTUnwrap(
@@ -2108,8 +2251,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
                 didShowPage: {},
