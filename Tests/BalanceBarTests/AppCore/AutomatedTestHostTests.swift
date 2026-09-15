@@ -121,8 +121,8 @@ final class AutomatedTestHostTests: XCTestCase {
     func testDashboardOpenStaysOffScreenDuringAutomatedTests() throws {
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
-                makeProviderPage: { _ in NSView() },
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
                 didShowPage: {},

@@ -14,8 +14,8 @@ func makeDashboardGlassEffectView(contentView: NSView, cornerRadius: CGFloat) ->
 }
 
 struct DashboardWindowControllerActions {
-    let makeSectionPage: (DashboardSection) -> NSView
-    let makeProviderPage: (ProviderChoice) -> NSView
+    let makeSectionPage: (DashboardSection) -> NSViewController
+    let makeProviderPage: (ProviderChoice) -> NSViewController
     let providerChoices: () -> [ProviderChoice]
     let prepareForPageReplacement: () -> Void
     let didShowPage: () -> Void
@@ -179,13 +179,6 @@ private final class DashboardSidebarViewController: NSViewController {
     override func loadView() { view = hostedView }
 }
 
-private final class DashboardContentViewController: NSViewController {
-    private let hostedView: NSView
-    init(view: NSView) { hostedView = view; super.init(nibName: nil, bundle: nil) }
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-    override func loadView() { view = hostedView }
-}
-
 final class DashboardTitlebarDragView: NSView {
     var onDoubleClick: (() -> Void)?
 
@@ -256,8 +249,9 @@ enum DashboardWindowDragPolicy {
 
 final class DashboardWindowController: NSObject, NSWindowDelegate {
     private let actions: DashboardWindowControllerActions
+    private let pageContainer = DashboardPageContainerViewController()
     private(set) var window: NSWindow?
-    private(set) var contentHost = NSView()
+    var contentHost: NSView { pageContainer.view }
     private(set) var section: DashboardSection = .general
     private(set) var selectedProviderID: String?
     private(set) var windowCreationCount = 0
@@ -462,6 +456,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         windowZoomState.reset()
         sourceListController?.teardown()
         sourceListController = nil
+        pageContainer.removeCurrentPage()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -478,14 +473,10 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         actions.didResize()
     }
 
-    private func replacePage(makePage: () -> NSView) {
+    private func replacePage(makePage: () -> NSViewController) {
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
         actions.prepareForPageReplacement()
-        contentHost.subviews.forEach { $0.removeFromSuperview() }
-        let page = makePage()
-        page.frame = contentHost.bounds
-        page.autoresizingMask = [.width, .height]
-        contentHost.addSubview(page)
+        pageContainer.replacePage(makePage())
         // Complete the replacement synchronously so native accessibility
         // descendants are materialized before callers inspect the page
         // (notably on Xcode 16.4 CI).
@@ -528,7 +519,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func installLayout(in window: NSWindow) {
-        contentHost.removeFromSuperview()
+        detachPageContainerFromParent()
         let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
         let sidebar = makeSidebar(titlebarHeight: titlebarHeight)
         sidebar.translatesAutoresizingMaskIntoConstraints = false
@@ -538,10 +529,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
                 height: window.frame.height
             )
         )
-        contentHost.translatesAutoresizingMaskIntoConstraints = false
         let splitController = DashboardSplitViewController(
             sidebar: DashboardSidebarViewController(view: sidebar),
-            content: DashboardContentViewController(view: contentHost)
+            content: pageContainer
         )
         let requestedFrame = window.frame
         window.contentViewController = splitController
@@ -595,5 +585,13 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         return sidebar
     }
 
+    private func detachPageContainerFromParent() {
+        if pageContainer.parent != nil {
+            pageContainer.removeFromParent()
+        }
+        pageContainer.view.removeFromSuperview()
+    }
+
     var sourceListForTesting: DashboardSourceListController? { sourceListController }
+    var pageContainerForTesting: DashboardPageContainerViewController { pageContainer }
 }
