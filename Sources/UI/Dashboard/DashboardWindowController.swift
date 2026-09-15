@@ -23,53 +23,21 @@ struct DashboardWindowControllerActions {
     let didResize: () -> Void
 }
 
-struct DashboardWindowDragRegion {
-    let bounds: NSRect
-    let titlebarHeight: CGFloat
-    let excludedRects: [NSRect]
-
-    var frame: NSRect {
-        let height = min(max(0, titlebarHeight), bounds.height)
-        return NSRect(
-            x: bounds.minX,
-            y: bounds.maxY - height,
-            width: bounds.width,
-            height: height
-        )
-    }
-
-    func contains(_ point: NSPoint) -> Bool {
-        guard frame.height > 0,
-              NSPointInRect(point, frame),
-              !excludedRects.contains(where: { NSPointInRect(point, $0) })
-        else { return false }
-        return true
-    }
-}
-
-struct DashboardWindowZoomState {
-    private(set) var savedNormalFrame: NSRect?
-
-    var isZoomed: Bool { savedNormalFrame != nil }
-
-    mutating func toggle(currentFrame: NSRect, targetFrame: NSRect?) -> NSRect? {
-        if let savedNormalFrame {
-            self.savedNormalFrame = nil
-            return savedNormalFrame
-        }
-
-        guard let targetFrame, !targetFrame.isEmpty else { return nil }
-        savedNormalFrame = currentFrame
-        return targetFrame
-    }
-
-    mutating func reset() {
-        savedNormalFrame = nil
-    }
-}
-
 final class DashboardContentRootView: NSVisualEffectView {
     override var mouseDownCanMoveWindow: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // fullSizeContentView draws under the titlebar. If this view claims
+        // those hits, NSThemeFrame never sees the double-click that runs
+        // AppleActionOnDoubleClick. Pass the titlebar band through.
+        guard let window else { return super.hitTest(point) }
+        let pointInSelf = convert(point, from: superview)
+        let layoutRectInSelf = convert(window.contentLayoutRect, from: nil)
+        if layoutRectInSelf.height > 0, pointInSelf.y >= layoutRectInSelf.maxY {
+            return nil
+        }
+        return super.hitTest(point)
+    }
 }
 
 /// Native Dashboard shell. The split view owns the sidebar/content geometry;
@@ -179,74 +147,6 @@ private final class DashboardSidebarViewController: NSViewController {
     override func loadView() { view = hostedView }
 }
 
-final class DashboardTitlebarDragView: NSView {
-    var onDoubleClick: (() -> Void)?
-
-    override var mouseDownCanMoveWindow: Bool { true }
-
-    override func mouseDown(with event: NSEvent) {
-        if handleMouseDown(clickCount: event.clickCount) {
-            return
-        }
-        super.mouseDown(with: event)
-    }
-
-    @discardableResult
-    func handleMouseDown(clickCount: Int) -> Bool {
-        guard clickCount == 2, let onDoubleClick else { return false }
-        onDoubleClick()
-        return true
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard !isHidden,
-              alphaValue > 0,
-              let window,
-              !window.styleMask.contains(.fullScreen)
-        else { return nil }
-
-        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
-        let region = DashboardWindowDragRegion(
-            bounds: bounds,
-            titlebarHeight: titlebarHeight,
-            excludedRects: standardWindowButtonRects(in: window)
-        )
-        return region.contains(point) ? self : nil
-    }
-
-    private func standardWindowButtonRects(in window: NSWindow) -> [NSRect] {
-        [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { type in
-            guard let button = window.standardWindowButton(type), !button.isHidden else {
-                return nil
-            }
-            return convert(button.bounds, from: button)
-        }
-    }
-}
-
-enum DashboardWindowDragPolicy {
-    @discardableResult
-    static func install(
-        in window: NSWindow,
-        contentRoot: NSView,
-        onDoubleClick: (() -> Void)? = nil
-    ) -> DashboardTitlebarDragView {
-        window.isMovableByWindowBackground = false
-
-        let dragView = DashboardTitlebarDragView()
-        dragView.onDoubleClick = onDoubleClick
-        dragView.translatesAutoresizingMaskIntoConstraints = false
-        contentRoot.addSubview(dragView)
-        NSLayoutConstraint.activate([
-            dragView.leadingAnchor.constraint(equalTo: contentRoot.leadingAnchor),
-            dragView.trailingAnchor.constraint(equalTo: contentRoot.trailingAnchor),
-            dragView.topAnchor.constraint(equalTo: contentRoot.topAnchor),
-            dragView.bottomAnchor.constraint(equalTo: contentRoot.bottomAnchor)
-        ])
-        return dragView
-    }
-}
-
 final class DashboardWindowController: NSObject, NSWindowDelegate {
     private let actions: DashboardWindowControllerActions
     private let pageContainer = DashboardPageContainerViewController()
@@ -263,7 +163,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var isTornDown = false
-    private var windowZoomState = DashboardWindowZoomState()
 
     init(actions: DashboardWindowControllerActions) {
         self.actions = actions
@@ -339,6 +238,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.isOpaque = false
         window.hasShadow = true
         window.appearance = nil
+        window.isMovableByWindowBackground = false
         if AutomatedTestHost.isRunning {
             ApplicationWindowPresentation.prepare(window)
         } else {
@@ -346,11 +246,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         }
         window.isReleasedWhenClosed = false
         window.delegate = self
-
-        // Keep the native button visible for the standard titlebar appearance,
-        // but reserve zoom/full-screen behavior for the explicit titlebar
-        // double-click interaction below.
-        window.standardWindowButton(.zoomButton)?.isEnabled = false
 
         self.window = window
         windowCreationCount += 1
@@ -453,7 +348,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window?.delegate = nil
         window?.close()
         window = nil
-        windowZoomState.reset()
         sourceListController?.teardown()
         sourceListController = nil
         pageContainer.removeCurrentPage()
@@ -462,7 +356,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let closedWindow = notification.object as? NSWindow,
               closedWindow === window else { return }
-        windowZoomState.reset()
         actions.didClose()
     }
 
@@ -541,19 +434,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // preferred 216pt sidebar width is the item's starting size, not a
         // locked thickness; min/max still allow native divider resizing.
         window.setFrame(requestedFrame, display: false)
-        DashboardWindowDragPolicy.install(in: window, contentRoot: splitController.view) { [weak self] in
-            self?.toggleWindowZoom()
-        }
-    }
-
-    func toggleWindowZoom() {
-        guard let window else { return }
-        let targetFrame = window.screen?.visibleFrame
-        guard let frame = windowZoomState.toggle(
-            currentFrame: window.frame,
-            targetFrame: targetFrame
-        ) else { return }
-        window.setFrame(frame, display: true, animate: true)
     }
 
     private func makeSidebar(titlebarHeight: CGFloat) -> NSView {
