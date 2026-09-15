@@ -66,6 +66,9 @@ final class DashboardSplitViewController: NSSplitViewController {
     let sidebarController: NSViewController
     let contentController: NSViewController
     private(set) var contentSurface = NSView()
+    var contentSplitViewItem: NSSplitViewItem? {
+        splitViewItems.first { $0.viewController === contentController }
+    }
 
     init(sidebar: NSViewController, content: NSViewController) {
         self.sidebarController = sidebar
@@ -151,6 +154,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private let actions: DashboardWindowControllerActions
     private let pageContainer = DashboardPageContainerViewController()
     private let toolbarController = DashboardToolbarController()
+    private let accessoryHost = DashboardAccessoryHost()
     private(set) var window: NSWindow?
     var contentHost: NSView { pageContainer.view }
     private(set) var section: DashboardSection = .general
@@ -340,6 +344,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             DistributedNotificationCenter.default().removeObserver(appearanceObserver)
             self.appearanceObserver = nil
         }
+        accessoryHost.detach()
         window?.delegate = nil
         window?.close()
         window = nil
@@ -364,7 +369,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private func replacePage(makePage: () -> NSViewController) {
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
         actions.prepareForPageReplacement()
-        pageContainer.replacePage(makePage())
+        let page = makePage()
+        pageContainer.replacePage(page)
+        accessoryHost.apply(page: page)
         // Complete the replacement synchronously so native accessibility
         // descendants are materialized before callers inspect the page
         // (notably on Xcode 16.4 CI).
@@ -432,6 +439,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // Install the toolbar after the split view is the window's content
         // controller so AppKit can bind the standard tracking separator.
         toolbarController.install(on: window)
+        accessoryHost.attach(window: window, splitViewController: splitController)
     }
 
     private func makeSidebar(titlebarHeight: CGFloat) -> NSView {
@@ -472,6 +480,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     var sourceListForTesting: DashboardSourceListController? { sourceListController }
     var pageContainerForTesting: DashboardPageContainerViewController { pageContainer }
+    var accessoryHostForTesting: DashboardAccessoryHost { accessoryHost }
     var scrollablePageForTesting: DashboardScrollablePageViewController? {
         currentScrollablePage
     }
