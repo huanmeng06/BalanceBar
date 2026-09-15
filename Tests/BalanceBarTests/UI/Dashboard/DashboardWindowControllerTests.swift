@@ -363,6 +363,20 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let contentView = try XCTUnwrap(window.contentView)
         XCTAssertEqual(contentView.bounds.width, 880, accuracy: 1)
         XCTAssertEqual(contentView.bounds.height, 620, accuracy: 1)
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        XCTAssertEqual(splitController.splitViewItems.count, 2)
+        XCTAssertTrue(splitController.splitViewItems[0].viewController === splitController.sidebarController)
+        XCTAssertTrue(splitController.splitViewItems[1].viewController === splitController.contentController)
+        XCTAssertEqual(splitController.splitViewItems[0].viewController.view.frame.width, 216, accuracy: 1)
+        XCTAssertTrue(splitController.view is DashboardContentRootView)
+        XCTAssertTrue(splitController.view.subviews.contains(splitController.splitView))
+        XCTAssertFalse(
+            splitController.splitViewItems[0].viewController.view.constraints.contains {
+                $0.firstAttribute == .width && $0.constant == 216
+            }
+        )
         XCTAssertEqual(window.minSize.width, 800, accuracy: 0.001)
         XCTAssertGreaterThanOrEqual(window.minSize.height, 540)
         XCTAssertEqual(
