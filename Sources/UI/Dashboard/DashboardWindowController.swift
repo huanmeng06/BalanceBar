@@ -72,6 +72,38 @@ final class DashboardContentRootView: NSVisualEffectView {
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
+/// Native Dashboard shell. The split view owns the sidebar/content geometry;
+/// page controllers remain responsible only for their own content.
+final class DashboardSplitViewController: NSSplitViewController {
+    let sidebarController: NSViewController
+    let contentController: NSViewController
+
+    init(sidebar: NSViewController, content: NSViewController) {
+        self.sidebarController = sidebar
+        self.contentController = content
+        super.init(nibName: nil, bundle: nil)
+        addSplitViewItem(NSSplitViewItem(sidebarWithViewController: sidebar))
+        addSplitViewItem(NSSplitViewItem(viewController: content))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
+private final class DashboardSidebarViewController: NSViewController {
+    private let hostedView: NSView
+    init(view: NSView) { hostedView = view; super.init(nibName: nil, bundle: nil) }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+    override func loadView() { view = hostedView }
+}
+
+private final class DashboardContentViewController: NSViewController {
+    private let hostedView: NSView
+    init(view: NSView) { hostedView = view; super.init(nibName: nil, bundle: nil) }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+    override func loadView() { view = hostedView }
+}
+
 final class DashboardTitlebarDragView: NSView {
     var onDoubleClick: (() -> Void)?
 
@@ -450,26 +482,24 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         contentSurface.translatesAutoresizingMaskIntoConstraints = false
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         contentHost.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(contentSurface)
-        root.addSubview(sidebar)
-        root.addSubview(contentHost)
+        contentSurface.addSubview(contentHost)
         NSLayoutConstraint.activate([
-            contentSurface.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            contentSurface.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            contentSurface.topAnchor.constraint(equalTo: root.topAnchor),
-            contentSurface.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            sidebar.topAnchor.constraint(equalTo: root.topAnchor),
-            sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 216),
-            contentHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
-            contentHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            contentHost.topAnchor.constraint(equalTo: root.topAnchor),
-            contentHost.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+            contentHost.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
+            contentHost.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
+            contentHost.topAnchor.constraint(equalTo: contentSurface.topAnchor),
+            contentHost.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor)
         ])
-
-        window.contentView = root
-        DashboardWindowDragPolicy.install(in: window, contentRoot: root) { [weak self] in
+        let splitController = DashboardSplitViewController(
+            sidebar: DashboardSidebarViewController(view: sidebar),
+            content: DashboardContentViewController(view: contentSurface)
+        )
+        splitController.splitView.setPosition(216, ofDividerAt: 0)
+        splitController.splitView.wantsLayer = true
+        splitController.splitView.layer?.cornerRadius = 16
+        splitController.splitView.layer?.masksToBounds = true
+        splitController.splitView.layer?.backgroundColor = root.layer?.backgroundColor
+        window.contentViewController = splitController
+        DashboardWindowDragPolicy.install(in: window, contentRoot: splitController.view) { [weak self] in
             self?.toggleWindowZoom()
         }
     }
