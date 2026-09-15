@@ -44,7 +44,7 @@ a network request by itself.
 | Services | Sources/Services/ | CC Switch SQLite access/watchers, credential readers, URL sessions, balance/quota clients, response parsing, provider refresh, and provider switching. |
 | Monitoring | Sources/Monitoring/ | Codex/Claude activity observation and ActivityCoordinator, including process, SQLite, NSWorkspace, timer, and notification integration. |
 | Menu-bar UI | Sources/UI/MenuBar/ | NSStatusItem, status menu content, menu-bar geometry, views, and activity animation. |
-| Dashboard UI | Sources/UI/Dashboard/ | Dashboard composition, native window/delegate, components, preference/provider pages, and the status-link editor. The status-link editor is the existing SwiftUI island hosted by AppKit. |
+| Dashboard UI | Sources/UI/Dashboard/ | Dashboard composition, native window/delegate, components, native settings rows, preference/provider pages, and the status-link editor. The status-link editor is the existing SwiftUI island hosted by AppKit. |
 | Tests | Tests/BalanceBarTests/ | XCTest coverage for domain rules, parsers, clients, repositories, monitoring, menu-bar geometry, dashboard components/pages/window behavior, preferences, and composition wiring. |
 | Packaging inputs | scripts/build.sh, Resources/Info.plist, Resources/images/, and Resources/lang/ | CLI compilation, bundle metadata, and resources. These are build inputs, not feature ownership. |
 
@@ -83,6 +83,7 @@ where they fit:
 - general/preferences pages: Pages/Preferences/;
 - provider list/detail pages: Pages/Providers/;
 - reusable dashboard rows/cards: Components/;
+- reusable native settings rows: Settings/Components/;
 - status-link editing and scroll anchoring: StatusLinks/.
 
 Register the page in the dashboard composition/page selection path and provide
