@@ -477,8 +477,12 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         contentSurface.wantsLayer = true
         contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
             light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
-            dark: NSColor.black.withAlphaComponent(0.20)
+            // Keep a readable dark content surface when hosted by the native
+            // split view. Without this backing layer the wallpaper can show
+            // through every page card and overwhelm its text contrast.
+            dark: NSColor.black.withAlphaComponent(0.42)
         ).cgColor
+        contentSurface.layer?.isOpaque = false
         contentSurface.translatesAutoresizingMaskIntoConstraints = false
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         contentHost.translatesAutoresizingMaskIntoConstraints = false
