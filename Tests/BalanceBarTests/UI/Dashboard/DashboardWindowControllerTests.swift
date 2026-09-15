@@ -28,6 +28,27 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
     }
 
+    func testToolbarControllerUsesPublicSystemSidebarItems() throws {
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardToolbarController.swift"
+            ),
+            encoding: .utf8
+        )
+        XCTAssertTrue(source.contains(".toggleSidebar"))
+        XCTAssertTrue(source.contains(".sidebarTrackingSeparator"))
+        XCTAssertTrue(source.contains("NSTrackingSeparatorToolbarItem"))
+        XCTAssertTrue(source.contains("allowsUserCustomization = false"))
+        XCTAssertTrue(source.contains("autosavesConfiguration = false"))
+        XCTAssertTrue(source.contains("#selector(NSSplitViewController.toggleSidebar"))
+        XCTAssertFalse(source.contains("setValue("))
+        XCTAssertFalse(source.contains("forKey:"))
+        XCTAssertFalse(source.contains("NSClassFromString"))
+        XCTAssertFalse(source.contains("NSGlassEffectView"))
+        XCTAssertFalse(source.contains("NSView("))
+    }
+
     func testWindowEnablesNativeZoomAndStaysResizable() throws {
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
@@ -539,10 +560,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(window.titlebarAppearsTransparent)
         XCTAssertEqual(window.titlebarSeparatorStyle, .none)
         XCTAssertEqual(window.toolbarStyle, .unified)
-        XCTAssertNotNil(window.toolbar)
-        XCTAssertEqual(window.toolbar?.displayMode, .iconOnly)
-        XCTAssertFalse(window.toolbar?.allowsUserCustomization ?? true)
-        XCTAssertTrue(window.toolbar?.items.isEmpty ?? false)
+        try assertNativeDashboardToolbar(window)
         XCTAssertNil(window.appearance)
         XCTAssertFalse(window.isMovableByWindowBackground)
 
@@ -772,6 +790,53 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         assertSplitPanesDoNotOverlap(in: window)
     }
 
+    func testNativeToolbarUsesSystemSidebarItemsWithoutCustomFillers() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        try assertNativeDashboardToolbar(window)
+
+        controller.showSection(.menuBar)
+        window.layoutIfNeeded()
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        let sidebarItem = splitController.splitViewItems[0]
+        XCTAssertFalse(sidebarItem.isCollapsed)
+        XCTAssertEqual(controller.sourceListForTesting?.selectedSection(), .menuBar)
+
+        let toggle = try XCTUnwrap(
+            window.toolbar?.items.first { $0.itemIdentifier == .toggleSidebar }
+        )
+        XCTAssertEqual(toggle.action, #selector(NSSplitViewController.toggleSidebar(_:)))
+        XCTAssertNil(
+            toggle.target,
+            "Sidebar toggle must walk the responder chain to NSSplitViewController"
+        )
+
+        splitController.toggleSidebar(toggle)
+        window.layoutIfNeeded()
+        XCTAssertTrue(sidebarItem.isCollapsed)
+        XCTAssertEqual(controller.section, .menuBar)
+        XCTAssertEqual(controller.sourceListForTesting?.selectedSection(), .menuBar)
+
+        splitController.toggleSidebar(toggle)
+        window.layoutIfNeeded()
+        XCTAssertFalse(sidebarItem.isCollapsed)
+        XCTAssertEqual(controller.sourceListForTesting?.selectedSection(), .menuBar)
+        try assertNativeDashboardToolbar(window)
+
+        controller.rebuild()
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        try assertNativeDashboardToolbar(window)
+        XCTAssertTrue(window.contentViewController is DashboardSplitViewController)
+    }
+
     func testSidebarSelectionAndProviderClearingMatchCurrentNativeBaseline() throws {
         let choices = [
             ProviderChoice(id: "current", name: "Current", isCurrent: true),
@@ -966,6 +1031,54 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 didClose: {},
                 didResize: {}
             )
+        )
+    }
+
+    private func assertNativeDashboardToolbar(
+        _ window: NSWindow,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let toolbar = try XCTUnwrap(window.toolbar, file: file, line: line)
+        XCTAssertEqual(toolbar.identifier, DashboardToolbarController.identifier, file: file, line: line)
+        XCTAssertEqual(toolbar.displayMode, .iconOnly, file: file, line: line)
+        XCTAssertFalse(toolbar.allowsUserCustomization, file: file, line: line)
+        XCTAssertFalse(toolbar.autosavesConfiguration, file: file, line: line)
+        XCTAssertTrue(toolbar.delegate is DashboardToolbarController, file: file, line: line)
+        XCTAssertEqual(
+            DashboardToolbarController.defaultItemIdentifiers,
+            [.toggleSidebar, .sidebarTrackingSeparator],
+            file: file,
+            line: line
+        )
+
+        let identifiers = toolbar.items.map(\.itemIdentifier)
+        XCTAssertTrue(
+            identifiers.contains(.toggleSidebar),
+            "Dashboard toolbar must include the system sidebar toggle",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            identifiers.contains(.sidebarTrackingSeparator),
+            "Dashboard toolbar must include the system sidebar tracking separator",
+            file: file,
+            line: line
+        )
+        let customIdentifiers = identifiers.filter {
+            $0 != .toggleSidebar && $0 != .sidebarTrackingSeparator
+        }
+        XCTAssertTrue(
+            customIdentifiers.isEmpty,
+            "Do not add unrelated or spacer toolbar items: \(customIdentifiers)",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            toolbar.items.contains { $0.itemIdentifier == .sidebarTrackingSeparator && $0 is NSTrackingSeparatorToolbarItem },
+            "Tracking separator must be NSTrackingSeparatorToolbarItem, not a fake NSView spacer",
+            file: file,
+            line: line
         )
     }
 

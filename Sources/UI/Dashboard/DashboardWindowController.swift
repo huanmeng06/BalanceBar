@@ -150,6 +150,7 @@ private final class DashboardSidebarViewController: NSViewController {
 final class DashboardWindowController: NSObject, NSWindowDelegate {
     private let actions: DashboardWindowControllerActions
     private let pageContainer = DashboardPageContainerViewController()
+    private let toolbarController = DashboardToolbarController()
     private(set) var window: NSWindow?
     var contentHost: NSView { pageContainer.view }
     private(set) var section: DashboardSection = .general
@@ -228,12 +229,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
-        let dashboardToolbar = NSToolbar(identifier: NSToolbar.Identifier("BalanceBarDashboardToolbar"))
-        dashboardToolbar.displayMode = .iconOnly
-        dashboardToolbar.allowsUserCustomization = false
-        dashboardToolbar.autosavesConfiguration = false
-        window.toolbar = dashboardToolbar
-        window.toolbarStyle = .unified
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = true
@@ -434,6 +429,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // preferred 216pt sidebar width is the item's starting size, not a
         // locked thickness; min/max still allow native divider resizing.
         window.setFrame(requestedFrame, display: false)
+        // Bind the tracking separator after the split view is the window's
+        // content controller so AppKit can align it with the sidebar divider.
+        toolbarController.install(on: window, tracking: splitController.splitView)
     }
 
     private func makeSidebar(titlebarHeight: CGFloat) -> NSView {

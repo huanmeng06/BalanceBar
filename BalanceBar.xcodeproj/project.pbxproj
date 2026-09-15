@@ -82,6 +82,7 @@
 		A1000000000000000000009D /* DashboardWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009E /* DashboardWindowController.swift */; };
 		A38600000000000000000002 /* DashboardSourceListController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38600000000000000000001 /* DashboardSourceListController.swift */; };
 		A38800000000000000000002 /* DashboardPageContainerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38800000000000000000001 /* DashboardPageContainerViewController.swift */; };
+		A40900000000000000000002 /* DashboardToolbarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40900000000000000000001 /* DashboardToolbarController.swift */; };
 		A1000000000000000000009F /* DashboardWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000A0 /* DashboardWindowControllerTests.swift */; };
 		A100000000000000000000B0 /* DashboardAboutPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B1 /* DashboardAboutPage.swift */; };
 		A100000000000000000000B2 /* DashboardAdvancedPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B3 /* DashboardAdvancedPage.swift */; };
@@ -236,6 +237,7 @@
 		A1000000000000000000009E /* DashboardWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowController.swift; sourceTree = "<group>"; };
 		A38600000000000000000001 /* DashboardSourceListController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSourceListController.swift; sourceTree = "<group>"; };
 		A38800000000000000000001 /* DashboardPageContainerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPageContainerViewController.swift; sourceTree = "<group>"; };
+		A40900000000000000000001 /* DashboardToolbarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardToolbarController.swift; sourceTree = "<group>"; };
 		A100000000000000000000A0 /* DashboardWindowControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowControllerTests.swift; sourceTree = "<group>"; };
 		A100000000000000000000B1 /* DashboardAboutPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAboutPage.swift; sourceTree = "<group>"; };
 		A100000000000000000000B3 /* DashboardAdvancedPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAdvancedPage.swift; sourceTree = "<group>"; };
@@ -621,6 +623,7 @@
 			children = (
 				A100000000000000000000DD /* DashboardCompositionController.swift */,
 				A1000000000000000000009E /* DashboardWindowController.swift */,
+				A40900000000000000000001 /* DashboardToolbarController.swift */,
 				A38800000000000000000001 /* DashboardPageContainerViewController.swift */,
 				A38600000000000000000001 /* DashboardSourceListController.swift */,
 				A10000000000000000000106 /* UpdateNotesWindowController.swift */,
@@ -949,6 +952,7 @@
 				A26400000000000000000001 /* QuotaColorThresholdSlider.swift in Sources */,
 				A100000000000000000000A1 /* DashboardSettingsComponents.swift in Sources */,
 				A1000000000000000000009D /* DashboardWindowController.swift in Sources */,
+				A40900000000000000000002 /* DashboardToolbarController.swift in Sources */,
 				A38800000000000000000002 /* DashboardPageContainerViewController.swift in Sources */,
 				A38600000000000000000002 /* DashboardSourceListController.swift in Sources */,
 				A10000000000000000000096 /* StatusLinksEditor.swift in Sources */,
