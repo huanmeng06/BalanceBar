@@ -429,9 +429,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // preferred 216pt sidebar width is the item's starting size, not a
         // locked thickness; min/max still allow native divider resizing.
         window.setFrame(requestedFrame, display: false)
-        // Bind the tracking separator after the split view is the window's
-        // content controller so AppKit can align it with the sidebar divider.
-        toolbarController.install(on: window, tracking: splitController.splitView)
+        // Install the toolbar after the split view is the window's content
+        // controller so AppKit can bind the standard tracking separator.
+        toolbarController.install(on: window)
     }
 
     private func makeSidebar(titlebarHeight: CGFloat) -> NSView {
