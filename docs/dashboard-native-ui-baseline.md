@@ -92,7 +92,7 @@ About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advance
 
 | 页面 | 当前卡片/结构 | 备注 |
 | --- | --- | --- |
-| General | System → Refresh → Startup → Application | Refresh 卡片含任务中余额更新间隔、结束后持续时长、立即刷新 |
+| General | System → Refresh → Startup → Application | Refresh 卡片含任务中余额更新间隔、结束后持续时长、立即刷新。Startup 中 Silent Launch 行是原生 `SettingsRowView` 试点，其余设置行仍走 `DashboardSettingsComponents.makeSettingsRow`。 |
 | Refresh | 不是侧栏页 | 见 General 的 Refresh 卡片；`DashboardRefreshPage` 未挂载 |
 | Menu Bar | Preview → Quota & Reset → Icon & Task Status → Behavior → Layout | 若干行随开关折叠，不改已存偏好 |
 | Menu | Balance Display（条件）→ Banked Reset → Progress Bar → Menu behavior → Open Project → Status Links | Status Links 编辑器始终存在，开关只改高度/透明度 |

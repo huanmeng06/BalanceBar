@@ -428,6 +428,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let silentLaunchSwitch = try XCTUnwrap(
             switches.first { $0.identifier?.rawValue == AppPreferences.silentLaunchKey }
         )
+        XCTAssertNotNil(SettingsRowView.enclosing(silentLaunchSwitch))
         let launchWithChatGPTSwitch = try XCTUnwrap(
             switches.first { $0.identifier?.rawValue == LaunchWithChatGPTController.toggleIdentifier }
         )

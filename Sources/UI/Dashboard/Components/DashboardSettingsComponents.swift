@@ -719,7 +719,7 @@ private final class DashboardSettingsSubtitleLabel: NSTextField {
     }
 }
 
-private final class DashboardSettingsCardView: NSView {
+private final class DashboardSettingsCardView: NSView, SettingsRowHeightInvalidating {
     weak var rowsStack: NSStackView?
     weak var heightConstraint: NSLayoutConstraint?
     var separators: [NSView] = []
@@ -752,6 +752,10 @@ private final class DashboardSettingsCardView: NSView {
     func markHeightDirty() {
         isHeightDirty = true
         needsLayout = true
+    }
+
+    func invalidateHostedSettingsRowHeight() {
+        markHeightDirty()
     }
 
     func updateHeightIfNeeded() {
