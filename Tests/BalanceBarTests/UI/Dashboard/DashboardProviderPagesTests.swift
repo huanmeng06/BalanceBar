@@ -30,7 +30,7 @@ final class DashboardProviderPagesTests: XCTestCase {
         )
     }
 
-    func testAppDelegateWiringKeepsRealSidebarButtonsResponsiveAfterPageReplacement() throws {
+    func testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-29-provider-pages.db"))
         )
@@ -39,13 +39,22 @@ final class DashboardProviderPagesTests: XCTestCase {
         window.layoutIfNeeded()
         window.displayIfNeeded()
 
+        let outline = try XCTUnwrap(
+            descendants(of: window.contentView!, as: NSOutlineView.self).first
+        )
+        XCTAssertEqual(outline.style, .sourceList)
         for section in DashboardSection.allCases.dropFirst() {
-            let button = try XCTUnwrap(
-                descendants(of: window.contentView!, as: NSButton.self).first { $0.tag == section.rawValue }
+            let row = try XCTUnwrap(
+                (0..<outline.numberOfRows).first { row in
+                    (outline.item(atRow: row) as? DashboardSidebarNode)?.section == section
+                }
             )
-            XCTAssertTrue(button.isEnabled)
-            button.performClick(nil)
+            outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             XCTAssertEqual(window.title, section.title)
+            XCTAssertEqual(
+                (outline.item(atRow: outline.selectedRow) as? DashboardSidebarNode)?.section,
+                section
+            )
         }
     }
 

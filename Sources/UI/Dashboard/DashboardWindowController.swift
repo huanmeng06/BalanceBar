@@ -263,8 +263,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private(set) var appearanceObserverInstallCount = 0
     private(set) var mouseMonitorInstallCount = 0
 
-    private var navigationButtons: [DashboardSection: NSButton] = [:]
-    private var navigationRows: [DashboardSection: DashboardNavigationRowView] = [:]
+    private var sourceListController: DashboardSourceListController?
     private var showsUpdateAvailableBadge = false
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
@@ -421,7 +420,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         self.section = section
         selectedProviderID = nil
         window?.title = section.title
-        updateNavigationSelection(selectedSection: section)
+        sourceListController?.applySelection(section)
         replacePage {
             actions.makeSectionPage(section)
         }
@@ -433,7 +432,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         else { return }
         selectedProviderID = providerID
         window?.title = choice.name
-        updateNavigationSelection(selectedSection: nil)
+        sourceListController?.applySelection(nil)
         replacePage {
             actions.makeProviderPage(choice)
         }
@@ -441,7 +440,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     func setShowsUpdateAvailableBadge(_ visible: Bool) {
         showsUpdateAvailableBadge = visible
-        navigationRows[.general]?.updateBadgeView?.isHidden = !visible
+        sourceListController?.setShowsUpdateAvailableBadge(visible)
     }
 
     func teardown() {
@@ -460,8 +459,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window?.close()
         window = nil
         windowZoomState.reset()
-        navigationButtons.removeAll()
-        navigationRows.removeAll()
+        sourceListController?.teardown()
+        sourceListController = nil
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -494,16 +493,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         actions.didShowPage()
         if AutomatedTestHost.isRunning, let window {
             ApplicationWindowPresentation.presentInBackground(window)
-        }
-    }
-
-    private func updateNavigationSelection(selectedSection: DashboardSection?) {
-        navigationButtons.forEach { key, button in
-            let isCurrent = key == selectedSection
-            button.state = isCurrent ? .on : .off
-            button.isBordered = false
-            button.contentTintColor = .clear
-            navigationRows[key]?.isSelected = isCurrent
         }
     }
 
@@ -614,27 +603,15 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         panel.translatesAutoresizingMaskIntoConstraints = false
         panelShadow.addSubview(panel)
 
-        let navigation = NSStackView()
-        navigation.orientation = .vertical
-        navigation.alignment = .leading
-        navigation.spacing = 2
-        navigationButtons.removeAll()
-        navigationRows.removeAll()
+        sourceListController?.teardown()
+        let sourceList = DashboardSourceListController()
+        sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
+        sourceList.onSelectSection = { [weak self] section in
+            self?.showSection(section)
+        }
+        sourceListController = sourceList
 
-        navigation.addArrangedSubview(makeNavigationRow(for: .general))
-        navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
-
-        let appearanceLabel = makeSidebarGroupTitle(tr(.keyDashboardWindowControllerAppearance))
-        navigation.addArrangedSubview(appearanceLabel)
-        navigation.addArrangedSubview(makeNavigationRow(for: .menuBar))
-        navigation.addArrangedSubview(makeNavigationRow(for: .menu))
-        navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
-
-        let systemLabel = makeSidebarGroupTitle(tr(.keyDashboardWindowControllerSystem))
-        navigation.addArrangedSubview(systemLabel)
-        navigation.addArrangedSubview(makeNavigationRow(for: .advanced))
-        navigation.addArrangedSubview(makeNavigationRow(for: .about))
-
+        let navigation = sourceList.view
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebarContent.addSubview(navigation)
         let panelInset: CGFloat = 8
@@ -652,96 +629,14 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             navigation.leadingAnchor.constraint(equalTo: sidebarContent.leadingAnchor, constant: 14),
             navigation.trailingAnchor.constraint(equalTo: sidebarContent.trailingAnchor, constant: -14)
         ])
+        let navigationBottom = navigation.bottomAnchor.constraint(
+            equalTo: sidebarContent.bottomAnchor,
+            constant: -8
+        )
+        navigationBottom.priority = .defaultLow
+        navigationBottom.isActive = true
         return sidebar
     }
 
-    private func makeSidebarGroupTitle(_ title: String) -> NSTextField {
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 11, weight: .medium)
-        label.textColor = .tertiaryLabelColor
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.heightAnchor.constraint(equalToConstant: 16).isActive = true
-        return label
-    }
-
-    private func makeNavigationRow(for section: DashboardSection) -> NSView {
-        let row = DashboardNavigationRowView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.wantsLayer = true
-        row.layer?.cornerRadius = 10
-        row.layer?.backgroundColor = NSColor.clear.cgColor
-        row.widthAnchor.constraint(equalToConstant: 168).isActive = true
-        row.heightAnchor.constraint(equalToConstant: 32).isActive = true
-
-        let button = NSButton(title: "", target: self, action: #selector(selectSection(_:)))
-        button.setButtonType(.pushOnPushOff)
-        button.isBordered = false
-        button.bezelStyle = .regularSquare
-        button.contentTintColor = .clear
-        button.tag = section.rawValue
-        button.focusRingType = .none
-        button.toolTip = section.title
-        button.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(button)
-        NSLayoutConstraint.activate([
-            button.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            button.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-            button.topAnchor.constraint(equalTo: row.topAnchor),
-            button.bottomAnchor.constraint(equalTo: row.bottomAnchor)
-        ])
-
-        let icon = PassthroughImageView()
-        icon.image = NSImage(systemSymbolName: section.symbolName, accessibilityDescription: section.title)
-        icon.contentTintColor = .labelColor
-        icon.imageScaling = .scaleProportionallyDown
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        let label = PassthroughTextField(labelWithString: section.title)
-        label.font = .systemFont(ofSize: 14, weight: .semibold)
-        label.textColor = .labelColor
-        label.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(icon)
-        row.addSubview(label)
-        row.iconView = icon
-        row.titleLabel = label
-        let badge: DashboardUpdateBadgeView?
-        if section == .general {
-            let updateBadge = DashboardUpdateBadgeView()
-            updateBadge.isHidden = !showsUpdateAvailableBadge
-            updateBadge.translatesAutoresizingMaskIntoConstraints = false
-            row.addSubview(updateBadge)
-            row.updateBadgeView = updateBadge
-            badge = updateBadge
-        } else {
-            badge = nil
-        }
-        var rowConstraints = [
-            icon.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 14),
-            icon.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 15),
-            icon.heightAnchor.constraint(equalToConstant: 15),
-            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
-            label.centerYAnchor.constraint(equalTo: row.centerYAnchor)
-        ]
-        if let badge {
-            rowConstraints.append(contentsOf: [
-                badge.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -14),
-                badge.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-                badge.widthAnchor.constraint(equalToConstant: 18),
-                badge.heightAnchor.constraint(equalToConstant: 18),
-                label.trailingAnchor.constraint(lessThanOrEqualTo: badge.leadingAnchor, constant: -8)
-            ])
-        } else {
-            rowConstraints.append(label.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -14))
-        }
-        NSLayoutConstraint.activate(rowConstraints)
-        navigationButtons[section] = button
-        navigationRows[section] = row
-        row.updateAppearance(animated: false)
-        return row
-    }
-
-    @objc private func selectSection(_ sender: NSButton) {
-        guard let section = DashboardSection(rawValue: sender.tag) else { return }
-        showSection(section)
-    }
+    var sourceListForTesting: DashboardSourceListController? { sourceListController }
 }
