@@ -28,7 +28,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
     }
 
-    func testWindowDisablesNativeZoomButStaysResizable() throws {
+    func testWindowEnablesNativeZoomAndStaysResizable() throws {
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
@@ -44,7 +44,7 @@ final class DashboardWindowControllerTests: XCTestCase {
 
         controller.open()
         let window = try XCTUnwrap(controller.window)
-        XCTAssertFalse(window.standardWindowButton(.zoomButton)?.isEnabled ?? true)
+        XCTAssertTrue(window.standardWindowButton(.zoomButton)?.isEnabled ?? false)
         XCTAssertTrue(window.styleMask.contains(.resizable))
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
     }
@@ -147,47 +147,6 @@ final class DashboardWindowControllerTests: XCTestCase {
             simplifiedChineseFittingWidth + 1,
             "Japanese should retain enough fitting width for its localized copy"
         )
-    }
-
-    func testWindowZoomStateUsesTargetFrameAndRestoresRepeatedly() {
-        let normalFrame = NSRect(x: 120, y: 180, width: 880, height: 620)
-        let primaryVisibleFrame = NSRect(x: 0, y: 25, width: 1_440, height: 875)
-        let secondaryVisibleFrame = NSRect(x: 1_440, y: 25, width: 1_920, height: 1_055)
-        var state = DashboardWindowZoomState()
-
-        XCTAssertEqual(
-            state.toggle(currentFrame: normalFrame, targetFrame: primaryVisibleFrame),
-            primaryVisibleFrame
-        )
-        XCTAssertTrue(state.isZoomed)
-        XCTAssertEqual(
-            state.toggle(currentFrame: primaryVisibleFrame, targetFrame: secondaryVisibleFrame),
-            normalFrame
-        )
-        XCTAssertFalse(state.isZoomed)
-
-        XCTAssertEqual(
-            state.toggle(currentFrame: normalFrame, targetFrame: secondaryVisibleFrame),
-            secondaryVisibleFrame
-        )
-        XCTAssertEqual(state.toggle(currentFrame: secondaryVisibleFrame, targetFrame: primaryVisibleFrame), normalFrame)
-        XCTAssertFalse(state.isZoomed)
-    }
-
-    func testWindowZoomStateDoesNothingWithoutAScreenAndCanReset() {
-        let normalFrame = NSRect(x: 120, y: 180, width: 880, height: 620)
-        var state = DashboardWindowZoomState()
-
-        XCTAssertNil(state.toggle(currentFrame: normalFrame, targetFrame: nil))
-        XCTAssertFalse(state.isZoomed)
-        XCTAssertNil(state.toggle(currentFrame: normalFrame, targetFrame: .zero))
-        XCTAssertFalse(state.isZoomed)
-
-        let visibleFrame = NSRect(x: 0, y: 25, width: 1_440, height: 875)
-        XCTAssertEqual(state.toggle(currentFrame: normalFrame, targetFrame: visibleFrame), visibleFrame)
-        XCTAssertTrue(state.isZoomed)
-        state.reset()
-        XCTAssertFalse(state.isZoomed)
     }
 
     func testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral() throws {
@@ -595,13 +554,12 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertFalse(zoomButton.isHidden)
         XCTAssertTrue(closeButton.isEnabled)
         XCTAssertTrue(miniaturizeButton.isEnabled)
-        XCTAssertFalse(zoomButton.isEnabled)
+        XCTAssertTrue(zoomButton.isEnabled)
         XCTAssertLessThan(closeButton.frame.minX, miniaturizeButton.frame.minX)
         XCTAssertLessThan(miniaturizeButton.frame.minX, zoomButton.frame.minX)
 
         XCTAssertEqual(try XCTUnwrap(sidebarWidth(in: window)), 216, accuracy: 1)
-        let dragView = try XCTUnwrap(firstDescendant(of: contentView, as: DashboardTitlebarDragView.self))
-        XCTAssertTrue(dragView.mouseDownCanMoveWindow)
+        XCTAssertEqual(contentView.subviews, [splitController.contentSurface, splitController.splitView])
         XCTAssertTrue(contentView is DashboardContentRootView)
         XCTAssertFalse(contentView.mouseDownCanMoveWindow)
         assertSidebarHostsSourceListWithoutCustomMaterialWrapper(in: window)
