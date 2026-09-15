@@ -33,7 +33,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 通用/刷新/启动/应用设置 | `Pages/Preferences/DashboardGeneralAndRefreshPages.swift` |
 | 菜单栏 / 菜单 / 高级 / 关于 | `DashboardMenuBarPage.swift`、`DashboardMenuPage.swift`、`DashboardAdvancedPage.swift`、`DashboardAboutPage.swift` |
 | Provider 详情（生产路径） | `Pages/Providers/DashboardProviderPages.swift` 的 `makeDetailPage` |
-| 设置页滚动与卡片行 | `Components/DashboardSettingsComponents.swift` |
+| 设置页滚动与卡片行 | `Components/DashboardSettingsComponents.swift`；原生试点在 `Settings/Components/`（`SettingsRowView`、`SettingsSectionView`） |
 | 浅色/深色自适应色 | `Components/DashboardComponents.swift` 的 `dashboardUsesDarkAppearance` |
 
 侧栏导航枚举只有五页：`DashboardSection` = General、Menu Bar、Menu、Advanced、About。Issue 要求覆盖的 **Refresh 不是独立侧栏页**：它是 General 上的「刷新」卡片。未挂载的 `DashboardRefreshPage`（Provider fallback polling / 任务状态检测）和 `makeOverviewPage` 仍存在于源码，但当前窗口路径不会打开它们。
@@ -92,7 +92,7 @@ About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advance
 
 | 页面 | 当前卡片/结构 | 备注 |
 | --- | --- | --- |
-| General | System → Refresh → Startup → Application | Refresh 卡片含任务中余额更新间隔、结束后持续时长、立即刷新。Startup 中 Silent Launch 行是原生 `SettingsRowView` 试点，其余设置行仍走 `DashboardSettingsComponents.makeSettingsRow`。 |
+| General | System → Refresh → Startup → Application | Refresh 卡片含任务中余额更新间隔、结束后持续时长、立即刷新。Startup 卡片是原生 `SettingsSectionView` 试点；其中 Silent Launch 行是原生 `SettingsRowView`，另外两行仍走 `makeSettingsRow`。其余 General 卡片仍走 `makeSettingsSection`。 |
 | Refresh | 不是侧栏页 | 见 General 的 Refresh 卡片；`DashboardRefreshPage` 未挂载 |
 | Menu Bar | Preview → Quota & Reset → Icon & Task Status → Behavior → Layout | 若干行随开关折叠，不改已存偏好 |
 | Menu | Balance Display（条件）→ Banked Reset → Progress Bar → Menu behavior → Open Project → Status Links | Status Links 编辑器始终存在，开关只改高度/透明度 |
@@ -154,6 +154,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`
 - `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome
 - `DashboardComponentsTests.testDashboardSectionsPreserveNavigationOrderAndMetadata`
+- `SettingsSectionViewTests`：原生 section 高度由子 View 约束推导，不走 `settingsCardHeight` / 父级 preferred-height 循环；General Startup 是试点卡片
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
 - `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
 - `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权
