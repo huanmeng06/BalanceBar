@@ -274,13 +274,13 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     func pageScrollOffsetY() -> CGFloat {
-        DashboardPageScrollPosition.visualOffsetY(in: contentHost)
+        currentScrollablePage?.scrollOffset ?? 0
     }
 
     func restorePageScrollOffsetY(_ offset: CGFloat) {
         window?.layoutIfNeeded()
         contentHost.layoutSubtreeIfNeeded()
-        DashboardPageScrollPosition.restore(visualOffsetY: offset, in: contentHost)
+        currentScrollablePage?.restoreScrollOffset(offset)
         window?.makeFirstResponder(nil)
     }
 
@@ -474,4 +474,11 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     var sourceListForTesting: DashboardSourceListController? { sourceListController }
     var pageContainerForTesting: DashboardPageContainerViewController { pageContainer }
+    var scrollablePageForTesting: DashboardScrollablePageViewController? {
+        currentScrollablePage
+    }
+
+    private var currentScrollablePage: DashboardScrollablePageViewController? {
+        pageContainer.currentPage as? DashboardScrollablePageViewController
+    }
 }

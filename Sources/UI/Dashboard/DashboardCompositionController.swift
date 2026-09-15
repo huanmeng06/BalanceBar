@@ -175,6 +175,9 @@ final class DashboardCompositionController {
     var pageContainerForTesting: DashboardPageContainerViewController {
         windowController.pageContainerForTesting
     }
+    var scrollablePageForTesting: DashboardScrollablePageViewController? {
+        windowController.scrollablePageForTesting
+    }
 
     func start() {
         windowController.start()
@@ -439,11 +442,17 @@ final class DashboardCompositionController {
     }
 
     private func makeSectionPageController(for section: DashboardSection) -> NSViewController {
-        DashboardHostedPageViewController(wrapping: makeSectionPage(for: section))
+        let pageView = makeSectionPage(for: section)
+        switch section {
+        case .about:
+            return DashboardHostedPageViewController(wrapping: pageView)
+        default:
+            return DashboardScrollablePageViewController(wrapping: pageView)
+        }
     }
 
     private func makeProviderPageController(for choice: ProviderChoice) -> NSViewController {
-        DashboardHostedPageViewController(wrapping: makeProviderPage(for: choice))
+        DashboardScrollablePageViewController(wrapping: makeProviderPage(for: choice))
     }
 
     private func makeSectionPage(for section: DashboardSection) -> NSView {

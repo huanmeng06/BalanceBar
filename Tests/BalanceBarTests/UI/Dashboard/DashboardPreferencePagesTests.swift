@@ -4675,7 +4675,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         window.contentView?.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 
-        DashboardPageScrollPosition.restore(visualOffsetY: 140, in: composition.contentHost)
+        composition.restorePageScrollOffsetY(140)
         window.layoutIfNeeded()
         let capturedOffset = composition.pageScrollOffsetY()
         XCTAssertEqual(composition.section, .menuBar)

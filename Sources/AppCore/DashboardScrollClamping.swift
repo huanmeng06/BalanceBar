@@ -188,10 +188,8 @@ enum DashboardPageScrollPosition {
         return nil
     }
 
-    static func visualOffsetY(in root: NSView) -> CGFloat {
-        guard let scrollView = firstScrollView(in: root),
-              let document = scrollView.documentView
-        else { return 0 }
+    static func visualOffsetY(of scrollView: NSScrollView) -> CGFloat {
+        guard let document = scrollView.documentView else { return 0 }
         let visible = scrollView.contentView.convert(
             scrollView.contentView.bounds,
             to: document
@@ -203,10 +201,13 @@ enum DashboardPageScrollPosition {
         ).visualOffset(for: visible)
     }
 
-    static func restore(visualOffsetY: CGFloat, in root: NSView) {
-        guard let scrollView = firstScrollView(in: root),
-              let document = scrollView.documentView
-        else { return }
+    static func visualOffsetY(in root: NSView) -> CGFloat {
+        guard let scrollView = firstScrollView(in: root) else { return 0 }
+        return visualOffsetY(of: scrollView)
+    }
+
+    static func restore(visualOffsetY: CGFloat, in scrollView: NSScrollView) {
+        guard let document = scrollView.documentView else { return }
         let contentView = scrollView.contentView
         let geometry = DashboardScrollGeometry(
             documentBounds: document.bounds,
@@ -224,6 +225,11 @@ enum DashboardPageScrollPosition {
         ).y
         contentView.scroll(to: NSPoint(x: contentView.bounds.minX, y: targetContentY))
         scrollView.reflectScrolledClipView(contentView)
+    }
+
+    static func restore(visualOffsetY: CGFloat, in root: NSView) {
+        guard let scrollView = firstScrollView(in: root) else { return }
+        restore(visualOffsetY: visualOffsetY, in: scrollView)
     }
 }
 
