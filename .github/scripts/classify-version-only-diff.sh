@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-plist_path='work/balance-bar/Info.plist'
+plist_path='Resources/Info.plist'
 
 full_result() {
     printf '%s\n' 'full'
@@ -36,7 +36,7 @@ if ! changed_files="$(git diff-tree \
     "$commit_sha" 2>/dev/null)"; then
     full_result
 fi
-if [[ "$changed_files" != $'M\twork/balance-bar/Info.plist' ]]; then
+if [[ "$changed_files" != $'M\tResources/Info.plist' ]]; then
     full_result
 fi
 

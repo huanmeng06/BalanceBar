@@ -2,16 +2,19 @@
 
 set -Eeuo pipefail
 
-source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+probe_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$probe_script_dir/../.." && pwd)"
+sources_dir="$repo_root/Sources"
+resources_src="$repo_root/Resources"
 probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/balancebar-balance-query-probe.XXXXXX")"
 probe_binary="$probe_dir/balance-query-probe"
 trap 'rm -rf "$probe_dir"' EXIT
 
 {
     printf '%s\n' 'import Foundation'
-    cat "$source_dir/Sources/AppCore/LocalizationKeys.swift"
-    cat "$source_dir/Sources/AppCore/Localization.swift"
-    cat "$source_dir/Sources/Domain/BalanceQuery.swift"
+    cat "$sources_dir/AppCore/LocalizationKeys.swift"
+    cat "$sources_dir/AppCore/Localization.swift"
+    cat "$sources_dir/Domain/BalanceQuery.swift"
     printf '%s\n' 'LocalizationRuntime.configure(resourceRoot: URL(fileURLWithPath: ProcessInfo.processInfo.environment["BALANCEBAR_LOCALIZATION_ROOT"]!))'
     cat <<'SWIFT'
 
@@ -382,9 +385,9 @@ for (failure, simplifiedChinese, english, traditionalChineseTaiwan, traditionalC
 SWIFT
 } | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 
-BALANCEBAR_LOCALIZATION_ROOT="$source_dir/lang" "$probe_binary"
+BALANCEBAR_LOCALIZATION_ROOT="$resources_src/lang" "$probe_binary"
 
-ui_render_block="$(sed -n '/func refreshStandardProvider(/,/func prefetchCurrentBalance/p' "$source_dir/Sources/Services/ProviderRefreshCoordinator.swift")"
+ui_render_block="$(sed -n '/func refreshStandardProvider(/,/func prefetchCurrentBalance/p' "$sources_dir/Services/ProviderRefreshCoordinator.swift")"
 [[ "$ui_render_block" == *"failure.userVisibleReason"* ]] || {
     echo "balance query probe: FAIL; query-unavailable UI does not use the safe localized mapping" >&2
     exit 1

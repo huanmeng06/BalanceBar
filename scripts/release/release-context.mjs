@@ -9,7 +9,7 @@ import {
   readVersionFromPlistContent,
 } from "./version.mjs";
 
-export const DEFAULT_PLIST_PATH = "work/balance-bar/Info.plist";
+export const DEFAULT_PLIST_PATH = "Resources/Info.plist";
 
 function gitOutput(argumentsList) {
   return execFileSync("git", argumentsList, { encoding: "utf8" }).trim();

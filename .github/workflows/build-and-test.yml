@@ -84,12 +84,12 @@ jobs:
           probes_log="$RUNNER_TEMP/BalanceBar-localization-probes.log"
           xcode_log="$RUNNER_TEMP/BalanceBar-xcode-build.log"
 
-          ./work/balance-bar/build.sh >"$cli_log" 2>&1 &
+          ./scripts/build.sh >"$cli_log" 2>&1 &
           cli_pid=$!
 
           (
-            ./work/balance-bar/balance-query-probe.sh
-            ./work/balance-bar/balance-network-error-localization-probe.sh
+            ./scripts/probes/balance-query-probe.sh
+            ./scripts/probes/balance-network-error-localization-probe.sh
           ) >"$probes_log" 2>&1 &
           probes_pid=$!
 
@@ -110,11 +110,11 @@ jobs:
           if ! wait "$probes_pid"; then check_status=1; fi
           if ! wait "$xcode_pid"; then check_status=1; fi
 
-          if ! ./work/balance-bar/localization-resource-probe.sh \
-            work/balance-bar/build/BalanceBar.app; then
+          if ! ./scripts/probes/localization-resource-probe.sh \
+            build/BalanceBar.app; then
             check_status=1
           fi
-          if ! ./work/balance-bar/localization-resource-probe.sh \
+          if ! ./scripts/probes/localization-resource-probe.sh \
             "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"; then
             check_status=1
           fi

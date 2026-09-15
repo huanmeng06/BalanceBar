@@ -17,11 +17,8 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
         XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
 
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("work/balance-bar/Sources/AppCore/DashboardScrollClamping.swift")
+        let sourceURL = try TestRepositoryRoot.locate(from: #filePath)
+            .appendingPathComponent("Sources/AppCore/DashboardScrollClamping.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
         let clipStart = try XCTUnwrap(source.range(of: "final class DashboardClipView"))
         let clipSource = String(source[clipStart.lowerBound...])

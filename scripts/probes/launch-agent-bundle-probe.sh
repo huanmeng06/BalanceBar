@@ -2,8 +2,11 @@
 
 set -Eeuo pipefail
 
-source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-app_bundle="${1:-$source_dir/build/BalanceBar.app}"
+probe_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$probe_script_dir/../.." && pwd)"
+sources_dir="$repo_root/Sources"
+resources_src="$repo_root/Resources"
+app_bundle="${1:-$repo_root/build/BalanceBar.app}"
 expected_deployment_target="${BALANCEBAR_EXPECTED_DEPLOYMENT_TARGET:-14.0}"
 
 die() {

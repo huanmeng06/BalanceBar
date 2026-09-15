@@ -21,7 +21,7 @@ confirm_replace="${REBUILD_CONFIRM_REPLACE:-false}"
 
 tag="v${version}"
 asset_name="BalanceBar-${version}.dmg"
-plist_version="$(plutil -extract CFBundleShortVersionString raw -o - work/balance-bar/Info.plist)"
+plist_version="$(plutil -extract CFBundleShortVersionString raw -o - Resources/Info.plist)"
 [[ "$plist_version" == "$version" ]] \
     || die "Info.plist version is $plist_version; requested $version"
 

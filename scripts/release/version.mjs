@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const DEFAULT_PLIST_PATH = "work/balance-bar/Info.plist";
+export const DEFAULT_PLIST_PATH = "Resources/Info.plist";
 
 const BUMP_NAMES = new Set(["patch", "minor", "major"]);
 

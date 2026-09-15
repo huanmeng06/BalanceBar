@@ -9,7 +9,7 @@ dependency boundaries used by the codebase.
 ## Runtime composition
 
 The application starts at BalanceBarMain in
-[work/balance-bar/BalanceBar.swift](../work/balance-bar/BalanceBar.swift).
+[Sources/App/BalanceBar.swift](../Sources/App/BalanceBar.swift).
 It performs the single-instance check, creates NSApplication, installs an
 AppDelegate, and starts the AppKit run loop. AppDelegate is the current
 composition root: it constructs repositories, clients, coordinators, the
@@ -38,19 +38,19 @@ a network request by itself.
 
 | Area | Current paths | Responsibility |
 | --- | --- | --- |
-| Entry and app state | work/balance-bar/BalanceBar.swift, work/balance-bar/AppPreferences.swift | AppKit entry point, AppDelegate, lifecycle, shared application state, preferences, logging, and composition wiring. |
-| AppCore | work/balance-bar/Sources/AppCore/ | Cross-cutting UI-independent rules such as localization, dashboard scroll-bound calculations, and the XCTest host presentation policy. |
-| Domain | work/balance-bar/Sources/Domain/ | Value types and pure planning rules: AssistantClient, BalanceQuery, provider models, Snapshot, StatusLink, and official/balance overview card layout. |
-| Services | work/balance-bar/Sources/Services/ | CC Switch SQLite access/watchers, credential readers, URL sessions, balance/quota clients, response parsing, provider refresh, and provider switching. |
-| Monitoring | work/balance-bar/Sources/Monitoring/ | Codex/Claude activity observation and ActivityCoordinator, including process, SQLite, NSWorkspace, timer, and notification integration. |
-| Menu-bar UI | work/balance-bar/Sources/UI/MenuBar/ | NSStatusItem, status menu content, menu-bar geometry, views, and activity animation. |
-| Dashboard UI | work/balance-bar/Sources/UI/Dashboard/ | Dashboard composition, native window/delegate, components, preference/provider pages, and the status-link editor. The status-link editor is the existing SwiftUI island hosted by AppKit. |
+| Entry and app state | Sources/App/BalanceBar.swift, Sources/App/AppPreferences.swift | AppKit entry point, AppDelegate, lifecycle, shared application state, preferences, logging, and composition wiring. |
+| AppCore | Sources/AppCore/ | Cross-cutting UI-independent rules such as localization, dashboard scroll-bound calculations, and the XCTest host presentation policy. |
+| Domain | Sources/Domain/ | Value types and pure planning rules: AssistantClient, BalanceQuery, provider models, Snapshot, StatusLink, and official/balance overview card layout. |
+| Services | Sources/Services/ | CC Switch SQLite access/watchers, credential readers, URL sessions, balance/quota clients, response parsing, provider refresh, and provider switching. |
+| Monitoring | Sources/Monitoring/ | Codex/Claude activity observation and ActivityCoordinator, including process, SQLite, NSWorkspace, timer, and notification integration. |
+| Menu-bar UI | Sources/UI/MenuBar/ | NSStatusItem, status menu content, menu-bar geometry, views, and activity animation. |
+| Dashboard UI | Sources/UI/Dashboard/ | Dashboard composition, native window/delegate, components, preference/provider pages, and the status-link editor. The status-link editor is the existing SwiftUI island hosted by AppKit. |
 | Tests | Tests/BalanceBarTests/ | XCTest coverage for domain rules, parsers, clients, repositories, monitoring, menu-bar geometry, dashboard components/pages/window behavior, preferences, and composition wiring. |
-| Packaging inputs | work/balance-bar/build.sh, work/balance-bar/Info.plist, and the four image files in work/balance-bar/ | CLI compilation, bundle metadata, and resources. These are build inputs, not feature ownership. |
+| Packaging inputs | scripts/build.sh, Resources/Info.plist, Resources/images/, and Resources/lang/ | CLI compilation, bundle metadata, and resources. These are build inputs, not feature ownership. |
 
 The Xcode groups mirror these paths. The target source list is declared in
 [BalanceBar.xcodeproj/project.pbxproj](../BalanceBar.xcodeproj/project.pbxproj);
-the CLI build discovers all Swift files below work/balance-bar in sorted order.
+the CLI build discovers all Swift files below Sources/ in sorted order, excluding Sources/LaunchAgent/.
 
 ## Dependency direction
 
@@ -77,7 +77,7 @@ root through an initializer, coordinator, or action closure.
 ### A new Dashboard page
 
 Put page-specific layout and actions under
-work/balance-bar/Sources/UI/Dashboard/. Use these existing subdirectories
+Sources/UI/Dashboard/. Use these existing subdirectories
 where they fit:
 
 - general/preferences pages: Pages/Preferences/;

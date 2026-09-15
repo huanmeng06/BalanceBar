@@ -2,6 +2,10 @@
 
 set -Eeuo pipefail
 
+probe_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$probe_script_dir/../.." && pwd)"
+sources_dir="$repo_root/Sources"
+resources_src="$repo_root/Resources"
 probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/balancebar-balance-card-probe.XXXXXX")"
 probe_binary="$probe_dir/balance-card-layout-probe"
 trap 'rm -rf "$probe_dir"' EXIT
@@ -49,7 +53,7 @@ SWIFT
 swiftc -framework Foundation -o "$probe_binary" "$swift_source"
 "$probe_binary"
 
-layout_source="$(dirname "$BASH_SOURCE")/Sources/Domain/ProviderModels.swift"
+layout_source="$sources_dir/Domain/ProviderModels.swift"
 grep -F 'progress: CGRect(x: horizontalInset, y: 8, width: contentWidth, height: 5)' "$layout_source" >/dev/null
 grep -F 'linkPrefix: CGRect(x: horizontalInset, y: 28, width: linkPrefixWidth, height: 17)' "$layout_source" >/dev/null
 grep -F 'link: CGRect(x: linkX, y: 28, width: linkWidth, height: 17)' "$layout_source" >/dev/null

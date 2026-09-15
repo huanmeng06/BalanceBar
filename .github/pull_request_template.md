@@ -27,7 +27,7 @@ Fixes #
 运行过的命令：
 
 ```text
-例如：./work/balance-bar/build.sh
+例如：./scripts/build.sh
 ```
 
 手动测试步骤和结果：

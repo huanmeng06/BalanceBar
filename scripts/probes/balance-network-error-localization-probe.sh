@@ -2,7 +2,10 @@
 
 set -Eeuo pipefail
 
-source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+probe_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$probe_script_dir/../.." && pwd)"
+sources_dir="$repo_root/Sources"
+resources_src="$repo_root/Resources"
 probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/balancebar-network-error-localization-probe.XXXXXX")"
 probe_binary="$probe_dir/network-error-localization-probe"
 trap 'rm -rf "$probe_dir"' EXIT
@@ -17,7 +20,7 @@ network_error_function="$(awk '
         if (seenOpen && depth <= 0) exit
         if (opens > 0) seenOpen = 1
     }
-' "$source_dir/Sources/Services/ProviderRefreshCoordinator.swift")"
+' "$sources_dir/Services/ProviderRefreshCoordinator.swift")"
 
 [[ "$network_error_function" == *"static func localizedBalanceNetworkErrorReason(_ error: Error, language: AppLanguage)"* ]] || {
     echo "network error localization probe: FAIL; production function signature changed or could not be extracted" >&2
@@ -26,8 +29,8 @@ network_error_function="$(awk '
 
 {
     printf '%s\n' 'import Foundation' 'import AppKit'
-    cat "$source_dir/Sources/AppCore/LocalizationKeys.swift"
-    cat "$source_dir/Sources/AppCore/Localization.swift"
+    cat "$sources_dir/AppCore/LocalizationKeys.swift"
+    cat "$sources_dir/AppCore/Localization.swift"
     printf '%s\n' 'LocalizationRuntime.configure(resourceRoot: URL(fileURLWithPath: ProcessInfo.processInfo.environment["BALANCEBAR_LOCALIZATION_ROOT"]!))'
     printf '%s\n' 'enum ProbeSubject {'
     printf '%s\n' "$network_error_function"
@@ -120,4 +123,4 @@ print("network error localization probe: PASS; six stable URL error mappings; al
 SWIFT
 } | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 
-BALANCEBAR_LOCALIZATION_ROOT="$source_dir/lang" "$probe_binary"
+BALANCEBAR_LOCALIZATION_ROOT="$resources_src/lang" "$probe_binary"

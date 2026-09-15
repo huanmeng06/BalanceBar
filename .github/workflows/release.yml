@@ -415,10 +415,10 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          ./work/balance-bar/build.sh production
+          ./scripts/build.sh production
           dmg="$RUNNER_TEMP/BalanceBar-${VERSION}.dmg"
           ./scripts/release/create-dmg.sh \
-            --app work/balance-bar/build/BalanceBar.app \
+            --app build/BalanceBar.app \
             --version "$VERSION" \
             --output "$dmg"
           echo "RELEASE_DMG=$dmg" >> "$GITHUB_ENV"
@@ -491,7 +491,7 @@ jobs:
           [[ "$REBUILD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
             || { echo "Invalid release version: $REBUILD_VERSION" >&2; exit 1; }
           plist_version="$(plutil -extract CFBundleShortVersionString raw \
-            -o - work/balance-bar/Info.plist)"
+            -o - Resources/Info.plist)"
           [[ "$REBUILD_VERSION" == "$plist_version" ]] \
             || { echo "Requested $REBUILD_VERSION but main contains $plist_version." >&2; exit 1; }
           gh release view "v${REBUILD_VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null
@@ -509,10 +509,10 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          ./work/balance-bar/build.sh production
+          ./scripts/build.sh production
           dmg="$RUNNER_TEMP/BalanceBar-${REBUILD_VERSION}.dmg"
           ./scripts/release/create-dmg.sh \
-            --app work/balance-bar/build/BalanceBar.app \
+            --app build/BalanceBar.app \
             --version "$REBUILD_VERSION" \
             --output "$dmg"
           echo "REBUILD_DMG=$dmg" >> "$GITHUB_ENV"

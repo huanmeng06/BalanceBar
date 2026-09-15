@@ -2,8 +2,11 @@
 
 set -Eeuo pipefail
 
-source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-resource_root="$source_dir/lang"
+probe_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$probe_script_dir/../.." && pwd)"
+sources_dir="$repo_root/Sources"
+resources_src="$repo_root/Resources"
+resource_root="$resources_src/lang"
 bundle_root="${1:-}"
 localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj fr.lproj pt.lproj ru.lproj it.lproj)
 
@@ -13,7 +16,7 @@ die() {
 }
 
 source_keys="$(
-    sed -nE 's/^    case .* = "([^"]+)".*/\1/p' "$source_dir/Sources/AppCore/LocalizationKeys.swift" \
+    sed -nE 's/^    case .* = "([^"]+)".*/\1/p' "$sources_dir/AppCore/LocalizationKeys.swift" \
         | LC_ALL=C sort
 )"
 source_key_count="$(printf '%s\n' "$source_keys" | awk 'NF { count += 1 } END { print count + 0 }')"

@@ -197,22 +197,18 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(switching.contains("switchCurrent"))
         XCTAssertTrue(switching.contains("com.ccswitch.desktop"))
 
-        let testFile = URL(fileURLWithPath: String(describing: #filePath))
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot
-                    .appendingPathComponent("work/balance-bar/Sources/Services/OpenCodexRefreshCoordinator.swift")
+                    .appendingPathComponent("Sources/Services/OpenCodexRefreshCoordinator.swift")
                     .path
             )
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot
-                    .appendingPathComponent("work/balance-bar/Sources/Services/OpenCodexRepository.swift")
+                    .appendingPathComponent("Sources/Services/OpenCodexRepository.swift")
                     .path
             )
         )
@@ -2537,13 +2533,9 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     private func balanceBarSource(file: StaticString = #filePath) throws -> String {
-        let testFile = URL(fileURLWithPath: String(describing: file))
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: String(describing: file))
         return try String(contentsOf: repositoryRoot
-            .appendingPathComponent("work/balance-bar/BalanceBar.swift"), encoding: .utf8)
+            .appendingPathComponent("Sources/App/BalanceBar.swift"), encoding: .utf8)
     }
 
     private func makeStatusMenuInput(
@@ -2564,17 +2556,13 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     private func compositionSources(file: StaticString = #filePath) throws -> [String: String] {
-        let testFile = URL(fileURLWithPath: String(describing: file))
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: String(describing: file))
         let files = [
-            "DashboardCompositionController.swift": "work/balance-bar/Sources/UI/Dashboard/DashboardCompositionController.swift",
-            "ProviderRefreshCoordinator.swift": "work/balance-bar/Sources/Services/ProviderRefreshCoordinator.swift",
-            "ActivityCoordinator.swift": "work/balance-bar/Sources/Monitoring/ActivityCoordinator.swift",
-            "CCSwitchDatabaseWatcher.swift": "work/balance-bar/Sources/Services/CCSwitchDatabaseWatcher.swift",
-            "ProviderSwitchCoordinator.swift": "work/balance-bar/Sources/Services/ProviderSwitchCoordinator.swift"
+            "DashboardCompositionController.swift": "Sources/UI/Dashboard/DashboardCompositionController.swift",
+            "ProviderRefreshCoordinator.swift": "Sources/Services/ProviderRefreshCoordinator.swift",
+            "ActivityCoordinator.swift": "Sources/Monitoring/ActivityCoordinator.swift",
+            "CCSwitchDatabaseWatcher.swift": "Sources/Services/CCSwitchDatabaseWatcher.swift",
+            "ProviderSwitchCoordinator.swift": "Sources/Services/ProviderSwitchCoordinator.swift"
         ]
         return try Dictionary(uniqueKeysWithValues: files.map { name, path in
             (name, try String(contentsOf: repositoryRoot.appendingPathComponent(path), encoding: .utf8))
