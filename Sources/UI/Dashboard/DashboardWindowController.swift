@@ -66,6 +66,8 @@ final class DashboardSplitViewController: NSSplitViewController {
     let sidebarController: NSViewController
     let contentController: NSViewController
     private(set) var contentSurface = NSView()
+    var onSidebarGeometryDidChange: (() -> Void)?
+    private var splitResizeObserver: NSObjectProtocol?
 
     init(sidebar: NSViewController, content: NSViewController) {
         self.sidebarController = sidebar
@@ -124,6 +126,16 @@ final class DashboardSplitViewController: NSSplitViewController {
         view = backdrop
         backdrop.addSubview(contentSurface)
         backdrop.addSubview(splitView)
+        if let splitResizeObserver {
+            NotificationCenter.default.removeObserver(splitResizeObserver)
+        }
+        splitResizeObserver = NotificationCenter.default.addObserver(
+            forName: NSSplitView.didResizeSubviewsNotification,
+            object: splitView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.onSidebarGeometryDidChange?()
+        }
         NSLayoutConstraint.activate([
             contentSurface.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor),
             contentSurface.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor),
@@ -134,6 +146,12 @@ final class DashboardSplitViewController: NSSplitViewController {
             splitView.topAnchor.constraint(equalTo: backdrop.topAnchor),
             splitView.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor)
         ])
+    }
+
+    deinit {
+        if let splitResizeObserver {
+            NotificationCenter.default.removeObserver(splitResizeObserver)
+        }
     }
 
     @available(*, unavailable)
@@ -149,6 +167,7 @@ private final class DashboardSidebarViewController: NSViewController {
 
 final class DashboardWindowController: NSObject, NSWindowDelegate {
     private let actions: DashboardWindowControllerActions
+    private let restorationStore: DashboardShellRestorationStoring
     private let pageContainer = DashboardPageContainerViewController()
     private let toolbarController = DashboardToolbarController()
     private(set) var window: NSWindow?
@@ -164,10 +183,23 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var isTornDown = false
+    private var isApplyingRestoration = false
+    private var lastExpandedSidebarWidth: CGFloat?
+    private var lastPersistedWindowedFrame: NSRect?
 
-    init(actions: DashboardWindowControllerActions) {
+    init(
+        actions: DashboardWindowControllerActions,
+        restorationStore: DashboardShellRestorationStoring = DashboardShellRestoration.makeDefaultStore()
+    ) {
         self.actions = actions
+        self.restorationStore = restorationStore
         super.init()
+        if let saved = restorationStore.load() {
+            lastPersistedWindowedFrame = saved.windowedFrame
+            if let savedWidth = saved.sidebarWidth {
+                lastExpandedSidebarWidth = DashboardShellRestoration.clampSidebarWidth(savedWidth)
+            }
+        }
     }
 
     deinit {
@@ -234,11 +266,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.hasShadow = true
         window.appearance = nil
         window.isMovableByWindowBackground = false
-        if AutomatedTestHost.isRunning {
-            ApplicationWindowPresentation.prepare(window)
-        } else {
-            window.center()
-        }
+        window.identifier = NSUserInterfaceItemIdentifier(DashboardShellRestoration.identity)
+        restoreWindowedFrame(on: window)
         window.isReleasedWhenClosed = false
         window.delegate = self
 
@@ -330,6 +359,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     func teardown() {
         guard !isTornDown else { return }
+        persistShellGeometry()
         isTornDown = true
 
         if let mouseMonitor {
@@ -351,6 +381,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let closedWindow = notification.object as? NSWindow,
               closedWindow === window else { return }
+        persistShellGeometry()
         actions.didClose()
     }
 
@@ -359,6 +390,33 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
               resizedWindow === window else { return }
         DashboardScrollTrace.marker("window-resize", source: "DashboardWindowController")
         actions.didResize()
+        if !resizedWindow.inLiveResize {
+            persistShellGeometry()
+        }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        guard let movedWindow = notification.object as? NSWindow,
+              movedWindow === window else { return }
+        persistShellGeometry()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        guard let resizedWindow = notification.object as? NSWindow,
+              resizedWindow === window else { return }
+        persistShellGeometry()
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        guard let fullScreenWindow = notification.object as? NSWindow,
+              fullScreenWindow === window else { return }
+        persistShellGeometry()
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        guard let fullScreenWindow = notification.object as? NSWindow,
+              fullScreenWindow === window else { return }
+        persistShellGeometry()
     }
 
     private func replacePage(makePage: () -> NSViewController) {
@@ -407,13 +465,17 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func installLayout(in window: NSWindow) {
+        let liveSidebar = liveSidebarSeed()
         detachPageContainerFromParent()
         let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
         let sidebar = makeSidebar(titlebarHeight: titlebarHeight)
         sidebar.translatesAutoresizingMaskIntoConstraints = false
+        let plan = restorationPlan(for: window)
+        let seedWidth = liveSidebar.width ?? plan.sidebarWidth
+        let collapsed = liveSidebar.collapsed ?? plan.isSidebarCollapsed
         sidebar.setFrameSize(
             NSSize(
-                width: DashboardSplitViewController.preferredSidebarThickness,
+                width: seedWidth,
                 height: window.frame.height
             )
         )
@@ -421,17 +483,110 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             sidebar: DashboardSidebarViewController(view: sidebar),
             content: pageContainer
         )
+        splitController.onSidebarGeometryDidChange = { [weak self] in
+            self?.persistShellGeometry()
+        }
+        isApplyingRestoration = true
         let requestedFrame = window.frame
         window.contentViewController = splitController
         // AppKit may fit a newly installed split-view controller to its
-        // minimum thicknesses. Preserve the Dashboard's established 880×620
-        // initial window frame after installing the native hierarchy. The
-        // preferred 216pt sidebar width is the item's starting size, not a
-        // locked thickness; min/max still allow native divider resizing.
+        // minimum thicknesses. Preserve the current window frame after
+        // installing the native hierarchy. Sidebar width is seeded from
+        // restored/live geometry, not a locked thickness; min/max still
+        // allow native divider resizing.
         window.setFrame(requestedFrame, display: false)
         // Install the toolbar after the split view is the window's content
         // controller so AppKit can bind the standard tracking separator.
         toolbarController.install(on: window)
+        window.layoutIfNeeded()
+        if collapsed {
+            splitController.splitViewItems[0].isCollapsed = true
+        }
+        lastExpandedSidebarWidth = seedWidth
+        isApplyingRestoration = false
+    }
+
+    private func restoreWindowedFrame(on window: NSWindow) {
+        let restoredAppKitFrame: Bool
+        if AutomatedTestHost.isRunning {
+            restoredAppKitFrame = false
+        } else {
+            restoredAppKitFrame = window.setFrameAutosaveName(
+                DashboardShellRestoration.frameAutosaveName
+            )
+        }
+
+        isApplyingRestoration = true
+        if restorationStore.load() != nil {
+            window.setFrame(restorationPlan(for: window).windowedFrame, display: false)
+        } else if !AutomatedTestHost.isRunning, !restoredAppKitFrame {
+            window.center()
+        }
+        if AutomatedTestHost.isRunning {
+            ApplicationWindowPresentation.prepare(window)
+        }
+        isApplyingRestoration = false
+    }
+
+    private func restorationPlan(for window: NSWindow) -> DashboardShellRestorationState {
+        DashboardShellRestoration.plan(
+            saved: restorationStore.load(),
+            defaultFrame: window.frame,
+            screens: DashboardShellRestoration.currentScreens(),
+            minSize: window.minSize
+        )
+    }
+
+    private func liveSidebarSeed() -> (width: CGFloat?, collapsed: Bool?) {
+        guard let splitController = window?.contentViewController as? DashboardSplitViewController,
+              let item = splitController.splitViewItems.first
+        else { return (nil, nil) }
+        let collapsed = item.isCollapsed
+        let width = item.viewController.view.frame.width
+        if collapsed {
+            return (lastExpandedSidebarWidth, true)
+        }
+        if width > 1 {
+            lastExpandedSidebarWidth = DashboardShellRestoration.clampSidebarWidth(width)
+        }
+        return (lastExpandedSidebarWidth, false)
+    }
+
+    private func persistShellGeometry() {
+        guard !isApplyingRestoration, !isTornDown, let window else { return }
+        let splitController = window.contentViewController as? DashboardSplitViewController
+        let sidebarItem = splitController?.splitViewItems.first
+        let collapsed = sidebarItem?.isCollapsed ?? false
+        let liveWidth = sidebarItem?.viewController.view.frame.width ?? 0
+        if !collapsed, liveWidth > 1 {
+            lastExpandedSidebarWidth = DashboardShellRestoration.clampSidebarWidth(liveWidth)
+        }
+        let isFullScreen = window.styleMask.contains(.fullScreen)
+        let currentFrame: NSRect
+        if AutomatedTestHost.isRunning, window.frame.origin.x <= -9_000 {
+            currentFrame = lastPersistedWindowedFrame
+                ?? restorationStore.load()?.windowedFrame
+                ?? window.frame
+        } else {
+            currentFrame = window.frame
+        }
+        let persistedFrame = DashboardShellRestoration.persistedWindowedFrame(
+            currentFrame: currentFrame,
+            isFullScreen: isFullScreen,
+            previouslySavedFrame: lastPersistedWindowedFrame
+        )
+        guard let persistedFrame else { return }
+        lastPersistedWindowedFrame = persistedFrame
+        let width = lastExpandedSidebarWidth
+            ?? restorationStore.load()?.sidebarWidth
+            ?? DashboardShellRestoration.defaultSidebarWidth
+        restorationStore.save(
+            DashboardShellRestorationState(
+                windowedFrame: persistedFrame,
+                sidebarWidth: DashboardShellRestoration.clampSidebarWidth(width),
+                isSidebarCollapsed: collapsed
+            )
+        )
     }
 
     private func makeSidebar(titlebarHeight: CGFloat) -> NSView {
