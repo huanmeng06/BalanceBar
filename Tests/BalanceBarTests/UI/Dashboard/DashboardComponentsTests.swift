@@ -1011,27 +1011,25 @@ final class DashboardComponentsTests: XCTestCase {
         return nil
     }
 
-    func testNavigationRowAppliesSelectedAndInactiveStates() {
-        let row = DashboardNavigationRowView()
-        row.wantsLayer = true
-        let icon = NSImageView()
-        let title = NSTextField(labelWithString: "Menu")
-        row.addSubview(icon)
-        row.addSubview(title)
-        row.iconView = icon
-        row.titleLabel = title
-
-        row.isSelected = true
-        row.updateAppearance(animated: false)
-        XCTAssertTrue(row.isSelected)
-        XCTAssertTrue(icon.contentTintColor?.isEqual(NSColor.controlAccentColor) == true)
-        XCTAssertTrue(title.textColor?.isEqual(NSColor.controlAccentColor) == true)
-
-        row.isSelected = false
-        row.updateAppearance(animated: false)
-        XCTAssertFalse(row.isSelected)
-        XCTAssertTrue(icon.contentTintColor?.isEqual(NSColor.secondaryLabelColor) == true)
-        XCTAssertTrue(title.textColor?.isEqual(NSColor.secondaryLabelColor) == true)
+    func testSourceListTreePreservesNavigationOrderWithoutProviderOrRefresh() {
+        let roots = DashboardSidebarNode.makeNavigationTree()
+        XCTAssertEqual(roots.map(\.isGroup), [false, true, true])
+        XCTAssertEqual(roots[0].section, .general)
+        XCTAssertEqual(roots[1].group, .appearance)
+        XCTAssertEqual(roots[1].children.compactMap(\.section), [.menuBar, .menu])
+        XCTAssertEqual(roots[2].group, .system)
+        XCTAssertEqual(roots[2].children.compactMap(\.section), [.advanced, .about])
+        XCTAssertEqual(
+            roots.flatMap { node -> [DashboardSection] in
+                if let section = node.section { return [section] }
+                return node.children.compactMap(\.section)
+            },
+            Array(DashboardSection.allCases)
+        )
+        XCTAssertTrue(roots.allSatisfy { node in
+            node.title != tr(.keyDashboardGeneralAndRefreshPagesRefresh)
+                && node.children.allSatisfy { $0.title != tr(.keyDashboardGeneralAndRefreshPagesRefresh) }
+        })
     }
 
     func testQuotaProgressClampsValuesAndPreservesColorBoundaries() {

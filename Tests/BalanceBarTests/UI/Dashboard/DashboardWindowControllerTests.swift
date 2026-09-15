@@ -58,23 +58,35 @@ final class DashboardWindowControllerTests: XCTestCase {
         controller.open()
         let window = try XCTUnwrap(controller.window)
         window.layoutIfNeeded()
-        func findBadge(in view: NSView) -> DashboardUpdateBadgeView? {
-            for child in view.subviews {
-                if let badge = child as? DashboardUpdateBadgeView { return badge }
-                if let badge = findBadge(in: child) { return badge }
-            }
-            return nil
-        }
-        let badge = try XCTUnwrap(findBadge(in: try XCTUnwrap(window.contentView)))
-        let row = try XCTUnwrap(badge.superview as? DashboardNavigationRowView)
-        let titleLabel = try XCTUnwrap(row.titleLabel)
+        window.displayIfNeeded()
 
-        XCTAssertFalse(badge.isHidden)
-        XCTAssertGreaterThan(badge.frame.minX, titleLabel.frame.maxX)
-        XCTAssertLessThanOrEqual(badge.frame.maxX, row.bounds.maxX)
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let generalRow = try XCTUnwrap(sourceList.row(for: .general))
+        let cell = try XCTUnwrap(
+            sourceList.outlineView.view(atColumn: 0, row: generalRow, makeIfNecessary: true)
+                as? DashboardSourceListCellView
+        )
+        cell.layoutSubtreeIfNeeded()
+        XCTAssertFalse(cell.updateBadgeView.isHidden)
+        let titleLabel = try XCTUnwrap(cell.textField)
+        XCTAssertGreaterThan(cell.updateBadgeView.frame.minX, titleLabel.frame.maxX)
+        XCTAssertLessThanOrEqual(cell.updateBadgeView.frame.maxX, cell.bounds.maxX)
 
         controller.setShowsUpdateAvailableBadge(false)
-        XCTAssertTrue(badge.isHidden)
+        XCTAssertTrue(cell.updateBadgeView.isHidden)
+
+        controller.setShowsUpdateAvailableBadge(true)
+        controller.rebuild()
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let rebuilt = try XCTUnwrap(controller.sourceListForTesting)
+        let rebuiltRow = try XCTUnwrap(rebuilt.row(for: .general))
+        let rebuiltCell = try XCTUnwrap(
+            rebuilt.outlineView.view(atColumn: 0, row: rebuiltRow, makeIfNecessary: true)
+                as? DashboardSourceListCellView
+        )
+        XCTAssertFalse(rebuiltCell.updateBadgeView.isHidden)
+        XCTAssertTrue(rebuilt.outlineView !== sourceList.outlineView)
     }
 
     func testMenuBarSettingsFittingWidthFollowsLocalization() throws {
@@ -320,6 +332,8 @@ final class DashboardWindowControllerTests: XCTestCase {
 
         XCTAssertEqual(controller.selectedProviderID, "other")
         XCTAssertEqual(controller.section, .menu)
+        XCTAssertNil(controller.sourceListForTesting?.selectedSection())
+        XCTAssertEqual(controller.sourceListForTesting?.outlineView.selectedRow, -1)
         XCTAssertGreaterThanOrEqual(preparedPageCount, 3)
         XCTAssertEqual(controller.windowCreationCount, 1)
         XCTAssertEqual(controller.mouseMonitorInstallCount, 1)
@@ -640,19 +654,20 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
 
         controller.showSection(.menuBar)
         window.layoutIfNeeded()
-        let selectedButton = try XCTUnwrap(
-            sidebarButtons(in: window).first { $0.tag == DashboardSection.menuBar.rawValue }
-        )
-        XCTAssertEqual(selectedButton.state, .on)
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let outline = sourceList.outlineView
+        XCTAssertEqual(sourceList.selectedSection(), .menuBar)
 
         sidebarItem.isCollapsed = true
         window.layoutIfNeeded()
         XCTAssertTrue(sidebarItem.isCollapsed)
         XCTAssertEqual(controller.section, .menuBar)
         XCTAssertTrue(
-            sidebarButtons(in: window).contains { $0 === selectedButton },
+            controller.sourceListForTesting === sourceList,
             "Collapse must not rebuild sidebar navigation controls"
         )
+        XCTAssertTrue(controller.sourceListForTesting?.outlineView === outline)
+        XCTAssertEqual(sourceList.selectedSection(), .menuBar)
 
         splitController.toggleSidebar(nil)
         window.layoutIfNeeded()
@@ -661,8 +676,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             "NSSplitViewController.toggleSidebar(_:) must expand a collapsed sidebar"
         )
         XCTAssertEqual(controller.section, .menuBar)
-        XCTAssertTrue(sidebarButtons(in: window).contains { $0 === selectedButton })
-        XCTAssertEqual(selectedButton.state, .on)
+        XCTAssertTrue(controller.sourceListForTesting === sourceList)
+        XCTAssertEqual(sourceList.selectedSection(), .menuBar)
 
         sidebarItem.isCollapsed = true
         window.layoutIfNeeded()
@@ -670,8 +685,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         window.layoutIfNeeded()
         XCTAssertFalse(sidebarItem.isCollapsed)
         XCTAssertEqual(controller.section, .menuBar)
-        XCTAssertTrue(sidebarButtons(in: window).contains { $0 === selectedButton })
-        XCTAssertEqual(selectedButton.state, .on)
+        XCTAssertTrue(controller.sourceListForTesting === sourceList)
+        XCTAssertEqual(sourceList.selectedSection(), .menuBar)
         assertSidebarSelection(in: window, selected: .menuBar)
         XCTAssertGreaterThanOrEqual(
             try XCTUnwrap(sidebarWidth(in: window)),
@@ -732,11 +747,16 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let labels = textFields(in: try XCTUnwrap(window.contentView)).map(\.stringValue)
         XCTAssertTrue(labels.contains(tr(.keyDashboardGeneralAndRefreshPagesRefresh)))
         XCTAssertFalse(labels.contains(tr(.keyDashboardGeneralAndRefreshPagesRefreshSettings)))
-        XCTAssertTrue(
-            sidebarButtons(in: window).contains { $0.tag == DashboardSection.general.rawValue }
-        )
+        let outline = try XCTUnwrap(sourceListOutline(in: window))
+        let sections = sidebarSections(in: outline)
+        XCTAssertEqual(sections, DashboardSection.allCases)
+        XCTAssertFalse(sections.contains { $0.rawValue == 5 })
         XCTAssertFalse(
-            sidebarButtons(in: window).contains { $0.tag == 5 }
+            (0..<outline.numberOfRows).contains { row in
+                guard let node = outline.item(atRow: row) as? DashboardSidebarNode else { return false }
+                return node.title == tr(.keyDashboardGeneralAndRefreshPagesRefresh)
+                    || node.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshSettings)
+            }
         )
     }
 
@@ -872,10 +892,14 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
     }
 
-    private func sidebarButtons(in window: NSWindow) -> [NSButton] {
-        guard let contentView = window.contentView else { return [] }
-        return buttons(in: contentView).filter { button in
-            DashboardSection(rawValue: button.tag) != nil
+    private func sourceListOutline(in window: NSWindow) -> NSOutlineView? {
+        guard let contentView = window.contentView else { return nil }
+        return firstDescendant(of: contentView, as: NSOutlineView.self)
+    }
+
+    private func sidebarSections(in outline: NSOutlineView) -> [DashboardSection] {
+        (0..<outline.numberOfRows).compactMap { row in
+            (outline.item(atRow: row) as? DashboardSidebarNode)?.section
         }
     }
 
@@ -885,29 +909,46 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        for button in sidebarButtons(in: window) {
-            let section = DashboardSection(rawValue: button.tag)
+        guard let outline = sourceListOutline(in: window) else {
+            XCTFail("Dashboard sidebar is missing NSOutlineView", file: file, line: line)
+            return
+        }
+        XCTAssertEqual(outline.style, .sourceList, file: file, line: line)
+        XCTAssertEqual(sidebarSections(in: outline), DashboardSection.allCases, file: file, line: line)
+
+        var foundSelected: DashboardSection?
+        for row in 0..<outline.numberOfRows {
+            guard let node = outline.item(atRow: row) as? DashboardSidebarNode else {
+                XCTFail("Unexpected outline item at row \(row)", file: file, line: line)
+                return
+            }
+            if node.isGroup {
+                XCTAssertFalse(
+                    outline.isRowSelected(row),
+                    "Group \(node.title) must not be selected",
+                    file: file,
+                    line: line
+                )
+                continue
+            }
+            guard let section = node.section else { continue }
             let shouldSelect = section == selected
             XCTAssertEqual(
-                button.state,
-                shouldSelect ? .on : .off,
-                "Sidebar \(String(describing: section)) selection mismatch",
+                outline.isRowSelected(row),
+                shouldSelect,
+                "Sidebar \(section) selection mismatch",
                 file: file,
                 line: line
             )
-            XCTAssertEqual(button.focusRingType, .none, file: file, line: line)
+            if shouldSelect {
+                foundSelected = section
+            }
         }
-    }
-
-    private func buttons(in view: NSView) -> [NSButton] {
-        var matches: [NSButton] = []
-        if let button = view as? NSButton {
-            matches.append(button)
+        XCTAssertEqual(foundSelected, selected, file: file, line: line)
+        if selected == nil {
+            XCTAssertEqual(outline.selectedRow, -1, file: file, line: line)
+            XCTAssertTrue(outline.selectedRowIndexes.isEmpty, file: file, line: line)
         }
-        for child in view.subviews {
-            matches.append(contentsOf: buttons(in: child))
-        }
-        return matches
     }
 
     private func textFields(in view: NSView) -> [NSTextField] {
@@ -931,6 +972,316 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             }
         }
         return nil
+    }
+}
+
+@MainActor
+final class DashboardSourceListContractTests: XCTestCase {
+    func testNativeSourceListOwnsSelectionAndOmitsParallelButtonState() throws {
+        var pageShows = 0
+        let controller = makeController(didShowPage: { pageShows += 1 })
+        defer { controller.teardown() }
+
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let outline = sourceList.outlineView
+        XCTAssertTrue(outline.isDescendant(of: try XCTUnwrap(window.contentView)))
+        XCTAssertEqual(outline.style, .sourceList)
+        XCTAssertTrue(outline.acceptsFirstResponder)
+        XCTAssertTrue(outline.canBecomeKeyView)
+        XCTAssertEqual(sourceList.selectedSection(), .general)
+        XCTAssertEqual(controller.section, .general)
+
+        let sidebar = try XCTUnwrap(
+            (window.contentViewController as? DashboardSplitViewController)?
+                .splitViewItems.first?.viewController.view
+        )
+        XCTAssertTrue(
+            buttons(in: sidebar).filter { DashboardSection(rawValue: $0.tag) != nil }.isEmpty
+        )
+
+        let afterOpen = pageShows
+        for section in DashboardSection.allCases {
+            let row = try XCTUnwrap(sourceList.row(for: section))
+            outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            XCTAssertEqual(controller.section, section)
+            XCTAssertEqual(window.title, section.title)
+            XCTAssertEqual(sourceList.selectedSection(), section)
+            XCTAssertNil(controller.selectedProviderID)
+        }
+        XCTAssertEqual(pageShows, afterOpen + DashboardSection.allCases.count - 1)
+
+        controller.showSection(.about)
+        XCTAssertEqual(sourceList.selectedSection(), .about)
+        XCTAssertEqual(pageShows, afterOpen + DashboardSection.allCases.count)
+    }
+
+    func testProviderPageClearsNativeSelectionWithoutAddingProviderRows() throws {
+        let choices = [
+            ProviderChoice(id: "current", name: "Current", isCurrent: true),
+            ProviderChoice(id: "other", name: "Other", isCurrent: false)
+        ]
+        let controller = makeController(providerChoices: choices)
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        XCTAssertEqual(
+            (0..<sourceList.outlineView.numberOfRows).compactMap { row in
+                (sourceList.outlineView.item(atRow: row) as? DashboardSidebarNode)?.section
+            },
+            DashboardSection.allCases
+        )
+        controller.showProvider("other")
+        XCTAssertNil(sourceList.selectedSection())
+        XCTAssertEqual(sourceList.outlineView.selectedRow, -1)
+        XCTAssertEqual(window.title, "Other")
+        XCTAssertFalse(
+            (0..<sourceList.outlineView.numberOfRows).contains { row in
+                (sourceList.outlineView.item(atRow: row) as? DashboardSidebarNode)?.title == "Other"
+            }
+        )
+    }
+
+    func testMouseClickOnGroupHeaderDoesNotChangeSelectionOrNavigate() throws {
+        var pageShows = 0
+        let controller = makeController(didShowPage: { pageShows += 1 })
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let outline = sourceList.outlineView
+        let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
+        let system = try XCTUnwrap(sourceList.roots.first { $0.group == .system })
+        XCTAssertTrue(sourceList.outlineView(outline, isGroupItem: appearance))
+        XCTAssertFalse(sourceList.outlineView(outline, shouldSelectItem: appearance))
+        XCTAssertFalse(sourceList.outlineView(outline, shouldSelectItem: system))
+        XCTAssertTrue(
+            sourceList.outlineView(outline, shouldSelectItem: try XCTUnwrap(sourceList.node(for: .general)))
+        )
+
+        let appearanceRow = outline.row(forItem: appearance)
+        let systemRow = outline.row(forItem: system)
+        let generalRow = try XCTUnwrap(sourceList.row(for: .general))
+        XCTAssertGreaterThanOrEqual(appearanceRow, 0)
+        XCTAssertGreaterThan(try XCTUnwrap(sourceList.row(for: .menuBar)), appearanceRow)
+        XCTAssertGreaterThan(outline.rect(ofRow: appearanceRow).width, 0)
+        XCTAssertGreaterThan(outline.rect(ofRow: appearanceRow).height, 0)
+        XCTAssertGreaterThan(outline.rect(ofRow: systemRow).width, 0)
+
+        sourceList.applySelection(.general)
+        let afterGeneral = pageShows
+        XCTAssertEqual(
+            sourceList.outlineView(outline, selectionIndexesForProposedSelection: IndexSet(integer: appearanceRow)),
+            IndexSet(integer: generalRow)
+        )
+        XCTAssertEqual(
+            sourceList.outlineView(outline, selectionIndexesForProposedSelection: IndexSet(integer: systemRow)),
+            IndexSet(integer: generalRow)
+        )
+        XCTAssertEqual(
+            sourceList.outlineView(outline, selectionIndexesForProposedSelection: IndexSet()),
+            IndexSet(integer: generalRow)
+        )
+
+        clickTrailingBlank(of: appearanceRow, in: outline)
+        XCTAssertEqual(sourceList.selectedSection(), .general)
+        XCTAssertEqual(controller.section, .general)
+        XCTAssertFalse(outline.isRowSelected(appearanceRow))
+        XCTAssertEqual(pageShows, afterGeneral)
+
+        controller.showSection(.menu)
+        let afterMenu = pageShows
+        let menuRow = try XCTUnwrap(sourceList.row(for: .menu))
+        XCTAssertEqual(sourceList.selectedSection(), .menu)
+        XCTAssertEqual(
+            sourceList.outlineView(outline, selectionIndexesForProposedSelection: IndexSet(integer: systemRow)),
+            IndexSet(integer: menuRow)
+        )
+        clickTrailingBlank(of: systemRow, in: outline)
+        XCTAssertEqual(sourceList.selectedSection(), .menu)
+        XCTAssertEqual(controller.section, .menu)
+        XCTAssertFalse(outline.isRowSelected(systemRow))
+        XCTAssertEqual(pageShows, afterMenu)
+    }
+
+    func testKeyboardArrowsSkipGroupHeaders() throws {
+        var pageShows = 0
+        let controller = makeController(didShowPage: { pageShows += 1 })
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let outline = sourceList.outlineView
+        XCTAssertTrue(window.makeFirstResponder(outline))
+        sourceList.applySelection(.general)
+        let afterGeneral = pageShows
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .menuBar)
+        XCTAssertEqual(controller.section, .menuBar)
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .menu)
+        XCTAssertEqual(controller.section, .menu)
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .advanced)
+        XCTAssertEqual(controller.section, .advanced)
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .about)
+        XCTAssertEqual(controller.section, .about)
+
+        outline.moveDown(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .about)
+        XCTAssertEqual(controller.section, .about)
+
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .advanced)
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .menu)
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .menuBar)
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .general)
+        outline.moveUp(nil)
+        XCTAssertEqual(sourceList.selectedSection(), .general)
+        XCTAssertEqual(controller.section, .general)
+        XCTAssertEqual(pageShows, afterGeneral + 8)
+    }
+
+    func testSourceListAccessibilityUsesNativeLabelsWithoutDuplicateIcons() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let outline = sourceList.outlineView
+        for section in DashboardSection.allCases {
+            let row = try XCTUnwrap(sourceList.row(for: section))
+            let cell = try XCTUnwrap(
+                outline.view(atColumn: 0, row: row, makeIfNecessary: true) as? DashboardSourceListCellView
+            )
+            XCTAssertEqual(cell.textField?.stringValue, section.title)
+            XCTAssertEqual(cell.accessibilityLabel(), section.title)
+            XCTAssertEqual(cell.imageView?.isAccessibilityElement(), false)
+            XCTAssertNotNil(cell.imageView?.image)
+        }
+
+        let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
+        let groupRow = outline.row(forItem: appearance)
+        let groupCell = try XCTUnwrap(
+            outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true) as? DashboardSourceListGroupCellView
+        )
+        XCTAssertEqual(groupCell.textField?.stringValue, appearance.title)
+        XCTAssertEqual(groupCell.accessibilityLabel(), appearance.title)
+    }
+
+    func testRebuildAndTeardownDropOldSourceListOwnership() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.open()
+        let first = try XCTUnwrap(controller.sourceListForTesting)
+        let firstOutline = first.outlineView
+        XCTAssertTrue(firstOutline.dataSource === first)
+        XCTAssertTrue(firstOutline.delegate === first)
+
+        controller.showSection(.menu)
+        controller.rebuild()
+        XCTAssertNil(firstOutline.dataSource)
+        XCTAssertNil(firstOutline.delegate)
+        XCTAssertNil(first.onSelectSection)
+
+        let second = try XCTUnwrap(controller.sourceListForTesting)
+        XCTAssertFalse(second === first)
+        XCTAssertTrue(second.outlineView !== firstOutline)
+        XCTAssertEqual(second.selectedSection(), .menu)
+        XCTAssertTrue(second.outlineView.dataSource === second)
+
+        let survivingOutline = second.outlineView
+        controller.teardown()
+        XCTAssertNil(survivingOutline.dataSource)
+        XCTAssertNil(survivingOutline.delegate)
+        XCTAssertNil(controller.sourceListForTesting)
+    }
+
+    private func makeController(
+        providerChoices: [ProviderChoice] = [],
+        didShowPage: @escaping () -> Void = {}
+    ) -> DashboardWindowController {
+        DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in NSView() },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { providerChoices },
+                prepareForPageReplacement: {},
+                didShowPage: didShowPage,
+                didClose: {},
+                didResize: {}
+            )
+        )
+    }
+
+    private func buttons(in view: NSView) -> [NSButton] {
+        var matches: [NSButton] = []
+        if let button = view as? NSButton {
+            matches.append(button)
+        }
+        for child in view.subviews {
+            matches.append(contentsOf: buttons(in: child))
+        }
+        return matches
+    }
+
+    private func clickTrailingBlank(of row: Int, in outline: NSOutlineView) {
+        let rowRect = outline.rect(ofRow: row)
+        let local = NSPoint(x: max(rowRect.maxX - 8, rowRect.midX), y: rowRect.midY)
+        let locationInWindow = outline.convert(local, to: nil)
+        let windowNumber = outline.window?.windowNumber ?? 0
+        let down = NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: locationInWindow,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 1
+        )
+        if let down {
+            outline.mouseDown(with: down)
+        }
+        let up = NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: locationInWindow,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: windowNumber,
+            context: nil,
+            eventNumber: 2,
+            clickCount: 1,
+            pressure: 1
+        )
+        if let up {
+            outline.mouseUp(with: up)
+        }
     }
 }
 

@@ -27,7 +27,8 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 
 | 职责 | 当前路径 |
 | --- | --- |
-| 窗口、标题栏拖拽、缩放状态、侧栏导航 | `Sources/UI/Dashboard/DashboardWindowController.swift` |
+| 窗口、标题栏拖拽、缩放状态 | `Sources/UI/Dashboard/DashboardWindowController.swift` |
+| 侧栏 source-list 导航 | `Sources/UI/Dashboard/DashboardSourceListController.swift` |
 | 页面装配与 Provider/偏好页生命周期 | `Sources/UI/Dashboard/DashboardCompositionController.swift` |
 | 通用/刷新/启动/应用设置 | `Pages/Preferences/DashboardGeneralAndRefreshPages.swift` |
 | 菜单栏 / 菜单 / 高级 / 关于 | `DashboardMenuBarPage.swift`、`DashboardMenuPage.swift`、`DashboardAdvancedPage.swift`、`DashboardAboutPage.swift` |
@@ -69,12 +70,12 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 2. Appearance 组：Menu Bar、Menu
 3. System 组：Advanced、About
 
-行高 32、宽 168、圆角 10。选中/悬停使用 `dashboardAdaptiveColor` 浅蓝/浅白底，选中前景为 `controlAccentColor`。导航按钮 `focusRingType = .none`。侧栏变宽后旧蓝色 pill 是否跟着拉宽属于 #386，不在本基线的 #385 契约里。
+侧栏导航是 `NSOutlineView` source-list（`DashboardSourceListController`）。可导航项是 `DashboardSidebarNode` 数据模型；Appearance / System 是不可选择的 group header。选中由 outline view 原生管理，不再维护平行的 `navigationButtons` / `navigationRows` 或自定义 `isSelected` 背景。source-list 随侧栏宽度拉伸；#385 的 split-view 尺寸/折叠契约不变。鼠标点击 group 行（含标题右侧空白）不得改变 selection、不得导航。↑/↓ 由 outline 的 `moveUp`/`moveDown` 在五个可选项间移动并跳过 group；不得把 group proposal 重映射到相邻 section（那条路径同样处理鼠标）。
 
 - 打开窗口默认选中 General。
-- `showSection` 把对应行 `state = .on` / `isSelected = true`，其余关闭。
-- `showProvider` **清空全部侧栏选中**（`selectedSection: nil`），`window.title` 改为 Provider 名称。Provider **不出现在侧栏**。
-- General 行可显示更新红点（18×18，「1」），由更新状态驱动。
+- `showSection` 同步原生 selection，但不通过 delegate 再次切页。
+- `showProvider` **清空全部侧栏选中**，`window.title` 改为 Provider 名称。Provider **不出现在侧栏**（#386 Issue 正文曾提到 Provider 行，以本基线与现行生产路径为准）。
+- General 行可显示更新红点（18×18，「1」），由更新状态驱动；窗口打开前、打开后和 rebuild 后均有效。
 
 ## 设置页滚动（General / Menu Bar / Menu / Advanced / Provider 详情）
 
@@ -103,7 +104,7 @@ About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advance
 
 | 控件 | 当前策略 |
 | --- | --- |
-| 侧栏导航按钮 | `focusRingType = .none` |
+| 侧栏 source-list | 原生 `NSOutlineView` 选中/焦点；group header 不可选；图标装饰不进入 VoiceOver |
 | 标准 `NSSwitch` / `NSPopUpButton` / 圆角按钮 | 工厂方法不关闭 focus ring，沿用 AppKit 默认 |
 | Status Links 文本框 | `focusRingType = .default` |
 | About GitHub 按钮 | `focusRingType = .none`，`firstResponder` 时自绘 `keyboardFocusIndicatorColor` 描边 |
@@ -140,7 +141,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 | 红黄绿位置 | 系统标题栏左侧；自定义拖拽排除按钮热区 `代码`；像素位置 `人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
 | 全屏 | 设计路径不是原生全屏；若系统菜单仍能进入全屏，双击标题栏应被抑制 `代码`+`人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
 | 双击标题栏 | 在普通尺寸与当前屏 `visibleFrame` 间切换 `代码`+`人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
-| 键盘 / 焦点 | 侧栏无系统 focus ring；开关/弹出菜单可键盘操作 `人工` | 间隔弹出菜单可操作 `人工` | 滑块、弹出菜单、FPS 字段 `人工` | 阈值字段、Status Links 编辑器有系统 focus ring `人工` | 日志可选中、按钮可激活 `人工` | GitHub 按钮自定义焦点描边 `代码`+`人工` | Refresh/Switch 按钮可激活 `人工` |
+| 键盘 / 焦点 | 侧栏 source-list 可成为 first responder；上下方向键在五个可选项间移动 `代码`+`人工` | 间隔弹出菜单可操作 `人工` | 滑块、弹出菜单、FPS 字段 `人工` | 阈值字段、Status Links 编辑器有系统 focus ring `人工` | 日志可选中、按钮可激活 `人工` | GitHub 按钮自定义焦点描边 `代码`+`人工` | Refresh/Switch 按钮可激活 `人工` |
 
 共享窗口行为（尺寸、绿钮、双击、红黄绿、全屏）在每一页都应相同。后续 Issue 若只改某一页内容，仍需抽查窗口外壳未变。
 
@@ -155,7 +156,8 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 - `DashboardWindowDragRegionTests`：标题栏拖拽带、排除红黄绿、双击回调
 - `DashboardComponentsTests.testDashboardSectionsPreserveNavigationOrderAndMetadata`
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
-- `DashboardProviderPagesTests.testAppDelegateWiringKeepsRealSidebarButtonsResponsiveAfterPageReplacement`
+- `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
+- `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权
 
 ## 明确不在本基线内
 
