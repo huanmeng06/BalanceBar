@@ -151,6 +151,122 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertNil(launchAtLoginSwitch.superview as? SettingsRowView)
     }
 
+    func testTitleToSubtitleSpacingMatchesLegacyRowInTheSameCard() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let legacyControl = NSSwitch()
+        let nativeControl = NSSwitch()
+        let legacyRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
+            subtitle: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription),
+            control: legacyControl
+        )
+        let nativeRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesSilentLaunch),
+            detail: tr(.keyDashboardGeneralAndRefreshPagesSilentLaunchDescription),
+            accessoryView: nativeControl
+        )
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            tr(.keyDashboardGeneralAndRefreshPagesStartup),
+            rows: [legacyRow, nativeRow]
+        )
+        let window = makeTestWindow(width: 880)
+        window.contentView = section
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        section.layoutSubtreeIfNeeded()
+
+        let legacyFields = descendants(of: legacyRow).compactMap { $0 as? NSTextField }
+        let legacyTitle = try XCTUnwrap(
+            legacyFields.first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin) }
+        )
+        let legacySubtitle = try XCTUnwrap(
+            legacyFields.first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription) }
+        )
+        let legacySpacing = titleToSubtitleSpacing(title: legacyTitle, subtitle: legacySubtitle)
+        let nativeSpacing = titleToSubtitleSpacing(
+            title: nativeRow.titleLabel,
+            subtitle: nativeRow.detailLabel
+        )
+
+        XCTAssertGreaterThanOrEqual(legacySpacing, 0)
+        XCTAssertEqual(
+            nativeSpacing,
+            legacySpacing,
+            accuracy: 1.0,
+            "native title-to-subtitle gap must match a same-card legacy row"
+        )
+        XCTAssertEqual(
+            nativeRow.titleLabel.superview?.contentHuggingPriority(for: .vertical),
+            .required
+        )
+    }
+
+    func testGeneralSilentLaunchTitleSpacingMatchesNeighboringLegacyRow() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "SettingsRowViewTests.SilentLaunchSpacing.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let page = DashboardGeneralPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            launchAtLoginState: LaunchAtLoginState(status: .notRegistered),
+            launchWithChatGPTState: LaunchWithChatGPTState(status: .notRegistered)
+        ))
+        let window = makeTestWindow(width: 880)
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 880, height: 760))
+        window.contentView = host
+        host.addSubview(page)
+        page.setFrameSize(host.bounds.size)
+        defer {
+            window.contentView = nil
+            window.orderOut(nil)
+        }
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+
+        let silentLaunchSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == AppPreferences.silentLaunchKey }
+        )
+        let nativeRow = try XCTUnwrap(silentLaunchSwitch.superview as? SettingsRowView)
+        let launchAtLoginTitle = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin) }
+        )
+        let launchAtLoginSubtitle = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription) }
+        )
+
+        let legacySpacing = titleToSubtitleSpacing(
+            title: launchAtLoginTitle,
+            subtitle: launchAtLoginSubtitle
+        )
+        let nativeSpacing = titleToSubtitleSpacing(
+            title: nativeRow.titleLabel,
+            subtitle: nativeRow.detailLabel
+        )
+        XCTAssertEqual(
+            nativeSpacing,
+            legacySpacing,
+            accuracy: 1.0,
+            "Silent Launch title-to-subtitle gap must match 登录时自动启动 in the Startup card"
+        )
+    }
+
     private func assertLabelsDoNotOverlapControl(
         in row: SettingsRowView,
         control: NSView,
@@ -172,6 +288,16 @@ final class SettingsRowViewTests: XCTestCase {
             labelsFrame.intersects(controlFrame),
             "labels do not overlap the trailing control at \(width)"
         )
+    }
+
+    private func titleToSubtitleSpacing(title: NSTextField, subtitle: NSTextField) -> CGFloat {
+        let container = title.superview ?? title
+        let titleFrame = title.convert(title.bounds, to: container)
+        let subtitleFrame = subtitle.convert(subtitle.bounds, to: container)
+        if titleFrame.minY + 0.5 >= subtitleFrame.maxY {
+            return titleFrame.minY - subtitleFrame.maxY
+        }
+        return subtitleFrame.minY - titleFrame.maxY
     }
 
     private func makeTestWindow(width: CGFloat) -> NSWindow {

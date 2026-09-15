@@ -97,13 +97,18 @@ final class SettingsRowView: NSStackView {
 
         labelsStack.orientation = .vertical
         labelsStack.alignment = .leading
+        labelsStack.distribution = .fill
         labelsStack.spacing = Self.labelSpacing
         labelsStack.translatesAutoresizingMaskIntoConstraints = false
         labelsStack.setHuggingPriority(.defaultLow, for: .horizontal)
-        labelsStack.setHuggingPriority(.defaultHigh, for: .vertical)
+        // Keep the labels at their intrinsic height. A 62pt row floor would
+        // otherwise stretch this stack and open extra space between title
+        // and detail via gravity areas.
+        labelsStack.setHuggingPriority(.required, for: .vertical)
+        labelsStack.setClippingResistancePriority(.required, for: .vertical)
         labelsStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
         labelsStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        labelsStack.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        labelsStack.setContentHuggingPriority(.required, for: .vertical)
         labelsStack.setContentCompressionResistancePriority(.required, for: .vertical)
         labelsStack.addArrangedSubview(titleLabel)
         if !detailLabel.isHidden {
@@ -142,7 +147,7 @@ final class SettingsRowView: NSStackView {
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)
         label.setContentCompressionResistancePriority(.required, for: .vertical)
-        label.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        label.setContentHuggingPriority(.required, for: .vertical)
     }
 
     private func notifyHeightHost() {
