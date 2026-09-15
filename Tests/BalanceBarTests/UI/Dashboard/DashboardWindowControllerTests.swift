@@ -375,6 +375,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertEqual(sidebarItem.behavior, .sidebar)
         XCTAssertNotEqual(contentItem.behavior, .sidebar)
         XCTAssertTrue(sidebarItem.canCollapse)
+        XCTAssertFalse(sidebarItem.canCollapseFromWindowResize)
         XCTAssertTrue(sidebarItem.allowsFullHeightLayout)
         XCTAssertGreaterThanOrEqual(
             sidebarItem.minimumThickness,
@@ -384,33 +385,43 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             sidebarItem.minimumThickness,
             DashboardSplitViewController.preferredSidebarThickness
         )
+        XCTAssertEqual(
+            sidebarItem.maximumThickness,
+            DashboardSplitViewController.maximumSidebarThickness,
+            accuracy: 0.001
+        )
         XCTAssertGreaterThan(
             sidebarItem.maximumThickness,
             DashboardSplitViewController.preferredSidebarThickness
-        )
-        XCTAssertGreaterThanOrEqual(
-            sidebarItem.maximumThickness,
-            DashboardSplitViewController.maximumSidebarThickness
         )
         XCTAssertFalse(
             abs(sidebarItem.minimumThickness - 216) < 0.001
                 && abs(sidebarItem.maximumThickness - 216) < 0.001,
             "Sidebar thickness must not remain locked at min=max=216"
         )
-        XCTAssertEqual(
-            sidebarItem.preferredThicknessFraction,
-            DashboardSplitViewController.preferredSidebarThickness
-                / DashboardSplitViewController.defaultWindowContentWidth,
-            accuracy: 0.001
-        )
         XCTAssertGreaterThan(sidebarItem.holdingPriority.rawValue, contentItem.holdingPriority.rawValue)
         XCTAssertLessThan(sidebarItem.holdingPriority.rawValue, 900)
+        XCTAssertEqual(
+            contentItem.holdingPriority,
+            .defaultLow,
+            "Content should keep the factory/defaultLow holding priority so window resize is absorbed there"
+        )
         XCTAssertEqual(sidebarItem.viewController.view.frame.width, 216, accuracy: 1)
         XCTAssertGreaterThan(contentItem.viewController.view.frame.width, 0)
         XCTAssertTrue(sidebarItem.viewController.view.isDescendant(of: splitController.splitView))
         XCTAssertTrue(contentItem.viewController.view.isDescendant(of: splitController.splitView))
-        XCTAssertTrue(splitController.splitView is DashboardSplitView)
-        XCTAssertEqual(splitController.splitView.dividerThickness, 0, accuracy: 0.001)
+        XCTAssertGreaterThan(
+            splitController.splitView.dividerThickness,
+            0,
+            "A 0pt divider makes AppKit propose a window-wide hit rect; use native split-view geometry"
+        )
+        XCTAssertTrue(
+            splitController.splitView(
+                splitController.splitView,
+                additionalEffectiveRectOfDividerAt: 0
+            ).isEmpty,
+            "Do not add a custom extra divider hit rect"
+        )
 
         let backdrop = try XCTUnwrap(splitController.view as? DashboardContentRootView)
         XCTAssertTrue(contentView === backdrop)
@@ -459,6 +470,10 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertNotNil(window.toolbar)
         XCTAssertEqual(window.toolbar?.displayMode, .iconOnly)
         XCTAssertFalse(window.toolbar?.allowsUserCustomization ?? true)
+        XCTAssertEqual(
+            window.toolbar?.items.map(\.itemIdentifier),
+            [.toggleSidebar]
+        )
         XCTAssertNil(window.appearance)
         XCTAssertFalse(window.isMovableByWindowBackground)
 
@@ -546,14 +561,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             sidebarItem.holdingPriority.rawValue,
             contentItem.holdingPriority.rawValue
         )
-        XCTAssertEqual(
-            sidebarItem.holdingPriority,
-            DashboardSplitViewController.sidebarHoldingPriority
-        )
-        XCTAssertEqual(
-            contentItem.holdingPriority,
-            DashboardSplitViewController.contentHoldingPriority
-        )
+        XCTAssertEqual(contentItem.holdingPriority, .defaultLow)
 
         let originalWidth = try XCTUnwrap(sidebarWidth(in: window))
         let requestedThickness = originalWidth + 24
@@ -566,10 +574,22 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             "Native divider positioning must be able to change sidebar thickness (was \(originalWidth), requested \(requestedThickness), got \(resizedWidth))"
         )
         XCTAssertGreaterThanOrEqual(resizedWidth, sidebarItem.minimumThickness - 1)
-        if sidebarItem.maximumThickness != NSSplitViewItem.unspecifiedDimension {
-            XCTAssertLessThanOrEqual(resizedWidth, sidebarItem.maximumThickness + 1)
-        }
+        XCTAssertLessThanOrEqual(resizedWidth, sidebarItem.maximumThickness + 1)
         assertSplitPanesDoNotOverlap(in: window)
+
+        let splitView = splitController.splitView
+        let sidebarInSplit = sidebarItem.viewController.view.convert(
+            sidebarItem.viewController.view.bounds,
+            to: splitView
+        )
+        let additional = splitController.splitView(splitView, additionalEffectiveRectOfDividerAt: 0)
+        XCTAssertTrue(additional.isEmpty)
+        XCTAssertGreaterThan(splitView.dividerThickness, 0)
+        XCTAssertLessThan(
+            sidebarInSplit.maxX + 20,
+            splitView.bounds.maxX - 40,
+            "Divider geometry must stay at the sidebar/content boundary, not the window trailing edge"
+        )
 
         let originalContentSize = window.contentRect(forFrameRect: window.frame).size
         window.setContentSize(NSSize(width: 1100, height: originalContentSize.height))
@@ -582,25 +602,6 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
         XCTAssertGreaterThan(contentItem.viewController.view.frame.width, 0)
         assertSplitPanesDoNotOverlap(in: window)
-
-        let row = try XCTUnwrap(firstNavigationRow(in: window))
-        XCTAssertGreaterThan(row.frame.width, 168 + 8)
-        XCTAssertEqual(row.frame.width, resizedWidth - 44, accuracy: 4)
-
-        let splitView = splitController.splitView
-        let hit = splitController.dividerHitRect(in: splitView, dividerIndex: 0)
-        let sidebarInSplit = sidebarItem.viewController.view.convert(
-            sidebarItem.viewController.view.bounds,
-            to: splitView
-        )
-        let contentInSplit = contentItem.viewController.view.convert(
-            contentItem.viewController.view.bounds,
-            to: splitView
-        )
-        XCTAssertEqual(hit.width, DashboardSplitViewController.dividerHitWidth, accuracy: 0.5)
-        XCTAssertEqual(hit.midX, sidebarInSplit.maxX, accuracy: 3)
-        XCTAssertLessThan(hit.maxX, contentInSplit.minX + 20)
-        XCTAssertLessThan(hit.maxX, splitView.bounds.maxX - 40)
     }
 
     func testSidebarAndContentFramesStayValidAcrossWindowSizes() throws {
@@ -654,23 +655,16 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             sidebarButtons(in: window).contains { $0 === selectedButton },
             "Collapse must not rebuild sidebar navigation controls"
         )
-        XCTAssertFalse(splitController.splitView(splitController.splitView, shouldHideDividerAt: 0))
-        let collapsedHit = splitController.dividerHitRect(
-            in: splitController.splitView,
-            dividerIndex: 0
-        )
-        XCTAssertGreaterThan(collapsedHit.width, 0)
-        XCTAssertEqual(collapsedHit.minX, splitController.splitView.bounds.minX, accuracy: 1)
 
-        splitController.splitView.setPosition(
-            DashboardSplitViewController.preferredSidebarThickness,
-            ofDividerAt: 0
-        )
+        splitController.toggleSidebar(nil)
         window.layoutIfNeeded()
         XCTAssertFalse(
             sidebarItem.isCollapsed,
-            "Dragging the leading divider strip must be able to expand a collapsed sidebar"
+            "NSSplitViewController.toggleSidebar(_:) must expand a collapsed sidebar"
         )
+        XCTAssertEqual(controller.section, .menuBar)
+        XCTAssertTrue(sidebarButtons(in: window).contains { $0 === selectedButton })
+        XCTAssertEqual(selectedButton.state, .on)
 
         sidebarItem.isCollapsed = true
         window.layoutIfNeeded()
@@ -878,18 +872,6 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
-    }
-
-    private func firstNavigationRow(in window: NSWindow) -> DashboardNavigationRowView? {
-        guard let contentView = window.contentView else { return nil }
-        func search(_ view: NSView) -> DashboardNavigationRowView? {
-            if let row = view as? DashboardNavigationRowView { return row }
-            for child in view.subviews {
-                if let row = search(child) { return row }
-            }
-            return nil
-        }
-        return search(contentView)
     }
 
     private func sidebarButtons(in window: NSWindow) -> [NSButton] {

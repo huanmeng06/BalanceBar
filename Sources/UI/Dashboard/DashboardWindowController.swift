@@ -72,31 +72,21 @@ final class DashboardContentRootView: NSVisualEffectView {
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
-final class DashboardSplitView: NSSplitView {
-    override var dividerThickness: CGFloat { 0 }
-
-    override func drawDivider(in rect: NSRect) {}
-}
-
 /// Native Dashboard shell. The split view owns the sidebar/content geometry;
 /// page controllers remain responsible only for their own content.
 final class DashboardSplitViewController: NSSplitViewController {
-    /// Default visual width from the #383/#384 baseline. This is the preferred
-    /// starting thickness, not a locked min=max constraint.
+    /// One-time opening width from the #383/#384 baseline, seeded via the
+    /// sidebar view's initial frame. Not `preferredThicknessFraction` (that
+    /// factory value is a size *fraction* used for first layout / divider
+    /// double-click, currently 0.15).
     static let preferredSidebarThickness: CGFloat = 216
     static let sidebarThickness: CGFloat = preferredSidebarThickness
     /// 168pt navigation rows plus the current 14pt stack and 8pt panel insets.
+    /// Kept so the pre-#386 rows still fit; do not shrink by changing row layout.
     static let minimumSidebarThickness: CGFloat = 8 + 14 + 168 + 14 + 8
-    /// Upper bound for divider resizing. Wider than the 216pt preferred width
-    /// so the sidebar is not locked, while still leaving the content pane usable.
+    /// Product cap for divider resizing. Factory sidebar maximum is
+    /// `unspecifiedDimension`; 320 is the actual upper bound.
     static let maximumSidebarThickness: CGFloat = 320
-    static let defaultWindowContentWidth: CGFloat = 880
-    /// Sidebar keeps its current width; content absorbs window resize.
-    static let sidebarHoldingPriority = NSLayoutConstraint.Priority(
-        rawValue: NSLayoutConstraint.Priority.defaultLow.rawValue + 1
-    )
-    static let contentHoldingPriority = NSLayoutConstraint.Priority(1)
-    static let dividerHitWidth: CGFloat = 10
     static let contentSurfaceIdentifier = NSUserInterfaceItemIdentifier("dashboardContentSurface")
 
     let sidebarController: NSViewController
@@ -107,30 +97,22 @@ final class DashboardSplitViewController: NSSplitViewController {
         self.sidebarController = sidebar
         self.contentController = content
         super.init(nibName: nil, bundle: nil)
-        let split = DashboardSplitView()
-        split.isVertical = true
-        split.dividerStyle = .thin
-        splitView = split
 
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        let factoryMinimum = sidebarItem.minimumThickness
-        let factoryMaximum = sidebarItem.maximumThickness
         sidebarItem.canCollapse = true
         sidebarItem.canCollapseFromWindowResize = false
         sidebarItem.allowsFullHeightLayout = true
-        sidebarItem.minimumThickness = max(factoryMinimum, Self.minimumSidebarThickness)
-        if factoryMaximum == NSSplitViewItem.unspecifiedDimension {
-            sidebarItem.maximumThickness = Self.maximumSidebarThickness
-        } else {
-            sidebarItem.maximumThickness = max(factoryMaximum, Self.maximumSidebarThickness)
-        }
-        sidebarItem.preferredThicknessFraction =
-            Self.preferredSidebarThickness / Self.defaultWindowContentWidth
-        sidebarItem.holdingPriority = Self.sidebarHoldingPriority
+        sidebarItem.minimumThickness = max(
+            sidebarItem.minimumThickness,
+            Self.minimumSidebarThickness
+        )
+        sidebarItem.maximumThickness = Self.maximumSidebarThickness
+        // Factory holdingPriority is already sidebar 260 / content 250
+        // (`defaultLow` + 10 vs `defaultLow`), so window resize is absorbed
+        // by the content item without a magic content priority of 1.
 
         let contentItem = NSSplitViewItem(viewController: content)
         contentItem.canCollapse = false
-        contentItem.holdingPriority = Self.contentHoldingPriority
         addSplitViewItem(sidebarItem)
         addSplitViewItem(contentItem)
     }
@@ -174,58 +156,6 @@ final class DashboardSplitViewController: NSSplitViewController {
             splitView.topAnchor.constraint(equalTo: backdrop.topAnchor),
             splitView.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor)
         ])
-    }
-
-    override func splitView(
-        _ splitView: NSSplitView,
-        effectiveRect proposedEffectiveRect: NSRect,
-        forDrawnRect drawnRect: NSRect,
-        ofDividerAt dividerIndex: Int
-    ) -> NSRect {
-        _ = super.splitView(
-            splitView,
-            effectiveRect: proposedEffectiveRect,
-            forDrawnRect: drawnRect,
-            ofDividerAt: dividerIndex
-        )
-        return dividerHitRect(in: splitView, dividerIndex: dividerIndex)
-    }
-
-    override func splitView(
-        _ splitView: NSSplitView,
-        additionalEffectiveRectOfDividerAt dividerIndex: Int
-    ) -> NSRect {
-        _ = super.splitView(
-            splitView,
-            additionalEffectiveRectOfDividerAt: dividerIndex
-        )
-        return dividerHitRect(in: splitView, dividerIndex: dividerIndex)
-    }
-
-    override func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
-        if dividerIndex == 0 {
-            return false
-        }
-        return super.splitView(splitView, shouldHideDividerAt: dividerIndex)
-    }
-
-    func dividerHitRect(in splitView: NSSplitView, dividerIndex: Int) -> NSRect {
-        guard dividerIndex == 0, !splitViewItems.isEmpty else { return .zero }
-        let hitWidth = Self.dividerHitWidth
-        let sidebarView = splitViewItems[0].viewController.view
-        let sidebarFrame = sidebarView.convert(sidebarView.bounds, to: splitView)
-        let x: CGFloat
-        if splitViewItems[0].isCollapsed {
-            x = splitView.bounds.minX
-        } else {
-            x = sidebarFrame.maxX - hitWidth / 2
-        }
-        return NSRect(
-            x: x,
-            y: splitView.bounds.minY,
-            width: hitWidth,
-            height: splitView.bounds.height
-        )
     }
 
     @available(*, unavailable)
@@ -314,7 +244,7 @@ enum DashboardWindowDragPolicy {
     }
 }
 
-final class DashboardWindowController: NSObject, NSWindowDelegate {
+final class DashboardWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private let actions: DashboardWindowControllerActions
     private(set) var window: NSWindow?
     private(set) var contentHost = NSView()
@@ -397,6 +327,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         let dashboardToolbar = NSToolbar(identifier: NSToolbar.Identifier("BalanceBarDashboardToolbar"))
+        dashboardToolbar.delegate = self
         dashboardToolbar.displayMode = .iconOnly
         dashboardToolbar.allowsUserCustomization = false
         dashboardToolbar.autosavesConfiguration = false
@@ -537,6 +468,23 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
               resizedWindow === window else { return }
         DashboardScrollTrace.marker("window-resize", source: "DashboardWindowController")
         actions.didResize()
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar]
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        guard itemIdentifier == .toggleSidebar else { return nil }
+        return NSToolbarItem(itemIdentifier: .toggleSidebar)
     }
 
     private func replacePage(makePage: () -> NSView) {
@@ -682,19 +630,19 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         navigationButtons.removeAll()
         navigationRows.removeAll()
 
-        addNavigationRow(for: .general, to: navigation)
+        navigation.addArrangedSubview(makeNavigationRow(for: .general))
         navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
 
         let appearanceLabel = makeSidebarGroupTitle(tr(.keyDashboardWindowControllerAppearance))
         navigation.addArrangedSubview(appearanceLabel)
-        addNavigationRow(for: .menuBar, to: navigation)
-        addNavigationRow(for: .menu, to: navigation)
+        navigation.addArrangedSubview(makeNavigationRow(for: .menuBar))
+        navigation.addArrangedSubview(makeNavigationRow(for: .menu))
         navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
 
         let systemLabel = makeSidebarGroupTitle(tr(.keyDashboardWindowControllerSystem))
         navigation.addArrangedSubview(systemLabel)
-        addNavigationRow(for: .advanced, to: navigation)
-        addNavigationRow(for: .about, to: navigation)
+        navigation.addArrangedSubview(makeNavigationRow(for: .advanced))
+        navigation.addArrangedSubview(makeNavigationRow(for: .about))
 
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebarContent.addSubview(navigation)
@@ -725,21 +673,13 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         return label
     }
 
-    private func addNavigationRow(for section: DashboardSection, to navigation: NSStackView) {
-        let row = makeNavigationRow(for: section)
-        navigation.addArrangedSubview(row)
-        row.leadingAnchor.constraint(equalTo: navigation.leadingAnchor).isActive = true
-        row.trailingAnchor.constraint(equalTo: navigation.trailingAnchor).isActive = true
-    }
-
     private func makeNavigationRow(for section: DashboardSection) -> NSView {
         let row = DashboardNavigationRowView()
         row.translatesAutoresizingMaskIntoConstraints = false
         row.wantsLayer = true
         row.layer?.cornerRadius = 10
         row.layer?.backgroundColor = NSColor.clear.cgColor
-        row.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        row.widthAnchor.constraint(greaterThanOrEqualToConstant: 168).isActive = true
+        row.widthAnchor.constraint(equalToConstant: 168).isActive = true
         row.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
         let button = NSButton(title: "", target: self, action: #selector(selectSection(_:)))
