@@ -351,6 +351,282 @@ final class DashboardWindowControllerTests: XCTestCase {
 }
 
 @MainActor
+final class DashboardNativeUIBaselineTests: XCTestCase {
+    func testWindowChromeMatchesCurrentNativeBaseline() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        let contentView = try XCTUnwrap(window.contentView)
+        XCTAssertEqual(contentView.bounds.width, 880, accuracy: 1)
+        XCTAssertEqual(contentView.bounds.height, 620, accuracy: 1)
+        XCTAssertEqual(window.minSize.width, 800, accuracy: 0.001)
+        XCTAssertGreaterThanOrEqual(window.minSize.height, 540)
+        XCTAssertEqual(
+            window.minSize.height,
+            560,
+            accuracy: 1,
+            "Unified toolbar currently raises the coded 540pt frame minimum to 560pt"
+        )
+        XCTAssertTrue(window.styleMask.contains(.titled))
+        XCTAssertTrue(window.styleMask.contains(.closable))
+        XCTAssertTrue(window.styleMask.contains(.miniaturizable))
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+        XCTAssertTrue(window.styleMask.contains(.fullSizeContentView))
+        XCTAssertFalse(window.styleMask.contains(.fullScreen))
+        XCTAssertEqual(window.titleVisibility, .hidden)
+        XCTAssertTrue(window.titlebarAppearsTransparent)
+        XCTAssertEqual(window.titlebarSeparatorStyle, .none)
+        XCTAssertEqual(window.toolbarStyle, .unified)
+        XCTAssertNotNil(window.toolbar)
+        XCTAssertEqual(window.toolbar?.displayMode, .iconOnly)
+        XCTAssertFalse(window.toolbar?.allowsUserCustomization ?? true)
+        XCTAssertNil(window.appearance)
+        XCTAssertFalse(window.isMovableByWindowBackground)
+
+        let closeButton = try XCTUnwrap(window.standardWindowButton(.closeButton))
+        let miniaturizeButton = try XCTUnwrap(window.standardWindowButton(.miniaturizeButton))
+        let zoomButton = try XCTUnwrap(window.standardWindowButton(.zoomButton))
+        XCTAssertFalse(closeButton.isHidden)
+        XCTAssertFalse(miniaturizeButton.isHidden)
+        XCTAssertFalse(zoomButton.isHidden)
+        XCTAssertTrue(closeButton.isEnabled)
+        XCTAssertTrue(miniaturizeButton.isEnabled)
+        XCTAssertFalse(zoomButton.isEnabled)
+        XCTAssertLessThan(closeButton.frame.minX, miniaturizeButton.frame.minX)
+        XCTAssertLessThan(miniaturizeButton.frame.minX, zoomButton.frame.minX)
+
+        XCTAssertEqual(try XCTUnwrap(sidebarWidth(in: contentView)), 216, accuracy: 0.001)
+        let dragView = try XCTUnwrap(firstDescendant(of: contentView, as: DashboardTitlebarDragView.self))
+        XCTAssertTrue(dragView.mouseDownCanMoveWindow)
+        XCTAssertTrue(contentView is DashboardContentRootView)
+        XCTAssertFalse(contentView.mouseDownCanMoveWindow)
+    }
+
+    func testSidebarSelectionAndProviderClearingMatchCurrentNativeBaseline() throws {
+        let choices = [
+            ProviderChoice(id: "current", name: "Current", isCurrent: true),
+            ProviderChoice(id: "other", name: "Other", isCurrent: false)
+        ]
+        let controller = makeController(providerChoices: choices)
+        defer { controller.teardown() }
+
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        XCTAssertEqual(controller.section, .general)
+        XCTAssertNil(controller.selectedProviderID)
+        assertSidebarSelection(in: window, selected: .general)
+
+        for section in DashboardSection.allCases {
+            controller.showSection(section)
+            XCTAssertEqual(controller.section, section)
+            XCTAssertNil(controller.selectedProviderID)
+            XCTAssertEqual(window.title, section.title)
+            assertSidebarSelection(in: window, selected: section)
+        }
+
+        controller.showProvider("other")
+        XCTAssertEqual(controller.selectedProviderID, "other")
+        XCTAssertEqual(window.title, "Other")
+        assertSidebarSelection(in: window, selected: nil)
+    }
+
+    func testRefreshIsAGeneralCardRatherThanASidebarDestination() throws {
+        XCTAssertEqual(
+            DashboardSection.allCases,
+            [.general, .menuBar, .menu, .advanced, .about]
+        )
+        XCTAssertNil(DashboardSection(rawValue: 5))
+
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-383-refresh-card.db")
+            )
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(
+            appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .general)
+        )
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let labels = textFields(in: try XCTUnwrap(window.contentView)).map(\.stringValue)
+        XCTAssertTrue(labels.contains(tr(.keyDashboardGeneralAndRefreshPagesRefresh)))
+        XCTAssertFalse(labels.contains(tr(.keyDashboardGeneralAndRefreshPagesRefreshSettings)))
+        XCTAssertTrue(
+            sidebarButtons(in: window).contains { $0.tag == DashboardSection.general.rawValue }
+        )
+        XCTAssertFalse(
+            sidebarButtons(in: window).contains { $0.tag == 5 }
+        )
+    }
+
+    func testRepresentativePagesKeepCurrentScrollHostsAndAboutFocusContract() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-383-pages.db")
+            )
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(
+            appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .general)
+        )
+
+        for section in [DashboardSection.general, .menuBar, .menu, .advanced] {
+            appDelegate.dashboardCompositionForTesting.showSection(section)
+            window.layoutIfNeeded()
+            window.displayIfNeeded()
+            let page = try XCTUnwrap(
+                appDelegate.dashboardCompositionForTesting.contentHost.subviews.first
+            )
+            let scrollView = try XCTUnwrap(
+                firstDescendant(of: page, as: NSScrollView.self),
+                "Missing settings scroll view for \(section)"
+            )
+            XCTAssertTrue(scrollView.hasVerticalScroller)
+            XCTAssertFalse(scrollView.hasHorizontalScroller)
+            XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
+            XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
+            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+        }
+
+        appDelegate.dashboardCompositionForTesting.showSection(.about)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let aboutPage = try XCTUnwrap(
+            appDelegate.dashboardCompositionForTesting.contentHost.subviews.first
+        )
+        XCTAssertNil(
+            firstDescendant(of: aboutPage, as: NSScrollView.self),
+            "About is a centered identity page, not a settings scroll host"
+        )
+        let githubButton = try XCTUnwrap(
+            firstDescendant(of: aboutPage, as: DashboardAboutGitHubButton.self)
+        )
+        XCTAssertEqual(githubButton.focusRingType, .none)
+        XCTAssertEqual(githubButton.accessibilityRole(), .button)
+
+        let choices = [
+            ProviderChoice(id: "current", name: "Current", isCurrent: true)
+        ]
+        let providerController = makeController(providerChoices: choices)
+        defer { providerController.teardown() }
+        providerController.open()
+        providerController.showProvider("current")
+        let providerWindow = try XCTUnwrap(providerController.window)
+        providerWindow.layoutIfNeeded()
+        let providerPage = try XCTUnwrap(providerController.contentHost.subviews.first)
+        XCTAssertNotNil(firstDescendant(of: providerPage, as: NSScrollView.self))
+        XCTAssertEqual(providerWindow.title, "Current")
+        assertSidebarSelection(in: providerWindow, selected: nil)
+    }
+
+    private func makeController(
+        providerChoices: [ProviderChoice] = []
+    ) -> DashboardWindowController {
+        DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in NSView() },
+                makeProviderPage: { _ in
+                    DashboardSettingsComponents.makeSettingsPage([
+                        DashboardSettingsComponents.makeSettingsSection(
+                            "Usage",
+                            rows: [DashboardSettingsComponents.makeSettingsRow("Remaining")]
+                        )
+                    ])
+                },
+                providerChoices: { providerChoices },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+    }
+
+    private func sidebarWidth(in root: NSView) -> CGFloat? {
+        if let constant = root.constraints.first(where: { constraint in
+            constraint.firstAttribute == .width && abs(constraint.constant - 216) < 0.001
+        })?.constant {
+            return constant
+        }
+        for child in root.subviews {
+            if let constant = sidebarWidth(in: child) {
+                return constant
+            }
+        }
+        return nil
+    }
+
+    private func sidebarButtons(in window: NSWindow) -> [NSButton] {
+        guard let contentView = window.contentView else { return [] }
+        return buttons(in: contentView).filter { button in
+            DashboardSection(rawValue: button.tag) != nil
+        }
+    }
+
+    private func assertSidebarSelection(
+        in window: NSWindow,
+        selected: DashboardSection?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        for button in sidebarButtons(in: window) {
+            let section = DashboardSection(rawValue: button.tag)
+            let shouldSelect = section == selected
+            XCTAssertEqual(
+                button.state,
+                shouldSelect ? .on : .off,
+                "Sidebar \(String(describing: section)) selection mismatch",
+                file: file,
+                line: line
+            )
+            XCTAssertEqual(button.focusRingType, .none, file: file, line: line)
+        }
+    }
+
+    private func buttons(in view: NSView) -> [NSButton] {
+        var matches: [NSButton] = []
+        if let button = view as? NSButton {
+            matches.append(button)
+        }
+        for child in view.subviews {
+            matches.append(contentsOf: buttons(in: child))
+        }
+        return matches
+    }
+
+    private func textFields(in view: NSView) -> [NSTextField] {
+        var matches: [NSTextField] = []
+        if let field = view as? NSTextField {
+            matches.append(field)
+        }
+        for child in view.subviews {
+            matches.append(contentsOf: textFields(in: child))
+        }
+        return matches
+    }
+
+    private func firstDescendant<T: NSView>(of view: NSView, as type: T.Type) -> T? {
+        for child in view.subviews {
+            if let match = child as? T {
+                return match
+            }
+            if let match = firstDescendant(of: child, as: type) {
+                return match
+            }
+        }
+        return nil
+    }
+}
+
+@MainActor
 final class DashboardProductionPathRegressionTests: XCTestCase {
     func testMenuPageHidesStatusLinksEditorWhenMenuDisplayIsDisabled() {
         let defaults = UserDefaults.standard
