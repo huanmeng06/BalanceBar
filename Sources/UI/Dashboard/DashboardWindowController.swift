@@ -25,6 +25,19 @@ struct DashboardWindowControllerActions {
 
 final class DashboardContentRootView: NSVisualEffectView {
     override var mouseDownCanMoveWindow: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // fullSizeContentView draws under the titlebar. If this view claims
+        // those hits, NSThemeFrame never sees the double-click that runs
+        // AppleActionOnDoubleClick. Pass the titlebar band through.
+        guard let window else { return super.hitTest(point) }
+        let pointInSelf = convert(point, from: superview)
+        let layoutRectInSelf = convert(window.contentLayoutRect, from: nil)
+        if layoutRectInSelf.height > 0, pointInSelf.y >= layoutRectInSelf.maxY {
+            return nil
+        }
+        return super.hitTest(point)
+    }
 }
 
 /// Native Dashboard shell. The split view owns the sidebar/content geometry;

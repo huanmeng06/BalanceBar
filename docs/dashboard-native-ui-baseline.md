@@ -54,7 +54,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 缩放按钮 | **可见且 `isEnabled = true`**；使用系统标准 zoom 按钮 | `createDashboardWindow` |
 | 红黄绿 | 使用系统 `standardWindowButton`；不手动排除热区、不另做自定义拖拽覆盖层 | `standardWindowButton` |
 | 拖拽 | `isMovableByWindowBackground = false`；`DashboardContentRootView.mouseDownCanMoveWindow = false`，内容区不拖窗口；拖动由原生标题栏 / AppKit 处理，无全窗口 drag overlay | `createDashboardWindow` / `DashboardContentRootView` |
-| 双击标题栏 | 遵循用户的 macOS 标题栏双击偏好；不再调用 `toggleWindowZoom()` 在 `savedNormalFrame` 与 `screen.visibleFrame` 之间 `setFrame` | AppKit |
+| 双击标题栏 | `DashboardContentRootView.hitTest` 对 `contentLayoutRect` 以上返回 `nil`，让 NSThemeFrame 执行系统 `AppleActionOnDoubleClick`；不再调用 `toggleWindowZoom()` | `DashboardContentRootView.hitTest` |
 | 全屏 | 使用标准 zoom / 全屏行为；不再在 `.fullScreen` 时用自定义 `hitTest` 抑制双击 | AppKit |
 | 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。其 `view` 是挂载中的 `DashboardContentRootView`：material `.underWindowBackground`，圆角 16。全宽 `contentSurface` 叠在透明 `NSSplitView` 下方；左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。原生 `NSSplitView` 为 `isVertical = true`、`.thin` divider。打开时侧栏约 216pt（sidebar 视图一次性 frame seed，不是 `preferredThicknessFraction`）；`minimumThickness` 约 212、`maximumThickness` 320；`canCollapse = true`。折叠/展开走 `isCollapsed` 与 `toggleSidebar(_:)`（用户可见 toolbar 按钮属 #409）。不把 divider 厚度锁成 0，也不另造 hit strip；`holdingPriority` 为 sidebar 251 / content `.defaultLow`。 | `installLayout` / `DashboardSplitViewController` |
 | 侧栏材质 | 由 `NSSplitViewItem(sidebarWithViewController:)` 提供系统 sidebar chrome；侧栏根视图透明，仅承载 source-list | `makeSidebar` / `DashboardSplitViewController` |
@@ -140,7 +140,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 | 页面滚动 | 顶 52pt 非滚动空白，可垂直滚到卡片底部 `代码`+`人工` | 同一 General 文档内 `人工` | 同 General；FPS 恢复滚动不得抢焦点 `代码` | Status Links 超出视口时可滚到 `代码`+`人工` | 页滚动 + 日志内部滚动互不替代 `人工` | 无设置页滚动；内容居中 `代码`+`人工` | 走设置页滚动 `代码` |
 | 红黄绿位置 | 系统标题栏左侧；不另做自定义拖拽排除热区 `代码`；像素位置 `人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
 | 全屏 | 标准 AppKit zoom / 全屏；不再用自定义拖拽 overlay 抑制双击 `代码`+`人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
-| 双击标题栏 | 遵循系统标题栏双击偏好，不再在普通尺寸与 `visibleFrame` 间自定义切换 `代码`+`人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
+| 双击标题栏 | 标题栏命中穿透到 NSThemeFrame，遵循系统 `AppleActionOnDoubleClick`，不再自定义 `setFrame` `代码`+`人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
 | 键盘 / 焦点 | 侧栏 source-list 可成为 first responder；上下方向键在五个可选项间移动 `代码`+`人工` | 间隔弹出菜单可操作 `人工` | 滑块、弹出菜单、FPS 字段 `人工` | 阈值字段、Status Links 编辑器有系统 focus ring `人工` | 日志可选中、按钮可激活 `人工` | GitHub 按钮自定义焦点描边 `代码`+`人工` | Refresh/Switch 按钮可激活 `人工` |
 
 共享窗口行为（尺寸、绿钮、双击、红黄绿、全屏）在每一页都应相同。后续 Issue 若只改某一页内容，仍需抽查窗口外壳未变。
@@ -152,7 +152,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 - `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、透明标题栏、unified 空工具栏、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、内容表面浅 82% / 深 20%、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
 - `DashboardWindowControllerTests.testWindowEnablesNativeZoomAndStaysResizable`
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`
-- `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用
+- `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome
 - `DashboardComponentsTests.testDashboardSectionsPreserveNavigationOrderAndMetadata`
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
 - `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
