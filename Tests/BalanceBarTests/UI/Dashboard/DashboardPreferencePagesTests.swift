@@ -669,12 +669,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 break
             }
         }
-        let page = DashboardGeneralPage().make(.init(
-            preferences: preferences,
-            currentProviderName: "OpenAI",
-            relay: relay,
-            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
-        ))
+        let page = DashboardScrollablePageViewController.makePageView(
+            hosting: DashboardGeneralPage().make(.init(
+                preferences: preferences,
+                currentProviderName: "OpenAI",
+                relay: relay,
+                updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+            ))
+        )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
             styleMask: [.borderless],
@@ -3131,7 +3133,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let relay = DashboardPreferencePageRelay()
         var systemSettingsOpenCount = 0
         relay.onOpenSystemMenuBarSettings = { systemSettingsOpenCount += 1 }
-        let page = controller.make(.init(
+        let content = controller.make(.init(
             preferences: preferences,
             snapshot: snapshot,
             menuBarSnapshot: { $0 },
@@ -3139,6 +3141,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             relay: relay,
             statusItemVisibility: .hiddenByRuntimePolicy
         ))
+        let page = DashboardScrollablePageViewController.makePageView(hosting: content)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 740, height: 520),
             styleMask: [.borderless],
@@ -3229,7 +3232,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "2h",
             Date(timeIntervalSince1970: 1)
         )
-        let page = controller.make(.init(
+        let content = controller.make(.init(
             preferences: preferences,
             snapshot: snapshot,
             menuBarSnapshot: { $0 },
@@ -3237,13 +3240,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
             relay: DashboardPreferencePageRelay(),
             statusItemVisibility: .hiddenByMenuBarSpace
         ))
+        let pageController = DashboardScrollablePageViewController(wrapping: content)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 740, height: 520),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
-        window.contentView = page
+        window.contentViewController = pageController
+        let page = pageController.view
         defer { window.orderOut(nil) }
         window.layoutIfNeeded()
         page.layoutSubtreeIfNeeded()
@@ -3786,17 +3791,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 preferences.menuBarQuotaWindowPreference = preference
             }
             let controller = DashboardMenuBarPage()
-            let page = controller.make(.init(
-                preferences: preferences,
-                snapshot: snapshot,
-                menuBarSnapshot: { current in
-                    current.menuBarSnapshot(
-                        preferredQuotaWindow: preferences.menuBarQuotaWindowPreference
-                    )
-                },
-                iconImage: nil,
-                relay: relay
-            ))
+            let page = DashboardScrollablePageViewController.makePageView(
+                hosting: controller.make(.init(
+                    preferences: preferences,
+                    snapshot: snapshot,
+                    menuBarSnapshot: { current in
+                        current.menuBarSnapshot(
+                            preferredQuotaWindow: preferences.menuBarQuotaWindowPreference
+                        )
+                    },
+                    iconImage: nil,
+                    relay: relay
+                ))
+            )
             page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
             let window = NSWindow(
                 contentRect: page.frame,
@@ -4675,7 +4682,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         window.contentView?.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 
-        DashboardPageScrollPosition.restore(visualOffsetY: 140, in: composition.contentHost)
+        composition.restorePageScrollOffsetY(140)
         window.layoutIfNeeded()
         let capturedOffset = composition.pageScrollOffsetY()
         XCTAssertEqual(composition.section, .menuBar)

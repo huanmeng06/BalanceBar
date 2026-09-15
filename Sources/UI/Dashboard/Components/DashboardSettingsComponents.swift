@@ -1059,36 +1059,10 @@ enum DashboardSettingsComponents {
         }
     }
 
-    static func makeSettingsPage(_ sections: [NSView]) -> NSView {
-        let root = DashboardSettingsPageView()
-        let viewportContainer = NSView()
-        viewportContainer.translatesAutoresizingMaskIntoConstraints = false
-        let scrollView = NSScrollView()
-        scrollView.contentView = NSClipView()
-        scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.verticalScrollElasticity = .none
-        scrollView.horizontalScrollElasticity = .none
-        // Do not inherit a window/titlebar content inset when a fresh page is
-        // mounted. AppKit still owns all user bounds and momentum behavior;
-        // this only makes the scroll host's legal top coincide with its
-        // document's top edge across window creation and page replacement.
-        scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-        scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-        // Keep the scrollbar discoverable on dense settings pages. The
-        // document is taller than the viewport when the status-link editor is
-        // present, so hiding the scroller makes the add control look missing.
-        scrollView.autohidesScrollers = false
-        scrollView.scrollerStyle = .overlay
-        scrollView.borderType = .noBorder
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-
-        let documentView = DashboardSettingsDocumentView()
-        documentView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.documentView = documentView
-
+    /// Settings sections stack only. Page-level `NSScrollView` chrome, the
+    /// 52pt viewport inset, and the 34pt document width contract belong to
+    /// `DashboardScrollablePageViewController`.
+    static func makeSettingsPageContent(_ sections: [NSView]) -> NSView {
         let stack = NSStackView(views: sections)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -1101,44 +1075,21 @@ enum DashboardSettingsComponents {
         stack.setContentCompressionResistancePriority(.required, for: .horizontal)
         stack.setContentHuggingPriority(.required, for: .vertical)
         stack.setContentCompressionResistancePriority(.required, for: .vertical)
-        documentView.addSubview(stack)
-        root.addSubview(viewportContainer)
-        viewportContainer.addSubview(scrollView)
-        // Match the measured titlebar/content-host breathing room without
-        // making that space part of the scrollable document.
-        let viewportTopInset: CGFloat = 52
-        let viewportBottomInset: CGFloat = 0
-        NSLayoutConstraint.activate([
-            viewportContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            viewportContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            viewportContainer.topAnchor.constraint(equalTo: root.topAnchor, constant: viewportTopInset),
-            viewportContainer.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -viewportBottomInset),
-            scrollView.leadingAnchor.constraint(equalTo: viewportContainer.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: viewportContainer.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: viewportContainer.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: viewportContainer.bottomAnchor),
-            documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-            documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-            documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-            documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
-            // The document top is the native legal top; no duplicate titlebar
-            // or document inset is placed in the scrollable content range.
-            stack.topAnchor.constraint(equalTo: documentView.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 34),
-            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -34),
-            // The stack must fit inside the document, but it should keep its
-            // natural height when the page is shorter than the viewport.
-            // Using an equality here makes AppKit stretch the first row to
-            // consume all remaining space.
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor, constant: -34)
-        ])
         for section in sections {
             section.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
             section.setContentHuggingPriority(.defaultLow, for: .horizontal)
             section.setContentCompressionResistancePriority(.required, for: .horizontal)
         }
-        return root
+        return stack
+    }
+
+    /// Compatibility facade for tests that still assemble a complete page view
+    /// without a page controller. Production pages wrap
+    /// `makeSettingsPageContent` in `DashboardScrollablePageViewController`.
+    static func makeSettingsPage(_ sections: [NSView]) -> NSView {
+        DashboardScrollablePageViewController.makePageView(
+            hosting: makeSettingsPageContent(sections)
+        )
     }
 
     static func makeSettingsSection(

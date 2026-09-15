@@ -28,6 +28,6 @@ final class DashboardAdvancedPage {
             ),
             input.logViewer
         ])
-        return DashboardSettingsComponents.makeSettingsPage([logs])
+        return DashboardSettingsComponents.makeSettingsPageContent([logs])
     }
 }
