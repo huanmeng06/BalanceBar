@@ -5,6 +5,7 @@ import AppKit
 final class DashboardToolbarController: NSObject, NSToolbarDelegate {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
+        .flexibleSpace,
         .toggleSidebar,
         .sidebarTrackingSeparator
     ]

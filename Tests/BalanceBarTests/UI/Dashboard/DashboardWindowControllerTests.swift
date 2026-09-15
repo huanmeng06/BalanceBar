@@ -36,6 +36,7 @@ final class DashboardWindowControllerTests: XCTestCase {
             ),
             encoding: .utf8
         )
+        XCTAssertTrue(source.contains(".flexibleSpace"))
         XCTAssertTrue(source.contains(".toggleSidebar"))
         XCTAssertTrue(source.contains(".sidebarTrackingSeparator"))
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
@@ -1046,26 +1047,21 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(toolbar.delegate is DashboardToolbarController, file: file, line: line)
         XCTAssertEqual(
             DashboardToolbarController.defaultItemIdentifiers,
-            [.toggleSidebar, .sidebarTrackingSeparator],
+            [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator],
             file: file,
             line: line
         )
 
         let identifiers = toolbar.items.map(\.itemIdentifier)
-        XCTAssertTrue(
-            identifiers.contains(.toggleSidebar),
-            "Dashboard toolbar must include the system sidebar toggle",
-            file: file,
-            line: line
-        )
-        XCTAssertTrue(
-            identifiers.contains(.sidebarTrackingSeparator),
-            "Dashboard toolbar must include the system sidebar tracking separator",
+        XCTAssertEqual(
+            identifiers,
+            [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator],
+            "System flexibleSpace should precede the sidebar toggle so AppKit can push it to the tracking separator",
             file: file,
             line: line
         )
         let customIdentifiers = identifiers.filter {
-            $0 != .toggleSidebar && $0 != .sidebarTrackingSeparator
+            $0 != .flexibleSpace && $0 != .toggleSidebar && $0 != .sidebarTrackingSeparator
         }
         XCTAssertTrue(
             customIdentifiers.isEmpty,
