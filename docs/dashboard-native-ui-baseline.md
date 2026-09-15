@@ -55,7 +55,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 拖拽 | `isMovableByWindowBackground = false`；仅标题栏带（`contentLayoutRect` 以上）可拖；侧栏内容、卡片空隙、滚动区不能拖窗口 | `DashboardWindowDragPolicy` |
 | 双击标题栏 | 调用 `toggleWindowZoom()`：在当前 frame 与 `screen.visibleFrame` 之间切换，带动画；**不是** AppKit `zoom:` / `toggleFullScreen:` | `DashboardWindowZoomState` |
 | 全屏 | 生产窗口未实现 `windowShouldZoom` / `windowWillEnterFullScreen`，也未设置 fullscreen collection behavior。处于 `.fullScreen` 时标题栏拖拽 `hitTest` 返回 `nil`，双击被抑制 | `DashboardTitlebarDragView.hitTest` |
-| 根视图 | `NSVisualEffectView` material `.underWindowBackground`，圆角 16；侧栏固定 216pt；内容区铺满其余空间 | `installLayout` |
+| 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。其 `view` 是挂载中的 `DashboardContentRootView`：material `.underWindowBackground`，圆角 16。全宽 `contentSurface` 叠在透明 `NSSplitView` 下方；左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。侧栏 216pt 由 item `minimumThickness`/`maximumThickness` 锁定，`canCollapse = false`，分隔线厚度 0；窗口缩放由 content item 承担。 | `installLayout` / `DashboardSplitViewController` |
 | 侧栏材质 | macOS 26+ 动态 `NSGlassEffectView`，否则 `.sidebar` visual effect；圆角 22 | `makeSidebar` |
 | 点击编辑 | 窗口级 `leftMouseDown` monitor：点在可编辑 `NSTextField` 内保持编辑，点在标签/卡片/空白处 `makeFirstResponder(nil)` | `installMouseMonitor` |
 
@@ -63,7 +63,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 
 ## 侧栏选择
 
-固定宽度 216pt。分组顺序：
+固定宽度 216pt（split-view item 的 min=max thickness，不是 sidebar 视图上的 `widthAnchor`）。分组顺序：
 
 1. General（无组标题）
 2. Appearance 组：Menu Bar、Menu
@@ -148,7 +148,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 这些已有或本次新增的测试是回归闸门，不是视觉通过证明：
 
-- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、透明标题栏、unified toolbar、绿钮禁用、侧栏 216pt、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
+- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、透明标题栏、unified toolbar、绿钮禁用、`NSSplitViewController` 外壳、侧栏 216pt thickness、live `DashboardContentRootView`、内容表面浅 82% / 深 20%、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
 - `DashboardWindowControllerTests.testWindowDisablesNativeZoomButStaysResizable`
 - `DashboardWindowControllerTests.testWindowZoomStateUsesTargetFrameAndRestoresRepeatedly`
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`

@@ -366,16 +366,49 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let splitController = try XCTUnwrap(
             window.contentViewController as? DashboardSplitViewController
         )
+        XCTAssertTrue(window.contentViewController is NSSplitViewController)
         XCTAssertEqual(splitController.splitViewItems.count, 2)
-        XCTAssertTrue(splitController.splitViewItems[0].viewController === splitController.sidebarController)
-        XCTAssertTrue(splitController.splitViewItems[1].viewController === splitController.contentController)
-        XCTAssertEqual(splitController.splitViewItems[0].viewController.view.frame.width, 216, accuracy: 1)
-        XCTAssertTrue(splitController.view is DashboardContentRootView)
+        let sidebarItem = splitController.splitViewItems[0]
+        let contentItem = splitController.splitViewItems[1]
+        XCTAssertTrue(sidebarItem.viewController === splitController.sidebarController)
+        XCTAssertTrue(contentItem.viewController === splitController.contentController)
+        XCTAssertEqual(sidebarItem.behavior, .sidebar)
+        XCTAssertNotEqual(contentItem.behavior, .sidebar)
+        XCTAssertFalse(sidebarItem.canCollapse)
+        XCTAssertEqual(sidebarItem.minimumThickness, 216, accuracy: 0.001)
+        XCTAssertEqual(sidebarItem.maximumThickness, 216, accuracy: 0.001)
+        XCTAssertEqual(sidebarItem.viewController.view.frame.width, 216, accuracy: 1)
+        XCTAssertGreaterThan(contentItem.viewController.view.frame.width, 0)
+        XCTAssertTrue(sidebarItem.viewController.view.isDescendant(of: splitController.splitView))
+        XCTAssertTrue(contentItem.viewController.view.isDescendant(of: splitController.splitView))
+        XCTAssertTrue(splitController.splitView is DashboardSplitView)
+        XCTAssertEqual(splitController.splitView.dividerThickness, 0, accuracy: 0.001)
+
+        let backdrop = try XCTUnwrap(splitController.view as? DashboardContentRootView)
+        XCTAssertTrue(contentView === backdrop)
+        XCTAssertEqual(backdrop.material, .underWindowBackground)
+        XCTAssertEqual(backdrop.blendingMode, .behindWindow)
+        XCTAssertEqual(backdrop.state, .active)
+        XCTAssertTrue(splitController.view.subviews.contains(splitController.contentSurface))
         XCTAssertTrue(splitController.view.subviews.contains(splitController.splitView))
+        XCTAssertLessThan(
+            try XCTUnwrap(splitController.view.subviews.firstIndex(of: splitController.contentSurface)),
+            try XCTUnwrap(splitController.view.subviews.firstIndex(of: splitController.splitView))
+        )
+        XCTAssertEqual(
+            splitController.contentSurface.identifier,
+            DashboardSplitViewController.contentSurfaceIdentifier
+        )
+        XCTAssertEqual(
+            splitController.contentSurface.layer?.backgroundColor?.alpha ?? -1,
+            dashboardUsesDarkAppearance ? 0.20 : 0.82,
+            accuracy: 0.01
+        )
         XCTAssertFalse(
-            splitController.splitViewItems[0].viewController.view.constraints.contains {
+            sidebarItem.viewController.view.constraints.contains {
                 $0.firstAttribute == .width && $0.constant == 216
-            }
+            },
+            "Sidebar width must come from NSSplitViewItem thickness, not a leftover widthAnchor"
         )
         XCTAssertEqual(window.minSize.width, 800, accuracy: 0.001)
         XCTAssertGreaterThanOrEqual(window.minSize.height, 540)
@@ -413,11 +446,48 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertLessThan(closeButton.frame.minX, miniaturizeButton.frame.minX)
         XCTAssertLessThan(miniaturizeButton.frame.minX, zoomButton.frame.minX)
 
-        XCTAssertEqual(try XCTUnwrap(sidebarWidth(in: contentView)), 216, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(sidebarWidth(in: window)), 216, accuracy: 1)
         let dragView = try XCTUnwrap(firstDescendant(of: contentView, as: DashboardTitlebarDragView.self))
         XCTAssertTrue(dragView.mouseDownCanMoveWindow)
         XCTAssertTrue(contentView is DashboardContentRootView)
         XCTAssertFalse(contentView.mouseDownCanMoveWindow)
+    }
+
+    func testContentSurfaceTintFollowsBaselineAppearancesWithoutDarkCompensation() throws {
+        let previousAppearance = NSApp.appearance
+        defer { NSApp.appearance = previousAppearance }
+
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+
+        let cases: [(NSAppearance.Name, CGFloat)] = [
+            (.aqua, 0.82),
+            (.darkAqua, 0.20)
+        ]
+        for (name, expectedAlpha) in cases {
+            let appearance = NSAppearance(named: name)
+            NSApp.appearance = appearance
+            window.appearance = appearance
+            controller.rebuild()
+            window.layoutIfNeeded()
+
+            let splitController = try XCTUnwrap(
+                window.contentViewController as? DashboardSplitViewController
+            )
+            let backdrop = try XCTUnwrap(splitController.view as? DashboardContentRootView)
+            XCTAssertEqual(backdrop.material, .underWindowBackground)
+            XCTAssertEqual(backdrop.blendingMode, .behindWindow)
+            XCTAssertEqual(
+                splitController.contentSurface.layer?.backgroundColor?.alpha ?? -1,
+                expectedAlpha,
+                accuracy: 0.01,
+                "Content surface alpha mismatch for \(name.rawValue)"
+            )
+            XCTAssertEqual(try XCTUnwrap(sidebarWidth(in: window)), 216, accuracy: 1)
+            XCTAssertFalse(splitController.splitViewItems[0].canCollapse)
+        }
     }
 
     func testSidebarSelectionAndProviderClearingMatchCurrentNativeBaseline() throws {
@@ -564,18 +634,11 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
     }
 
-    private func sidebarWidth(in root: NSView) -> CGFloat? {
-        if let constant = root.constraints.first(where: { constraint in
-            constraint.firstAttribute == .width && abs(constraint.constant - 216) < 0.001
-        })?.constant {
-            return constant
-        }
-        for child in root.subviews {
-            if let constant = sidebarWidth(in: child) {
-                return constant
-            }
-        }
-        return nil
+    private func sidebarWidth(in window: NSWindow) -> CGFloat? {
+        guard let splitController = window.contentViewController as? DashboardSplitViewController,
+              let sidebarItem = splitController.splitViewItems.first
+        else { return nil }
+        return sidebarItem.viewController.view.frame.width
     }
 
     private func sidebarButtons(in window: NSWindow) -> [NSButton] {

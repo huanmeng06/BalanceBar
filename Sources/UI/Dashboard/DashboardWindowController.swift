@@ -72,20 +72,34 @@ final class DashboardContentRootView: NSVisualEffectView {
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
+final class DashboardSplitView: NSSplitView {
+    override var dividerThickness: CGFloat { 0 }
+
+    override func drawDivider(in rect: NSRect) {}
+}
+
 /// Native Dashboard shell. The split view owns the sidebar/content geometry;
 /// page controllers remain responsible only for their own content.
 final class DashboardSplitViewController: NSSplitViewController {
+    static let sidebarThickness: CGFloat = 216
+    static let contentSurfaceIdentifier = NSUserInterfaceItemIdentifier("dashboardContentSurface")
+
     let sidebarController: NSViewController
     let contentController: NSViewController
+    private(set) var contentSurface = NSView()
 
     init(sidebar: NSViewController, content: NSViewController) {
         self.sidebarController = sidebar
         self.contentController = content
         super.init(nibName: nil, bundle: nil)
+        let split = DashboardSplitView()
+        split.isVertical = true
+        split.dividerStyle = .thin
+        splitView = split
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.canCollapse = false
-        sidebarItem.minimumThickness = 216
-        sidebarItem.maximumThickness = 216
+        sidebarItem.minimumThickness = Self.sidebarThickness
+        sidebarItem.maximumThickness = Self.sidebarThickness
         sidebarItem.holdingPriority = NSLayoutConstraint.Priority(900)
         addSplitViewItem(sidebarItem)
         addSplitViewItem(NSSplitViewItem(viewController: content))
@@ -103,10 +117,28 @@ final class DashboardSplitViewController: NSSplitViewController {
             light: NSColor.white.withAlphaComponent(0.08),
             dark: NSColor.black.withAlphaComponent(0.14)
         ).cgColor
-        view = backdrop
+
+        contentSurface.identifier = Self.contentSurfaceIdentifier
+        contentSurface.wantsLayer = true
+        contentSurface.layer?.isOpaque = false
+        // Full-window tint from the #383 baseline. The split view stays
+        // transparent so this surface, not a darker content-pane overlay,
+        // provides light/dark contrast over the visual-effect backdrop.
+        contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
+            light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
+            dark: NSColor.black.withAlphaComponent(0.20)
+        ).cgColor
+        contentSurface.translatesAutoresizingMaskIntoConstraints = false
         splitView.translatesAutoresizingMaskIntoConstraints = false
+
+        view = backdrop
+        backdrop.addSubview(contentSurface)
         backdrop.addSubview(splitView)
         NSLayoutConstraint.activate([
+            contentSurface.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor),
+            contentSurface.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor),
+            contentSurface.topAnchor.constraint(equalTo: backdrop.topAnchor),
+            contentSurface.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor),
             splitView.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor),
             splitView.topAnchor.constraint(equalTo: backdrop.topAnchor),
@@ -488,37 +520,22 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         contentHost.removeFromSuperview()
         let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
         let sidebar = makeSidebar(titlebarHeight: titlebarHeight)
-        let contentSurface = NSView()
-        contentSurface.wantsLayer = true
-        contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
-            // Keep a readable dark content surface when hosted by the native
-            // split view. Without this backing layer the wallpaper can show
-            // through every page card and overwhelm its text contrast.
-            dark: NSColor.black.withAlphaComponent(0.42)
-        ).cgColor
-        contentSurface.layer?.isOpaque = false
-        contentSurface.translatesAutoresizingMaskIntoConstraints = false
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         contentHost.translatesAutoresizingMaskIntoConstraints = false
-        contentSurface.addSubview(contentHost)
-        NSLayoutConstraint.activate([
-            contentHost.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
-            contentHost.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
-            contentHost.topAnchor.constraint(equalTo: contentSurface.topAnchor),
-            contentHost.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor)
-        ])
         let splitController = DashboardSplitViewController(
             sidebar: DashboardSidebarViewController(view: sidebar),
-            content: DashboardContentViewController(view: contentSurface)
+            content: DashboardContentViewController(view: contentHost)
         )
-        splitController.splitView.setPosition(216, ofDividerAt: 0)
         let requestedFrame = window.frame
         window.contentViewController = splitController
         // AppKit may fit a newly installed split-view controller to its
         // minimum thicknesses. Preserve the Dashboard's established 880×620
         // initial window frame after installing the native hierarchy.
         window.setFrame(requestedFrame, display: false)
+        splitController.splitView.setPosition(
+            DashboardSplitViewController.sidebarThickness,
+            ofDividerAt: 0
+        )
         DashboardWindowDragPolicy.install(in: window, contentRoot: splitController.view) { [weak self] in
             self?.toggleWindowZoom()
         }
