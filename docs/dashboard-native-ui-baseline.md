@@ -57,7 +57,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 双击标题栏 | 调用 `toggleWindowZoom()`：在当前 frame 与 `screen.visibleFrame` 之间切换，带动画；**不是** AppKit `zoom:` / `toggleFullScreen:` | `DashboardWindowZoomState` |
 | 全屏 | 生产窗口未实现 `windowShouldZoom` / `windowWillEnterFullScreen`，也未设置 fullscreen collection behavior。处于 `.fullScreen` 时标题栏拖拽 `hitTest` 返回 `nil`，双击被抑制 | `DashboardTitlebarDragView.hitTest` |
 | 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。其 `view` 是挂载中的 `DashboardContentRootView`：material `.underWindowBackground`，圆角 16。全宽 `contentSurface` 叠在透明 `NSSplitView` 下方；左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。原生 `NSSplitView` 为 `isVertical = true`、`.thin` divider。打开时侧栏约 216pt（sidebar 视图一次性 frame seed，不是 `preferredThicknessFraction`）；`minimumThickness` 约 212、`maximumThickness` 320；`canCollapse = true`。折叠/展开走 `isCollapsed` 与 `toggleSidebar(_:)`（用户可见 toolbar 按钮属 #409）。不把 divider 厚度锁成 0，也不另造 hit strip；`holdingPriority` 为 sidebar 251 / content `.defaultLow`。 | `installLayout` / `DashboardSplitViewController` |
-| 侧栏材质 | macOS 26+ 动态 `NSGlassEffectView`，否则 `.sidebar` visual effect；圆角 22 | `makeSidebar` |
+| 侧栏材质 | 由 `NSSplitViewItem(sidebarWithViewController:)` 提供系统 sidebar chrome；侧栏根视图透明，仅承载 source-list | `makeSidebar` / `DashboardSplitViewController` |
 | 点击编辑 | 窗口级 `leftMouseDown` monitor：点在可编辑 `NSTextField` 内保持编辑，点在标签/卡片/空白处 `makeFirstResponder(nil)` | `installMouseMonitor` |
 
 测试宿主（`ApplicationWindowPresentation`）会把窗口停到屏幕外并关闭阴影、设为透明。下面标为「代码已锁定」的项可以在 XCTest 里断言；标为「人工」的项必须看开发版。

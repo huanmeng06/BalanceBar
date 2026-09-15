@@ -4,18 +4,28 @@ import XCTest
 
 @MainActor
 final class DashboardWindowControllerTests: XCTestCase {
-    func testGlassEffectFactoryMatchesRuntimeAvailability() throws {
-        let contentView = NSView()
-        let glassView = makeDashboardGlassEffectView(contentView: contentView, cornerRadius: 12)
-
-        if #available(macOS 26.0, *) {
-            let glassViewClass: AnyClass = try XCTUnwrap(NSClassFromString("NSGlassEffectView"))
-            let resolvedView = try XCTUnwrap(glassView)
-            XCTAssertTrue(resolvedView.isKind(of: glassViewClass))
-            XCTAssertTrue(resolvedView.value(forKey: "contentView") as? NSView === contentView)
-        } else {
-            XCTAssertNil(glassView)
-        }
+    func testSidebarChromeSourceDoesNotInstallCustomGlassPanel() throws {
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardWindowController.swift"
+            ),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "private func makeSidebar(titlebarHeight: CGFloat) -> NSView {"))
+        let end = try XCTUnwrap(
+            source.range(of: "var sourceListForTesting: DashboardSourceListController? { sourceListController }")
+        )
+        let makeSidebarSource = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(makeSidebarSource.contains("DashboardSourceListController"))
+        XCTAssertFalse(makeSidebarSource.contains("NSGlassEffectView"))
+        XCTAssertFalse(makeSidebarSource.contains("NSClassFromString"))
+        XCTAssertFalse(makeSidebarSource.contains("makeDashboardGlassEffectView"))
+        XCTAssertFalse(makeSidebarSource.contains("panelShadow"))
+        XCTAssertFalse(makeSidebarSource.contains("NSVisualEffectView"))
+        XCTAssertFalse(makeSidebarSource.contains("cornerRadius"))
+        XCTAssertFalse(makeSidebarSource.contains("shadowOpacity"))
+        XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
     }
 
     func testWindowDisablesNativeZoomButStaysResizable() throws {
@@ -503,6 +513,24 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(dragView.mouseDownCanMoveWindow)
         XCTAssertTrue(contentView is DashboardContentRootView)
         XCTAssertFalse(contentView.mouseDownCanMoveWindow)
+        assertSidebarHostsSourceListWithoutCustomMaterialWrapper(in: window)
+    }
+
+    func testSidebarUsesSplitItemChromeInsteadOfCustomGlassOrVisualEffectWrapper() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        assertSidebarHostsSourceListWithoutCustomMaterialWrapper(in: window)
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        XCTAssertEqual(sourceList.outlineView.style, .sourceList)
+        XCTAssertEqual(sourceList.selectedSection(), .general)
+        XCTAssertEqual(sourceList.outlineView.backgroundColor, .clear)
+        XCTAssertFalse(sourceList.scrollView.drawsBackground)
     }
 
     func testContentSurfaceTintFollowsBaselineAppearancesWithoutDarkCompensation() throws {
@@ -852,6 +880,9 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
     }
 
     private func hasFixedWidthConstraint(in view: NSView, constant: CGFloat) -> Bool {
+        if view is NSScrollView || view is NSOutlineView {
+            return false
+        }
         if view.constraints.contains(where: { constraint in
             constraint.firstAttribute == .width
                 && constraint.secondItem == nil
@@ -972,6 +1003,92 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             }
         }
         return nil
+    }
+
+    private func firstDescendant(of view: NSView, kindOf classType: AnyClass) -> NSView? {
+        for child in view.subviews {
+            if child.isKind(of: classType) {
+                return child
+            }
+            if let match = firstDescendant(of: child, kindOf: classType) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func descendants<T: NSView>(of view: NSView, as type: T.Type) -> [T] {
+        var matches: [T] = []
+        for child in view.subviews {
+            if let match = child as? T {
+                matches.append(match)
+            }
+            matches.append(contentsOf: descendants(of: child, as: type))
+        }
+        return matches
+    }
+
+    private func hasCustomRoundedPanelShadow(_ view: NSView) -> Bool {
+        if let layer = view.layer,
+           abs(layer.cornerRadius - 22) < 0.001,
+           layer.shadowOpacity > 0 {
+            return true
+        }
+        return view.subviews.contains { hasCustomRoundedPanelShadow($0) }
+    }
+
+    private func assertSidebarHostsSourceListWithoutCustomMaterialWrapper(
+        in window: NSWindow,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard let splitController = window.contentViewController as? DashboardSplitViewController,
+              let sidebarItem = splitController.splitViewItems.first
+        else {
+            XCTFail("Missing sidebar split item", file: file, line: line)
+            return
+        }
+        XCTAssertEqual(sidebarItem.behavior, .sidebar, file: file, line: line)
+        XCTAssertTrue(sidebarItem.allowsFullHeightLayout, file: file, line: line)
+
+        let sidebarView = sidebarItem.viewController.view
+        XCTAssertFalse(
+            sidebarView is NSVisualEffectView,
+            "Sidebar root must not be an app-drawn visual-effect wrapper",
+            file: file,
+            line: line
+        )
+        if let glassViewClass = NSClassFromString("NSGlassEffectView") {
+            XCTAssertFalse(
+                sidebarView.isKind(of: glassViewClass),
+                "Sidebar root must not be NSGlassEffectView",
+                file: file,
+                line: line
+            )
+            XCTAssertNil(
+                firstDescendant(of: sidebarView, kindOf: glassViewClass),
+                "Sidebar path must not host NSGlassEffectView",
+                file: file,
+                line: line
+            )
+        }
+        XCTAssertTrue(
+            descendants(of: sidebarView, as: NSVisualEffectView.self)
+                .filter { $0.material == .sidebar }
+                .isEmpty,
+            "Do not replace the deleted glass panel with NSVisualEffectView(.sidebar)",
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(
+            hasCustomRoundedPanelShadow(sidebarView),
+            "Sidebar chrome must not keep a rounded panelShadow wrapper",
+            file: file,
+            line: line
+        )
+        let outline = firstDescendant(of: sidebarView, as: DashboardSourceListOutlineView.self)
+        XCTAssertNotNil(outline, "Sidebar must still host the #386 source-list", file: file, line: line)
+        XCTAssertEqual(outline?.style, .sourceList, file: file, line: line)
     }
 }
 
