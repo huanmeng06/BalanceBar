@@ -42,6 +42,9 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
         XCTAssertTrue(source.contains("autosavesConfiguration = false"))
         XCTAssertTrue(source.contains("#selector(NSSplitViewController.toggleSidebar"))
+        XCTAssertTrue(source.contains("item.isHidden = isCollapsed"))
+        XCTAssertFalse(source.contains("toolbarNavigationalItemIdentifiers"))
+        XCTAssertFalse(source.contains("isNavigational"))
         XCTAssertFalse(source.contains("setValue("))
         XCTAssertFalse(source.contains("forKey:"))
         XCTAssertFalse(source.contains("NSClassFromString"))
@@ -817,17 +820,54 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             toggle.target,
             "Sidebar toggle must walk the responder chain to NSSplitViewController"
         )
+        try assertTrackingSeparatorHidden(window, isCollapsed: false)
 
-        splitController.toggleSidebar(toggle)
+        let zoomButton = try XCTUnwrap(window.standardWindowButton(.zoomButton))
+        let expandedToggle = try XCTUnwrap(sidebarToggleControl(in: window))
+        let expandedOffset = toggleOffset(from: zoomButton, to: expandedToggle)
+
+        toggleSidebarWithoutAnimation(splitController, sender: toggle)
         window.layoutIfNeeded()
+        window.displayIfNeeded()
         XCTAssertTrue(sidebarItem.isCollapsed)
         XCTAssertEqual(controller.section, .menuBar)
         XCTAssertEqual(controller.sourceListForTesting?.selectedSection(), .menuBar)
+        try assertTrackingSeparatorHidden(window, isCollapsed: true)
+        let collapsedToggle = try XCTUnwrap(sidebarToggleControl(in: window))
+        let collapsedOffset = toggleOffset(from: zoomButton, to: collapsedToggle)
+        XCTAssertEqual(
+            collapsedOffset.x,
+            expandedOffset.x,
+            accuracy: 2,
+            "Sidebar toggle must keep its horizontal distance from the traffic lights when collapsed"
+        )
+        XCTAssertEqual(
+            collapsedOffset.y,
+            expandedOffset.y,
+            accuracy: 2,
+            "Sidebar toggle must keep its vertical alignment when collapsed"
+        )
 
-        splitController.toggleSidebar(toggle)
+        toggleSidebarWithoutAnimation(splitController, sender: toggle)
         window.layoutIfNeeded()
+        window.displayIfNeeded()
         XCTAssertFalse(sidebarItem.isCollapsed)
         XCTAssertEqual(controller.sourceListForTesting?.selectedSection(), .menuBar)
+        try assertTrackingSeparatorHidden(window, isCollapsed: false)
+        let restoredToggle = try XCTUnwrap(sidebarToggleControl(in: window))
+        let restoredOffset = toggleOffset(from: zoomButton, to: restoredToggle)
+        XCTAssertEqual(
+            restoredOffset.x,
+            expandedOffset.x,
+            accuracy: 2,
+            "Sidebar toggle must return to the same horizontal position when expanded"
+        )
+        XCTAssertEqual(
+            restoredOffset.y,
+            expandedOffset.y,
+            accuracy: 2,
+            "Sidebar toggle must return to the same vertical position when expanded"
+        )
         try assertNativeDashboardToolbar(window)
 
         controller.rebuild()
@@ -1080,6 +1120,88 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
+        XCTAssertNotNil(
+            toolbar.items.first { $0.itemIdentifier == .toggleSidebar },
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertTrackingSeparatorHidden(
+        _ window: NSWindow,
+        isCollapsed: Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let separator = try XCTUnwrap(
+            window.toolbar?.items.first { $0.itemIdentifier == .sidebarTrackingSeparator },
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(separator is NSTrackingSeparatorToolbarItem, file: file, line: line)
+        if #available(macOS 15.0, *) {
+            XCTAssertEqual(
+                separator.isHidden,
+                isCollapsed,
+                "Tracking separator should hide while the sidebar is collapsed so it cannot shove the toggle",
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    private func toggleSidebarWithoutAnimation(
+        _ splitController: NSSplitViewController,
+        sender: Any?
+    ) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+            splitController.toggleSidebar(sender)
+        }
+    }
+
+    private func themeFrame(of window: NSWindow) -> NSView? {
+        var root: NSView? = window.contentView
+        while let current = root, let superview = current.superview {
+            root = superview
+        }
+        return root
+    }
+
+    private func controlsMatchingToggleSidebar(in window: NSWindow) -> [NSControl] {
+        let action = #selector(NSSplitViewController.toggleSidebar(_:))
+        func collect(_ view: NSView, into matches: inout [NSControl]) {
+            if let control = view as? NSControl, control.action == action {
+                matches.append(control)
+            }
+            for child in view.subviews {
+                collect(child, into: &matches)
+            }
+        }
+        var matches: [NSControl] = []
+        if let root = themeFrame(of: window) {
+            collect(root, into: &matches)
+        }
+        return matches
+    }
+
+    private func sidebarToggleControl(in window: NSWindow) -> NSView? {
+        let splitView = (window.contentViewController as? NSSplitViewController)?.splitView
+        let matches = controlsMatchingToggleSidebar(in: window)
+        if let titlebarMatch = matches.first(where: { control in
+            guard let splitView else { return true }
+            return !control.isDescendant(of: splitView)
+        }) {
+            return titlebarMatch
+        }
+        return matches.first
+    }
+
+    private func toggleOffset(from zoomButton: NSView, to toggle: NSView) -> CGPoint {
+        let zoomFrame = zoomButton.convert(zoomButton.bounds, to: nil)
+        let toggleFrame = toggle.convert(toggle.bounds, to: nil)
+        return CGPoint(x: toggleFrame.minX - zoomFrame.maxX, y: toggleFrame.midY - zoomFrame.midY)
     }
 
     private func sidebarWidth(in window: NSWindow) -> CGFloat? {

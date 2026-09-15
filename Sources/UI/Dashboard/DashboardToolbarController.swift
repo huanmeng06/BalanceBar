@@ -10,6 +10,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
     ]
 
     private weak var splitView: NSSplitView?
+    private var sidebarCollapseObservation: NSKeyValueObservation?
 
     func install(on window: NSWindow, tracking splitView: NSSplitView) {
         self.splitView = splitView
@@ -20,6 +21,16 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
         toolbar.autosavesConfiguration = false
         window.toolbar = toolbar
         window.toolbarStyle = .unified
+        configureToggleSidebar(in: toolbar)
+        observeSidebarCollapse(in: window)
+        syncTrackingSeparatorVisibility(in: window)
+    }
+
+    func toolbarWillAddItem(_ notification: Notification) {
+        guard let item = notification.userInfo?[NSToolbarUserInfoKey.itemKey] as? NSToolbarItem else {
+            return
+        }
+        configureToggleSidebar(item)
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -28,10 +39,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         Self.defaultItemIdentifiers
-    }
-
-    func toolbarNavigationalItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar]
     }
 
     func toolbar(
@@ -47,7 +54,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
             return item
         case .sidebarTrackingSeparator:
             guard let splitView else {
-                return NSToolbarItem(itemIdentifier: .sidebarTrackingSeparator)
+                return nil
             }
             return NSTrackingSeparatorToolbarItem(
                 identifier: .sidebarTrackingSeparator,
@@ -57,5 +64,45 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate {
         default:
             return nil
         }
+    }
+
+    private func observeSidebarCollapse(in window: NSWindow) {
+        guard let splitController = window.contentViewController as? NSSplitViewController,
+              let sidebarItem = splitController.splitViewItems.first(where: { $0.behavior == .sidebar })
+        else {
+            sidebarCollapseObservation = nil
+            return
+        }
+        sidebarCollapseObservation = sidebarItem.observe(\.isCollapsed, options: [.new]) { [weak self, weak window] _, _ in
+            guard let self, let window else { return }
+            self.syncTrackingSeparatorVisibility(in: window)
+        }
+    }
+
+    private func syncTrackingSeparatorVisibility(in window: NSWindow) {
+        guard let toolbar = window.toolbar else { return }
+        let isCollapsed = (window.contentViewController as? NSSplitViewController)?
+            .splitViewItems
+            .first { $0.behavior == .sidebar }?
+            .isCollapsed ?? false
+        // When the full-height sidebar collapses, the tracking separator
+        // moves into the leading cluster and shoves the system toggle away
+        // from the traffic lights. Hide it while there is no divider to track.
+        for item in toolbar.items where item.itemIdentifier == .sidebarTrackingSeparator {
+            if #available(macOS 15.0, *) {
+                item.isHidden = isCollapsed
+            }
+        }
+        configureToggleSidebar(in: toolbar)
+    }
+
+    private func configureToggleSidebar(in toolbar: NSToolbar) {
+        toolbar.items.forEach(configureToggleSidebar)
+    }
+
+    private func configureToggleSidebar(_ item: NSToolbarItem) {
+        guard item.itemIdentifier == .toggleSidebar else { return }
+        item.action = #selector(NSSplitViewController.toggleSidebar(_:))
+        item.target = nil
     }
 }
