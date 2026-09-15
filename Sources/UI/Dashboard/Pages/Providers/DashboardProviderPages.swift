@@ -206,7 +206,7 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
                 control: actionButton
             )
         ])
-        root = DashboardSettingsComponents.makeSettingsPage([heading, usage, connection])
+        root = DashboardSettingsComponents.makeSettingsPageContent([heading, usage, connection])
 
         relay.onRefresh = actions.onRefresh
         relay.onSwitchProvider = actions.onSwitchProvider

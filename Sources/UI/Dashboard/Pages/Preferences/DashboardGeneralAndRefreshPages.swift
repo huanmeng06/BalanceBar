@@ -555,7 +555,7 @@ final class DashboardGeneralPage {
                 controlWidthConstrainedToRow: true
             )
         ])
-        return DashboardSettingsComponents.makeSettingsPage([system, refreshing, startup, app])
+        return DashboardSettingsComponents.makeSettingsPageContent([system, refreshing, startup, app])
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {

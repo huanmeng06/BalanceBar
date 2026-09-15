@@ -168,14 +168,14 @@ final class DashboardWindowControllerTests: XCTestCase {
             fpsField.isSelectable = true
             fpsField.stringValue = "30"
             fpsField.widthAnchor.constraint(equalToConstant: 44).isActive = true
-            return DashboardSettingsComponents.makeSettingsPage([
+            return DashboardSettingsComponents.makeSettingsPageContent([
                 DashboardSettingsComponents.makeSettingsSection("Tall", rows: [filler, fpsField])
             ])
         }
 
         let restoring = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in DashboardHostedPageViewController(wrapping: makeTallPage()) },
+                makeSectionPage: { _ in DashboardScrollablePageViewController(wrapping: makeTallPage()) },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
@@ -223,7 +223,7 @@ final class DashboardWindowControllerTests: XCTestCase {
 
         let fresh = DashboardWindowController(
             actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in DashboardHostedPageViewController(wrapping: makeTallPage()) },
+                makeSectionPage: { _ in DashboardScrollablePageViewController(wrapping: makeTallPage()) },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
                 providerChoices: { [] },
                 prepareForPageReplacement: {},
@@ -951,8 +951,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in
-                    DashboardHostedPageViewController(
-                        wrapping: DashboardSettingsComponents.makeSettingsPage([
+                    DashboardScrollablePageViewController(
+                        wrapping: DashboardSettingsComponents.makeSettingsPageContent([
                             DashboardSettingsComponents.makeSettingsSection(
                                 "Usage",
                                 rows: [DashboardSettingsComponents.makeSettingsRow("Remaining")]

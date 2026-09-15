@@ -2959,15 +2959,17 @@ final class UpdateTests: XCTestCase {
         let preferences = AppPreferences(defaults: defaults)
         let pageController = DashboardGeneralPage()
         let relay = DashboardPreferencePageRelay()
-        let page = pageController.make(.init(
-            preferences: preferences,
-            currentProviderName: "OpenAI",
-            relay: relay,
-            updateState: .available(
-                current: try XCTUnwrap(AppSemanticVersion("1.0.0")),
-                latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))
-            )
-        ))
+        let page = DashboardScrollablePageViewController.makePageView(
+            hosting: pageController.make(.init(
+                preferences: preferences,
+                currentProviderName: "OpenAI",
+                relay: relay,
+                updateState: .available(
+                    current: try XCTUnwrap(AppSemanticVersion("1.0.0")),
+                    latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))
+                )
+            ))
+        )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 300),
             styleMask: [.titled],
@@ -3030,12 +3032,14 @@ final class UpdateTests: XCTestCase {
         let preferences = AppPreferences(defaults: defaults)
         let pageController = DashboardGeneralPage()
         let relay = DashboardPreferencePageRelay()
-        let page = pageController.make(.init(
-            preferences: preferences,
-            currentProviderName: "OpenAI",
-            relay: relay,
-            updateState: .checking(current: try XCTUnwrap(AppSemanticVersion("1.2.3")))
-        ))
+        let page = DashboardScrollablePageViewController.makePageView(
+            hosting: pageController.make(.init(
+                preferences: preferences,
+                currentProviderName: "OpenAI",
+                relay: relay,
+                updateState: .checking(current: try XCTUnwrap(AppSemanticVersion("1.2.3")))
+            ))
+        )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 720, height: 360),
             styleMask: [.borderless],
@@ -3117,15 +3121,17 @@ final class UpdateTests: XCTestCase {
 
         let narrowPageController = DashboardGeneralPage()
         let narrowRelay = DashboardPreferencePageRelay()
-        let narrowPage = narrowPageController.make(.init(
-            preferences: preferences,
-            currentProviderName: "OpenAI",
-            relay: narrowRelay,
-            updateState: .available(
-                current: current,
-                latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))
-            )
-        ))
+        let narrowPage = DashboardScrollablePageViewController.makePageView(
+            hosting: narrowPageController.make(.init(
+                preferences: preferences,
+                currentProviderName: "OpenAI",
+                relay: narrowRelay,
+                updateState: .available(
+                    current: current,
+                    latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))
+                )
+            ))
+        )
         let narrowWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 360),
             styleMask: [.borderless],
@@ -3269,12 +3275,14 @@ final class UpdateTests: XCTestCase {
             let preferences = AppPreferences(defaults: defaults)
             let pageController = DashboardGeneralPage()
             let relay = DashboardPreferencePageRelay()
-            let page = pageController.make(.init(
-                preferences: preferences,
-                currentProviderName: "OpenAI",
-                relay: relay,
-                updateState: .available(current: current, latest: latest)
-            ))
+            let page = DashboardScrollablePageViewController.makePageView(
+                hosting: pageController.make(.init(
+                    preferences: preferences,
+                    currentProviderName: "OpenAI",
+                    relay: relay,
+                    updateState: .available(current: current, latest: latest)
+                ))
+            )
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 320, height: 420),
                 styleMask: [.borderless],
