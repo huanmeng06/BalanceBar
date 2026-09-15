@@ -72,16 +72,26 @@ final class DashboardContentRootView: NSVisualEffectView {
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
-final class DashboardSplitView: NSSplitView {
-    override var dividerThickness: CGFloat { 0 }
-
-    override func drawDivider(in rect: NSRect) {}
-}
-
 /// Native Dashboard shell. The split view owns the sidebar/content geometry;
 /// page controllers remain responsible only for their own content.
 final class DashboardSplitViewController: NSSplitViewController {
-    static let sidebarThickness: CGFloat = 216
+    /// Opening width from the #383/#384 baseline, seeded via the sidebar
+    /// view's initial frame. `preferredThicknessFraction` is a size fraction
+    /// of the split view, not an absolute point width, and is left at factory.
+    static let preferredSidebarThickness: CGFloat = 216
+    static let sidebarThickness: CGFloat = preferredSidebarThickness
+    /// 168pt navigation rows plus the current 14pt stack and 8pt panel insets.
+    /// Kept so the pre-#386 rows still fit; do not shrink by changing row layout.
+    static let minimumSidebarThickness: CGFloat = 8 + 14 + 168 + 14 + 8
+    /// Product cap for divider resizing. Factory sidebar maximum is
+    /// `unspecifiedDimension`; 320 is the actual upper bound.
+    static let maximumSidebarThickness: CGFloat = 320
+    /// Sidebar holds its current width; content uses `.defaultLow` so window
+    /// resize is absorbed by the content pane.
+    static let sidebarHoldingPriority = NSLayoutConstraint.Priority(
+        rawValue: NSLayoutConstraint.Priority.defaultLow.rawValue + 1
+    )
+    static let contentHoldingPriority = NSLayoutConstraint.Priority.defaultLow
     static let contentSurfaceIdentifier = NSUserInterfaceItemIdentifier("dashboardContentSurface")
 
     let sidebarController: NSViewController
@@ -92,17 +102,28 @@ final class DashboardSplitViewController: NSSplitViewController {
         self.sidebarController = sidebar
         self.contentController = content
         super.init(nibName: nil, bundle: nil)
-        let split = DashboardSplitView()
+
+        let split = NSSplitView()
         split.isVertical = true
         split.dividerStyle = .thin
         splitView = split
+
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.canCollapse = false
-        sidebarItem.minimumThickness = Self.sidebarThickness
-        sidebarItem.maximumThickness = Self.sidebarThickness
-        sidebarItem.holdingPriority = NSLayoutConstraint.Priority(900)
+        sidebarItem.canCollapse = true
+        sidebarItem.canCollapseFromWindowResize = false
+        sidebarItem.allowsFullHeightLayout = true
+        sidebarItem.minimumThickness = max(
+            sidebarItem.minimumThickness,
+            Self.minimumSidebarThickness
+        )
+        sidebarItem.maximumThickness = Self.maximumSidebarThickness
+        sidebarItem.holdingPriority = Self.sidebarHoldingPriority
+
+        let contentItem = NSSplitViewItem(viewController: content)
+        contentItem.canCollapse = false
+        contentItem.holdingPriority = Self.contentHoldingPriority
         addSplitViewItem(sidebarItem)
-        addSplitViewItem(NSSplitViewItem(viewController: content))
+        addSplitViewItem(contentItem)
     }
 
     override func loadView() {
@@ -521,6 +542,12 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
         let sidebar = makeSidebar(titlebarHeight: titlebarHeight)
         sidebar.translatesAutoresizingMaskIntoConstraints = false
+        sidebar.setFrameSize(
+            NSSize(
+                width: DashboardSplitViewController.preferredSidebarThickness,
+                height: window.frame.height
+            )
+        )
         contentHost.translatesAutoresizingMaskIntoConstraints = false
         let splitController = DashboardSplitViewController(
             sidebar: DashboardSidebarViewController(view: sidebar),
@@ -530,12 +557,10 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.contentViewController = splitController
         // AppKit may fit a newly installed split-view controller to its
         // minimum thicknesses. Preserve the Dashboard's established 880×620
-        // initial window frame after installing the native hierarchy.
+        // initial window frame after installing the native hierarchy. The
+        // preferred 216pt sidebar width is the item's starting size, not a
+        // locked thickness; min/max still allow native divider resizing.
         window.setFrame(requestedFrame, display: false)
-        splitController.splitView.setPosition(
-            DashboardSplitViewController.sidebarThickness,
-            ofDividerAt: 0
-        )
         DashboardWindowDragPolicy.install(in: window, contentRoot: splitController.view) { [weak self] in
             self?.toggleWindowZoom()
         }
