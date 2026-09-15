@@ -35,7 +35,7 @@ git switch -c <类型>/<简短名称>
 - 网络、文件系统、数据库、进程、定时器和通知中心等外部 I/O 应通过可注入边界隔离；
 - 新增 Swift 文件时，同时确认 CLI 构建的递归发现和 Xcode target 的文件引用；
 - 修改本地化文案时，保持八套具体语言资源的 key 一致，并运行本地化探针；
-- 普通实现阶段不要修改 `work/balance-bar/Info.plist` 中的版本号，除非维护者明确把发布升号纳入当前任务。
+- 普通实现阶段不要修改 `Resources/Info.plist` 中的版本号，除非维护者明确把发布升号纳入当前任务。
 
 代码结构与依赖方向请参阅[架构说明](docs/architecture.md)。
 
@@ -44,10 +44,10 @@ git switch -c <类型>/<简短名称>
 至少运行与改动相称的检查，并在 Pull Request 中记录完整命令与结果。完整验证顺序见[开发文档](docs/development.md)，核心命令包括：
 
 ```bash
-./work/balance-bar/build.sh
-./work/balance-bar/localization-resource-probe.sh
-./work/balance-bar/balance-query-probe.sh
-./work/balance-bar/balance-network-error-localization-probe.sh
+./scripts/build.sh
+./scripts/probes/localization-resource-probe.sh
+./scripts/probes/balance-query-probe.sh
+./scripts/probes/balance-network-error-localization-probe.sh
 
 xcodebuild \
   -project BalanceBar.xcodeproj \
@@ -78,10 +78,10 @@ git diff --check
 终端检查不能证明视觉和交互体验正确。涉及菜单栏、Dashboard、窗口行为、供应商切换、深浅色或无障碍体验时，请构建独立开发版，并把具体人工步骤与逐步预期写入 Pull Request：
 
 ```bash
-./work/balance-bar/build.sh dev
+./scripts/build.sh dev
 ```
 
-开发版位于 `work/balance-bar/build/dev/BalanceBar-dev.app`，Bundle ID 为 `com.huanmeng06.BalanceBar.dev`，不会覆盖生产版。
+开发版位于 `build/dev/BalanceBar-dev.app`，Bundle ID 为 `com.huanmeng06.BalanceBar.dev`，不会覆盖生产版。
 
 ## 提交 Pull Request
 

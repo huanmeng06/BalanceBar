@@ -2,7 +2,10 @@
 
 set -Eeuo pipefail
 
-source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+probe_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$probe_script_dir/../.." && pwd)"
+sources_dir="$repo_root/Sources"
+resources_src="$repo_root/Resources"
 probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/balancebar-preferences-probe.XXXXXX")"
 probe_binary="$probe_dir/preferences-migration-probe"
 trap 'rm -rf "$probe_dir"' EXIT
@@ -42,7 +45,7 @@ trap 'rm -rf "$probe_dir"' EXIT
         /^struct PreferencesMigrationPlan \{/ { capture = 1 }
         /^private func migrateLegacyPreferencesIfNeeded/ { exit }
         capture { print }
-    ' "$source_dir/BalanceBar.swift"
+    ' "$sources_dir/App/BalanceBar.swift"
     cat <<'SWIFT'
 
 func require(_ condition: @autoclosure () -> Bool, _ message: String) {

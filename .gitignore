@@ -1,10 +1,8 @@
 .DS_Store
 .build/
 .swiftpm/
-work/balance-bar/build/
-work/balance-bar/swift-module-cache/
-work/balance-bar/*.app/
+build/
 outputs/*.app/
-outputs/*.dmg
+outputs/*.dmg/
 outputs/*.zip
 *.log

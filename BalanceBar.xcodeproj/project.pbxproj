@@ -118,6 +118,7 @@
 		A10000000000000200000001 /* InitialLaunchPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000010 /* InitialLaunchPresentation.swift */; };
 		A10000000000000300000001 /* AutomatedTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000010 /* AutomatedTestHost.swift */; };
 		A10000000000000300000021 /* BackgroundTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000020 /* BackgroundTestHost.swift */; };
+		A10000000000000300000051 /* TestRepositoryRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000050 /* TestRepositoryRoot.swift */; };
 		A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000030 /* AutomatedTestHostTests.swift */; };
 		A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */; };
 		A10000000000000200000003 /* ChatGPTLaunchDecision.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000012 /* ChatGPTLaunchDecision.swift */; };
@@ -168,7 +169,7 @@
 		A3200000000000000000001A /* InfoPlist.strings (pt) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = pt.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A3200000000000000000001B /* InfoPlist.strings (ru) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A3200000000000000000001C /* InfoPlist.strings (it) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		A100000000000000000000F7 /* LocalizationKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/LocalizationKeys.swift"; sourceTree = "<group>"; };
+		A100000000000000000000F7 /* LocalizationKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationKeys.swift; sourceTree = "<group>"; };
 		A10000000000000000000016 /* BalanceBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BalanceBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000017 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		A10000000000000000000018 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -180,7 +181,7 @@
 		A33700000000000000000004 /* QuickSwitchTitleLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitchTitleLayoutTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000111 /* MenuBarAnimationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarAnimationTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000002F /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
-		A10000000000000000000041 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/Localization.swift"; sourceTree = "<group>"; };
+		A10000000000000000000041 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		A10000000000000000000043 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000045 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
 		A10000000000000000000047 /* AppPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferencesTests.swift; sourceTree = "<group>"; };
@@ -199,7 +200,7 @@
 		A10000000000000000000065 /* BalanceAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceAPIClient.swift; sourceTree = "<group>"; };
 		A10000000000000000000067 /* BalanceAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceAPIClientTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000006A /* OpenCodexCardLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexCardLayoutTests.swift; sourceTree = "<group>"; };
-		A1000000000000000000006D /* DashboardScrollClamping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/DashboardScrollClamping.swift"; sourceTree = "<group>"; };
+		A1000000000000000000006D /* DashboardScrollClamping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardScrollClamping.swift; sourceTree = "<group>"; };
 		A1000000000000000000006F /* DashboardScrollClampingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardScrollClampingTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000071 /* OfficialQuotaClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClient.swift; sourceTree = "<group>"; };
 		A10000000000000000000073 /* OfficialQuotaClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClientTests.swift; sourceTree = "<group>"; };
@@ -260,13 +261,14 @@
 		A10000000000000000000121 /* LaunchAtLoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginService.swift; sourceTree = "<group>"; };
 		A10000000000000000000123 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
 		A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginServiceTests.swift; sourceTree = "<group>"; };
-		A10000000000000200000010 /* InitialLaunchPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/InitialLaunchPresentation.swift"; sourceTree = "<group>"; };
-		A10000000000000300000010 /* AutomatedTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/AutomatedTestHost.swift"; sourceTree = "<group>"; };
+		A10000000000000200000010 /* InitialLaunchPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitialLaunchPresentation.swift; sourceTree = "<group>"; };
+		A10000000000000300000010 /* AutomatedTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomatedTestHost.swift; sourceTree = "<group>"; };
 		A10000000000000300000020 /* BackgroundTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTestHost.swift; sourceTree = "<group>"; };
+		A10000000000000300000050 /* TestRepositoryRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestRepositoryRoot.swift; sourceTree = "<group>"; };
 		A10000000000000300000030 /* AutomatedTestHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomatedTestHostTests.swift; sourceTree = "<group>"; };
-		A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/ChatGPTApplicationIdentity.swift"; sourceTree = "<group>"; };
-		A10000000000000200000012 /* ChatGPTLaunchDecision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/ChatGPTLaunchDecision.swift"; sourceTree = "<group>"; };
-		A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/ChatGPTLaunchAgentRuntime.swift"; sourceTree = "<group>"; };
+		A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTApplicationIdentity.swift; sourceTree = "<group>"; };
+		A10000000000000200000012 /* ChatGPTLaunchDecision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchDecision.swift; sourceTree = "<group>"; };
+		A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchAgentRuntime.swift; sourceTree = "<group>"; };
 		A10000000000000200000014 /* LaunchWithChatGPTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchWithChatGPTService.swift; sourceTree = "<group>"; };
 		A10000000000000200000015 /* ChatGPTLaunchAgentMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchAgentMain.swift; sourceTree = "<group>"; };
 		A10000000000000200000016 /* balancebar-chatgpt-launch-agent.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = balancebar-chatgpt-launch-agent.plist; sourceTree = "<group>"; };
@@ -311,19 +313,40 @@
 		A1000000000000000000001B /* BalanceBar */ = {
 			isa = PBXGroup;
 			children = (
-				A1000000000000000000001C /* work/balance-bar */,
-				A10000000000000200000020 /* ChatGPT launch agent */,
+				A40000000000000000000001 /* Sources */,
+				A40000000000000000000004 /* Resources */,
 				A1000000000000000000002C /* Tests */,
 				A1000000000000000000001D /* Frameworks */,
 				A1000000000000000000001E /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		A1000000000000000000001C /* work/balance-bar */ = {
+		A40000000000000000000001 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000002 /* App */,
+				A40000000000000000000003 /* AppCore */,
+				A10000000000000000000054 /* Domain */,
+				A10000000000000000000059 /* Services */,
+				A10000000000000000000078 /* Monitoring */,
+				A1000000000000000000007F /* UI */,
+				A10000000000000200000020 /* LaunchAgent */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000002 /* App */ = {
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000010 /* BalanceBar.swift */,
 				A10000000000000000000045 /* AppPreferences.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000003 /* AppCore */ = {
+			isa = PBXGroup;
+			children = (
 				A10000000000000000000041 /* Localization.swift */,
 				A100000000000000000000F7 /* LocalizationKeys.swift */,
 				A10000000000000200000010 /* InitialLaunchPresentation.swift */,
@@ -332,10 +355,13 @@
 				A10000000000000200000012 /* ChatGPTLaunchDecision.swift */,
 				A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */,
 				A1000000000000000000006D /* DashboardScrollClamping.swift */,
-				A10000000000000000000054 /* Domain */,
-				A10000000000000000000059 /* Services */,
-				A10000000000000000000078 /* Monitoring */,
-				A1000000000000000000007F /* UI */,
+			);
+			path = AppCore;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000004 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
 				A10000000000000000000011 /* Info.plist */,
 				A10000000000000000000012 /* BalanceBar.icns */,
 				A10000000000000000000013 /* CodexIcon.svg */,
@@ -350,8 +376,7 @@
 				A100000000000000000000F6 /* Localizable.strings */,
 				A32000000000000000000010 /* InfoPlist.strings */,
 			);
-			name = "work/balance-bar";
-			path = "work/balance-bar";
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		A1000000000000000000001D /* Frameworks */ = {
@@ -388,42 +413,115 @@
 		A1000000000000000000002B /* BalanceBarTests */ = {
 			isa = PBXGroup;
 			children = (
+				A40000000000000000000010 /* Support */,
+				A40000000000000000000011 /* App */,
+				A40000000000000000000012 /* AppCore */,
+				A40000000000000000000013 /* Domain */,
+				A40000000000000000000014 /* Services */,
+				A40000000000000000000015 /* Monitoring */,
+				A40000000000000000000016 /* UI */,
+			);
+			path = BalanceBarTests;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000010 /* Support */ = {
+			isa = PBXGroup;
+			children = (
 				A10000000000000300000020 /* BackgroundTestHost.swift */,
-				A10000000000000300000030 /* AutomatedTestHostTests.swift */,
-				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
-				A33700000000000000000004 /* QuickSwitchTitleLayoutTests.swift */,
-				A37000000000000000000005 /* OverviewNumericTransitionTests.swift */,
-				A10000000000000000000131 /* StatusItemControllerTests.swift */,
-				A10000000000000000000111 /* MenuBarAnimationTests.swift */,
+				A10000000000000300000050 /* TestRepositoryRoot.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000011 /* App */ = {
+			isa = PBXGroup;
+			children = (
 				A100000000000000000000D1 /* AppDelegateCompositionTests.swift */,
-				A100000000000000000000A0 /* DashboardWindowControllerTests.swift */,
-				A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */,
-				A10000000000000000000095 /* DashboardComponentsTests.swift */,
-				A1000000000000000000006F /* DashboardScrollClampingTests.swift */,
-				A1000000000000000000009B /* StatusLinksTests.swift */,
-				A10000000000000000000043 /* LocalizationTests.swift */,
 				A10000000000000000000047 /* AppPreferencesTests.swift */,
-				A26400000000000000000004 /* QuotaProgressColorConfigurationTests.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000012 /* AppCore */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000300000030 /* AutomatedTestHostTests.swift */,
+				A10000000000000000000043 /* LocalizationTests.swift */,
+				A1000000000000000000006F /* DashboardScrollClampingTests.swift */,
+			);
+			path = AppCore;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000013 /* Domain */ = {
+			isa = PBXGroup;
+			children = (
 				A10000000000000000000053 /* DomainModelsTests.swift */,
+				A1000000000000000000006A /* OpenCodexCardLayoutTests.swift */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000014 /* Services */ = {
+			isa = PBXGroup;
+			children = (
 				A10000000000000000000058 /* ResponseParsersTests.swift */,
 				A1000000000000000000005F /* CCSwitchRepositoryTests.swift */,
 				A10000000000000000000063 /* CredentialReaderTests.swift */,
 				A10000000000000000000067 /* BalanceAPIClientTests.swift */,
-				A1000000000000000000006A /* OpenCodexCardLayoutTests.swift */,
 				A10000000000000000000073 /* OfficialQuotaClientTests.swift */,
+				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
+				A100000000000000000000EA /* UpdateTests.swift */,
+				A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */,
+				A26400000000000000000004 /* QuotaProgressColorConfigurationTests.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000015 /* Monitoring */ = {
+			isa = PBXGroup;
+			children = (
 				A10000000000000000000077 /* CodexActivityMonitorTests.swift */,
 				A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */,
 				A31800000000000000000003 /* GrokActivityMonitorTests.swift */,
 				A31800000000000000000005 /* ActivityCoordinatorTests.swift */,
 				A31800000000000000000013 /* TerminalSessionIdentityTests.swift */,
 				A36200000000000000000003 /* CurrentAgentOpenPlannerTests.swift */,
+			);
+			path = Monitoring;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000016 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000017 /* MenuBar */,
+				A40000000000000000000018 /* Dashboard */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000017 /* MenuBar */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
+				A33700000000000000000004 /* QuickSwitchTitleLayoutTests.swift */,
+				A37000000000000000000005 /* OverviewNumericTransitionTests.swift */,
+				A10000000000000000000131 /* StatusItemControllerTests.swift */,
+				A10000000000000000000111 /* MenuBarAnimationTests.swift */,
+			);
+			path = MenuBar;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000018 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				A100000000000000000000A0 /* DashboardWindowControllerTests.swift */,
+				A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */,
+				A10000000000000000000095 /* DashboardComponentsTests.swift */,
+				A1000000000000000000009B /* StatusLinksTests.swift */,
 				A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */,
 				A100000000000000000000C9 /* DashboardProviderPagesTests.swift */,
-				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
-				A100000000000000000000EA /* UpdateTests.swift */,
-				A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */,
 			);
-			path = BalanceBarTests;
+			path = Dashboard;
 			sourceTree = "<group>";
 		};
 		A10000000000000000000054 /* Domain */ = {
@@ -436,8 +534,7 @@
 				A10000000000000000000052 /* StatusLink.swift */,
 				A100000000000000000000E6 /* UpdateModels.swift */,
 			);
-			name = Domain;
-			path = "Sources/Domain";
+			path = Domain;
 			sourceTree = "<group>";
 		};
 		A10000000000000000000059 /* Services */ = {
@@ -457,18 +554,16 @@
 				A10000000000000200000014 /* LaunchWithChatGPTService.swift */,
 				A1000000000000000000005A /* Parsing */,
 			);
-			name = Services;
-			path = "Sources/Services";
+			path = Services;
 			sourceTree = "<group>";
 		};
-		A10000000000000200000020 /* ChatGPT launch agent */ = {
+		A10000000000000200000020 /* LaunchAgent */ = {
 			isa = PBXGroup;
 			children = (
 				A10000000000000200000015 /* ChatGPTLaunchAgentMain.swift */,
 				A10000000000000200000016 /* balancebar-chatgpt-launch-agent.plist */,
 			);
-			name = "ChatGPT launch agent";
-			path = "work/balancebar-chatgpt-launch-agent";
+			path = LaunchAgent;
 			sourceTree = "<group>";
 		};
 		A1000000000000000000005A /* Parsing */ = {
@@ -476,7 +571,6 @@
 			children = (
 				A10000000000000000000056 /* ResponseParsers.swift */,
 			);
-			name = Parsing;
 			path = Parsing;
 			sourceTree = "<group>";
 		};
@@ -490,8 +584,7 @@
 				A31800000000000000000011 /* TerminalSessionIdentity.swift */,
 				A36200000000000000000001 /* CurrentAgentOpenPlanner.swift */,
 			);
-			name = Monitoring;
-			path = "Sources/Monitoring";
+			path = Monitoring;
 			sourceTree = "<group>";
 		};
 		A1000000000000000000007F /* UI */ = {
@@ -500,15 +593,13 @@
 				A10000000000000000000086 /* MenuBar */,
 				A10000000000000000000092 /* Dashboard */,
 			);
-			name = UI;
-			path = "Sources/UI";
+			path = UI;
 			sourceTree = "<group>";
 		};
 		A10000000000000000000092 /* Dashboard */ = {
 			isa = PBXGroup;
 			children = (
 				A100000000000000000000DD /* DashboardCompositionController.swift */,
-				A100000000000000000000A2 /* DashboardSettingsComponents.swift */,
 				A1000000000000000000009E /* DashboardWindowController.swift */,
 				A10000000000000000000106 /* UpdateNotesWindowController.swift */,
 				A10000000000000000000093 /* Components */,
@@ -516,7 +607,6 @@
 				A100000000000000000000C7 /* Providers */,
 				A1000000000000000000009C /* StatusLinks */,
 			);
-			name = Dashboard;
 			path = Dashboard;
 			sourceTree = "<group>";
 		};
@@ -532,7 +622,6 @@
 				A100000000000000000000BD /* DashboardPreferencePageRelay.swift */,
 				A100000000000000000000BF /* DashboardPreferencePages.swift */,
 			);
-			name = Preferences;
 			path = "Pages/Preferences";
 			sourceTree = "<group>";
 		};
@@ -541,7 +630,6 @@
 			children = (
 				A100000000000000000000C5 /* DashboardProviderPages.swift */,
 			);
-			name = Providers;
 			path = "Pages/Providers";
 			sourceTree = "<group>";
 		};
@@ -550,8 +638,8 @@
 			children = (
 				A10000000000000000000091 /* DashboardComponents.swift */,
 				A26400000000000000000002 /* QuotaColorThresholdSlider.swift */,
+				A100000000000000000000A2 /* DashboardSettingsComponents.swift */,
 			);
-			name = Components;
 			path = Components;
 			sourceTree = "<group>";
 		};
@@ -560,7 +648,6 @@
 			children = (
 				A10000000000000000000097 /* StatusLinksEditor.swift */,
 			);
-			name = StatusLinks;
 			path = StatusLinks;
 			sourceTree = "<group>";
 		};
@@ -575,7 +662,6 @@
 				A37000000000000000000003 /* OverviewNumericTextView.swift */,
 				A10000000000000000000088 /* StatusItemController.swift */,
 			);
-			name = MenuBar;
 			path = MenuBar;
 			sourceTree = "<group>";
 		};
@@ -712,7 +798,6 @@
 				A1000000000000000000010A /* Localizable.strings (it) */,
 			);
 			name = Localizable.strings;
-			path = lang;
 			sourceTree = "<group>";
 		};
 		A32000000000000000000010 /* InfoPlist.strings */ = {
@@ -732,7 +817,6 @@
 				A3200000000000000000001C /* InfoPlist.strings (it) */,
 			);
 			name = InfoPlist.strings;
-			path = lang;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */
@@ -777,7 +861,7 @@
 			);
 			inputPaths = (
 				"$(BUILT_PRODUCTS_DIR)/BalanceBarChatGPTLaunchAgent",
-				"$(SRCROOT)/work/balancebar-chatgpt-launch-agent/balancebar-chatgpt-launch-agent.plist",
+				"$(SRCROOT)/Sources/LaunchAgent/balancebar-chatgpt-launch-agent.plist",
 			);
 			name = "Embed ChatGPT launch agent";
 			outputPaths = (
@@ -786,7 +870,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nlaunch_agents_dir=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Library/LaunchAgents\"\nmkdir -p \"$launch_agents_dir\"\ncp \"$BUILT_PRODUCTS_DIR/BalanceBarChatGPTLaunchAgent\" \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\ncp \"$SRCROOT/work/balancebar-chatgpt-launch-agent/balancebar-chatgpt-launch-agent.plist\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\n/usr/bin/plutil -replace Label -string \"${PRODUCT_BUNDLE_IDENTIFIER}.chatgpt-launch-agent\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\nchmod +x \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\n";
+			shellScript = "set -e\nlaunch_agents_dir=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Library/LaunchAgents\"\nmkdir -p \"$launch_agents_dir\"\ncp \"$BUILT_PRODUCTS_DIR/BalanceBarChatGPTLaunchAgent\" \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\ncp \"$SRCROOT/Sources/LaunchAgent/balancebar-chatgpt-launch-agent.plist\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\n/usr/bin/plutil -replace Label -string \"${PRODUCT_BUNDLE_IDENTIFIER}.chatgpt-launch-agent\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\nchmod +x \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\n";
 		};
 		A10000000000000300000040 /* Patch XCTest host activation */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -888,6 +972,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000300000021 /* BackgroundTestHost.swift in Sources */,
+				A10000000000000300000051 /* TestRepositoryRoot.swift in Sources */,
 				A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */,
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
 				A33700000000000000000003 /* QuickSwitchTitleLayoutTests.swift in Sources */,
@@ -951,7 +1036,7 @@
 				CODE_SIGN_IDENTITY = "";
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "work/balance-bar/Info.plist";
+				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -969,7 +1054,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "work/balance-bar/Info.plist";
+				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

@@ -59,19 +59,19 @@ BalanceBar 不维护一套独立于 CC Switch 的供应商清单，而是读取 
 ```bash
 git clone https://github.com/huanmeng06/BalanceBar.git
 cd BalanceBar
-./work/balance-bar/build.sh
-codesign --force --sign - work/balance-bar/build/BalanceBar.app
-open work/balance-bar/build/BalanceBar.app
+./scripts/build.sh
+codesign --force --sign - build/BalanceBar.app
+open build/BalanceBar.app
 ```
 
-产物位于 `work/balance-bar/build/BalanceBar.app`。如需安装到“应用程序”目录，可在构建完成后手动拖入 `/Applications`。
+产物位于 `build/BalanceBar.app`。如需安装到“应用程序”目录，可在构建完成后手动拖入 `/Applications`。
 
 开发调试可以使用独立的 Bundle ID 和输出目录：
 
 ```bash
-./work/balance-bar/build.sh dev
-codesign --force --sign - work/balance-bar/build/dev/BalanceBar-dev.app
-open -n work/balance-bar/build/dev/BalanceBar-dev.app
+./scripts/build.sh dev
+codesign --force --sign - build/dev/BalanceBar-dev.app
+open -n build/dev/BalanceBar-dev.app
 ```
 
 开发版名称为 `BalanceBar Dev`，不会覆盖生产版，也不会修改仓库中的 `Info.plist`。
@@ -115,14 +115,14 @@ BalanceBar 在本机完成配置读取、状态监听和界面展示：
 项目使用原生 AppKit + SwiftUI 构建，无第三方 Swift Package 依赖；数据层直接使用 SQLite3 读取和更新 CC Switch 状态。
 
 ```text
-work/balance-bar/BalanceBar.swift        应用入口、生命周期与组件装配
-work/balance-bar/AppPreferences.swift   用户偏好及旧版本配置迁移
-work/balance-bar/Sources/AppCore/        本地化与跨界面通用规则
-work/balance-bar/Sources/Domain/         供应商、快照、额度查询等领域模型
-work/balance-bar/Sources/Services/       数据库、网络、凭据与刷新协调
-work/balance-bar/Sources/Monitoring/     Codex 与 Claude Code 任务状态监听
-work/balance-bar/Sources/UI/MenuBar/     菜单栏布局、菜单和活动动画
-work/balance-bar/Sources/UI/Dashboard/   主窗口、设置页和供应商页面
+Sources/App/BalanceBar.swift        应用入口、生命周期与组件装配
+Sources/App/AppPreferences.swift   用户偏好及旧版本配置迁移
+Sources/AppCore/        本地化与跨界面通用规则
+Sources/Domain/         供应商、快照、额度查询等领域模型
+Sources/Services/       数据库、网络、凭据与刷新协调
+Sources/Monitoring/     Codex 与 Claude Code 任务状态监听
+Sources/UI/MenuBar/     菜单栏布局、菜单和活动动画
+Sources/UI/Dashboard/   主窗口、设置页和供应商页面
 Tests/BalanceBarTests/                   XCTest 单元测试
 ```
 

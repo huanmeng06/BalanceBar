@@ -6,7 +6,7 @@ merged into `main`.
 ## Trigger and version detection
 
 The workflow does not require a Release label and does not require a manual Git
-tag. It compares `work/balance-bar/Info.plist` in the merged commit with the
+tag. It compares `Resources/Info.plist` in the merged commit with the
 first parent of that commit:
 
 - `1.1.3 → 1.1.4` — `c+1`, publishes a Pre-release using the plain tag

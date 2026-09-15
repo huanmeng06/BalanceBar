@@ -1,7 +1,7 @@
 # BalanceBar development workflow
 
 This workflow is based on the checked-in BalanceBar.xcodeproj,
-work/balance-bar/build.sh, and
+scripts/build.sh, and
 [.github/workflows/build-and-test.yml](../.github/workflows/build-and-test.yml).
 Run commands from the repository root. It contains no personal paths, signing
 identities, credentials, tokens, cookies, or machine-specific project settings.
@@ -15,10 +15,10 @@ identities, credentials, tokens, cookies, or machine-specific project settings.
   integration. Tests use fixtures, stubs, temporary files, or nonexistent
   paths and should not require a user's provider database.
 
-The application source is under work/balance-bar/. The Xcode target also
+The application source is under Sources/. The Xcode target also
 includes source files under Sources/ and the test target includes
 Tests/BalanceBarTests/. The CLI build discovers Swift files recursively, so new
-source files below work/balance-bar/ are included in the CLI build; the Xcode
+source files below Sources/ (except LaunchAgent) are included in the CLI build; the Xcode
 project source list must also be updated when a new file is added to the Xcode
 target.
 
@@ -39,20 +39,20 @@ sources, copies the tracked plist/resources, ad-hoc signs the bundle, and
 verifies the signature:
 
 ~~~sh
-./work/balance-bar/build.sh
+./scripts/build.sh
 ~~~
 
-The output is work/balance-bar/build/BalanceBar.app. For a separate manual GUI
+The output is build/BalanceBar.app. For a separate manual GUI
 build, use the development variant; it has a distinct bundle identifier and
 output path:
 
 ~~~sh
-./work/balance-bar/build.sh dev
+./scripts/build.sh dev
 ~~~
 
-The output is work/balance-bar/build/dev/BalanceBar-dev.app. The build script
+The output is build/dev/BalanceBar-dev.app. The build script
 cleans only the selected generated output. It does not modify the tracked
-work/balance-bar/Info.plist.
+Resources/Info.plist.
 
 ### 2. Localization probes
 
@@ -65,9 +65,9 @@ resource probe checks key parity for every source language and, when given an
 app bundle, checks that every language is packaged:
 
 ~~~sh
-./work/balance-bar/localization-resource-probe.sh
-./work/balance-bar/balance-query-probe.sh
-./work/balance-bar/balance-network-error-localization-probe.sh
+./scripts/probes/localization-resource-probe.sh
+./scripts/probes/balance-query-probe.sh
+./scripts/probes/balance-network-error-localization-probe.sh
 ~~~
 
 ### 3. Xcode project/build target
@@ -152,12 +152,16 @@ for path in \
   docs/development.md \
   BalanceBar.xcodeproj/project.pbxproj \
   BalanceBar.xcodeproj/xcshareddata/xcschemes/BalanceBar.xcscheme \
-  work/balance-bar/build.sh \
-  work/balance-bar/BalanceBar.swift \
-  work/balance-bar/Sources/Domain \
-  work/balance-bar/Sources/Services \
-  work/balance-bar/Sources/Monitoring \
-  work/balance-bar/Sources/UI \
+  scripts/build.sh \
+  scripts/probes \
+  Sources/App/BalanceBar.swift \
+  Sources/AppCore \
+  Sources/Domain \
+  Sources/Services \
+  Sources/Monitoring \
+  Sources/UI \
+  Sources/LaunchAgent \
+  Resources \
   Tests/BalanceBarTests \
   .github/workflows/build-and-test.yml
 do
@@ -176,7 +180,7 @@ The build-and-test job in
 runs on macos-26 for pull requests and manual dispatch. It starts the
 independent build checks in parallel, then runs XCTest after they all pass:
 
-1. `./work/balance-bar/build.sh`, the two localization probes, and an unsigned
+1. `./scripts/build.sh`, the two localization probes, and an unsigned
    xcodebuild `build-for-testing` build run in parallel;
 2. an unsigned, serial `test-without-building` run with destination
    platform=macOS,arch=arm64. The CI-only test build targets arm64 because
@@ -223,7 +227,7 @@ below after building; a worker must not run them as a substitute for the user's
 manual test:
 
 ~~~sh
-dev_app=work/balance-bar/build/dev/BalanceBar-dev.app
+dev_app=build/dev/BalanceBar-dev.app
 plutil -extract CFBundleIdentifier raw -o - "$dev_app/Contents/Info.plist"
 open -n "$dev_app"
 osascript -e 'tell application id "com.huanmeng06.BalanceBar.dev" to quit'

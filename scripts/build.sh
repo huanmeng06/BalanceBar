@@ -2,7 +2,10 @@
 
 set -Eeuo pipefail
 
-source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$script_dir/.." && pwd)"
+sources_dir="$repo_root/Sources"
+resources_src="$repo_root/Resources"
 usage() {
     cat <<'EOF'
 Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0]
@@ -45,7 +48,7 @@ fi
 
 case "$variant" in
     production)
-        build_dir="$source_dir/build"
+        build_dir="$repo_root/build"
         app_bundle="$build_dir/BalanceBar.app"
         bundle_identifier="com.huanmeng06.BalanceBar.app"
         bundle_name="BalanceBar"
@@ -53,7 +56,7 @@ case "$variant" in
         clean_paths=("$app_bundle" "$module_cache_dir")
         ;;
     dev)
-        build_dir="$source_dir/build/dev"
+        build_dir="$repo_root/build/dev"
         app_bundle="$build_dir/BalanceBar-dev.app"
         bundle_identifier="com.huanmeng06.BalanceBar.dev"
         bundle_name="BalanceBar Dev"
@@ -61,7 +64,7 @@ case "$variant" in
         clean_paths=("$build_dir")
         ;;
     demo-zero)
-        build_dir="$source_dir/build/demo/zero"
+        build_dir="$repo_root/build/demo/zero"
         app_bundle="$build_dir/BalanceBar-LunaReserve-0.app"
         bundle_identifier="com.huanmeng06.BalanceBar.demo.luna-reserve-zero"
         bundle_name="BalanceBar Demo · Luna Reserve 0%"
@@ -70,7 +73,7 @@ case "$variant" in
         clean_paths=("$build_dir")
         ;;
     demo-unavailable)
-        build_dir="$source_dir/build/demo/unavailable"
+        build_dir="$repo_root/build/demo/unavailable"
         app_bundle="$build_dir/BalanceBar-LunaReserve-Unavailable.app"
         bundle_identifier="com.huanmeng06.BalanceBar.demo.luna-reserve-unavailable"
         bundle_name="BalanceBar Demo · Luna Reserve Unavailable"
@@ -79,7 +82,7 @@ case "$variant" in
         clean_paths=("$build_dir")
         ;;
     demo-five-hour-exhausted)
-        build_dir="$source_dir/build/demo/five-hour-exhausted"
+        build_dir="$repo_root/build/demo/five-hour-exhausted"
         app_bundle="$build_dir/BalanceBar-LunaReserve-5H-Exhausted.app"
         bundle_identifier="com.huanmeng06.BalanceBar.demo.luna-reserve-five-hour-exhausted"
         bundle_name="BalanceBar Demo · 5H Exhausted"
@@ -88,7 +91,7 @@ case "$variant" in
         clean_paths=("$build_dir")
         ;;
     demo-seven-day-exhausted)
-        build_dir="$source_dir/build/demo/seven-day-exhausted"
+        build_dir="$repo_root/build/demo/seven-day-exhausted"
         app_bundle="$build_dir/BalanceBar-LunaReserve-7D-Exhausted.app"
         bundle_identifier="com.huanmeng06.BalanceBar.demo.luna-reserve-seven-day-exhausted"
         bundle_name="BalanceBar Demo · 7D Exhausted"
@@ -97,7 +100,7 @@ case "$variant" in
         clean_paths=("$build_dir")
         ;;
     demo-both-exhausted)
-        build_dir="$source_dir/build/demo/both-exhausted"
+        build_dir="$repo_root/build/demo/both-exhausted"
         app_bundle="$build_dir/BalanceBar-LunaReserve-Both-Exhausted.app"
         bundle_identifier="com.huanmeng06.BalanceBar.demo.luna-reserve-both-exhausted"
         bundle_name="BalanceBar Demo · Both Exhausted"
@@ -106,7 +109,7 @@ case "$variant" in
         clean_paths=("$build_dir")
         ;;
     demo-banked-reset-10)
-        build_dir="$source_dir/build/demo/banked-reset-10"
+        build_dir="$repo_root/build/demo/banked-reset-10"
         app_bundle="$build_dir/BalanceBar-BankedReset-10.app"
         bundle_identifier="com.huanmeng06.BalanceBar.demo.banked-reset-10"
         bundle_name="BalanceBar Demo · 10 Reset Cards"
@@ -116,7 +119,7 @@ case "$variant" in
         clean_paths=("$build_dir")
         ;;
     demo-banked-reset-0)
-        build_dir="$source_dir/build/demo/banked-reset-0"
+        build_dir="$repo_root/build/demo/banked-reset-0"
         app_bundle="$build_dir/BalanceBar-BankedReset-0.app"
         bundle_identifier="com.huanmeng06.BalanceBar.demo.banked-reset-0"
         bundle_name="BalanceBar Demo · 0 Reset Cards"
@@ -140,7 +143,7 @@ executable="$executable_dir/BalanceBar"
 launch_agents_dir="$contents_dir/Library/LaunchAgents"
 launch_agent_executable="$launch_agents_dir/BalanceBarChatGPTLaunchAgent"
 launch_agent_plist="$launch_agents_dir/balancebar-chatgpt-launch-agent.plist"
-launch_agent_source_dir="$source_dir/../balancebar-chatgpt-launch-agent"
+launch_agent_source_dir="$sources_dir/LaunchAgent"
 launch_agent_module_cache_dir="$build_dir/chatgpt-launch-agent-swift-module-cache"
 
 balancebar_deployment_target="${BALANCEBAR_DEPLOYMENT_TARGET:-14.0}"
@@ -166,19 +169,20 @@ fi
 
 trap 'status=$?; printf "build-balancebar: command failed at line %s (exit %s): %s\n" "$LINENO" "$status" "$BASH_COMMAND" >&2' ERR
 
-[[ -d "$source_dir" ]] || die "source directory does not exist: $source_dir"
+[[ -d "$sources_dir" ]] || die "source directory does not exist: $sources_dir"
+[[ -d "$resources_src" ]] || die "resources directory does not exist: $resources_src"
 
 for required_file in \
-    "$source_dir/Info.plist" \
-    "$source_dir/BalanceBar.icns" \
-    "$source_dir/GitHub.svg" \
-    "$source_dir/BankedResetTicket.svg" \
-    "$source_dir/CodexIcon.svg" \
-    "$source_dir/Claude.svg" \
-    "$source_dir/ClaudeThinking.svg" \
-    "$source_dir/Grok.svg" \
-    "$source_dir/Grok.png" \
-    "$source_dir/GrokIdle.svg" \
+    "$resources_src/Info.plist" \
+    "$resources_src/BalanceBar.icns" \
+    "$resources_src/GitHub.svg" \
+    "$resources_src/BankedResetTicket.svg" \
+    "$resources_src/CodexIcon.svg" \
+    "$resources_src/Claude.svg" \
+    "$resources_src/ClaudeThinking.svg" \
+    "$resources_src/Grok.svg" \
+    "$resources_src/Grok.png" \
+    "$resources_src/GrokIdle.svg" \
     "$launch_agent_source_dir/ChatGPTLaunchAgentMain.swift" \
     "$launch_agent_source_dir/balancebar-chatgpt-launch-agent.plist"
 do
@@ -186,15 +190,15 @@ do
 done
 for frame_index in $(seq 1 30)
 do
-    required_frame="$(printf '%s/GrokThinking/frame_%03d.svg' "$source_dir" "$frame_index")"
+    required_frame="$(printf '%s/GrokThinking/frame_%03d.svg' "$resources_src" "$frame_index")"
     [[ -f "$required_frame" ]] || die "required input is missing: $required_frame"
 done
 localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj fr.lproj pt.lproj ru.lproj it.lproj)
 for localization_directory in "${localization_directories[@]}"
 do
-    localization_file="$source_dir/lang/$localization_directory/Localizable.strings"
+    localization_file="$resources_src/$localization_directory/Localizable.strings"
     [[ -f "$localization_file" ]] || die "required localization resource is missing: $localization_file"
-    infoplist_file="$source_dir/lang/$localization_directory/InfoPlist.strings"
+    infoplist_file="$resources_src/$localization_directory/InfoPlist.strings"
     [[ -f "$infoplist_file" ]] || die "required InfoPlist.strings is missing: $infoplist_file"
 done
 
@@ -210,9 +214,9 @@ swift_sources=()
 while IFS= read -r source_file
 do
     swift_sources+=("$source_file")
-done < <(find "$source_dir" -type f -name '*.swift' -print | LC_ALL=C sort)
+done < <(find "$sources_dir" -type f -name '*.swift' ! -path '*/LaunchAgent/*' -print | LC_ALL=C sort)
 
-(( ${#swift_sources[@]} > 0 )) || die "no Swift source files found in $source_dir"
+(( ${#swift_sources[@]} > 0 )) || die "no Swift source files found in $sources_dir"
 
 printf 'build-balancebar: compiling %d Swift source file(s)\n' "${#swift_sources[@]}"
 printf 'build-balancebar: SDK %s; target %s\n' "$balancebar_sdk_version" "$balancebar_swift_target"
@@ -249,9 +253,9 @@ swiftc \
     -parse-as-library \
     -sdk "$balancebar_sdk_path" \
     -target "$balancebar_swift_target" \
-    "$source_dir/Sources/AppCore/ChatGPTApplicationIdentity.swift" \
-    "$source_dir/Sources/AppCore/ChatGPTLaunchDecision.swift" \
-    "$source_dir/Sources/AppCore/ChatGPTLaunchAgentRuntime.swift" \
+    "$sources_dir/AppCore/ChatGPTApplicationIdentity.swift" \
+    "$sources_dir/AppCore/ChatGPTLaunchDecision.swift" \
+    "$sources_dir/AppCore/ChatGPTLaunchAgentRuntime.swift" \
     "$launch_agent_source_dir/ChatGPTLaunchAgentMain.swift" \
     -o "$launch_agent_executable" \
     -framework AppKit \
@@ -266,7 +270,7 @@ launch_agent_binary_minos="$(awk '$1 == "minos" { print $2; exit }' <<< "$launch
 
 printf 'build-balancebar: copying bundle metadata and resources\n'
 bundle_plist="$contents_dir/Info.plist"
-cp "$source_dir/Info.plist" "$bundle_plist"
+cp "$resources_src/Info.plist" "$bundle_plist"
 plutil -replace CFBundleIdentifier -string "$bundle_identifier" "$bundle_plist"
 bundle_minimum_system="$(plutil -extract LSMinimumSystemVersion raw -o - "$bundle_plist")"
 [[ "$bundle_minimum_system" == "$balancebar_deployment_target" ]] \
@@ -292,18 +296,18 @@ bundle_program="$(plutil -extract BundleProgram raw -o - "$launch_agent_plist")"
     || die "ChatGPT launch agent plist has an invalid BundleProgram: $bundle_program"
 for resource_file in BalanceBar.icns GitHub.svg BankedResetTicket.svg CodexIcon.svg Claude.svg ClaudeThinking.svg Grok.svg Grok.png GrokIdle.svg
 do
-    cp "$source_dir/$resource_file" "$resources_dir/$resource_file"
+    cp "$resources_src/$resource_file" "$resources_dir/$resource_file"
 done
 mkdir -p "$resources_dir/GrokThinking"
-cp "$source_dir/GrokThinking"/frame_*.svg "$resources_dir/GrokThinking/"
+cp "$resources_src/GrokThinking"/frame_*.svg "$resources_dir/GrokThinking/"
 [[ "$(ls -1 "$resources_dir/GrokThinking"/frame_*.svg | wc -l | tr -d ' ')" == "30" ]] \
     || die "GrokThinking SVG directory must contain 30 frames"
 for localization_directory in "${localization_directories[@]}"
 do
     mkdir -p "$resources_dir/$localization_directory"
-    cp "$source_dir/lang/$localization_directory/Localizable.strings" \
+    cp "$resources_src/$localization_directory/Localizable.strings" \
         "$resources_dir/$localization_directory/Localizable.strings"
-    cp "$source_dir/lang/$localization_directory/InfoPlist.strings" \
+    cp "$resources_src/$localization_directory/InfoPlist.strings" \
         "$resources_dir/$localization_directory/InfoPlist.strings"
 done
 

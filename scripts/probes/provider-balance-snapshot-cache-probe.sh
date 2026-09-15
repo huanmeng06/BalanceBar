@@ -2,21 +2,24 @@
 
 set -Eeuo pipefail
 
-source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+probe_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$probe_script_dir/../.." && pwd)"
+sources_dir="$repo_root/Sources"
+resources_src="$repo_root/Resources"
 probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/balancebar-provider-cache-probe.XXXXXX")"
 probe_binary="$probe_dir/provider-balance-snapshot-cache-probe"
 trap 'rm -rf "$probe_dir"' EXIT
 
 {
     printf '%s\n' 'import Foundation' 'enum OfficialQuotaWindowPreference { case fiveHour, sevenDay }' 'enum OfficialQuotaResetDisplayMode { case remaining, resetAt, both; static let defaultValue: Self = .both }' 'enum LunaReserveDisplayMode: String, CaseIterable, Equatable { case disabled, whenQuotaExhausted, always; static let defaultValue: Self = .always }' 'enum LunaReserveResetTimeMode: String, CaseIterable, Equatable { case originalQuota, lunaReserve; static let defaultValue: Self = .originalQuota }'
-    cat "$source_dir/Sources/AppCore/LocalizationKeys.swift"
+    cat "$sources_dir/AppCore/LocalizationKeys.swift"
     printf '%s\n' 'func tr(_ key: LocalizationKey, arguments: [String] = []) -> String { key.rawValue }'
-    cat "$source_dir/Sources/Domain/Snapshot.swift"
+    cat "$sources_dir/Domain/Snapshot.swift"
     awk '
         /^struct ProviderBalanceSnapshotCache \{/ { capture = 1 }
         /^struct ProviderChoice \{/ { exit }
         capture { print }
-    ' "$source_dir/Sources/Domain/ProviderModels.swift"
+    ' "$sources_dir/Domain/ProviderModels.swift"
     cat <<'SWIFT'
 
 func require(_ condition: @autoclosure () -> Bool, _ message: String) {

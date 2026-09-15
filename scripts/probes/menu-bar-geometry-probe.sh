@@ -2,7 +2,10 @@
 
 set -Eeuo pipefail
 
-source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+probe_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$probe_script_dir/../.." && pwd)"
+sources_dir="$repo_root/Sources"
+resources_src="$repo_root/Resources"
 probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/balancebar-menu-bar-geometry-probe.XXXXXX")"
 probe_binary="$probe_dir/menu-bar-geometry-probe"
 geometry_source="$probe_dir/MenuBarGeometry.swift"
@@ -27,7 +30,7 @@ awk '
             exit 1
         }
     }
-' "$source_dir/Sources/UI/MenuBar/MenuBarGeometry.swift" > "$geometry_source"
+' "$sources_dir/UI/MenuBar/MenuBarGeometry.swift" > "$geometry_source"
 
 {
     printf '%s\n' 'import AppKit'

@@ -248,14 +248,10 @@ final class MenuBarAnimationTests: XCTestCase {
     }
 
     func testNativeCoreAnimationHostHasNoPerFrameSchedulerOrAppKitRedrawPath() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let viewsSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "work/balance-bar/Sources/UI/MenuBar/MenuBarViews.swift"
+                "Sources/UI/MenuBar/MenuBarViews.swift"
             ),
             encoding: .utf8
         )
@@ -410,14 +406,10 @@ final class MenuBarAnimationTests: XCTestCase {
     }
 
     func testClaudeCoreAnimationHostHasNoPerFrameSchedulerOrAppKitRedrawPath() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let viewsSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "work/balance-bar/Sources/UI/MenuBar/MenuBarViews.swift"
+                "Sources/UI/MenuBar/MenuBarViews.swift"
             ),
             encoding: .utf8
         )
@@ -464,13 +456,9 @@ final class MenuBarAnimationTests: XCTestCase {
     }
 
     func testClaudeRestingFrameIndexMatchesTheRenderedSVGPeak() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let sourceURL = repositoryRoot.appendingPathComponent(
-            "work/balance-bar/ClaudeThinking.svg"
+            "Resources/ClaudeThinking.svg"
         )
         let svg = try String(contentsOf: sourceURL, encoding: .utf8)
         let frames = try XCTUnwrap(ClaudeThinkingSprite.makeFrames(from: svg))
@@ -498,13 +486,9 @@ final class MenuBarAnimationTests: XCTestCase {
     }
 
     func testClaudeThinkingSpriteBuilderPreservesTheBundledNineFrameStrip() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let sourceURL = repositoryRoot.appendingPathComponent(
-            "work/balance-bar/ClaudeThinking.svg"
+            "Resources/ClaudeThinking.svg"
         )
 
         let sprite = try XCTUnwrap(
@@ -535,33 +519,29 @@ final class MenuBarAnimationTests: XCTestCase {
     }
 
     func testGrokIdleIconLoadsRelocatedFrame16VectorSVG() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let idleURL = repositoryRoot.appendingPathComponent(
-            "work/balance-bar/GrokIdle.svg"
+            "Resources/GrokIdle.svg"
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: idleURL.path))
         XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "work/balance-bar/GrokThinking"
+                    "Resources/GrokThinking"
                 ).path
             )
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "work/balance-bar/GrokThinking.png"
+                    "Resources/GrokThinking.png"
                 ).path
             )
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "work/balance-bar/GrokThinking.gif"
+                    "Resources/GrokThinking.gif"
                 ).path
             )
         )
@@ -611,13 +591,9 @@ final class MenuBarAnimationTests: XCTestCase {
     }
 
     func testGrokThinkingSpriteLoadsVectorSVGPack() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let directoryURL = repositoryRoot.appendingPathComponent(
-            "work/balance-bar/GrokThinking"
+            "Resources/GrokThinking"
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: directoryURL.path))
         XCTAssertEqual(GrokThinkingAnimationTiming.frameCount, 30)
@@ -864,20 +840,16 @@ final class MenuBarAnimationTests: XCTestCase {
     }
 
     func testStatusItemWiringKeepsLayoutAndDashboardRefreshOnSourcePathOnly() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let animationSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "work/balance-bar/Sources/UI/MenuBar/MenuBarAnimation.swift"
+                "Sources/UI/MenuBar/MenuBarAnimation.swift"
             ),
             encoding: .utf8
         )
         let statusItemSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "work/balance-bar/Sources/UI/MenuBar/StatusItemController.swift"
+                "Sources/UI/MenuBar/StatusItemController.swift"
             ),
             encoding: .utf8
         )
@@ -960,7 +932,7 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(animationSource.contains("frameRate: Int = MenuBarAnimationTiming.defaultFrameRate"))
         let compositionPreviewSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "work/balance-bar/Sources/UI/Dashboard/DashboardCompositionController.swift"
+                "Sources/UI/Dashboard/DashboardCompositionController.swift"
             ),
             encoding: .utf8
         )
@@ -969,21 +941,21 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "work/balance-bar/GrokThinking"
+                    "Resources/GrokThinking"
                 ).path
             )
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "work/balance-bar/GrokThinking.png"
+                    "Resources/GrokThinking.png"
                 ).path
             )
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
-                    "work/balance-bar/GrokThinking.gif"
+                    "Resources/GrokThinking.gif"
                 ).path
             )
         )
@@ -1007,7 +979,7 @@ final class MenuBarAnimationTests: XCTestCase {
 
         let compositionSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "work/balance-bar/Sources/UI/Dashboard/DashboardCompositionController.swift"
+                "Sources/UI/Dashboard/DashboardCompositionController.swift"
             ),
             encoding: .utf8
         )
@@ -1028,7 +1000,7 @@ final class MenuBarAnimationTests: XCTestCase {
 
         let menuBarPageSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "work/balance-bar/Sources/UI/Dashboard/Pages/Preferences/DashboardMenuBarPage.swift"
+                "Sources/UI/Dashboard/Pages/Preferences/DashboardMenuBarPage.swift"
             ),
             encoding: .utf8
         )
