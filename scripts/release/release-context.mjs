@@ -11,17 +11,66 @@ import {
 
 export const DEFAULT_PLIST_PATH = "Resources/Info.plist";
 
-function gitOutput(argumentsList) {
-  return execFileSync("git", argumentsList, { encoding: "utf8" }).trim();
+function gitExecOptions(options = {}) {
+  return {
+    encoding: "utf8",
+    cwd: options.cwd,
+  };
 }
 
-export function readVersionAtCommit(commit, plistPath = DEFAULT_PLIST_PATH) {
-  const plist = execFileSync(
-    "git",
-    ["show", `${commit}:${plistPath}`],
-    { encoding: "utf8" },
-  );
-  return readVersionFromPlistContent(plist);
+function gitOutput(argumentsList, options = {}) {
+  return execFileSync("git", argumentsList, gitExecOptions(options)).trim();
+}
+
+function tryGitShow(commit, filePath, options = {}) {
+  try {
+    return execFileSync(
+      "git",
+      ["show", `${commit}:${filePath}`],
+      {
+        ...gitExecOptions(options),
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+  } catch {
+    return null;
+  }
+}
+
+function infoPlistPathsAtCommit(commit, options = {}) {
+  return gitOutput(["ls-tree", "-r", "--name-only", commit], options)
+    .split("\n")
+    .filter((name) => name === "Info.plist" || name.endsWith("/Info.plist"));
+}
+
+export function readVersionAtCommit(
+  commit,
+  plistPath = DEFAULT_PLIST_PATH,
+  options = {},
+) {
+  const seen = new Set();
+  const candidates = [];
+  for (const candidate of [plistPath, ...infoPlistPathsAtCommit(commit, options)]) {
+    if (!candidate || seen.has(candidate)) {
+      continue;
+    }
+    seen.add(candidate);
+    candidates.push(candidate);
+  }
+
+  for (const candidate of candidates) {
+    const plist = tryGitShow(commit, candidate, options);
+    if (plist == null) {
+      continue;
+    }
+    try {
+      return readVersionFromPlistContent(plist);
+    } catch {
+      // Skip non-app plists and keep looking.
+    }
+  }
+
+  throw new Error(`Could not read Info.plist version at ${commit}`);
 }
 
 export function buildReleaseContext({

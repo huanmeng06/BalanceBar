@@ -15,9 +15,11 @@ first parent of that commit:
 - `1.2.0 → 2.0.0` — `a+1`, publishes a stable release such as `v2.0.0`.
 
 If the version did not change, the workflow exits successfully without
-publishing anything. If the version change skips a number or does not reset
-the lower components according to the rules above, it fails safely and asks
-for a corrected version bump.
+publishing anything. If `Resources/Info.plist` was renamed in the merged PR,
+version detection still reads the Info.plist present in each commit so a
+path-only change is not treated as a workflow failure. If the version change
+skips a number or does not reset the lower components according to the rules
+above, it fails safely and asks for a corrected version bump.
 
 ## Previous release comparison
 

@@ -27,7 +27,10 @@ import {
   requestReleaseNotes,
   resolveAIProvider,
 } from "../../scripts/release/generate-release-notes.mjs";
-import { buildReleaseContext } from "../../scripts/release/release-context.mjs";
+import {
+  buildReleaseContext,
+  readVersionAtCommit,
+} from "../../scripts/release/release-context.mjs";
 import {
   buildReleaseInput,
   getReleaseInputStats,
@@ -234,6 +237,49 @@ test("stable comparisons use the preceding stable release and include pre-releas
   });
 
   assert.equal(previous?.tagName, "v1.2.0");
+});
+
+test("readVersionAtCommit follows a moved Info.plist without treating it as a version change", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "balancebar-release-plist-"));
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleShortVersionString</key>
+  <string>1.4.15</string>
+  <key>CFBundleVersion</key>
+  <string>118</string>
+</dict>
+</plist>
+`;
+  const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+
+  try {
+    git(["init", "-b", "main"]);
+    git(["config", "user.email", "test@example.com"]);
+    git(["config", "user.name", "BalanceBar Test"]);
+    fs.mkdirSync(path.join(root, "work/balance-bar"), { recursive: true });
+    fs.writeFileSync(path.join(root, "work/balance-bar/Info.plist"), plist);
+    git(["add", "work/balance-bar/Info.plist"]);
+    git(["commit", "-m", "old plist path"]);
+    const parentSha = git(["rev-parse", "HEAD"]).trim();
+
+    fs.mkdirSync(path.join(root, "Resources"), { recursive: true });
+    fs.renameSync(
+      path.join(root, "work/balance-bar/Info.plist"),
+      path.join(root, "Resources/Info.plist"),
+    );
+    git(["add", "-A"]);
+    git(["commit", "-m", "move plist"]);
+    const mergeSha = git(["rev-parse", "HEAD"]).trim();
+
+    const previous = readVersionAtCommit(parentSha, undefined, { cwd: root });
+    const current = readVersionAtCommit(mergeSha, undefined, { cwd: root });
+    assert.deepEqual(previous, { version: "1.4.15", build: 118 });
+    assert.deepEqual(current, { version: "1.4.15", build: 118 });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("release context ignores build-only changes and detects version changes", () => {
@@ -1469,7 +1515,7 @@ jq -c . "$RUNNER_TEMP/balancebar-pr-700-enriched.json"
 test("release workflow keeps build, tag, and publish failures fatal", () => {
   const workflow = fs.readFileSync(".github/workflows/release.yml", "utf8");
   assert.match(workflow, /set -Eeuo pipefail/);
-  assert.match(workflow, /\.\/work\/balance-bar\/build\.sh production/);
+  assert.match(workflow, /\.\/scripts\/build\.sh production/);
   assert.match(workflow, /git push origin "\$TAG"/);
   assert.match(workflow, /gh release create "\$TAG"/);
   assert.doesNotMatch(workflow, /continue-on-error:\s*true/);
