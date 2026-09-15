@@ -401,7 +401,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         if let balanceDisplay {
             sections.insert(balanceDisplay, at: 0)
         }
-        return DashboardSettingsComponents.makeSettingsPage(sections)
+        return DashboardSettingsComponents.makeSettingsPageContent(sections)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {

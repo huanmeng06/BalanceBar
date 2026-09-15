@@ -1715,7 +1715,7 @@ final class DashboardMenuBarPage {
             animationSpriteImage: input.animationSpriteImage,
             animationFallbackActive: input.animationFallbackActive
         )
-        return DashboardSettingsComponents.makeSettingsPage([
+        return DashboardSettingsComponents.makeSettingsPageContent([
             previewSection,
             quotaAndResetSection,
             iconAndTaskStatusSection,

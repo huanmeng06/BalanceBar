@@ -168,7 +168,7 @@ final class DashboardWindowControllerTests: XCTestCase {
             fpsField.isSelectable = true
             fpsField.stringValue = "30"
             fpsField.widthAnchor.constraint(equalToConstant: 44).isActive = true
-            return DashboardSettingsComponents.makeSettingsPage([
+            return DashboardSettingsComponents.makeSettingsPageContent([
                 DashboardSettingsComponents.makeSettingsSection("Tall", rows: [filler, fpsField])
             ])
         }
@@ -952,7 +952,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in
                     DashboardScrollablePageViewController(
-                        wrapping: DashboardSettingsComponents.makeSettingsPage([
+                        wrapping: DashboardSettingsComponents.makeSettingsPageContent([
                             DashboardSettingsComponents.makeSettingsSection(
                                 "Usage",
                                 rows: [DashboardSettingsComponents.makeSettingsRow("Remaining")]

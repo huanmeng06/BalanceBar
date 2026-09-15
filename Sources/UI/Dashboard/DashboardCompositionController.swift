@@ -395,7 +395,13 @@ final class DashboardCompositionController {
     func addStatusLinkForTesting() { addStatusLink(at: state.statusLinks().count) }
 
     func makePageForTesting(_ section: DashboardSection) -> NSView {
-        makeSectionPage(for: section)
+        let pageView = makeSectionPage(for: section)
+        switch section {
+        case .about:
+            return pageView
+        default:
+            return DashboardScrollablePageViewController.makePageView(hosting: pageView)
+        }
     }
 
     func makeWindowForTesting(showing section: DashboardSection) -> NSWindow? {
