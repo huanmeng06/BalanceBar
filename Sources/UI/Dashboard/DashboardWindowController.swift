@@ -80,8 +80,9 @@ final class DashboardSplitViewController: NSSplitViewController {
     /// of the split view, not an absolute point width, and is left at factory.
     static let preferredSidebarThickness: CGFloat = 216
     static let sidebarThickness: CGFloat = preferredSidebarThickness
-    /// 168pt navigation rows plus the current 14pt stack and 8pt panel insets.
-    /// Kept so the pre-#386 rows still fit; do not shrink by changing row layout.
+    /// 168pt navigation rows plus the former 14pt stack and 8pt panel insets.
+    /// Kept so the pre-#386 rows still fit; do not shrink after removing the
+    /// custom sidebar glass panel.
     static let minimumSidebarThickness: CGFloat = 8 + 14 + 168 + 14 + 8
     /// Product cap for divider resizing. Factory sidebar maximum is
     /// `unspecifiedDimension`; 320 is the actual upper bound.
@@ -567,41 +568,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     private func makeSidebar(titlebarHeight: CGFloat) -> NSView {
         let sidebar = NSView()
-        let panelShadow = NSView()
-        panelShadow.wantsLayer = true
-        panelShadow.layer?.cornerRadius = 22
-        panelShadow.layer?.shadowColor = NSColor.black.cgColor
-        panelShadow.layer?.shadowOpacity = dashboardUsesDarkAppearance ? 0.18 : 0.08
-        panelShadow.layer?.shadowRadius = 10
-        panelShadow.layer?.shadowOffset = NSSize(width: 0, height: -2)
-        panelShadow.layer?.masksToBounds = false
-        panelShadow.translatesAutoresizingMaskIntoConstraints = false
-        sidebar.addSubview(panelShadow)
-
-        let sidebarContent = NSView()
-        let panel: NSView
-        if let glassPanel = makeDashboardGlassEffectView(contentView: sidebarContent, cornerRadius: 22) {
-            panel = glassPanel
-        } else {
-            let visualEffectPanel = NSVisualEffectView()
-            visualEffectPanel.material = .sidebar
-            visualEffectPanel.blendingMode = .withinWindow
-            visualEffectPanel.state = .active
-            visualEffectPanel.wantsLayer = true
-            visualEffectPanel.layer?.cornerRadius = 22
-            visualEffectPanel.layer?.masksToBounds = true
-            sidebarContent.translatesAutoresizingMaskIntoConstraints = false
-            visualEffectPanel.addSubview(sidebarContent)
-            NSLayoutConstraint.activate([
-                sidebarContent.topAnchor.constraint(equalTo: visualEffectPanel.topAnchor),
-                sidebarContent.leadingAnchor.constraint(equalTo: visualEffectPanel.leadingAnchor),
-                sidebarContent.trailingAnchor.constraint(equalTo: visualEffectPanel.trailingAnchor),
-                sidebarContent.bottomAnchor.constraint(equalTo: visualEffectPanel.bottomAnchor)
-            ])
-            panel = visualEffectPanel
-        }
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        panelShadow.addSubview(panel)
 
         sourceListController?.teardown()
         let sourceList = DashboardSourceListController()
@@ -613,28 +579,19 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
         let navigation = sourceList.view
         navigation.translatesAutoresizingMaskIntoConstraints = false
-        sidebarContent.addSubview(navigation)
-        let panelInset: CGFloat = 8
-        let navigationTopInset = max(0, titlebarHeight + 14 - panelInset)
+        sidebar.addSubview(navigation)
+        // Full-height sidebar sits under the titlebar. Keep the source-list
+        // below traffic lights without a custom glass/card wrapper.
+        // Scroll-edge content insets belong to #401.
         NSLayoutConstraint.activate([
-            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: panelInset),
-            panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: panelInset),
-            panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -panelInset),
-            panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -panelInset),
-            panel.topAnchor.constraint(equalTo: panelShadow.topAnchor),
-            panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
-            panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
-            panel.bottomAnchor.constraint(equalTo: panelShadow.bottomAnchor),
-            navigation.topAnchor.constraint(equalTo: sidebarContent.topAnchor, constant: navigationTopInset),
-            navigation.leadingAnchor.constraint(equalTo: sidebarContent.leadingAnchor, constant: 14),
-            navigation.trailingAnchor.constraint(equalTo: sidebarContent.trailingAnchor, constant: -14)
+            navigation.topAnchor.constraint(
+                equalTo: sidebar.topAnchor,
+                constant: max(0, titlebarHeight + 14)
+            ),
+            navigation.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor),
+            navigation.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+            navigation.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor)
         ])
-        let navigationBottom = navigation.bottomAnchor.constraint(
-            equalTo: sidebarContent.bottomAnchor,
-            constant: -8
-        )
-        navigationBottom.priority = .defaultLow
-        navigationBottom.isActive = true
         return sidebar
     }
 
