@@ -96,6 +96,7 @@ final class DashboardSplitViewController: NSSplitViewController {
         rawValue: NSLayoutConstraint.Priority.defaultLow.rawValue + 1
     )
     static let contentHoldingPriority = NSLayoutConstraint.Priority(1)
+    static let dividerHitWidth: CGFloat = 10
     static let contentSurfaceIdentifier = NSUserInterfaceItemIdentifier("dashboardContentSurface")
 
     let sidebarController: NSViewController
@@ -177,21 +178,50 @@ final class DashboardSplitViewController: NSSplitViewController {
 
     override func splitView(
         _ splitView: NSSplitView,
+        effectiveRect proposedEffectiveRect: NSRect,
+        forDrawnRect drawnRect: NSRect,
+        ofDividerAt dividerIndex: Int
+    ) -> NSRect {
+        _ = super.splitView(
+            splitView,
+            effectiveRect: proposedEffectiveRect,
+            forDrawnRect: drawnRect,
+            ofDividerAt: dividerIndex
+        )
+        return dividerHitRect(in: splitView, dividerIndex: dividerIndex)
+    }
+
+    override func splitView(
+        _ splitView: NSSplitView,
         additionalEffectiveRectOfDividerAt dividerIndex: Int
     ) -> NSRect {
-        let inherited = super.splitView(
+        _ = super.splitView(
             splitView,
             additionalEffectiveRectOfDividerAt: dividerIndex
         )
-        if !inherited.isEmpty || dividerIndex != 0 || splitView.subviews.count < 2 {
-            return inherited
+        return dividerHitRect(in: splitView, dividerIndex: dividerIndex)
+    }
+
+    override func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
+        if dividerIndex == 0 {
+            return false
         }
-        // DashboardSplitView keeps a 0pt visual divider; expose a native drag
-        // strip so thickness can still be adjusted through split-view semantics.
-        let hitWidth: CGFloat = 8
-        let sidebar = splitView.subviews[0]
+        return super.splitView(splitView, shouldHideDividerAt: dividerIndex)
+    }
+
+    func dividerHitRect(in splitView: NSSplitView, dividerIndex: Int) -> NSRect {
+        guard dividerIndex == 0, !splitViewItems.isEmpty else { return .zero }
+        let hitWidth = Self.dividerHitWidth
+        let sidebarView = splitViewItems[0].viewController.view
+        let sidebarFrame = sidebarView.convert(sidebarView.bounds, to: splitView)
+        let x: CGFloat
+        if splitViewItems[0].isCollapsed {
+            x = splitView.bounds.minX
+        } else {
+            x = sidebarFrame.maxX - hitWidth / 2
+        }
         return NSRect(
-            x: sidebar.frame.maxX - hitWidth / 2,
+            x: x,
             y: splitView.bounds.minY,
             width: hitWidth,
             height: splitView.bounds.height
@@ -652,19 +682,19 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         navigationButtons.removeAll()
         navigationRows.removeAll()
 
-        navigation.addArrangedSubview(makeNavigationRow(for: .general))
+        addNavigationRow(for: .general, to: navigation)
         navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
 
         let appearanceLabel = makeSidebarGroupTitle(tr(.keyDashboardWindowControllerAppearance))
         navigation.addArrangedSubview(appearanceLabel)
-        navigation.addArrangedSubview(makeNavigationRow(for: .menuBar))
-        navigation.addArrangedSubview(makeNavigationRow(for: .menu))
+        addNavigationRow(for: .menuBar, to: navigation)
+        addNavigationRow(for: .menu, to: navigation)
         navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
 
         let systemLabel = makeSidebarGroupTitle(tr(.keyDashboardWindowControllerSystem))
         navigation.addArrangedSubview(systemLabel)
-        navigation.addArrangedSubview(makeNavigationRow(for: .advanced))
-        navigation.addArrangedSubview(makeNavigationRow(for: .about))
+        addNavigationRow(for: .advanced, to: navigation)
+        addNavigationRow(for: .about, to: navigation)
 
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebarContent.addSubview(navigation)
@@ -695,13 +725,21 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         return label
     }
 
+    private func addNavigationRow(for section: DashboardSection, to navigation: NSStackView) {
+        let row = makeNavigationRow(for: section)
+        navigation.addArrangedSubview(row)
+        row.leadingAnchor.constraint(equalTo: navigation.leadingAnchor).isActive = true
+        row.trailingAnchor.constraint(equalTo: navigation.trailingAnchor).isActive = true
+    }
+
     private func makeNavigationRow(for section: DashboardSection) -> NSView {
         let row = DashboardNavigationRowView()
         row.translatesAutoresizingMaskIntoConstraints = false
         row.wantsLayer = true
         row.layer?.cornerRadius = 10
         row.layer?.backgroundColor = NSColor.clear.cgColor
-        row.widthAnchor.constraint(equalToConstant: 168).isActive = true
+        row.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        row.widthAnchor.constraint(greaterThanOrEqualToConstant: 168).isActive = true
         row.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
         let button = NSButton(title: "", target: self, action: #selector(selectSection(_:)))

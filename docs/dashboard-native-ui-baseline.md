@@ -69,7 +69,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 2. Appearance 组：Menu Bar、Menu
 3. System 组：Advanced、About
 
-行高 32、宽 168、圆角 10。选中/悬停使用 `dashboardAdaptiveColor` 浅蓝/浅白底，选中前景为 `controlAccentColor`。导航按钮 `focusRingType = .none`。
+行高 32、最小宽 168、圆角 10；侧栏变宽时选中/悬停条跟着拉宽。选中/悬停使用 `dashboardAdaptiveColor` 浅蓝/浅白底，选中前景为 `controlAccentColor`。导航按钮 `focusRingType = .none`。
 
 - 打开窗口默认选中 General。
 - `showSection` 把对应行 `state = .on` / `isSelected = true`，其余关闭。

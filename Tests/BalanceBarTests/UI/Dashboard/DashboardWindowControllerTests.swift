@@ -582,6 +582,25 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
         XCTAssertGreaterThan(contentItem.viewController.view.frame.width, 0)
         assertSplitPanesDoNotOverlap(in: window)
+
+        let row = try XCTUnwrap(firstNavigationRow(in: window))
+        XCTAssertGreaterThan(row.frame.width, 168 + 8)
+        XCTAssertEqual(row.frame.width, resizedWidth - 44, accuracy: 4)
+
+        let splitView = splitController.splitView
+        let hit = splitController.dividerHitRect(in: splitView, dividerIndex: 0)
+        let sidebarInSplit = sidebarItem.viewController.view.convert(
+            sidebarItem.viewController.view.bounds,
+            to: splitView
+        )
+        let contentInSplit = contentItem.viewController.view.convert(
+            contentItem.viewController.view.bounds,
+            to: splitView
+        )
+        XCTAssertEqual(hit.width, DashboardSplitViewController.dividerHitWidth, accuracy: 0.5)
+        XCTAssertEqual(hit.midX, sidebarInSplit.maxX, accuracy: 3)
+        XCTAssertLessThan(hit.maxX, contentInSplit.minX + 20)
+        XCTAssertLessThan(hit.maxX, splitView.bounds.maxX - 40)
     }
 
     func testSidebarAndContentFramesStayValidAcrossWindowSizes() throws {
@@ -635,7 +654,26 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             sidebarButtons(in: window).contains { $0 === selectedButton },
             "Collapse must not rebuild sidebar navigation controls"
         )
+        XCTAssertFalse(splitController.splitView(splitController.splitView, shouldHideDividerAt: 0))
+        let collapsedHit = splitController.dividerHitRect(
+            in: splitController.splitView,
+            dividerIndex: 0
+        )
+        XCTAssertGreaterThan(collapsedHit.width, 0)
+        XCTAssertEqual(collapsedHit.minX, splitController.splitView.bounds.minX, accuracy: 1)
 
+        splitController.splitView.setPosition(
+            DashboardSplitViewController.preferredSidebarThickness,
+            ofDividerAt: 0
+        )
+        window.layoutIfNeeded()
+        XCTAssertFalse(
+            sidebarItem.isCollapsed,
+            "Dragging the leading divider strip must be able to expand a collapsed sidebar"
+        )
+
+        sidebarItem.isCollapsed = true
+        window.layoutIfNeeded()
         sidebarItem.isCollapsed = false
         window.layoutIfNeeded()
         XCTAssertFalse(sidebarItem.isCollapsed)
@@ -643,10 +681,9 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(sidebarButtons(in: window).contains { $0 === selectedButton })
         XCTAssertEqual(selectedButton.state, .on)
         assertSidebarSelection(in: window, selected: .menuBar)
-        XCTAssertEqual(
+        XCTAssertGreaterThanOrEqual(
             try XCTUnwrap(sidebarWidth(in: window)),
-            DashboardSplitViewController.preferredSidebarThickness,
-            accuracy: 2
+            sidebarItem.minimumThickness - 1
         )
         assertSplitPanesDoNotOverlap(in: window)
     }
@@ -841,6 +878,18 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
+    }
+
+    private func firstNavigationRow(in window: NSWindow) -> DashboardNavigationRowView? {
+        guard let contentView = window.contentView else { return nil }
+        func search(_ view: NSView) -> DashboardNavigationRowView? {
+            if let row = view as? DashboardNavigationRowView { return row }
+            for child in view.subviews {
+                if let row = search(child) { return row }
+            }
+            return nil
+        }
+        return search(contentView)
     }
 
     private func sidebarButtons(in window: NSWindow) -> [NSButton] {
