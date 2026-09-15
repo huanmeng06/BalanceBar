@@ -175,7 +175,7 @@ enum DevelopmentBankedResetDemo {
             date,
             windows: windows,
             bankedReset: CodexBankedReset(cards: cardList),
-            resetProbability: .percent(23)
+            resetForecast: .demo(updatedAt: date)
         )
     }
 
@@ -233,6 +233,14 @@ final class ProviderRefreshCoordinator {
     private var quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaryPayloads: [String: QuickSwitchSummaryPayload] = [:]
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
+    private struct CachedCodexResetForecast {
+        let forecast: CodexResetForecast
+        let fetchedAt: Date
+    }
+    static let codexResetForecastTTL: TimeInterval = 10 * 60
+    private var cachedCodexResetForecast: CachedCodexResetForecast?
+    private var inFlightForecastCompletions: [(CodexResetForecast) -> Void] = []
+    private var forecastRequestInFlight = false
 
     init(
         repository: CCSwitchRepository,
@@ -526,7 +534,7 @@ final class ProviderRefreshCoordinator {
                     providerID: providerID,
                     payload: .officialWindows(response.output.windows)
                 )
-                let renderOfficial: (CodexBankedReset?, CodexResetProbability) -> Void = { bankedReset, probability in
+                let renderOfficial: (CodexBankedReset?, CodexResetForecast) -> Void = { bankedReset, forecast in
                     self.renderForCurrentProvider(
                         .official(
                             providerName,
@@ -537,7 +545,7 @@ final class ProviderRefreshCoordinator {
                             windows: response.output.windows,
                             lunaReserve: response.output.lunaReserve,
                             bankedReset: bankedReset,
-                            resetProbability: bankedReset == nil ? .unavailable : probability
+                            resetForecast: bankedReset == nil ? .unavailable : forecast
                         ),
                         providerID: providerID,
                         client: client
@@ -548,8 +556,8 @@ final class ProviderRefreshCoordinator {
                         renderOfficial(bankedReset, .unavailable)
                         return
                     }
-                    self.officialQuotaClient.fetchCodexResetForecast { probability in
-                        renderOfficial(bankedReset, probability)
+                    self.provideCodexResetForecast { forecast in
+                        renderOfficial(bankedReset, forecast)
                     }
                 }
                 if client == .codex && response.output.bankedResetNeedsCreditList {
@@ -600,6 +608,55 @@ final class ProviderRefreshCoordinator {
             providerID: providerID,
             client: client
         )
+    }
+
+    private func provideCodexResetForecast(
+        completion: @escaping (CodexResetForecast) -> Void
+    ) {
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            let now = self.now()
+            if let cached = self.cachedCodexResetForecast,
+               now.timeIntervalSince(cached.fetchedAt) < Self.codexResetForecastTTL {
+                completion(cached.forecast.markingCached())
+                return
+            }
+
+            if let cached = self.cachedCodexResetForecast {
+                completion(cached.forecast.markingCached())
+            } else {
+                completion(.unavailable)
+            }
+
+            self.inFlightForecastCompletions.append(completion)
+            guard !self.forecastRequestInFlight else { return }
+            self.forecastRequestInFlight = true
+            self.officialQuotaClient.fetchCodexResetForecast { [weak self] forecast in
+                guard let self else { return }
+                self.performOnQueue {
+                    if forecast.hasAnyValue {
+                        self.cachedCodexResetForecast = CachedCodexResetForecast(
+                            forecast: forecast.markingFresh(),
+                            fetchedAt: self.now()
+                        )
+                    }
+                    let resolved: CodexResetForecast
+                    if forecast.hasAnyValue {
+                        resolved = forecast.markingFresh()
+                    } else if let cached = self.cachedCodexResetForecast {
+                        resolved = cached.forecast.markingCached()
+                    } else {
+                        resolved = .unavailable
+                    }
+                    let completions = self.inFlightForecastCompletions
+                    self.inFlightForecastCompletions = []
+                    self.forecastRequestInFlight = false
+                    for pending in completions {
+                        pending(resolved)
+                    }
+                }
+            }
+        }
     }
 
     private func renderForCurrentProvider(_ next: Snapshot, providerID: String, client: AssistantClient) {

@@ -5915,78 +5915,63 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
 
                 if summaryRow.reset.width > 0 {
-                    let prefixFont = NSFont.systemFont(ofSize: 12, weight: .regular)
-                    let prefix = makeOverviewLabel(
-                        tr(.keyCodexBankedResetProbabilityPrefix),
-                        font: prefixFont
+                    let titleFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+                    let titleText = tr(.keyCodexBankedResetProbabilityPrefix)
+                    let title = HoverLinkTextField(text: titleText)
+                    title.font = titleFont
+                    title.lineBreakMode = .byClipping
+                    title.usesSingleLineMode = true
+                    title.sizeToFit()
+                    let titleWidth = min(
+                        summaryRow.reset.width,
+                        max(
+                            ceil(title.frame.width) + 4,
+                            ceil(title.attributedStringValue.size().width) + 8,
+                            ceil(AccountMarqueeView.textWidth(of: titleText, font: titleFont)) + 8
+                        )
                     )
-                    prefix.textColor = .secondaryLabelColor
-                    prefix.lineBreakMode = .byClipping
-                    prefix.usesSingleLineMode = true
-                    prefix.sizeToFit()
-                    let prefixWidth = max(
-                        ceil(prefix.frame.width),
-                        ceil(
-                            AccountMarqueeView.textWidth(
-                                of: tr(.keyCodexBankedResetProbabilityPrefix),
-                                font: prefixFont
-                            )
-                        ) + 8
-                    )
-                    prefix.frame = CGRect(
+                    title.frame = CGRect(
                         x: summaryRow.reset.minX,
                         y: summaryRow.reset.minY,
-                        width: prefixWidth,
-                        height: max(prefix.frame.height, summaryRow.reset.height)
+                        width: titleWidth,
+                        height: max(title.frame.height, summaryRow.reset.height)
                     )
-                    prefix.identifier = NSUserInterfaceItemIdentifier(
-                        "codex.bankedReset.probabilityPrefix"
-                    )
-                    view.addSubview(prefix)
-
-                    let percentText = quotaPresentation.resetProbability.displayText
-                    let link: HoverLinkTextField
-                    let reservedPercentText: String
-                    if case .percent(let percent) = quotaPresentation.resetProbability {
-                        let sample = OverviewNumericSample(
-                            identity: .bankedResetProbability(provider: snapshot.provider),
-                            format: .integerPercent,
-                            value: Double(percent),
-                            progressPercentage: nil
-                        )
-                        let plan = overviewNumericPlan(for: sample)
-                        let numericLink = OverviewNumericHoverLinkTextField(text: plan.startText)
-                        numericLink.configure(plan: plan, sample: sample)
-                        link = numericLink
-                        reservedPercentText = plan.layoutReservationText
-                    } else {
-                        link = HoverLinkTextField(text: percentText)
-                        reservedPercentText = percentText
+                    // NSTextField cells can draw glyphs inset of the view
+                    // frame. Shift the link so its visible text shares the
+                    // 重置卡 leading edge instead of looking indented.
+                    let titleTextInset = title.cell?
+                        .titleRect(forBounds: title.bounds).minX ?? 0
+                    if titleTextInset != 0 {
+                        title.frame.origin.x = summaryRow.reset.minX - titleTextInset
                     }
-                    link.lineBreakMode = .byClipping
-                    link.usesSingleLineMode = true
-                    link.sizeToFit()
-                    let linkFont = link.font ?? .systemFont(ofSize: 12, weight: .medium)
-                    let linkWidth = max(
-                        ceil(link.frame.width) + 4,
-                        ceil(link.attributedStringValue.size().width) + 8,
-                        ceil(AccountMarqueeView.textWidth(of: reservedPercentText, font: linkFont)) + 8
-                    )
-                    link.frame = CGRect(
-                        x: prefix.frame.maxX,
-                        y: summaryRow.reset.minY,
-                        width: linkWidth,
-                        height: max(link.frame.height, summaryRow.reset.height)
-                    )
-                    link.identifier = NSUserInterfaceItemIdentifier(
+                    title.identifier = NSUserInterfaceItemIdentifier(
                         "codex.bankedReset.probability"
                     )
-                    link.hoverHint = tr(.keyCodexBankedResetProbabilitySource)
-                    link.onActivate = {
+                    title.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
+                    title.hoverHint = Self.codexResetForecastHint(
+                        for: quotaPresentation.resetForecast
+                    )
+                    title.onActivate = {
                         NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
                     }
-                    view.addSubview(link)
-                    view.track(link)
+                    view.addSubview(title)
+                    view.track(title)
+                }
+
+                if let metricsFrame = layout.bankedResetForecastMetrics {
+                    addBankedResetForecastMetrics(
+                        to: view,
+                        frame: metricsFrame,
+                        forecast: quotaPresentation.resetForecast,
+                        provider: snapshot.provider
+                    )
+                }
+                if let confidenceFrame = layout.bankedResetForecastConfidence {
+                    addBankedResetForecastConfidence(
+                        to: view,
+                        frame: confidenceFrame,
+                        forecast: quotaPresentation.resetForecast
+                    )
                 }
 
                 if !isCompactBankedReset {
@@ -6322,6 +6307,241 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             current: sample,
             reduceMotion: shouldReduceOverviewNumericMotion()
         )
+    }
+
+    private static let forecastUpdatedFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        formatter.doesRelativeDateFormatting = false
+        return formatter
+    }()
+
+    static func codexResetForecastHint(for forecast: CodexResetForecast) -> String {
+        let updatedText: String
+        if let updatedAt = forecast.updatedAt {
+            updatedText = forecastUpdatedFormatter.string(from: updatedAt)
+        } else {
+            updatedText = "--"
+        }
+        return tr(.keyCodexBankedResetProbabilityHint, arguments: [updatedText])
+    }
+
+    private func addBankedResetForecastMetrics(
+        to view: MenuHoverLinkHostView,
+        frame: NSRect,
+        forecast: CodexResetForecast,
+        provider: String
+    ) {
+        let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
+        let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
+        let prefix24 = tr(.keyCodexBankedResetProbability24h)
+        let prefix48 = tr(.keyCodexBankedResetProbability48h)
+        let percent24View = makeBankedResetForecastPercentView(
+            probability: forecast.probability24h,
+            identity: .bankedResetProbability24h(provider: provider),
+            identifier: "codex.bankedReset.probability24h",
+            font: numericFont
+        )
+        let percent48View = makeBankedResetForecastPercentView(
+            probability: forecast.probability48h,
+            identity: .bankedResetProbability48h(provider: provider),
+            identifier: "codex.bankedReset.probability48h",
+            font: numericFont
+        )
+        let packing = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
+            prefix24: prefix24,
+            percent24: bankedResetForecastPercentReservation(
+                probability: forecast.probability24h,
+                identity: .bankedResetProbability24h(provider: provider)
+            ),
+            prefix48: prefix48,
+            percent48: bankedResetForecastPercentReservation(
+                probability: forecast.probability48h,
+                identity: .bankedResetProbability48h(provider: provider)
+            ),
+            availableWidth: frame.width
+        )
+        var x = frame.minX
+        let prefix24Label = addBankedResetForecastPrefix(
+            to: view,
+            frame: frame,
+            x: x,
+            width: packing.prefix24Width,
+            text: prefix24,
+            identifier: "codex.bankedReset.probability24hPrefix",
+            font: subtitleFont
+        )
+        x = prefix24Label.frame.maxX + packing.gap
+        percent24View.frame = CGRect(
+            x: x,
+            y: frame.minY,
+            width: packing.percent24Width,
+            height: frame.height
+        )
+        view.addSubview(percent24View)
+        x = percent24View.frame.maxX
+        let separatorLabel = makeOverviewLabel(packing.separator, font: subtitleFont)
+        separatorLabel.textColor = .secondaryLabelColor
+        separatorLabel.lineBreakMode = .byClipping
+        separatorLabel.usesSingleLineMode = true
+        separatorLabel.identifier = NSUserInterfaceItemIdentifier(
+            "codex.bankedReset.probabilitySeparator"
+        )
+        separatorLabel.frame = CGRect(
+            x: x,
+            y: frame.minY,
+            width: packing.separatorWidth,
+            height: frame.height
+        )
+        view.addSubview(separatorLabel)
+        x = separatorLabel.frame.maxX
+        let prefix48Label = addBankedResetForecastPrefix(
+            to: view,
+            frame: frame,
+            x: x,
+            width: packing.prefix48Width,
+            text: prefix48,
+            identifier: "codex.bankedReset.probability48hPrefix",
+            font: subtitleFont
+        )
+        x = prefix48Label.frame.maxX + packing.gap
+        percent48View.frame = CGRect(
+            x: x,
+            y: frame.minY,
+            width: packing.percent48Width,
+            height: frame.height
+        )
+        view.addSubview(percent48View)
+    }
+
+    private func bankedResetForecastPercentReservation(
+        probability: CodexResetProbability,
+        identity: OverviewNumericIdentity
+    ) -> String {
+        guard case .percent(let percent) = probability else {
+            return probability.displayText
+        }
+        let sample = OverviewNumericSample(
+            identity: identity,
+            format: .integerPercent,
+            value: Double(percent),
+            progressPercentage: nil
+        )
+        return overviewNumericPlan(for: sample).layoutReservationText
+    }
+
+    private func makeBankedResetForecastPercentView(
+        probability: CodexResetProbability,
+        identity: OverviewNumericIdentity,
+        identifier: String,
+        font: NSFont
+    ) -> NSView {
+        if case .percent(let percent) = probability {
+            let sample = OverviewNumericSample(
+                identity: identity,
+                format: .integerPercent,
+                value: Double(percent),
+                progressPercentage: nil
+            )
+            let plan = overviewNumericPlan(for: sample)
+            let numeric = OverviewNumericTextView(
+                text: plan.startText,
+                font: font,
+                value: plan.startValue,
+                textColor: .secondaryLabelColor,
+                alignment: .left
+            )
+            numeric.configure(plan: plan, sample: sample)
+            numeric.identifier = OverviewNumericPresentation.amountIdentifier(for: identity)
+            numeric.textField.identifier = numeric.identifier
+            numeric.textField.lineBreakMode = .byClipping
+            return numeric
+        }
+        let label = makeOverviewLabel(probability.displayText, font: font)
+        label.textColor = .secondaryLabelColor
+        label.lineBreakMode = .byClipping
+        label.usesSingleLineMode = true
+        label.identifier = NSUserInterfaceItemIdentifier(identifier)
+        return label
+    }
+
+    private func addBankedResetForecastConfidence(
+        to view: MenuHoverLinkHostView,
+        frame: NSRect,
+        forecast: CodexResetForecast
+    ) {
+        let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
+        let prefix = tr(.keyCodexBankedResetConfidencePrefix)
+        let value = forecast.confidence.displayText()
+        let prefixWidth = min(
+            frame.width,
+            OpenCodexCardLayout.forecastTextWidth(prefix, font: subtitleFont)
+        )
+        let prefixLabel = addBankedResetForecastPrefix(
+            to: view,
+            frame: frame,
+            x: frame.minX,
+            width: prefixWidth,
+            text: prefix,
+            identifier: "codex.bankedReset.confidencePrefix",
+            font: subtitleFont
+        )
+        let valueLabel = makeOverviewLabel(value, font: subtitleFont)
+        valueLabel.textColor = .secondaryLabelColor
+        valueLabel.lineBreakMode = .byClipping
+        valueLabel.usesSingleLineMode = true
+        valueLabel.identifier = NSUserInterfaceItemIdentifier(
+            "codex.bankedReset.confidence"
+        )
+        addBankedResetForecastValue(
+            valueLabel,
+            to: view,
+            frame: frame,
+            after: prefixLabel
+        )
+    }
+
+    @discardableResult
+    private func addBankedResetForecastPrefix(
+        to view: MenuHoverLinkHostView,
+        frame: NSRect,
+        x: CGFloat,
+        width: CGFloat,
+        text: String,
+        identifier: String,
+        font: NSFont
+    ) -> NSTextField {
+        let prefixLabel = makeOverviewLabel(text, font: font)
+        prefixLabel.textColor = .secondaryLabelColor
+        prefixLabel.lineBreakMode = .byClipping
+        prefixLabel.usesSingleLineMode = true
+        prefixLabel.identifier = NSUserInterfaceItemIdentifier(identifier)
+        prefixLabel.frame = CGRect(
+            x: x,
+            y: frame.minY,
+            width: max(0, width),
+            height: frame.height
+        )
+        view.addSubview(prefixLabel)
+        return prefixLabel
+    }
+
+    private func addBankedResetForecastValue(
+        _ valueView: NSView,
+        to view: MenuHoverLinkHostView,
+        frame: NSRect,
+        after prefixLabel: NSTextField
+    ) {
+        let width = max(0, frame.maxX - prefixLabel.frame.maxX - 4)
+        guard width > 0 else { return }
+        valueView.frame = CGRect(
+            x: prefixLabel.frame.maxX + 4,
+            y: frame.minY,
+            width: width,
+            height: frame.height
+        )
+        view.addSubview(valueView)
     }
 
     private func makeOverviewNumericAmount(

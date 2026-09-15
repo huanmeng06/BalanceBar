@@ -638,28 +638,37 @@ enum OfficialQuotaResponseParser {
 }
 
 enum CodexResetForecastParser {
-    static let websiteURL = URL(string: "https://www.willcodexquotareset.com/")!
-    static let forecastURL = URL(string: "https://www.willcodexquotareset.com/api/forecast")!
+    static let websiteURL = URL(string: "https://codex-reset.com/")!
+    static let forecastURL = URL(string: "https://codex-reset.com/api/forecast")!
 
-    static func parse(data: Data) -> CodexResetProbability {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let forecast = object["forecast"] as? [String: Any] else {
+    static func parse(data: Data) -> CodexResetForecast {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return .unavailable
         }
-        guard let score = Self.score(forecast["score"]),
-              (0...100).contains(score) else {
+        let probabilities = object["probabilities"] as? [String: Any]
+        return CodexResetForecast(
+            probability24h: percent(probabilities?["rounded_24h"]),
+            probability48h: percent(probabilities?["rounded_48h"]),
+            confidence: confidence(object["confidence"]),
+            updatedAt: ResponseParsingSupport.timestampDate(object["updated_at"]),
+            isCached: false
+        )
+    }
+
+    private static func percent(_ value: Any?) -> CodexResetProbability {
+        guard let score = integerPercent(value), (0...100).contains(score) else {
             return .unavailable
         }
         return .percent(score)
     }
 
-    private static func score(_ value: Any?) -> Int? {
+    private static func integerPercent(_ value: Any?) -> Int? {
         if let number = value as? NSNumber {
             if CFGetTypeID(number) == CFBooleanGetTypeID() {
                 return nil
             }
             let doubleValue = number.doubleValue
-            guard doubleValue.isFinite else { return nil }
+            guard doubleValue.isFinite, (0...100).contains(doubleValue) else { return nil }
             return Int(doubleValue.rounded(.towardZero))
         }
         if let text = value as? String {
@@ -667,10 +676,33 @@ enum CodexResetForecastParser {
             if let parsed = Int(trimmed) {
                 return parsed
             }
-            if let parsed = Double(trimmed), parsed.isFinite {
+            if let parsed = Double(trimmed), parsed.isFinite, (0...100).contains(parsed) {
                 return Int(parsed.rounded(.towardZero))
             }
         }
         return nil
+    }
+
+    private static func confidence(_ value: Any?) -> CodexResetConfidence {
+        if value == nil || value is NSNull {
+            return .unavailable
+        }
+        guard let text = value as? String else {
+            return .unknown("")
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return .unavailable
+        }
+        switch trimmed.lowercased() {
+        case "low":
+            return .low
+        case "medium":
+            return .medium
+        case "high":
+            return .high
+        default:
+            return .unknown(trimmed)
+        }
     }
 }

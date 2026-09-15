@@ -1212,14 +1212,142 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(activations, 1)
     }
 
+    func testDashboardTextTooltipLayoutKeepsShortHintsCompactAndWrapsLongHints() throws {
+        let font = DashboardTextTooltip.font
+        let short = DashboardTextTooltipLayout.make(for: "codex-reset.com", font: font)
+        XCTAssertFalse(short.wraps)
+        XCTAssertLessThan(
+            short.contentSize.width,
+            AccountEmailTooltipLayout.minimumTextWidth
+        )
+        XCTAssertLessThanOrEqual(short.textWidth, DashboardTextTooltipLayout.maximumTextWidth)
+        XCTAssertEqual(
+            short.textHeight,
+            max(
+                ceil(font.ascender - font.descender + 2),
+                ceil(("codex-reset.com" as NSString).size(withAttributes: [.font: font]).height)
+            ),
+            accuracy: 0.001
+        )
+
+        let shortController = DashboardTextTooltipViewController(text: "codex-reset.com")
+        shortController.loadViewIfNeeded()
+        XCTAssertEqual(shortController.view.frame.size, short.contentSize)
+        let shortLabel = try XCTUnwrap(shortController.view.subviews.first as? NSTextField)
+        XCTAssertNotEqual(shortLabel.lineBreakMode, .byWordWrapping)
+        XCTAssertLessThan(shortController.view.frame.width, 160)
+
+        let longHint = tr(
+            .keyCodexBankedResetProbabilityHint,
+            arguments: ["2026-09-13 22:35"],
+            language: .simplifiedChinese
+        )
+        let long = DashboardTextTooltipLayout.make(for: longHint, font: font)
+        XCTAssertTrue(long.wraps)
+        XCTAssertEqual(long.textWidth, DashboardTextTooltipLayout.maximumTextWidth)
+        XCTAssertGreaterThan(long.textHeight, short.textHeight)
+        XCTAssertEqual(
+            long.contentSize.width,
+            DashboardTextTooltipLayout.maximumTextWidth
+                + DashboardTextTooltipLayout.horizontalInset * 2
+        )
+        XCTAssertGreaterThan(long.contentSize.height, short.contentSize.height)
+
+        let longController = DashboardTextTooltipViewController(text: longHint)
+        longController.loadViewIfNeeded()
+        XCTAssertEqual(longController.view.frame.size, long.contentSize)
+        XCTAssertLessThanOrEqual(
+            longController.view.frame.width,
+            DashboardTextTooltipLayout.maximumTextWidth
+                + DashboardTextTooltipLayout.horizontalInset * 2
+        )
+        let longLabel = try XCTUnwrap(longController.view.subviews.first as? NSTextField)
+        XCTAssertEqual(longLabel.lineBreakMode, .byWordWrapping)
+        XCTAssertEqual(longLabel.maximumNumberOfLines, 0)
+        XCTAssertEqual(longLabel.preferredMaxLayoutWidth, long.textWidth)
+
+        for language in AppLanguage.allCases where language != .system {
+            let localizedHint = tr(
+                .keyCodexBankedResetProbabilityHint,
+                arguments: ["2026-09-13 22:35"],
+                language: language
+            )
+            let layout = DashboardTextTooltipLayout.make(for: localizedHint, font: font)
+            XCTAssertTrue(layout.wraps, "hint should wrap for \(language.rawValue)")
+            XCTAssertEqual(layout.textWidth, DashboardTextTooltipLayout.maximumTextWidth)
+            XCTAssertGreaterThan(
+                layout.textHeight,
+                short.textHeight,
+                "wrapped hint height for \(language.rawValue)"
+            )
+        }
+        XCTAssertEqual(AccountEmailTextField.tooltipDelay, 0.15, accuracy: 0.001)
+    }
+
     func testHoverLinkHoverHintSetsNativeTooltip() {
         let link = HoverLinkTextField(text: "24%")
         XCTAssertEqual(link.hoverHint, "")
         XCTAssertNil(link.toolTip)
-        link.hoverHint = "数据来源：willcodexquotareset.com"
-        XCTAssertEqual(link.toolTip, "数据来源：willcodexquotareset.com")
+        link.hoverHint = "数据来源：codex-reset.com"
+        XCTAssertEqual(link.toolTip, "数据来源：codex-reset.com")
         link.hoverHint = ""
         XCTAssertNil(link.toolTip)
+        XCTAssertFalse(link.isHoverHintVisible)
+    }
+
+    func testHoverLinkDelayedHintCancelsBeforeFireAndDoesNotUseNativeTooltip() {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        let link = HoverLinkTextField(text: tr(.keyCodexBankedResetProbabilityPrefix))
+        link.frame = NSRect(x: 8, y: 2, width: 200, height: 20)
+        link.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
+        link.hoverHint = "codex-reset.com"
+        host.addSubview(link)
+        link.layout()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 80),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView?.addSubview(host)
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        host.track(link)
+        XCTAssertEqual(link.hoverHintDelay, 0.5, accuracy: 0.001)
+        XCTAssertNil(link.toolTip)
+        XCTAssertEqual(AccountEmailTextField.tooltipDelay, 0.15, accuracy: 0.001)
+
+        let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
+        host.forwardHover(atHostPoint: glyphPoint)
+        XCTAssertTrue(link.isHoverHintScheduled)
+        XCTAssertFalse(link.isHoverHintVisible)
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+        host.forwardHover(atHostPoint: glyphPoint)
+        XCTAssertTrue(link.isHoverHintScheduled)
+        XCTAssertFalse(link.isHoverHintVisible)
+
+        let blankPoint = host.convert(
+            NSPoint(x: link.visibleTextHitRect.maxX + 12, y: link.visibleTextHitRect.midY),
+            from: link
+        )
+        host.forwardHover(atHostPoint: blankPoint)
+        XCTAssertFalse(link.isHoverHintScheduled)
+        XCTAssertFalse(link.isHoverHintVisible)
+
+        host.forwardHover(atHostPoint: glyphPoint)
+        XCTAssertTrue(link.isHoverHintScheduled)
+        link.firePendingHoverHintForTesting()
+        XCTAssertFalse(link.isHoverHintScheduled)
+        XCTAssertNil(link.toolTip)
+
+        var activations = 0
+        link.onActivate = { activations += 1 }
+        link.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: link.visibleTextHitRect.center))
+        XCTAssertEqual(activations, 1)
+
+        host.removeFromSuperview()
+        XCTAssertFalse(link.isHoverHintScheduled)
         XCTAssertFalse(link.isHoverHintVisible)
     }
 

@@ -284,7 +284,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertNil(presented.lunaReserveInsertionIndex)
         XCTAssertEqual(presented.bankedReset?.availableCount, 2)
         XCTAssertEqual(presented.bankedReset?.cards.map(\.id), ["earlier", "undated"])
-        XCTAssertEqual(presented.resetProbability, .unavailable)
+        XCTAssertEqual(presented.resetForecast, .unavailable)
 
         let scored = Snapshot.official(
             "OpenAI",
@@ -294,14 +294,14 @@ final class DomainModelsTests: XCTestCase {
             date,
             windows: [fiveHour, sevenDay],
             bankedReset: bankedReset,
-            resetProbability: .percent(75)
+            resetForecast: .demo(updatedAt: date)
         )
         XCTAssertEqual(
             scored.officialQuotaMenuPresentation(
                 lunaReserveDisplayMode: .always,
                 hideExhaustedQuota: false
-            ).resetProbability,
-            .percent(75)
+            ).resetForecast,
+            .demo(updatedAt: date)
         )
 
         let emptyOfficial = Snapshot.official(
@@ -327,7 +327,13 @@ final class DomainModelsTests: XCTestCase {
             date,
             windows: [fiveHour, sevenDay],
             bankedReset: CodexBankedReset(cards: []),
-            resetProbability: .percent(12)
+            resetForecast: CodexResetForecast(
+                probability24h: .percent(12),
+                probability48h: .unavailable,
+                confidence: .unknown("experimental"),
+                updatedAt: date,
+                isCached: false
+            )
         )
         let zeroCountPresented = zeroCountOfficial.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: .always,
@@ -335,7 +341,12 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(zeroCountPresented.bankedReset?.availableCount, 0)
         XCTAssertEqual(zeroCountPresented.bankedReset?.cards, [])
-        XCTAssertEqual(zeroCountPresented.resetProbability, .percent(12))
+        XCTAssertEqual(zeroCountPresented.resetForecast.probability24h, .percent(12))
+        XCTAssertEqual(zeroCountPresented.resetForecast.confidence, .unknown("experimental"))
+        XCTAssertEqual(
+            zeroCountPresented.resetForecast.confidence.displayText(language: .simplifiedChinese),
+            "未知"
+        )
 
         let balance = Snapshot.balance(
             "Custom",
@@ -676,7 +687,7 @@ final class DomainModelsTests: XCTestCase {
         let bankedReset = try XCTUnwrap(snapshot.bankedReset)
         XCTAssertEqual(bankedReset.availableCount, DevelopmentBankedResetDemo.cardCount)
         XCTAssertEqual(bankedReset.cards.count, 10)
-        XCTAssertEqual(snapshot.resetProbability, .percent(23))
+        XCTAssertEqual(snapshot.resetForecast, .demo(updatedAt: date))
         XCTAssertNil(snapshot.lunaReserve)
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertTrue(bankedReset.cards[0].remainingIsWarning)
@@ -704,7 +715,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(snapshot.officialQuotaWindows.first?.remaining, 80)
         XCTAssertEqual(snapshot.officialQuotaWindows.last?.remaining, 45)
-        XCTAssertEqual(snapshot.resetProbability, .percent(23))
+        XCTAssertEqual(snapshot.resetForecast, .demo(updatedAt: date))
         XCTAssertNil(snapshot.lunaReserve)
     }
 

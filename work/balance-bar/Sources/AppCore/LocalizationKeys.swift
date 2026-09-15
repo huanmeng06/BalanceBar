@@ -462,6 +462,13 @@
     case keyCodexBankedResetRemainingMinutes = "codex.banked_reset.remaining_minutes"
     case keyCodexBankedResetProbabilityPrefix = "codex.banked_reset.probability_prefix"
     case keyCodexBankedResetProbabilitySource = "codex.banked_reset.probability_source"
+    case keyCodexBankedResetProbabilityHint = "codex.banked_reset.probability_hint"
+    case keyCodexBankedResetProbability24h = "codex.banked_reset.probability_24h"
+    case keyCodexBankedResetProbability48h = "codex.banked_reset.probability_48h"
+    case keyCodexBankedResetConfidencePrefix = "codex.banked_reset.confidence_prefix"
+    case keyCodexBankedResetConfidenceLow = "codex.banked_reset.confidence_low"
+    case keyCodexBankedResetConfidenceMedium = "codex.banked_reset.confidence_medium"
+    case keyCodexBankedResetConfidenceHigh = "codex.banked_reset.confidence_high"
 
     var rawKey: String { rawValue }
   }

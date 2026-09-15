@@ -24,8 +24,83 @@ enum DashboardTextTooltip {
     }
 }
 
-/// One-line source / hint bubble for menu-hosted hover links. Native
-/// `toolTip` often never appears inside an `NSMenu` tracking loop.
+/// Menu-hosted hover-hint bubble. Short copy stays a compact single line;
+/// longer copy wraps at `maximumTextWidth` instead of growing into an
+/// infinite-width bar. Unlike mailbox tooltips, this does not force a
+/// 160pt minimum width.
+struct DashboardTextTooltipLayout: Equatable {
+    static let maximumTextWidth: CGFloat = 280
+    static let textHeightMeasurementSlack: CGFloat = 2
+    static let horizontalInset: CGFloat = 10
+    static let verticalInset: CGFloat = 6
+
+    let textWidth: CGFloat
+    let textHeight: CGFloat
+    let contentSize: NSSize
+    let wraps: Bool
+
+    static func make(for text: String, font: NSFont) -> Self {
+        let unwrappedSize = (text as NSString).size(withAttributes: [.font: font])
+        let unwrappedWidth = ceil(unwrappedSize.width)
+        let singleLineHeight = max(
+            ceil(font.ascender - font.descender + 2),
+            ceil(unwrappedSize.height)
+        )
+        let wraps = unwrappedWidth > maximumTextWidth
+        if !wraps {
+            let textWidth = max(1, unwrappedWidth + 2)
+            return Self(
+                textWidth: textWidth,
+                textHeight: singleLineHeight,
+                contentSize: NSSize(
+                    width: textWidth + horizontalInset * 2,
+                    height: singleLineHeight + verticalInset * 2
+                ),
+                wraps: false
+            )
+        }
+
+        let textWidth = maximumTextWidth
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        let measuredText = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: font,
+                .paragraphStyle: paragraphStyle
+            ]
+        ).boundingRect(
+            with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let measurementLabel = NSTextField(wrappingLabelWithString: text)
+        measurementLabel.font = font
+        measurementLabel.lineBreakMode = .byWordWrapping
+        measurementLabel.usesSingleLineMode = false
+        measurementLabel.maximumNumberOfLines = 0
+        measurementLabel.preferredMaxLayoutWidth = textWidth
+        measurementLabel.cell?.wraps = true
+        measurementLabel.cell?.truncatesLastVisibleLine = false
+        measurementLabel.cell?.lineBreakMode = .byWordWrapping
+        let textHeight = max(
+            singleLineHeight,
+            ceil(measuredText.height) + textHeightMeasurementSlack,
+            ceil(measurementLabel.fittingSize.height)
+        )
+        return Self(
+            textWidth: textWidth,
+            textHeight: textHeight,
+            contentSize: NSSize(
+                width: textWidth + horizontalInset * 2,
+                height: textHeight + verticalInset * 2
+            ),
+            wraps: true
+        )
+    }
+}
+
+/// Source / hint bubble for menu-hosted hover links. Native `toolTip`
+/// often never appears inside an `NSMenu` tracking loop.
 final class DashboardTextTooltipViewController: NSViewController {
     private let text: String
 
@@ -40,23 +115,36 @@ final class DashboardTextTooltipViewController: NSViewController {
 
     override func loadView() {
         let font = DashboardTextTooltip.font
-        let insetX: CGFloat = 10
-        let insetY: CGFloat = 6
-        let textSize = (text as NSString).size(withAttributes: [.font: font])
-        let width = ceil(textSize.width) + 2
-        let height = max(ceil(font.ascender - font.descender + 2), ceil(textSize.height))
+        let layout = DashboardTextTooltipLayout.make(for: text, font: font)
         let root = NSView(
             frame: NSRect(
                 x: 0,
                 y: 0,
-                width: width + insetX * 2,
-                height: height + insetY * 2
+                width: layout.contentSize.width,
+                height: layout.contentSize.height
             )
         )
-        let label = NSTextField(labelWithString: text)
+        let label: NSTextField
+        if layout.wraps {
+            label = NSTextField(wrappingLabelWithString: text)
+            label.lineBreakMode = .byWordWrapping
+            label.usesSingleLineMode = false
+            label.maximumNumberOfLines = 0
+            label.preferredMaxLayoutWidth = layout.textWidth
+            label.cell?.wraps = true
+            label.cell?.truncatesLastVisibleLine = false
+            label.cell?.lineBreakMode = .byWordWrapping
+        } else {
+            label = NSTextField(labelWithString: text)
+        }
         DashboardTextTooltip.configure(label)
         label.stringValue = text
-        label.frame = NSRect(x: insetX, y: insetY, width: width, height: height)
+        label.frame = NSRect(
+            x: DashboardTextTooltipLayout.horizontalInset,
+            y: DashboardTextTooltipLayout.verticalInset,
+            width: layout.textWidth,
+            height: layout.textHeight
+        )
         root.addSubview(label)
         view = root
     }
@@ -399,19 +487,29 @@ class HoverLinkTextField: NSTextField {
     /// is the Dashboard fallback; menu hosts present a popover instead.
     var hoverHint: String = "" {
         didSet {
-            toolTip = hoverHint.isEmpty ? nil : hoverHint
+            refreshNativeTooltip()
             if hoverHint.isEmpty {
+                cancelPendingHoverHint()
                 dismissHoverHint()
             }
+        }
+    }
+    /// Instance-level delay before the menu popover. Default 0 keeps other
+    /// links immediate. Moving inside the same target does not reset.
+    var hoverHintDelay: TimeInterval = 0 {
+        didSet {
+            refreshNativeTooltip()
         }
     }
     private(set) var interactionMode: InteractionMode = .normal
     private(set) var visibleTextHitRect = NSRect.zero
     private(set) var isHoverHintVisible = false
+    private(set) var isHoverHintScheduled = false
     private var trackingAreaReference: NSTrackingArea?
     private var isHovered = false
     private var isApplyingStyle = false
     private var hintPopover: NSPopover?
+    private var hoverHintTimer: Timer?
 
     override var stringValue: String {
         didSet {
@@ -589,8 +687,9 @@ class HoverLinkTextField: NSTextField {
             NSCursor.arrow.set()
         }
         if hovered {
-            presentHoverHintIfNeeded()
+            scheduleHoverHintIfNeeded()
         } else {
+            cancelPendingHoverHint()
             dismissHoverHint()
         }
     }
@@ -606,6 +705,7 @@ class HoverLinkTextField: NSTextField {
 
     private func tearDownInteraction() {
         removeTrackingAreaReference()
+        cancelPendingHoverHint()
         dismissHoverHint()
         if isHovered {
             isHovered = false
@@ -616,8 +716,46 @@ class HoverLinkTextField: NSTextField {
         }
     }
 
+    private func refreshNativeTooltip() {
+        if hoverHintDelay > 0 || hoverHint.isEmpty {
+            toolTip = nil
+        } else {
+            toolTip = hoverHint
+        }
+    }
+
+    private func scheduleHoverHintIfNeeded() {
+        guard !hoverHint.isEmpty else { return }
+        if hoverHintDelay <= 0 {
+            presentHoverHintIfNeeded()
+            return
+        }
+        guard hoverHintTimer == nil, !isHoverHintVisible else { return }
+        let timer = Timer(timeInterval: hoverHintDelay, repeats: false) { [weak self] _ in
+            self?.hoverHintTimer = nil
+            self?.isHoverHintScheduled = false
+            self?.presentHoverHintIfNeeded()
+        }
+        hoverHintTimer = timer
+        isHoverHintScheduled = true
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func cancelPendingHoverHint() {
+        hoverHintTimer?.invalidate()
+        hoverHintTimer = nil
+        isHoverHintScheduled = false
+    }
+
+    func firePendingHoverHintForTesting() {
+        hoverHintTimer?.fire()
+        cancelPendingHoverHint()
+    }
+
     private func presentHoverHintIfNeeded() {
+        cancelPendingHoverHint()
         guard interactionMode == .menuHosted,
+              isHovered,
               !hoverHint.isEmpty,
               window != nil,
               hintPopover == nil else {
@@ -634,7 +772,9 @@ class HoverLinkTextField: NSTextField {
         popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
         guard popover.isShown else {
             hintPopover = nil
-            toolTip = hoverHint
+            if hoverHintDelay <= 0 {
+                toolTip = hoverHint
+            }
             isHoverHintVisible = false
             return
         }
@@ -645,9 +785,7 @@ class HoverLinkTextField: NSTextField {
         hintPopover?.close()
         hintPopover = nil
         isHoverHintVisible = false
-        if !hoverHint.isEmpty {
-            toolTip = hoverHint
-        }
+        refreshNativeTooltip()
     }
 
     private func isPointInsideVisibleText(for event: NSEvent) -> Bool {

@@ -242,23 +242,27 @@ final class OfficialQuotaClientTests: XCTestCase {
             XCTAssertEqual(request.url, CodexResetForecastParser.forecastURL)
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
             XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
-            return StubResult(data: Data(#"{"forecast":{"score":75}}"#.utf8))
+            return StubResult(data: ResponseParsersTests.codexResetIssueJSON)
         }
         let client = makeClient(codexToken: nil, claudeToken: nil)
         let expectation = expectation(description: "forecast completed")
-        var captured: CodexResetProbability?
-        client.fetchCodexResetForecast { probability in
-            captured = probability
+        var captured: CodexResetForecast?
+        client.fetchCodexResetForecast { forecast in
+            captured = forecast
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 2)
-        XCTAssertEqual(captured, .percent(75))
+        XCTAssertEqual(captured?.probability24h, .percent(24))
+        XCTAssertEqual(captured?.probability48h, .percent(42))
+        XCTAssertEqual(captured?.confidence, .low)
         let request = try XCTUnwrap(StubURLProtocol.lastRequest)
-        XCTAssertEqual(request.url?.host, "www.willcodexquotareset.com")
+        XCTAssertEqual(request.url?.host, "codex-reset.com")
         XCTAssertEqual(request.url?.path, "/api/forecast")
         XCTAssertEqual(request.timeoutInterval, 8)
         XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
     }
 
     func testCodexResetForecastFailureIsUnavailable() throws {
@@ -267,13 +271,15 @@ final class OfficialQuotaClientTests: XCTestCase {
         }
         let client = makeClient(codexToken: nil, claudeToken: nil)
         let expectation = expectation(description: "forecast failed")
-        var captured: CodexResetProbability?
-        client.fetchCodexResetForecast { probability in
-            captured = probability
+        var captured: CodexResetForecast?
+        client.fetchCodexResetForecast { forecast in
+            captured = forecast
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 2)
         XCTAssertEqual(captured, .unavailable)
+        XCTAssertEqual(captured?.probability24h.displayText, "--%")
+        XCTAssertEqual(captured?.confidence.displayText(), "--")
     }
 
     func testCodexRequestPublishesTheOfficialLunaReserveFields() throws {

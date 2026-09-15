@@ -4,6 +4,9 @@ import XCTest
 
 final class ResponseParsersTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
+    static let codexResetIssueJSON = Data(#"""
+    {"mode":"model","updated_at":"2026-09-13T14:35:22.017Z","probabilities":{"raw_24h":0.23953072768015632,"raw_48h":0.4216864858573275,"rounded_24h":24,"rounded_48h":42,"model_24h":24,"model_48h":42},"confidence":"low","confidence_note":"Experimental: walk-forward backtest has not beaten both baselines yet.","hint_copy":"do not show"}
+    """#.utf8)
 
     func testBalanceFixturesCoverGenericRightCodeAndNativeProviders() throws {
         let cases: [(String, Data, BalanceResponseParser.Context, Double, String)] = [
@@ -734,29 +737,73 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertTrue(emptyList.cards.isEmpty)
     }
 
-    func testCodexResetForecastParserReadsScoreAndFallsBack() {
+    func testCodexResetForecastParserReadsRoundedPercentsIndependently() {
+        let parsed = CodexResetForecastParser.parse(data: Self.codexResetIssueJSON)
+        XCTAssertEqual(parsed.probability24h, .percent(24))
+        XCTAssertEqual(parsed.probability48h, .percent(42))
+        XCTAssertEqual(parsed.confidence, .low)
+        XCTAssertEqual(
+            parsed.updatedAt,
+            ResponseParsingSupport.timestampDate("2026-09-13T14:35:22.017Z")
+        )
+        XCTAssertFalse(parsed.isCached)
+        XCTAssertTrue(parsed.hasAnyValue)
+        XCTAssertEqual(CodexResetForecastParser.websiteURL.host, "codex-reset.com")
+        XCTAssertEqual(CodexResetForecastParser.forecastURL.path, "/api/forecast")
+        XCTAssertEqual(CodexResetProbability.unavailable.displayText, "--%")
+        XCTAssertEqual(CodexResetProbability.percent(75).displayText, "75%")
+        XCTAssertEqual(CodexResetConfidence.unavailable.displayText(), "--")
+        XCTAssertEqual(
+            CodexResetConfidence.unknown("experimental").displayText(language: .simplifiedChinese),
+            "未知"
+        )
+        XCTAssertEqual(
+            CodexResetConfidence.low.displayText(language: .simplifiedChinese),
+            "低"
+        )
+
+        let missing24 = CodexResetForecastParser.parse(
+            data: Data(#"{"probabilities":{"rounded_48h":42},"confidence":"low"}"#.utf8)
+        )
+        XCTAssertEqual(missing24.probability24h, .unavailable)
+        XCTAssertEqual(missing24.probability48h, .percent(42))
+        XCTAssertEqual(missing24.confidence, .low)
+
+        let unknownConfidence = CodexResetForecastParser.parse(
+            data: Data(#"{"probabilities":{"rounded_24h":10,"rounded_48h":20},"confidence":"experimental"}"#.utf8)
+        )
+        XCTAssertEqual(unknownConfidence.confidence, .unknown("experimental"))
+        XCTAssertNotEqual(unknownConfidence.confidence, .high)
+
         XCTAssertEqual(
             CodexResetForecastParser.parse(data: Data(#"{"forecast":{"score":75}}"#.utf8)),
-            .percent(75)
-        )
-        XCTAssertEqual(
-            CodexResetForecastParser.parse(data: Data(#"{"forecast":{"score":24.9}}"#.utf8)),
-            .percent(24)
-        )
-        XCTAssertEqual(
-            CodexResetForecastParser.parse(data: Data(#"{"forecast":{"score":101}}"#.utf8)),
             .unavailable
         )
         XCTAssertEqual(
-            CodexResetForecastParser.parse(data: Data(#"{"forecast":{}}"#.utf8)),
+            CodexResetForecastParser.parse(data: Data(#"{"probabilities":{"rounded_24h":101}}"#.utf8)).probability24h,
+            .unavailable
+        )
+        XCTAssertEqual(
+            CodexResetForecastParser.parse(data: Data(#"{"probabilities":{"rounded_24h":true}}"#.utf8)).probability24h,
+            .unavailable
+        )
+        XCTAssertEqual(
+            CodexResetForecastParser.parse(data: Data(#"{"probabilities":{"raw_24h":0.24}}"#.utf8)).probability24h,
+            .unavailable
+        )
+        XCTAssertEqual(
+            CodexResetForecastParser.parse(data: Data(#"{"signal_score":80}"#.utf8)),
             .unavailable
         )
         XCTAssertEqual(
             CodexResetForecastParser.parse(data: Data("{invalid".utf8)),
             .unavailable
         )
-        XCTAssertEqual(CodexResetProbability.unavailable.displayText, "--%")
-        XCTAssertEqual(CodexResetProbability.percent(75).displayText, "75%")
+        let noteOnly = CodexResetForecastParser.parse(
+            data: Data(#"{"confidence_note":"Experimental","hint_copy":"english"}"#.utf8)
+        )
+        XCTAssertEqual(noteOnly, .unavailable)
+        XCTAssertFalse(noteOnly.hasAnyValue)
     }
 
     func testOfficialQuotaParserRejectsInvalidAndMissingFixtures() throws {

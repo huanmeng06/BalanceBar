@@ -102,6 +102,7 @@ private struct OverviewNumericTextRoot: View {
     @ObservedObject var model: OverviewNumericTextModel
     let font: NSFont
     let color: NSColor
+    var alignment: NSTextAlignment = .right
 
     var body: some View {
         HStack(spacing: 0) {
@@ -116,10 +117,14 @@ private struct OverviewNumericTextRoot: View {
         .font(Font(font))
         .foregroundStyle(Color(color))
         .monospacedDigit()
-        .multilineTextAlignment(.trailing)
+        .multilineTextAlignment(alignment == .left || alignment == .natural ? .leading : .trailing)
         .lineLimit(1)
         .minimumScaleFactor(1)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity,
+            alignment: alignment == .left || alignment == .natural ? .leading : .trailing
+        )
         .geometryGroup()
         .compositingGroup()
         .clipped()
@@ -153,12 +158,18 @@ final class OverviewNumericTextView: NSView {
     var isHostingVisibleForTesting: Bool { !hostingView.isHidden }
     var hostingClipsToBoundsForTesting: Bool { hostingView.clipsToBounds }
 
-    init(text: String, font: NSFont, value: Double) {
+    init(
+        text: String,
+        font: NSFont,
+        value: Double,
+        textColor: NSColor = .labelColor,
+        alignment: NSTextAlignment = .right
+    ) {
         currentValue = value
         textField = NSTextField(labelWithString: text)
         textField.font = font
-        textField.textColor = .labelColor
-        textField.alignment = .right
+        textField.textColor = textColor
+        textField.alignment = alignment
         textField.lineBreakMode = .byClipping
         textField.usesSingleLineMode = true
         textField.isHidden = true
@@ -169,7 +180,8 @@ final class OverviewNumericTextView: NSView {
             rootView: OverviewNumericTextRoot(
                 model: model,
                 font: font,
-                color: .labelColor
+                color: textColor,
+                alignment: alignment
             )
         )
         super.init(frame: .zero)
