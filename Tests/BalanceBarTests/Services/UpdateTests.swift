@@ -3003,6 +3003,9 @@ final class UpdateTests: XCTestCase {
                 .compactMap { $0 as? NSTextField }
                 .first { $0.identifier?.rawValue == "checkForUpdatesSubtitle" }
         )
+        row.refreshWrappingLayout()
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
 
         XCTAssertEqual(controls.orientation, .vertical)
         XCTAssertGreaterThan(row.frame.height, 62)
@@ -3016,6 +3019,9 @@ final class UpdateTests: XCTestCase {
         XCTAssertLessThanOrEqual(updateNotesButton.frame.maxX, controls.bounds.maxX + 0.5)
 
         page.setFrameSize(NSSize(width: 760, height: 300))
+        page.layoutSubtreeIfNeeded()
+        row.refreshWrappingLayout()
+        window.layoutIfNeeded()
         page.layoutSubtreeIfNeeded()
         XCTAssertEqual(controls.orientation, .horizontal)
         XCTAssertLessThan(row.frame.height, 120)
@@ -3077,6 +3083,9 @@ final class UpdateTests: XCTestCase {
             pageController.refresh(updateState: state)
             window.setContentSize(NSSize(width: width, height: 360))
             page.setFrameSize(NSSize(width: width, height: 360))
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
+            row.refreshWrappingLayout()
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
 
@@ -3163,6 +3172,9 @@ final class UpdateTests: XCTestCase {
             line: UInt = #line
         ) {
             narrowPageController.refresh(updateState: state)
+            narrowWindow.layoutIfNeeded()
+            narrowPage.layoutSubtreeIfNeeded()
+            narrowRow.refreshWrappingLayout()
             narrowWindow.layoutIfNeeded()
             narrowPage.layoutSubtreeIfNeeded()
 
@@ -3317,6 +3329,9 @@ final class UpdateTests: XCTestCase {
             )
 
             func frames() -> (labels: NSRect, controls: NSRect, subtitle: NSRect) {
+                window.layoutIfNeeded()
+                page.layoutSubtreeIfNeeded()
+                row.refreshWrappingLayout()
                 window.layoutIfNeeded()
                 page.layoutSubtreeIfNeeded()
                 return (

@@ -744,6 +744,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             page.setFrameSize(host.bounds.size)
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
+            row.refreshWrappingLayout()
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
 
             XCTAssertEqual(controls.orientation, orientation, file: file, line: line)
             let runningFrame = runningControls.convert(runningControls.bounds, to: row)
