@@ -19,7 +19,8 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(controller.documentViewForTesting is DashboardSettingsDocumentView)
         XCTAssertTrue(controller.pageScrollView.contentView is NSClipView)
         XCTAssertFalse(controller.pageScrollView.contentView is DashboardClipView)
-        XCTAssertTrue(content.superview === controller.documentViewForTesting)
+        XCTAssertTrue(content.isDescendant(of: controller.documentViewForTesting))
+        XCTAssertFalse(content.superview === controller.documentViewForTesting)
         XCTAssertEqual(
             descendants(of: controller.view).compactMap { $0 as? NSScrollView }.count,
             1
@@ -334,6 +335,12 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(pageSource.contains("var scrollOffset"))
         XCTAssertTrue(pageSource.contains("root.safeAreaLayoutGuide.leadingAnchor"))
         XCTAssertTrue(pageSource.contains("root.safeAreaLayoutGuide.trailingAnchor"))
+        XCTAssertTrue(pageSource.contains("dashboardPageDocumentFill"))
+        XCTAssertTrue(pageSource.contains("DashboardSettingsDocumentFillView"))
+        XCTAssertTrue(pageSource.contains("greaterThanOrEqualTo: scrollView.contentView.heightAnchor"))
+        XCTAssertTrue(pageSource.contains("documentView.addSubview(contentHost)"))
+        XCTAssertTrue(pageSource.contains("documentView.addSubview(documentFill)"))
+        XCTAssertFalse(pageSource.contains("NSStackView(views: [contentHost, documentFill])"))
         XCTAssertFalse(pageSource.contains("firstScrollView(in:"))
         XCTAssertFalse(pageSource.contains("automaticallyAdjustsSafeAreaInsets"))
         XCTAssertFalse(pageSource.contains("preferredSidebarThickness"))

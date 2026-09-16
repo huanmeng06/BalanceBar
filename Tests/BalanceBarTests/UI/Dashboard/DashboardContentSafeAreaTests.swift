@@ -179,6 +179,90 @@ final class DashboardContentSafeAreaTests: XCTestCase {
         }
     }
 
+    func testStartupSettingsRowKeepsIntrinsicHeightWhenDocumentIsTallerThanContent() throws {
+        let launchAtLogin = DashboardSettingsComponents.makeSettingsRow(
+            "登录时自动启动",
+            subtitle: "登录 Mac 后自动启动 BalanceBar",
+            control: NSSwitch()
+        )
+        let silentLaunch = SettingsRowView(
+            title: "静默启动",
+            detail: "启动 BalanceBar 时不打开主窗口",
+            accessoryView: NSSwitch()
+        )
+        let launchWithChatGPT = DashboardSettingsComponents.makeSettingsRow(
+            "随 ChatGPT 启动",
+            subtitle: "暂时无法读取随 ChatGPT 启动服务状态",
+            control: NSSwitch()
+        )
+        let startup = SettingsSectionView(
+            title: "启动",
+            contentViews: [launchAtLogin, silentLaunch, launchWithChatGPT]
+        )
+        let pageContent = DashboardSettingsComponents.makeSettingsPageContent([startup])
+        let controller = DashboardScrollablePageViewController(wrapping: pageContent)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 1100),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = controller
+        window.setContentSize(NSSize(width: 880, height: 1100))
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+        controller.pageScrollView.layoutSubtreeIfNeeded()
+        documentAndRowsNeedLayout(controller)
+
+        let document = try XCTUnwrap(controller.documentViewForTesting)
+        let viewportHeight = controller.pageScrollView.bounds.height
+        let fill = try XCTUnwrap(
+            firstView(in: document) {
+                $0.identifier == DashboardScrollablePageViewController.documentFillIdentifier
+            }
+        )
+        XCTAssertGreaterThan(
+            viewportHeight,
+            pageContent.fittingSize.height + 80,
+            "The simulated viewport must be taller than the startup section; viewport=\(viewportHeight) content=\(pageContent.fittingSize.height) view=\(controller.view.bounds)"
+        )
+        XCTAssertGreaterThanOrEqual(document.bounds.height, viewportHeight - 1)
+        XCTAssertEqual(
+            silentLaunch.frame.height,
+            silentLaunch.fittingSize.height,
+            accuracy: 8,
+            "Fullscreen extra height must stay in the document fill, not the native startup row"
+        )
+        XCTAssertLessThanOrEqual(
+            silentLaunch.frame.height,
+            SettingsRowView.minimumHeight + 8
+        )
+        XCTAssertGreaterThan(
+            fill.frame.height,
+            DashboardScrollablePageViewController.documentBottomInset + 80
+        )
+        XCTAssertLessThan(launchAtLogin.frame.height, 200)
+        XCTAssertLessThan(launchWithChatGPT.frame.height, 200)
+    }
+
+    private func documentAndRowsNeedLayout(
+        _ controller: DashboardScrollablePageViewController
+    ) {
+        controller.documentViewForTesting.layoutSubtreeIfNeeded()
+        controller.hostedContentForTesting.layoutSubtreeIfNeeded()
+    }
+
+    private func firstView(in root: NSView, matching predicate: (NSView) -> Bool) -> NSView? {
+        if predicate(root) { return root }
+        for child in root.subviews {
+            if let match = firstView(in: child, matching: predicate) {
+                return match
+            }
+        }
+        return nil
+    }
+
     private func makeController() -> DashboardWindowController {
         DashboardWindowController(
             actions: DashboardWindowControllerActions(
