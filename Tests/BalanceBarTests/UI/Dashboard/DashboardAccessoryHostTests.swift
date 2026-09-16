@@ -123,6 +123,11 @@ final class DashboardAccessoryHostTests: XCTestCase {
             window.titlebarAccessoryViewControllers.first
                 === controller.accessoryHostForTesting.titlebarAccessoryForTesting
         )
+        XCTAssertEqual(
+            controller.accessoryHostForTesting.titlebarAccessoryForTesting?.layoutAttribute,
+            .bottom
+        )
+        XCTAssertEqual(controller.accessoryHostForTesting.createdByHostForTesting, true)
         if #available(macOS 26.0, *) {
             let splitController = try XCTUnwrap(
                 window.contentViewController as? DashboardSplitViewController
@@ -235,6 +240,8 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertTrue(hostSource.contains("NSSplitViewItemAccessoryViewController"))
         XCTAssertTrue(hostSource.contains("addTopAlignedAccessoryViewController"))
         XCTAssertTrue(hostSource.contains("addTitlebarAccessoryViewController"))
+        XCTAssertTrue(hostSource.contains("layoutAttribute = .bottom"))
+        XCTAssertFalse(hostSource.contains("layoutAttribute = .top"))
         XCTAssertFalse(hostSource.contains("setValue("))
         XCTAssertFalse(hostSource.contains("forKey:"))
         XCTAssertFalse(hostSource.contains("NSClassFromString"))
@@ -286,6 +293,214 @@ final class DashboardAccessoryHostTests: XCTestCase {
                 fileURL.lastPathComponent
             )
         }
+    }
+
+    func testHostCreatedTitlebarWrapperUsesBottomLayoutAttribute() throws {
+        let content = ProbeAccessoryController(marker: "host-bottom-titlebar")
+        let controller = makeController(
+            makeSectionPage: { _ in
+                AccessoryProbePage(
+                    accessory: .windowTitlebar(
+                        viewController: content,
+                        reason: "window-owned chrome"
+                    )
+                )
+            }
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        let accessory = try XCTUnwrap(controller.accessoryHostForTesting.titlebarAccessoryForTesting)
+        XCTAssertEqual(accessory.layoutAttribute, .bottom)
+        XCTAssertEqual(controller.accessoryHostForTesting.createdByHostForTesting, true)
+        XCTAssertFalse(content is NSTitlebarAccessoryViewController)
+    }
+
+    func testCallerProvidedTitlebarAccessoryKeepsItsLegalLayoutAttribute() throws {
+        let provided = NSTitlebarAccessoryViewController()
+        provided.layoutAttribute = .leading
+        let child = ProbeAccessoryController(marker: "caller-titlebar-child")
+        provided.addChild(child)
+        provided.view = child.view
+
+        let controller = makeController(
+            makeSectionPage: { section in
+                section == .advanced
+                    ? AccessoryProbePage(
+                        accessory: .windowTitlebar(
+                            viewController: provided,
+                            reason: "caller-owned titlebar accessory"
+                        )
+                    )
+                    : DashboardHostedPageViewController()
+            }
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        controller.showSection(.advanced)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
+        XCTAssertEqual(controller.accessoryHostForTesting.createdByHostForTesting, false)
+        XCTAssertTrue(controller.accessoryHostForTesting.titlebarAccessoryForTesting === provided)
+        XCTAssertEqual(provided.layoutAttribute, .leading)
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+
+        controller.showSection(.general)
+        window.layoutIfNeeded()
+        try assertNoMountedAccessory(in: controller)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+        XCTAssertEqual(provided.layoutAttribute, .leading)
+    }
+
+    func testCallerProvidedSplitItemAccessoryKeepsChildContainmentAfterUnmount() throws {
+        guard #available(macOS 26.0, *) else {
+            throw XCTSkip("NSSplitViewItemAccessoryViewController requires macOS 26")
+        }
+
+        let provided = NSSplitViewItemAccessoryViewController()
+        let child = ProbeAccessoryController(marker: "caller-split-child")
+        provided.addChild(child)
+        provided.view = child.view
+
+        let controller = makeController(
+            makeSectionPage: { section in
+                section == .menu
+                    ? AccessoryProbePage(
+                        accessory: .contentSplitItem(viewController: provided)
+                    )
+                    : DashboardHostedPageViewController()
+            }
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        controller.showSection(.menu)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .contentSplitItem)
+        XCTAssertEqual(controller.accessoryHostForTesting.createdByHostForTesting, false)
+        XCTAssertTrue(controller.accessoryHostForTesting.contentSplitItemAccessoryForTesting === provided)
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+
+        controller.showSection(.general)
+        window.layoutIfNeeded()
+        try assertNoMountedAccessory(in: controller)
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        XCTAssertTrue(
+            splitController.contentSplitViewItem?
+                .topAlignedAccessoryViewControllers.isEmpty ?? true
+        )
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+    }
+
+    func testHarnessIsDevOnlyAndReusesRealAccessoryHost() throws {
+        XCTAssertFalse(
+            DashboardAccessoryHarnessController.isEnabled(
+                bundleIdentifier: "com.huanmeng06.BalanceBar.app",
+                environment: [DashboardAccessoryHarnessController.environmentKey: "1"],
+                isTestHost: false
+            )
+        )
+        XCTAssertFalse(
+            DashboardAccessoryHarnessController.isEnabled(
+                bundleIdentifier: "com.huanmeng06.BalanceBar.dev",
+                environment: [:],
+                isTestHost: false
+            )
+        )
+        XCTAssertFalse(
+            DashboardAccessoryHarnessController.isEnabled(
+                bundleIdentifier: "com.huanmeng06.BalanceBar.dev",
+                environment: [DashboardAccessoryHarnessController.environmentKey: "1"],
+                isTestHost: true
+            )
+        )
+        XCTAssertTrue(
+            DashboardAccessoryHarnessController.isEnabled(
+                bundleIdentifier: "com.huanmeng06.BalanceBar.dev",
+                environment: [DashboardAccessoryHarnessController.environmentKey: "1"],
+                isTestHost: false
+            )
+        )
+
+        XCTAssertFalse(DashboardAccessoryHarnessController.accessory(for: .general).needsAccessory)
+        XCTAssertFalse(DashboardAccessoryHarnessController.accessory(for: .advanced).needsAccessory)
+        XCTAssertFalse(DashboardAccessoryHarnessController.accessory(for: .about).needsAccessory)
+
+        let harness = DashboardAccessoryHarnessController()
+        defer { harness.teardown() }
+        harness.present()
+        let controller = try XCTUnwrap(harness.windowControllerForTesting)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        try assertNoMountedAccessory(in: controller)
+        XCTAssertTrue(window.contentViewController is DashboardSplitViewController)
+        XCTAssertEqual(window.toolbar?.identifier, DashboardToolbarController.identifier)
+
+        controller.showSection(.menuBar)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
+        XCTAssertEqual(
+            controller.accessoryHostForTesting.titlebarAccessoryForTesting?.layoutAttribute,
+            .bottom
+        )
+        XCTAssertNotNil(
+            view(
+                withIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier,
+                in: window
+            )
+        )
+
+        controller.showSection(.menu)
+        window.layoutIfNeeded()
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .contentSplitItem)
+            XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+            XCTAssertNil(
+                view(
+                    withIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier,
+                    in: window
+                )
+            )
+            try assertAccessoryStaysInsideContentPane(
+                in: window,
+                marker: DashboardAccessoryHarnessController.contentStripIdentifier
+            )
+        }
+
+        controller.showSection(.general)
+        window.layoutIfNeeded()
+        try assertNoMountedAccessory(in: controller)
+        XCTAssertNil(
+            view(
+                withIdentifier: DashboardAccessoryHarnessController.contentStripIdentifier,
+                in: window
+            )
+        )
+
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
+        let harnessSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardAccessoryHarnessController.swift"
+            ),
+            encoding: .utf8
+        )
+        XCTAssertTrue(harnessSource.contains("DashboardWindowController"))
+        XCTAssertTrue(harnessSource.contains("DashboardPageTopAccessory"))
+        XCTAssertFalse(harnessSource.contains("NSSearchField"))
+        XCTAssertFalse(harnessSource.contains("badge"))
+        XCTAssertFalse(harnessSource.contains("NSMenu("))
     }
 
     private func makeController(

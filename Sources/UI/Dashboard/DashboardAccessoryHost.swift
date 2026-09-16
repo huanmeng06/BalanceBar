@@ -4,6 +4,8 @@ import AppKit
 /// AppKit host that matches the requested ownership.
 ///
 /// Window/titlebar content uses `NSTitlebarAccessoryViewController`.
+/// Ordinary host-created wrappers use `layoutAttribute = .bottom` (under the
+/// titlebar). Caller-provided accessories keep the layout they already set.
 /// Content-pane content uses `NSSplitViewItemAccessoryViewController` on
 /// macOS 26+. Older OS versions do not fabricate a split-item overlay.
 final class DashboardAccessoryHost {
@@ -45,40 +47,65 @@ final class DashboardAccessoryHost {
     }
 
     var titlebarAccessoryForTesting: NSTitlebarAccessoryViewController? {
-        if case .windowTitlebar(let accessory) = mountedAccessory {
+        if case .windowTitlebar(let accessory, _, _) = mountedAccessory {
             return accessory
         }
         return nil
     }
 
     var contentSplitItemAccessoryForTesting: NSViewController? {
-        if case .contentSplitItem(let accessory) = mountedAccessory {
+        if case .contentSplitItem(let accessory, _, _) = mountedAccessory {
             return accessory
         }
         return nil
     }
 
+    var createdByHostForTesting: Bool? {
+        switch mountedAccessory {
+        case .none:
+            return nil
+        case .windowTitlebar(_, let hostCreated, _),
+             .contentSplitItem(_, let hostCreated, _):
+            return hostCreated
+        }
+    }
+
     private enum MountedAccessory {
         case none
-        case windowTitlebar(NSTitlebarAccessoryViewController)
-        case contentSplitItem(NSViewController)
+        case windowTitlebar(
+            accessory: NSTitlebarAccessoryViewController,
+            hostCreated: Bool,
+            adoptedChild: NSViewController?
+        )
+        case contentSplitItem(
+            accessory: NSViewController,
+            hostCreated: Bool,
+            adoptedChild: NSViewController?
+        )
     }
 
     private func mountWindowTitlebar(_ content: NSViewController) {
         guard let window else { return }
         let accessory: NSTitlebarAccessoryViewController
+        let hostCreated: Bool
+        let adoptedChild: NSViewController?
         if let existing = content as? NSTitlebarAccessoryViewController {
             accessory = existing
+            hostCreated = false
+            adoptedChild = nil
         } else {
             accessory = NSTitlebarAccessoryViewController()
-            accessory.layoutAttribute = .top
+            accessory.layoutAttribute = .bottom
             adopt(content, into: accessory)
-        }
-        if accessory.layoutAttribute != .top && accessory.layoutAttribute != .bottom {
-            accessory.layoutAttribute = .top
+            hostCreated = true
+            adoptedChild = content
         }
         window.addTitlebarAccessoryViewController(accessory)
-        mountedAccessory = .windowTitlebar(accessory)
+        mountedAccessory = .windowTitlebar(
+            accessory: accessory,
+            hostCreated: hostCreated,
+            adoptedChild: adoptedChild
+        )
         mountedKind = .windowTitlebar
     }
 
@@ -89,14 +116,24 @@ final class DashboardAccessoryHost {
         }
         guard let item = splitViewController?.contentSplitViewItem else { return }
         let accessory: NSSplitViewItemAccessoryViewController
+        let hostCreated: Bool
+        let adoptedChild: NSViewController?
         if let existing = content as? NSSplitViewItemAccessoryViewController {
             accessory = existing
+            hostCreated = false
+            adoptedChild = nil
         } else {
             accessory = NSSplitViewItemAccessoryViewController()
             adopt(content, into: accessory)
+            hostCreated = true
+            adoptedChild = content
         }
         item.addTopAlignedAccessoryViewController(accessory)
-        mountedAccessory = .contentSplitItem(accessory)
+        mountedAccessory = .contentSplitItem(
+            accessory: accessory,
+            hostCreated: hostCreated,
+            adoptedChild: adoptedChild
+        )
         mountedKind = .contentSplitItem
     }
 
@@ -112,13 +149,13 @@ final class DashboardAccessoryHost {
         switch mountedAccessory {
         case .none:
             break
-        case .windowTitlebar(let accessory):
+        case .windowTitlebar(let accessory, let hostCreated, let adoptedChild):
             if let window,
                let index = window.titlebarAccessoryViewControllers.firstIndex(of: accessory) {
                 window.removeTitlebarAccessoryViewController(at: index)
             }
-            detachChildren(of: accessory)
-        case .contentSplitItem(let accessory):
+            releaseHostAdoptedChild(adoptedChild, from: accessory, hostCreated: hostCreated)
+        case .contentSplitItem(let accessory, let hostCreated, let adoptedChild):
             if #available(macOS 26.0, *),
                let item = splitViewController?.contentSplitViewItem,
                let splitAccessory = accessory as? NSSplitViewItemAccessoryViewController,
@@ -127,15 +164,18 @@ final class DashboardAccessoryHost {
             } else if accessory.parent != nil {
                 accessory.removeFromParent()
             }
-            detachChildren(of: accessory)
+            releaseHostAdoptedChild(adoptedChild, from: accessory, hostCreated: hostCreated)
         }
         mountedAccessory = .none
         mountedKind = .none
     }
 
-    private func detachChildren(of accessory: NSViewController) {
-        for child in accessory.children {
-            child.removeFromParent()
-        }
+    private func releaseHostAdoptedChild(
+        _ adoptedChild: NSViewController?,
+        from accessory: NSViewController,
+        hostCreated: Bool
+    ) {
+        guard hostCreated, let adoptedChild, adoptedChild.parent === accessory else { return }
+        adoptedChild.removeFromParent()
     }
 }
