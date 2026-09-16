@@ -45,6 +45,16 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             DashboardScrollablePageViewController.viewportTopInset,
             accuracy: 1
         )
+        XCTAssertEqual(
+            viewportFrameInPage.minX,
+            controller.view.safeAreaRect.minX,
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            viewportFrameInPage.maxX,
+            controller.view.safeAreaRect.maxX,
+            accuracy: 1
+        )
 
         let document = try XCTUnwrap(controller.documentViewForTesting)
         XCTAssertEqual(
@@ -322,7 +332,13 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(pageSource.contains("let pageScrollView: NSScrollView"))
         XCTAssertTrue(pageSource.contains("var isAtTop"))
         XCTAssertTrue(pageSource.contains("var scrollOffset"))
+        XCTAssertTrue(pageSource.contains("root.safeAreaLayoutGuide.leadingAnchor"))
+        XCTAssertTrue(pageSource.contains("root.safeAreaLayoutGuide.trailingAnchor"))
         XCTAssertFalse(pageSource.contains("firstScrollView(in:"))
+        XCTAssertFalse(pageSource.contains("automaticallyAdjustsSafeAreaInsets"))
+        XCTAssertFalse(pageSource.contains("preferredSidebarThickness"))
+        XCTAssertFalse(pageSource.contains("minimumSidebarThickness"))
+        XCTAssertFalse(pageSource.contains("additionalSafeAreaInsets"))
         XCTAssertFalse(pageSource.contains("NSGlassEffectView"))
         XCTAssertFalse(pageSource.contains("NSVisualEffectView"))
         XCTAssertFalse(pageSource.contains("shadowOpacity"))

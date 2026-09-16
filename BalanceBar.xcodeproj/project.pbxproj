@@ -90,6 +90,7 @@
 		A40000000000000000000032 /* DashboardPageTopAccessory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000031 /* DashboardPageTopAccessory.swift */; };
 		A40000000000000000000034 /* DashboardAccessoryHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000033 /* DashboardAccessoryHost.swift */; };
 		A40000000000000000000036 /* DashboardAccessoryHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000035 /* DashboardAccessoryHostTests.swift */; };
+		A41000000000000000000002 /* DashboardContentSafeAreaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41000000000000000000001 /* DashboardContentSafeAreaTests.swift */; };
 		A40000000000000000000038 /* DashboardAccessoryHarnessController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000037 /* DashboardAccessoryHarnessController.swift */; };
 		A41100000000000000000002 /* DashboardShellRestoration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41100000000000000000001 /* DashboardShellRestoration.swift */; };
 		A41100000000000000000004 /* DashboardShellRestorationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41100000000000000000003 /* DashboardShellRestorationTests.swift */; };
@@ -257,6 +258,7 @@
 		A40000000000000000000031 /* DashboardPageTopAccessory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPageTopAccessory.swift; sourceTree = "<group>"; };
 		A40000000000000000000033 /* DashboardAccessoryHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAccessoryHost.swift; sourceTree = "<group>"; };
 		A40000000000000000000035 /* DashboardAccessoryHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAccessoryHostTests.swift; sourceTree = "<group>"; };
+		A41000000000000000000001 /* DashboardContentSafeAreaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardContentSafeAreaTests.swift; sourceTree = "<group>"; };
 		A40000000000000000000037 /* DashboardAccessoryHarnessController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAccessoryHarnessController.swift; sourceTree = "<group>"; };
 		A41100000000000000000001 /* DashboardShellRestoration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardShellRestoration.swift; sourceTree = "<group>"; };
 		A41100000000000000000003 /* DashboardShellRestorationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardShellRestorationTests.swift; sourceTree = "<group>"; };
@@ -561,6 +563,7 @@
 			isa = PBXGroup;
 			children = (
 				A100000000000000000000A0 /* DashboardWindowControllerTests.swift */,
+				A41000000000000000000001 /* DashboardContentSafeAreaTests.swift */,
 				A40000000000000000000035 /* DashboardAccessoryHostTests.swift */,
 				A41100000000000000000003 /* DashboardShellRestorationTests.swift */,
 				A38900000000000000000003 /* DashboardScrollablePageViewControllerTests.swift */,
@@ -1068,6 +1071,7 @@
 				A10000000000000000000110 /* MenuBarAnimationTests.swift in Sources */,
 				A100000000000000000000D0 /* AppDelegateCompositionTests.swift in Sources */,
 				A1000000000000000000009F /* DashboardWindowControllerTests.swift in Sources */,
+				A41000000000000000000002 /* DashboardContentSafeAreaTests.swift in Sources */,
 				A40000000000000000000036 /* DashboardAccessoryHostTests.swift in Sources */,
 				A41100000000000000000004 /* DashboardShellRestorationTests.swift in Sources */,
 				A38900000000000000000004 /* DashboardScrollablePageViewControllerTests.swift in Sources */,

@@ -120,8 +120,12 @@ final class DashboardScrollablePageViewController: NSViewController {
         viewportContainer.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            viewportContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            viewportContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            viewportContainer.leadingAnchor.constraint(
+                equalTo: root.safeAreaLayoutGuide.leadingAnchor
+            ),
+            viewportContainer.trailingAnchor.constraint(
+                equalTo: root.safeAreaLayoutGuide.trailingAnchor
+            ),
             viewportContainer.topAnchor.constraint(
                 equalTo: root.topAnchor,
                 constant: viewportTopInset
