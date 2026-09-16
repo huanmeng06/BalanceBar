@@ -118,13 +118,22 @@ final class DashboardScrollablePageViewController: NSViewController {
         if contentView.superview != nil {
             contentView.removeFromSuperview()
         }
+        contentView.setContentHuggingPriority(.required, for: .vertical)
+        contentView.setContentCompressionResistancePriority(.required, for: .vertical)
+        if let stack = contentView as? NSStackView {
+            stack.setHuggingPriority(.required, for: .vertical)
+            stack.setClippingResistancePriority(.required, for: .vertical)
+        }
 
-        // Keep contentHost and the fill as siblings of the document. A wrapping
-        // NSStackView would become the first descendant stack and break tests
-        // that locate the hosted settings page stack that way.
+        // Host reports compressed section height, not the page stack's current
+        // frame. Using the stack's own fittingSize fed stretched gravity gaps
+        // back into the intrinsic size and opened blank regions between cards.
         let contentHost = DashboardSettingsContentHost()
         contentHost.translatesAutoresizingMaskIntoConstraints = false
-        contentHost.setContentHuggingPriority(.required, for: .vertical)
+        contentHost.clipsToBounds = false
+        // Hug the compressed page, but yield to content if that estimate is
+        // short so section titles are not compressed out of the tree.
+        contentHost.setContentHuggingPriority(.defaultHigh, for: .vertical)
         contentHost.setContentCompressionResistancePriority(.required, for: .vertical)
         contentHost.addSubview(contentView)
 
@@ -182,7 +191,12 @@ final class DashboardScrollablePageViewController: NSViewController {
                 equalTo: contentHost.trailingAnchor,
                 constant: -documentHorizontalInset
             ),
-            contentView.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor)
+            // Host may be taller than the page; the page must not be shorter
+            // than its sections. An equality pin either opened gravity gaps
+            // or compressed titles out of the tree.
+            contentHost.bottomAnchor.constraint(
+                greaterThanOrEqualTo: contentView.bottomAnchor
+            )
         ])
         return root
     }
@@ -214,18 +228,46 @@ final class DashboardScrollablePageViewController: NSViewController {
     }
 }
 
-/// Reports the hosted page's fitting height so leftover clip-view height
-/// goes into `DashboardSettingsDocumentFillView` instead of stretching rows.
+/// Compressed height of the hosted page. Sums arranged section fitting
+/// heights so a stretched `NSStackView` cannot report its expanded frame as
+/// the page's intrinsic size.
 private final class DashboardSettingsContentHost: NSView {
+    private var lastReportedHeight: CGFloat = -1
+
     override var intrinsicContentSize: NSSize {
-        guard let content = subviews.first else {
-            return NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
-        }
-        let height = content.fittingSize.height
+        let height = compressedContentHeight()
         guard height.isFinite, height > 0 else {
             return NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
         }
         return NSSize(width: NSView.noIntrinsicMetric, height: height)
+    }
+
+    override func layout() {
+        super.layout()
+        let height = compressedContentHeight()
+        guard abs(height - lastReportedHeight) > 0.5 else { return }
+        lastReportedHeight = height
+        invalidateIntrinsicContentSize()
+    }
+
+    private func compressedContentHeight() -> CGFloat {
+        guard let content = subviews.first else {
+            return NSView.noIntrinsicMetric
+        }
+        if let stack = content as? NSStackView {
+            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
+            guard !visible.isEmpty else { return content.fittingSize.height }
+            var height = stack.edgeInsets.top + stack.edgeInsets.bottom
+            for (index, view) in visible.enumerated() {
+                let piece = view.fittingSize.height
+                guard piece.isFinite, piece > 0 else { continue }
+                height += piece
+                if index > 0 { height += stack.spacing }
+            }
+            return ceil(height)
+        }
+        let height = content.fittingSize.height
+        return (height.isFinite && height > 0) ? height : NSView.noIntrinsicMetric
     }
 }
 

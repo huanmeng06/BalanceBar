@@ -337,9 +337,14 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(pageSource.contains("root.safeAreaLayoutGuide.trailingAnchor"))
         XCTAssertTrue(pageSource.contains("dashboardPageDocumentFill"))
         XCTAssertTrue(pageSource.contains("DashboardSettingsDocumentFillView"))
+        XCTAssertTrue(pageSource.contains("DashboardSettingsContentHost"))
         XCTAssertTrue(pageSource.contains("greaterThanOrEqualTo: scrollView.contentView.heightAnchor"))
         XCTAssertTrue(pageSource.contains("documentView.addSubview(contentHost)"))
         XCTAssertTrue(pageSource.contains("documentView.addSubview(documentFill)"))
+        XCTAssertTrue(pageSource.contains("arrangedSubviews.filter"))
+        XCTAssertTrue(pageSource.contains("greaterThanOrEqualTo: contentView.bottomAnchor"))
+        XCTAssertFalse(pageSource.contains("contentView.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor)"))
+        XCTAssertFalse(pageSource.contains("lessThanOrEqualTo: contentHost.bottomAnchor"))
         XCTAssertFalse(pageSource.contains("NSStackView(views: [contentHost, documentFill])"))
         XCTAssertFalse(pageSource.contains("firstScrollView(in:"))
         XCTAssertFalse(pageSource.contains("automaticallyAdjustsSafeAreaInsets"))
@@ -352,6 +357,8 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertFalse(pageSource.contains("titlebarAccessory"))
 
         XCTAssertTrue(settingsSource.contains("makeSettingsPageContent"))
+        XCTAssertTrue(settingsSource.contains("addView(section, in: .top)"))
+        XCTAssertTrue(settingsSource.contains("addView(heading, in: .top)"))
         XCTAssertFalse(settingsSource.contains("let viewportTopInset: CGFloat = 52"))
         XCTAssertFalse(settingsSource.contains("NSScrollView()"))
     }

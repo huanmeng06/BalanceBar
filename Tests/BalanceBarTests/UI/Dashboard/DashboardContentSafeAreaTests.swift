@@ -244,6 +244,196 @@ final class DashboardContentSafeAreaTests: XCTestCase {
         )
         XCTAssertLessThan(launchAtLogin.frame.height, 200)
         XCTAssertLessThan(launchWithChatGPT.frame.height, 200)
+        XCTAssertGreaterThanOrEqual(
+            startup.headingLabel.frame.height,
+            startup.headingLabel.fittingSize.height - 1
+        )
+    }
+
+    func testExtraViewportHeightDoesNotOpenGapsBetweenSettingsSections() throws {
+        let preview = DashboardSettingsComponents.makeSettingsSection(
+            "预览与显示",
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    "当前布局",
+                    subtitle: "菜单栏会随服务商数据实时更新",
+                    control: NSSwitch()
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    "菜单栏显示",
+                    subtitle: "选择始终显示图标，或仅在任务运行时显示",
+                    control: NSSwitch()
+                )
+            ]
+        )
+        let quota = DashboardSettingsComponents.makeSettingsSection(
+            "额度与重置",
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    "用量数值",
+                    subtitle: "显示百分比或 API 余额",
+                    control: NSSwitch()
+                )
+            ]
+        )
+        let pageContent = DashboardSettingsComponents.makeSettingsPageContent([preview, quota])
+        let controller = DashboardScrollablePageViewController(wrapping: pageContent)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 1100),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = controller
+        window.setContentSize(NSSize(width: 880, height: 1100))
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+        controller.pageScrollView.layoutSubtreeIfNeeded()
+        documentAndRowsNeedLayout(controller)
+
+        let document = try XCTUnwrap(controller.documentViewForTesting)
+        let fill = try XCTUnwrap(
+            firstView(in: document) {
+                $0.identifier == DashboardScrollablePageViewController.documentFillIdentifier
+            }
+        )
+        let viewportHeight = controller.pageScrollView.bounds.height
+        XCTAssertGreaterThan(
+            viewportHeight,
+            pageContent.fittingSize.height + 80,
+            "The simulated viewport must be taller than both sections"
+        )
+        let previewRect = preview.convert(preview.bounds, to: document)
+        let quotaRect = quota.convert(quota.bounds, to: document)
+        let fillRect = fill.convert(fill.bounds, to: document)
+        XCTAssertEqual(
+            quotaRect.minY - previewRect.maxY,
+            28,
+            accuracy: 2,
+            "Extra clip-view height must not become a gravity gap between sections; preview=\(previewRect) quota=\(quotaRect) fill=\(fillRect)"
+        )
+        XCTAssertGreaterThan(
+            fill.frame.height,
+            DashboardScrollablePageViewController.documentBottomInset + 80
+        )
+        XCTAssertGreaterThanOrEqual(fillRect.minY, quotaRect.maxY - 1)
+        XCTAssertEqual(
+            preview.frame.height,
+            preview.fittingSize.height,
+            accuracy: 8
+        )
+        XCTAssertEqual(
+            quota.frame.height,
+            quota.fittingSize.height,
+            accuracy: 8
+        )
+
+        let previewHeading = try XCTUnwrap(sectionHeading(in: preview))
+        let quotaHeading = try XCTUnwrap(sectionHeading(in: quota))
+        assertHeadingIsNotClipped(previewHeading, in: document)
+        assertHeadingIsNotClipped(quotaHeading, in: document)
+    }
+
+    func testLegacySectionHeadingKeepsFontHeightInTallViewport() throws {
+        let refresh = DashboardSettingsComponents.makeSettingsSection(
+            "刷新",
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    "任务期间余额刷新频率",
+                    subtitle: "任务运行时，按所选频率查询余额",
+                    control: NSSwitch()
+                )
+            ]
+        )
+        let progress = DashboardSettingsComponents.makeSettingsSection(
+            "进度条",
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    "显示进度条",
+                    subtitle: "关闭后，菜单和额度卡片不显示进度",
+                    control: NSSwitch()
+                )
+            ]
+        )
+        let pageContent = DashboardSettingsComponents.makeSettingsPageContent([refresh, progress])
+        let controller = DashboardScrollablePageViewController(wrapping: pageContent)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 1100),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = controller
+        window.setContentSize(NSSize(width: 880, height: 1100))
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+        controller.pageScrollView.layoutSubtreeIfNeeded()
+        documentAndRowsNeedLayout(controller)
+
+        let document = try XCTUnwrap(controller.documentViewForTesting)
+        let refreshHeading = try XCTUnwrap(sectionHeading(in: refresh))
+        let progressHeading = try XCTUnwrap(sectionHeading(in: progress))
+        XCTAssertEqual(refreshHeading.stringValue, "刷新")
+        XCTAssertEqual(progressHeading.stringValue, "进度条")
+        assertHeadingIsNotClipped(refreshHeading, in: document)
+        assertHeadingIsNotClipped(progressHeading, in: document)
+
+        let refreshRect = refresh.convert(refresh.bounds, to: document)
+        let progressRect = progress.convert(progress.bounds, to: document)
+        XCTAssertEqual(
+            progressRect.minY - refreshRect.maxY,
+            28,
+            accuracy: 2
+        )
+    }
+
+    private func sectionHeading(in section: NSView) -> NSTextField? {
+        if let native = section as? SettingsSectionView {
+            return native.headingLabel
+        }
+        if let stack = section as? NSStackView {
+            return stack.arrangedSubviews.first(where: { !$0.isHidden }) as? NSTextField
+        }
+        return nil
+    }
+
+    private func assertHeadingIsNotClipped(
+        _ heading: NSTextField,
+        in document: NSView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let font = heading.font ?? SettingsSectionView.headingFont
+        let minHeight = ceil(font.boundingRectForFont.height)
+        XCTAssertGreaterThanOrEqual(
+            heading.frame.height,
+            minHeight - 1,
+            "Section title height must fit the font box; heading=\(heading.stringValue) frame=\(heading.frame)",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThanOrEqual(
+            heading.frame.height,
+            heading.fittingSize.height - 1,
+            file: file,
+            line: line
+        )
+        let inDocument = heading.convert(heading.bounds, to: document)
+        XCTAssertGreaterThanOrEqual(
+            inDocument.minY,
+            -0.5,
+            "Section title must not start above the flipped document; heading=\(heading.stringValue) inDocument=\(inDocument)",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThanOrEqual(
+            inDocument.height,
+            minHeight - 1,
+            file: file,
+            line: line
+        )
     }
 
     private func documentAndRowsNeedLayout(
