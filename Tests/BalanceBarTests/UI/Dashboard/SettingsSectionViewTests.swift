@@ -239,6 +239,7 @@ final class SettingsSectionViewTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(second.frame.height, SettingsRowView.minimumHeight)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
 
         pin(refresh, to: host, window: window, width: 516)
         let narrowHeight = first.frame.height
@@ -248,6 +249,7 @@ final class SettingsSectionViewTests: XCTestCase {
         XCTAssertEqual(first.frame.width, refresh.cardView.frame.width, accuracy: 0.5)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
     }
 
     func testAdvancedDiagnosticsSectionUsesNativeContainerAndSkipsLegacyMeasurement() throws {

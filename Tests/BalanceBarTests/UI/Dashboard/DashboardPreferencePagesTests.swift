@@ -824,11 +824,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     line: line
                 )
             }
-            let readableColumn = 12 * (row.titleLabel.font?.pointSize ?? 14)
             XCTAssertGreaterThan(
                 labelsFrame.width,
-                readableColumn,
-                "CJK title/detail stay wider than a twelve-glyph column at \(width)",
+                DashboardRefreshBalanceUpdatesRowView.minimumReadableTextColumnWidth,
+                "CJK title/detail stay wider than the readable-column breakpoint at \(width)",
                 file: file,
                 line: line
             )

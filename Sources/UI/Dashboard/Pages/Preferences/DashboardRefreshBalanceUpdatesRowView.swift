@@ -4,10 +4,14 @@ import AppKit
 ///
 /// Generic `SettingsRowView` keeps a trailing accessory in its content stack.
 /// These controls need a side-by-side vs dedicated-below placement that is
-/// specific to Refresh, so the measurement and constraint switch live here
-/// instead of in the shared row. Placement reserves a readable text column,
-/// not only whether the two popups fit.
+/// specific to Refresh, so the constraint switch lives here instead of in the
+/// shared row. Placement uses available width, control fitting width, and a
+/// fixed readable-column breakpoint — not legacy text-line measurement.
 final class DashboardRefreshBalanceUpdatesRowView: NSView {
+    /// Twelve glyphs at the 14pt title size. Side-by-side placement is allowed
+    /// only when the remaining text column is at least this wide.
+    static let minimumReadableTextColumnWidth: CGFloat = 12 * 14
+
     let titleLabel: NSTextField
     let detailLabel: NSTextField
     let labelsStack = NSStackView()
@@ -55,6 +59,17 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         }
     }
 
+    override func updateConstraints() {
+        // Dedicated constraints are solved before layout(). Keep the inner
+        // stack vertical here so two popups cannot fight the narrow width.
+        if usesDedicatedPlacement {
+            intervalControls.updateAvailableRowWidth(1)
+            intervalControls.orientation = .vertical
+            intervalControls.alignment = .trailing
+        }
+        super.updateConstraints()
+    }
+
     override func layout() {
         updatePlacement()
         super.layout()
@@ -66,17 +81,16 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
             ? max(0, bounds.width - SettingsRowView.horizontalPadding * 2)
             : 0
 
-        // Inner popup orientation is independent of row placement, but the
-        // row also reserves a readable text column: two popups that still
-        // fit beside crushed CJK must move below the labels.
+        // Inner popup orientation is independent of row placement. Reserve a
+        // readable text column so two popups that still fit cannot crush CJK
+        // to one glyph per line.
         let accessoryWidth = intervalControls.horizontalFittingWidth
-        let contentWidthWhenSideBySide = max(
-            0,
-            available - accessoryWidth - SettingsRowView.contentSpacing
-        )
         let wantsStacked = available <= 1
-            || accessoryWidth + 0.5 > available
-            || textColumnNeedsDedicatedPlacement(at: contentWidthWhenSideBySide)
+            || accessoryWidth
+                + SettingsRowView.contentSpacing
+                + Self.minimumReadableTextColumnWidth
+                + 0.5
+                > available
         if wantsStacked {
             // Seed a tiny width so the adaptive stack cannot flip back to
             // horizontal in its own layout() and fight dedicated constraints.
@@ -100,46 +114,6 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         invalidateIntrinsicContentSize()
         notifyHeightHost()
         needsLayout = true
-    }
-
-    private func textColumnNeedsDedicatedPlacement(at contentWidth: CGFloat) -> Bool {
-        if contentWidth <= 0 {
-            return true
-        }
-        if contentWidth + 0.5 < minimumReadableContentWidth() {
-            return true
-        }
-        let titleLines = DashboardSettingsComponents.settingsTextLineCount(
-            titleLabel,
-            constrainedTo: contentWidth
-        )
-        let detailLines = DashboardSettingsComponents.settingsTextLineCount(
-            detailLabel,
-            constrainedTo: contentWidth
-        )
-        return titleLines + detailLines >
-            DashboardSettingsComponents.settingsTextLineReflowThreshold
-    }
-
-    private func minimumReadableContentWidth() -> CGFloat {
-        let unbreakable = max(
-            widestUnbreakableRunWidth(titleLabel),
-            widestUnbreakableRunWidth(detailLabel)
-        )
-        // Char-wrapping CJK has no unbreakable run. Keep a twelve-glyph
-        // column so two popups that still fit cannot squeeze labels to
-        // one character per line.
-        let readableColumn = 12 * (titleLabel.font?.pointSize ?? 14)
-        return max(unbreakable, readableColumn)
-    }
-
-    private func widestUnbreakableRunWidth(_ textField: NSTextField) -> CGFloat {
-        guard textField.lineBreakMode == .byWordWrapping else { return 0 }
-        let font = textField.font ?? .systemFont(ofSize: NSFont.systemFontSize)
-        return textField.stringValue
-            .split { $0.isWhitespace || $0.isNewline }
-            .map { String($0).size(withAttributes: [.font: font]).width }
-            .max() ?? 0
     }
 
     private func applyWrappingWidths() {
@@ -269,10 +243,14 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
                 equalTo: trailingAnchor,
                 constant: -SettingsRowView.horizontalPadding
             ),
-            intervalControls.leadingAnchor.constraint(
-                greaterThanOrEqualTo: leadingAnchor,
-                constant: SettingsRowView.horizontalPadding
-            ),
+            {
+                let leading = intervalControls.leadingAnchor.constraint(
+                    greaterThanOrEqualTo: leadingAnchor,
+                    constant: SettingsRowView.horizontalPadding
+                )
+                leading.priority = NSLayoutConstraint.Priority(999)
+                return leading
+            }(),
             intervalControls.topAnchor.constraint(
                 greaterThanOrEqualTo: labelsStack.bottomAnchor,
                 constant: SettingsRowView.contentSpacing

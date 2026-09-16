@@ -490,6 +490,7 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
 
         pin(refresh, to: host, window: window, width: 516)
         XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
@@ -502,6 +503,7 @@ final class SettingsRowViewTests: XCTestCase {
         assertLabelsDoNotOverlapControl(in: refreshNowRow, control: refreshButton, width: 516)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
 
         pin(refresh, to: host, window: window, width: 320)
         XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
@@ -512,6 +514,7 @@ final class SettingsRowViewTests: XCTestCase {
         assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 880)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
     }
 
     func testNativeRowKeepsAdaptiveControlsInTheContentStack() {
@@ -540,6 +543,24 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertFalse(source.contains("updateAdaptiveAccessoryPlacement"))
         XCTAssertFalse(source.contains("usesDedicatedAccessoryPlacement"))
         XCTAssertFalse(source.contains("notifyAdaptiveAccessoryWidth"))
+    }
+
+    func testRefreshRowSourceDoesNotUseLegacyTextMeasurement() throws {
+        let root = try TestRepositoryRoot.locate(from: #filePath)
+        let source = try String(
+            contentsOf: root
+                .appendingPathComponent(
+                    "Sources/UI/Dashboard/Pages/Preferences/DashboardRefreshBalanceUpdatesRowView.swift"
+                ),
+            encoding: .utf8
+        )
+        XCTAssertFalse(source.contains("settingsTextLineCount"))
+        XCTAssertFalse(source.contains("settingsTextLineReflowThreshold"))
+        XCTAssertFalse(source.contains("measureTextLineLayout"))
+        XCTAssertFalse(source.contains("size(withAttributes:"))
+        XCTAssertFalse(source.contains("NSLayoutManager"))
+        XCTAssertFalse(source.contains("NSTextStorage"))
+        XCTAssertFalse(source.contains("widestUnbreakableRunWidth"))
     }
 
     func testTitleToSubtitleVisualSpacingMatchesLegacyRowInTheSameCard() throws {
@@ -715,11 +736,10 @@ final class SettingsRowViewTests: XCTestCase {
             labelsFrame.intersects(controlFrame),
             "labels do not overlap the interval controls at \(width)"
         )
-        let readableColumn = 12 * (row.titleLabel.font?.pointSize ?? 14)
         XCTAssertGreaterThan(
             labelsFrame.width,
-            readableColumn,
-            "title/description stay wider than a twelve-glyph column at \(width)"
+            DashboardRefreshBalanceUpdatesRowView.minimumReadableTextColumnWidth,
+            "title/description stay wider than the readable-column breakpoint at \(width)"
         )
         if row.usesDedicatedPlacement {
             XCTAssertLessThanOrEqual(
