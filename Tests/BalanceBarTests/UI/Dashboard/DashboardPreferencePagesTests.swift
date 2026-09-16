@@ -2295,6 +2295,74 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testDisplayedColorItemsKeepPackedIntrinsicWidthInWideRow() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.DisplayedColorPackedWidth.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let controller = DashboardMenuPage()
+        let page = controller.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        let hosted = DashboardScrollablePageViewController(wrapping: page)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 1100),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = hosted
+        window.setContentSize(NSSize(width: 880, height: 1100))
+        window.layoutIfNeeded()
+        hosted.view.layoutSubtreeIfNeeded()
+        defer {
+            window.orderOut(nil)
+            controller.teardown()
+        }
+
+        let colorButtons = descendants(of: page)
+            .compactMap { $0 as? NSButton }
+            .filter { $0.identifier?.rawValue.hasPrefix("quotaProgressColor.") == true }
+        XCTAssertEqual(colorButtons.count, QuotaProgressColor.allCases.count)
+        let items = colorButtons.compactMap { $0.superview as? NSStackView }
+        XCTAssertEqual(items.count, QuotaProgressColor.allCases.count)
+        for item in items {
+            XCTAssertEqual(item.contentHuggingPriority(for: .horizontal), .required)
+            XCTAssertEqual(item.contentCompressionResistancePriority(for: .horizontal), .required)
+        }
+        let colorControls = try XCTUnwrap(items.first?.superview as? NSStackView)
+        XCTAssertEqual(colorControls.contentHuggingPriority(for: .horizontal), .required)
+        XCTAssertEqual(colorControls.contentCompressionResistancePriority(for: .horizontal), .required)
+        XCTAssertEqual(colorControls.orientation, .horizontal)
+
+        let frames = items
+            .map { $0.convert($0.bounds, to: colorControls) }
+            .sorted { $0.minX < $1.minX }
+        for index in 1..<frames.count {
+            XCTAssertEqual(
+                frames[index].minX - frames[index - 1].maxX,
+                colorControls.spacing,
+                accuracy: 2,
+                "Color swatches must stay packed; frames=\(frames)"
+            )
+        }
+        XCTAssertLessThan(
+            (frames.last?.maxX ?? 0) - (frames.first?.minX ?? 0),
+            280,
+            "Displayed-color items must not open a wide-row gap"
+        )
+    }
+
     func testLunaReserveMenuDisplaySettingsLocalizePersistAndRevealExhaustedQuotaSwitch() throws {
         LunaReserveUserFacing.testOverride = true
         defer { LunaReserveUserFacing.testOverride = nil }

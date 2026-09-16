@@ -125,15 +125,14 @@ final class DashboardScrollablePageViewController: NSViewController {
             stack.setClippingResistancePriority(.required, for: .vertical)
         }
 
-        // Host reports compressed section height, not the page stack's current
-        // frame. Using the stack's own fittingSize fed stretched gravity gaps
-        // back into the intrinsic size and opened blank regions between cards.
+        // Wrapper only: full-width document chrome around the inset page
+        // stack. Section height belongs to SettingsSectionView / the page
+        // stack; this host must not remeasure children or invalidate ICS
+        // from layout().
         let contentHost = DashboardSettingsContentHost()
         contentHost.translatesAutoresizingMaskIntoConstraints = false
         contentHost.clipsToBounds = false
-        // Hug the compressed page, but yield to content if that estimate is
-        // short so section titles are not compressed out of the tree.
-        contentHost.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        contentHost.setContentHuggingPriority(.required, for: .vertical)
         contentHost.setContentCompressionResistancePriority(.required, for: .vertical)
         contentHost.addSubview(contentView)
 
@@ -191,12 +190,7 @@ final class DashboardScrollablePageViewController: NSViewController {
                 equalTo: contentHost.trailingAnchor,
                 constant: -documentHorizontalInset
             ),
-            // Host may be taller than the page; the page must not be shorter
-            // than its sections. An equality pin either opened gravity gaps
-            // or compressed titles out of the tree.
-            contentHost.bottomAnchor.constraint(
-                greaterThanOrEqualTo: contentView.bottomAnchor
-            )
+            contentView.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor)
         ])
         return root
     }
@@ -228,48 +222,10 @@ final class DashboardScrollablePageViewController: NSViewController {
     }
 }
 
-/// Compressed height of the hosted page. Sums arranged section fitting
-/// heights so a stretched `NSStackView` cannot report its expanded frame as
-/// the page's intrinsic size.
-private final class DashboardSettingsContentHost: NSView {
-    private var lastReportedHeight: CGFloat = -1
-
-    override var intrinsicContentSize: NSSize {
-        let height = compressedContentHeight()
-        guard height.isFinite, height > 0 else {
-            return NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
-        }
-        return NSSize(width: NSView.noIntrinsicMetric, height: height)
-    }
-
-    override func layout() {
-        super.layout()
-        let height = compressedContentHeight()
-        guard abs(height - lastReportedHeight) > 0.5 else { return }
-        lastReportedHeight = height
-        invalidateIntrinsicContentSize()
-    }
-
-    private func compressedContentHeight() -> CGFloat {
-        guard let content = subviews.first else {
-            return NSView.noIntrinsicMetric
-        }
-        if let stack = content as? NSStackView {
-            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
-            guard !visible.isEmpty else { return content.fittingSize.height }
-            var height = stack.edgeInsets.top + stack.edgeInsets.bottom
-            for (index, view) in visible.enumerated() {
-                let piece = view.fittingSize.height
-                guard piece.isFinite, piece > 0 else { continue }
-                height += piece
-                if index > 0 { height += stack.spacing }
-            }
-            return ceil(height)
-        }
-        let height = content.fittingSize.height
-        return (height.isFinite && height > 0) ? height : NSView.noIntrinsicMetric
-    }
-}
+/// Full-width document wrapper around the inset page stack. It has no
+/// intrinsic height of its own: hosted sections report height, the four-edge
+/// pin sizes this wrapper, and leftover clip-view height stays in the fill.
+private final class DashboardSettingsContentHost: NSView {}
 
 /// Bottom spacer with a real intrinsic height. Views without intrinsic size
 /// are treated as freely stretchable, which is what made SettingsRowView grow.
