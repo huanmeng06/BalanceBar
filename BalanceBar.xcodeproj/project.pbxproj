@@ -101,6 +101,12 @@
 		A100000000000000000000B4 /* DashboardGeneralAndRefreshPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B5 /* DashboardGeneralAndRefreshPages.swift */; };
 		A100000000000000000000B6 /* DashboardLogsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B7 /* DashboardLogsPage.swift */; };
 		A100000000000000000000B8 /* DashboardMenuBarPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B9 /* DashboardMenuBarPage.swift */; };
+		A39700000000000000000002 /* DashboardMenuBarRepeatControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39700000000000000000001 /* DashboardMenuBarRepeatControls.swift */; };
+		A39700000000000000000004 /* DashboardMenuBarPreviewSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39700000000000000000003 /* DashboardMenuBarPreviewSection.swift */; };
+		A39700000000000000000006 /* DashboardMenuBarQuotaSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39700000000000000000005 /* DashboardMenuBarQuotaSection.swift */; };
+		A39700000000000000000008 /* DashboardMenuBarIconTaskStatusSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39700000000000000000007 /* DashboardMenuBarIconTaskStatusSection.swift */; };
+		A3970000000000000000000A /* DashboardMenuBarBehaviorSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39700000000000000000009 /* DashboardMenuBarBehaviorSection.swift */; };
+		A3970000000000000000000C /* DashboardMenuBarLayoutSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3970000000000000000000B /* DashboardMenuBarLayoutSection.swift */; };
 		A100000000000000000000BA /* DashboardMenuPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000BB /* DashboardMenuPage.swift */; };
 		A100000000000000000000BC /* DashboardPreferencePageRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000BD /* DashboardPreferencePageRelay.swift */; };
 		A100000000000000000000BE /* DashboardPreferencePages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000BF /* DashboardPreferencePages.swift */; };
@@ -268,6 +274,12 @@
 		A100000000000000000000B5 /* DashboardGeneralAndRefreshPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardGeneralAndRefreshPages.swift; sourceTree = "<group>"; };
 		A100000000000000000000B7 /* DashboardLogsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardLogsPage.swift; sourceTree = "<group>"; };
 		A100000000000000000000B9 /* DashboardMenuBarPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarPage.swift; sourceTree = "<group>"; };
+		A39700000000000000000001 /* DashboardMenuBarRepeatControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarRepeatControls.swift; sourceTree = "<group>"; };
+		A39700000000000000000003 /* DashboardMenuBarPreviewSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarPreviewSection.swift; sourceTree = "<group>"; };
+		A39700000000000000000005 /* DashboardMenuBarQuotaSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarQuotaSection.swift; sourceTree = "<group>"; };
+		A39700000000000000000007 /* DashboardMenuBarIconTaskStatusSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarIconTaskStatusSection.swift; sourceTree = "<group>"; };
+		A39700000000000000000009 /* DashboardMenuBarBehaviorSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarBehaviorSection.swift; sourceTree = "<group>"; };
+		A3970000000000000000000B /* DashboardMenuBarLayoutSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarLayoutSection.swift; sourceTree = "<group>"; };
 		A100000000000000000000BB /* DashboardMenuPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuPage.swift; sourceTree = "<group>"; };
 		A100000000000000000000BD /* DashboardPreferencePageRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPreferencePageRelay.swift; sourceTree = "<group>"; };
 		A100000000000000000000BF /* DashboardPreferencePages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPreferencePages.swift; sourceTree = "<group>"; };
@@ -678,6 +690,12 @@
 				A100000000000000000000B5 /* DashboardGeneralAndRefreshPages.swift */,
 				A100000000000000000000B7 /* DashboardLogsPage.swift */,
 				A100000000000000000000B9 /* DashboardMenuBarPage.swift */,
+				A39700000000000000000009 /* DashboardMenuBarBehaviorSection.swift */,
+				A39700000000000000000007 /* DashboardMenuBarIconTaskStatusSection.swift */,
+				A3970000000000000000000B /* DashboardMenuBarLayoutSection.swift */,
+				A39700000000000000000003 /* DashboardMenuBarPreviewSection.swift */,
+				A39700000000000000000005 /* DashboardMenuBarQuotaSection.swift */,
+				A39700000000000000000001 /* DashboardMenuBarRepeatControls.swift */,
 				A100000000000000000000BB /* DashboardMenuPage.swift */,
 				A100000000000000000000BD /* DashboardPreferencePageRelay.swift */,
 				A100000000000000000000BF /* DashboardPreferencePages.swift */,
@@ -1020,6 +1038,12 @@
 				A100000000000000000000B4 /* DashboardGeneralAndRefreshPages.swift in Sources */,
 				A100000000000000000000B6 /* DashboardLogsPage.swift in Sources */,
 				A100000000000000000000B8 /* DashboardMenuBarPage.swift in Sources */,
+				A3970000000000000000000A /* DashboardMenuBarBehaviorSection.swift in Sources */,
+				A39700000000000000000008 /* DashboardMenuBarIconTaskStatusSection.swift in Sources */,
+				A3970000000000000000000C /* DashboardMenuBarLayoutSection.swift in Sources */,
+				A39700000000000000000004 /* DashboardMenuBarPreviewSection.swift in Sources */,
+				A39700000000000000000006 /* DashboardMenuBarQuotaSection.swift in Sources */,
+				A39700000000000000000002 /* DashboardMenuBarRepeatControls.swift in Sources */,
 				A100000000000000000000BA /* DashboardMenuPage.swift in Sources */,
 				A100000000000000000000BC /* DashboardPreferencePageRelay.swift in Sources */,
 				A100000000000000000000BE /* DashboardPreferencePages.swift in Sources */,
