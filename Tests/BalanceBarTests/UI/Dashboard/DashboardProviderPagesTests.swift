@@ -348,6 +348,150 @@ final class DashboardProviderPagesTests: XCTestCase {
             tr(.keyLunaReserveStatusLoading)
         )
     }
+
+    func testDetailOrdinaryRowsUseNativeSettingsPrimitivesWithoutLegacyHeightEngine() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let coordinator = DashboardProviderPageCoordinator(actions: inactiveProviderActions())
+        let choice = ProviderChoice(id: "current", name: "Current", isCurrent: true)
+        let page = coordinator.makeDetailPage(
+            choice: choice,
+            input: DashboardProviderPageInput(
+                choices: [choice],
+                selectedProviderID: choice.id,
+                snapshot: .official("Current", 75, "7-day", "initial-reset", Date()),
+                quickSwitchSummaries: [:],
+                refreshDate: nil,
+                revision: 1
+            )
+        )
+
+        let amount = try XCTUnwrap(
+            descendants(of: page, as: NSTextField.self).first { $0.font?.pointSize == 34 }
+        )
+        let usageRow = try XCTUnwrap(SettingsRowView.enclosing(amount))
+        XCTAssertEqual(usageRow.titleLabel.stringValue, tr(.keyDashboardProviderPagesRemainingBalance))
+        XCTAssertTrue(usageRow.detailLabel.stringValue.contains("initial-reset"))
+        XCTAssertIdentical(usageRow.accessoryView, amount)
+        let usageSection = try XCTUnwrap(SettingsSectionView.enclosing(amount))
+        XCTAssertEqual(usageSection.headingLabel.stringValue, tr(.keyDashboardProviderPagesUsage))
+        XCTAssertEqual(usageSection.contentViews.count, 1)
+
+        let action = try XCTUnwrap(descendants(of: page, as: NSButton.self).first)
+        let connectionRow = try XCTUnwrap(SettingsRowView.enclosing(action))
+        XCTAssertEqual(connectionRow.titleLabel.stringValue, tr(.keyDashboardProviderPagesSyncStatus))
+        XCTAssertEqual(
+            connectionRow.detailLabel.stringValue,
+            tr(.keyDashboardProviderPagesFollowingThisProvider)
+        )
+        XCTAssertIdentical(connectionRow.accessoryView, action)
+        let connectionSection = try XCTUnwrap(SettingsSectionView.enclosing(action))
+        XCTAssertEqual(
+            connectionSection.headingLabel.stringValue,
+            tr(.keyDashboardProviderPagesCcSwitch)
+        )
+        XCTAssertEqual(connectionSection.contentViews.count, 1)
+
+        let providerName = try XCTUnwrap(
+            descendants(of: page, as: NSTextField.self).first { $0.stringValue == "Current" }
+        )
+        XCTAssertNil(SettingsRowView.enclosing(providerName))
+        XCTAssertNil(SettingsSectionView.enclosing(providerName))
+
+        DashboardSettingsLayoutMetrics.reset()
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: page, in: window, width: 880)
+        defer { window.orderOut(nil) }
+        XCTAssertGreaterThanOrEqual(usageRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertGreaterThanOrEqual(connectionRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertEqual(usageSection.cardView.frame.height, usageRow.frame.height, accuracy: 0.5)
+        XCTAssertEqual(connectionSection.cardView.frame.height, connectionRow.frame.height, accuracy: 0.5)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
+
+        pin(page, to: host, window: window, width: 516)
+        XCTAssertGreaterThanOrEqual(usageRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertGreaterThanOrEqual(connectionRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertEqual(usageRow.frame.width, usageSection.cardView.frame.width, accuracy: 0.5)
+        XCTAssertEqual(connectionRow.frame.width, connectionSection.cardView.frame.width, accuracy: 0.5)
+        XCTAssertGreaterThan(usageRow.detailLabel.preferredMaxLayoutWidth, 1)
+        XCTAssertGreaterThan(connectionRow.detailLabel.preferredMaxLayoutWidth, 1)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+    }
+
+    func testOverviewCustomProviderListDoesNotUseNativeSettingsRows() throws {
+        let coordinator = DashboardProviderPageCoordinator(actions: inactiveProviderActions())
+        let current = ProviderChoice(id: "current", name: "Current", isCurrent: true)
+        let other = ProviderChoice(id: "other", name: "Other", isCurrent: false)
+        let page = coordinator.makeOverviewPage(input: DashboardProviderPageInput(
+            choices: [current, other],
+            selectedProviderID: current.id,
+            snapshot: .official("Current", 90, "7-day", "overview-reset", Date()),
+            quickSwitchSummaries: [other.id: "$1.00"],
+            refreshDate: nil,
+            revision: 1
+        ))
+        let switchButton = try XCTUnwrap(
+            descendants(of: page, as: NSButton.self).first {
+                $0.title.contains("切换") || $0.title.contains("Switch")
+            }
+        )
+        XCTAssertNil(SettingsRowView.enclosing(switchButton))
+        XCTAssertNil(SettingsSectionView.enclosing(switchButton))
+        XCTAssertTrue(descendants(of: page, as: SettingsRowView.self).isEmpty)
+        XCTAssertTrue(descendants(of: page, as: SettingsSectionView.self).isEmpty)
+    }
+}
+
+private func inactiveProviderActions() -> DashboardProviderPageActions {
+    DashboardProviderPageActions(
+        onRefresh: {},
+        onSwitchProvider: { _ in },
+        onOpenProvider: { _ in },
+        onSelectProvider: { _ in },
+        isSortAlphabetically: { false },
+        setSortAlphabetically: { _ in }
+    )
+}
+
+private func makeTestWindow(width: CGFloat) -> NSWindow {
+    NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: width, height: 720),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+}
+
+private func pinningHost(for page: NSView, in window: NSWindow, width: CGFloat) -> NSView {
+    let host = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 720))
+    window.contentView = host
+    host.addSubview(page)
+    pin(page, to: host, window: window, width: width)
+    return host
+}
+
+private func pin(_ page: NSView, to host: NSView, window: NSWindow, width: CGFloat) {
+    window.setContentSize(NSSize(width: width, height: 720))
+    host.setFrameSize(NSSize(width: width, height: 720))
+    page.translatesAutoresizingMaskIntoConstraints = false
+    page.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    host.removeConstraints(host.constraints)
+    NSLayoutConstraint.activate([
+        page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+        page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+        page.topAnchor.constraint(equalTo: host.topAnchor)
+    ])
+    window.layoutIfNeeded()
+    host.layoutSubtreeIfNeeded()
+    page.layoutSubtreeIfNeeded()
+    window.layoutIfNeeded()
+    page.layoutSubtreeIfNeeded()
 }
 
 private func descendants<T: NSView>(of root: NSView, as type: T.Type) -> [T] {
