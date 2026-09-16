@@ -2,6 +2,9 @@ import AppKit
 
 protocol DashboardSettingsRowControlLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
+    /// True when this accessory stacked its own controls vertically.
+    /// This is not a row-placement signal: vertical controls may still sit
+    /// beside the labels.
     var usesDedicatedRow: Bool { get }
     var allowsTextDrivenDedicatedRow: Bool { get }
     /// Minimum width the labels column needs to remain beside this accessory.

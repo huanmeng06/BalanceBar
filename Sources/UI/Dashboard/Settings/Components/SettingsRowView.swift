@@ -34,6 +34,7 @@ final class SettingsRowView: NSView {
     let labelsStack = NSStackView()
     private var stacksVertically = false
     private var detailWidthConstraint: NSLayoutConstraint?
+    private var dedicatedLabelsWidthConstraint: NSLayoutConstraint?
 
     init(
         title: String,
@@ -307,8 +308,10 @@ final class SettingsRowView: NSView {
         else { return }
         let availableWidth = max(0, bounds.width - Self.horizontalPadding * 2)
         adaptive.updateAvailableRowWidth(availableWidth)
-        // Control orientation (side-by-side vs stacked popups/buttons) is
-        // independent of row placement (accessory beside text vs below it).
+        // Control orientation (horizontal vs vertical) is independent of row
+        // placement (inline / vertical-beside / dedicated-below). Measure
+        // leftover label width against the accessory's current fitting size
+        // after the stack has chosen its own orientation.
         applyVerticalStacking(shouldPlaceAccessoryOnDedicatedRow(adaptive, availableWidth: availableWidth))
         applyWrappingWidths()
     }
@@ -317,18 +320,14 @@ final class SettingsRowView: NSView {
         _ adaptive: DashboardSettingsRowControlLayout,
         availableWidth: CGFloat
     ) -> Bool {
-        // `usesDedicatedRow` means the controls themselves went vertical.
-        // Label-column placement is separate: the accessory can stay
-        // horizontal while moving onto the row below the labels.
-        if adaptive.usesDedicatedRow {
-            return true
-        }
         guard let accessoryView,
               !accessoryView.isHidden,
               availableWidth > 0
         else { return false }
         let minimumLabelWidth = adaptive.minimumInlineLabelWidth
         guard minimumLabelWidth > 0 else { return false }
+        // Uses the accessory's current fitting width, so a vertical control
+        // stack can remain beside the labels when leftover space is enough.
         let remainingWhenBeside = availableWidth
             - max(1, accessoryView.fittingSize.width)
             - Self.contentSpacing
@@ -338,12 +337,19 @@ final class SettingsRowView: NSView {
     private func applyVerticalStacking(_ vertical: Bool) {
         guard stacksVertically != vertical else { return }
         stacksVertically = vertical
+        if dedicatedLabelsWidthConstraint == nil {
+            dedicatedLabelsWidthConstraint = labelsStack.widthAnchor.constraint(
+                equalTo: contentStack.widthAnchor
+            )
+        }
         if vertical {
             contentStack.orientation = .vertical
-            contentStack.alignment = .width
+            contentStack.alignment = .trailing
             contentStack.spacing = DashboardSettingsComponents.settingsRowContentControlSpacing
-            accessoryView?.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            accessoryView?.setContentHuggingPriority(.required, for: .horizontal)
+            dedicatedLabelsWidthConstraint?.isActive = true
         } else {
+            dedicatedLabelsWidthConstraint?.isActive = false
             contentStack.orientation = .horizontal
             contentStack.alignment = .centerY
             contentStack.spacing = Self.contentSpacing

@@ -3340,21 +3340,19 @@ final class UpdateTests: XCTestCase {
 
             let narrow = frames()
             assertCardHeight("card height must follow the narrow update row for \(language)")
-            XCTAssertEqual(controls.orientation, .vertical, "available actions should stack below content for \(language)")
+            XCTAssertEqual(controls.orientation, .vertical, "available actions should use a dedicated row for \(language)")
+            XCTAssertEqual(row.contentStack.orientation, .vertical, "narrow update actions occupy a row below the labels for \(language)")
+            XCTAssertEqual(narrow.labels.minX, 20, accuracy: 0.5, "content leading inset for \(language)")
+            XCTAssertEqual(
+                narrow.labels.maxX,
+                row.bounds.maxX - 20,
+                accuracy: 0.5,
+                "content must use the full row width when actions reflow for \(language)"
+            )
             XCTAssertGreaterThanOrEqual(
-                narrow.labels.minX,
-                19.5,
-                "native stacked content stays on the leading content side for \(language)"
-            )
-            XCTAssertLessThan(
-                narrow.labels.minX,
-                row.bounds.midX,
-                "native stacked content must not jump to the trailing action column for \(language)"
-            )
-            XCTAssertGreaterThan(
                 narrow.subtitle.width,
-                1,
-                "subtitle must keep a wrapping width instead of collapsing for \(language)"
+                row.bounds.width - 40,
+                "subtitle must not inherit the old compressed action-column width for \(language)"
             )
             XCTAssertFalse(narrow.labels.intersects(narrow.controls), "content and actions must not overlap for \(language)")
             XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(narrow.labels), "content must remain inside the row for \(language)")
@@ -3398,37 +3396,40 @@ final class UpdateTests: XCTestCase {
                 "medium-width content and actions must not overlap for \(language)"
             )
 
-            var foundCompressedContentBesideVerticalActions = false
+            var foundVerticalActionsBesideContent = false
             for width in stride(from: CGFloat(320), through: 1400, by: 20) {
                 page.setFrameSize(NSSize(width: width, height: 420))
                 let candidate = frames()
-                if controls.orientation == .vertical {
-                    XCTAssertFalse(
-                        candidate.labels.intersects(candidate.controls),
-                        "vertical actions must not overlap content for \(language) at \(width)"
-                    )
-                    XCTAssertTrue(
-                        row.bounds.insetBy(dx: 0, dy: -0.5).contains(candidate.labels),
-                        "vertical content must stay inside the row for \(language) at \(width)"
-                    )
-                    XCTAssertTrue(
-                        row.bounds.insetBy(dx: 0, dy: -0.5).contains(candidate.controls),
-                        "vertical actions must stay inside the row for \(language) at \(width)"
-                    )
-                    if candidate.labels.maxX < candidate.controls.minX - 0.5 {
-                        foundCompressedContentBesideVerticalActions = true
-                    }
+                guard controls.orientation == .vertical,
+                      candidate.labels.maxX < candidate.controls.minX - 0.5 else {
+                    continue
                 }
+                XCTAssertEqual(row.contentStack.orientation, .horizontal, "vertical actions stay beside content for \(language) at \(width)")
+                XCTAssertEqual(
+                    candidate.labels.midY,
+                    row.bounds.midY,
+                    accuracy: 0.5,
+                    "title and subtitle should be vertically centered beside a vertical action column for \(language)"
+                )
+                XCTAssertEqual(
+                    candidate.controls.midY,
+                    row.bounds.midY,
+                    accuracy: 0.5,
+                    "vertical action column should be centered in the update row for \(language)"
+                )
+                foundVerticalActionsBesideContent = true
+                break
             }
-            XCTAssertFalse(
-                foundCompressedContentBesideVerticalActions,
-                "native update row must not compress the content column beside a vertical action stack for \(language)"
+            XCTAssertTrue(
+                foundVerticalActionsBesideContent,
+                "a width with vertical actions beside the content should be reachable for \(language)"
             )
 
             page.setFrameSize(NSSize(width: 760, height: 420))
             let wide = frames()
             assertCardHeight("card height must follow the wide update row for \(language)")
             XCTAssertEqual(controls.orientation, .horizontal, "wide window should retain horizontal actions for \(language)")
+            XCTAssertEqual(row.contentStack.orientation, .horizontal, "wide update actions return beside content for \(language)")
             XCTAssertLessThan(wide.labels.maxX, wide.controls.minX, "wide content and actions should remain separate for \(language)")
             XCTAssertLessThanOrEqual(wide.labels.maxX, wide.controls.minX - 19.5, "wide row gap for \(language)")
             XCTAssertEqual(wide.controls.maxX, row.bounds.maxX - 20, accuracy: 0.5, "wide action trailing column for \(language)")
@@ -3438,6 +3439,8 @@ final class UpdateTests: XCTestCase {
                 narrowWrappingWidth,
                 "wide native wrapping must widen after actions return beside content for \(language)"
             )
+            XCTAssertLessThan(row.frame.height, narrowRowHeight, "wide row should shrink after actions reflow back for \(language)")
+            XCTAssertLessThan(card.frame.height, narrowCardHeight, "wide card should shrink after actions reflow back for \(language)")
 
             page.setFrameSize(NSSize(width: 320, height: 420))
             let narrowAgain = frames()

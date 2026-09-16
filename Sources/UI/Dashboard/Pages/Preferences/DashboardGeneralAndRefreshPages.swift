@@ -527,6 +527,7 @@ final class DashboardGeneralPage {
         updateControls.orientation = .horizontal
         updateControls.alignment = .centerY
         updateControls.spacing = 8
+        updateControls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         updateControls.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         updateControls.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let updateRow = SettingsRowView(

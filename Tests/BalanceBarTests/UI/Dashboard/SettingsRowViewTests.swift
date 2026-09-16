@@ -456,6 +456,63 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
     }
 
+    func testVerticalControlsCanStayBesideContentUntilInlineLabelWidthIsExhausted() throws {
+        DashboardSettingsLayoutMetrics.reset()
+        let leading = NSButton(title: "View Release Notes", target: nil, action: nil)
+        let trailing = NSButton(title: "Download and Install", target: nil, action: nil)
+        [leading, trailing].forEach { button in
+            button.bezelStyle = .rounded
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        }
+        let controls = DashboardAdaptiveControlsStackView(views: [leading, trailing])
+        controls.orientation = .horizontal
+        controls.alignment = .centerY
+        controls.spacing = 8
+        controls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        let row = SettingsRowView(
+            title: "Check for Updates",
+            detail: "New version available: 1.2.3 -> 123.456.789",
+            accessoryView: controls
+        )
+        let section = SettingsSectionView(title: "Application", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        func layout(at width: CGFloat) {
+            pin(section, to: host, window: window, width: width)
+        }
+
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+
+        layout(at: 380)
+        XCTAssertEqual(controls.orientation, .vertical)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        let besideLabels = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+        let besideControls = controls.convert(controls.bounds, to: row)
+        XCTAssertLessThan(besideLabels.maxX, besideControls.minX - 0.5)
+        XCTAssertFalse(besideLabels.intersects(besideControls))
+
+        layout(at: 280)
+        XCTAssertEqual(controls.orientation, .vertical)
+        XCTAssertEqual(row.contentStack.orientation, .vertical)
+        XCTAssertEqual(
+            row.detailLabel.preferredMaxLayoutWidth,
+            max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2),
+            accuracy: 1
+        )
+
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+    }
+
     private func assertLabelsDoNotOverlapControl(
         in row: SettingsRowView,
         control: NSView,
