@@ -455,10 +455,10 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.manualRefresh(_:))
         )
-        let balanceUpdatesRow = SettingsRowView(
+        let balanceUpdatesRow = DashboardRefreshBalanceUpdatesRowView(
             title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
             detail: tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning),
-            accessoryView: activeRefreshControls
+            intervalControls: activeRefreshControls
         )
         let refreshNowRow = SettingsRowView(
             title: tr(.keyDashboardGeneralAndRefreshPagesBalanceData),

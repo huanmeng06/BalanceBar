@@ -191,7 +191,8 @@ final class SettingsSectionViewTests: XCTestCase {
         )
         XCTAssertEqual(refresh.contentViews.count, 2)
         XCTAssertEqual(refresh.separators.count, 1)
-        XCTAssertTrue(refresh.contentViews.allSatisfy { $0 is SettingsRowView })
+        XCTAssertTrue(refresh.contentViews[0] is DashboardRefreshBalanceUpdatesRowView)
+        XCTAssertTrue(refresh.contentViews[1] is SettingsRowView)
         XCTAssertFalse(
             refresh.cardView.constraints.contains { constraint in
                 constraint.firstAttribute == .height

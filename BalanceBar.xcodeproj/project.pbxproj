@@ -99,6 +99,7 @@
 		A100000000000000000000B0 /* DashboardAboutPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B1 /* DashboardAboutPage.swift */; };
 		A100000000000000000000B2 /* DashboardAdvancedPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B3 /* DashboardAdvancedPage.swift */; };
 		A100000000000000000000B4 /* DashboardGeneralAndRefreshPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B5 /* DashboardGeneralAndRefreshPages.swift */; };
+		A39300000000000000000002 /* DashboardRefreshBalanceUpdatesRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39300000000000000000001 /* DashboardRefreshBalanceUpdatesRowView.swift */; };
 		A100000000000000000000B6 /* DashboardLogsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B7 /* DashboardLogsPage.swift */; };
 		A100000000000000000000B8 /* DashboardMenuBarPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B9 /* DashboardMenuBarPage.swift */; };
 		A39700000000000000000002 /* DashboardMenuBarRepeatControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39700000000000000000001 /* DashboardMenuBarRepeatControls.swift */; };
@@ -272,6 +273,7 @@
 		A100000000000000000000B1 /* DashboardAboutPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAboutPage.swift; sourceTree = "<group>"; };
 		A100000000000000000000B3 /* DashboardAdvancedPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAdvancedPage.swift; sourceTree = "<group>"; };
 		A100000000000000000000B5 /* DashboardGeneralAndRefreshPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardGeneralAndRefreshPages.swift; sourceTree = "<group>"; };
+		A39300000000000000000001 /* DashboardRefreshBalanceUpdatesRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRefreshBalanceUpdatesRowView.swift; sourceTree = "<group>"; };
 		A100000000000000000000B7 /* DashboardLogsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardLogsPage.swift; sourceTree = "<group>"; };
 		A100000000000000000000B9 /* DashboardMenuBarPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarPage.swift; sourceTree = "<group>"; };
 		A39700000000000000000001 /* DashboardMenuBarRepeatControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarRepeatControls.swift; sourceTree = "<group>"; };
@@ -688,6 +690,7 @@
 				A100000000000000000000B1 /* DashboardAboutPage.swift */,
 				A100000000000000000000B3 /* DashboardAdvancedPage.swift */,
 				A100000000000000000000B5 /* DashboardGeneralAndRefreshPages.swift */,
+				A39300000000000000000001 /* DashboardRefreshBalanceUpdatesRowView.swift */,
 				A100000000000000000000B7 /* DashboardLogsPage.swift */,
 				A100000000000000000000B9 /* DashboardMenuBarPage.swift */,
 				A39700000000000000000009 /* DashboardMenuBarBehaviorSection.swift */,
@@ -1036,6 +1039,7 @@
 				A100000000000000000000B0 /* DashboardAboutPage.swift in Sources */,
 				A100000000000000000000B2 /* DashboardAdvancedPage.swift in Sources */,
 				A100000000000000000000B4 /* DashboardGeneralAndRefreshPages.swift in Sources */,
+				A39300000000000000000002 /* DashboardRefreshBalanceUpdatesRowView.swift in Sources */,
 				A100000000000000000000B6 /* DashboardLogsPage.swift in Sources */,
 				A100000000000000000000B8 /* DashboardMenuBarPage.swift in Sources */,
 				A3970000000000000000000A /* DashboardMenuBarBehaviorSection.swift in Sources */,

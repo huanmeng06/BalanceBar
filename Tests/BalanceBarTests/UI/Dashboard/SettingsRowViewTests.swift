@@ -444,10 +444,11 @@ final class SettingsRowViewTests: XCTestCase {
                 .first { $0.identifier?.rawValue == AppLanguage.preferenceKey }
         )
 
-        let updatesRow = try XCTUnwrap(SettingsRowView.enclosing(runningPopup))
+        let updatesRow = try XCTUnwrap(DashboardRefreshBalanceUpdatesRowView.enclosing(runningPopup))
         let refreshNowRow = try XCTUnwrap(SettingsRowView.enclosing(refreshButton))
-        XCTAssertIdentical(SettingsRowView.enclosing(trailingPopup), updatesRow)
-        XCTAssertNotIdentical(updatesRow, refreshNowRow)
+        XCTAssertIdentical(DashboardRefreshBalanceUpdatesRowView.enclosing(trailingPopup), updatesRow)
+        XCTAssertNil(SettingsRowView.enclosing(runningPopup))
+        XCTAssertNil(SettingsRowView.enclosing(trailingPopup))
         XCTAssertEqual(
             updatesRow.titleLabel.stringValue,
             tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks)
@@ -464,9 +465,8 @@ final class SettingsRowViewTests: XCTestCase {
             refreshNowRow.detailLabel.stringValue,
             tr(.keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow)
         )
-        XCTAssertTrue(updatesRow.accessoryView is DashboardAdaptiveControlsStackView)
-        XCTAssertIdentical(updatesRow.accessoryView?.superview, updatesRow)
-        XCTAssertFalse(updatesRow.contentStack.arrangedSubviews.contains { $0 === updatesRow.accessoryView })
+        XCTAssertIdentical(updatesRow.intervalControls, runningPopup.superview?.superview)
+        XCTAssertIdentical(updatesRow.intervalControls.superview, updatesRow)
         XCTAssertIdentical(refreshNowRow.accessoryView, refreshButton)
         XCTAssertIdentical(refreshButton.superview, refreshNowRow.contentStack)
         XCTAssertNil(SettingsRowView.enclosing(languagePopup))
@@ -481,11 +481,7 @@ final class SettingsRowViewTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
         XCTAssertGreaterThanOrEqual(refreshNowRow.frame.height, SettingsRowView.minimumHeight)
-        assertLabelsDoNotOverlapControl(
-            in: updatesRow,
-            control: try XCTUnwrap(updatesRow.accessoryView),
-            width: 880
-        )
+        assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 880)
         assertLabelsDoNotOverlapControl(in: refreshNowRow, control: refreshButton, width: 880)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
@@ -495,14 +491,45 @@ final class SettingsRowViewTests: XCTestCase {
         pin(refresh, to: host, window: window, width: 516)
         XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
         XCTAssertGreaterThanOrEqual(refreshNowRow.frame.height, SettingsRowView.minimumHeight)
-        assertLabelsDoNotOverlapControl(
-            in: updatesRow,
-            control: try XCTUnwrap(updatesRow.accessoryView),
-            width: 516
-        )
+        assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 516)
         assertLabelsDoNotOverlapControl(in: refreshNowRow, control: refreshButton, width: 516)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+
+        pin(refresh, to: host, window: window, width: 320)
+        XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
+        assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 320)
+        pin(refresh, to: host, window: window, width: 880)
+        assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 880)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+    }
+
+    func testNativeRowKeepsAdaptiveControlsInTheContentStack() {
+        let first = NSButton(title: "One", target: nil, action: nil)
+        let second = NSButton(title: "Two", target: nil, action: nil)
+        let controls = DashboardAdaptiveControlsStackView(views: [first, second])
+        let row = SettingsRowView(
+            title: "Adaptive accessory",
+            detail: "Generic native rows must not special-case this control type.",
+            accessoryView: controls
+        )
+        XCTAssertIdentical(row.accessoryView, controls)
+        XCTAssertIdentical(controls.superview, row.contentStack)
+        XCTAssertTrue(row.contentStack.arrangedSubviews.contains { $0 === controls })
+    }
+
+    func testSettingsRowViewSourceDoesNotHostAdaptivePlacement() throws {
+        let root = try TestRepositoryRoot.locate(from: #filePath)
+        let source = try String(
+            contentsOf: root
+                .appendingPathComponent("Sources/UI/Dashboard/Settings/Components/SettingsRowView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertFalse(source.contains("DashboardSettingsRowControlLayout"))
+        XCTAssertFalse(source.contains("DashboardAdaptiveControlsStackView"))
+        XCTAssertFalse(source.contains("updateAdaptiveAccessoryPlacement"))
+        XCTAssertFalse(source.contains("usesDedicatedAccessoryPlacement"))
+        XCTAssertFalse(source.contains("notifyAdaptiveAccessoryWidth"))
     }
 
     func testTitleToSubtitleVisualSpacingMatchesLegacyRowInTheSameCard() throws {
@@ -657,6 +684,26 @@ final class SettingsRowViewTests: XCTestCase {
             legacyBaseline,
             accuracy: 1.0,
             "Silent Launch baseline gap must match 登录时自动启动 in the Startup card"
+        )
+    }
+
+    private func assertRefreshIntervalLabelsDoNotOverlapControls(
+        in row: DashboardRefreshBalanceUpdatesRowView,
+        width: CGFloat
+    ) {
+        let labelsFrame = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+        let controlFrame = row.intervalControls.convert(row.intervalControls.bounds, to: row)
+        XCTAssertTrue(
+            row.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame),
+            "labels stay inside the refresh interval row at \(width)"
+        )
+        XCTAssertTrue(
+            row.bounds.insetBy(dx: 0, dy: -0.5).contains(controlFrame),
+            "interval controls stay inside the refresh interval row at \(width)"
+        )
+        XCTAssertFalse(
+            labelsFrame.intersects(controlFrame),
+            "labels do not overlap the interval controls at \(width)"
         )
     }
 

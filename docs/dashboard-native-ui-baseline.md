@@ -92,7 +92,7 @@ About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advance
 
 | 页面 | 当前卡片/结构 | 备注 |
 | --- | --- | --- |
-| General | System → Refresh → Startup → Application | Refresh 卡片含任务中余额更新间隔、结束后持续时长、立即刷新，并已迁到原生 `SettingsSectionView` / `SettingsRowView`。Startup 卡片是原生 `SettingsSectionView` 试点；其中 Silent Launch 行是原生 `SettingsRowView`，另外两行仍走 `makeSettingsRow`。System / Application 卡片仍走 `makeSettingsSection`。 |
+| General | System → Refresh → Startup → Application | Refresh 卡片含任务中余额更新间隔、结束后持续时长、立即刷新，并已迁到原生 `SettingsSectionView`：立即刷新行是 `SettingsRowView`，双 interval 行是 Refresh 专用 `DashboardRefreshBalanceUpdatesRowView`（不把 fitting-size 布局决策放进通用 `SettingsRowView`）。Startup 卡片是原生 `SettingsSectionView` 试点；其中 Silent Launch 行是原生 `SettingsRowView`，另外两行仍走 `makeSettingsRow`。System / Application 卡片仍走 `makeSettingsSection`。 |
 | Refresh | 不是侧栏页 | 见 General 的 Refresh 卡片；`DashboardRefreshPage` 未挂载 |
 | Menu Bar | Preview → Quota & Reset → Icon & Task Status → Behavior → Layout | 若干行随开关折叠，不改已存偏好 |
 | Menu | Balance Display（条件）→ Banked Reset → Progress Bar → Menu behavior → Open Project → Status Links | Status Links 编辑器始终存在，开关只改高度/透明度 |
@@ -154,7 +154,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`
 - `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome
 - `DashboardComponentsTests.testDashboardSectionsPreserveNavigationOrderAndMetadata`
-- `SettingsSectionViewTests`：原生 section 高度由子 View 约束推导，不走 `settingsCardHeight` / 父级 preferred-height 循环；General Startup 与 Refresh 卡片已迁到原生容器
+- `SettingsSectionViewTests`：原生 section 高度由子 View 约束推导，不走 `settingsCardHeight` / 父级 preferred-height 循环；General Startup 与 Refresh 卡片已迁到原生容器。Refresh 的双 interval 行由 `DashboardRefreshBalanceUpdatesRowView` 承担，通用 `SettingsRowView` 不识别 adaptive control 类型
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
 - `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
 - `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权

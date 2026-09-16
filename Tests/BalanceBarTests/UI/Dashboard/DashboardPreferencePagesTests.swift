@@ -707,7 +707,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let runningControls = try XCTUnwrap(runningPopup.superview as? NSStackView)
         let trailingControls = try XCTUnwrap(trailingPopup.superview as? NSStackView)
         let controls = try XCTUnwrap(runningControls.superview as? DashboardAdaptiveControlsStackView)
-        let row = try XCTUnwrap(SettingsRowView.enclosing(controls))
+        let row = try XCTUnwrap(DashboardRefreshBalanceUpdatesRowView.enclosing(controls))
         let section = try XCTUnwrap(SettingsSectionView.enclosing(row))
         let labels = row.labelsStack
         let card = section.cardView
@@ -715,8 +715,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(controls.arrangedSubviews.count, 2)
         XCTAssertTrue(controls.arrangedSubviews[0] === runningControls)
         XCTAssertTrue(controls.arrangedSubviews[1] === trailingControls)
-        XCTAssertIdentical(row.accessoryView, controls)
+        XCTAssertIdentical(row.intervalControls, controls)
+        XCTAssertNil(SettingsRowView.enclosing(controls))
         XCTAssertEqual(section.contentViews.count, 2)
+        XCTAssertTrue(section.contentViews[0] === row)
+        XCTAssertTrue(section.contentViews[1] is SettingsRowView)
 
         func assertCardHeight(_ message: String, file: StaticString = #filePath, line: UInt = #line) {
             let rowsHeight = section.contentViews.reduce(CGFloat(0)) { $0 + $1.frame.height }
@@ -816,9 +819,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             assertCardHeight("refresh card height follows its native rows", file: file, line: line)
         }
 
+        assertLayout(width: 880, orientation: .horizontal)
         assertLayout(width: 720, orientation: .horizontal)
         assertLayout(width: 516, orientation: .horizontal)
         assertLayout(width: 320, orientation: .vertical)
+        assertLayout(width: 516, orientation: .horizontal)
+        assertLayout(width: 880, orientation: .horizontal)
 
         runningPopup.selectItem(at: 4)
         relay.interval(runningPopup)
