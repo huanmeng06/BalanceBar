@@ -182,7 +182,7 @@ final class SettingsSectionViewTests: XCTestCase {
         let refreshButton = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSButton }
-                .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) }
+                .first { $0.action == #selector(DashboardPreferencePageRelay.manualRefresh(_:)) }
         )
         let refresh = try XCTUnwrap(SettingsSectionView.enclosing(refreshButton))
         XCTAssertEqual(
@@ -204,7 +204,7 @@ final class SettingsSectionViewTests: XCTestCase {
         let openButton = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSButton }
-                .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesOpenCcSwitch) }
+                .first { $0.action == #selector(DashboardPreferencePageRelay.openCCSwitch(_:)) }
         )
         XCTAssertNil(SettingsSectionView.enclosing(openButton))
 

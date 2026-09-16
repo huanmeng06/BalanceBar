@@ -436,7 +436,7 @@ final class SettingsRowViewTests: XCTestCase {
         let refreshButton = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSButton }
-                .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) }
+                .first { $0.action == #selector(DashboardPreferencePageRelay.manualRefresh(_:)) }
         )
         let languagePopup = try XCTUnwrap(
             descendants(of: page)
