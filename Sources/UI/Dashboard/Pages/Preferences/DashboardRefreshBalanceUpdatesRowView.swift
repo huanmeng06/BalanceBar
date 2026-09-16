@@ -69,11 +69,17 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         let available = bounds.width > 1
             ? max(0, bounds.width - SettingsRowView.horizontalPadding * 2)
             : 0
-        intervalControls.updateAvailableRowWidth(available)
+        if available > 1 {
+            intervalControls.updateAvailableRowWidth(available)
+        }
         let accessoryFitting = intervalControls.fittingSize.width
-        let wantsStacked = available <= 0
+        let wantsStacked = available <= 1
             || intervalControls.usesDedicatedRow
             || accessoryFitting + 0.5 > available
+        if wantsStacked {
+            intervalControls.orientation = .vertical
+            intervalControls.alignment = .trailing
+        }
         applyStacked(wantsStacked)
     }
 
@@ -157,8 +163,11 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         intervalControls.setContentCompressionResistancePriority(.required, for: .horizontal)
         intervalControls.setContentHuggingPriority(.defaultHigh, for: .vertical)
         intervalControls.setContentCompressionResistancePriority(.required, for: .vertical)
-        // First constraint pass must not require both interval groups beside
-        // wrapping labels before the row width is known.
+        // Seed a tiny available width so the adaptive stack stays vertical
+        // until this row knows its real width. Otherwise its own layout()
+        // treats infinite width as "fits side-by-side" and fights stacked
+        // constraints at 320pt.
+        intervalControls.updateAvailableRowWidth(1)
         intervalControls.orientation = .vertical
         intervalControls.alignment = .trailing
 

@@ -447,8 +447,6 @@ final class DashboardGeneralPage {
         let activeRefreshControls = DashboardAdaptiveControlsStackView(
             views: [runningControls, trailingControls]
         )
-        activeRefreshControls.orientation = .horizontal
-        activeRefreshControls.alignment = .centerY
         activeRefreshControls.spacing = 5
         let refreshButton = NSButton(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),
