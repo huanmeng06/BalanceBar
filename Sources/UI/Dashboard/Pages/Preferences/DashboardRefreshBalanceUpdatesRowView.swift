@@ -7,6 +7,10 @@ import AppKit
 /// specific to Refresh, so the constraint switch lives here instead of in the
 /// shared row. Placement uses available width, control fitting width, and a
 /// fixed readable-column breakpoint — not legacy text-line measurement.
+///
+/// Wrapping-height invalidation follows the same live-layout rule as
+/// `SettingsRowView`: never invalidate intrinsic size during `layout()` or a
+/// live-resize constraint pass.
 final class DashboardRefreshBalanceUpdatesRowView: NSView {
     /// Twelve glyphs at the 14pt title size. Side-by-side placement is allowed
     /// only when the remaining text column is at least this wide.
@@ -20,14 +24,17 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
     private var sideBySideConstraints: [NSLayoutConstraint] = []
     private var stackedConstraints: [NSLayoutConstraint] = []
     private(set) var usesDedicatedPlacement = true
+    private var wrappingHeightIsDirty = false
+    private var wrappingCommitIsScheduled = false
+    private var isPerformingLayout = false
 
     init(
         title: String,
         detail: String,
         intervalControls: DashboardAdaptiveControlsStackView
     ) {
-        titleLabel = NSTextField(wrappingLabelWithString: title)
-        detailLabel = NSTextField(wrappingLabelWithString: detail)
+        titleLabel = RefreshWrappingLabel(string: title)
+        detailLabel = RefreshWrappingLabel(string: detail)
         self.intervalControls = intervalControls
         super.init(frame: .zero)
         configure(title: title, detail: detail)
@@ -53,7 +60,7 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         super.setFrameSize(newSize)
         if widthChanged {
             updatePlacement()
-            applyWrappingWidths()
+            applyWrappingWidths(invalidateHeight: false)
             needsUpdateConstraints = true
             needsLayout = true
         }
@@ -71,9 +78,36 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
     }
 
     override func layout() {
+        isPerformingLayout = true
         updatePlacement()
         super.layout()
-        applyWrappingWidths()
+        // Never invalidate intrinsic size here. SettingsRowView on main
+        // already showed that live-resize / layout-pass ICS invalidation
+        // explodes AppKit's Update Constraints cycle.
+        applyWrappingWidths(invalidateHeight: false)
+        isPerformingLayout = false
+        scheduleWrappingHeightCommitIfNeeded()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil {
+            wrappingHeightIsDirty = false
+            wrappingCommitIsScheduled = false
+        }
+    }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        refreshWrappingLayout()
+    }
+
+    /// Apply wrapping from the current bounds and update intrinsic height.
+    /// Call only outside an in-flight window layout pass.
+    func refreshWrappingLayout() {
+        applyWrappingWidths(invalidateHeight: true)
+        needsLayout = true
+        layoutSubtreeIfNeeded()
     }
 
     private func updatePlacement() {
@@ -110,28 +144,66 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         NSLayoutConstraint.activate(
             wantsStacked ? stackedConstraints : sideBySideConstraints
         )
-        intervalControls.invalidateIntrinsicContentSize()
-        invalidateIntrinsicContentSize()
-        notifyHeightHost()
+        wrappingHeightIsDirty = true
+        needsUpdateConstraints = true
         needsLayout = true
+        scheduleWrappingHeightCommitIfNeeded()
     }
 
-    private func applyWrappingWidths() {
+    private func applyWrappingWidths(invalidateHeight: Bool) {
         let wrappingWidth = wrappingWidthForLabels()
         guard wrappingWidth > 1 else { return }
+        let widthChanged = wrappingNeedsUpdate(to: wrappingWidth)
+        guard widthChanged || (invalidateHeight && wrappingHeightIsDirty) else { return }
 
-        var wrappingChanged = false
-        if abs(titleLabel.preferredMaxLayoutWidth - wrappingWidth) > 0.5 {
+        if invalidateHeight {
             titleLabel.preferredMaxLayoutWidth = wrappingWidth
-            wrappingChanged = true
+            detailLabel.preferredMaxLayoutWidth = wrappingWidth
+            wrappingHeightIsDirty = false
+            intervalControls.invalidateIntrinsicContentSize()
+            invalidateIntrinsicContentSize()
+            notifyHeightHost()
+            return
+        }
+
+        (titleLabel as? RefreshWrappingLabel)?
+            .setPreferredMaxLayoutWidthWithoutInvalidation(wrappingWidth)
+        (detailLabel as? RefreshWrappingLabel)?
+            .setPreferredMaxLayoutWidthWithoutInvalidation(wrappingWidth)
+        wrappingHeightIsDirty = true
+        scheduleWrappingHeightCommitIfNeeded()
+    }
+
+    private func scheduleWrappingHeightCommitIfNeeded() {
+        guard wrappingHeightIsDirty else { return }
+        guard window?.inLiveResize != true else { return }
+        guard !isPerformingLayout else { return }
+        guard !wrappingCommitIsScheduled else { return }
+        // XCTest shares one AppKit constraint solver. A deferred ICS
+        // invalidation here races later tests' in-place localization
+        // rebuilds. Tests call `refreshWrappingLayout()` after pinning.
+        if AutomatedTestHost.isRunning {
+            return
+        }
+        wrappingCommitIsScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.wrappingCommitIsScheduled = false
+            guard self.wrappingHeightIsDirty, self.window != nil else { return }
+            guard self.window?.inLiveResize != true else { return }
+            self.refreshWrappingLayout()
+        }
+    }
+
+    private func wrappingNeedsUpdate(to wrappingWidth: CGFloat) -> Bool {
+        guard wrappingWidth > 1 else { return false }
+        if abs(titleLabel.preferredMaxLayoutWidth - wrappingWidth) > 0.5 {
+            return true
         }
         if abs(detailLabel.preferredMaxLayoutWidth - wrappingWidth) > 0.5 {
-            detailLabel.preferredMaxLayoutWidth = wrappingWidth
-            wrappingChanged = true
+            return true
         }
-        guard wrappingChanged else { return }
-        invalidateIntrinsicContentSize()
-        notifyHeightHost()
+        return false
     }
 
     private func notifyHeightHost() {
@@ -153,10 +225,11 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
                 : intervalControls.fittingSize.width
             reserved += accessoryWidth + SettingsRowView.contentSpacing
         }
-        if bounds.width > 1 {
-            return max(0, bounds.width - reserved)
-        }
-        return max(0, labelsStack.bounds.width)
+        let available = bounds.width > 1 ? bounds.width : labelsStack.bounds.width
+        guard available > 1 else { return 0 }
+        // Keep a usable wrapping width even when the accessory stack reports a
+        // stretched fitting size during live resize.
+        return max(80, available - reserved)
     }
 
     private func configure(title: String, detail: String) {
@@ -306,5 +379,29 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)
         label.setContentCompressionResistancePriority(.required, for: .vertical)
         label.setContentHuggingPriority(.required, for: .vertical)
+    }
+}
+
+/// Wrapping label whose `preferredMaxLayoutWidth` can be assigned during
+/// `layout()` without dirtying the window constraint pass.
+///
+/// Duplicated here because `SettingsWrappingLabel` is file-private in
+/// `SettingsRowView`. Adaptive placement stays Refresh-only.
+private final class RefreshWrappingLabel: NSTextField {
+    private var suppressIntrinsicInvalidation = false
+
+    convenience init(string: String) {
+        self.init(labelWithString: string)
+    }
+
+    func setPreferredMaxLayoutWidthWithoutInvalidation(_ width: CGFloat) {
+        suppressIntrinsicInvalidation = true
+        preferredMaxLayoutWidth = width
+        suppressIntrinsicInvalidation = false
+    }
+
+    override func invalidateIntrinsicContentSize() {
+        guard !suppressIntrinsicInvalidation else { return }
+        super.invalidateIntrinsicContentSize()
     }
 }

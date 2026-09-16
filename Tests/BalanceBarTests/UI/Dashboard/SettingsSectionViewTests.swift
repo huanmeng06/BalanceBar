@@ -657,6 +657,9 @@ final class SettingsSectionViewTests: XCTestCase {
         if let row = view as? SettingsRowView {
             row.refreshWrappingLayout()
         }
+        if let row = view as? DashboardRefreshBalanceUpdatesRowView {
+            row.refreshWrappingLayout()
+        }
         view.subviews.forEach { refreshNativeRowWrapping(in: $0) }
     }
 

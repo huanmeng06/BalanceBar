@@ -561,6 +561,64 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertFalse(source.contains("NSLayoutManager"))
         XCTAssertFalse(source.contains("NSTextStorage"))
         XCTAssertFalse(source.contains("widestUnbreakableRunWidth"))
+        XCTAssertTrue(source.contains("refreshWrappingLayout"))
+        XCTAssertTrue(source.contains("viewDidEndLiveResize"))
+        XCTAssertTrue(source.contains("wrappingHeightIsDirty"))
+        XCTAssertTrue(source.contains("setPreferredMaxLayoutWidthWithoutInvalidation"))
+        XCTAssertTrue(source.contains("isPerformingLayout"))
+    }
+
+    func testRefreshRowWrappingHeightCommitsAfterLiveResizeEndsWithoutLayoutInvalidation() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "SettingsRowViewTests.RefreshLiveResize.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let page = DashboardGeneralPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            launchAtLoginState: LaunchAtLoginState(status: .notRegistered),
+            launchWithChatGPTState: LaunchWithChatGPTState(status: .notRegistered)
+        ))
+        let runningPopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "codexUsageRefreshInterval" }
+        )
+        let updatesRow = try XCTUnwrap(DashboardRefreshBalanceUpdatesRowView.enclosing(runningPopup))
+        let refresh = try XCTUnwrap(SettingsSectionView.enclosing(updatesRow))
+        refresh.removeFromSuperview()
+
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: refresh, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        let wideHeight = updatesRow.frame.height
+        let wideWrappingWidth = updatesRow.detailLabel.preferredMaxLayoutWidth
+        XCTAssertGreaterThan(wideWrappingWidth, 1)
+        XCTAssertFalse(updatesRow.usesDedicatedPlacement)
+
+        window.setContentSize(NSSize(width: 516, height: 360))
+        host.setFrameSize(NSSize(width: 516, height: 360))
+        window.layoutIfNeeded()
+        refresh.layoutSubtreeIfNeeded()
+        XCTAssertTrue(updatesRow.usesDedicatedPlacement)
+        XCTAssertGreaterThan(updatesRow.detailLabel.preferredMaxLayoutWidth, 1)
+
+        updatesRow.viewDidEndLiveResize()
+        XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertGreaterThanOrEqual(
+            updatesRow.frame.height,
+            wideHeight - 0.5,
+            "viewDidEndLiveResize must commit wrapping height after a narrow Refresh resize"
+        )
+        assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 516)
     }
 
     func testTitleToSubtitleVisualSpacingMatchesLegacyRowInTheSameCard() throws {
@@ -841,6 +899,9 @@ final class SettingsRowViewTests: XCTestCase {
 
     private func refreshNativeRowWrapping(in view: NSView) {
         if let row = view as? SettingsRowView {
+            row.refreshWrappingLayout()
+        }
+        if let row = view as? DashboardRefreshBalanceUpdatesRowView {
             row.refreshWrappingLayout()
         }
         view.subviews.forEach { refreshNativeRowWrapping(in: $0) }

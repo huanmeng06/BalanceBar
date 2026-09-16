@@ -748,6 +748,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             page.setFrameSize(host.bounds.size)
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
+            row.refreshWrappingLayout()
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
 
