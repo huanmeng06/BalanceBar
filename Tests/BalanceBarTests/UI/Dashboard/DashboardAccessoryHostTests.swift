@@ -20,6 +20,269 @@ final class DashboardAccessoryHostTests: XCTestCase {
         }
     }
 
+    func testHostCreatedTitlebarWrapperUsesIndependentContainerAndRestoresChild() throws {
+        let content = ProbeAccessoryController(marker: "host-titlebar-child")
+        XCTAssertNil(content.parent)
+
+        let controller = makeController(
+            makeSectionPage: { section in
+                section == .menuBar
+                    ? AccessoryProbePage(
+                        accessory: .windowTitlebar(
+                            viewController: content,
+                            reason: "window-owned chrome"
+                        )
+                    )
+                    : DashboardHostedPageViewController()
+            }
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        controller.showSection(.menuBar)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        let wrapper = try XCTUnwrap(controller.accessoryHostForTesting.titlebarAccessoryForTesting)
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
+        XCTAssertEqual(controller.accessoryHostForTesting.mountOwnershipForTesting, .hostCreatedWrapper)
+        XCTAssertTrue(wrapper is NSTitlebarAccessoryViewController)
+        XCTAssertEqual(wrapper.layoutAttribute, .bottom)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.contains(wrapper))
+        XCTAssertTrue(content.parent === wrapper)
+        XCTAssertTrue(wrapper.children.contains(content))
+        XCTAssertTrue(content.view.superview === wrapper.view)
+        XCTAssertFalse(wrapper.view === content.view)
+        if #available(macOS 26.0, *) {
+            let splitController = try XCTUnwrap(
+                window.contentViewController as? DashboardSplitViewController
+            )
+            XCTAssertTrue(
+                splitController.contentSplitViewItem?
+                    .topAlignedAccessoryViewControllers.isEmpty ?? true
+            )
+        }
+
+        controller.showSection(.general)
+        window.layoutIfNeeded()
+        try assertNoMountedAccessory(in: controller)
+        XCTAssertNil(content.parent)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+        XCTAssertFalse(wrapper.children.contains(content))
+    }
+
+    func testCallerProvidedTitlebarAccessoryKeepsLeftRightAndBottomLayout() throws {
+        try assertCallerProvidedTitlebarPreserves(layoutAttribute: .left)
+        try assertCallerProvidedTitlebarPreserves(layoutAttribute: .right)
+        try assertCallerProvidedTitlebarPreserves(layoutAttribute: .bottom)
+    }
+
+    func testHostCreatedSplitItemWrapperStaysOnContentPane() throws {
+        guard #available(macOS 26.0, *) else {
+            throw XCTSkip("NSSplitViewItemAccessoryViewController requires macOS 26")
+        }
+
+        let content = ProbeAccessoryController(marker: "host-split-child")
+        let controller = makeController(
+            makeSectionPage: { section in
+                section == .menu
+                    ? AccessoryProbePage(
+                        accessory: .contentSplitItem(viewController: content)
+                    )
+                    : DashboardHostedPageViewController()
+            }
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        controller.showSection(.menu)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let host = controller.accessoryHostForTesting
+        XCTAssertEqual(host.mountedKind, .contentSplitItem)
+        XCTAssertEqual(host.mountOwnershipForTesting, .hostCreatedWrapper)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+
+        let wrapper = try XCTUnwrap(host.contentSplitItemAccessoryForTesting)
+        XCTAssertTrue(wrapper is NSSplitViewItemAccessoryViewController)
+        XCTAssertTrue(content.parent === wrapper)
+        XCTAssertTrue(wrapper.children.contains(content))
+        XCTAssertTrue(content.view.superview === wrapper.view)
+        XCTAssertFalse(wrapper.view === content.view)
+
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        let contentItem = try XCTUnwrap(splitController.contentSplitViewItem)
+        XCTAssertEqual(contentItem.topAlignedAccessoryViewControllers.count, 1)
+        XCTAssertTrue(contentItem.topAlignedAccessoryViewControllers.first === wrapper)
+        XCTAssertTrue(splitController.splitViewItems[0].topAlignedAccessoryViewControllers.isEmpty)
+        try assertAccessoryStaysInsideContentPane(in: window, marker: "host-split-child")
+
+        window.setFrame(
+            NSRect(x: window.frame.origin.x, y: window.frame.origin.y, width: 1020, height: 700),
+            display: false
+        )
+        window.layoutIfNeeded()
+        try assertAccessoryStaysInsideContentPane(in: window, marker: "host-split-child")
+
+        let sidebarItem = splitController.splitViewItems[0]
+        sidebarItem.isCollapsed = true
+        window.layoutIfNeeded()
+        XCTAssertEqual(host.mountedKind, .contentSplitItem)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+        try assertAccessoryStaysInsideContentPane(in: window, marker: "host-split-child")
+
+        splitController.toggleSidebar(nil)
+        window.layoutIfNeeded()
+        XCTAssertFalse(sidebarItem.isCollapsed)
+        try assertAccessoryStaysInsideContentPane(in: window, marker: "host-split-child")
+
+        controller.showSection(.general)
+        window.layoutIfNeeded()
+        try assertNoMountedAccessory(in: controller)
+        XCTAssertNil(content.parent)
+        XCTAssertTrue(contentItem.topAlignedAccessoryViewControllers.isEmpty)
+    }
+
+    func testCallerProvidedSplitItemAccessoryKeepsChildContainmentAfterUnmount() throws {
+        guard #available(macOS 26.0, *) else {
+            throw XCTSkip("NSSplitViewItemAccessoryViewController requires macOS 26")
+        }
+
+        let provided = NSSplitViewItemAccessoryViewController()
+        let child = ProbeAccessoryController(marker: "caller-split-child")
+        provided.addChild(child)
+        provided.view = child.view
+
+        let controller = makeController(
+            makeSectionPage: { section in
+                section == .menu
+                    ? AccessoryProbePage(
+                        accessory: .contentSplitItem(viewController: provided)
+                    )
+                    : DashboardHostedPageViewController()
+            }
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        controller.showSection(.menu)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .contentSplitItem)
+        XCTAssertEqual(controller.accessoryHostForTesting.mountOwnershipForTesting, .callerProvidedNative)
+        XCTAssertTrue(controller.accessoryHostForTesting.contentSplitItemAccessoryForTesting === provided)
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+
+        controller.showSection(.general)
+        window.layoutIfNeeded()
+        try assertNoMountedAccessory(in: controller)
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        XCTAssertTrue(
+            splitController.contentSplitViewItem?
+                .topAlignedAccessoryViewControllers.isEmpty ?? true
+        )
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+    }
+
+    func testCallerOwnedSplitAccessoryMissingFromItemListDoesNotRemoveFromParent() throws {
+        guard #available(macOS 26.0, *) else {
+            throw XCTSkip("NSSplitViewItemAccessoryViewController requires macOS 26")
+        }
+
+        let provided = NSSplitViewItemAccessoryViewController()
+        let child = ProbeAccessoryController(marker: "caller-split-orphaned")
+        provided.addChild(child)
+        provided.view = child.view
+
+        let controller = makeController(
+            makeSectionPage: { section in
+                section == .menu
+                    ? AccessoryProbePage(
+                        accessory: .contentSplitItem(viewController: provided)
+                    )
+                    : DashboardHostedPageViewController()
+            }
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        controller.showSection(.menu)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        let contentItem = try XCTUnwrap(splitController.contentSplitViewItem)
+        if let index = contentItem.topAlignedAccessoryViewControllers.firstIndex(of: provided) {
+            contentItem.removeTopAlignedAccessoryViewController(at: index)
+        }
+        XCTAssertFalse(contentItem.topAlignedAccessoryViewControllers.contains(provided))
+
+        let owner = NSViewController()
+        owner.view = NSView()
+        if provided.parent != owner {
+            if provided.parent != nil {
+                provided.removeFromParent()
+            }
+            owner.addChild(provided)
+        }
+        XCTAssertTrue(provided.parent === owner)
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+
+        controller.showSection(.general)
+        window.layoutIfNeeded()
+        try assertNoMountedAccessory(in: controller)
+        XCTAssertTrue(provided.parent === owner)
+        XCTAssertTrue(owner.children.contains(provided))
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+    }
+
+    func testHostRefusesToStealAlreadyParentedOrdinaryController() throws {
+        let owner = NSViewController()
+        owner.view = NSView()
+        let content = ProbeAccessoryController(marker: "already-parented")
+        owner.addChild(content)
+        content.view.translatesAutoresizingMaskIntoConstraints = false
+        owner.view.addSubview(content.view)
+
+        let controller = makeController(
+            makeSectionPage: { section in
+                section == .advanced
+                    ? AccessoryProbePage(
+                        accessory: .windowTitlebar(
+                            viewController: content,
+                            reason: "must not steal parent"
+                        )
+                    )
+                    : DashboardHostedPageViewController()
+            }
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        controller.showSection(.advanced)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        try assertNoMountedAccessory(in: controller)
+        XCTAssertTrue(content.parent === owner)
+        XCTAssertTrue(owner.children.contains(content))
+        XCTAssertTrue(content.view.superview === owner.view)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+    }
+
     func testContentSplitItemAccessoryMountsOnContentPaneOnly() throws {
         guard #available(macOS 26.0, *) else {
             throw XCTSkip("NSSplitViewItemAccessoryViewController requires macOS 26")
@@ -59,25 +322,6 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertTrue(
             splitController.splitViewItems[0].topAlignedAccessoryViewControllers.isEmpty
         )
-        try assertAccessoryStaysInsideContentPane(in: window, marker: "content-accessory")
-
-        window.setFrame(
-            NSRect(x: window.frame.origin.x, y: window.frame.origin.y, width: 1020, height: 700),
-            display: false
-        )
-        window.layoutIfNeeded()
-        try assertAccessoryStaysInsideContentPane(in: window, marker: "content-accessory")
-
-        let sidebarItem = splitController.splitViewItems[0]
-        sidebarItem.isCollapsed = true
-        window.layoutIfNeeded()
-        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .contentSplitItem)
-        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
-        try assertAccessoryStaysInsideContentPane(in: window, marker: "content-accessory")
-
-        splitController.toggleSidebar(nil)
-        window.layoutIfNeeded()
-        XCTAssertFalse(sidebarItem.isCollapsed)
         try assertAccessoryStaysInsideContentPane(in: window, marker: "content-accessory")
     }
 
@@ -195,6 +439,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
         window.layoutIfNeeded()
         try assertNoMountedAccessory(in: controller)
         XCTAssertNil(view(withIdentifier: "second-accessory", in: window))
+        XCTAssertNil(second.parent)
 
         controller.showSection(.advanced)
         window.layoutIfNeeded()
@@ -226,6 +471,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
         XCTAssertNil(view(withIdentifier: "legacy-content-accessory", in: window))
         XCTAssertNil(controller.accessoryHostForTesting.contentSplitItemAccessoryForTesting)
+        XCTAssertNil(content.parent)
     }
 
     func testHostAndPagesStayOnPublicOwnershipAPI() throws {
@@ -253,6 +499,9 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertFalse(hostSource.contains("outlineView"))
         XCTAssertFalse(hostSource.contains("onWindowChromeNeedsRefresh"))
         XCTAssertFalse(hostSource.contains("contentLayoutGuide"))
+        XCTAssertFalse(hostSource.contains("DashboardSidebarChromeBaseline"))
+        XCTAssertFalse(hostSource.contains("if content.parent != nil"))
+        XCTAssertFalse(hostSource.contains("else if accessory.parent != nil"))
 
         let windowSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
@@ -268,9 +517,10 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertFalse(windowSource.contains("NSTitlebarAccessoryViewController"))
         XCTAssertFalse(windowSource.contains("NSSplitViewItemAccessoryViewController"))
         XCTAssertFalse(windowSource.contains("topAlignedAccessoryViewControllers"))
-        XCTAssertTrue(windowSource.contains("DashboardSidebarChromeBaseline"))
-        XCTAssertTrue(windowSource.contains("updateStableSidebarChromeInsetForCurrentWindowMode"))
-        XCTAssertTrue(windowSource.contains("windowDidEnterFullScreen"))
+        XCTAssertFalse(windowSource.contains("DashboardSidebarChromeBaseline"))
+        XCTAssertFalse(windowSource.contains("sourceListTopConstraint"))
+        XCTAssertFalse(windowSource.contains("windowDidEnterFullScreen"))
+        XCTAssertFalse(windowSource.contains("windowWillExitFullScreen"))
         XCTAssertFalse(windowSource.contains("equalTo: contentLayoutGuide.topAnchor"))
 
         let pagesRoot = repositoryRoot.appendingPathComponent("Sources/UI/Dashboard/Pages")
@@ -303,116 +553,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
         }
     }
 
-    func testHostCreatedTitlebarWrapperUsesBottomLayoutAttribute() throws {
-        let content = ProbeAccessoryController(marker: "host-bottom-titlebar")
-        let controller = makeController(
-            makeSectionPage: { _ in
-                AccessoryProbePage(
-                    accessory: .windowTitlebar(
-                        viewController: content,
-                        reason: "window-owned chrome"
-                    )
-                )
-            }
-        )
-        defer { controller.teardown() }
-
-        controller.open()
-        let accessory = try XCTUnwrap(controller.accessoryHostForTesting.titlebarAccessoryForTesting)
-        XCTAssertEqual(accessory.layoutAttribute, .bottom)
-        XCTAssertEqual(controller.accessoryHostForTesting.createdByHostForTesting, true)
-        XCTAssertFalse(content is NSTitlebarAccessoryViewController)
-    }
-
-    func testCallerProvidedTitlebarAccessoryKeepsItsLegalLayoutAttribute() throws {
-        let provided = NSTitlebarAccessoryViewController()
-        provided.layoutAttribute = .left
-        let child = ProbeAccessoryController(marker: "caller-titlebar-child")
-        provided.addChild(child)
-        provided.view = child.view
-
-        let controller = makeController(
-            makeSectionPage: { section in
-                section == .advanced
-                    ? AccessoryProbePage(
-                        accessory: .windowTitlebar(
-                            viewController: provided,
-                            reason: "caller-owned titlebar accessory"
-                        )
-                    )
-                    : DashboardHostedPageViewController()
-            }
-        )
-        defer { controller.teardown() }
-
-        controller.open()
-        controller.showSection(.advanced)
-        let window = try XCTUnwrap(controller.window)
-        window.layoutIfNeeded()
-
-        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
-        XCTAssertEqual(controller.accessoryHostForTesting.createdByHostForTesting, false)
-        XCTAssertTrue(controller.accessoryHostForTesting.titlebarAccessoryForTesting === provided)
-        XCTAssertEqual(provided.layoutAttribute, .left)
-        XCTAssertTrue(provided.children.contains(child))
-        XCTAssertTrue(child.parent === provided)
-
-        controller.showSection(.general)
-        window.layoutIfNeeded()
-        try assertNoMountedAccessory(in: controller)
-        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
-        XCTAssertTrue(provided.children.contains(child))
-        XCTAssertTrue(child.parent === provided)
-        XCTAssertEqual(provided.layoutAttribute, .left)
-    }
-
-    func testCallerProvidedSplitItemAccessoryKeepsChildContainmentAfterUnmount() throws {
-        guard #available(macOS 26.0, *) else {
-            throw XCTSkip("NSSplitViewItemAccessoryViewController requires macOS 26")
-        }
-
-        let provided = NSSplitViewItemAccessoryViewController()
-        let child = ProbeAccessoryController(marker: "caller-split-child")
-        provided.addChild(child)
-        provided.view = child.view
-
-        let controller = makeController(
-            makeSectionPage: { section in
-                section == .menu
-                    ? AccessoryProbePage(
-                        accessory: .contentSplitItem(viewController: provided)
-                    )
-                    : DashboardHostedPageViewController()
-            }
-        )
-        defer { controller.teardown() }
-
-        controller.open()
-        controller.showSection(.menu)
-        let window = try XCTUnwrap(controller.window)
-        window.layoutIfNeeded()
-
-        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .contentSplitItem)
-        XCTAssertEqual(controller.accessoryHostForTesting.createdByHostForTesting, false)
-        XCTAssertTrue(controller.accessoryHostForTesting.contentSplitItemAccessoryForTesting === provided)
-        XCTAssertTrue(provided.children.contains(child))
-        XCTAssertTrue(child.parent === provided)
-
-        controller.showSection(.general)
-        window.layoutIfNeeded()
-        try assertNoMountedAccessory(in: controller)
-        let splitController = try XCTUnwrap(
-            window.contentViewController as? DashboardSplitViewController
-        )
-        XCTAssertTrue(
-            splitController.contentSplitViewItem?
-                .topAlignedAccessoryViewControllers.isEmpty ?? true
-        )
-        XCTAssertTrue(provided.children.contains(child))
-        XCTAssertTrue(child.parent === provided)
-    }
-
-    func testWindowTitlebarAccessoryKeepsSidebarNavigationStableAndClickable() throws {
+    func testTitlebarAccessoryKeepsControlHitsWithoutDrivingSidebarLayout() throws {
         let harness = DashboardAccessoryHarnessController()
         defer { harness.teardown() }
         harness.present()
@@ -421,206 +562,34 @@ final class DashboardAccessoryHostTests: XCTestCase {
         window.layoutIfNeeded()
         window.displayIfNeeded()
 
-        XCTAssertEqual(controller.section, .general)
-        let before = try captureSidebarChromeSnapshot(
-            in: controller,
-            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
-        )
-        XCTAssertTrue(
-            before.hitIsSourceList,
-            "General row must be clickable before a titlebar accessory mounts: \(before.debugDescription)"
-        )
+        let beforeTop = try sourceListTop(in: controller)
+        try assertSectionRowIsInteractive(.general, in: controller)
         try assertTitlebarChromePassThrough(in: controller)
-        try assertSidebarEmptyTopPassesThrough(in: controller)
 
         controller.showSection(.menuBar)
         window.layoutIfNeeded()
         window.displayIfNeeded()
         XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
-
-        let mounted = try captureSidebarChromeSnapshot(
-            in: controller,
-            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
-        )
-        XCTAssertNotNil(mounted.accessoryFrameInWindow)
-        XCTAssertGreaterThan(
-            mounted.contentLayoutRect.height,
-            0,
-            "contentLayoutRect must remain a live chrome measurement: \(mounted.debugDescription)"
-        )
-        XCTAssertLessThan(
-            mounted.contentLayoutRect.height,
-            before.contentLayoutRect.height,
-            "NSTitlebarAccessoryViewController must shrink contentLayoutRect: before=\(before.contentLayoutRect) after=\(mounted.contentLayoutRect)"
-        )
-        XCTAssertEqual(
-            mounted.sourceListFrameInWindow.maxY,
-            before.sourceListFrameInWindow.maxY,
-            accuracy: 1,
-            "Source-list top must stay put when a titlebar accessory mounts: before=\(before.sourceListFrameInWindow) after=\(mounted.sourceListFrameInWindow)"
-        )
-        XCTAssertEqual(
-            mounted.generalRowFrameInWindow.midY,
-            before.generalRowFrameInWindow.midY,
-            accuracy: 1,
-            "General row must not jump with the titlebar accessory: before=\(before.generalRowFrameInWindow) after=\(mounted.generalRowFrameInWindow)"
-        )
-        XCTAssertTrue(
-            mounted.hitIsSourceList,
-            "General row hit-test must stay in the source-list hierarchy after titlebar accessory: \(mounted.debugDescription)"
-        )
-        try assertTitlebarChromePassThrough(in: controller)
-        try assertSidebarEmptyTopPassesThrough(in: controller)
-        for section in [DashboardSection.general, .menuBar, .menu, .advanced, .about] {
-            try assertSectionRowIsInteractive(section, in: controller)
-        }
-
-        try clickSourceListSection(.general, in: controller)
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
-        XCTAssertEqual(controller.section, .general)
-        try assertNoMountedAccessory(in: controller)
-
-        let restored = try captureSidebarChromeSnapshot(
-            in: controller,
-            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
-        )
-        XCTAssertEqual(restored.contentLayoutRect.height, before.contentLayoutRect.height, accuracy: 0.5)
-        XCTAssertEqual(
-            restored.sourceListFrameInWindow.maxY,
-            before.sourceListFrameInWindow.maxY,
-            accuracy: 1
-        )
-        XCTAssertEqual(
-            restored.generalRowFrameInWindow.midY,
-            before.generalRowFrameInWindow.midY,
-            accuracy: 1
-        )
-        XCTAssertTrue(restored.hitIsSourceList, restored.debugDescription)
-
-        try clickSourceListSection(.menuBar, in: controller)
-        window.layoutIfNeeded()
-        XCTAssertEqual(controller.section, .menuBar)
-        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
-        try assertSectionRowIsInteractive(.general, in: controller)
-        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
-
-        try clickSourceListSection(.menu, in: controller)
-        window.layoutIfNeeded()
+        XCTAssertEqual(window.titlebarAccessoryViewControllers.count, 1)
         if #available(macOS 26.0, *) {
-            XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .contentSplitItem)
+            let splitController = try XCTUnwrap(
+                window.contentViewController as? DashboardSplitViewController
+            )
+            XCTAssertTrue(
+                splitController.contentSplitViewItem?
+                    .topAlignedAccessoryViewControllers.isEmpty ?? true
+            )
         }
-        XCTAssertEqual(controller.section, .menu)
-        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
+        XCTAssertEqual(try sourceListTop(in: controller), beforeTop, accuracy: 1)
         try assertSectionRowIsInteractive(.general, in: controller)
-
-        try clickSourceListSection(.advanced, in: controller)
-        window.layoutIfNeeded()
-        XCTAssertEqual(controller.section, .advanced)
-        try assertNoMountedAccessory(in: controller)
-        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
-
-        try clickSourceListSection(.menuBar, in: controller)
-        window.layoutIfNeeded()
-        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
-
-        try clickSourceListSection(.about, in: controller)
-        window.layoutIfNeeded()
-        XCTAssertEqual(controller.section, .about)
-        try assertNoMountedAccessory(in: controller)
+        try assertTitlebarChromePassThrough(in: controller)
 
         try clickSourceListSection(.general, in: controller)
         window.layoutIfNeeded()
         XCTAssertEqual(controller.section, .general)
         try assertNoMountedAccessory(in: controller)
-        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
-        try assertTitlebarChromePassThrough(in: controller)
-    }
-
-    func testFullscreenLifecycleKeepsSidebarStableAcrossTitlebarAndSplitAccessories() throws {
-        let harness = DashboardAccessoryHarnessController()
-        defer { harness.teardown() }
-        harness.present()
-        let controller = try XCTUnwrap(harness.windowControllerForTesting)
-        let window = try XCTUnwrap(controller.window)
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
-
-        let before = try captureSidebarChromeSnapshot(
-            in: controller,
-            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
-        )
-        XCTAssertTrue(before.hitIsSourceList, before.debugDescription)
-
-        try clickSourceListSection(.menuBar, in: controller)
-        window.layoutIfNeeded()
-        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
-        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
-
-        controller.windowDidEnterFullScreen(
-            Notification(name: NSWindow.didEnterFullScreenNotification, object: window)
-        )
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
-        let fullscreenTitlebar = try captureSidebarChromeSnapshot(
-            in: controller,
-            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
-        )
-        XCTAssertEqual(
-            fullscreenTitlebar.sourceListFrameInWindow.maxY,
-            before.sourceListFrameInWindow.maxY,
-            accuracy: 1,
-            "Forcing the fullscreen baseline must not drop navigation while windowed chrome is unchanged: \(fullscreenTitlebar.debugDescription)"
-        )
-        XCTAssertEqual(
-            fullscreenTitlebar.generalRowFrameInWindow.midY,
-            before.generalRowFrameInWindow.midY,
-            accuracy: 1
-        )
-        XCTAssertTrue(fullscreenTitlebar.hitIsSourceList, fullscreenTitlebar.debugDescription)
+        XCTAssertEqual(try sourceListTop(in: controller), beforeTop, accuracy: 1)
         try assertSectionRowIsInteractive(.general, in: controller)
-
-        try clickSourceListSection(.general, in: controller)
-        window.layoutIfNeeded()
-        try assertNoMountedAccessory(in: controller)
-        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
-
-        try clickSourceListSection(.menu, in: controller)
-        window.layoutIfNeeded()
-        if #available(macOS 26.0, *) {
-            XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .contentSplitItem)
-        }
-        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
-        try assertSectionRowIsInteractive(.general, in: controller)
-
-        try clickSourceListSection(.menuBar, in: controller)
-        window.layoutIfNeeded()
-        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
-        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
-
-        controller.windowWillExitFullScreen(
-            Notification(name: NSWindow.willExitFullScreenNotification, object: window)
-        )
-        controller.windowDidExitFullScreen(
-            Notification(name: NSWindow.didExitFullScreenNotification, object: window)
-        )
-        window.layoutIfNeeded()
-        let restored = try captureSidebarChromeSnapshot(
-            in: controller,
-            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
-        )
-        XCTAssertEqual(
-            restored.sourceListFrameInWindow.maxY,
-            before.sourceListFrameInWindow.maxY,
-            accuracy: 1
-        )
-        XCTAssertEqual(
-            restored.generalRowFrameInWindow.midY,
-            before.generalRowFrameInWindow.midY,
-            accuracy: 1
-        )
-        XCTAssertTrue(restored.hitIsSourceList, restored.debugDescription)
-        try assertTitlebarChromePassThrough(in: controller)
     }
 
     func testHarnessIsDevOnlyAndReusesRealAccessoryHost() throws {
@@ -707,214 +676,55 @@ final class DashboardAccessoryHostTests: XCTestCase {
                 in: window
             )
         )
+    }
 
-        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
-        let harnessSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Sources/UI/Dashboard/DashboardAccessoryHarnessController.swift"
-            ),
-            encoding: .utf8
+    private func assertCallerProvidedTitlebarPreserves(
+        layoutAttribute: NSLayoutConstraint.Attribute
+    ) throws {
+        let provided = NSTitlebarAccessoryViewController()
+        provided.layoutAttribute = layoutAttribute
+        let child = ProbeAccessoryController(marker: "caller-titlebar-\(layoutAttribute.rawValue)")
+        provided.addChild(child)
+        provided.view = child.view
+
+        let controller = makeController(
+            makeSectionPage: { section in
+                section == .advanced
+                    ? AccessoryProbePage(
+                        accessory: .windowTitlebar(
+                            viewController: provided,
+                            reason: "caller-owned titlebar accessory"
+                        )
+                    )
+                    : DashboardHostedPageViewController()
+            }
         )
-        XCTAssertTrue(harnessSource.contains("DashboardWindowController"))
-        XCTAssertTrue(harnessSource.contains("DashboardPageTopAccessory"))
-        XCTAssertFalse(harnessSource.contains("NSSearchField"))
-        XCTAssertFalse(harnessSource.contains("badge"))
-        XCTAssertFalse(harnessSource.contains("NSMenu("))
-    }
+        defer { controller.teardown() }
 
-    private struct SidebarChromeSnapshot {
-        let windowFrame: NSRect
-        let contentLayoutRect: NSRect
-        let titlebarHeight: CGFloat
-        let sourceListFrameInWindow: NSRect
-        let generalRowFrameInWindow: NSRect
-        let generalRowCenterInWindow: NSPoint
-        let accessoryFrameInWindow: NSRect?
-        let hitViewPath: String
-        let hitIsSourceList: Bool
-        let generalRowCenterIsInTitlebarBand: Bool
+        controller.open()
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+        XCTAssertEqual(provided.layoutAttribute, layoutAttribute)
 
-        var debugDescription: String {
-            "window=\(windowFrame) contentLayout=\(contentLayoutRect) titlebarHeight=\(titlebarHeight) sourceList=\(sourceListFrameInWindow) generalRow=\(generalRowFrameInWindow) generalCenter=\(generalRowCenterInWindow) accessory=\(String(describing: accessoryFrameInWindow)) hit=\(hitViewPath) hitIsSourceList=\(hitIsSourceList) inTitlebarBand=\(generalRowCenterIsInTitlebarBand)"
-        }
-    }
-
-    private func captureSidebarChromeSnapshot(
-        in controller: DashboardWindowController,
-        accessoryIdentifier: String
-    ) throws -> SidebarChromeSnapshot {
+        controller.showSection(.advanced)
         let window = try XCTUnwrap(controller.window)
         window.layoutIfNeeded()
-        window.displayIfNeeded()
-        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
-        let row = try XCTUnwrap(sourceList.row(for: .general))
-        let cell = try XCTUnwrap(
-            sourceList.outlineView.view(atColumn: 0, row: row, makeIfNecessary: true)
-        )
-        let contentView = try XCTUnwrap(window.contentView as? DashboardContentRootView)
-        let frameView = try XCTUnwrap(contentView.superview)
-        let generalRowFrameInWindow = cell.convert(cell.bounds, to: nil)
-        let generalRowCenterInWindow = cell.convert(
-            NSPoint(x: cell.bounds.midX, y: cell.bounds.midY),
-            to: nil
-        )
-        let centerInSelf = contentView.convert(generalRowCenterInWindow, from: nil)
-        let centerInSuperview = contentView.convert(centerInSelf, to: frameView)
-        let hitView = contentView.hitTest(centerInSuperview)
-        let accessory = view(withIdentifier: accessoryIdentifier, in: window)
-        return SidebarChromeSnapshot(
-            windowFrame: window.frame,
-            contentLayoutRect: window.contentLayoutRect,
-            titlebarHeight: max(0, window.frame.height - window.contentLayoutRect.height),
-            sourceListFrameInWindow: sourceList.view.convert(sourceList.view.bounds, to: nil),
-            generalRowFrameInWindow: generalRowFrameInWindow,
-            generalRowCenterInWindow: generalRowCenterInWindow,
-            accessoryFrameInWindow: accessory.map { $0.convert($0.bounds, to: nil) },
-            hitViewPath: hitViewPath(hitView),
-            hitIsSourceList: isSourceListHit(hitView, sourceList: sourceList),
-            generalRowCenterIsInTitlebarBand: window.contentLayoutRect.height > 0
-                && generalRowCenterInWindow.y >= window.contentLayoutRect.maxY - 0.5
-        )
-    }
 
-    private func assertSectionRowIsInteractive(
-        _ section: DashboardSection,
-        in controller: DashboardWindowController
-    ) throws {
-        let window = try XCTUnwrap(controller.window)
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
+        XCTAssertEqual(controller.accessoryHostForTesting.mountOwnershipForTesting, .callerProvidedNative)
+        XCTAssertTrue(controller.accessoryHostForTesting.titlebarAccessoryForTesting === provided)
+        XCTAssertEqual(provided.layoutAttribute, layoutAttribute)
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.contains(provided))
+
+        controller.showSection(.general)
         window.layoutIfNeeded()
-        window.displayIfNeeded()
-        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
-        let row = try XCTUnwrap(sourceList.row(for: section))
-        let cell = try XCTUnwrap(
-            sourceList.outlineView.view(atColumn: 0, row: row, makeIfNecessary: true)
-        )
-        let contentView = try XCTUnwrap(window.contentView as? DashboardContentRootView)
-        let frameView = try XCTUnwrap(contentView.superview)
-        let centerInWindow = cell.convert(
-            NSPoint(x: cell.bounds.midX, y: cell.bounds.midY),
-            to: nil
-        )
-        let centerInSelf = contentView.convert(centerInWindow, from: nil)
-        let centerInSuperview = contentView.convert(centerInSelf, to: frameView)
-        let hitView = try XCTUnwrap(
-            contentView.hitTest(centerInSuperview),
-            "\(section) row hit-test returned nil; click would miss the source list. center=\(centerInWindow) contentLayout=\(window.contentLayoutRect)"
-        )
-        XCTAssertTrue(
-            isSourceListHit(hitView, sourceList: sourceList),
-            "\(section) row hit-test must land in the source-list hierarchy, got \(hitViewPath(hitView))"
-        )
-    }
-
-    private func assertSourceListTopUnchanged(
-        _ expected: NSRect,
-        in controller: DashboardWindowController
-    ) throws {
-        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
-        let frame = sourceList.view.convert(sourceList.view.bounds, to: nil)
-        XCTAssertEqual(
-            frame.maxY,
-            expected.maxY,
-            accuracy: 1,
-            "Source-list top jumped: expected \(expected) actual \(frame)"
-        )
-    }
-
-    private func assertTitlebarChromePassThrough(
-        in controller: DashboardWindowController
-    ) throws {
-        let window = try XCTUnwrap(controller.window)
-        let contentView = try XCTUnwrap(window.contentView as? DashboardContentRootView)
-        let frameView = try XCTUnwrap(contentView.superview)
-        let layoutRect = window.contentLayoutRect
-        let topInWindow = contentView.convert(
-            NSPoint(x: contentView.bounds.midX, y: contentView.bounds.maxY),
-            to: nil
-        )
-        XCTAssertGreaterThan(topInWindow.y - layoutRect.maxY, 1)
-
-        let split = try XCTUnwrap(window.contentViewController as? DashboardSplitViewController)
-        let sidebarWidth = split.sidebarController.view.frame.width
-        let titlebarX = layoutRect.minX + min(layoutRect.width - 24, max(sidebarWidth + 40, layoutRect.width * 0.6))
-        let titlebarY = (layoutRect.maxY + topInWindow.y) / 2
-        let titlebarInSelf = contentView.convert(NSPoint(x: titlebarX, y: titlebarY), from: nil)
-        let titlebarInSuperview = contentView.convert(titlebarInSelf, to: frameView)
-        XCTAssertNil(
-            contentView.hitTest(titlebarInSuperview),
-            "Content-side titlebar must still pass through to NSThemeFrame"
-        )
-
-        let closeButton = try XCTUnwrap(window.standardWindowButton(.closeButton))
-        let buttonPoint = closeButton.convert(
-            NSPoint(x: closeButton.bounds.midX, y: closeButton.bounds.midY),
-            to: frameView
-        )
-        XCTAssertNil(contentView.hitTest(buttonPoint), "Traffic lights must stay outside content hit-testing")
-    }
-
-    private func assertSidebarEmptyTopPassesThrough(
-        in controller: DashboardWindowController
-    ) throws {
-        let window = try XCTUnwrap(controller.window)
-        let contentView = try XCTUnwrap(window.contentView as? DashboardContentRootView)
-        let frameView = try XCTUnwrap(contentView.superview)
-        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
-        let sourceListFrame = sourceList.view.convert(sourceList.view.bounds, to: nil)
-        let layoutRect = window.contentLayoutRect
-        let windowTop = contentView.convert(
-            NSPoint(x: contentView.bounds.midX, y: contentView.bounds.maxY),
-            to: nil
-        ).y
-        let titlebarY = (layoutRect.maxY + windowTop) / 2
-        guard titlebarY > sourceListFrame.maxY + 1 else { return }
-        let emptyTop = NSPoint(x: sourceListFrame.midX, y: titlebarY)
-        let inSelf = contentView.convert(emptyTop, from: nil)
-        let inSuperview = contentView.convert(inSelf, to: frameView)
-        XCTAssertNil(
-            contentView.hitTest(inSuperview),
-            "Titlebar-band sidebar chrome above the source list must not steal titlebar drag. point=\(emptyTop) sourceList=\(sourceListFrame) contentLayout=\(layoutRect)"
-        )
-    }
-
-    private func clickSourceListSection(
-        _ section: DashboardSection,
-        in controller: DashboardWindowController
-    ) throws {
-        try assertSectionRowIsInteractive(section, in: controller)
-        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
-        let row = try XCTUnwrap(sourceList.row(for: section))
-        sourceList.outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-    }
-
-    private func isSourceListHit(
-        _ hitView: NSView?,
-        sourceList: DashboardSourceListController
-    ) -> Bool {
-        var view = hitView
-        while let current = view {
-            if current === sourceList.outlineView || current === sourceList.scrollView {
-                return true
-            }
-            view = current.superview
-        }
-        return false
-    }
-
-    private func hitViewPath(_ view: NSView?) -> String {
-        guard let view else { return "nil" }
-        var parts: [String] = []
-        var current: NSView? = view
-        while let node = current {
-            let name = String(describing: type(of: node))
-            if let identifier = node.identifier?.rawValue, !identifier.isEmpty {
-                parts.append("\(name)#\(identifier)")
-            } else {
-                parts.append(name)
-            }
-            current = node.superview
-        }
-        return parts.joined(separator: " -> ")
+        try assertNoMountedAccessory(in: controller)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+        XCTAssertTrue(provided.children.contains(child))
+        XCTAssertTrue(child.parent === provided)
+        XCTAssertEqual(provided.layoutAttribute, layoutAttribute)
     }
 
     private func makeController(
@@ -943,6 +753,12 @@ final class DashboardAccessoryHostTests: XCTestCase {
     ) throws {
         XCTAssertEqual(
             controller.accessoryHostForTesting.mountedKind,
+            .none,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            controller.accessoryHostForTesting.mountOwnershipForTesting,
             .none,
             file: file,
             line: line
@@ -1014,6 +830,89 @@ final class DashboardAccessoryHostTests: XCTestCase {
                 line: line
             )
         }
+    }
+
+    private func sourceListTop(in controller: DashboardWindowController) throws -> CGFloat {
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        return sourceList.view.convert(sourceList.view.bounds, to: nil).maxY
+    }
+
+    private func assertSectionRowIsInteractive(
+        _ section: DashboardSection,
+        in controller: DashboardWindowController
+    ) throws {
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let row = try XCTUnwrap(sourceList.row(for: section))
+        let cell = try XCTUnwrap(
+            sourceList.outlineView.view(atColumn: 0, row: row, makeIfNecessary: true)
+        )
+        let contentView = try XCTUnwrap(window.contentView as? DashboardContentRootView)
+        let frameView = try XCTUnwrap(contentView.superview)
+        let centerInWindow = cell.convert(
+            NSPoint(x: cell.bounds.midX, y: cell.bounds.midY),
+            to: nil
+        )
+        let centerInSelf = contentView.convert(centerInWindow, from: nil)
+        let centerInSuperview = contentView.convert(centerInSelf, to: frameView)
+        let hitView = try XCTUnwrap(
+            contentView.hitTest(centerInSuperview),
+            "\(section) row hit-test returned nil; click would miss the source list. center=\(centerInWindow) contentLayout=\(window.contentLayoutRect)"
+        )
+        var current: NSView? = hitView
+        var inSourceList = false
+        while let node = current {
+            if node === sourceList.outlineView || node === sourceList.scrollView {
+                inSourceList = true
+                break
+            }
+            current = node.superview
+        }
+        XCTAssertTrue(inSourceList, "\(section) row hit-test must land in the source-list hierarchy")
+    }
+
+    private func assertTitlebarChromePassThrough(
+        in controller: DashboardWindowController
+    ) throws {
+        let window = try XCTUnwrap(controller.window)
+        let contentView = try XCTUnwrap(window.contentView as? DashboardContentRootView)
+        let frameView = try XCTUnwrap(contentView.superview)
+        let layoutRect = window.contentLayoutRect
+        let topInWindow = contentView.convert(
+            NSPoint(x: contentView.bounds.midX, y: contentView.bounds.maxY),
+            to: nil
+        )
+        XCTAssertGreaterThan(topInWindow.y - layoutRect.maxY, 1)
+
+        let split = try XCTUnwrap(window.contentViewController as? DashboardSplitViewController)
+        let sidebarWidth = split.sidebarController.view.frame.width
+        let titlebarX = layoutRect.minX + min(layoutRect.width - 24, max(sidebarWidth + 40, layoutRect.width * 0.6))
+        let titlebarY = (layoutRect.maxY + topInWindow.y) / 2
+        let titlebarInSelf = contentView.convert(NSPoint(x: titlebarX, y: titlebarY), from: nil)
+        let titlebarInSuperview = contentView.convert(titlebarInSelf, to: frameView)
+        XCTAssertNil(
+            contentView.hitTest(titlebarInSuperview),
+            "Content-side titlebar must still pass through to NSThemeFrame"
+        )
+
+        let closeButton = try XCTUnwrap(window.standardWindowButton(.closeButton))
+        let buttonPoint = closeButton.convert(
+            NSPoint(x: closeButton.bounds.midX, y: closeButton.bounds.midY),
+            to: frameView
+        )
+        XCTAssertNil(contentView.hitTest(buttonPoint), "Traffic lights must stay outside content hit-testing")
+    }
+
+    private func clickSourceListSection(
+        _ section: DashboardSection,
+        in controller: DashboardWindowController
+    ) throws {
+        try assertSectionRowIsInteractive(section, in: controller)
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let row = try XCTUnwrap(sourceList.row(for: section))
+        sourceList.outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
     }
 
     private func view(withIdentifier identifier: String, in window: NSWindow) -> NSView? {

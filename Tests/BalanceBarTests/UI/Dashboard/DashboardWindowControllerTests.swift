@@ -12,7 +12,7 @@ final class DashboardWindowControllerTests: XCTestCase {
             ),
             encoding: .utf8
         )
-        let start = try XCTUnwrap(source.range(of: "private func makeSidebar() -> NSView {"))
+        let start = try XCTUnwrap(source.range(of: "private func makeSidebar(titlebarHeight: CGFloat) -> NSView {"))
         let end = try XCTUnwrap(
             source.range(of: "var sourceListForTesting: DashboardSourceListController? { sourceListController }")
         )
@@ -26,18 +26,18 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(makeSidebarSource.contains("cornerRadius"))
         XCTAssertFalse(makeSidebarSource.contains("shadowOpacity"))
         XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
-        XCTAssertTrue(source.contains("sidebarInteractiveViews"))
-        XCTAssertTrue(source.contains("sourceListChromePadding"))
-        XCTAssertTrue(source.contains("pinSourceListBelowStableWindowChrome"))
-        XCTAssertTrue(source.contains("updateStableSidebarChromeInsetForCurrentWindowMode"))
-        XCTAssertTrue(source.contains("windowDidEnterFullScreen"))
-        XCTAssertTrue(source.contains("windowWillExitFullScreen"))
-        XCTAssertTrue(source.contains("DashboardSidebarChromeBaseline"))
-        XCTAssertTrue(source.contains("chromeRoot.topAnchor"))
-        XCTAssertFalse(source.contains("refreshSidebarChromeInset"))
-        XCTAssertFalse(source.contains("onWindowChromeNeedsRefresh"))
-        XCTAssertFalse(source.contains("equalTo: contentLayoutGuide.topAnchor"))
-        XCTAssertFalse(source.contains("private func makeSidebar(titlebarHeight: CGFloat)"))
+        XCTAssertTrue(source.contains("accessoryHost.attach"))
+        XCTAssertTrue(source.contains("accessoryHost.apply"))
+        XCTAssertTrue(source.contains("accessoryHost.detach"))
+        XCTAssertFalse(source.contains("DashboardSidebarChromeBaseline"))
+        XCTAssertFalse(source.contains("sourceListTopConstraint"))
+        XCTAssertFalse(source.contains("sidebarInteractiveViews"))
+        XCTAssertFalse(source.contains("windowDidEnterFullScreen"))
+        XCTAssertFalse(source.contains("windowWillExitFullScreen"))
+        XCTAssertFalse(source.contains("NSTitlebarAccessoryViewController"))
+        XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
+        XCTAssertFalse(source.contains("titlebarAccessoryViewControllers"))
+        XCTAssertFalse(source.contains("topAlignedAccessoryViewControllers"))
     }
 
     func testToolbarControllerUsesPublicSystemSidebarItems() throws {

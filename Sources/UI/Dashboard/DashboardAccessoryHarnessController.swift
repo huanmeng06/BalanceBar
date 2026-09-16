@@ -1,9 +1,11 @@
 import AppKit
 
 /// Non-production window that reuses the real Dashboard split view, toolbar,
-/// and accessory host so a human can mount `.none`, `.windowTitlebar`, and
-/// `.contentSplitItem`. It never installs accessories on the official
-/// Dashboard composition.
+/// and accessory host so a human can verify page accessory ownership:
+/// `.none`, `.windowTitlebar`, and `.contentSplitItem`.
+/// A window-titlebar accessory is owned by the window even if a floating
+/// sidebar visually covers part of it. This harness never installs
+/// accessories on the official Dashboard composition.
 final class DashboardAccessoryHarnessController {
     static let environmentKey = "BALANCEBAR_DASHBOARD_ACCESSORY_HARNESS"
     static let titlebarStripIdentifier = "dashboard-accessory-harness-titlebar"
