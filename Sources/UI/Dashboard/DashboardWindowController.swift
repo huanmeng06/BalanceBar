@@ -207,7 +207,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private var sourceListTopConstraint: NSLayoutConstraint?
     /// 14pt is padding below the installed titlebar/toolbar chrome, not an
     /// accessory height. Temporary titlebar accessories must not change it.
-    private let sourceListChromePadding: CGFloat = 14
+    private let sourceListChromePadding = DashboardSidebarChromeBaseline.sourceListPadding
+    private var sidebarChromeBaselineStore = DashboardSidebarChromeBaseline.Store()
     private var showsUpdateAvailableBadge = false
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
@@ -446,9 +447,22 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         persistShellGeometry()
     }
 
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        guard let fullScreenWindow = notification.object as? NSWindow,
+              fullScreenWindow === window else { return }
+        applyStableSidebarChromeInset(in: fullScreenWindow, isFullScreen: true)
+    }
+
+    func windowWillExitFullScreen(_ notification: Notification) {
+        guard let fullScreenWindow = notification.object as? NSWindow,
+              fullScreenWindow === window else { return }
+        applyStableSidebarChromeInset(in: fullScreenWindow, isFullScreen: false)
+    }
+
     func windowDidExitFullScreen(_ notification: Notification) {
         guard let fullScreenWindow = notification.object as? NSWindow,
               fullScreenWindow === window else { return }
+        applyStableSidebarChromeInset(in: fullScreenWindow, isFullScreen: false)
         persistShellGeometry()
     }
 
@@ -664,20 +678,48 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func pinSourceListBelowStableWindowChrome(in window: NSWindow) {
-        guard let navigation = sourceListController?.view,
-              let sidebar = navigation.superview
-        else { return }
         sourceListTopConstraint?.isActive = false
-        // Measure chrome after the toolbar is installed and before any page
-        // accessory mounts. Pinning to the live content layout guide would
-        // drag the whole sidebar when a window titlebar accessory shrinks
-        // contentLayoutRect.
-        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
-        sourceListTopConstraint = navigation.topAnchor.constraint(
-            equalTo: sidebar.topAnchor,
-            constant: max(0, titlebarHeight + sourceListChromePadding)
+        sourceListTopConstraint = nil
+        updateStableSidebarChromeInsetForCurrentWindowMode()
+    }
+
+    private func updateStableSidebarChromeInsetForCurrentWindowMode() {
+        guard let window else { return }
+        applyStableSidebarChromeInset(
+            in: window,
+            isFullScreen: window.styleMask.contains(.fullScreen)
         )
-        sourceListTopConstraint?.isActive = true
+    }
+
+    private func applyStableSidebarChromeInset(
+        in window: NSWindow,
+        isFullScreen: Bool
+    ) {
+        guard let navigation = sourceListController?.view,
+              let chromeRoot = window.contentView
+        else { return }
+        window.layoutIfNeeded()
+        chromeRoot.layoutSubtreeIfNeeded()
+        let measurement = DashboardSidebarChromeBaseline.measurement(in: window)
+        let chrome = sidebarChromeBaselineStore.resolvedStableChromeHeight(
+            isFullScreen: isFullScreen,
+            liveChromeHeight: measurement.liveChromeHeight,
+            titlebarAccessoryHeight: measurement.titlebarAccessoryHeight
+        )
+        let inset = max(0, chrome + sourceListChromePadding)
+        // Pin to the window content view, not the live content layout guide
+        // and not a sidebar edge that fullscreen chrome may inset. The
+        // constant is the accessory-free chrome for this presentation mode
+        // plus sourceListChromePadding.
+        if sourceListTopConstraint == nil {
+            sourceListTopConstraint = navigation.topAnchor.constraint(
+                equalTo: chromeRoot.topAnchor,
+                constant: inset
+            )
+            sourceListTopConstraint?.isActive = true
+        } else {
+            sourceListTopConstraint?.constant = inset
+        }
         window.layoutIfNeeded()
     }
 

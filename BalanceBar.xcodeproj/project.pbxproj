@@ -91,6 +91,8 @@
 		A40000000000000000000034 /* DashboardAccessoryHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000033 /* DashboardAccessoryHost.swift */; };
 		A40000000000000000000036 /* DashboardAccessoryHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000035 /* DashboardAccessoryHostTests.swift */; };
 		A40000000000000000000038 /* DashboardAccessoryHarnessController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000037 /* DashboardAccessoryHarnessController.swift */; };
+		A40000000000000000000040 /* DashboardSidebarChromeBaseline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000039 /* DashboardSidebarChromeBaseline.swift */; };
+		A40000000000000000000042 /* DashboardSidebarChromeBaselineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000041 /* DashboardSidebarChromeBaselineTests.swift */; };
 		A41100000000000000000002 /* DashboardShellRestoration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41100000000000000000001 /* DashboardShellRestoration.swift */; };
 		A41100000000000000000004 /* DashboardShellRestorationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41100000000000000000003 /* DashboardShellRestorationTests.swift */; };
 		A38900000000000000000002 /* DashboardScrollablePageViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38900000000000000000001 /* DashboardScrollablePageViewController.swift */; };
@@ -258,6 +260,8 @@
 		A40000000000000000000033 /* DashboardAccessoryHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAccessoryHost.swift; sourceTree = "<group>"; };
 		A40000000000000000000035 /* DashboardAccessoryHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAccessoryHostTests.swift; sourceTree = "<group>"; };
 		A40000000000000000000037 /* DashboardAccessoryHarnessController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAccessoryHarnessController.swift; sourceTree = "<group>"; };
+		A40000000000000000000039 /* DashboardSidebarChromeBaseline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSidebarChromeBaseline.swift; sourceTree = "<group>"; };
+		A40000000000000000000041 /* DashboardSidebarChromeBaselineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSidebarChromeBaselineTests.swift; sourceTree = "<group>"; };
 		A41100000000000000000001 /* DashboardShellRestoration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardShellRestoration.swift; sourceTree = "<group>"; };
 		A41100000000000000000003 /* DashboardShellRestorationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardShellRestorationTests.swift; sourceTree = "<group>"; };
 		A38900000000000000000001 /* DashboardScrollablePageViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardScrollablePageViewController.swift; sourceTree = "<group>"; };
@@ -562,6 +566,7 @@
 			children = (
 				A100000000000000000000A0 /* DashboardWindowControllerTests.swift */,
 				A40000000000000000000035 /* DashboardAccessoryHostTests.swift */,
+				A40000000000000000000041 /* DashboardSidebarChromeBaselineTests.swift */,
 				A41100000000000000000003 /* DashboardShellRestorationTests.swift */,
 				A38900000000000000000003 /* DashboardScrollablePageViewControllerTests.swift */,
 				A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */,
@@ -657,6 +662,7 @@
 				A40000000000000000000031 /* DashboardPageTopAccessory.swift */,
 				A40000000000000000000033 /* DashboardAccessoryHost.swift */,
 				A40000000000000000000037 /* DashboardAccessoryHarnessController.swift */,
+				A40000000000000000000039 /* DashboardSidebarChromeBaseline.swift */,
 				A38800000000000000000001 /* DashboardPageContainerViewController.swift */,
 				A38900000000000000000001 /* DashboardScrollablePageViewController.swift */,
 				A38600000000000000000001 /* DashboardSourceListController.swift */,
@@ -1011,6 +1017,7 @@
 				A40000000000000000000032 /* DashboardPageTopAccessory.swift in Sources */,
 				A40000000000000000000034 /* DashboardAccessoryHost.swift in Sources */,
 				A40000000000000000000038 /* DashboardAccessoryHarnessController.swift in Sources */,
+				A40000000000000000000040 /* DashboardSidebarChromeBaseline.swift in Sources */,
 				A38800000000000000000002 /* DashboardPageContainerViewController.swift in Sources */,
 				A38900000000000000000002 /* DashboardScrollablePageViewController.swift in Sources */,
 				A38600000000000000000002 /* DashboardSourceListController.swift in Sources */,
@@ -1069,6 +1076,7 @@
 				A100000000000000000000D0 /* AppDelegateCompositionTests.swift in Sources */,
 				A1000000000000000000009F /* DashboardWindowControllerTests.swift in Sources */,
 				A40000000000000000000036 /* DashboardAccessoryHostTests.swift in Sources */,
+				A40000000000000000000042 /* DashboardSidebarChromeBaselineTests.swift in Sources */,
 				A41100000000000000000004 /* DashboardShellRestorationTests.swift in Sources */,
 				A38900000000000000000004 /* DashboardScrollablePageViewControllerTests.swift in Sources */,
 				A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */,

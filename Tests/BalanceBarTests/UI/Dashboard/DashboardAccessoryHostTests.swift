@@ -268,6 +268,10 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertFalse(windowSource.contains("NSTitlebarAccessoryViewController"))
         XCTAssertFalse(windowSource.contains("NSSplitViewItemAccessoryViewController"))
         XCTAssertFalse(windowSource.contains("topAlignedAccessoryViewControllers"))
+        XCTAssertTrue(windowSource.contains("DashboardSidebarChromeBaseline"))
+        XCTAssertTrue(windowSource.contains("updateStableSidebarChromeInsetForCurrentWindowMode"))
+        XCTAssertTrue(windowSource.contains("windowDidEnterFullScreen"))
+        XCTAssertFalse(windowSource.contains("equalTo: contentLayoutGuide.topAnchor"))
 
         let pagesRoot = repositoryRoot.appendingPathComponent("Sources/UI/Dashboard/Pages")
         let enumerator = try XCTUnwrap(
@@ -530,6 +534,92 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertEqual(controller.section, .general)
         try assertNoMountedAccessory(in: controller)
         try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
+        try assertTitlebarChromePassThrough(in: controller)
+    }
+
+    func testFullscreenLifecycleKeepsSidebarStableAcrossTitlebarAndSplitAccessories() throws {
+        let harness = DashboardAccessoryHarnessController()
+        defer { harness.teardown() }
+        harness.present()
+        let controller = try XCTUnwrap(harness.windowControllerForTesting)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let before = try captureSidebarChromeSnapshot(
+            in: controller,
+            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
+        )
+        XCTAssertTrue(before.hitIsSourceList, before.debugDescription)
+
+        try clickSourceListSection(.menuBar, in: controller)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
+        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
+
+        controller.windowDidEnterFullScreen(
+            Notification(name: NSWindow.didEnterFullScreenNotification, object: window)
+        )
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let fullscreenTitlebar = try captureSidebarChromeSnapshot(
+            in: controller,
+            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
+        )
+        XCTAssertEqual(
+            fullscreenTitlebar.sourceListFrameInWindow.maxY,
+            before.sourceListFrameInWindow.maxY,
+            accuracy: 1,
+            "Forcing the fullscreen baseline must not drop navigation while windowed chrome is unchanged: \(fullscreenTitlebar.debugDescription)"
+        )
+        XCTAssertEqual(
+            fullscreenTitlebar.generalRowFrameInWindow.midY,
+            before.generalRowFrameInWindow.midY,
+            accuracy: 1
+        )
+        XCTAssertTrue(fullscreenTitlebar.hitIsSourceList, fullscreenTitlebar.debugDescription)
+        try assertSectionRowIsInteractive(.general, in: controller)
+
+        try clickSourceListSection(.general, in: controller)
+        window.layoutIfNeeded()
+        try assertNoMountedAccessory(in: controller)
+        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
+
+        try clickSourceListSection(.menu, in: controller)
+        window.layoutIfNeeded()
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .contentSplitItem)
+        }
+        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
+        try assertSectionRowIsInteractive(.general, in: controller)
+
+        try clickSourceListSection(.menuBar, in: controller)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
+        try assertSourceListTopUnchanged(before.sourceListFrameInWindow, in: controller)
+
+        controller.windowWillExitFullScreen(
+            Notification(name: NSWindow.willExitFullScreenNotification, object: window)
+        )
+        controller.windowDidExitFullScreen(
+            Notification(name: NSWindow.didExitFullScreenNotification, object: window)
+        )
+        window.layoutIfNeeded()
+        let restored = try captureSidebarChromeSnapshot(
+            in: controller,
+            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
+        )
+        XCTAssertEqual(
+            restored.sourceListFrameInWindow.maxY,
+            before.sourceListFrameInWindow.maxY,
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            restored.generalRowFrameInWindow.midY,
+            before.generalRowFrameInWindow.midY,
+            accuracy: 1
+        )
+        XCTAssertTrue(restored.hitIsSourceList, restored.debugDescription)
         try assertTitlebarChromePassThrough(in: controller)
     }
 
