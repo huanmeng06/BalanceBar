@@ -252,81 +252,12 @@ private final class MenuStatusLinksEditorHost: NSView {
     }
 
     func syncHeight() {
-        heightConstraint.constant = editor.currentHeight
+        let height = max(0, editor.currentHeight)
+        heightConstraint.constant = height
+        isHidden = height <= 0.5
         invalidateIntrinsicContentSize()
-        SettingsSectionView.enclosing(self)?.invalidateIntrinsicContentSize()
-        SettingsSectionView.enclosing(self)?.cardView.invalidateHostedSettingsRowHeight()
-        superview?.invalidateIntrinsicContentSize()
-    }
-}
-
-private final class MenuSettingsSectionHost: NSView {
-    let section: SettingsSectionView
-    private var heightConstraint: NSLayoutConstraint!
-
-    init(section: SettingsSectionView) {
-        self.section = section
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        setContentHuggingPriority(.required, for: .vertical)
-        setContentCompressionResistancePriority(.required, for: .vertical)
-        setContentHuggingPriority(.defaultLow, for: .horizontal)
-        setContentCompressionResistancePriority(.required, for: .horizontal)
-        section.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(section)
-        let heightConstraint = heightAnchor.constraint(equalToConstant: measuredHeight())
-        self.heightConstraint = heightConstraint
-        NSLayoutConstraint.activate([
-            section.topAnchor.constraint(equalTo: topAnchor),
-            section.leadingAnchor.constraint(equalTo: leadingAnchor),
-            section.trailingAnchor.constraint(equalTo: trailingAnchor),
-            heightConstraint
-        ])
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: heightConstraint.constant)
-    }
-
-    override func layout() {
-        super.layout()
-        let needed = measuredHeight()
-        guard abs(heightConstraint.constant - needed) > 0.5 else { return }
-        heightConstraint.constant = needed
-        invalidateIntrinsicContentSize()
-        superview?.invalidateIntrinsicContentSize()
-    }
-
-    func refreshHeight() {
-        let needed = measuredHeight()
-        heightConstraint.constant = needed
-        invalidateIntrinsicContentSize()
-        superview?.invalidateIntrinsicContentSize()
         needsLayout = true
-    }
-
-    private func measuredHeight() -> CGFloat {
-        var height: CGFloat = 0
-        if !section.headingLabel.isHidden {
-            height += max(section.headingLabel.intrinsicContentSize.height, 22)
-            height += SettingsSectionView.headingToCardSpacing
-        }
-        for view in section.cardView.arrangedSubviews where !view.isHidden {
-            if let editorHost = view as? MenuStatusLinksEditorHost {
-                height += max(0, editorHost.intrinsicContentSize.height)
-            } else if view is NSBox {
-                height += DashboardSettingsComponents.settingsSeparatorHeight
-            } else if view.frame.height > 1 {
-                height += view.frame.height
-            } else {
-                height += max(SettingsRowView.minimumHeight, view.fittingSize.height)
-            }
-        }
-        return max(1, ceil(height))
+        SettingsSectionView.enclosing(self)?.cardView.invalidateHostedSettingsRowHeight()
     }
 }
 
@@ -695,12 +626,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         // `DashboardScrollablePageViewController` owns the unique page scroller;
         // a nested `makeSettingsPage` scroll would pin the outer document to
         // the clip height and leave the Status Links editor unreachable.
-        return DashboardSettingsComponents.makeSettingsPageContent(
-            sections.map { section in
-                guard let settingsSection = section as? SettingsSectionView else { return section }
-                return MenuSettingsSectionHost(section: settingsSection)
-            }
-        )
+        return DashboardSettingsComponents.makeSettingsPageContent(sections)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -891,15 +817,14 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
 
     private func invalidateHostedSection(for view: NSView?) {
         guard let view else { return }
-        if let section = SettingsSectionView.enclosing(view) {
-            section.invalidateIntrinsicContentSize()
-            section.cardView.invalidateHostedSettingsRowHeight()
-            if let host = section.superview as? MenuSettingsSectionHost {
-                host.refreshHeight()
-            } else {
-                section.superview?.invalidateIntrinsicContentSize()
-            }
-        }
+        view.invalidateIntrinsicContentSize()
+        guard let section = SettingsSectionView.enclosing(view) else { return }
+        section.cardView.invalidateHostedSettingsRowHeight()
+        section.invalidateIntrinsicContentSize()
+        section.needsLayout = true
+        section.superview?.needsLayout = true
+        section.superview?.invalidateIntrinsicContentSize()
+        section.layoutSubtreeIfNeeded()
     }
 
     private func makeRow(

@@ -1718,6 +1718,260 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+
+        let pageStack = try XCTUnwrap(
+            page as? NSStackView,
+            "Menu page must return makeSettingsPageContent's section stack"
+        )
+        XCTAssertFalse(pageStack.arrangedSubviews.isEmpty)
+        for sectionView in pageStack.arrangedSubviews {
+            let section = try XCTUnwrap(
+                sectionView as? SettingsSectionView,
+                "SettingsSectionView must be an arranged subview of the page stack, not wrapped in a height host"
+            )
+            XCTAssertTrue(section.superview === pageStack)
+        }
+    }
+
+    func testMenuPageOrdinaryNativeRowResizesWithoutParentHeightMeasurement() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuNativeResize.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        DashboardSettingsLayoutMetrics.reset()
+        let controller = DashboardMenuPage()
+        let page = controller.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        defer { controller.teardown() }
+
+        let keepOpen = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "keepMenuOpenAfterRefresh" }
+        )
+        let row = try XCTUnwrap(SettingsRowView.enclosing(keepOpen))
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(keepOpen))
+        let card = section.cardView
+        XCTAssertTrue(row.superview === card)
+
+        let longDetail = "This Menu settings description must wrap onto additional lines when the dashboard content column is narrow so the native row and card heights follow Auto Layout instead of a parent-measured section height."
+        row.detailLabel.stringValue = longDetail
+        row.detailLabel.isHidden = false
+        if row.detailLabel.superview == nil {
+            row.labelsStack.addArrangedSubview(row.detailLabel)
+        }
+        row.detailLabel.invalidateIntrinsicContentSize()
+        row.needsLayout = true
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 1200),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+
+        func layout(at width: CGFloat) -> (rowHeight: CGFloat, cardHeight: CGFloat) {
+            pinMenuPage(page, in: window, width: width)
+            XCTAssertEqual(
+                card.frame.height,
+                visibleArrangedHeight(in: card),
+                accuracy: 1.0
+            )
+            XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+            XCTAssertLessThanOrEqual(row.frame.maxY, card.bounds.maxY + 0.5)
+            return (row.frame.height, card.frame.height)
+        }
+
+        let wide = layout(at: 880)
+        let narrow = layout(at: 516)
+        XCTAssertGreaterThan(narrow.rowHeight, wide.rowHeight - 0.5)
+        XCTAssertGreaterThanOrEqual(narrow.cardHeight, wide.cardHeight - 0.5)
+        XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 1)
+        let wideAgain = layout(at: 880)
+        XCTAssertEqual(wideAgain.rowHeight, wide.rowHeight, accuracy: 0.5)
+        XCTAssertEqual(wideAgain.cardHeight, wide.cardHeight, accuracy: 1.0)
+        let narrowAgain = layout(at: 516)
+        XCTAssertEqual(narrowAgain.rowHeight, narrow.rowHeight, accuracy: 0.5)
+        XCTAssertEqual(narrowAgain.cardHeight, narrow.cardHeight, accuracy: 1.0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+    }
+
+    func testMenuPageDependentRowsCollapseAndExpandWithoutParentHeightMeasurement() throws {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuNativeCollapse.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        DashboardSettingsLayoutMetrics.reset()
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.showQuotaProgressBar = true
+        preferences.showBankedReset = true
+        preferences.showStatusMenu = true
+        preferences.menuLunaReserveDisplayMode = .always
+        let controller = DashboardMenuPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [
+                        StatusLink(title: "Status", url: "https://status.example"),
+                        StatusLink(title: "Docs", url: "https://docs.example"),
+                        StatusLink(title: "API", url: "https://api.example")
+                    ],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        defer { controller.teardown() }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 1400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        pinMenuPage(page, in: window, width: 516)
+
+        func assertCardFollowsVisibleContent(_ card: SettingsSectionCardView, file: StaticString = #filePath, line: UInt = #line) {
+            pinMenuPage(page, in: window, width: 516)
+            XCTAssertEqual(
+                card.frame.height,
+                visibleArrangedHeight(in: card),
+                accuracy: 1.0,
+                file: file,
+                line: line
+            )
+            for view in card.arrangedSubviews where !view.isHidden && view.superview === card {
+                XCTAssertGreaterThan(view.frame.height, 0, file: file, line: line)
+                XCTAssertLessThanOrEqual(view.frame.maxY, card.bounds.maxY + 0.5, file: file, line: line)
+            }
+        }
+
+        let progressToggle = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == AppPreferences.showQuotaProgressBarKey }
+        )
+        let progressSection = try XCTUnwrap(SettingsSectionView.enclosing(progressToggle))
+        let progressCard = progressSection.cardView
+        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 4)
+        assertCardFollowsVisibleContent(progressCard)
+        let progressExpanded = progressCard.frame.height
+
+        preferences.showQuotaProgressBar = false
+        controller.refresh(preferences: preferences)
+        assertCardFollowsVisibleContent(progressCard)
+        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 1)
+        XCTAssertLessThan(progressCard.frame.height + 8, progressExpanded)
+
+        preferences.showQuotaProgressBar = true
+        controller.refresh(preferences: preferences)
+        assertCardFollowsVisibleContent(progressCard)
+        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 4)
+        XCTAssertGreaterThan(progressCard.frame.height, SettingsRowView.minimumHeight + 8)
+
+        let bankedToggle = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == AppPreferences.showBankedResetKey }
+        )
+        let bankedSection = try XCTUnwrap(SettingsSectionView.enclosing(bankedToggle))
+        let bankedCard = bankedSection.cardView
+        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 2)
+        assertCardFollowsVisibleContent(bankedCard)
+        let bankedExpanded = bankedCard.frame.height
+
+        preferences.showBankedReset = false
+        controller.refresh(preferences: preferences)
+        assertCardFollowsVisibleContent(bankedCard)
+        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 1)
+        XCTAssertLessThan(bankedCard.frame.height + 8, bankedExpanded)
+
+        preferences.showBankedReset = true
+        controller.refresh(preferences: preferences)
+        assertCardFollowsVisibleContent(bankedCard)
+        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 2)
+
+        let statusToggle = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "showStatusMenu" }
+        )
+        let statusSection = try XCTUnwrap(SettingsSectionView.enclosing(statusToggle))
+        let statusCard = statusSection.cardView
+        let editor = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? StatusLinksEditorHostingView }.first
+        )
+        XCTAssertGreaterThan(editor.currentHeight, 1)
+        assertCardFollowsVisibleContent(statusCard)
+        let statusExpanded = statusCard.frame.height
+
+        controller.updateStatusVisibility(false, animated: false)
+        assertCardFollowsVisibleContent(statusCard)
+        XCTAssertEqual(editor.currentHeight, 0, accuracy: 0.5)
+        XCTAssertLessThan(statusCard.frame.height + 8, statusExpanded)
+
+        controller.updateStatusVisibility(true, animated: false)
+        assertCardFollowsVisibleContent(statusCard)
+        XCTAssertEqual(editor.currentHeight, editor.layoutHeight, accuracy: 0.5)
+        XCTAssertEqual(statusCard.frame.height, statusExpanded, accuracy: 1.0)
+
+        let lunaHide = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.lunaReserveHideExhaustedQuotaIdentifier }
+        )
+        let lunaSection = try XCTUnwrap(SettingsSectionView.enclosing(lunaHide))
+        let lunaCard = lunaSection.cardView
+        let lunaHideRow = try XCTUnwrap(SettingsRowView.enclosing(lunaHide))
+        XCTAssertFalse(lunaHideRow.isHidden)
+        assertCardFollowsVisibleContent(lunaCard)
+        let lunaExpanded = lunaCard.frame.height
+
+        preferences.menuLunaReserveDisplayMode = .disabled
+        controller.refresh(preferences: preferences)
+        assertCardFollowsVisibleContent(lunaCard)
+        XCTAssertTrue(lunaHideRow.isHidden)
+        XCTAssertLessThan(lunaCard.frame.height + 8, lunaExpanded)
+
+        preferences.menuLunaReserveDisplayMode = .always
+        controller.refresh(preferences: preferences)
+        assertCardFollowsVisibleContent(lunaCard)
+        XCTAssertFalse(lunaHideRow.isHidden)
+
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
     }
 
     func testBalanceDisplayThresholdRowUsesSelectedCopyAndPersistsValue() throws {
@@ -2825,8 +3079,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
-        window.contentView = page
         defer { window.orderOut(nil) }
+        pinMenuPage(page, in: window, width: 516, height: 820)
 
         let subtitle = try XCTUnwrap(
             descendants(of: page)
@@ -2863,14 +3117,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let statusLabels = statusRow.labelsStack
 
         func layout(at width: CGFloat) -> (statusRowHeight: CGFloat, cardHeight: CGFloat) {
-            window.setContentSize(NSSize(width: width, height: 820))
-            window.layoutIfNeeded()
-            page.layoutSubtreeIfNeeded()
-            let visibleHeight = rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, view in
-                guard !view.isHidden else { return total }
-                return total + view.frame.height
-            }
-            XCTAssertEqual(card.frame.height, visibleHeight, accuracy: 4)
+            pinMenuPage(page, in: window, width: width, height: 820)
+            XCTAssertEqual(
+                card.frame.height,
+                visibleArrangedHeight(in: rowsStack),
+                accuracy: 4
+            )
             let statusLabelsFrame = statusLabels.convert(statusLabels.bounds, to: statusRow)
             let statusSwitchFrame = statusSwitch.convert(statusSwitch.bounds, to: statusRow)
             if statusSwitchFrame.maxY <= statusLabelsFrame.minY + 0.5 {
@@ -2883,9 +3135,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
 
         let longSubtitle = "This status-link summary is intentionally long so the Status Links row must reflow its switch without truncating the complete text after every width and content transition."
-        subtitle.stringValue = longSubtitle
-        subtitle.invalidateIntrinsicContentSize()
-        statusRow.needsLayout = true
+        func applySubtitle(_ text: String) {
+            subtitle.stringValue = text
+            subtitle.preferredMaxLayoutWidth = 0
+            subtitle.invalidateIntrinsicContentSize()
+            statusRow.invalidateIntrinsicContentSize()
+            statusRow.needsLayout = true
+            SettingsSectionView.enclosing(statusRow)?.cardView.invalidateHostedSettingsRowHeight()
+        }
+        applySubtitle(longSubtitle)
         let narrow = layout(at: 516)
         XCTAssertFalse(subtitle.usesSingleLineMode)
         XCTAssertEqual(subtitle.lineBreakMode, .byWordWrapping)
@@ -2903,14 +3161,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(narrowAgain.statusRowHeight, narrow.statusRowHeight, accuracy: 0.5)
         XCTAssertEqual(narrowAgain.cardHeight, narrow.cardHeight, accuracy: 0.5)
 
-        subtitle.stringValue = "Short status summary"
-        subtitle.invalidateIntrinsicContentSize()
-        statusRow.needsLayout = true
+        applySubtitle("Short status summary")
         let short = layout(at: 516)
         XCTAssertLessThan(short.statusRowHeight, narrow.statusRowHeight)
-        subtitle.stringValue = longSubtitle
-        subtitle.invalidateIntrinsicContentSize()
-        statusRow.needsLayout = true
+        applySubtitle(longSubtitle)
         let restored = layout(at: 516)
         XCTAssertEqual(restored.statusRowHeight, narrow.statusRowHeight, accuracy: 0.5)
         XCTAssertEqual(restored.cardHeight, narrow.cardHeight, accuracy: 0.5)
@@ -2921,11 +3175,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             _ = layout(at: 516)
         }
         XCTAssertEqual(editor.currentHeight, editor.layoutHeight, accuracy: 0.5)
-        let visibleHeight = rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, view in
-            guard !view.isHidden else { return total }
-            return total + view.frame.height
-        }
-        XCTAssertEqual(card.frame.height, visibleHeight, accuracy: 4)
+        XCTAssertEqual(
+            card.frame.height,
+            visibleArrangedHeight(in: rowsStack),
+            accuracy: 4
+        )
     }
 
     func testMenuBarPreviewPresentationUsesSharedSnapshotValues() {
@@ -7443,6 +7697,49 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
+    }
+
+    private func pinMenuPage(_ page: NSView, in window: NSWindow, width: CGFloat, height: CGFloat = 1400) {
+        let host: NSView
+        if window.contentView == nil || window.contentView === page {
+            host = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+            window.contentView = host
+            host.addSubview(page)
+        } else {
+            host = window.contentView!
+            if page.superview !== host {
+                host.addSubview(page)
+            }
+        }
+        window.setContentSize(NSSize(width: width, height: height))
+        host.setFrameSize(NSSize(width: width, height: height))
+        page.translatesAutoresizingMaskIntoConstraints = false
+        host.removeConstraints(host.constraints)
+        NSLayoutConstraint.activate([
+            page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            page.topAnchor.constraint(equalTo: host.topAnchor)
+        ])
+        var previousHeight: CGFloat = -1
+        for _ in 0..<6 {
+            window.layoutIfNeeded()
+            host.layoutSubtreeIfNeeded()
+            page.layoutSubtreeIfNeeded()
+            let height = page.fittingSize.height
+            if abs(height - previousHeight) < 0.5 {
+                break
+            }
+            previousHeight = height
+        }
+    }
+
+    private func visibleArrangedHeight(in stack: NSStackView) -> CGFloat {
+        let visible = stack.arrangedSubviews.filter { !$0.isHidden && $0.superview === stack }
+        guard let minY = visible.map(\.frame.minY).min(),
+              let maxY = visible.map(\.frame.maxY).max() else {
+            return 0
+        }
+        return maxY - minY
     }
 
     private func languagePopUpButton(
