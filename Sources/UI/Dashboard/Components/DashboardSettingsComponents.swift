@@ -4,6 +4,13 @@ protocol DashboardSettingsRowControlLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
     var usesDedicatedRow: Bool { get }
     var allowsTextDrivenDedicatedRow: Bool { get }
+    /// Minimum width the labels column needs to remain beside this accessory.
+    /// Zero means the accessory never requests a dedicated row for label space.
+    var minimumInlineLabelWidth: CGFloat { get }
+}
+
+extension DashboardSettingsRowControlLayout {
+    var minimumInlineLabelWidth: CGFloat { 0 }
 }
 
 enum DashboardSettingsLayoutMetrics {

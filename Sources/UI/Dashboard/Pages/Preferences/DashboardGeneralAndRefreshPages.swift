@@ -194,6 +194,7 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
     private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
     private(set) var usesDedicatedRow = false
     var allowsTextDrivenDedicatedRow = false
+    var minimumInlineLabelWidth: CGFloat = 0
 
     func updateAvailableRowWidth(_ width: CGFloat) {
         let normalizedWidth = max(0, width)
@@ -448,6 +449,7 @@ final class DashboardGeneralPage {
             views: [runningControls, trailingControls]
         )
         activeRefreshControls.allowsTextDrivenDedicatedRow = true
+        activeRefreshControls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         activeRefreshControls.orientation = .horizontal
         activeRefreshControls.alignment = .centerY
         activeRefreshControls.spacing = 5

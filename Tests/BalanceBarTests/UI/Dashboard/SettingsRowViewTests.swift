@@ -397,6 +397,65 @@ final class SettingsRowViewTests: XCTestCase {
         _ = host
     }
 
+    func testDedicatedRowUsesInlineLabelWidthContractNotLineCount() throws {
+        DashboardSettingsLayoutMetrics.reset()
+        let leading = NSButton(title: "Every 10 sec", target: nil, action: nil)
+        let trailing = NSButton(title: "For 30 sec", target: nil, action: nil)
+        [leading, trailing].forEach { button in
+            button.bezelStyle = .rounded
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        }
+        let controls = DashboardAdaptiveControlsStackView(views: [leading, trailing])
+        controls.orientation = .horizontal
+        controls.alignment = .centerY
+        controls.spacing = 5
+        controls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        let row = SettingsRowView(
+            title: "Balance updates during tasks",
+            detail: "Requests the current provider's balance while an agent is running.",
+            accessoryView: controls
+        )
+        let section = SettingsSectionView(title: "Refresh", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        func layout(at width: CGFloat) {
+            pin(section, to: host, window: window, width: width)
+        }
+        func remainingInlineLabelWidth() -> CGFloat {
+            let available = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
+            return available - max(1, controls.fittingSize.width) - SettingsRowView.contentSpacing
+        }
+
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertGreaterThanOrEqual(remainingInlineLabelWidth() + 0.5, SettingsRowView.minimumInlineLabelWidth)
+
+        layout(at: 400)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .vertical)
+        XCTAssertLessThan(remainingInlineLabelWidth() + 0.5, SettingsRowView.minimumInlineLabelWidth)
+        let labelsFrame = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+        let controlsFrame = controls.convert(controls.bounds, to: row)
+        XCTAssertLessThanOrEqual(controlsFrame.maxY, labelsFrame.minY + 0.5)
+        XCTAssertEqual(
+            row.detailLabel.preferredMaxLayoutWidth,
+            max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2),
+            accuracy: 1
+        )
+
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+    }
+
     private func assertLabelsDoNotOverlapControl(
         in row: SettingsRowView,
         control: NSView,

@@ -20,6 +20,9 @@ final class SettingsRowView: NSView {
     static let contentSpacing: CGFloat = 20
     static let labelSpacing: CGFloat = 2
     static let titleAccessorySpacing: CGFloat = 6
+    /// Floor for the labels column when it shares a row with an accessory.
+    /// This is a geometric inset, not a window-width breakpoint.
+    static let minimumInlineLabelWidth: CGFloat = 120
 
     let titleLabel: NSTextField
     let detailLabel: NSTextField
@@ -315,52 +318,21 @@ final class SettingsRowView: NSView {
         availableWidth: CGFloat
     ) -> Bool {
         // `usesDedicatedRow` means the controls themselves went vertical.
-        // Text-driven placement is separate: the accessory can stay
+        // Label-column placement is separate: the accessory can stay
         // horizontal while moving onto the row below the labels.
         if adaptive.usesDedicatedRow {
             return true
         }
-        guard adaptive.allowsTextDrivenDedicatedRow,
-              let accessoryView,
+        guard let accessoryView,
               !accessoryView.isHidden,
               availableWidth > 0
         else { return false }
+        let minimumLabelWidth = adaptive.minimumInlineLabelWidth
+        guard minimumLabelWidth > 0 else { return false }
         let remainingWhenBeside = availableWidth
             - max(1, accessoryView.fittingSize.width)
             - Self.contentSpacing
-        if remainingWhenBeside <= 0 {
-            return true
-        }
-        return labelsExceedInlineLineBudget(at: remainingWhenBeside)
-    }
-
-    /// Side-by-side text may use up to four wrapped lines. The fifth line
-    /// moves the accessory below the labels. Line counts come from
-    /// `intrinsicContentSize` at the inline width, not `measureTextLineLayout`
-    /// or the wrapping cache.
-    private func labelsExceedInlineLineBudget(at width: CGFloat) -> Bool {
-        let titleWidth = wrappingWidthForTitle(labelWidth: width)
-        let titleLines = estimatedWrappedLineCount(titleLabel, at: titleWidth)
-        let detailLines = detailLabel.isHidden
-            ? 0
-            : estimatedWrappedLineCount(detailLabel, at: width)
-        return titleLines + detailLines > DashboardSettingsComponents.settingsTextLineReflowThreshold
-    }
-
-    private func estimatedWrappedLineCount(_ label: NSTextField, at width: CGFloat) -> Int {
-        let wrappedHeight = intrinsicHeight(label, at: width)
-        let singleLineHeight = intrinsicHeight(label, at: 10_000)
-        guard wrappedHeight > 0, singleLineHeight > 0 else { return 0 }
-        return max(1, Int(ceil((wrappedHeight - 0.5) / singleLineHeight)))
-    }
-
-    private func intrinsicHeight(_ label: NSTextField, at width: CGFloat) -> CGFloat {
-        guard width > 1, !label.stringValue.isEmpty, !label.isHidden else { return 0 }
-        let previous = label.preferredMaxLayoutWidth
-        label.preferredMaxLayoutWidth = width
-        let height = ceil(label.intrinsicContentSize.height)
-        label.preferredMaxLayoutWidth = previous
-        return height
+        return remainingWhenBeside + 0.5 < minimumLabelWidth
     }
 
     private func applyVerticalStacking(_ vertical: Bool) {
