@@ -5,7 +5,8 @@ import AppKit
 /// Generic `SettingsRowView` keeps a trailing accessory in its content stack.
 /// These controls need a side-by-side vs dedicated-below placement that is
 /// specific to Refresh, so the measurement and constraint switch live here
-/// instead of in the shared row.
+/// instead of in the shared row. Placement reserves a readable text column,
+/// not only whether the two popups fit.
 final class DashboardRefreshBalanceUpdatesRowView: NSView {
     let titleLabel: NSTextField
     let detailLabel: NSTextField
@@ -14,7 +15,7 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
 
     private var sideBySideConstraints: [NSLayoutConstraint] = []
     private var stackedConstraints: [NSLayoutConstraint] = []
-    private var isStacked = true
+    private(set) var usesDedicatedPlacement = true
 
     init(
         title: String,
@@ -54,11 +55,6 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         }
     }
 
-    override func updateConstraints() {
-        updatePlacement()
-        super.updateConstraints()
-    }
-
     override func layout() {
         updatePlacement()
         super.layout()
@@ -69,30 +65,81 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         let available = bounds.width > 1
             ? max(0, bounds.width - SettingsRowView.horizontalPadding * 2)
             : 0
-        if available > 1 {
-            intervalControls.updateAvailableRowWidth(available)
-        }
-        let accessoryFitting = intervalControls.fittingSize.width
+
+        // Inner popup orientation is independent of row placement, but the
+        // row also reserves a readable text column: two popups that still
+        // fit beside crushed CJK must move below the labels.
+        let accessoryWidth = intervalControls.horizontalFittingWidth
+        let contentWidthWhenSideBySide = max(
+            0,
+            available - accessoryWidth - SettingsRowView.contentSpacing
+        )
         let wantsStacked = available <= 1
-            || intervalControls.usesDedicatedRow
-            || accessoryFitting + 0.5 > available
+            || accessoryWidth + 0.5 > available
+            || textColumnNeedsDedicatedPlacement(at: contentWidthWhenSideBySide)
         if wantsStacked {
+            // Seed a tiny width so the adaptive stack cannot flip back to
+            // horizontal in its own layout() and fight dedicated constraints.
+            intervalControls.updateAvailableRowWidth(1)
             intervalControls.orientation = .vertical
             intervalControls.alignment = .trailing
+        } else if available > 1 {
+            intervalControls.updateAvailableRowWidth(available)
         }
         applyStacked(wantsStacked)
     }
 
     private func applyStacked(_ wantsStacked: Bool) {
-        guard wantsStacked != isStacked else { return }
+        guard wantsStacked != usesDedicatedPlacement else { return }
         NSLayoutConstraint.deactivate(sideBySideConstraints + stackedConstraints)
-        isStacked = wantsStacked
+        usesDedicatedPlacement = wantsStacked
         NSLayoutConstraint.activate(
             wantsStacked ? stackedConstraints : sideBySideConstraints
         )
         intervalControls.invalidateIntrinsicContentSize()
         invalidateIntrinsicContentSize()
+        notifyHeightHost()
         needsLayout = true
+    }
+
+    private func textColumnNeedsDedicatedPlacement(at contentWidth: CGFloat) -> Bool {
+        if contentWidth <= 0 {
+            return true
+        }
+        if contentWidth + 0.5 < minimumReadableContentWidth() {
+            return true
+        }
+        let titleLines = DashboardSettingsComponents.settingsTextLineCount(
+            titleLabel,
+            constrainedTo: contentWidth
+        )
+        let detailLines = DashboardSettingsComponents.settingsTextLineCount(
+            detailLabel,
+            constrainedTo: contentWidth
+        )
+        return titleLines + detailLines >
+            DashboardSettingsComponents.settingsTextLineReflowThreshold
+    }
+
+    private func minimumReadableContentWidth() -> CGFloat {
+        let unbreakable = max(
+            widestUnbreakableRunWidth(titleLabel),
+            widestUnbreakableRunWidth(detailLabel)
+        )
+        // Char-wrapping CJK has no unbreakable run. Keep a twelve-glyph
+        // column so two popups that still fit cannot squeeze labels to
+        // one character per line.
+        let readableColumn = 12 * (titleLabel.font?.pointSize ?? 14)
+        return max(unbreakable, readableColumn)
+    }
+
+    private func widestUnbreakableRunWidth(_ textField: NSTextField) -> CGFloat {
+        guard textField.lineBreakMode == .byWordWrapping else { return 0 }
+        let font = textField.font ?? .systemFont(ofSize: NSFont.systemFontSize)
+        return textField.stringValue
+            .split { $0.isWhitespace || $0.isNewline }
+            .map { String($0).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
     }
 
     private func applyWrappingWidths() {
@@ -110,11 +157,23 @@ final class DashboardRefreshBalanceUpdatesRowView: NSView {
         }
         guard wrappingChanged else { return }
         invalidateIntrinsicContentSize()
+        notifyHeightHost()
+    }
+
+    private func notifyHeightHost() {
+        var current: NSView? = superview
+        while let view = current {
+            if let host = view as? SettingsRowHeightInvalidating {
+                host.invalidateHostedSettingsRowHeight()
+                return
+            }
+            current = view.superview
+        }
     }
 
     private func wrappingWidthForLabels() -> CGFloat {
         var reserved = SettingsRowView.horizontalPadding * 2
-        if !isStacked, !intervalControls.isHidden {
+        if !usesDedicatedPlacement, !intervalControls.isHidden {
             let accessoryWidth = intervalControls.bounds.width > 1
                 ? intervalControls.bounds.width
                 : intervalControls.fittingSize.width

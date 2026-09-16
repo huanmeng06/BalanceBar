@@ -739,6 +739,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         func assertLayout(
             width: CGFloat,
             orientation: NSUserInterfaceLayoutOrientation,
+            usesDedicatedPlacement: Bool,
             file: StaticString = #filePath,
             line: UInt = #line
         ) {
@@ -747,8 +748,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
             page.setFrameSize(host.bounds.size)
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
 
             XCTAssertEqual(controls.orientation, orientation, file: file, line: line)
+            XCTAssertEqual(
+                row.usesDedicatedPlacement,
+                usesDedicatedPlacement,
+                "dedicated placement at \(width)",
+                file: file,
+                line: line
+            )
             let runningFrame = runningControls.convert(runningControls.bounds, to: row)
             let trailingFrame = trailingControls.convert(trailingControls.bounds, to: row)
             let labelsFrame = labels.convert(labels.bounds, to: row)
@@ -765,25 +775,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 file: file,
                 line: line
             )
+            XCTAssertFalse(
+                labelsFrame.intersects(controlsFrame),
+                "labels do not overlap the interval controls at \(width)",
+                file: file,
+                line: line
+            )
             if orientation == .horizontal {
                 XCTAssertEqual(
                     runningFrame.maxY,
                     trailingFrame.maxY,
                     accuracy: 0.5,
                     "running controls precede after controls on one line",
-                    file: file,
-                    line: line
-                )
-                XCTAssertFalse(
-                    labelsFrame.intersects(controlsFrame),
-                    "refresh controls stay beside the wrapping text without overlap",
-                    file: file,
-                    line: line
-                )
-                XCTAssertGreaterThanOrEqual(
-                    controlsFrame.minX,
-                    labelsFrame.maxX + 19.5,
-                    "refresh controls stay in the right-side column",
                     file: file,
                     line: line
                 )
@@ -795,12 +798,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     file: file,
                     line: line
                 )
-                XCTAssertFalse(
-                    labelsFrame.intersects(controlsFrame),
-                    "refresh controls stay below the wrapping text without overlap",
-                    file: file,
-                    line: line
-                )
+            }
+            if usesDedicatedPlacement {
                 XCTAssertLessThanOrEqual(
                     controlsFrame.maxY,
                     labelsFrame.minY + 0.5,
@@ -808,7 +807,31 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     file: file,
                     line: line
                 )
+                XCTAssertEqual(
+                    labelsFrame.maxX,
+                    row.bounds.maxX - SettingsRowView.horizontalPadding,
+                    accuracy: 1.5,
+                    "title and description keep the full content width at \(width)",
+                    file: file,
+                    line: line
+                )
+            } else {
+                XCTAssertGreaterThanOrEqual(
+                    controlsFrame.minX,
+                    labelsFrame.maxX + 19.5,
+                    "refresh controls stay in the right-side column",
+                    file: file,
+                    line: line
+                )
             }
+            let readableColumn = 12 * (row.titleLabel.font?.pointSize ?? 14)
+            XCTAssertGreaterThan(
+                labelsFrame.width,
+                readableColumn,
+                "CJK title/detail stay wider than a twelve-glyph column at \(width)",
+                file: file,
+                line: line
+            )
             XCTAssertGreaterThanOrEqual(
                 row.frame.height,
                 SettingsRowView.minimumHeight,
@@ -819,12 +842,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             assertCardHeight("refresh card height follows its native rows", file: file, line: line)
         }
 
-        assertLayout(width: 880, orientation: .horizontal)
-        assertLayout(width: 720, orientation: .horizontal)
-        assertLayout(width: 516, orientation: .horizontal)
-        assertLayout(width: 320, orientation: .vertical)
-        assertLayout(width: 516, orientation: .horizontal)
-        assertLayout(width: 880, orientation: .horizontal)
+        assertLayout(width: 880, orientation: .horizontal, usesDedicatedPlacement: false)
+        assertLayout(width: 720, orientation: .horizontal, usesDedicatedPlacement: false)
+        assertLayout(width: 516, orientation: .vertical, usesDedicatedPlacement: true)
+        assertLayout(width: 320, orientation: .vertical, usesDedicatedPlacement: true)
+        assertLayout(width: 516, orientation: .vertical, usesDedicatedPlacement: true)
+        assertLayout(width: 880, orientation: .horizontal, usesDedicatedPlacement: false)
 
         runningPopup.selectItem(at: 4)
         relay.interval(runningPopup)

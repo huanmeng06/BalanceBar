@@ -92,7 +92,7 @@ About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advance
 
 | 页面 | 当前卡片/结构 | 备注 |
 | --- | --- | --- |
-| General | System → Refresh → Startup → Application | Refresh 卡片含任务中余额更新间隔、结束后持续时长、立即刷新，并已迁到原生 `SettingsSectionView`：立即刷新行是 `SettingsRowView`，双 interval 行是 Refresh 专用 `DashboardRefreshBalanceUpdatesRowView`（不把 fitting-size 布局决策放进通用 `SettingsRowView`）。Startup 卡片是原生 `SettingsSectionView` 试点；其中 Silent Launch 行是原生 `SettingsRowView`，另外两行仍走 `makeSettingsRow`。System / Application 卡片仍走 `makeSettingsSection`。 |
+| General | System → Refresh → Startup → Application | Refresh 卡片含任务中余额更新间隔、结束后持续时长、立即刷新，并已迁到原生 `SettingsSectionView`：立即刷新行是 `SettingsRowView`，双 interval 行是 Refresh 专用 `DashboardRefreshBalanceUpdatesRowView`（不把 fitting-size 布局决策放进通用 `SettingsRowView`）。该专用行在文字列与两个 popup 无法合理并排时改为 dedicated layout，把 popup 放到标题/描述下方。Startup 卡片是原生 `SettingsSectionView` 试点；其中 Silent Launch 行是原生 `SettingsRowView`，另外两行仍走 `makeSettingsRow`。System / Application 卡片仍走 `makeSettingsSection`。 |
 | Refresh | 不是侧栏页 | 见 General 的 Refresh 卡片；`DashboardRefreshPage` 未挂载 |
 | Menu Bar | Preview → Quota & Reset → Icon & Task Status → Behavior → Layout | 若干行随开关折叠，不改已存偏好 |
 | Menu | Balance Display（条件）→ Banked Reset → Progress Bar → Menu behavior → Open Project → Status Links | Status Links 编辑器始终存在，开关只改高度/透明度 |

@@ -481,16 +481,23 @@ final class SettingsRowViewTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
         XCTAssertGreaterThanOrEqual(refreshNowRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertFalse(
+            updatesRow.usesDedicatedPlacement,
+            "880pt keeps interval popups beside a readable text column"
+        )
         assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 880)
         assertLabelsDoNotOverlapControl(in: refreshNowRow, control: refreshButton, width: 880)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
-        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
 
         pin(refresh, to: host, window: window, width: 516)
         XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
         XCTAssertGreaterThanOrEqual(refreshNowRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertTrue(
+            updatesRow.usesDedicatedPlacement,
+            "516pt keeps the two popups below the CJK title/description"
+        )
         assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 516)
         assertLabelsDoNotOverlapControl(in: refreshNowRow, control: refreshButton, width: 516)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
@@ -498,10 +505,13 @@ final class SettingsRowViewTests: XCTestCase {
 
         pin(refresh, to: host, window: window, width: 320)
         XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertTrue(updatesRow.usesDedicatedPlacement)
         assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 320)
         pin(refresh, to: host, window: window, width: 880)
+        XCTAssertFalse(updatesRow.usesDedicatedPlacement)
         assertRefreshIntervalLabelsDoNotOverlapControls(in: updatesRow, width: 880)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
     }
 
     func testNativeRowKeepsAdaptiveControlsInTheContentStack() {
@@ -705,6 +715,19 @@ final class SettingsRowViewTests: XCTestCase {
             labelsFrame.intersects(controlFrame),
             "labels do not overlap the interval controls at \(width)"
         )
+        let readableColumn = 12 * (row.titleLabel.font?.pointSize ?? 14)
+        XCTAssertGreaterThan(
+            labelsFrame.width,
+            readableColumn,
+            "title/description stay wider than a twelve-glyph column at \(width)"
+        )
+        if row.usesDedicatedPlacement {
+            XCTAssertLessThanOrEqual(
+                controlFrame.maxY,
+                labelsFrame.minY + 0.5,
+                "interval popups sit below the title/description at \(width)"
+            )
+        }
     }
 
     private func assertLabelsDoNotOverlapControl(

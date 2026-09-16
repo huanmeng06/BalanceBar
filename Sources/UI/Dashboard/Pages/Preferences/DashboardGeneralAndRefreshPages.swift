@@ -203,7 +203,7 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
         updateOrientationIfNeeded()
     }
 
-    private var horizontalFittingWidth: CGFloat {
+    var horizontalFittingWidth: CGFloat {
         let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
         let buttonWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
             max(total, view.fittingSize.width)
