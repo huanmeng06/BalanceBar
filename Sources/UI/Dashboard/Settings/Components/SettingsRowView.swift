@@ -398,9 +398,12 @@ final class SettingsRowView: NSView {
         guard stacksVertically != vertical else { return }
         stacksVertically = vertical
         if dedicatedLabelsWidthConstraint == nil {
-            dedicatedLabelsWidthConstraint = labelsStack.widthAnchor.constraint(
-                equalTo: contentStack.widthAnchor
-            )
+            let constraint = labelsStack.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
+            // NSStackView keeps required side-by-side constraints for one pass
+            // after orientation flips. Stay below required so that leftover
+            // pass cannot unsatisfy the row.
+            constraint.priority = NSLayoutConstraint.Priority(999)
+            dedicatedLabelsWidthConstraint = constraint
         }
         if vertical {
             contentStack.orientation = .vertical
