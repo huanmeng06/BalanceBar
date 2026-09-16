@@ -113,8 +113,18 @@ final class DashboardSplitViewController: NSSplitViewController {
         let contentItem = NSSplitViewItem(viewController: content)
         contentItem.canCollapse = false
         contentItem.holdingPriority = Self.contentHoldingPriority
+        Self.applyAdjacentContentSafeAreaPolicy(to: contentItem)
         addSplitViewItem(sidebarItem)
         addSplitViewItem(contentItem)
+    }
+
+    /// macOS 26 may overlay the sidebar on the adjacent content item and then
+    /// adjust that item's `safeAreaInsets`. The flag belongs on the content
+    /// item, not the sidebar item or AccessoryHost.
+    static func applyAdjacentContentSafeAreaPolicy(to item: NSSplitViewItem) {
+        if #available(macOS 26.0, *) {
+            item.automaticallyAdjustsSafeAreaInsets = true
+        }
     }
 
     override func loadView() {

@@ -19,10 +19,22 @@ final class DashboardPageContainerViewController: NSViewController {
     func replacePage(_ page: NSViewController) {
         removeCurrentPage()
         addChild(page)
-        page.view.frame = view.bounds
-        page.view.autoresizingMask = [.width, .height]
-        view.addSubview(page.view)
+        installPageView(page.view)
         currentPage = page
+    }
+
+    /// Fill the content pane, but keep interactive page chrome in the split
+    /// item's horizontal safe area. Top stays on the view edge so the existing
+    /// titlebar inset is not doubled.
+    private func installPageView(_ pageView: NSView) {
+        pageView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(pageView)
+        NSLayoutConstraint.activate([
+            pageView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            pageView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            pageView.topAnchor.constraint(equalTo: view.topAnchor),
+            pageView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
     }
 
     func removeCurrentPage() {

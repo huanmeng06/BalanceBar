@@ -11,6 +11,9 @@ final class DashboardScrollablePageViewController: NSViewController {
     static let viewportBottomInset: CGFloat = 0
     static let documentHorizontalInset: CGFloat = 34
     static let documentBottomInset: CGFloat = 34
+    static let documentFillIdentifier = NSUserInterfaceItemIdentifier(
+        "dashboardPageDocumentFill"
+    )
 
     private let hostedContent: NSView
     let pageScrollView: NSScrollView
@@ -115,13 +118,42 @@ final class DashboardScrollablePageViewController: NSViewController {
         if contentView.superview != nil {
             contentView.removeFromSuperview()
         }
-        documentView.addSubview(contentView)
+        contentView.setContentHuggingPriority(.required, for: .vertical)
+        contentView.setContentCompressionResistancePriority(.required, for: .vertical)
+        if let stack = contentView as? NSStackView {
+            stack.setHuggingPriority(.required, for: .vertical)
+            stack.setClippingResistancePriority(.required, for: .vertical)
+        }
+
+        // Wrapper only: full-width document chrome around the inset page
+        // stack. Section height belongs to SettingsSectionView / the page
+        // stack; this host must not remeasure children or invalidate ICS
+        // from layout().
+        let contentHost = DashboardSettingsContentHost()
+        contentHost.translatesAutoresizingMaskIntoConstraints = false
+        contentHost.clipsToBounds = false
+        contentHost.setContentHuggingPriority(.required, for: .vertical)
+        contentHost.setContentCompressionResistancePriority(.required, for: .vertical)
+        contentHost.addSubview(contentView)
+
+        let documentFill = DashboardSettingsDocumentFillView()
+        documentFill.identifier = documentFillIdentifier
+        documentFill.translatesAutoresizingMaskIntoConstraints = false
+        documentFill.setContentHuggingPriority(.fittingSizeCompression, for: .vertical)
+        documentFill.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        documentView.addSubview(contentHost)
+        documentView.addSubview(documentFill)
         root.addSubview(viewportContainer)
         viewportContainer.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            viewportContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            viewportContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            viewportContainer.leadingAnchor.constraint(
+                equalTo: root.safeAreaLayoutGuide.leadingAnchor
+            ),
+            viewportContainer.trailingAnchor.constraint(
+                equalTo: root.safeAreaLayoutGuide.trailingAnchor
+            ),
             viewportContainer.topAnchor.constraint(
                 equalTo: root.topAnchor,
                 constant: viewportTopInset
@@ -141,19 +173,24 @@ final class DashboardScrollablePageViewController: NSViewController {
             documentView.heightAnchor.constraint(
                 greaterThanOrEqualTo: scrollView.contentView.heightAnchor
             ),
-            contentView.topAnchor.constraint(equalTo: documentView.topAnchor),
+            contentHost.topAnchor.constraint(equalTo: documentView.topAnchor),
+            contentHost.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
+            contentHost.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            documentFill.topAnchor.constraint(equalTo: contentHost.bottomAnchor),
+            documentFill.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
+            documentFill.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            documentFill.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
+            documentFill.heightAnchor.constraint(greaterThanOrEqualToConstant: documentBottomInset),
+            contentView.topAnchor.constraint(equalTo: contentHost.topAnchor),
             contentView.leadingAnchor.constraint(
-                equalTo: documentView.leadingAnchor,
+                equalTo: contentHost.leadingAnchor,
                 constant: documentHorizontalInset
             ),
             contentView.trailingAnchor.constraint(
-                equalTo: documentView.trailingAnchor,
+                equalTo: contentHost.trailingAnchor,
                 constant: -documentHorizontalInset
             ),
-            contentView.bottomAnchor.constraint(
-                lessThanOrEqualTo: documentView.bottomAnchor,
-                constant: -documentBottomInset
-            )
+            contentView.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor)
         ])
         return root
     }
@@ -182,5 +219,21 @@ final class DashboardScrollablePageViewController: NSViewController {
             NotificationCenter.default.removeObserver(clipViewObserver)
             self.clipViewObserver = nil
         }
+    }
+}
+
+/// Full-width document wrapper around the inset page stack. It has no
+/// intrinsic height of its own: hosted sections report height, the four-edge
+/// pin sizes this wrapper, and leftover clip-view height stays in the fill.
+private final class DashboardSettingsContentHost: NSView {}
+
+/// Bottom spacer with a real intrinsic height. Views without intrinsic size
+/// are treated as freely stretchable, which is what made SettingsRowView grow.
+private final class DashboardSettingsDocumentFillView: NSView {
+    override var intrinsicContentSize: NSSize {
+        NSSize(
+            width: NSView.noIntrinsicMetric,
+            height: DashboardScrollablePageViewController.documentBottomInset
+        )
     }
 }

@@ -64,6 +64,9 @@ final class SettingsSectionView: NSView {
         headingLabel.setContentHuggingPriority(.required, for: .vertical)
         headingLabel.setContentCompressionResistancePriority(.required, for: .vertical)
         headingLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        headingLabel.heightAnchor.constraint(
+            greaterThanOrEqualToConstant: ceil(Self.headingFont.boundingRectForFont.height)
+        ).isActive = true
         headingLabel.isHidden = title.isEmpty
 
         cardView.translatesAutoresizingMaskIntoConstraints = false
@@ -111,9 +114,9 @@ final class SettingsSectionView: NSView {
         contentStack.setClippingResistancePriority(.required, for: .vertical)
         contentStack.detachesHiddenViews = true
         if !headingLabel.isHidden {
-            contentStack.addArrangedSubview(headingLabel)
+            contentStack.addView(headingLabel, in: .top)
         }
-        contentStack.addArrangedSubview(cardView)
+        contentStack.addView(cardView, in: .top)
 
         addSubview(contentStack)
         NSLayoutConstraint.activate([
