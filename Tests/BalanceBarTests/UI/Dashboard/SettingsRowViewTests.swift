@@ -328,6 +328,86 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertNotNil(SettingsRowView.enclosing(launchWithChatGPTSwitch))
     }
 
+    func testAdvancedDebugLogRowUsesNativeSettingsRowView() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let logViewer = NSView()
+        logViewer.translatesAutoresizingMaskIntoConstraints = false
+        logViewer.heightAnchor.constraint(equalToConstant: 190).isActive = true
+        let page = DashboardAdvancedPage().make(.init(
+            relay: DashboardPreferencePageRelay(),
+            logViewer: logViewer
+        ))
+        let reloadButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardAdvancedPageReload) }
+        )
+        let revealButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardAdvancedPageShowInFinder) }
+        )
+        let row = try XCTUnwrap(SettingsRowView.enclosing(reloadButton))
+        XCTAssertIdentical(SettingsRowView.enclosing(revealButton), row)
+        XCTAssertEqual(row.titleLabel.stringValue, tr(.keyDashboardAdvancedPageDebugLog))
+        XCTAssertEqual(
+            row.detailLabel.stringValue,
+            tr(.keyDashboardAdvancedPageRecordsRuntimeStatusAndErrors)
+        )
+        XCTAssertIdentical(row.accessoryView, reloadButton.superview)
+        XCTAssertEqual(reloadButton.action, #selector(DashboardPreferencePageRelay.refreshLog(_:)))
+        XCTAssertEqual(revealButton.action, #selector(DashboardPreferencePageRelay.revealLog(_:)))
+        XCTAssertNil(SettingsRowView.enclosing(logViewer))
+    }
+
+    func testAdvancedDebugLogRowWrappingSettlesWithoutMutatingDuringLayout() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let logViewer = NSView()
+        logViewer.translatesAutoresizingMaskIntoConstraints = false
+        logViewer.heightAnchor.constraint(
+            equalToConstant: DashboardAdvancedPage.logViewerHeight
+        ).isActive = true
+        let page = DashboardAdvancedPage().make(.init(
+            relay: DashboardPreferencePageRelay(),
+            logViewer: logViewer
+        ))
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: page, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        let reloadButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardAdvancedPageReload) }
+        )
+        let row = try XCTUnwrap(SettingsRowView.enclosing(reloadButton))
+
+        for width in [880, 640, 516, 720, 880, 516] as [CGFloat] {
+            pin(page, to: host, window: window, width: width)
+            let wrappingWidth = row.detailLabel.preferredMaxLayoutWidth
+            XCTAssertGreaterThan(wrappingWidth, 1)
+            page.layoutSubtreeIfNeeded()
+            XCTAssertEqual(
+                row.detailLabel.preferredMaxLayoutWidth,
+                wrappingWidth,
+                accuracy: 0.5,
+                "wrapping width must already be settled after layout; layout must not keep mutating it at \(width)"
+            )
+            XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+            assertLabelsDoNotOverlapControl(
+                in: row,
+                control: try XCTUnwrap(row.accessoryView),
+                width: width
+            )
+        }
+    }
+
     func testTitleToSubtitleVisualSpacingMatchesLegacyRowInTheSameCard() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
