@@ -318,7 +318,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
 
     func testCallerProvidedTitlebarAccessoryKeepsItsLegalLayoutAttribute() throws {
         let provided = NSTitlebarAccessoryViewController()
-        provided.layoutAttribute = .leading
+        provided.layoutAttribute = .left
         let child = ProbeAccessoryController(marker: "caller-titlebar-child")
         provided.addChild(child)
         provided.view = child.view
@@ -345,7 +345,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
         XCTAssertEqual(controller.accessoryHostForTesting.createdByHostForTesting, false)
         XCTAssertTrue(controller.accessoryHostForTesting.titlebarAccessoryForTesting === provided)
-        XCTAssertEqual(provided.layoutAttribute, .leading)
+        XCTAssertEqual(provided.layoutAttribute, .left)
         XCTAssertTrue(provided.children.contains(child))
         XCTAssertTrue(child.parent === provided)
 
@@ -355,7 +355,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
         XCTAssertTrue(provided.children.contains(child))
         XCTAssertTrue(child.parent === provided)
-        XCTAssertEqual(provided.layoutAttribute, .leading)
+        XCTAssertEqual(provided.layoutAttribute, .left)
     }
 
     func testCallerProvidedSplitItemAccessoryKeepsChildContainmentAfterUnmount() throws {
