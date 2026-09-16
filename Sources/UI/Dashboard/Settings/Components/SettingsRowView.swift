@@ -77,6 +77,7 @@ final class SettingsRowView: NSView {
 
     override func layout() {
         syncAdaptiveAccessory()
+        applyWrappingWidths()
         super.layout()
         applyWrappingWidths()
     }
@@ -121,15 +122,22 @@ final class SettingsRowView: NSView {
         guard wrappingChanged else { return }
         invalidateIntrinsicContentSize()
         notifyHeightHost()
+        needsLayout = true
     }
 
     private func wrappingWidthForLabels() -> CGFloat {
+        if stacksVertically {
+            if bounds.width > 1 {
+                return max(0, bounds.width - Self.horizontalPadding * 2)
+            }
+            return max(0, contentStack.bounds.width)
+        }
         var reserved = Self.horizontalPadding * 2
-        if !stacksVertically, let accessoryView, !accessoryView.isHidden {
+        if let accessoryView, !accessoryView.isHidden {
             // fittingSize ignores a leftover full-width frame from the
             // previous vertical pass, which would otherwise wrap titles
             // into a sliver and inflate the wide-row height.
-            reserved += max(1, accessoryView.fittingSize.width) + contentStack.spacing
+            reserved += max(1, accessoryView.fittingSize.width) + Self.contentSpacing
         }
         if bounds.width > 1 {
             return max(0, bounds.width - reserved)
@@ -296,7 +304,63 @@ final class SettingsRowView: NSView {
         else { return }
         let availableWidth = max(0, bounds.width - Self.horizontalPadding * 2)
         adaptive.updateAvailableRowWidth(availableWidth)
-        applyVerticalStacking(adaptive.usesDedicatedRow)
+        // Control orientation (side-by-side vs stacked popups/buttons) is
+        // independent of row placement (accessory beside text vs below it).
+        applyVerticalStacking(shouldPlaceAccessoryOnDedicatedRow(adaptive, availableWidth: availableWidth))
+        applyWrappingWidths()
+    }
+
+    private func shouldPlaceAccessoryOnDedicatedRow(
+        _ adaptive: DashboardSettingsRowControlLayout,
+        availableWidth: CGFloat
+    ) -> Bool {
+        // `usesDedicatedRow` means the controls themselves went vertical.
+        // Text-driven placement is separate: the accessory can stay
+        // horizontal while moving onto the row below the labels.
+        if adaptive.usesDedicatedRow {
+            return true
+        }
+        guard adaptive.allowsTextDrivenDedicatedRow,
+              let accessoryView,
+              !accessoryView.isHidden,
+              availableWidth > 0
+        else { return false }
+        let remainingWhenBeside = availableWidth
+            - max(1, accessoryView.fittingSize.width)
+            - Self.contentSpacing
+        if remainingWhenBeside <= 0 {
+            return true
+        }
+        return labelsExceedInlineLineBudget(at: remainingWhenBeside)
+    }
+
+    /// Side-by-side text may use up to four wrapped lines. The fifth line
+    /// moves the accessory below the labels. Line counts come from
+    /// `intrinsicContentSize` at the inline width, not `measureTextLineLayout`
+    /// or the wrapping cache.
+    private func labelsExceedInlineLineBudget(at width: CGFloat) -> Bool {
+        let titleWidth = wrappingWidthForTitle(labelWidth: width)
+        let titleLines = estimatedWrappedLineCount(titleLabel, at: titleWidth)
+        let detailLines = detailLabel.isHidden
+            ? 0
+            : estimatedWrappedLineCount(detailLabel, at: width)
+        return titleLines + detailLines > DashboardSettingsComponents.settingsTextLineReflowThreshold
+    }
+
+    private func estimatedWrappedLineCount(_ label: NSTextField, at width: CGFloat) -> Int {
+        let wrappedHeight = intrinsicHeight(label, at: width)
+        let singleLineHeight = intrinsicHeight(label, at: 10_000)
+        guard wrappedHeight > 0, singleLineHeight > 0 else { return 0 }
+        return max(1, Int(ceil((wrappedHeight - 0.5) / singleLineHeight)))
+    }
+
+    private func intrinsicHeight(_ label: NSTextField, at width: CGFloat) -> CGFloat {
+        guard width > 1, !label.stringValue.isEmpty, !label.isHidden else { return 0 }
+        let previous = label.preferredMaxLayoutWidth
+        label.preferredMaxLayoutWidth = width
+        let height = ceil(label.intrinsicContentSize.height)
+        label.preferredMaxLayoutWidth = previous
+        return height
     }
 
     private func applyVerticalStacking(_ vertical: Bool) {

@@ -795,6 +795,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     file: file,
                     line: line
                 )
+                let availableTextWidth = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
+                XCTAssertGreaterThan(
+                    row.detailLabel.preferredMaxLayoutWidth,
+                    controlsFrame.width - 0.5,
+                    "dedicated-row text uses the full content width above the accessory",
+                    file: file,
+                    line: line
+                )
+                XCTAssertEqual(
+                    row.detailLabel.preferredMaxLayoutWidth,
+                    availableTextWidth,
+                    accuracy: 1,
+                    "dedicated-row wrapping width matches the row's content column",
+                    file: file,
+                    line: line
+                )
             } else {
                 XCTAssertFalse(
                     labelsFrame.intersects(controlsFrame),
@@ -821,8 +837,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
 
         assertLayout(width: 720, orientation: .horizontal, usesDedicatedRow: false)
-        assertLayout(width: 516, orientation: .horizontal, usesDedicatedRow: false)
+        assertLayout(width: 516, orientation: .horizontal, usesDedicatedRow: true)
         assertLayout(width: 320, orientation: .vertical, usesDedicatedRow: true)
+        assertLayout(width: 720, orientation: .horizontal, usesDedicatedRow: false)
 
         runningPopup.selectItem(at: 4)
         relay.interval(runningPopup)
