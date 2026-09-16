@@ -2037,15 +2037,24 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertFalse(pageStack.arrangedSubviews.isEmpty)
 
             for sectionView in pageStack.arrangedSubviews {
-                let sectionStack = try XCTUnwrap(sectionView as? NSStackView)
-                XCTAssertEqual(sectionStack.arrangedSubviews.count, 2)
-                let heading = try XCTUnwrap(sectionStack.arrangedSubviews.first as? NSTextField)
+                let heading: NSTextField
+                let card: NSView
+                let rowsStack: NSStackView
+                if let native = sectionView as? SettingsSectionView {
+                    heading = native.headingLabel
+                    card = native.cardView
+                    rowsStack = native.rowsStack
+                } else {
+                    let sectionStack = try XCTUnwrap(sectionView as? NSStackView)
+                    XCTAssertEqual(sectionStack.arrangedSubviews.count, 2)
+                    heading = try XCTUnwrap(sectionStack.arrangedSubviews.first as? NSTextField)
+                    card = sectionStack.arrangedSubviews[1]
+                    rowsStack = try XCTUnwrap(
+                        firstDescendant(of: card, as: NSStackView.self)
+                    )
+                }
                 XCTAssertEqual(heading.font?.pointSize ?? -1, 17, accuracy: 0.01)
-                let card = sectionStack.arrangedSubviews[1]
                 XCTAssertEqual(card.layer?.cornerRadius ?? -1, 18, accuracy: 0.01)
-                let rowsStack = try XCTUnwrap(
-                    firstDescendant(of: card, as: NSStackView.self)
-                )
                 XCTAssertFalse(rowsStack.arrangedSubviews.isEmpty)
                 for row in rowsStack.arrangedSubviews where !(row is NSBox) && !row.isHidden {
                     XCTAssertGreaterThanOrEqual(row.frame.height, 62)

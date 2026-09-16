@@ -388,9 +388,9 @@ final class DashboardGeneralPage {
             control: launchWithChatGPTControls
         )
 
-        let startup = DashboardSettingsComponents.makeSettingsSection(
-            tr(.keyDashboardGeneralAndRefreshPagesStartup),
-            rows: [launchAtLoginRow, silentLaunchRow, launchWithChatGPTRow]
+        let startup = SettingsSectionView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesStartup),
+            contentViews: [launchAtLoginRow, silentLaunchRow, launchWithChatGPTRow]
         )
 
         let activeRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
