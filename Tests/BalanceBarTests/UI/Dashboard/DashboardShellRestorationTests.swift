@@ -119,6 +119,76 @@ final class DashboardShellRestorationTests: XCTestCase {
         XCTAssertFalse(defaults.isSidebarCollapsed)
     }
 
+    func testEmptyStoreUsesDefaultCenteredPlacementNotAutosaveRegistration() {
+        XCTAssertEqual(
+            DashboardShellRestoration.framePlacement(
+                saved: nil,
+                defaultFrame: defaultFrame,
+                screens: [mainScreen]
+            ),
+            .defaultCentered
+        )
+        XCTAssertEqual(
+            DashboardShellRestoration.framePlacement(
+                saved: DashboardShellRestorationRecord(
+                    windowedFrame: nil,
+                    sidebarWidth: 240,
+                    isSidebarCollapsed: true
+                ),
+                defaultFrame: defaultFrame,
+                screens: [mainScreen]
+            ),
+            .defaultCentered
+        )
+        XCTAssertEqual(
+            DashboardShellRestoration.framePlacement(
+                saved: DashboardShellRestorationRecord(
+                    windowedFrame: NSRect(x: 0, y: 0, width: CGFloat.nan, height: 620),
+                    sidebarWidth: 240,
+                    isSidebarCollapsed: false
+                ),
+                defaultFrame: defaultFrame,
+                screens: [mainScreen]
+            ),
+            .defaultCentered
+        )
+    }
+
+    func testSavedWindowedFramePlacementRestoresFittedFrame() {
+        let savedFrame = NSRect(x: 80, y: 60, width: 1020, height: 700)
+        let placement = DashboardShellRestoration.framePlacement(
+            saved: DashboardShellRestorationRecord(
+                windowedFrame: savedFrame,
+                sidebarWidth: 260,
+                isSidebarCollapsed: false
+            ),
+            defaultFrame: defaultFrame,
+            screens: [mainScreen]
+        )
+        guard case .restored(let frame) = placement else {
+            return XCTFail("saved windowed frame must restore, not center")
+        }
+        XCTAssertEqual(frame, savedFrame)
+        XCTAssertNotEqual(frame, defaultFrame)
+
+        let oversized = NSRect(x: 100, y: 80, width: 2000, height: 1400)
+        let oversizedPlacement = DashboardShellRestoration.framePlacement(
+            saved: DashboardShellRestorationRecord(
+                windowedFrame: oversized,
+                sidebarWidth: 260,
+                isSidebarCollapsed: false
+            ),
+            defaultFrame: defaultFrame,
+            screens: [mainScreen]
+        )
+        guard case .restored(let fitted) = oversizedPlacement else {
+            return XCTFail("oversized saved frame must still restore, after fitting")
+        }
+        XCTAssertTrue(DashboardShellRestoration.isFullyContained(fitted, in: mainScreen))
+        XCTAssertEqual(fitted.width, mainScreen.width, accuracy: 0.001)
+        XCTAssertEqual(fitted.height, mainScreen.height, accuracy: 0.001)
+    }
+
     func testFullscreenFrameDoesNotOverwriteSavedWindowedFrame() {
         let windowed = NSRect(x: 80, y: 90, width: 960, height: 640)
         let fullscreen = NSRect(x: 0, y: 0, width: 1920, height: 1080)
@@ -148,35 +218,107 @@ final class DashboardShellRestorationTests: XCTestCase {
         )
     }
 
-    func testOffScreenAndRemovedDisplayFramesAreMovedOntoAVisibleScreen() {
-        let offScreen = NSRect(x: -2000, y: 40, width: 900, height: 620)
-        let corrected = DashboardShellRestoration.visibleFrame(
-            offScreen,
+    func testFullyOnScreenSavedFrameIsUnchanged() {
+        let saved = NSRect(x: 200, y: 140, width: 1100, height: 740)
+        let fitted = DashboardShellRestoration.visibleFrame(
+            saved,
             screens: [mainScreen],
             minSize: DashboardShellRestoration.minimumWindowSize,
             fallback: defaultFrame
         )
-        XCTAssertTrue(mainScreen.contains(NSPoint(x: corrected.midX, y: corrected.midY)))
-        XCTAssertGreaterThanOrEqual(corrected.width, DashboardShellRestoration.minimumWindowSize.width)
-        XCTAssertGreaterThanOrEqual(corrected.height, DashboardShellRestoration.minimumWindowSize.height)
+        XCTAssertEqual(fitted, saved)
+        XCTAssertTrue(DashboardShellRestoration.isFullyContained(fitted, in: mainScreen))
+    }
 
+    func testRemovedExternalDisplayMovesFrameFullyOntoRemainingScreen() {
         let onRemovedDisplay = NSRect(x: 1600, y: 80, width: 1000, height: 700)
-        let afterUnplug = DashboardShellRestoration.plan(
-            saved: DashboardShellRestorationRecord(
-                windowedFrame: onRemovedDisplay,
-                sidebarWidth: 240,
-                isSidebarCollapsed: false
-            ),
-            defaultFrame: defaultFrame,
-            screens: [mainScreen]
+        let afterUnplug = DashboardShellRestoration.visibleFrame(
+            onRemovedDisplay,
+            screens: [mainScreen],
+            minSize: DashboardShellRestoration.minimumWindowSize,
+            fallback: defaultFrame
         )
-        XCTAssertTrue(mainScreen.intersects(afterUnplug.windowedFrame))
-        XCTAssertGreaterThanOrEqual(
-            afterUnplug.windowedFrame.intersection(mainScreen).width,
-            DashboardShellRestoration.minimumVisibleWidth
+        XCTAssertTrue(DashboardShellRestoration.isFullyContained(afterUnplug, in: mainScreen))
+        XCTAssertFalse(externalScreen.intersects(afterUnplug))
+        XCTAssertEqual(afterUnplug.width, 1000, accuracy: 0.001)
+        XCTAssertEqual(afterUnplug.height, 700, accuracy: 0.001)
+    }
+
+    func testSavedFrameLargerThanNewVisibleFrameIsShrunkFullyOnScreen() {
+        let saved = NSRect(x: 100, y: 80, width: 2000, height: 1400)
+        let fitted = DashboardShellRestoration.visibleFrame(
+            saved,
+            screens: [mainScreen],
+            minSize: DashboardShellRestoration.minimumWindowSize,
+            fallback: defaultFrame
         )
-        XCTAssertFalse(externalScreen.intersects(afterUnplug.windowedFrame))
-        XCTAssertEqual(afterUnplug.sidebarWidth, 240)
+        XCTAssertEqual(fitted.width, mainScreen.width, accuracy: 0.001)
+        XCTAssertEqual(fitted.height, mainScreen.height, accuracy: 0.001)
+        XCTAssertTrue(DashboardShellRestoration.isFullyContained(fitted, in: mainScreen))
+        XCTAssertNotEqual(fitted, saved)
+    }
+
+    func testPartiallyVisibleFrameIsCorrectedToFullyVisibleRange() {
+        let sliver = NSRect(x: 1390, y: -200, width: 2000, height: 1400)
+        XCTAssertGreaterThan(sliver.intersection(mainScreen).width, 0)
+        XCTAssertFalse(DashboardShellRestoration.isFullyContained(sliver, in: mainScreen))
+
+        let fitted = DashboardShellRestoration.visibleFrame(
+            sliver,
+            screens: [mainScreen],
+            minSize: DashboardShellRestoration.minimumWindowSize,
+            fallback: defaultFrame
+        )
+        XCTAssertTrue(DashboardShellRestoration.isFullyContained(fitted, in: mainScreen))
+        XCTAssertEqual(fitted.width, mainScreen.width, accuracy: 0.001)
+        XCTAssertEqual(fitted.height, mainScreen.height, accuracy: 0.001)
+    }
+
+    func testTargetScreenSmallerThanMinSizeDoesNotOverflow() {
+        let tinyScreen = NSRect(x: 20, y: 30, width: 600, height: 400)
+        let saved = NSRect(x: 10, y: 10, width: 800, height: 540)
+        let fitted = DashboardShellRestoration.visibleFrame(
+            saved,
+            screens: [tinyScreen],
+            minSize: DashboardShellRestoration.minimumWindowSize,
+            fallback: defaultFrame
+        )
+        XCTAssertEqual(fitted.width, tinyScreen.width, accuracy: 0.001)
+        XCTAssertEqual(fitted.height, tinyScreen.height, accuracy: 0.001)
+        XCTAssertTrue(DashboardShellRestoration.isFullyContained(fitted, in: tinyScreen))
+        XCTAssertLessThan(fitted.width, DashboardShellRestoration.minimumWindowSize.width)
+        XCTAssertLessThan(fitted.height, DashboardShellRestoration.minimumWindowSize.height)
+    }
+
+    func testMultiScreenRestorationPicksLargestIntersectionThenFits() {
+        let onExternal = NSRect(x: 1500, y: 40, width: 900, height: 700)
+        let kept = DashboardShellRestoration.visibleFrame(
+            onExternal,
+            screens: [mainScreen, externalScreen],
+            minSize: DashboardShellRestoration.minimumWindowSize,
+            fallback: defaultFrame
+        )
+        XCTAssertEqual(kept, onExternal)
+        XCTAssertTrue(DashboardShellRestoration.isFullyContained(kept, in: externalScreen))
+        XCTAssertFalse(DashboardShellRestoration.isFullyContained(kept, in: mainScreen))
+
+        let mostlyExternal = NSRect(x: 1200, y: 0, width: 800, height: 600)
+        let fitted = DashboardShellRestoration.visibleFrame(
+            mostlyExternal,
+            screens: [mainScreen, externalScreen],
+            minSize: DashboardShellRestoration.minimumWindowSize,
+            fallback: defaultFrame
+        )
+        XCTAssertTrue(DashboardShellRestoration.isFullyContained(fitted, in: externalScreen))
+        XCTAssertGreaterThan(
+            area(mostlyExternal.intersection(externalScreen)),
+            area(mostlyExternal.intersection(mainScreen))
+        )
+    }
+
+    private func area(_ rect: NSRect) -> CGFloat {
+        guard rect.width > 0, rect.height > 0 else { return 0 }
+        return rect.width * rect.height
     }
 
     func testUserDefaultsStoreRoundTripUsesDedicatedIdentityKey() throws {
@@ -256,6 +398,11 @@ final class DashboardShellRestorationWindowTests: XCTestCase {
         XCTAssertEqual(controller.section, .menuBar)
         XCTAssertEqual(window.frame.size.width, 1020, accuracy: 2)
         XCTAssertEqual(window.frame.size.height, 700, accuracy: 2)
+        guard case .restored(let restored) = controller.lastFramePlacement else {
+            return XCTFail("saved store must apply restored placement, not default centering")
+        }
+        XCTAssertEqual(restored.size.width, 1020, accuracy: 2)
+        XCTAssertEqual(restored.size.height, 700, accuracy: 2)
 
         let splitController = try XCTUnwrap(
             window.contentViewController as? DashboardSplitViewController
@@ -338,6 +485,29 @@ final class DashboardShellRestorationWindowTests: XCTestCase {
         )
     }
 
+    func testSidebarOnlySavedRecordDoesNotSkipDefaultCentering() throws {
+        let store = MemoryDashboardShellRestorationStore(
+            record: DashboardShellRestorationRecord(
+                windowedFrame: nil,
+                sidebarWidth: 260,
+                isSidebarCollapsed: false
+            )
+        )
+        let controller = makeController(store: store)
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.lastFramePlacement, .defaultCentered)
+        XCTAssertEqual(window.contentView?.bounds.width ?? -1, 880, accuracy: 1)
+        XCTAssertEqual(window.contentView?.bounds.height ?? -1, 620, accuracy: 1)
+        XCTAssertEqual(
+            try XCTUnwrap(sidebarWidth(in: window)),
+            260,
+            accuracy: 2
+        )
+    }
+
     func testEmptyStoreKeepsDefaultWindowAndSidebarGeometry() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -357,6 +527,7 @@ final class DashboardShellRestorationWindowTests: XCTestCase {
                     .splitViewItems.first?.isCollapsed
             )
         )
+        XCTAssertEqual(controller.lastFramePlacement, .defaultCentered)
     }
 
     func testWindowCreationUsesDedicatedFrameAutosaveIdentity() throws {
@@ -370,7 +541,11 @@ final class DashboardShellRestorationWindowTests: XCTestCase {
         XCTAssertTrue(source.contains("setFrameAutosaveName"))
         XCTAssertTrue(source.contains("DashboardShellRestoration.frameAutosaveName"))
         XCTAssertTrue(source.contains("DashboardShellRestoration.identity"))
+        XCTAssertTrue(source.contains("DashboardShellRestoration.framePlacement"))
+        XCTAssertTrue(source.contains("case .defaultCentered:"))
         XCTAssertFalse(source.contains("autosaveName ="))
+        XCTAssertFalse(source.contains("restoredAppKitFrame"))
+        XCTAssertFalse(source.contains("!restoredAppKitFrame"))
         let controller = makeController()
         defer { controller.teardown() }
         controller.open()

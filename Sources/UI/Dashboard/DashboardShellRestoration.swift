@@ -9,8 +9,6 @@ enum DashboardShellRestoration {
     static let userDefaultsKey = "BalanceBar.Dashboard.shellGeometry"
     static let defaultContentSize = NSSize(width: 880, height: 620)
     static let minimumWindowSize = NSSize(width: 800, height: 540)
-    static let minimumVisibleWidth: CGFloat = 50
-    static let minimumVisibleHeight: CGFloat = 22
 
     static var defaultSidebarWidth: CGFloat {
         DashboardSplitViewController.preferredSidebarThickness
@@ -35,6 +33,14 @@ struct DashboardShellRestorationRecord: Equatable {
     var windowedFrame: NSRect?
     var sidebarWidth: CGFloat?
     var isSidebarCollapsed: Bool?
+}
+
+/// Window placement is decided from the explicit Dashboard store, never from
+/// `NSWindow.setFrameAutosaveName`'s Bool (that value only means the name
+/// could be registered).
+enum DashboardShellFramePlacement: Equatable {
+    case defaultCentered
+    case restored(NSRect)
 }
 
 protocol DashboardShellRestorationStoring: AnyObject {
@@ -171,8 +177,18 @@ extension DashboardShellRestoration {
         minimumSidebarWidth: CGFloat = minimumSidebarWidth,
         maximumSidebarWidth: CGFloat = maximumSidebarWidth
     ) -> DashboardShellRestorationState {
-        let rawFrame = saved?.windowedFrame.flatMap { isUsableFrame($0) ? $0 : nil } ?? defaultFrame
-        let frame = visibleFrame(rawFrame, screens: screens, minSize: minSize, fallback: defaultFrame)
+        let frame: NSRect
+        switch framePlacement(
+            saved: saved,
+            defaultFrame: defaultFrame,
+            screens: screens,
+            minSize: minSize
+        ) {
+        case .restored(let restoredFrame):
+            frame = restoredFrame
+        case .defaultCentered:
+            frame = defaultFrame
+        }
         let rawWidth = saved?.sidebarWidth ?? defaultSidebarWidth
         let width = clampSidebarWidth(
             rawWidth,
@@ -187,39 +203,47 @@ extension DashboardShellRestoration {
         )
     }
 
+    /// Decide window placement from the explicit Dashboard store.
+    /// An empty store, or a record without a usable windowed frame, keeps the
+    /// original first-open centered geometry. AppKit autosave-name
+    /// registration is not an input.
+    static func framePlacement(
+        saved: DashboardShellRestorationRecord?,
+        defaultFrame: NSRect,
+        screens: [NSRect],
+        minSize: NSSize = minimumWindowSize
+    ) -> DashboardShellFramePlacement {
+        guard let savedFrame = saved?.windowedFrame, isUsableFrame(savedFrame) else {
+            return .defaultCentered
+        }
+        return .restored(
+            visibleFrame(savedFrame, screens: screens, minSize: minSize, fallback: defaultFrame)
+        )
+    }
+
     static func visibleFrame(
         _ frame: NSRect,
         screens: [NSRect],
         minSize: NSSize,
         fallback: NSRect
     ) -> NSRect {
-        var result = isUsableFrame(frame) ? frame : fallback
-        result.size.width = max(result.width, minSize.width)
-        result.size.height = max(result.height, minSize.height)
-
-        guard let screen = targetScreen(for: result, screens: screens) else {
+        let candidate = isUsableFrame(frame) ? frame : fallback
+        guard let screen = targetScreen(for: candidate, screens: screens) else {
+            var result = candidate
+            result.size.width = max(result.width, minSize.width)
+            result.size.height = max(result.height, minSize.height)
             return result
         }
+        return fit(candidate, onto: screen, minSize: minSize)
+    }
 
-        if isVisiblyOnScreen(result, screen: screen) {
-            return result
-        }
-
-        result.size.width = min(max(result.width, min(minSize.width, screen.width)), screen.width)
-        result.size.height = min(max(result.height, min(minSize.height, screen.height)), screen.height)
-        if result.maxX > screen.maxX {
-            result.origin.x = screen.maxX - result.width
-        }
-        if result.maxY > screen.maxY {
-            result.origin.y = screen.maxY - result.height
-        }
-        if result.minX < screen.minX {
-            result.origin.x = screen.minX
-        }
-        if result.minY < screen.minY {
-            result.origin.y = screen.minY
-        }
-        return result
+    static func isFullyContained(_ frame: NSRect, in screen: NSRect) -> Bool {
+        frame.width <= screen.width
+            && frame.height <= screen.height
+            && frame.minX >= screen.minX
+            && frame.maxX <= screen.maxX
+            && frame.minY >= screen.minY
+            && frame.maxY <= screen.maxY
     }
 
     static func currentScreens() -> [NSRect] {
@@ -235,15 +259,32 @@ extension DashboardShellRestoration {
             && frame.height > 0
     }
 
-    private static func isVisiblyOnScreen(_ frame: NSRect, screen: NSRect) -> Bool {
-        let visible = frame.intersection(screen)
-        return visible.width >= minimumVisibleWidth && visible.height >= minimumVisibleHeight
+    /// Size and origin are clamped so the result lies entirely inside `screen`.
+    /// `minSize` is honored only when the screen is large enough; a smaller
+    /// screen is the hard upper bound.
+    private static func fit(_ frame: NSRect, onto screen: NSRect, minSize: NSSize) -> NSRect {
+        var result = frame
+        let minWidth = min(minSize.width, screen.width)
+        let minHeight = min(minSize.height, screen.height)
+        result.size.width = min(max(result.width, minWidth), screen.width)
+        result.size.height = min(max(result.height, minHeight), screen.height)
+        if result.maxX > screen.maxX {
+            result.origin.x = screen.maxX - result.width
+        }
+        if result.minX < screen.minX {
+            result.origin.x = screen.minX
+        }
+        if result.maxY > screen.maxY {
+            result.origin.y = screen.maxY - result.height
+        }
+        if result.minY < screen.minY {
+            result.origin.y = screen.minY
+        }
+        return result
     }
 
     private static func targetScreen(for frame: NSRect, screens: [NSRect]) -> NSRect? {
-        if let visible = screens.first(where: { isVisiblyOnScreen(frame, screen: $0) }) {
-            return visible
-        }
+        guard !screens.isEmpty else { return nil }
         let ranked = screens.map { screen in
             (screen, area(frame.intersection(screen)))
         }

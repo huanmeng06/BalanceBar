@@ -177,6 +177,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private(set) var windowCreationCount = 0
     private(set) var appearanceObserverInstallCount = 0
     private(set) var mouseMonitorInstallCount = 0
+    private(set) var lastFramePlacement: DashboardShellFramePlacement?
 
     private var sourceListController: DashboardSourceListController?
     private var showsUpdateAvailableBadge = false
@@ -507,19 +508,24 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func restoreWindowedFrame(on window: NSWindow) {
-        let restoredAppKitFrame: Bool
-        if AutomatedTestHost.isRunning {
-            restoredAppKitFrame = false
-        } else {
-            restoredAppKitFrame = window.setFrameAutosaveName(
-                DashboardShellRestoration.frameAutosaveName
-            )
+        // Keep a dedicated AppKit identity. The Bool is only "name was set",
+        // not "a saved frame was restored", so it never chooses placement.
+        if !AutomatedTestHost.isRunning {
+            _ = window.setFrameAutosaveName(DashboardShellRestoration.frameAutosaveName)
         }
 
         isApplyingRestoration = true
-        if restorationStore.load() != nil {
-            window.setFrame(restorationPlan(for: window).windowedFrame, display: false)
-        } else if !AutomatedTestHost.isRunning, !restoredAppKitFrame {
+        let placement = DashboardShellRestoration.framePlacement(
+            saved: restorationStore.load(),
+            defaultFrame: window.frame,
+            screens: DashboardShellRestoration.currentScreens(),
+            minSize: window.minSize
+        )
+        lastFramePlacement = placement
+        switch placement {
+        case .restored(let frame):
+            window.setFrame(frame, display: false)
+        case .defaultCentered:
             window.center()
         }
         if AutomatedTestHost.isRunning {
