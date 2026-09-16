@@ -7316,6 +7316,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertNil(view(withIdentifier: "openCodexAutomaticDetectionRow", in: page))
             XCTAssertNil(view(withIdentifier: "openCodexManualPortRow", in: page))
             XCTAssertNil(view(withIdentifier: "openCodexDashboardRow", in: page))
+
+            let reloadButton = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSButton }
+                    .first { $0.title == tr(.keyDashboardAdvancedPageReload, language: language) }
+            )
+            XCTAssertNotNil(SettingsRowView.enclosing(reloadButton))
+            XCTAssertNotNil(SettingsSectionView.enclosing(reloadButton))
         }
     }
 

@@ -20,14 +20,15 @@ final class DashboardAdvancedPage {
         let logButtons = NSStackView(views: [refreshLog, revealLog])
         logButtons.orientation = .horizontal
         logButtons.spacing = 8
-        let logs = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardAdvancedPageDiagnostics), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardAdvancedPageDebugLog),
-                subtitle: tr(.keyDashboardAdvancedPageRecordsRuntimeStatusAndErrors),
-                control: logButtons
-            ),
-            input.logViewer
-        ])
+        let debugLogRow = SettingsRowView(
+            title: tr(.keyDashboardAdvancedPageDebugLog),
+            detail: tr(.keyDashboardAdvancedPageRecordsRuntimeStatusAndErrors),
+            accessoryView: logButtons
+        )
+        let logs = SettingsSectionView(
+            title: tr(.keyDashboardAdvancedPageDiagnostics),
+            contentViews: [debugLogRow, input.logViewer]
+        )
         return DashboardSettingsComponents.makeSettingsPageContent([logs])
     }
 }

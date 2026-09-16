@@ -160,6 +160,68 @@ final class SettingsSectionViewTests: XCTestCase {
         XCTAssertNil(SettingsSectionView.enclosing(refreshButton))
     }
 
+    func testAdvancedDiagnosticsSectionUsesNativeContainerAndSkipsLegacyMeasurement() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        DashboardSettingsLayoutMetrics.reset()
+        let logViewer = NSView()
+        logViewer.translatesAutoresizingMaskIntoConstraints = false
+        logViewer.heightAnchor.constraint(equalToConstant: 190).isActive = true
+        let page = DashboardAdvancedPage().make(.init(
+            relay: DashboardPreferencePageRelay(),
+            logViewer: logViewer
+        ))
+        let reloadButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardAdvancedPageReload) }
+        )
+        let diagnostics = try XCTUnwrap(SettingsSectionView.enclosing(reloadButton))
+        XCTAssertEqual(
+            diagnostics.headingLabel.stringValue,
+            tr(.keyDashboardAdvancedPageDiagnostics)
+        )
+        XCTAssertEqual(diagnostics.contentViews.count, 2)
+        XCTAssertIdentical(diagnostics.contentViews[1], logViewer)
+        XCTAssertNotNil(SettingsRowView.enclosing(reloadButton))
+        XCTAssertIdentical(SettingsSectionView.enclosing(logViewer), diagnostics)
+        XCTAssertEqual(diagnostics.separators.count, 1)
+
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: page, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        let debugLogRow = try XCTUnwrap(SettingsRowView.enclosing(reloadButton))
+        XCTAssertGreaterThanOrEqual(debugLogRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertEqual(logViewer.frame.height, 190, accuracy: 0.5)
+        let expectedHeight = debugLogRow.frame.height
+            + logViewer.frame.height
+            + DashboardSettingsComponents.settingsSeparatorHeight
+        XCTAssertEqual(diagnostics.cardView.frame.height, expectedHeight, accuracy: 0.5)
+        XCTAssertFalse(
+            diagnostics.cardView.constraints.contains { constraint in
+                constraint.firstAttribute == .height
+                    && constraint.secondItem == nil
+                    && constraint.relation == .equal
+            }
+        )
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
+
+        pin(page, to: host, window: window, width: 516)
+        XCTAssertGreaterThanOrEqual(debugLogRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertEqual(logViewer.frame.height, 190, accuracy: 0.5)
+        let narrowHeight = debugLogRow.frame.height
+            + logViewer.frame.height
+            + DashboardSettingsComponents.settingsSeparatorHeight
+        XCTAssertEqual(diagnostics.cardView.frame.height, narrowHeight, accuracy: 0.5)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+    }
+
     func testLongNativeRowGrowsSectionHeightAtNarrowWidth() throws {
         let longDetail = "This native settings description must wrap onto additional lines when the dashboard content column is narrow so the section height follows the row instead of a cached card measurement."
         let row = SettingsRowView(

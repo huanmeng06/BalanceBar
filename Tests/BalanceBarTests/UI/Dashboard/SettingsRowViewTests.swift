@@ -324,6 +324,41 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertNil(SettingsRowView.enclosing(launchWithChatGPTSwitch))
     }
 
+    func testAdvancedDebugLogRowUsesNativeSettingsRowView() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let logViewer = NSView()
+        logViewer.translatesAutoresizingMaskIntoConstraints = false
+        logViewer.heightAnchor.constraint(equalToConstant: 190).isActive = true
+        let page = DashboardAdvancedPage().make(.init(
+            relay: DashboardPreferencePageRelay(),
+            logViewer: logViewer
+        ))
+        let reloadButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardAdvancedPageReload) }
+        )
+        let revealButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardAdvancedPageShowInFinder) }
+        )
+        let row = try XCTUnwrap(SettingsRowView.enclosing(reloadButton))
+        XCTAssertIdentical(SettingsRowView.enclosing(revealButton), row)
+        XCTAssertEqual(row.titleLabel.stringValue, tr(.keyDashboardAdvancedPageDebugLog))
+        XCTAssertEqual(
+            row.detailLabel.stringValue,
+            tr(.keyDashboardAdvancedPageRecordsRuntimeStatusAndErrors)
+        )
+        XCTAssertIdentical(row.accessoryView, reloadButton.superview)
+        XCTAssertEqual(reloadButton.action, #selector(DashboardPreferencePageRelay.refreshLog(_:)))
+        XCTAssertEqual(revealButton.action, #selector(DashboardPreferencePageRelay.revealLog(_:)))
+        XCTAssertNil(SettingsRowView.enclosing(logViewer))
+    }
+
     func testTitleToSubtitleVisualSpacingMatchesLegacyRowInTheSameCard() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
