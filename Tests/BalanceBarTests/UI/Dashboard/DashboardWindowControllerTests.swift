@@ -26,9 +26,12 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(makeSidebarSource.contains("cornerRadius"))
         XCTAssertFalse(makeSidebarSource.contains("shadowOpacity"))
         XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
-        XCTAssertTrue(source.contains("contentLayoutGuide"))
-        XCTAssertTrue(source.contains("refreshSidebarChromeInset"))
+        XCTAssertTrue(source.contains("sidebarInteractiveViews"))
         XCTAssertTrue(source.contains("sourceListChromePadding"))
+        XCTAssertTrue(source.contains("pinSourceListBelowStableWindowChrome"))
+        XCTAssertFalse(source.contains("refreshSidebarChromeInset"))
+        XCTAssertFalse(source.contains("onWindowChromeNeedsRefresh"))
+        XCTAssertFalse(source.contains("equalTo: contentLayoutGuide.topAnchor"))
         XCTAssertFalse(source.contains("private func makeSidebar(titlebarHeight: CGFloat)"))
     }
 

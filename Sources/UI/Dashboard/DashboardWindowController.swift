@@ -26,17 +26,37 @@ struct DashboardWindowControllerActions {
 final class DashboardContentRootView: NSVisualEffectView {
     override var mouseDownCanMoveWindow: Bool { false }
 
+    /// Source-list views that must keep receiving clicks when a window
+    /// titlebar accessory shrinks `contentLayoutRect`. Empty sidebar chrome
+    /// above those views still passes through to the system titlebar.
+    var sidebarInteractiveViews: () -> [NSView] = { [] }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // fullSizeContentView draws under the titlebar. If this view claims
-        // those hits, NSThemeFrame never sees the double-click that runs
-        // AppleActionOnDoubleClick. Pass the titlebar band through.
+        // fullSizeContentView draws under the titlebar. Hits in the titlebar
+        // band must reach NSThemeFrame so AppleActionOnDoubleClick and the
+        // traffic lights keep working. A window titlebar accessory grows
+        // that band across the full window width; the full-height sidebar's
+        // source list still occupies its original rows and must keep them.
         guard let window else { return super.hitTest(point) }
         let pointInSelf = convert(point, from: superview)
+        if isPointInSidebarInteractiveRegion(pointInSelf) {
+            return super.hitTest(point)
+        }
         let layoutRectInSelf = convert(window.contentLayoutRect, from: nil)
         if layoutRectInSelf.height > 0, pointInSelf.y >= layoutRectInSelf.maxY {
             return nil
         }
         return super.hitTest(point)
+    }
+
+    private func isPointInSidebarInteractiveRegion(_ pointInSelf: NSPoint) -> Bool {
+        for view in sidebarInteractiveViews() {
+            let rect = view.convert(view.bounds, to: self)
+            if rect.contains(pointInSelf) {
+                return true
+            }
+        }
+        return false
     }
 }
 
@@ -185,9 +205,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     private var sourceListController: DashboardSourceListController?
     private var sourceListTopConstraint: NSLayoutConstraint?
-    /// 14pt is padding below traffic lights / content-layout top, not an
-    /// accessory height. `contentLayoutGuide` already includes titlebar
-    /// accessories; the constant must not bake in a strip height.
+    /// 14pt is padding below the installed titlebar/toolbar chrome, not an
+    /// accessory height. Temporary titlebar accessories must not change it.
     private let sourceListChromePadding: CGFloat = 14
     private var showsUpdateAvailableBadge = false
     private var appearanceObserver: NSObjectProtocol?
@@ -381,6 +400,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             self.appearanceObserver = nil
         }
         accessoryHost.detach()
+        if let root = window?.contentView as? DashboardContentRootView {
+            root.sidebarInteractiveViews = { [] }
+        }
         window?.delegate = nil
         window?.close()
         window = nil
@@ -400,7 +422,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         guard let resizedWindow = notification.object as? NSWindow,
               resizedWindow === window else { return }
         DashboardScrollTrace.marker("window-resize", source: "DashboardWindowController")
-        refreshSidebarChromeInset()
         actions.didResize()
         if !resizedWindow.inLiveResize {
             persistShellGeometry()
@@ -512,10 +533,13 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // controller so AppKit can bind the standard tracking separator.
         toolbarController.install(on: window)
         accessoryHost.attach(window: window, splitViewController: splitController)
-        accessoryHost.onWindowChromeNeedsRefresh = { [weak self] in
-            self?.refreshSidebarChromeInset()
+        if let root = splitController.view as? DashboardContentRootView {
+            root.sidebarInteractiveViews = { [weak self] in
+                guard let sourceList = self?.sourceListController else { return [] }
+                return [sourceList.view]
+            }
         }
-        pinSourceListBelowWindowChrome(in: window)
+        pinSourceListBelowStableWindowChrome(in: window)
         window.layoutIfNeeded()
         if collapsed {
             splitController.splitViewItems[0].isCollapsed = true
@@ -629,10 +653,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebar.addSubview(navigation)
         // Full-height sidebar sits under the titlebar. Keep the source-list
-        // below live window chrome without a custom glass/card wrapper.
-        // The top inset is pinned after the sidebar is in the window so it
-        // can track `contentLayoutGuide` (titlebar, toolbar, accessories).
-        // Scroll-edge content insets belong to #401.
+        // below the installed titlebar/toolbar chrome, not below temporary
+        // titlebar accessories. Scroll-edge content insets belong to #401.
         NSLayoutConstraint.activate([
             navigation.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor),
             navigation.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor),
@@ -641,35 +663,21 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         return sidebar
     }
 
-    private func pinSourceListBelowWindowChrome(in window: NSWindow) {
+    private func pinSourceListBelowStableWindowChrome(in window: NSWindow) {
         guard let navigation = sourceListController?.view,
               let sidebar = navigation.superview
         else { return }
         sourceListTopConstraint?.isActive = false
-        if let contentLayoutGuide = window.contentLayoutGuide as? NSLayoutGuide {
-            sourceListTopConstraint = navigation.topAnchor.constraint(
-                equalTo: contentLayoutGuide.topAnchor,
-                constant: sourceListChromePadding
-            )
-        } else {
-            let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
-            sourceListTopConstraint = navigation.topAnchor.constraint(
-                equalTo: sidebar.topAnchor,
-                constant: max(0, titlebarHeight + sourceListChromePadding)
-            )
-        }
-        sourceListTopConstraint?.isActive = true
-        window.layoutIfNeeded()
-    }
-
-    private func refreshSidebarChromeInset() {
-        guard let window, !isTornDown else { return }
-        if sourceListTopConstraint?.secondItem is NSLayoutGuide {
-            window.layoutIfNeeded()
-            return
-        }
+        // Measure chrome after the toolbar is installed and before any page
+        // accessory mounts. Pinning to the live content layout guide would
+        // drag the whole sidebar when a window titlebar accessory shrinks
+        // contentLayoutRect.
         let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
-        sourceListTopConstraint?.constant = max(0, titlebarHeight + sourceListChromePadding)
+        sourceListTopConstraint = navigation.topAnchor.constraint(
+            equalTo: sidebar.topAnchor,
+            constant: max(0, titlebarHeight + sourceListChromePadding)
+        )
+        sourceListTopConstraint?.isActive = true
         window.layoutIfNeeded()
     }
 
