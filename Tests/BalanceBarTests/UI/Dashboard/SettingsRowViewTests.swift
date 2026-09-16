@@ -206,14 +206,18 @@ final class SettingsRowViewTests: XCTestCase {
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
-        XCTAssertNil(SettingsRowView.enclosing(launchAtLoginSwitch))
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchAtLoginSwitch))
+        XCTAssertEqual(
+            launchAtLoginRow.titleLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin)
+        )
 
         let launchWithChatGPTSwitch = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == LaunchWithChatGPTController.toggleIdentifier }
         )
-        XCTAssertNil(SettingsRowView.enclosing(launchWithChatGPTSwitch))
+        XCTAssertNotNil(SettingsRowView.enclosing(launchWithChatGPTSwitch))
     }
 
     func testTitleToSubtitleVisualSpacingMatchesLegacyRowInTheSameCard() throws {
@@ -282,7 +286,7 @@ final class SettingsRowViewTests: XCTestCase {
         )
     }
 
-    func testGeneralSilentLaunchVisualSpacingMatchesNeighboringLegacyRow() throws {
+    func testGeneralSilentLaunchVisualSpacingMatchesNeighboringNativeRow() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -318,25 +322,21 @@ final class SettingsRowViewTests: XCTestCase {
                 .first { $0.identifier?.rawValue == AppPreferences.silentLaunchKey }
         )
         let nativeRow = try XCTUnwrap(SettingsRowView.enclosing(silentLaunchSwitch))
-        let launchAtLoginTitle = try XCTUnwrap(
+        let launchAtLoginSwitch = try XCTUnwrap(
             descendants(of: page)
-                .compactMap { $0 as? NSTextField }
-                .first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin) }
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
-        let launchAtLoginSubtitle = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSTextField }
-                .first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription) }
-        )
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchAtLoginSwitch))
 
         assertLabelUsesIntrinsicHeight(nativeRow.titleLabel, name: "Silent Launch title")
         assertLabelUsesIntrinsicHeight(nativeRow.detailLabel, name: "Silent Launch subtitle")
-        assertLabelUsesIntrinsicHeight(launchAtLoginTitle, name: "登录时自动启动 title")
-        assertLabelUsesIntrinsicHeight(launchAtLoginSubtitle, name: "登录时自动启动 subtitle")
+        assertLabelUsesIntrinsicHeight(launchAtLoginRow.titleLabel, name: "登录时自动启动 title")
+        assertLabelUsesIntrinsicHeight(launchAtLoginRow.detailLabel, name: "登录时自动启动 subtitle")
 
-        let legacyVisual = visualTitleToSubtitleSpacing(
-            title: launchAtLoginTitle,
-            subtitle: launchAtLoginSubtitle
+        let neighboringVisual = visualTitleToSubtitleSpacing(
+            title: launchAtLoginRow.titleLabel,
+            subtitle: launchAtLoginRow.detailLabel
         )
         let nativeVisual = visualTitleToSubtitleSpacing(
             title: nativeRow.titleLabel,
@@ -344,16 +344,16 @@ final class SettingsRowViewTests: XCTestCase {
         )
         XCTAssertEqual(
             nativeVisual,
-            legacyVisual,
+            neighboringVisual,
             accuracy: 1.0,
             "Silent Launch drawn title-to-subtitle gap must match 登录时自动启动. "
             + "A stretched title field (frame taller than intrinsic height) is the "
             + "regression from f840971: frame edge gap stayed 2pt while glyphs sat farther apart."
         )
 
-        let legacyBaseline = titleToSubtitleBaselineSpacing(
-            title: launchAtLoginTitle,
-            subtitle: launchAtLoginSubtitle
+        let neighboringBaseline = titleToSubtitleBaselineSpacing(
+            title: launchAtLoginRow.titleLabel,
+            subtitle: launchAtLoginRow.detailLabel
         )
         let nativeBaseline = titleToSubtitleBaselineSpacing(
             title: nativeRow.titleLabel,
@@ -361,10 +361,40 @@ final class SettingsRowViewTests: XCTestCase {
         )
         XCTAssertEqual(
             nativeBaseline,
-            legacyBaseline,
+            neighboringBaseline,
             accuracy: 1.0,
             "Silent Launch baseline gap must match 登录时自动启动 in the Startup card"
         )
+    }
+
+    func testTitleAccessorySitsBesideTitleWithoutConsumingDetailWrappingWidth() throws {
+        let badge = DashboardUpdateBadgeView()
+        let control = NSButton(title: "Download and Install", target: nil, action: nil)
+        let row = SettingsRowView(
+            title: "Check for Updates",
+            detail: "A new version is available: 1.0.6 -> 1.0.7",
+            titleAccessory: badge,
+            accessoryView: control
+        )
+        XCTAssertIdentical(row.titleAccessory, badge)
+        XCTAssertIdentical(badge.superview, row.titleHeaderStack)
+        XCTAssertIdentical(row.titleLabel.superview, row.titleHeaderStack)
+        XCTAssertIdentical(row.detailLabel.superview, row.labelsStack)
+
+        let section = SettingsSectionView(title: "Application", contentViews: [row])
+        let window = makeTestWindow(width: 640)
+        let host = pinningHost(for: section, in: window, width: 640)
+        defer { window.orderOut(nil) }
+
+        XCTAssertGreaterThan(row.titleLabel.preferredMaxLayoutWidth, 1)
+        XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 1)
+        XCTAssertGreaterThan(
+            row.detailLabel.preferredMaxLayoutWidth,
+            row.titleLabel.preferredMaxLayoutWidth,
+            "detail wrapping uses the full labels column; the title yields space to the badge"
+        )
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        _ = host
     }
 
     private func assertLabelsDoNotOverlapControl(

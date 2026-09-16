@@ -300,7 +300,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
-        let launchAtLoginRow = try XCTUnwrap(launchSwitch.superview)
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchSwitch))
         let launchAtLoginButtons = {
             self.descendants(of: launchAtLoginRow).compactMap { $0 as? NSButton }
         }
@@ -432,12 +432,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let launchWithChatGPTSwitch = try XCTUnwrap(
             switches.first { $0.identifier?.rawValue == LaunchWithChatGPTController.toggleIdentifier }
         )
-        let launchAtLoginRow = try XCTUnwrap(launchAtLoginSwitch.superview)
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchAtLoginSwitch))
         XCTAssertTrue(
             descendants(of: launchAtLoginRow).compactMap { $0 as? NSButton }.isEmpty
         )
         let launchWithChatGPTControls = try XCTUnwrap(launchWithChatGPTSwitch.superview)
-        let launchWithChatGPTRow = try XCTUnwrap(launchWithChatGPTControls.superview)
+        let launchWithChatGPTRow = try XCTUnwrap(SettingsRowView.enclosing(launchWithChatGPTControls))
         let launchWithChatGPTOpenSettingsButton = try XCTUnwrap(
             descendants(of: launchWithChatGPTRow)
                 .compactMap { $0 as? NSButton }
@@ -509,13 +509,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .compactMap { $0 as? NSSwitch }
                     .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
             )
-            let subtitle = try XCTUnwrap(
-                descendants(of: page)
-                    .compactMap { $0 as? NSTextField }
-                    .first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription) }
+            let row = try XCTUnwrap(SettingsRowView.enclosing(launchSwitch))
+            let labels = row.labelsStack
+            let subtitle = row.detailLabel
+            XCTAssertEqual(
+                subtitle.stringValue,
+                tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription)
             )
-            let labels = try XCTUnwrap(subtitle.superview)
-            let row = try XCTUnwrap(labels.superview)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 880, height: 760),
                 styleMask: [.borderless],
@@ -707,15 +707,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let runningControls = try XCTUnwrap(runningPopup.superview as? NSStackView)
         let trailingControls = try XCTUnwrap(trailingPopup.superview as? NSStackView)
         let controls = try XCTUnwrap(runningControls.superview as? DashboardAdaptiveControlsStackView)
-        let row = try XCTUnwrap(controls.superview)
-        let labels = try XCTUnwrap(
-            row.subviews
-                .compactMap { $0 as? NSStackView }
-                .first { $0 !== controls }
-        )
-        let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
-        let card = try XCTUnwrap(rowsStack.superview)
-        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let row = try XCTUnwrap(SettingsRowView.enclosing(controls))
+        let labels = row.labelsStack
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(row))
+        let rowsStack = section.rowsStack
+        let card = section.cardView
+        let separators = section.separators
 
         XCTAssertEqual(controls.arrangedSubviews.count, 2)
         XCTAssertTrue(controls.arrangedSubviews[0] === runningControls)
@@ -824,7 +821,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
 
         assertLayout(width: 720, orientation: .horizontal, usesDedicatedRow: false)
-        assertLayout(width: 516, orientation: .horizontal, usesDedicatedRow: true)
+        assertLayout(width: 516, orientation: .horizontal, usesDedicatedRow: false)
         assertLayout(width: 320, orientation: .vertical, usesDedicatedRow: true)
 
         runningPopup.selectItem(at: 4)
