@@ -164,6 +164,11 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private(set) var mouseMonitorInstallCount = 0
 
     private var sourceListController: DashboardSourceListController?
+    private var sourceListTopConstraint: NSLayoutConstraint?
+    /// 14pt is padding below traffic lights / content-layout top, not an
+    /// accessory height. `contentLayoutGuide` already includes titlebar
+    /// accessories; the constant must not bake in a strip height.
+    private let sourceListChromePadding: CGFloat = 14
     private var showsUpdateAvailableBadge = false
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
@@ -363,6 +368,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         guard let resizedWindow = notification.object as? NSWindow,
               resizedWindow === window else { return }
         DashboardScrollTrace.marker("window-resize", source: "DashboardWindowController")
+        refreshSidebarChromeInset()
         actions.didResize()
     }
 
@@ -415,8 +421,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     private func installLayout(in window: NSWindow) {
         detachPageContainerFromParent()
-        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
-        let sidebar = makeSidebar(titlebarHeight: titlebarHeight)
+        let sidebar = makeSidebar()
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         sidebar.setFrameSize(
             NSSize(
@@ -440,11 +445,17 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // controller so AppKit can bind the standard tracking separator.
         toolbarController.install(on: window)
         accessoryHost.attach(window: window, splitViewController: splitController)
+        accessoryHost.onWindowChromeNeedsRefresh = { [weak self] in
+            self?.refreshSidebarChromeInset()
+        }
+        pinSourceListBelowWindowChrome(in: window)
     }
 
-    private func makeSidebar(titlebarHeight: CGFloat) -> NSView {
+    private func makeSidebar() -> NSView {
         let sidebar = NSView()
 
+        sourceListTopConstraint?.isActive = false
+        sourceListTopConstraint = nil
         sourceListController?.teardown()
         let sourceList = DashboardSourceListController()
         sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
@@ -457,18 +468,48 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebar.addSubview(navigation)
         // Full-height sidebar sits under the titlebar. Keep the source-list
-        // below traffic lights without a custom glass/card wrapper.
+        // below live window chrome without a custom glass/card wrapper.
+        // The top inset is pinned after the sidebar is in the window so it
+        // can track `contentLayoutGuide` (titlebar, toolbar, accessories).
         // Scroll-edge content insets belong to #401.
         NSLayoutConstraint.activate([
-            navigation.topAnchor.constraint(
-                equalTo: sidebar.topAnchor,
-                constant: max(0, titlebarHeight + 14)
-            ),
             navigation.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor),
             navigation.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             navigation.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor)
         ])
         return sidebar
+    }
+
+    private func pinSourceListBelowWindowChrome(in window: NSWindow) {
+        guard let navigation = sourceListController?.view,
+              let sidebar = navigation.superview
+        else { return }
+        sourceListTopConstraint?.isActive = false
+        if let contentLayoutGuide = window.contentLayoutGuide as? NSLayoutGuide {
+            sourceListTopConstraint = navigation.topAnchor.constraint(
+                equalTo: contentLayoutGuide.topAnchor,
+                constant: sourceListChromePadding
+            )
+        } else {
+            let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
+            sourceListTopConstraint = navigation.topAnchor.constraint(
+                equalTo: sidebar.topAnchor,
+                constant: max(0, titlebarHeight + sourceListChromePadding)
+            )
+        }
+        sourceListTopConstraint?.isActive = true
+        window.layoutIfNeeded()
+    }
+
+    private func refreshSidebarChromeInset() {
+        guard let window, !isTornDown else { return }
+        if sourceListTopConstraint?.secondItem is NSLayoutGuide {
+            window.layoutIfNeeded()
+            return
+        }
+        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
+        sourceListTopConstraint?.constant = max(0, titlebarHeight + sourceListChromePadding)
+        window.layoutIfNeeded()
     }
 
     private func detachPageContainerFromParent() {

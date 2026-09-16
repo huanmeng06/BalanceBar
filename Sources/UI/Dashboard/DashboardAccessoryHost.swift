@@ -20,6 +20,9 @@ final class DashboardAccessoryHost {
     private weak var splitViewController: DashboardSplitViewController?
     private var mountedAccessory: MountedAccessory = .none
     private(set) var mountedKind: MountedKind = .none
+    /// Window chrome (titlebar accessories) can change `contentLayoutRect`.
+    /// The window controller refreshes sidebar inset from live geometry.
+    var onWindowChromeNeedsRefresh: (() -> Void)?
 
     func attach(window: NSWindow, splitViewController: DashboardSplitViewController) {
         removeCurrentAccessory()
@@ -42,6 +45,7 @@ final class DashboardAccessoryHost {
 
     func detach() {
         removeCurrentAccessory()
+        onWindowChromeNeedsRefresh = nil
         window = nil
         splitViewController = nil
     }
@@ -107,6 +111,7 @@ final class DashboardAccessoryHost {
             adoptedChild: adoptedChild
         )
         mountedKind = .windowTitlebar
+        onWindowChromeNeedsRefresh?()
     }
 
     private func mountContentSplitItem(_ content: NSViewController) {
@@ -166,8 +171,12 @@ final class DashboardAccessoryHost {
             }
             releaseHostAdoptedChild(adoptedChild, from: accessory, hostCreated: hostCreated)
         }
+        let didRemoveChrome = mountedKind != .none
         mountedAccessory = .none
         mountedKind = .none
+        if didRemoveChrome {
+            onWindowChromeNeedsRefresh?()
+        }
     }
 
     private func releaseHostAdoptedChild(

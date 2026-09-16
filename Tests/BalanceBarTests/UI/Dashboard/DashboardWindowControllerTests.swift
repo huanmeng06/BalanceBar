@@ -12,7 +12,7 @@ final class DashboardWindowControllerTests: XCTestCase {
             ),
             encoding: .utf8
         )
-        let start = try XCTUnwrap(source.range(of: "private func makeSidebar(titlebarHeight: CGFloat) -> NSView {"))
+        let start = try XCTUnwrap(source.range(of: "private func makeSidebar() -> NSView {"))
         let end = try XCTUnwrap(
             source.range(of: "var sourceListForTesting: DashboardSourceListController? { sourceListController }")
         )
@@ -26,6 +26,10 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(makeSidebarSource.contains("cornerRadius"))
         XCTAssertFalse(makeSidebarSource.contains("shadowOpacity"))
         XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
+        XCTAssertTrue(source.contains("contentLayoutGuide"))
+        XCTAssertTrue(source.contains("refreshSidebarChromeInset"))
+        XCTAssertTrue(source.contains("sourceListChromePadding"))
+        XCTAssertFalse(source.contains("private func makeSidebar(titlebarHeight: CGFloat)"))
     }
 
     func testToolbarControllerUsesPublicSystemSidebarItems() throws {

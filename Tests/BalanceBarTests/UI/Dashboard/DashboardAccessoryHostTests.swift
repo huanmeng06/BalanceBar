@@ -249,6 +249,9 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertFalse(hostSource.contains("automaticallyAdjustsSafeAreaInsets"))
         XCTAssertFalse(hostSource.contains("NSGlassEffectView"))
         XCTAssertFalse(hostSource.contains("NSVisualEffectView"))
+        XCTAssertFalse(hostSource.contains("DashboardSourceList"))
+        XCTAssertFalse(hostSource.contains("outlineView"))
+        XCTAssertTrue(hostSource.contains("onWindowChromeNeedsRefresh"))
 
         let windowSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
@@ -404,6 +407,124 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertTrue(child.parent === provided)
     }
 
+    func testWindowTitlebarAccessoryKeepsGeneralRowInsideInteractiveContentLayout() throws {
+        let harness = DashboardAccessoryHarnessController()
+        defer { harness.teardown() }
+        harness.present()
+        let controller = try XCTUnwrap(harness.windowControllerForTesting)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        XCTAssertEqual(controller.section, .general)
+        let before = try captureSidebarChromeSnapshot(
+            in: controller,
+            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
+        )
+        XCTAssertTrue(
+            before.hitIsSourceList,
+            "General row must be clickable before a titlebar accessory mounts: \(before.debugDescription)"
+        )
+        XCTAssertFalse(before.generalRowCenterIsInTitlebarBand)
+
+        controller.showSection(.menuBar)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
+
+        let mounted = try captureSidebarChromeSnapshot(
+            in: controller,
+            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
+        )
+        XCTAssertNotNil(mounted.accessoryFrameInWindow)
+        XCTAssertGreaterThan(
+            mounted.contentLayoutRect.height,
+            0,
+            "contentLayoutRect must remain a live chrome measurement: \(mounted.debugDescription)"
+        )
+        XCTAssertLessThan(
+            mounted.contentLayoutRect.height,
+            before.contentLayoutRect.height,
+            "NSTitlebarAccessoryViewController must shrink contentLayoutRect: before=\(before.contentLayoutRect) after=\(mounted.contentLayoutRect)"
+        )
+        XCTAssertFalse(
+            mounted.generalRowCenterIsInTitlebarBand,
+            "General row center must stay below live contentLayoutRect after titlebar accessory: \(mounted.debugDescription)"
+        )
+        XCTAssertTrue(
+            mounted.hitIsSourceList,
+            "General row hit-test must stay in the source-list hierarchy after titlebar accessory: \(mounted.debugDescription)"
+        )
+        XCTAssertLessThan(
+            mounted.sourceListFrameInWindow.maxY,
+            before.sourceListFrameInWindow.maxY,
+            "Source-list top must follow the smaller contentLayoutRect, not stay frozen: \(mounted.debugDescription)"
+        )
+        for section in [DashboardSection.general, .menuBar, .menu, .advanced, .about] {
+            try assertSectionRowIsInteractive(section, in: controller)
+        }
+
+        try clickSourceListSection(.general, in: controller)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        XCTAssertEqual(controller.section, .general)
+        try assertNoMountedAccessory(in: controller)
+
+        let restored = try captureSidebarChromeSnapshot(
+            in: controller,
+            accessoryIdentifier: DashboardAccessoryHarnessController.titlebarStripIdentifier
+        )
+        XCTAssertEqual(restored.contentLayoutRect.height, before.contentLayoutRect.height, accuracy: 0.5)
+        XCTAssertEqual(
+            restored.sourceListFrameInWindow.maxY,
+            before.sourceListFrameInWindow.maxY,
+            accuracy: 1
+        )
+        XCTAssertTrue(restored.hitIsSourceList, restored.debugDescription)
+
+        try clickSourceListSection(.menuBar, in: controller)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.section, .menuBar)
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
+        try assertSectionRowIsInteractive(.general, in: controller)
+
+        try clickSourceListSection(.menu, in: controller)
+        window.layoutIfNeeded()
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .contentSplitItem)
+        }
+        XCTAssertEqual(controller.section, .menu)
+
+        try clickSourceListSection(.general, in: controller)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.section, .general)
+        try assertNoMountedAccessory(in: controller)
+
+        try clickSourceListSection(.menu, in: controller)
+        window.layoutIfNeeded()
+        try clickSourceListSection(.menuBar, in: controller)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .windowTitlebar)
+        try assertSectionRowIsInteractive(.general, in: controller)
+        try clickSourceListSection(.general, in: controller)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.section, .general)
+
+        try clickSourceListSection(.menuBar, in: controller)
+        window.layoutIfNeeded()
+        try clickSourceListSection(.advanced, in: controller)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.section, .advanced)
+        try assertNoMountedAccessory(in: controller)
+
+        try clickSourceListSection(.menuBar, in: controller)
+        window.layoutIfNeeded()
+        try clickSourceListSection(.about, in: controller)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.section, .about)
+        try assertNoMountedAccessory(in: controller)
+    }
+
     func testHarnessIsDevOnlyAndReusesRealAccessoryHost() throws {
         XCTAssertFalse(
             DashboardAccessoryHarnessController.isEnabled(
@@ -501,6 +622,136 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertFalse(harnessSource.contains("NSSearchField"))
         XCTAssertFalse(harnessSource.contains("badge"))
         XCTAssertFalse(harnessSource.contains("NSMenu("))
+    }
+
+    private struct SidebarChromeSnapshot {
+        let windowFrame: NSRect
+        let contentLayoutRect: NSRect
+        let titlebarHeight: CGFloat
+        let sourceListFrameInWindow: NSRect
+        let generalRowFrameInWindow: NSRect
+        let generalRowCenterInWindow: NSPoint
+        let accessoryFrameInWindow: NSRect?
+        let hitViewPath: String
+        let hitIsSourceList: Bool
+        let generalRowCenterIsInTitlebarBand: Bool
+
+        var debugDescription: String {
+            "window=\(windowFrame) contentLayout=\(contentLayoutRect) titlebarHeight=\(titlebarHeight) sourceList=\(sourceListFrameInWindow) generalRow=\(generalRowFrameInWindow) generalCenter=\(generalRowCenterInWindow) accessory=\(String(describing: accessoryFrameInWindow)) hit=\(hitViewPath) hitIsSourceList=\(hitIsSourceList) inTitlebarBand=\(generalRowCenterIsInTitlebarBand)"
+        }
+    }
+
+    private func captureSidebarChromeSnapshot(
+        in controller: DashboardWindowController,
+        accessoryIdentifier: String
+    ) throws -> SidebarChromeSnapshot {
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let row = try XCTUnwrap(sourceList.row(for: .general))
+        let cell = try XCTUnwrap(
+            sourceList.outlineView.view(atColumn: 0, row: row, makeIfNecessary: true)
+        )
+        let contentView = try XCTUnwrap(window.contentView as? DashboardContentRootView)
+        let frameView = try XCTUnwrap(contentView.superview)
+        let generalRowFrameInWindow = cell.convert(cell.bounds, to: nil)
+        let generalRowCenterInWindow = cell.convert(
+            NSPoint(x: cell.bounds.midX, y: cell.bounds.midY),
+            to: nil
+        )
+        let centerInSelf = contentView.convert(generalRowCenterInWindow, from: nil)
+        let centerInSuperview = contentView.convert(centerInSelf, to: frameView)
+        let hitView = contentView.hitTest(centerInSuperview)
+        let accessory = view(withIdentifier: accessoryIdentifier, in: window)
+        return SidebarChromeSnapshot(
+            windowFrame: window.frame,
+            contentLayoutRect: window.contentLayoutRect,
+            titlebarHeight: max(0, window.frame.height - window.contentLayoutRect.height),
+            sourceListFrameInWindow: sourceList.view.convert(sourceList.view.bounds, to: nil),
+            generalRowFrameInWindow: generalRowFrameInWindow,
+            generalRowCenterInWindow: generalRowCenterInWindow,
+            accessoryFrameInWindow: accessory.map { $0.convert($0.bounds, to: nil) },
+            hitViewPath: hitViewPath(hitView),
+            hitIsSourceList: isSourceListHit(hitView, sourceList: sourceList),
+            generalRowCenterIsInTitlebarBand: window.contentLayoutRect.height > 0
+                && generalRowCenterInWindow.y >= window.contentLayoutRect.maxY - 0.5
+        )
+    }
+
+    private func assertSectionRowIsInteractive(
+        _ section: DashboardSection,
+        in controller: DashboardWindowController
+    ) throws {
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let row = try XCTUnwrap(sourceList.row(for: section))
+        let cell = try XCTUnwrap(
+            sourceList.outlineView.view(atColumn: 0, row: row, makeIfNecessary: true)
+        )
+        let contentView = try XCTUnwrap(window.contentView as? DashboardContentRootView)
+        let frameView = try XCTUnwrap(contentView.superview)
+        let centerInWindow = cell.convert(
+            NSPoint(x: cell.bounds.midX, y: cell.bounds.midY),
+            to: nil
+        )
+        XCTAssertLessThan(
+            centerInWindow.y,
+            window.contentLayoutRect.maxY - 0.5,
+            "\(section) row center must stay inside contentLayoutRect. center=\(centerInWindow) contentLayout=\(window.contentLayoutRect)"
+        )
+        let centerInSelf = contentView.convert(centerInWindow, from: nil)
+        let centerInSuperview = contentView.convert(centerInSelf, to: frameView)
+        let hitView = try XCTUnwrap(
+            contentView.hitTest(centerInSuperview),
+            "\(section) row hit-test returned nil; click would miss the source list. center=\(centerInWindow) contentLayout=\(window.contentLayoutRect)"
+        )
+        XCTAssertTrue(
+            isSourceListHit(hitView, sourceList: sourceList),
+            "\(section) row hit-test must land in the source-list hierarchy, got \(hitViewPath(hitView))"
+        )
+    }
+
+    private func clickSourceListSection(
+        _ section: DashboardSection,
+        in controller: DashboardWindowController
+    ) throws {
+        try assertSectionRowIsInteractive(section, in: controller)
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        let row = try XCTUnwrap(sourceList.row(for: section))
+        sourceList.outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+    }
+
+    private func isSourceListHit(
+        _ hitView: NSView?,
+        sourceList: DashboardSourceListController
+    ) -> Bool {
+        var view = hitView
+        while let current = view {
+            if current === sourceList.outlineView || current === sourceList.scrollView {
+                return true
+            }
+            view = current.superview
+        }
+        return false
+    }
+
+    private func hitViewPath(_ view: NSView?) -> String {
+        guard let view else { return "nil" }
+        var parts: [String] = []
+        var current: NSView? = view
+        while let node = current {
+            let name = String(describing: type(of: node))
+            if let identifier = node.identifier?.rawValue, !identifier.isEmpty {
+                parts.append("\(name)#\(identifier)")
+            } else {
+                parts.append(name)
+            }
+            current = node.superview
+        }
+        return parts.joined(separator: " -> ")
     }
 
     private func makeController(
