@@ -27,16 +27,33 @@ final class DashboardContentRootView: NSVisualEffectView {
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // fullSizeContentView draws under the titlebar. If this view claims
-        // those hits, NSThemeFrame never sees the double-click that runs
-        // AppleActionOnDoubleClick. Pass the titlebar band through.
+        // fullSizeContentView draws under the titlebar. Empty chrome in that
+        // band must reach NSThemeFrame so AppleActionOnDoubleClick and the
+        // traffic lights keep working. Hits that already land on AppKit
+        // controls stay with those controls so a window titlebar accessory
+        // cannot disable sidebar navigation.
         guard let window else { return super.hitTest(point) }
         let pointInSelf = convert(point, from: superview)
         let layoutRectInSelf = convert(window.contentLayoutRect, from: nil)
         if layoutRectInSelf.height > 0, pointInSelf.y >= layoutRectInSelf.maxY {
+            let hit = super.hitTest(point)
+            if let hit, isInteractiveControl(hit) {
+                return hit
+            }
             return nil
         }
         return super.hitTest(point)
+    }
+
+    private func isInteractiveControl(_ view: NSView) -> Bool {
+        var current: NSView? = view
+        while let node = current, node !== self {
+            if node is NSControl || node is NSOutlineView || node is NSTableView {
+                return true
+            }
+            current = node.superview
+        }
+        return false
     }
 }
 
@@ -66,6 +83,9 @@ final class DashboardSplitViewController: NSSplitViewController {
     let sidebarController: NSViewController
     let contentController: NSViewController
     private(set) var contentSurface = NSView()
+    var contentSplitViewItem: NSSplitViewItem? {
+        splitViewItems.first { $0.viewController === contentController }
+    }
     var onSidebarGeometryDidChange: (() -> Void)?
     private var splitResizeObserver: NSObjectProtocol?
 
@@ -170,6 +190,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private let restorationStore: DashboardShellRestorationStoring
     private let pageContainer = DashboardPageContainerViewController()
     private let toolbarController = DashboardToolbarController()
+    private let accessoryHost = DashboardAccessoryHost()
     private(set) var window: NSWindow?
     var contentHost: NSView { pageContainer.view }
     private(set) var section: DashboardSection = .general
@@ -371,6 +392,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             DistributedNotificationCenter.default().removeObserver(appearanceObserver)
             self.appearanceObserver = nil
         }
+        accessoryHost.detach()
         window?.delegate = nil
         window?.close()
         window = nil
@@ -423,7 +445,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private func replacePage(makePage: () -> NSViewController) {
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
         actions.prepareForPageReplacement()
-        pageContainer.replacePage(makePage())
+        let page = makePage()
+        pageContainer.replacePage(page)
+        accessoryHost.apply(page: page)
         // Complete the replacement synchronously so native accessibility
         // descendants are materialized before callers inspect the page
         // (notably on Xcode 16.4 CI).
@@ -499,6 +523,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // Install the toolbar after the split view is the window's content
         // controller so AppKit can bind the standard tracking separator.
         toolbarController.install(on: window)
+        accessoryHost.attach(window: window, splitViewController: splitController)
         window.layoutIfNeeded()
         if collapsed {
             splitController.splitViewItems[0].isCollapsed = true
@@ -633,6 +658,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     var sourceListForTesting: DashboardSourceListController? { sourceListController }
     var pageContainerForTesting: DashboardPageContainerViewController { pageContainer }
+    var accessoryHostForTesting: DashboardAccessoryHost { accessoryHost }
     var scrollablePageForTesting: DashboardScrollablePageViewController? {
         currentScrollablePage
     }

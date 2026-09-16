@@ -182,6 +182,7 @@ private func migrateLegacyPreferencesIfNeeded() {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var statusItemController: StatusItemController!
+    private let dashboardAccessoryHarness = DashboardAccessoryHarnessController()
     private lazy var dashboardComposition = DashboardCompositionController(
         state: DashboardCompositionState(
             preferences: preferences,
@@ -718,19 +719,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         configureApplicationMenu()
         NSApp.appearance = nil
         dashboardComposition.start()
+        let harnessPresented = dashboardAccessoryHarness.presentIfRequested()
         let pendingRestore = DashboardRestoreStore.peek()
         let initialPresentation = InitialLaunchPresentation.resolve(
             silentLaunch: preferences.silentLaunch,
             pendingDashboardRestore: pendingRestore != nil
         )
+        let shouldShowDashboard = initialPresentation == .dashboard && !harnessPresented
         let regularPolicyApplied: Bool
-        switch initialPresentation {
-        case .dashboard:
+        if shouldShowDashboard || harnessPresented {
             regularPolicyApplied = AutomatedTestHost.isRunning
                 ? NSApp.setActivationPolicy(.accessory)
                 : NSApp.setActivationPolicy(.regular)
-            showDashboard(restore: pendingRestore)
-        case .background:
+            if shouldShowDashboard {
+                showDashboard(restore: pendingRestore)
+            }
+        } else {
             regularPolicyApplied = NSApp.setActivationPolicy(.accessory)
         }
         statusItemController.start(
@@ -783,6 +787,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         activityCoordinator.stop()
         menuBarWidthAdjustmentCoalescer.cancel()
         menuBarStatusItemWidthAdjustmentSession.cancel()
+        dashboardAccessoryHarness.teardown()
         dashboardComposition.teardown()
         statusItemController.teardown()
         databaseWatcher.stop()

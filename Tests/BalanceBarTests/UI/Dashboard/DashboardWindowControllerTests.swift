@@ -26,6 +26,18 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(makeSidebarSource.contains("cornerRadius"))
         XCTAssertFalse(makeSidebarSource.contains("shadowOpacity"))
         XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
+        XCTAssertTrue(source.contains("accessoryHost.attach"))
+        XCTAssertTrue(source.contains("accessoryHost.apply"))
+        XCTAssertTrue(source.contains("accessoryHost.detach"))
+        XCTAssertFalse(source.contains("DashboardSidebarChromeBaseline"))
+        XCTAssertFalse(source.contains("sourceListTopConstraint"))
+        XCTAssertFalse(source.contains("sidebarInteractiveViews"))
+        XCTAssertFalse(source.contains("windowDidEnterFullScreen"))
+        XCTAssertFalse(source.contains("windowWillExitFullScreen"))
+        XCTAssertFalse(source.contains("NSTitlebarAccessoryViewController"))
+        XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
+        XCTAssertFalse(source.contains("titlebarAccessoryViewControllers"))
+        XCTAssertFalse(source.contains("topAlignedAccessoryViewControllers"))
     }
 
     func testToolbarControllerUsesPublicSystemSidebarItems() throws {
