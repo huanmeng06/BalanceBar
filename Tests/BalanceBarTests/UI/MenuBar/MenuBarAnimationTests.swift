@@ -1000,7 +1000,7 @@ final class MenuBarAnimationTests: XCTestCase {
 
         let menuBarPageSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Sources/UI/Dashboard/Pages/Preferences/DashboardMenuBarPage.swift"
+                "Sources/UI/Dashboard/Pages/Preferences/DashboardMenuBarPreviewSection.swift"
             ),
             encoding: .utf8
         )
