@@ -447,7 +447,6 @@ final class DashboardGeneralPage {
         let activeRefreshControls = DashboardAdaptiveControlsStackView(
             views: [runningControls, trailingControls]
         )
-        activeRefreshControls.allowsTextDrivenDedicatedRow = true
         activeRefreshControls.orientation = .horizontal
         activeRefreshControls.alignment = .centerY
         activeRefreshControls.spacing = 5
@@ -456,19 +455,20 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.manualRefresh(_:))
         )
-        let refreshing = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesRefresh), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
-                subtitle: tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning),
-                control: activeRefreshControls,
-                minimumHeight: DashboardSettingsComponents.standardRowHeight
-            ),
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardGeneralAndRefreshPagesBalanceData),
-                subtitle: tr(.keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow),
-                control: refreshButton
-            )
-        ])
+        let balanceUpdatesRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
+            detail: tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning),
+            accessoryView: activeRefreshControls
+        )
+        let refreshNowRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesBalanceData),
+            detail: tr(.keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow),
+            accessoryView: refreshButton
+        )
+        let refreshing = SettingsSectionView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
+            contentViews: [balanceUpdatesRow, refreshNowRow]
+        )
 
         let languagePopup = DashboardSettingsComponents.makePopUpButton(
             identifier: AppLanguage.preferenceKey,

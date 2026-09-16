@@ -152,12 +152,101 @@ final class SettingsSectionViewTests: XCTestCase {
         )
         XCTAssertNil(SettingsSectionView.enclosing(openButton))
 
+        let languagePopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppLanguage.preferenceKey }
+        )
+        XCTAssertNil(SettingsSectionView.enclosing(languagePopup))
+    }
+
+    func testGeneralRefreshSectionUsesNativeContainerWithoutLegacyCardHeightLoop() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "SettingsSectionViewTests.Refresh.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        DashboardSettingsLayoutMetrics.reset()
+        let page = DashboardGeneralPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            launchAtLoginState: LaunchAtLoginState(status: .notRegistered),
+            launchWithChatGPTState: LaunchWithChatGPTState(status: .notRegistered)
+        ))
         let refreshButton = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSButton }
                 .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) }
         )
-        XCTAssertNil(SettingsSectionView.enclosing(refreshButton))
+        let refresh = try XCTUnwrap(SettingsSectionView.enclosing(refreshButton))
+        XCTAssertEqual(
+            refresh.headingLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesRefresh)
+        )
+        XCTAssertEqual(refresh.contentViews.count, 2)
+        XCTAssertEqual(refresh.separators.count, 1)
+        XCTAssertTrue(refresh.contentViews.allSatisfy { $0 is SettingsRowView })
+        XCTAssertFalse(
+            refresh.cardView.constraints.contains { constraint in
+                constraint.firstAttribute == .height
+                    && constraint.secondItem == nil
+                    && constraint.relation == .equal
+            }
+        )
+
+        let openButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesOpenCcSwitch) }
+        )
+        XCTAssertNil(SettingsSectionView.enclosing(openButton))
+
+        let silentLaunchSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == AppPreferences.silentLaunchKey }
+        )
+        let startup = try XCTUnwrap(SettingsSectionView.enclosing(silentLaunchSwitch))
+        XCTAssertNotIdentical(refresh, startup)
+
+        let languagePopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppLanguage.preferenceKey }
+        )
+        XCTAssertNil(SettingsSectionView.enclosing(languagePopup))
+
+        refresh.removeFromSuperview()
+        DashboardSettingsLayoutMetrics.reset()
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: refresh, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        let first = refresh.contentViews[0]
+        let second = refresh.contentViews[1]
+        let expectedHeight = first.frame.height
+            + second.frame.height
+            + DashboardSettingsComponents.settingsSeparatorHeight
+        XCTAssertEqual(refresh.cardView.frame.height, expectedHeight, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(first.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertGreaterThanOrEqual(second.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+
+        pin(refresh, to: host, window: window, width: 516)
+        let narrowHeight = first.frame.height
+            + second.frame.height
+            + DashboardSettingsComponents.settingsSeparatorHeight
+        XCTAssertEqual(refresh.cardView.frame.height, narrowHeight, accuracy: 0.5)
+        XCTAssertEqual(first.frame.width, refresh.cardView.frame.width, accuracy: 0.5)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
     }
 
     func testAdvancedDiagnosticsSectionUsesNativeContainerAndSkipsLegacyMeasurement() throws {

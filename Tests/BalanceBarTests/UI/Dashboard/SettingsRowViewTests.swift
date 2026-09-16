@@ -404,6 +404,107 @@ final class SettingsRowViewTests: XCTestCase {
         }
     }
 
+    func testGeneralRefreshRowsUseNativeSettingsRowViewWithoutLegacyHeightLoop() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "SettingsRowViewTests.Refresh.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        DashboardSettingsLayoutMetrics.reset()
+        let page = DashboardGeneralPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            launchAtLoginState: LaunchAtLoginState(status: .notRegistered),
+            launchWithChatGPTState: LaunchWithChatGPTState(status: .notRegistered)
+        ))
+        let runningPopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "codexUsageRefreshInterval" }
+        )
+        let trailingPopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "postCodexRefreshDuration" }
+        )
+        let refreshButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) }
+        )
+        let languagePopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppLanguage.preferenceKey }
+        )
+
+        let updatesRow = try XCTUnwrap(SettingsRowView.enclosing(runningPopup))
+        let refreshNowRow = try XCTUnwrap(SettingsRowView.enclosing(refreshButton))
+        XCTAssertIdentical(SettingsRowView.enclosing(trailingPopup), updatesRow)
+        XCTAssertNotIdentical(updatesRow, refreshNowRow)
+        XCTAssertEqual(
+            updatesRow.titleLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks)
+        )
+        XCTAssertEqual(
+            updatesRow.detailLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning)
+        )
+        XCTAssertEqual(
+            refreshNowRow.titleLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesBalanceData)
+        )
+        XCTAssertEqual(
+            refreshNowRow.detailLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow)
+        )
+        XCTAssertTrue(updatesRow.accessoryView is DashboardAdaptiveControlsStackView)
+        XCTAssertIdentical(updatesRow.accessoryView?.superview, updatesRow)
+        XCTAssertFalse(updatesRow.contentStack.arrangedSubviews.contains { $0 === updatesRow.accessoryView })
+        XCTAssertIdentical(refreshNowRow.accessoryView, refreshButton)
+        XCTAssertIdentical(refreshButton.superview, refreshNowRow.contentStack)
+        XCTAssertNil(SettingsRowView.enclosing(languagePopup))
+
+        let refresh = try XCTUnwrap(SettingsSectionView.enclosing(updatesRow))
+        refresh.removeFromSuperview()
+        DashboardSettingsLayoutMetrics.reset()
+
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: refresh, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertGreaterThanOrEqual(refreshNowRow.frame.height, SettingsRowView.minimumHeight)
+        assertLabelsDoNotOverlapControl(
+            in: updatesRow,
+            control: try XCTUnwrap(updatesRow.accessoryView),
+            width: 880
+        )
+        assertLabelsDoNotOverlapControl(in: refreshNowRow, control: refreshButton, width: 880)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+
+        pin(refresh, to: host, window: window, width: 516)
+        XCTAssertGreaterThanOrEqual(updatesRow.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertGreaterThanOrEqual(refreshNowRow.frame.height, SettingsRowView.minimumHeight)
+        assertLabelsDoNotOverlapControl(
+            in: updatesRow,
+            control: try XCTUnwrap(updatesRow.accessoryView),
+            width: 516
+        )
+        assertLabelsDoNotOverlapControl(in: refreshNowRow, control: refreshButton, width: 516)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+    }
+
     func testTitleToSubtitleVisualSpacingMatchesLegacyRowInTheSameCard() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

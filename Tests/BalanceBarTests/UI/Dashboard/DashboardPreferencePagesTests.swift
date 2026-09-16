@@ -707,27 +707,25 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let runningControls = try XCTUnwrap(runningPopup.superview as? NSStackView)
         let trailingControls = try XCTUnwrap(trailingPopup.superview as? NSStackView)
         let controls = try XCTUnwrap(runningControls.superview as? DashboardAdaptiveControlsStackView)
-        let row = try XCTUnwrap(controls.superview)
-        let labels = try XCTUnwrap(
-            row.subviews
-                .compactMap { $0 as? NSStackView }
-                .first { $0 !== controls }
-        )
-        let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
-        let card = try XCTUnwrap(rowsStack.superview)
-        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let row = try XCTUnwrap(SettingsRowView.enclosing(controls))
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(row))
+        let labels = row.labelsStack
+        let card = section.cardView
 
         XCTAssertEqual(controls.arrangedSubviews.count, 2)
         XCTAssertTrue(controls.arrangedSubviews[0] === runningControls)
         XCTAssertTrue(controls.arrangedSubviews[1] === trailingControls)
+        XCTAssertIdentical(row.accessoryView, controls)
+        XCTAssertEqual(section.contentViews.count, 2)
 
         func assertCardHeight(_ message: String, file: StaticString = #filePath, line: UInt = #line) {
+            let rowsHeight = section.contentViews.reduce(CGFloat(0)) { $0 + $1.frame.height }
+            let expected = rowsHeight
+                + CGFloat(section.separators.count)
+                * DashboardSettingsComponents.settingsSeparatorHeight
             XCTAssertEqual(
                 card.frame.height,
-                DashboardSettingsComponents.settingsCardHeight(
-                    rowsStack: rowsStack,
-                    separators: separators
-                ),
+                expected,
                 accuracy: 0.5,
                 message,
                 file: file,
@@ -738,7 +736,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         func assertLayout(
             width: CGFloat,
             orientation: NSUserInterfaceLayoutOrientation,
-            usesDedicatedRow: Bool,
             file: StaticString = #filePath,
             line: UInt = #line
         ) {
@@ -774,34 +771,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     file: file,
                     line: line
                 )
-            } else {
-                XCTAssertGreaterThan(
-                    runningFrame.minY,
-                    trailingFrame.minY,
-                    "running controls remain before after controls in the vertical reflow",
-                    file: file,
-                    line: line
-                )
-            }
-            if usesDedicatedRow {
-                XCTAssertLessThanOrEqual(
-                    controlsFrame.maxY,
-                    labelsFrame.minY + 0.5,
-                    "refresh controls occupy a row below the title and subtitle",
-                    file: file,
-                    line: line
-                )
-                XCTAssertGreaterThan(
-                    row.frame.height,
-                    DashboardSettingsComponents.standardRowHeight,
-                    "refresh controls move to a dedicated row at the text line threshold",
-                    file: file,
-                    line: line
-                )
-            } else {
                 XCTAssertFalse(
                     labelsFrame.intersects(controlsFrame),
-                    "refresh controls stay beside the text without overlap",
+                    "refresh controls stay beside the wrapping text without overlap",
                     file: file,
                     line: line
                 )
@@ -812,20 +784,41 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     file: file,
                     line: line
                 )
-                XCTAssertGreaterThanOrEqual(
-                    row.frame.height,
-                    DashboardSettingsComponents.standardRowHeight,
-                    "the refresh row grows for its side-by-side content when needed",
+            } else {
+                XCTAssertGreaterThan(
+                    runningFrame.minY,
+                    trailingFrame.minY,
+                    "running controls remain before after controls in the vertical reflow",
+                    file: file,
+                    line: line
+                )
+                XCTAssertFalse(
+                    labelsFrame.intersects(controlsFrame),
+                    "refresh controls stay below the wrapping text without overlap",
+                    file: file,
+                    line: line
+                )
+                XCTAssertLessThanOrEqual(
+                    controlsFrame.maxY,
+                    labelsFrame.minY + 0.5,
+                    "refresh controls occupy the dedicated row below the title and subtitle",
                     file: file,
                     line: line
                 )
             }
-            assertCardHeight("refresh card height follows its adaptive control row", file: file, line: line)
+            XCTAssertGreaterThanOrEqual(
+                row.frame.height,
+                SettingsRowView.minimumHeight,
+                "the refresh row grows from Auto Layout intrinsic size",
+                file: file,
+                line: line
+            )
+            assertCardHeight("refresh card height follows its native rows", file: file, line: line)
         }
 
-        assertLayout(width: 720, orientation: .horizontal, usesDedicatedRow: false)
-        assertLayout(width: 516, orientation: .horizontal, usesDedicatedRow: true)
-        assertLayout(width: 320, orientation: .vertical, usesDedicatedRow: true)
+        assertLayout(width: 720, orientation: .horizontal)
+        assertLayout(width: 516, orientation: .horizontal)
+        assertLayout(width: 320, orientation: .vertical)
 
         runningPopup.selectItem(at: 4)
         relay.interval(runningPopup)
