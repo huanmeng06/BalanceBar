@@ -167,6 +167,114 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertEqual(row.titleLabel.stringValue, longTitle)
     }
 
+    func testDualButtonRowWrappingSettlesAcrossWideNarrowWideResize() throws {
+        let accessory = NSStackView(views: [
+            NSButton(title: "Reload", target: nil, action: nil),
+            NSButton(title: "Show in Finder", target: nil, action: nil)
+        ])
+        accessory.orientation = .horizontal
+        accessory.spacing = 8
+        accessory.setHuggingPriority(.required, for: .horizontal)
+        accessory.setClippingResistancePriority(.required, for: .horizontal)
+        let row = SettingsRowView(
+            title: "Debug Log",
+            detail: "Records runtime status and errors so wrapping must follow the remaining label width beside the two trailing buttons.",
+            accessoryView: accessory
+        )
+        let section = SettingsSectionView(title: "Diagnostics", contentViews: [row])
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: section, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        var wrappingByWidth: [CGFloat: CGFloat] = [:]
+        var heightByWidth: [CGFloat: CGFloat] = [:]
+        for width in [880, 640, 516, 720, 880, 516] as [CGFloat] {
+            pin(section, to: host, window: window, width: width)
+            let wrappingWidth = row.detailLabel.preferredMaxLayoutWidth
+            XCTAssertGreaterThan(wrappingWidth, 1)
+            section.layoutSubtreeIfNeeded()
+            XCTAssertEqual(
+                row.detailLabel.preferredMaxLayoutWidth,
+                wrappingWidth,
+                accuracy: 0.5,
+                "wrapping width must already be settled after layout; layout must not keep mutating it at \(width)"
+            )
+            XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+            assertLabelsDoNotOverlapControl(in: row, control: accessory, width: width)
+            wrappingByWidth[width] = wrappingWidth
+            heightByWidth[width] = row.frame.height
+        }
+        XCTAssertGreaterThan(
+            wrappingByWidth[880] ?? 0,
+            wrappingByWidth[516] ?? 0,
+            "narrower rows must wrap against a smaller preferredMaxLayoutWidth"
+        )
+        XCTAssertGreaterThanOrEqual(
+            heightByWidth[516] ?? 0,
+            heightByWidth[880] ?? 0,
+            "narrow width must not shrink the dual-button row below its wide height"
+        )
+    }
+
+    func testWrappingHeightCommitsAfterLiveResizeEndsWithoutLayoutInvalidation() throws {
+        let longDetail = "This native settings description must wrap onto additional lines when the dashboard content column is narrow so the switch stays visible beside the complete text."
+        let row = SettingsRowView(
+            title: "Silent Launch",
+            detail: longDetail,
+            accessoryView: NSSwitch()
+        )
+        let section = SettingsSectionView(title: "Startup", contentViews: [row])
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: section, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        let wideHeight = row.frame.height
+        let wideWrappingWidth = row.detailLabel.preferredMaxLayoutWidth
+        XCTAssertGreaterThan(wideWrappingWidth, 1)
+
+        window.setContentSize(NSSize(width: 516, height: 360))
+        host.setFrameSize(NSSize(width: 516, height: 360))
+        window.layoutIfNeeded()
+        section.layoutSubtreeIfNeeded()
+        XCTAssertLessThan(row.detailLabel.preferredMaxLayoutWidth, wideWrappingWidth)
+        XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 1)
+
+        row.viewDidEndLiveResize()
+        XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertGreaterThanOrEqual(
+            row.frame.height,
+            wideHeight - 0.5,
+            "viewDidEndLiveResize must commit wrapping height after a narrow resize"
+        )
+    }
+
+    func testRepeatedLayoutPassesDoNotChurnWrappingWidth() throws {
+        let row = SettingsRowView(
+            title: "Silent Launch",
+            detail: "Start in the background without opening the dashboard.",
+            accessoryView: NSSwitch()
+        )
+        let section = SettingsSectionView(title: "Startup", contentViews: [row])
+        let window = makeTestWindow(width: 640)
+        _ = pinningHost(for: section, in: window, width: 640)
+        defer { window.orderOut(nil) }
+
+        let wrappingWidth = row.detailLabel.preferredMaxLayoutWidth
+        XCTAssertGreaterThan(wrappingWidth, 1)
+        for _ in 0..<24 {
+            row.layoutSubtreeIfNeeded()
+            section.layoutSubtreeIfNeeded()
+            window.layoutIfNeeded()
+        }
+        XCTAssertEqual(
+            row.detailLabel.preferredMaxLayoutWidth,
+            wrappingWidth,
+            accuracy: 0.5,
+            "stable width must not keep mutating preferredMaxLayoutWidth across extra layout passes"
+        )
+        XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+    }
+
     func testGeneralSilentLaunchRowUsesNativeSettingsRowView() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -311,6 +419,10 @@ final class SettingsRowViewTests: XCTestCase {
         }
         window.layoutIfNeeded()
         page.layoutSubtreeIfNeeded()
+        descendants(of: page).compactMap { $0 as? SettingsRowView }.forEach {
+            $0.refreshWrappingLayout()
+        }
+        page.layoutSubtreeIfNeeded()
 
         let silentLaunchSwitch = try XCTUnwrap(
             descendants(of: page)
@@ -451,8 +563,16 @@ final class SettingsRowViewTests: XCTestCase {
         window.layoutIfNeeded()
         host.layoutSubtreeIfNeeded()
         section.layoutSubtreeIfNeeded()
+        refreshNativeRowWrapping(in: section)
         window.layoutIfNeeded()
         section.layoutSubtreeIfNeeded()
+    }
+
+    private func refreshNativeRowWrapping(in view: NSView) {
+        if let row = view as? SettingsRowView {
+            row.refreshWrappingLayout()
+        }
+        view.subviews.forEach { refreshNativeRowWrapping(in: $0) }
     }
 
     private func descendants(of view: NSView) -> [NSView] {

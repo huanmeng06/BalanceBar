@@ -31,7 +31,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 侧栏 source-list 导航 | `Sources/UI/Dashboard/DashboardSourceListController.swift` |
 | 页面装配与 Provider/偏好页生命周期 | `Sources/UI/Dashboard/DashboardCompositionController.swift` |
 | 通用/刷新/启动/应用设置 | `Pages/Preferences/DashboardGeneralAndRefreshPages.swift` |
-| 菜单栏 / 菜单 / 高级 / 关于 | `DashboardMenuBarPage.swift`、`DashboardMenuPage.swift`、`DashboardAdvancedPage.swift`、`DashboardAboutPage.swift` |
+| 菜单栏 / 菜单 / 高级 / 关于 | `DashboardMenuBarPage.swift` 与同目录 `DashboardMenuBar*Section.swift` / `DashboardMenuBarRepeatControls.swift` 的结构拆分；`DashboardMenuPage.swift`、`DashboardAdvancedPage.swift`、`DashboardAboutPage.swift` |
 | Provider 详情（生产路径） | `Pages/Providers/DashboardProviderPages.swift` 的 `makeDetailPage` |
 | 设置页滚动与卡片行 | `Components/DashboardSettingsComponents.swift`；原生试点在 `Settings/Components/`（`SettingsRowView`、`SettingsSectionView`） |
 | 浅色/深色自适应色 | `Components/DashboardComponents.swift` 的 `dashboardUsesDarkAppearance` |
