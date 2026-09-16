@@ -170,9 +170,7 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
         choiceID = choice.id
         providerLabel = NSTextField(labelWithString: choice.name)
         amountLabel = NSTextField(labelWithString: "—")
-        resetLabel = NSTextField(labelWithString: "")
         statusLabel = NSTextField(labelWithString: "")
-        syncSubtitleLabel = NSTextField(wrappingLabelWithString: "")
         actionButton = NSButton()
         relay = DashboardProviderPageRelay()
 
@@ -184,28 +182,34 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
         heading.spacing = 3
 
         amountLabel.font = .monospacedDigitSystemFont(ofSize: 34, weight: .semibold)
-        resetLabel.stringValue = choice.isCurrent
+        let initialReset = choice.isCurrent
             ? choice.initialResetText(input: input, formatter: Self.timeFormatter)
             : tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation)
-        let usage = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardProviderPagesUsage), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardProviderPagesRemainingBalance),
-                subtitle: resetLabel.stringValue,
-                subtitleLabel: resetLabel,
-                control: amountLabel,
-                minimumHeight: 76
-            )
-        ])
+        let usageRow = SettingsRowView(
+            title: tr(.keyDashboardProviderPagesRemainingBalance),
+            detail: initialReset,
+            accessoryView: amountLabel
+        )
+        resetLabel = usageRow.detailLabel
+        let usage = SettingsSectionView(
+            title: tr(.keyDashboardProviderPagesUsage),
+            contentViews: [usageRow]
+        )
 
         actionButton.bezelStyle = .roundRect
-        let connection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardProviderPagesCcSwitch), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardProviderPagesSyncStatus),
-                subtitle: "",
-                subtitleLabel: syncSubtitleLabel,
-                control: actionButton
-            )
-        ])
+        let initialSyncSubtitle = choice.isCurrent
+            ? tr(.keyDashboardProviderPagesFollowingThisProvider)
+            : tr(.keyDashboardProviderPagesThisProviderIsNotCurrentlyActive)
+        let connectionRow = SettingsRowView(
+            title: tr(.keyDashboardProviderPagesSyncStatus),
+            detail: initialSyncSubtitle,
+            accessoryView: actionButton
+        )
+        syncSubtitleLabel = connectionRow.detailLabel
+        let connection = SettingsSectionView(
+            title: tr(.keyDashboardProviderPagesCcSwitch),
+            contentViews: [connectionRow]
+        )
         root = DashboardSettingsComponents.makeSettingsPageContent([heading, usage, connection])
 
         relay.onRefresh = actions.onRefresh
