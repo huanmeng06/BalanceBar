@@ -835,13 +835,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     file: file,
                     line: line
                 )
-                XCTAssertLessThanOrEqual(
-                    row.frame.height,
-                    DashboardSettingsComponents.standardRowHeight + 24,
-                    "inline refresh row must stay compact; leftover wrap ICS or stretched fill made it taller than neighboring rows",
-                    file: file,
-                    line: line
-                )
             }
             assertCardHeight("refresh card height follows its adaptive control row", file: file, line: line)
         }

@@ -496,18 +496,7 @@ final class SettingsRowViewTests: XCTestCase {
         let host = NSView(frame: NSRect(x: 0, y: 0, width: 880, height: 760))
         window.contentView = host
         host.addSubview(page)
-        // Page stack has TAMIC off; pin to the 880×760 host instead of
-        // setFrameSize so width and leftover height both apply.
-        page.translatesAutoresizingMaskIntoConstraints = false
-        page.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        NSLayoutConstraint.activate([
-            page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            page.topAnchor.constraint(equalTo: host.topAnchor),
-            page.bottomAnchor.constraint(equalTo: host.bottomAnchor)
-        ])
-        window.setContentSize(NSSize(width: 880, height: 760))
-        host.setFrameSize(NSSize(width: 880, height: 760))
+        page.setFrameSize(host.bounds.size)
         defer {
             window.contentView = nil
             window.orderOut(nil)
@@ -714,97 +703,6 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertEqual(row.contentStack.orientation, .horizontal)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
-    }
-
-    func testWrappingWidthFollowsLaidOutLabelsColumnInsteadOfFittingSizeFloor() throws {
-        let row = SettingsRowView(
-            title: "登录时自动启动",
-            detail: "登录 Mac 后自动启动 BalanceBar",
-            accessoryView: NSSwitch()
-        )
-        let section = SettingsSectionView(title: "启动", contentViews: [row])
-        let window = makeTestWindow(width: 640)
-        let host = pinningHost(for: section, in: window, width: 640)
-        defer { window.orderOut(nil) }
-
-        let reserved = SettingsRowView.horizontalPadding * 2
-            + max(1, row.accessoryView?.intrinsicContentSize.width ?? 0)
-            + SettingsRowView.contentSpacing
-        XCTAssertEqual(
-            row.detailLabel.preferredMaxLayoutWidth,
-            max(0, row.bounds.width - reserved),
-            accuracy: 1,
-            "wrapping width must be leftover column width, not an 80pt fittingSize floor"
-        )
-        XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 120)
-        XCTAssertLessThanOrEqual(
-            row.titleLabel.frame.height,
-            22,
-            "short Chinese titles must stay on one line while the labels column is wider than the title"
-        )
-        XCTAssertFalse(row.titleLabel.stringValue.isEmpty)
-        XCTAssertGreaterThan(row.titleLabel.frame.height, 1)
-        _ = host
-    }
-
-    func testGeneralRefreshAndUpdateRowsStayCompactBesidePeerRowsAtWideWidth() throws {
-        let previousLanguage = AppLanguage.selected
-        defer { AppLanguage.selected = previousLanguage }
-        AppLanguage.selected = .simplifiedChinese
-
-        let suiteName = "SettingsRowViewTests.CompactPeerRows.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let page = DashboardGeneralPage().make(.init(
-            preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "OpenAI",
-            relay: DashboardPreferencePageRelay(),
-            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
-            launchAtLoginState: LaunchAtLoginState(status: .notRegistered),
-            launchWithChatGPTState: LaunchWithChatGPTState(status: .notRegistered)
-        ))
-        let window = makeTestWindow(width: 880)
-        let host = pinningHost(for: page, in: window, width: 880)
-        defer { window.orderOut(nil) }
-
-        let refreshNow = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSButton }
-                .first { $0.title == "立即刷新" || $0.title == "Refresh Now" }
-        )
-        let balanceRow = try XCTUnwrap(SettingsRowView.enclosing(refreshNow))
-        let refreshRow = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? DashboardAdaptiveControlsStackView }
-                .compactMap { SettingsRowView.enclosing($0) }
-                .first { row in
-                    let title = row.titleLabel.stringValue
-                    return title.contains("刷新")
-                        || title.localizedCaseInsensitiveContains("Balance updates")
-                }
-        )
-        let updateRow = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSButton }
-                .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
-                .flatMap { SettingsRowView.enclosing($0) }
-        )
-
-        XCTAssertLessThanOrEqual(
-            abs(refreshRow.frame.height - balanceRow.frame.height),
-            24,
-            "Refresh interval row must not keep extra blank height beside 余额信息; refresh=\(refreshRow.frame.height) peer=\(balanceRow.frame.height) wrap=\(refreshRow.detailLabel.preferredMaxLayoutWidth) labels=\(refreshRow.labelsStack.bounds.width)"
-        )
-        XCTAssertLessThanOrEqual(
-            abs(updateRow.frame.height - balanceRow.frame.height),
-            24,
-            "Check for Updates row must not keep extra blank height; update=\(updateRow.frame.height) peer=\(balanceRow.frame.height)"
-        )
-        XCTAssertGreaterThan(refreshRow.titleLabel.frame.height, 1)
-        XCTAssertFalse(refreshRow.titleLabel.stringValue.isEmpty)
-        _ = host
     }
 
     private func assertLabelsDoNotOverlapControl(

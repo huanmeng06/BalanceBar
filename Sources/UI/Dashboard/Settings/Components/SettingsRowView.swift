@@ -106,18 +106,6 @@ final class SettingsRowView: NSView {
         applyWrappingWidths(invalidateHeight: true)
         needsLayout = true
         layoutSubtreeIfNeeded()
-        // Nested layout can assign the final row width after the first wrap
-        // commit. Recommit only when wrapping widened so a stale tall
-        // intrinsic height can shrink.
-        let settledWidth = wrappingWidthForLabels()
-        let settledTitle = wrappingWidthForTitle(labelWidth: settledWidth)
-        guard settledTitle > titleLabel.preferredMaxLayoutWidth + 0.5
-            || (!detailLabel.isHidden
-                && settledWidth > detailLabel.preferredMaxLayoutWidth + 0.5)
-        else { return }
-        applyWrappingWidths(invalidateHeight: true)
-        needsLayout = true
-        layoutSubtreeIfNeeded()
     }
 
     func updateDetail(_ text: String?) {
@@ -144,9 +132,7 @@ final class SettingsRowView: NSView {
 
     private func applyWrappingWidths(invalidateHeight: Bool) {
         let labelWidth = wrappingWidthForLabels()
-        // Still publish a wrap width when leftover collapsed to ~0 so a
-        // previous wide `preferredMaxLayoutWidth` cannot stick across resize.
-        guard labelWidth > 0 else { return }
+        guard labelWidth > 1 else { return }
         let titleWidth = wrappingWidthForTitle(labelWidth: labelWidth)
         let widthChanged = wrappingNeedsUpdate(titleWidth: titleWidth, labelWidth: labelWidth)
         guard widthChanged || (invalidateHeight && wrappingHeightIsDirty) else { return }
@@ -211,48 +197,17 @@ final class SettingsRowView: NSView {
             }
             return max(0, contentStack.bounds.width)
         }
-        let available = bounds.width > 1
-            ? bounds.width
-            : (superview?.bounds.width ?? 0)
-        guard available > 1 else { return 0 }
         var reserved = Self.horizontalPadding * 2
         if let accessoryView, !accessoryView.isHidden {
-            reserved += accessoryWidthForWrapping(accessoryView) + Self.contentSpacing
+            let fitted = accessoryView.fittingSize.width
+            let accessoryWidth = fitted > 1 ? fitted : accessoryView.bounds.width
+            reserved += max(1, accessoryWidth) + Self.contentSpacing
         }
-        let leftover = available - reserved
-        if leftover > 1 {
-            return leftover
-        }
-        // Accessory overflowed the row. Wrap against the minimum labels
-        // column when the row is wide enough, so a previous wide wrap cannot
-        // stick. Skip only when the row has not been assigned a width yet.
-        let minimumColumn = Self.horizontalPadding * 2 + Self.minimumInlineLabelWidth
-        if available + 0.5 >= minimumColumn {
-            return Self.minimumInlineLabelWidth
-        }
-        return 0
-    }
-
-    private func accessoryWidthForWrapping(_ accessoryView: NSView) -> CGFloat {
-        // Prefer intrinsic width. Live-resize can inflate `fittingSize`, and
-        // a compressed `bounds` (vertical controls) is smaller than the
-        // control's natural width.
-        let intrinsic = accessoryView.intrinsicContentSize.width
-        if intrinsic > 1, intrinsic < 10_000 {
-            return intrinsic
-        }
-        let fitted = accessoryView.fittingSize.width
-        let bounded = accessoryView.bounds.width
-        if bounded > 1, bounded < 10_000 {
-            if fitted > 1, fitted < 10_000 {
-                return min(fitted, bounded)
-            }
-            return bounded
-        }
-        if fitted > 1, fitted < 10_000 {
-            return fitted
-        }
-        return 1
+        let available = bounds.width > 1 ? bounds.width : labelsStack.bounds.width
+        guard available > 1 else { return 0 }
+        // Keep a usable wrapping width even when the accessory stack reports a
+        // stretched fitting size during live resize.
+        return max(80, available - reserved)
     }
 
     private func wrappingWidthForTitle(labelWidth: CGFloat) -> CGFloat {
@@ -416,8 +371,8 @@ final class SettingsRowView: NSView {
         adaptive.updateAvailableRowWidth(availableWidth)
         // Control orientation (horizontal vs vertical) is independent of row
         // placement (inline / vertical-beside / dedicated-below). Measure
-        // leftover label width against the accessory's natural width after
-        // the stack has chosen its own orientation.
+        // leftover label width against the accessory's current fitting size
+        // after the stack has chosen its own orientation.
         applyVerticalStacking(shouldPlaceAccessoryOnDedicatedRow(adaptive, availableWidth: availableWidth))
     }
 
@@ -431,10 +386,10 @@ final class SettingsRowView: NSView {
         else { return false }
         let minimumLabelWidth = adaptive.minimumInlineLabelWidth
         guard minimumLabelWidth > 0 else { return false }
-        // Uses the accessory's natural width, so a vertical control stack
-        // can remain beside the labels when leftover space is enough.
+        // Uses the accessory's current fitting width, so a vertical control
+        // stack can remain beside the labels when leftover space is enough.
         let remainingWhenBeside = availableWidth
-            - accessoryWidthForWrapping(accessoryView)
+            - max(1, accessoryView.fittingSize.width)
             - Self.contentSpacing
         return remainingWhenBeside + 0.5 < minimumLabelWidth
     }
