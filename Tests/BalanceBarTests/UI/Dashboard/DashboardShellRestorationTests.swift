@@ -365,9 +365,10 @@ final class DashboardShellRestorationTests: XCTestCase {
 @MainActor
 final class DashboardShellRestorationWindowTests: XCTestCase {
     func testRestoredSidebarWidthAndCollapseSurviveCloseAndReopen() throws {
+        let savedFrame = NSRect(x: 80, y: 60, width: 1020, height: 700)
         let store = MemoryDashboardShellRestorationStore(
             record: DashboardShellRestorationRecord(
-                windowedFrame: NSRect(x: 80, y: 60, width: 1020, height: 700),
+                windowedFrame: savedFrame,
                 sidebarWidth: 280,
                 isSidebarCollapsed: true
             )
@@ -377,8 +378,11 @@ final class DashboardShellRestorationWindowTests: XCTestCase {
         let firstWindow = try XCTUnwrap(first.window)
         firstWindow.layoutIfNeeded()
         firstWindow.displayIfNeeded()
-        XCTAssertEqual(firstWindow.frame.size.width, 1020, accuracy: 2)
-        XCTAssertEqual(firstWindow.frame.size.height, 700, accuracy: 2)
+        assertLiveWindowMatchesFittedSavedFrame(
+            firstWindow,
+            saved: savedFrame,
+            placement: first.lastFramePlacement
+        )
         XCTAssertTrue(
             try XCTUnwrap(
                 (firstWindow.contentViewController as? DashboardSplitViewController)?
@@ -396,13 +400,11 @@ final class DashboardShellRestorationWindowTests: XCTestCase {
 
         XCTAssertEqual(window.identifier?.rawValue, DashboardShellRestoration.identity)
         XCTAssertEqual(controller.section, .menuBar)
-        XCTAssertEqual(window.frame.size.width, 1020, accuracy: 2)
-        XCTAssertEqual(window.frame.size.height, 700, accuracy: 2)
-        guard case .restored(let restored) = controller.lastFramePlacement else {
-            return XCTFail("saved store must apply restored placement, not default centering")
-        }
-        XCTAssertEqual(restored.size.width, 1020, accuracy: 2)
-        XCTAssertEqual(restored.size.height, 700, accuracy: 2)
+        assertLiveWindowMatchesFittedSavedFrame(
+            window,
+            saved: savedFrame,
+            placement: controller.lastFramePlacement
+        )
 
         let splitController = try XCTUnwrap(
             window.contentViewController as? DashboardSplitViewController
@@ -576,5 +578,43 @@ final class DashboardShellRestorationWindowTests: XCTestCase {
               let sidebarItem = splitController.splitViewItems.first
         else { return nil }
         return sidebarItem.viewController.view.frame.width
+    }
+
+    /// Live windows are fitted onto the host `visibleFrame` before parking.
+    /// Assert the production fit, not the unsaved raw saved size: a 700pt
+    /// height is valid input, but a shorter CI screen must shrink it.
+    private func assertLiveWindowMatchesFittedSavedFrame(
+        _ window: NSWindow,
+        saved: NSRect,
+        placement: DashboardShellFramePlacement?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let expected = DashboardShellRestoration.visibleFrame(
+            saved,
+            screens: DashboardShellRestoration.currentScreens(),
+            minSize: window.minSize,
+            fallback: saved
+        )
+        XCTAssertEqual(window.frame.size.width, expected.width, accuracy: 2, file: file, line: line)
+        XCTAssertEqual(window.frame.size.height, expected.height, accuracy: 2, file: file, line: line)
+        guard case .restored(let restored) = placement else {
+            return XCTFail(
+                "saved store must apply restored placement, not default centering",
+                file: file,
+                line: line
+            )
+        }
+        XCTAssertEqual(restored.size.width, expected.width, accuracy: 2, file: file, line: line)
+        XCTAssertEqual(restored.size.height, expected.height, accuracy: 2, file: file, line: line)
+        let screens = DashboardShellRestoration.currentScreens()
+        if !screens.isEmpty {
+            XCTAssertTrue(
+                screens.contains { DashboardShellRestoration.isFullyContained(expected, in: $0) },
+                "fitted restored frame must lie fully inside a current visibleFrame",
+                file: file,
+                line: line
+            )
+        }
     }
 }
