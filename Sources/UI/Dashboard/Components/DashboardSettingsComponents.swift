@@ -1067,10 +1067,11 @@ enum DashboardSettingsComponents {
     /// 52pt viewport inset, and the 34pt document width contract belong to
     /// `DashboardScrollablePageViewController`.
     static func makeSettingsPageContent(_ sections: [NSView]) -> NSView {
-        let stack = NSStackView(views: sections)
+        let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 28
+        stack.distribution = .gravityAreas
         stack.translatesAutoresizingMaskIntoConstraints = false
         // Horizontal width belongs to the scroll document, not to whichever
         // arranged section happens to have the widest intrinsic content. This
@@ -1079,10 +1080,17 @@ enum DashboardSettingsComponents {
         stack.setContentCompressionResistancePriority(.required, for: .horizontal)
         stack.setContentHuggingPriority(.required, for: .vertical)
         stack.setContentCompressionResistancePriority(.required, for: .vertical)
+        stack.setHuggingPriority(.required, for: .vertical)
+        stack.setClippingResistancePriority(.required, for: .vertical)
         for section in sections {
+            // Top gravity keeps leftover height below the last card instead of
+            // opening a gravity gap between sections.
+            stack.addView(section, in: .top)
             section.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
             section.setContentHuggingPriority(.defaultLow, for: .horizontal)
             section.setContentCompressionResistancePriority(.required, for: .horizontal)
+            section.setContentHuggingPriority(.required, for: .vertical)
+            section.setContentCompressionResistancePriority(.required, for: .vertical)
         }
         return stack
     }
@@ -1106,6 +1114,13 @@ enum DashboardSettingsComponents {
     ) -> NSView {
         let heading = NSTextField(labelWithString: title)
         heading.font = .systemFont(ofSize: 17, weight: .semibold)
+        heading.setContentHuggingPriority(.required, for: .vertical)
+        heading.setContentCompressionResistancePriority(.required, for: .vertical)
+        let headingMinHeight = ceil(
+            (heading.font ?? NSFont.systemFont(ofSize: 17, weight: .semibold))
+                .boundingRectForFont.height
+        )
+        heading.heightAnchor.constraint(greaterThanOrEqualToConstant: headingMinHeight).isActive = true
         let card = DashboardSettingsCardView()
         card.wantsLayer = true
         card.layerContentsRedrawPolicy = .onSetNeedsDisplay
@@ -1201,12 +1216,19 @@ enum DashboardSettingsComponents {
         card.automaticallyUpdatesHeight = true
         onLayoutCreated?(rowsStack, cardHeightConstraint, separators)
 
-        let section = NSStackView(views: [heading, card])
+        let section = NSStackView()
         section.orientation = .vertical
         section.alignment = .leading
         section.spacing = 11
+        section.distribution = .gravityAreas
         section.setContentHuggingPriority(.defaultLow, for: .horizontal)
         section.setContentCompressionResistancePriority(.required, for: .horizontal)
+        section.setContentHuggingPriority(.required, for: .vertical)
+        section.setContentCompressionResistancePriority(.required, for: .vertical)
+        section.setHuggingPriority(.required, for: .vertical)
+        section.setClippingResistancePriority(.required, for: .vertical)
+        section.addView(heading, in: .top)
+        section.addView(card, in: .top)
         card.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
         return section
     }

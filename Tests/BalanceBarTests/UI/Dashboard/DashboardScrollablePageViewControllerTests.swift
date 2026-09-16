@@ -19,7 +19,8 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(controller.documentViewForTesting is DashboardSettingsDocumentView)
         XCTAssertTrue(controller.pageScrollView.contentView is NSClipView)
         XCTAssertFalse(controller.pageScrollView.contentView is DashboardClipView)
-        XCTAssertTrue(content.superview === controller.documentViewForTesting)
+        XCTAssertTrue(content.isDescendant(of: controller.documentViewForTesting))
+        XCTAssertFalse(content.superview === controller.documentViewForTesting)
         XCTAssertEqual(
             descendants(of: controller.view).compactMap { $0 as? NSScrollView }.count,
             1
@@ -43,6 +44,16 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(
             viewportFrameInPage.minY - controller.view.bounds.minY,
             DashboardScrollablePageViewController.viewportTopInset,
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            viewportFrameInPage.minX,
+            controller.view.safeAreaRect.minX,
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            viewportFrameInPage.maxX,
+            controller.view.safeAreaRect.maxX,
             accuracy: 1
         )
 
@@ -322,13 +333,38 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(pageSource.contains("let pageScrollView: NSScrollView"))
         XCTAssertTrue(pageSource.contains("var isAtTop"))
         XCTAssertTrue(pageSource.contains("var scrollOffset"))
+        XCTAssertTrue(pageSource.contains("root.safeAreaLayoutGuide.leadingAnchor"))
+        XCTAssertTrue(pageSource.contains("root.safeAreaLayoutGuide.trailingAnchor"))
+        XCTAssertTrue(pageSource.contains("dashboardPageDocumentFill"))
+        XCTAssertTrue(pageSource.contains("DashboardSettingsDocumentFillView"))
+        XCTAssertTrue(pageSource.contains("DashboardSettingsContentHost"))
+        XCTAssertTrue(pageSource.contains("greaterThanOrEqualTo: scrollView.contentView.heightAnchor"))
+        XCTAssertTrue(pageSource.contains("documentView.addSubview(contentHost)"))
+        XCTAssertTrue(pageSource.contains("documentView.addSubview(documentFill)"))
+        XCTAssertTrue(pageSource.contains("contentView.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor)"))
+        XCTAssertFalse(pageSource.contains("compressedContentHeight"))
+        XCTAssertFalse(pageSource.contains("arrangedSubviews.filter"))
+        XCTAssertFalse(pageSource.contains("content.fittingSize"))
+        XCTAssertFalse(pageSource.contains("view.fittingSize.height"))
+        XCTAssertFalse(pageSource.contains("content.intrinsicContentSize.height"))
+        XCTAssertFalse(pageSource.contains("lastReportedHeight"))
+        XCTAssertFalse(pageSource.contains("override func layout()"))
+        XCTAssertFalse(pageSource.contains("greaterThanOrEqualTo: contentView.bottomAnchor"))
+        XCTAssertFalse(pageSource.contains("lessThanOrEqualTo: contentHost.bottomAnchor"))
+        XCTAssertFalse(pageSource.contains("NSStackView(views: [contentHost, documentFill])"))
         XCTAssertFalse(pageSource.contains("firstScrollView(in:"))
+        XCTAssertFalse(pageSource.contains("automaticallyAdjustsSafeAreaInsets"))
+        XCTAssertFalse(pageSource.contains("preferredSidebarThickness"))
+        XCTAssertFalse(pageSource.contains("minimumSidebarThickness"))
+        XCTAssertFalse(pageSource.contains("additionalSafeAreaInsets"))
         XCTAssertFalse(pageSource.contains("NSGlassEffectView"))
         XCTAssertFalse(pageSource.contains("NSVisualEffectView"))
         XCTAssertFalse(pageSource.contains("shadowOpacity"))
         XCTAssertFalse(pageSource.contains("titlebarAccessory"))
 
         XCTAssertTrue(settingsSource.contains("makeSettingsPageContent"))
+        XCTAssertTrue(settingsSource.contains("addView(section, in: .top)"))
+        XCTAssertTrue(settingsSource.contains("addView(heading, in: .top)"))
         XCTAssertFalse(settingsSource.contains("let viewportTopInset: CGFloat = 52"))
         XCTAssertFalse(settingsSource.contains("NSScrollView()"))
     }

@@ -484,6 +484,10 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(contentItem.viewController === splitController.contentController)
         XCTAssertTrue(splitController.contentController is DashboardPageContainerViewController)
         XCTAssertTrue(splitController.contentController === controller.pageContainerForTesting)
+        if #available(macOS 26.0, *) {
+            XCTAssertTrue(contentItem.automaticallyAdjustsSafeAreaInsets)
+            XCTAssertFalse(sidebarItem.automaticallyAdjustsSafeAreaInsets)
+        }
         XCTAssertEqual(sidebarItem.behavior, .sidebar)
         XCTAssertNotEqual(contentItem.behavior, .sidebar)
         XCTAssertTrue(splitController.splitView.isVertical)
@@ -1142,12 +1146,31 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertGreaterThan(sidebar.frame.width, 0, file: file, line: line)
         let sidebarInSplit = sidebar.convert(sidebar.bounds, to: splitController.splitView)
         let contentInSplit = content.convert(content.bounds, to: splitController.splitView)
-        XCTAssertFalse(
-            sidebarInSplit.insetBy(dx: 0.5, dy: 0.5).intersects(contentInSplit.insetBy(dx: 0.5, dy: 0.5)),
-            "Sidebar and content frames overlap: \(sidebarInSplit) vs \(contentInSplit)",
-            file: file,
-            line: line
-        )
+        let framesOverlap = sidebarInSplit.insetBy(dx: 0.5, dy: 0.5)
+            .intersects(contentInSplit.insetBy(dx: 0.5, dy: 0.5))
+        if framesOverlap {
+            if #available(macOS 26.0, *),
+               splitController.splitViewItems[1].automaticallyAdjustsSafeAreaInsets {
+                let safeFrameInSplit = content.convert(
+                    content.safeAreaRect,
+                    to: splitController.splitView
+                )
+                XCTAssertFalse(
+                    sidebarInSplit.insetBy(dx: 0.5, dy: 0.5)
+                        .intersects(safeFrameInSplit.insetBy(dx: 0.5, dy: 0.5)),
+                    "Content safe area overlaps the floating sidebar: \(sidebarInSplit) vs \(safeFrameInSplit)",
+                    file: file,
+                    line: line
+                )
+                return
+            }
+            XCTFail(
+                "Sidebar and content frames overlap: \(sidebarInSplit) vs \(contentInSplit)",
+                file: file,
+                line: line
+            )
+            return
+        }
     }
 
     private func sourceListOutline(in window: NSWindow) -> NSOutlineView? {
