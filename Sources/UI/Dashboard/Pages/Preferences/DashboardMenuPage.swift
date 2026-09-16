@@ -174,41 +174,22 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let resetButton = NSButton(title: tr(.keyCommonRestoreDefaults), target: self, action: #selector(resetQuotaProgressColors(_:)))
         Self.configureQuotaColorResetButton(resetButton)
         let colorControls = QuotaColorSelectionStack()
-        colorControls.orientation = .horizontal
-        colorControls.alignment = .centerY
-        colorControls.spacing = 12
-        colorControls.distribution = .gravityAreas
-        colorControls.setContentHuggingPriority(.required, for: .horizontal)
-        colorControls.setContentCompressionResistancePriority(.required, for: .horizontal)
-        colorControls.setHuggingPriority(.required, for: .horizontal)
-        colorControls.setClippingResistancePriority(.required, for: .horizontal)
+        colorControls.orientation = .horizontal; colorControls.spacing = 12
         for color in QuotaProgressColor.allCases {
             let button = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleQuotaColor(_:)))
             button.identifier = NSUserInterfaceItemIdentifier("quotaProgressColor.\(color.rawValue)")
             button.setAccessibilityLabel(Self.colorLabel(color))
             button.state = quotaColorConfiguration.enabledColors.contains(color) ? .on : .off
-            button.setContentHuggingPriority(.required, for: .horizontal)
-            button.setContentCompressionResistancePriority(.required, for: .horizontal)
             let swatch = NSImageView(image: NSImage(systemSymbolName: "square.fill", accessibilityDescription: nil) ?? NSImage())
             swatch.contentTintColor = color.nsColor
             swatch.setAccessibilityElement(false)
-            swatch.setContentHuggingPriority(.required, for: .horizontal)
-            swatch.setContentCompressionResistancePriority(.required, for: .horizontal)
-            let item = NSStackView(views: [button, swatch])
-            item.orientation = .horizontal
-            item.alignment = .centerY
-            item.spacing = 4
-            item.setContentHuggingPriority(.required, for: .horizontal)
-            item.setContentCompressionResistancePriority(.required, for: .horizontal)
-            item.setHuggingPriority(.required, for: .horizontal)
-            item.setClippingResistancePriority(.required, for: .horizontal)
+            let item = NSStackView(views: [button, swatch]); item.orientation = .horizontal; item.alignment = .centerY; item.spacing = 4
             let checkboxBounds = NSRect(origin: .zero, size: button.fittingSize)
             let indicatorRect = button.cell?.imageRect(forBounds: checkboxBounds) ?? checkboxBounds
             let side = max(1, min(indicatorRect.width, indicatorRect.height))
             swatch.widthAnchor.constraint(equalToConstant: side).isActive = true
             swatch.heightAnchor.constraint(equalToConstant: side).isActive = true
-            colorControls.addView(item, in: .trailing)
-            quotaColorButtons[color] = button
+            colorControls.addArrangedSubview(item); quotaColorButtons[color] = button
         }
         updateQuotaColorButtons()
         let balanceDisplay: NSView? = lunaReserveRows.isEmpty
