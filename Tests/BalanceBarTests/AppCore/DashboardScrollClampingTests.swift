@@ -11,7 +11,7 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertFalse(scrollView.contentView is DashboardClipView)
         XCTAssertTrue(scrollView.documentView is DashboardSettingsDocumentView)
         XCTAssertTrue(scrollView.documentView?.isFlipped == true)
-        XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets)
+        XCTAssertTrue(scrollView.automaticallyAdjustsContentInsets)
         XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
         XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
         XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
@@ -148,7 +148,7 @@ final class DashboardScrollClampingTests: XCTestCase {
         let section = DashboardSettingsComponents.makeSettingsSection("Adaptive", rows: [row])
         let page = DashboardSettingsComponents.makeSettingsPage([section])
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 516, height: 160),
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 100),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -162,7 +162,7 @@ final class DashboardScrollClampingTests: XCTestCase {
         let narrowDocumentHeight = try XCTUnwrap(scrollView.documentView).bounds.height
         let narrowRowHeight = row.frame.height
 
-        window.setContentSize(NSSize(width: 740, height: 160))
+        window.setContentSize(NSSize(width: 740, height: 100))
         window.layoutIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         let wideDocumentHeight = try XCTUnwrap(scrollView.documentView).bounds.height
@@ -172,7 +172,7 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertGreaterThan(scrollView.documentView!.bounds.height, scrollView.contentView.bounds.height)
         XCTAssertEqual(documentOffset(scrollView), 0, accuracy: 1)
 
-        window.setContentSize(NSSize(width: 516, height: 160))
+        window.setContentSize(NSSize(width: 516, height: 100))
         window.layoutIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         XCTAssertEqual(row.frame.height, narrowRowHeight, accuracy: 0.5)
@@ -258,6 +258,35 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(geometry.maximumOffset, 0)
         XCTAssertEqual(geometry.clampedVisualOffset(-80), 0)
         XCTAssertEqual(geometry.clampedVisualOffset(80), 0)
+    }
+
+    func testFlippedGeometryTreatsTitlebarContentInsetAsRestOrigin() {
+        let geometry = DashboardScrollGeometry(
+            documentBounds: NSRect(x: 0, y: 0, width: 400, height: 1800),
+            viewportHeight: 620,
+            isDocumentFlipped: true,
+            topContentInset: 52
+        )
+
+        XCTAssertEqual(geometry.restOriginY, -52, accuracy: 0.0001)
+        XCTAssertEqual(geometry.maximumOffset, 1232, accuracy: 0.0001)
+        XCTAssertEqual(
+            geometry.visualOffset(for: NSRect(x: 0, y: -52, width: 400, height: 620)),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            geometry.visualOffset(for: NSRect(x: 0, y: 140, width: 400, height: 620)),
+            192,
+            accuracy: 0.0001
+        )
+        let rest = geometry.visibleDocumentRect(forVisualOffset: 0)
+        XCTAssertEqual(rest.minY, -52, accuracy: 0.0001)
+        XCTAssertEqual(rest.height, 620, accuracy: 0.0001)
+        let scrolled = geometry.visibleDocumentRect(forVisualOffset: 192)
+        XCTAssertEqual(scrolled.minY, 140, accuracy: 0.0001)
+        let bottom = geometry.visibleDocumentRect(forVisualOffset: geometry.maximumOffset)
+        XCTAssertEqual(bottom.minY, 1180, accuracy: 0.0001)
     }
 
     private func firstDescendant<T: NSView>(of view: NSView, as type: T.Type) -> T? {

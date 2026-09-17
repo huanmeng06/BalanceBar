@@ -1078,9 +1078,9 @@ enum DashboardSettingsComponents {
         }
     }
 
-    /// Settings sections stack only. Page-level `NSScrollView` chrome, the
-    /// 52pt viewport inset, and the 34pt document width contract belong to
-    /// `DashboardScrollablePageViewController`.
+    /// Settings sections stack only. Page-level `NSScrollView` chrome, system
+    /// titlebar content insets / scroll-edge, and the 34pt document width
+    /// contract belong to `DashboardScrollablePageViewController`.
     static func makeSettingsPageContent(_ sections: [NSView]) -> NSView {
         let stack = NSStackView()
         stack.orientation = .vertical

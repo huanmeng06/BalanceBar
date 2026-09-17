@@ -950,9 +950,11 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             XCTAssertTrue(scrollView.hasVerticalScroller)
             XCTAssertFalse(scrollView.hasHorizontalScroller)
             XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
-            XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            XCTAssertTrue(scrollView.automaticallyAdjustsContentInsets)
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
-            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 0, accuracy: 1)
+            let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+            XCTAssertEqual(scrollView.contentInsets.top, titlebarHeight, accuracy: 1)
         }
 
         appDelegate.dashboardCompositionForTesting.showSection(.about)
@@ -2146,7 +2148,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
 
             XCTAssertTrue(documentView.isFlipped)
-            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 0, accuracy: 1)
             XCTAssertEqual(visibleRect.minY, documentView.bounds.minY, accuracy: 1)
             XCTAssertEqual(
                 pageStack.frame.minY,
@@ -2204,13 +2206,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertTrue(document.isFlipped)
             XCTAssertEqual(
                 viewportFrameInPage.minY - page.bounds.minY,
-                52,
+                0,
                 accuracy: 1,
-                "Settings scroll viewport lost its measured non-document top inset for \(section)"
+                "Settings scroll viewport must occupy the page top so AppKit can apply titlebar insets for \(section)"
             )
             XCTAssertEqual(
                 visible.minY,
-                document.bounds.minY,
+                document.bounds.minY - scrollView.contentInsets.top,
                 accuracy: 1,
                 "Initial visible origin mismatch for \(section): visible=\(visible), document=\(document.bounds), clipBounds=\(scrollView.contentView.bounds), contentInsets=\(scrollView.contentInsets)"
             )
@@ -2254,19 +2256,19 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let firstHeading = try XCTUnwrap(
                 firstDescendant(of: stack.arrangedSubviews.first!, as: NSTextField.self)
             )
-            let geometry = DashboardScrollGeometry(
-                documentBounds: document.bounds,
-                viewportHeight: contentView.bounds.height,
-                isDocumentFlipped: document.isFlipped
-            )
+            let geometry = DashboardScrollGeometry(scrollView: scrollView)
 
-            XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets)
-            XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            XCTAssertTrue(scrollView.automaticallyAdjustsContentInsets)
+            XCTAssertEqual(
+                scrollView.contentInsets.top,
+                window.frame.height - window.contentLayoutRect.height,
+                accuracy: 1
+            )
             XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
             XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
             XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
             XCTAssertTrue(document.isFlipped)
-            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 0, accuracy: 1)
             XCTAssertEqual(viewportFrameInPage.maxY, page.bounds.maxY, accuracy: 1)
 
             let proposals = geometry.maximumOffset > 1
@@ -2289,7 +2291,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 let visible = contentView.convert(contentView.bounds, to: document)
                 let actual = geometry.visualOffset(for: visible)
                 XCTAssertEqual(actual, proposal, accuracy: 1, "Native endpoint replay moved \(section) unexpectedly")
-                XCTAssertGreaterThanOrEqual(visible.minY, document.bounds.minY - 1)
+                XCTAssertGreaterThanOrEqual(
+                    visible.minY,
+                    document.bounds.minY - scrollView.contentInsets.top - 1
+                )
                 XCTAssertLessThanOrEqual(visible.maxY, document.bounds.maxY + 1)
                 if abs(proposal - geometry.maximumOffset) < 0.001 {
                     bottomVisible = visible

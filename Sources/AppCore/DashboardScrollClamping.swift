@@ -99,26 +99,45 @@ enum DashboardScrollClampingPolicy {
 
 /// Describes the vertical geometry of a document inside a clip view.
 ///
-/// `visualOffset` is measured from the document's visual top edge. Keeping
-/// that value independent from AppKit's coordinate direction lets the same
-/// clamp work for flipped and unflipped document views.
+/// `visualOffset` is measured from the document's rest position. For a
+/// flipped document whose scroll view overlaps the titlebar, AppKit's rest
+/// origin is `-contentInsets.top`; treating that as offset 0 keeps restore
+/// and `isAtTop` aligned with the system scroll-edge inset.
 struct DashboardScrollGeometry {
     let documentBounds: NSRect
     let viewportHeight: CGFloat
     let isDocumentFlipped: Bool
+    let topContentInset: CGFloat
 
     init(
         documentBounds: NSRect,
         viewportHeight: CGFloat,
-        isDocumentFlipped: Bool
+        isDocumentFlipped: Bool,
+        topContentInset: CGFloat = 0
     ) {
         self.documentBounds = documentBounds
         self.viewportHeight = viewportHeight.isFinite ? max(0, viewportHeight) : 0
         self.isDocumentFlipped = isDocumentFlipped
+        self.topContentInset = topContentInset.isFinite ? max(0, topContentInset) : 0
+    }
+
+    init(scrollView: NSScrollView) {
+        let document = scrollView.documentView
+        self.init(
+            documentBounds: document?.bounds ?? .zero,
+            viewportHeight: scrollView.contentView.bounds.height,
+            isDocumentFlipped: document?.isFlipped ?? true,
+            topContentInset: scrollView.contentInsets.top
+        )
+    }
+
+    var restOriginY: CGFloat {
+        isDocumentFlipped ? documentBounds.minY - topContentInset : documentBounds.minY
     }
 
     var maximumOffset: CGFloat {
-        max(0, documentBounds.height - viewportHeight)
+        let inset = isDocumentFlipped ? topContentInset : 0
+        return max(0, documentBounds.height + inset - viewportHeight)
     }
 
     func clampedVisualOffset(_ proposedOffset: CGFloat) -> CGFloat {
@@ -130,7 +149,7 @@ struct DashboardScrollGeometry {
 
     func visualOffset(for visibleDocumentRect: NSRect) -> CGFloat {
         if isDocumentFlipped {
-            return visibleDocumentRect.minY - documentBounds.minY
+            return visibleDocumentRect.minY - restOriginY
         }
         return documentBounds.maxY - visibleDocumentRect.maxY
     }
@@ -148,7 +167,7 @@ struct DashboardScrollGeometry {
         let offset = clampedVisualOffset(proposedOffset)
         let originY: CGFloat
         if isDocumentFlipped {
-            originY = documentBounds.minY + offset
+            originY = restOriginY + offset
         } else {
             originY = documentBounds.minY + maximumOffset - offset
         }
@@ -194,11 +213,7 @@ enum DashboardPageScrollPosition {
             scrollView.contentView.bounds,
             to: document
         )
-        return DashboardScrollGeometry(
-            documentBounds: document.bounds,
-            viewportHeight: scrollView.contentView.bounds.height,
-            isDocumentFlipped: document.isFlipped
-        ).visualOffset(for: visible)
+        return DashboardScrollGeometry(scrollView: scrollView).visualOffset(for: visible)
     }
 
     static func visualOffsetY(in root: NSView) -> CGFloat {
@@ -209,11 +224,7 @@ enum DashboardPageScrollPosition {
     static func restore(visualOffsetY: CGFloat, in scrollView: NSScrollView) {
         guard let document = scrollView.documentView else { return }
         let contentView = scrollView.contentView
-        let geometry = DashboardScrollGeometry(
-            documentBounds: document.bounds,
-            viewportHeight: contentView.bounds.height,
-            isDocumentFlipped: document.isFlipped
-        )
+        let geometry = DashboardScrollGeometry(scrollView: scrollView)
         let targetRect = geometry.visibleDocumentRect(forVisualOffset: visualOffsetY)
         let targetDocumentY = geometry.contentOriginDocumentY(
             for: targetRect,

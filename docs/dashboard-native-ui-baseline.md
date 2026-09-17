@@ -82,8 +82,8 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 `DashboardSettingsComponents.makeSettingsPage`：
 
 - 垂直 overlay 滚动条，无水平滚动条，无弹性；
-- 不自动继承标题栏 content inset；视口顶部另留 **52pt** 非滚动空白，使第一张卡片落在标题栏下方；
-- 文档 `isFlipped`，初次挂载可见原点对准文档顶部；
+- 页面 `NSScrollView` 贴齐 page 顶部并 `automaticallyAdjustsContentInsets = true`，由 AppKit 为重叠的 unified toolbar / titlebar 写入 content insets，从而使用系统 scroll-edge；不再用 52pt 非滚动布局空白把滚动视图挡在 chrome 下方；
+- 文档 `isFlipped`，初次挂载的 rest 原点是 `-contentInsets.top`（无 titlebar 重叠时仍为文档顶部）；
 - 卡片圆角 18，可见行高度至少 62pt（个别行另有更高最小值）。
 
 About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advanced 页内日志查看器另有内部 `NSTextView` 滚动（固定深色 VS Code 配色），与页面滚动独立。
@@ -137,7 +137,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 | 浅色 / 深色跟随系统，卡片与侧栏对比可读 | `人工` | `人工` | `人工` | `人工` | `人工`（日志查看器保持深色底） | `人工` | `人工` |
 | 侧栏选中态 | General 选中 `代码` | 仍为 General `代码` | Menu Bar 选中 `代码` | Menu 选中 `代码` | Advanced 选中 `代码` | About 选中 `代码` | **全部不选中** `代码` |
 | 窗口缩放（绿钮） | 绿钮可见且启用 `代码` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
-| 页面滚动 | 顶 52pt 非滚动空白，可垂直滚到卡片底部 `代码`+`人工` | 同一 General 文档内 `人工` | 同 General；FPS 恢复滚动不得抢焦点 `代码` | Status Links 超出视口时可滚到 `代码`+`人工` | 页滚动 + 日志内部滚动互不替代 `人工` | 无设置页滚动；内容居中 `代码`+`人工` | 走设置页滚动 `代码` |
+| 页面滚动 | 滚动视图贴齐 page 顶，系统 titlebar insets + scroll-edge；可垂直滚到卡片底部 `代码`+`人工` | 同一 General 文档内 `人工` | 同 General；FPS 恢复滚动不得抢焦点 `代码` | Status Links 超出视口时可滚到 `代码`+`人工` | 页滚动 + 日志内部滚动互不替代 `人工` | 无设置页滚动；内容居中 `代码`+`人工` | 走设置页滚动 `代码` |
 | 红黄绿位置 | 系统标题栏左侧；不另做自定义拖拽排除热区 `代码`；像素位置 `人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
 | 全屏 | 标准 AppKit zoom / 全屏；不再用自定义拖拽 overlay 抑制双击 `代码`+`人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
 | 双击标题栏 | 标题栏命中穿透到 NSThemeFrame，遵循系统 `AppleActionOnDoubleClick`，不再自定义 `setFrame` `代码`+`人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
