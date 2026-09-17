@@ -595,6 +595,159 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(windowController.accessoryHostForTesting.mountedKind == .none)
     }
 
+    func testOfficialDashboardPagesDoNotPublishTopAccessory() throws {
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
+        let dashboardRoot = repositoryRoot.appendingPathComponent("Sources/UI/Dashboard")
+        let enumerator = try XCTUnwrap(
+            FileManager.default.enumerator(
+                at: dashboardRoot,
+                includingPropertiesForKeys: nil
+            )
+        )
+        var pageSources: [URL] = []
+        var dashboardSources: [URL] = []
+        while let item = enumerator.nextObject() as? URL {
+            guard item.pathExtension == "swift" else { continue }
+            dashboardSources.append(item)
+            if item.path.contains("/Pages/") {
+                pageSources.append(item)
+            }
+        }
+        XCTAssertFalse(pageSources.isEmpty)
+
+        for url in pageSources {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            XCTAssertFalse(
+                source.contains("DashboardPageTopAccessoryProviding"),
+                "Official page \(url.lastPathComponent) must not invent accessory ownership"
+            )
+            XCTAssertFalse(source.contains("dashboardPageTopAccessory"))
+            XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
+            XCTAssertFalse(source.contains("preferredScrollEdgeEffectStyle"))
+            XCTAssertFalse(
+                source.contains("NSSearchField("),
+                "Official page \(url.lastPathComponent) has no floating search chrome"
+            )
+        }
+
+        var protocolAdopters: [String] = []
+        for url in dashboardSources {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let name = url.lastPathComponent
+            if name == "DashboardPageTopAccessory.swift" {
+                XCTAssertTrue(source.contains("protocol DashboardPageTopAccessoryProviding"))
+                continue
+            }
+            if source.contains("DashboardPageTopAccessoryProviding") {
+                protocolAdopters.append(name)
+            }
+        }
+        XCTAssertEqual(
+            protocolAdopters,
+            ["DashboardAccessoryHarnessController.swift"],
+            "Only the non-production harness may adopt page top accessory ownership"
+        )
+    }
+
+    func testPublicScrollEdgeTriggerConditionsOnMacOS26() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26,
+            "Public scroll-edge style APIs and split-item accessories require macOS 26"
+        )
+
+        let chrome = ScrollEdgeProbeAccessoryController()
+        var chromePage: ScrollEdgeChromePage?
+        let dashboard = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { section in
+                    let content = DashboardSettingsComponents.makeSettingsPageContent(
+                        [self.tallFiller(height: 1800)]
+                    )
+                    if section == .menu {
+                        let page = ScrollEdgeChromePage(
+                            wrapping: content,
+                            accessory: .contentSplitItem(viewController: chrome)
+                        )
+                        chromePage = page
+                        return page
+                    }
+                    return DashboardScrollablePageViewController(
+                        wrapping: content,
+                        layoutPolicy: .systemScrollEdge
+                    )
+                },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { dashboard.teardown() }
+        dashboard.open(initialSection: .general)
+        let dashboardWindow = try XCTUnwrap(dashboard.window)
+        dashboardWindow.setContentSize(NSSize(width: 880, height: 620))
+        dashboardWindow.layoutIfNeeded()
+        dashboardWindow.displayIfNeeded()
+
+        let dashboardPage = try XCTUnwrap(dashboard.scrollablePageForTesting)
+        let dashboardSplit = try XCTUnwrap(
+            dashboardWindow.contentViewController as? DashboardSplitViewController
+        )
+        let dashboardContentItem = try XCTUnwrap(dashboardSplit.contentSplitViewItem)
+        XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .none)
+        XCTAssertTrue(dashboardWindow.titlebarAccessoryViewControllers.isEmpty)
+        XCTAssertEqual(
+            DashboardToolbarController.defaultItemIdentifiers,
+            [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator]
+        )
+        XCTAssertEqual(
+            dashboardWindow.toolbar?.items.map(\.itemIdentifier),
+            DashboardToolbarController.defaultItemIdentifiers
+        )
+        XCTAssertTrue(dashboardPage.pageScrollView.automaticallyAdjustsContentInsets)
+        XCTAssertGreaterThan(dashboardPage.pageScrollView.contentInsets.top, 1)
+        dashboardPage.restoreScrollOffset(120)
+        dashboardWindow.layoutIfNeeded()
+        XCTAssertGreaterThan(dashboardPage.scrollOffset, 1)
+        XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .none)
+
+        guard #available(macOS 26.0, *) else { return }
+        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, 0)
+
+        dashboard.showSection(.menu)
+        dashboardWindow.layoutIfNeeded()
+        dashboardWindow.displayIfNeeded()
+        XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .contentSplitItem)
+        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, 1)
+        let accessory = try XCTUnwrap(
+            dashboard.accessoryHostForTesting.contentSplitItemAccessoryForTesting
+                as? NSSplitViewItemAccessoryViewController
+        )
+        XCTAssertTrue(dashboardContentItem.topAlignedAccessoryViewControllers.contains(accessory))
+        XCTAssertGreaterThan(chrome.view.fittingSize.height, 1)
+        let mountedChrome = try XCTUnwrap(chromePage)
+        XCTAssertTrue(mountedChrome.scrollPage.pageScrollView.automaticallyAdjustsContentInsets)
+        XCTAssertGreaterThan(mountedChrome.scrollPage.pageScrollView.contentInsets.top, 1)
+        if #available(macOS 26.1, *) {
+            accessory.preferredScrollEdgeEffectStyle = NSScrollEdgeEffectStyle.hard
+            XCTAssertIdentical(
+                accessory.preferredScrollEdgeEffectStyle,
+                NSScrollEdgeEffectStyle.hard
+            )
+        }
+        mountedChrome.scrollPage.restoreScrollOffset(120)
+        dashboardWindow.layoutIfNeeded()
+        XCTAssertGreaterThan(mountedChrome.scrollPage.scrollOffset, 1)
+        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, 1)
+
+        dashboard.showSection(.general)
+        dashboardWindow.layoutIfNeeded()
+        XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .none)
+        XCTAssertTrue(dashboardContentItem.topAlignedAccessoryViewControllers.isEmpty)
+    }
+
     private func makeWindow(
         width: CGFloat,
         height: CGFloat,
@@ -629,5 +782,61 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+}
+
+private final class ScrollEdgeChromePage: NSViewController, DashboardPageTopAccessoryProviding {
+    let dashboardPageTopAccessory: DashboardPageTopAccessory
+    let scrollPage: DashboardScrollablePageViewController
+
+    init(wrapping content: NSView, accessory: DashboardPageTopAccessory) {
+        dashboardPageTopAccessory = accessory
+        scrollPage = DashboardScrollablePageViewController(
+            wrapping: content,
+            layoutPolicy: .systemScrollEdge
+        )
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func loadView() {
+        addChild(scrollPage)
+        view = scrollPage.view
+    }
+}
+
+private final class ScrollEdgeProbeAccessoryController: NSViewController {
+    init() {
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func loadView() {
+        let strip = ScrollEdgeProbeAccessoryView()
+        let label = NSTextField(labelWithString: "Scroll-edge probe")
+        label.translatesAutoresizingMaskIntoConstraints = false
+        strip.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: strip.leadingAnchor, constant: 12),
+            label.centerYAnchor.constraint(equalTo: strip.centerYAnchor)
+        ])
+        view = strip
+    }
+}
+
+private final class ScrollEdgeProbeAccessoryView: NSView {
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: 240, height: 36))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: 36)
     }
 }
