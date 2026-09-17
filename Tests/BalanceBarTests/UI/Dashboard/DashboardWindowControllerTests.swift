@@ -583,8 +583,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(window.styleMask.contains(.fullSizeContentView))
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
         XCTAssertEqual(window.titleVisibility, .hidden)
-        XCTAssertTrue(window.titlebarAppearsTransparent)
         let policy = DashboardPageScrollLayoutPolicy.current
+        XCTAssertEqual(window.titlebarAppearsTransparent, policy.titlebarAppearsTransparent)
         XCTAssertEqual(window.titlebarSeparatorStyle, policy.windowTitlebarSeparatorStyle)
         XCTAssertEqual(sidebarItem.titlebarSeparatorStyle, policy.sidebarTitlebarSeparatorStyle)
         XCTAssertEqual(

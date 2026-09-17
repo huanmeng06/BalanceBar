@@ -515,6 +515,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(page.layoutPolicy, .systemScrollEdge)
         XCTAssertTrue(page.pageScrollView.automaticallyAdjustsContentInsets)
         XCTAssertEqual(page.layoutPolicy.viewportTopInset, 0, accuracy: 0.001)
+        XCTAssertFalse(window.titlebarAppearsTransparent)
         XCTAssertEqual(window.titlebarSeparatorStyle, .automatic)
         let splitController = try XCTUnwrap(
             window.contentViewController as? DashboardSplitViewController

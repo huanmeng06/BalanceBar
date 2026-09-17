@@ -99,17 +99,21 @@ enum DashboardScrollClampingPolicy {
 
 /// Page-scroll chrome for the running OS.
 ///
-/// macOS 26+ lets the scroll view overlap the transparent titlebar so AppKit
-/// can write content insets and draw the system scroll-edge. The public
-/// scroll-edge *style* API (`NSScrollEdgeEffectStyle` /
-/// `preferredScrollEdgeEffectStyle`) is accessory-only (macOS 26.1+) and is
-/// not installed here: current pages report no accessory. The window-level
-/// `titlebarSeparatorStyle` must stay `.automatic` on 26+ because a forced
-/// `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`. Content-pane
-/// separators then use the existing `NSTrackingSeparatorToolbarItem`.
-/// macOS 14/15 keep the pre-Tahoe 52pt non-scrolling clearance and `.none`
-/// separators: `.fullSizeContentView` plus a transparent titlebar does not
-/// reliably produce that inset, and this app still supports 14+.
+/// macOS 26+ lets the scroll view overlap the titlebar so AppKit can write
+/// content insets and draw the system scroll-edge. The titlebar keeps its
+/// system background (`titlebarAppearsTransparent = false`) so that edge has
+/// chrome to composite against. The public scroll-edge *style* API
+/// (`NSScrollEdgeEffectStyle` / `preferredScrollEdgeEffectStyle`) is
+/// accessory-only (macOS 26.1+) and is not installed here: current pages
+/// report no accessory, and toolbar search is already real chrome. The
+/// window-level `titlebarSeparatorStyle` must stay `.automatic` on 26+
+/// because a forced `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`.
+/// Content-pane separators then use the existing
+/// `NSTrackingSeparatorToolbarItem`.
+/// macOS 14/15 keep the pre-Tahoe 52pt non-scrolling clearance, a transparent
+/// titlebar, and `.none` separators: `.fullSizeContentView` plus a transparent
+/// titlebar does not reliably produce that inset, and this app still
+/// supports 14+.
 struct DashboardPageScrollLayoutPolicy: Equatable {
     /// Non-scrolling gap above the page `NSScrollView`.
     let viewportTopInset: CGFloat
@@ -123,6 +127,9 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
     let sidebarTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
     /// Content pane; `.automatic` is the public scroll-aware titlebar edge.
     let contentTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
+    /// macOS 26 keeps the system titlebar background so Scroll-Edge has
+    /// chrome to fade into. 14/15 stay transparent.
+    let titlebarAppearsTransparent: Bool
 
     /// Pre-#401 clearance that kept the first row out of the titlebar.
     static let preTahoeTitlebarClearanceInset: CGFloat = 52
@@ -133,7 +140,8 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
         zerosManualInsets: false,
         windowTitlebarSeparatorStyle: .automatic,
         sidebarTitlebarSeparatorStyle: .none,
-        contentTitlebarSeparatorStyle: .automatic
+        contentTitlebarSeparatorStyle: .automatic,
+        titlebarAppearsTransparent: false
     )
 
     static let titlebarClearance = DashboardPageScrollLayoutPolicy(
@@ -142,7 +150,8 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
         zerosManualInsets: true,
         windowTitlebarSeparatorStyle: .none,
         sidebarTitlebarSeparatorStyle: .none,
-        contentTitlebarSeparatorStyle: .none
+        contentTitlebarSeparatorStyle: .none,
+        titlebarAppearsTransparent: true
     )
 
     static var current: DashboardPageScrollLayoutPolicy {
@@ -167,6 +176,7 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
         sidebarItem: NSSplitViewItem?,
         contentItem: NSSplitViewItem?
     ) {
+        window.titlebarAppearsTransparent = titlebarAppearsTransparent
         window.titlebarSeparatorStyle = windowTitlebarSeparatorStyle
         sidebarItem?.titlebarSeparatorStyle = sidebarTitlebarSeparatorStyle
         contentItem?.titlebarSeparatorStyle = contentTitlebarSeparatorStyle

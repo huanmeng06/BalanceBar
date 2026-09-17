@@ -291,7 +291,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.title = initialSection.title
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
+        window.titlebarAppearsTransparent =
+            DashboardPageScrollLayoutPolicy.current.titlebarAppearsTransparent
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = true

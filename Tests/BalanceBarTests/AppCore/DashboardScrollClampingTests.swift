@@ -345,6 +345,7 @@ final class DashboardScrollClampingTests: XCTestCase {
             DashboardPageScrollLayoutPolicy.systemScrollEdge.contentTitlebarSeparatorStyle,
             .automatic
         )
+        XCTAssertFalse(DashboardPageScrollLayoutPolicy.systemScrollEdge.titlebarAppearsTransparent)
 
         XCTAssertEqual(
             DashboardPageScrollLayoutPolicy.titlebarClearance.viewportTopInset,
@@ -365,6 +366,7 @@ final class DashboardScrollClampingTests: XCTestCase {
             DashboardPageScrollLayoutPolicy.titlebarClearance.contentTitlebarSeparatorStyle,
             .none
         )
+        XCTAssertTrue(DashboardPageScrollLayoutPolicy.titlebarClearance.titlebarAppearsTransparent)
     }
 
     func testPageScrollLayoutPolicyAppliesInsetFlagsWithoutPrivateScrollPocketAPI() {
@@ -392,6 +394,7 @@ final class DashboardScrollClampingTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
+        window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         let sidebarController = NSViewController()
         sidebarController.view = NSView()
@@ -407,6 +410,7 @@ final class DashboardScrollClampingTests: XCTestCase {
             sidebarItem: sidebarItem,
             contentItem: contentItem
         )
+        XCTAssertFalse(window.titlebarAppearsTransparent)
         XCTAssertEqual(window.titlebarSeparatorStyle, .automatic)
         XCTAssertEqual(sidebarItem.titlebarSeparatorStyle, .none)
         XCTAssertEqual(contentItem.titlebarSeparatorStyle, .automatic)
@@ -416,6 +420,7 @@ final class DashboardScrollClampingTests: XCTestCase {
             sidebarItem: sidebarItem,
             contentItem: contentItem
         )
+        XCTAssertTrue(window.titlebarAppearsTransparent)
         XCTAssertEqual(window.titlebarSeparatorStyle, .none)
         XCTAssertEqual(sidebarItem.titlebarSeparatorStyle, .none)
         XCTAssertEqual(contentItem.titlebarSeparatorStyle, .none)

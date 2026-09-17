@@ -5,8 +5,9 @@ import AppKit
 /// bounds listening.
 ///
 /// Settings row layout stays in the hosted content. macOS 26+ overlaps the
-/// titlebar so AppKit can inset content and draw the system scroll-edge.
-/// macOS 14/15 keep the 52pt titlebar clearance and do not imitate that
+/// titlebar so AppKit can inset content and draw the system scroll-edge
+/// against the system titlebar background. macOS 14/15 keep the 52pt
+/// titlebar clearance and a transparent titlebar, and do not imitate that
 /// effect. No custom blur, shadow, gradient, hairline, or private
 /// scroll-pocket API is installed. `isAtTop` and `scrollOffset` remain
 /// page-local signals.
