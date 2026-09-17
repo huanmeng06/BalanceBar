@@ -107,10 +107,7 @@ enum DashboardScrollClampingPolicy {
 /// `titlebarSeparatorStyle` must stay `.automatic` on 26+ because a forced
 /// `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`. Content-pane
 /// separators then use the existing `NSTrackingSeparatorToolbarItem`.
-/// The #383 content-surface tint stays behind the split view, but on macOS 26
-/// it stops at the titlebar so AppKit's edge samples scrolling content instead
-/// of a full-window solid fill. macOS 14/15 keep the pre-Tahoe 52pt
-/// non-scrolling clearance, a full-window content surface, and `.none`
+/// macOS 14/15 keep the pre-Tahoe 52pt non-scrolling clearance and `.none`
 /// separators: `.fullSizeContentView` plus a transparent titlebar does not
 /// reliably produce that inset, and this app still supports 14+.
 struct DashboardPageScrollLayoutPolicy: Equatable {
@@ -126,10 +123,6 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
     let sidebarTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
     /// Content pane; `.automatic` is the public scroll-aware titlebar edge.
     let contentTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
-    /// When true, the #383 content-surface tint covers the titlebar overlap.
-    /// macOS 26 keeps it out of that band so the system scroll-edge can sample
-    /// the scrolling document instead of a uniform gray fill.
-    let contentSurfaceExtendsUnderTitlebar: Bool
 
     /// Pre-#401 clearance that kept the first row out of the titlebar.
     static let preTahoeTitlebarClearanceInset: CGFloat = 52
@@ -140,8 +133,7 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
         zerosManualInsets: false,
         windowTitlebarSeparatorStyle: .automatic,
         sidebarTitlebarSeparatorStyle: .none,
-        contentTitlebarSeparatorStyle: .automatic,
-        contentSurfaceExtendsUnderTitlebar: false
+        contentTitlebarSeparatorStyle: .automatic
     )
 
     static let titlebarClearance = DashboardPageScrollLayoutPolicy(
@@ -150,8 +142,7 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
         zerosManualInsets: true,
         windowTitlebarSeparatorStyle: .none,
         sidebarTitlebarSeparatorStyle: .none,
-        contentTitlebarSeparatorStyle: .none,
-        contentSurfaceExtendsUnderTitlebar: true
+        contentTitlebarSeparatorStyle: .none
     )
 
     static var current: DashboardPageScrollLayoutPolicy {
@@ -179,15 +170,6 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
         window.titlebarSeparatorStyle = windowTitlebarSeparatorStyle
         sidebarItem?.titlebarSeparatorStyle = sidebarTitlebarSeparatorStyle
         contentItem?.titlebarSeparatorStyle = contentTitlebarSeparatorStyle
-    }
-
-    /// Top edge of the #383 content-surface tint. macOS 26 uses the container
-    /// safe area so the tint stays out of the titlebar overlap; 14/15 keep the
-    /// full-window fill behind the 52pt clearance.
-    func contentSurfaceTopAnchor(in container: NSView) -> NSLayoutYAxisAnchor {
-        contentSurfaceExtendsUnderTitlebar
-            ? container.topAnchor
-            : container.safeAreaLayoutGuide.topAnchor
     }
 }
 

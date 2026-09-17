@@ -143,11 +143,9 @@ final class DashboardSplitViewController: NSSplitViewController {
         contentSurface.identifier = Self.contentSurfaceIdentifier
         contentSurface.wantsLayer = true
         contentSurface.layer?.isOpaque = false
-        // Content-pane tint from the #383 baseline. The split view stays
+        // Full-window tint from the #383 baseline. The split view stays
         // transparent so this surface, not a darker content-pane overlay,
         // provides light/dark contrast over the visual-effect backdrop.
-        // macOS 26 keeps it below the titlebar; a full-window fill is what
-        // AppKit's scroll-edge was sampling as a solid gray slab.
         contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
             light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
             dark: NSColor.black.withAlphaComponent(0.20)
@@ -168,13 +166,10 @@ final class DashboardSplitViewController: NSSplitViewController {
         ) { [weak self] _ in
             self?.onSidebarGeometryDidChange?()
         }
-        let surfaceLayout = DashboardPageScrollLayoutPolicy.current
         NSLayoutConstraint.activate([
             contentSurface.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor),
             contentSurface.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor),
-            contentSurface.topAnchor.constraint(
-                equalTo: surfaceLayout.contentSurfaceTopAnchor(in: backdrop)
-            ),
+            contentSurface.topAnchor.constraint(equalTo: backdrop.topAnchor),
             contentSurface.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor),
             splitView.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor),

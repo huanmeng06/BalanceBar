@@ -345,9 +345,6 @@ final class DashboardScrollClampingTests: XCTestCase {
             DashboardPageScrollLayoutPolicy.systemScrollEdge.contentTitlebarSeparatorStyle,
             .automatic
         )
-        XCTAssertFalse(
-            DashboardPageScrollLayoutPolicy.systemScrollEdge.contentSurfaceExtendsUnderTitlebar
-        )
 
         XCTAssertEqual(
             DashboardPageScrollLayoutPolicy.titlebarClearance.viewportTopInset,
@@ -367,21 +364,6 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(
             DashboardPageScrollLayoutPolicy.titlebarClearance.contentTitlebarSeparatorStyle,
             .none
-        )
-        XCTAssertTrue(
-            DashboardPageScrollLayoutPolicy.titlebarClearance.contentSurfaceExtendsUnderTitlebar
-        )
-    }
-
-    func testPageScrollLayoutPolicyPinsContentSurfaceBelowTitlebarOnMacOS26() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
-        XCTAssertTrue(
-            DashboardPageScrollLayoutPolicy.systemScrollEdge.contentSurfaceTopAnchor(in: container)
-                === container.safeAreaLayoutGuide.topAnchor
-        )
-        XCTAssertTrue(
-            DashboardPageScrollLayoutPolicy.titlebarClearance.contentSurfaceTopAnchor(in: container)
-                === container.topAnchor
         )
     }
 
