@@ -1788,6 +1788,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         window.displayIfNeeded()
         let page = try XCTUnwrap(menuPage(in: window))
         layoutDescendants(of: page)
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
+        layoutDescendants(of: page)
         let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
         let documentView = try XCTUnwrap(scrollView.documentView)
         let editor = try XCTUnwrap(findStatusLinksEditor(in: page))
@@ -1800,6 +1803,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         appDelegate.dashboardCompositionForTesting.addStatusLinkForTesting()
 
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
         window.layoutIfNeeded()
         window.displayIfNeeded()
 

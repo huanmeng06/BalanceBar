@@ -1,16 +1,90 @@
 import AppKit
 
-private final class QuotaColorSelectionStack: NSStackView {
-    override func layout() {
-        let rowWidth = SettingsRowView.enclosing(self)?.bounds.width ?? bounds.width
-        let availableWidth = rowWidth > 1 ? max(0, rowWidth - SettingsRowView.horizontalPadding * 2) : bounds.width
-        let shouldStack = availableWidth > 1 && availableWidth < 300
-        let nextOrientation: NSUserInterfaceLayoutOrientation = shouldStack ? .vertical : .horizontal
-        if orientation != nextOrientation {
-            orientation = nextOrientation
-            alignment = shouldStack ? .leading : .centerY
+/// Composite Displayed Colors accessory. Internal H/V stacking is independent
+/// of SettingsRowView's inline / dedicated-row placement.
+private final class QuotaColorSelectionStack: NSStackView, DashboardSettingsRowControlLayout {
+    private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
+    private(set) var stacksControlsVertically = false
+    let allowsTextDrivenDedicatedRow = true
+    let minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+
+    func updateAvailableRowWidth(_ width: CGFloat) {
+        let normalizedWidth = max(0, width)
+        if abs(normalizedWidth - availableRowWidth) > 0.5 {
+            availableRowWidth = normalizedWidth
         }
+        updateOrientationIfNeeded()
+    }
+
+    var naturalAccessoryWidth: CGFloat {
+        let visible = arrangedSubviews.filter { !$0.isHidden }
+        let widths = visible.map(Self.naturalWidth(of:))
+        if orientation == .vertical {
+            return widths.max() ?? 0
+        }
+        return widths.reduce(0, +) + max(0, CGFloat(visible.count - 1)) * spacing
+    }
+
+    private var naturalHorizontalAccessoryWidth: CGFloat {
+        let visible = arrangedSubviews.filter { !$0.isHidden }
+        let widths = visible.map(Self.naturalWidth(of:))
+        let widest = widths.max() ?? 0
+        let total = widths.reduce(0, +) + max(0, CGFloat(visible.count - 1)) * spacing
+        return max(widest, total) + 1
+    }
+
+    override func layout() {
+        updateOrientationIfNeeded()
         super.layout()
+    }
+
+    private func updateOrientationIfNeeded() {
+        let wantsVertical = availableRowWidth > 0
+            && availableRowWidth + 0.5 < naturalHorizontalAccessoryWidth
+        let desiredOrientation: NSUserInterfaceLayoutOrientation = wantsVertical ? .vertical : .horizontal
+        let orientationChanged = orientation != desiredOrientation
+        let stackingChanged = stacksControlsVertically != wantsVertical
+        if orientationChanged {
+            orientation = desiredOrientation
+            alignment = wantsVertical ? .leading : .centerY
+        }
+        if stackingChanged {
+            stacksControlsVertically = wantsVertical
+        }
+        if orientationChanged || stackingChanged {
+            invalidateIntrinsicContentSize()
+            superview?.needsLayout = true
+            superview?.superview?.needsLayout = true
+        }
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let visible = arrangedSubviews.filter { !$0.isHidden }
+        guard !visible.isEmpty else { return .zero }
+        if orientation == .vertical {
+            return NSSize(
+                width: naturalAccessoryWidth,
+                height: visible.reduce(CGFloat(0)) { $0 + $1.fittingSize.height }
+                    + max(0, CGFloat(visible.count - 1)) * spacing
+            )
+        }
+        return NSSize(
+            width: naturalAccessoryWidth,
+            height: visible.map { $0.fittingSize.height }.max() ?? 0
+        )
+    }
+
+    private static func naturalWidth(of view: NSView) -> CGFloat {
+        if let stack = view as? NSStackView {
+            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
+            let widths = visible.map(naturalWidth(of:))
+            if stack.orientation == .vertical {
+                return widths.max() ?? 0
+            }
+            return widths.reduce(0, +) + max(0, CGFloat(visible.count - 1)) * stack.spacing
+        }
+        let fitting = view.fittingSize.width
+        return fitting.isFinite && fitting > 0 ? fitting : 0
     }
 }
 
@@ -408,7 +482,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         Self.configureQuotaColorResetButton(resetButton)
         let colorControls = QuotaColorSelectionStack()
         colorControls.orientation = .horizontal
+        colorControls.alignment = .centerY
         colorControls.spacing = 12
+        colorControls.setContentHuggingPriority(.required, for: .horizontal)
+        colorControls.setContentCompressionResistancePriority(.required, for: .horizontal)
         for color in QuotaProgressColor.allCases {
             let button = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleQuotaColor(_:)))
             button.identifier = NSUserInterfaceItemIdentifier("quotaProgressColor.\(color.rawValue)")
@@ -421,6 +498,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             item.orientation = .horizontal
             item.alignment = .centerY
             item.spacing = 4
+            item.setContentHuggingPriority(.required, for: .horizontal)
+            item.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            swatch.setContentHuggingPriority(.required, for: .horizontal)
+            swatch.setContentCompressionResistancePriority(.required, for: .horizontal)
             let checkboxBounds = NSRect(origin: .zero, size: button.fittingSize)
             let indicatorRect = button.cell?.imageRect(forBounds: checkboxBounds) ?? checkboxBounds
             let side = max(1, min(indicatorRect.width, indicatorRect.height))

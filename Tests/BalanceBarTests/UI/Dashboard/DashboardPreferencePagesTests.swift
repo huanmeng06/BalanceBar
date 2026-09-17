@@ -1815,6 +1815,150 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
     }
 
+    func testMenuDisplayedColorsAdaptiveAccessoryKeepsReadableLabelsAcrossResize() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuDisplayedColorsAdaptive.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        DashboardSettingsLayoutMetrics.reset()
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.showQuotaProgressBar = true
+        let controller = DashboardMenuPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        defer { controller.teardown() }
+
+        let colorButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue.hasPrefix("quotaProgressColor.") == true }
+        )
+        let row = try XCTUnwrap(SettingsRowView.enclosing(colorButton))
+        let colorControls = try XCTUnwrap(row.accessoryView as? NSStackView)
+        let adaptive = try XCTUnwrap(row.accessoryView as? DashboardSettingsRowControlLayout)
+        let thresholdField = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 1400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+
+        func leftoverLabelWidth() -> CGFloat {
+            let available = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
+            return available - max(1, adaptive.naturalAccessoryWidth) - SettingsRowView.contentSpacing
+        }
+
+        func layout(at width: CGFloat) {
+            pinMenuPage(page, in: window, width: width)
+        }
+
+        func assertLabelsStayReadable(at width: CGFloat) {
+            let titleFrame = row.titleLabel.convert(row.titleLabel.bounds, to: row)
+            XCTAssertGreaterThan(titleFrame.width, 40, "Displayed Colors title must not collapse at \(width)")
+            XCTAssertGreaterThan(titleFrame.height, 1, "Displayed Colors title height at \(width)")
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(titleFrame),
+                "Displayed Colors title stays inside the row at \(width)"
+            )
+            XCTAssertGreaterThan(row.titleLabel.preferredMaxLayoutWidth, 40)
+            XCTAssertLessThan(
+                titleFrame.height,
+                90,
+                "Displayed Colors title must wrap as readable lines, not a tall per-glyph column at \(width)"
+            )
+            if !row.detailLabel.isHidden {
+                let detailFrame = row.detailLabel.convert(row.detailLabel.bounds, to: row)
+                XCTAssertGreaterThan(detailFrame.width, 40, "Displayed Colors subtitle must not collapse at \(width)")
+                XCTAssertTrue(
+                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(detailFrame),
+                    "Displayed Colors subtitle stays inside the row at \(width)"
+                )
+            }
+            let labelsFrame = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+            let controlsFrame = colorControls.convert(colorControls.bounds, to: row)
+            XCTAssertFalse(
+                labelsFrame.intersects(controlsFrame),
+                "Displayed Colors labels must not overlap swatches at \(width)"
+            )
+        }
+
+        layout(at: 720)
+        let wideHeight = row.frame.height
+        XCTAssertEqual(colorControls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertGreaterThanOrEqual(leftoverLabelWidth() + 0.5, SettingsRowView.minimumInlineLabelWidth)
+        XCTAssertGreaterThanOrEqual(
+            row.labelsStack.bounds.width + 0.5,
+            SettingsRowView.minimumInlineLabelWidth
+        )
+        XCTAssertEqual(
+            colorControls.bounds.width,
+            adaptive.naturalAccessoryWidth,
+            accuracy: 2,
+            "wide Displayed Colors swatches stay packed at their natural width"
+        )
+        XCTAssertEqual(thresholdField.bounds.width, 92, accuracy: 1)
+        assertLabelsStayReadable(at: 720)
+
+        layout(at: 320)
+        XCTAssertEqual(
+            row.contentStack.orientation,
+            .vertical,
+            "narrow Displayed Colors must move the color group below the labels"
+        )
+        XCTAssertGreaterThanOrEqual(
+            row.labelsStack.bounds.width + 0.5,
+            SettingsRowView.minimumInlineLabelWidth
+        )
+        let availableAtNarrow = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
+        if availableAtNarrow + 0.5 >= adaptive.naturalAccessoryWidth {
+            XCTAssertEqual(
+                colorControls.orientation,
+                .horizontal,
+                "internal color stacking is independent of dedicated-row placement"
+            )
+        }
+        let labelsFrame = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+        let controlsFrame = colorControls.convert(colorControls.bounds, to: row)
+        XCTAssertLessThanOrEqual(controlsFrame.maxY, labelsFrame.minY + 0.5)
+        XCTAssertGreaterThan(row.frame.height, wideHeight - 0.5)
+        XCTAssertEqual(thresholdField.bounds.width, 92, accuracy: 1)
+        assertLabelsStayReadable(at: 320)
+
+        layout(at: 720)
+        XCTAssertEqual(colorControls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertEqual(row.frame.height, wideHeight, accuracy: 1.0)
+        XCTAssertEqual(thresholdField.bounds.width, 92, accuracy: 1)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        assertLabelsStayReadable(at: 720)
+    }
+
     func testMenuPageDependentRowsCollapseAndExpandWithoutParentHeightMeasurement() throws {
         LunaReserveUserFacing.testOverride = true
         defer { LunaReserveUserFacing.testOverride = nil }
@@ -2191,11 +2335,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(bankedResetRows[0] === nativeSettingsRow(enclosing: toggle))
         XCTAssertTrue(bankedResetRows.allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
-        let expandedHeight = DashboardSettingsComponents.settingsCardHeight(
-            rowsStack: rowsStack,
-            separators: separators
+        settleNativeSettingsLayout(page, window: window)
+        XCTAssertEqual(
+            cardHeight(of: rowsStack),
+            visibleArrangedHeight(in: rowsStack),
+            accuracy: 1.0
         )
-        XCTAssertEqual(cardHeight(of: rowsStack), expandedHeight, accuracy: 0.5)
+        let expandedHeight = cardHeight(of: rowsStack)
 
         let popup = try XCTUnwrap(
             descendants(of: page)
@@ -2212,23 +2358,24 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         toggle.state = .off
         relay.toggle(toggle)
-        window.layoutIfNeeded()
+        settleNativeSettingsLayout(page, window: window)
         XCTAssertFalse(preferences.showBankedReset)
         XCTAssertFalse(bankedResetRows[0].isHidden)
         XCTAssertTrue(bankedResetRows.dropFirst().allSatisfy(\.isHidden))
         XCTAssertTrue(separators.allSatisfy(\.isHidden))
-        let collapsedHeight = DashboardSettingsComponents.settingsCardHeight(
-            rowsStack: rowsStack,
-            separators: separators
+        XCTAssertEqual(
+            cardHeight(of: rowsStack),
+            visibleArrangedHeight(in: rowsStack),
+            accuracy: 1.0
         )
-        XCTAssertEqual(cardHeight(of: rowsStack), collapsedHeight, accuracy: 0.5)
+        let collapsedHeight = cardHeight(of: rowsStack)
         XCTAssertLessThan(collapsedHeight + 8, expandedHeight)
         XCTAssertEqual(preferences.menuBankedResetDisplayMode, .compact)
         XCTAssertEqual(popup.indexOfSelectedItem, 0)
 
         toggle.state = .on
         relay.toggle(toggle)
-        window.layoutIfNeeded()
+        settleNativeSettingsLayout(page, window: window)
         XCTAssertTrue(preferences.showBankedReset)
         XCTAssertTrue(bankedResetRows.allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
@@ -2769,13 +2916,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertFalse(hideRow.isHidden)
         XCTAssertTrue(hideSwitch.isEnabled)
+        settleNativeSettingsLayout(page, window: window)
         XCTAssertEqual(
             cardHeight(of: rowsStack),
-            DashboardSettingsComponents.settingsCardHeight(
-                rowsStack: rowsStack,
-                separators: balanceDisplaySeparators
-            ),
-            accuracy: 0.5
+            visibleArrangedHeight(in: rowsStack),
+            accuracy: 1.0
         )
 
         displayModeControl.selectItem(at: 1)
@@ -2800,18 +2945,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         displayModeControl.selectItem(at: 0)
         relay.lunaReserveDisplayMode(displayModeControl)
-        window.layoutIfNeeded()
+        settleNativeSettingsLayout(page, window: window)
         XCTAssertEqual(changedModes, [.whenQuotaExhausted, .always, .disabled])
         XCTAssertTrue(hideRow.isHidden)
         XCTAssertFalse(hideSwitch.isEnabled)
         XCTAssertTrue(balanceDisplaySeparators[0].isHidden)
         XCTAssertEqual(
             cardHeight(of: rowsStack),
-            DashboardSettingsComponents.settingsCardHeight(
-                rowsStack: rowsStack,
-                separators: balanceDisplaySeparators
-            ),
-            accuracy: 0.5
+            visibleArrangedHeight(in: rowsStack),
+            accuracy: 1.0
         )
         XCTAssertEqual(
             AppPreferences(defaults: defaults).menuLunaReserveDisplayMode,
@@ -2821,17 +2963,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         displayModeControl.selectItem(at: 2)
         relay.lunaReserveDisplayMode(displayModeControl)
-        window.layoutIfNeeded()
+        settleNativeSettingsLayout(page, window: window)
         XCTAssertFalse(hideRow.isHidden)
         XCTAssertTrue(hideSwitch.isEnabled)
         XCTAssertFalse(balanceDisplaySeparators[0].isHidden)
         XCTAssertEqual(
             cardHeight(of: rowsStack),
-            DashboardSettingsComponents.settingsCardHeight(
-                rowsStack: rowsStack,
-                separators: balanceDisplaySeparators
-            ),
-            accuracy: 0.5
+            visibleArrangedHeight(in: rowsStack),
+            accuracy: 1.0
         )
         XCTAssertEqual(hideSwitch.state, .on)
 
@@ -7722,15 +7861,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         ])
         var previousHeight: CGFloat = -1
         for _ in 0..<6 {
-            window.layoutIfNeeded()
-            host.layoutSubtreeIfNeeded()
-            page.layoutSubtreeIfNeeded()
+            settleNativeSettingsLayout(page, window: window)
             let height = page.fittingSize.height
             if abs(height - previousHeight) < 0.5 {
                 break
             }
             previousHeight = height
         }
+    }
+
+    private func settleNativeSettingsLayout(_ root: NSView, window: NSWindow? = nil) {
+        window?.layoutIfNeeded()
+        root.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: root)
+        window?.layoutIfNeeded()
+        root.layoutSubtreeIfNeeded()
     }
 
     private func visibleArrangedHeight(in stack: NSStackView) -> CGFloat {
