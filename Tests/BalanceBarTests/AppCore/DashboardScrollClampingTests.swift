@@ -11,7 +11,10 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertFalse(scrollView.contentView is DashboardClipView)
         XCTAssertTrue(scrollView.documentView is DashboardSettingsDocumentView)
         XCTAssertTrue(scrollView.documentView?.isFlipped == true)
-        XCTAssertTrue(scrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(
+            scrollView.automaticallyAdjustsContentInsets,
+            DashboardPageScrollLayoutPolicy.current.automaticallyAdjustsContentInsets
+        )
         XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
         XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
         XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
@@ -287,6 +290,75 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(scrolled.minY, 140, accuracy: 0.0001)
         let bottom = geometry.visibleDocumentRect(forVisualOffset: geometry.maximumOffset)
         XCTAssertEqual(bottom.minY, 1180, accuracy: 0.0001)
+    }
+
+    func testPageScrollLayoutPolicySelectsSystemScrollEdgeOnlyOnMacOS26AndLater() {
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 14, minorVersion: 0, patchVersion: 0)
+            ),
+            .titlebarClearance
+        )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 15, minorVersion: 6, patchVersion: 1)
+            ),
+            .titlebarClearance
+        )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 25, minorVersion: 9, patchVersion: 0)
+            ),
+            .titlebarClearance
+        )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
+            ),
+            .systemScrollEdge
+        )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 27, minorVersion: 1, patchVersion: 0)
+            ),
+            .systemScrollEdge
+        )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.current,
+            DashboardPageScrollLayoutPolicy.forOperatingSystemVersion(
+                ProcessInfo.processInfo.operatingSystemVersion
+            )
+        )
+
+        XCTAssertEqual(DashboardPageScrollLayoutPolicy.systemScrollEdge.viewportTopInset, 0)
+        XCTAssertTrue(DashboardPageScrollLayoutPolicy.systemScrollEdge.automaticallyAdjustsContentInsets)
+        XCTAssertFalse(DashboardPageScrollLayoutPolicy.systemScrollEdge.zerosManualInsets)
+
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.titlebarClearance.viewportTopInset,
+            DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset
+        )
+        XCTAssertEqual(DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset, 52)
+        XCTAssertFalse(DashboardPageScrollLayoutPolicy.titlebarClearance.automaticallyAdjustsContentInsets)
+        XCTAssertTrue(DashboardPageScrollLayoutPolicy.titlebarClearance.zerosManualInsets)
+    }
+
+    func testPageScrollLayoutPolicyAppliesInsetFlagsWithoutPrivateScrollPocketAPI() {
+        let scrollView = NSScrollView()
+        scrollView.contentInsets = NSEdgeInsets(top: 18, left: 1, bottom: 2, right: 3)
+        scrollView.scrollerInsets = NSEdgeInsets(top: 9, left: 0, bottom: 0, right: 0)
+
+        DashboardPageScrollLayoutPolicy.systemScrollEdge.apply(to: scrollView)
+        XCTAssertTrue(scrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(scrollView.contentInsets.top, 18, accuracy: 0.001)
+        XCTAssertEqual(scrollView.scrollerInsets.top, 9, accuracy: 0.001)
+
+        DashboardPageScrollLayoutPolicy.titlebarClearance.apply(to: scrollView)
+        XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.scrollerInsets.top, 0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.scrollerInsets.bottom, 0, accuracy: 0.001)
     }
 
     private func firstDescendant<T: NSView>(of view: NSView, as type: T.Type) -> T? {

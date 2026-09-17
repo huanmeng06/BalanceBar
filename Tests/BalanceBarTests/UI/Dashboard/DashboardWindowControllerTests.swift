@@ -950,11 +950,23 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             XCTAssertTrue(scrollView.hasVerticalScroller)
             XCTAssertFalse(scrollView.hasHorizontalScroller)
             XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
-            XCTAssertTrue(scrollView.automaticallyAdjustsContentInsets)
+            let policy = DashboardPageScrollLayoutPolicy.current
+            XCTAssertEqual(
+                scrollView.automaticallyAdjustsContentInsets,
+                policy.automaticallyAdjustsContentInsets
+            )
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
-            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 0, accuracy: 1)
+            XCTAssertEqual(
+                viewportFrameInPage.minY - page.bounds.minY,
+                policy.viewportTopInset,
+                accuracy: 1
+            )
             let titlebarHeight = window.frame.height - window.contentLayoutRect.height
-            XCTAssertEqual(scrollView.contentInsets.top, titlebarHeight, accuracy: 1)
+            if policy.automaticallyAdjustsContentInsets {
+                XCTAssertEqual(scrollView.contentInsets.top, titlebarHeight, accuracy: 1)
+            } else {
+                XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            }
         }
 
         appDelegate.dashboardCompositionForTesting.showSection(.about)
@@ -2258,17 +2270,29 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             let geometry = DashboardScrollGeometry(scrollView: scrollView)
 
-            XCTAssertTrue(scrollView.automaticallyAdjustsContentInsets)
+            let policy = DashboardPageScrollLayoutPolicy.current
             XCTAssertEqual(
-                scrollView.contentInsets.top,
-                window.frame.height - window.contentLayoutRect.height,
-                accuracy: 1
+                scrollView.automaticallyAdjustsContentInsets,
+                policy.automaticallyAdjustsContentInsets
             )
+            if policy.automaticallyAdjustsContentInsets {
+                XCTAssertEqual(
+                    scrollView.contentInsets.top,
+                    window.frame.height - window.contentLayoutRect.height,
+                    accuracy: 1
+                )
+            } else {
+                XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            }
             XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
             XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
             XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
             XCTAssertTrue(document.isFlipped)
-            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 0, accuracy: 1)
+            XCTAssertEqual(
+                viewportFrameInPage.minY - page.bounds.minY,
+                policy.viewportTopInset,
+                accuracy: 1
+            )
             XCTAssertEqual(viewportFrameInPage.maxY, page.bounds.maxY, accuracy: 1)
 
             let proposals = geometry.maximumOffset > 1

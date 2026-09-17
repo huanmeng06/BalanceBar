@@ -82,8 +82,9 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 `DashboardSettingsComponents.makeSettingsPage`：
 
 - 垂直 overlay 滚动条，无水平滚动条，无弹性；
-- 页面 `NSScrollView` 贴齐 page 顶部并 `automaticallyAdjustsContentInsets = true`，由 AppKit 为重叠的 unified toolbar / titlebar 写入 content insets，从而使用系统 scroll-edge；不再用 52pt 非滚动布局空白把滚动视图挡在 chrome 下方；
-- 文档 `isFlipped`，初次挂载的 rest 原点是 `-contentInsets.top`（无 titlebar 重叠时仍为文档顶部）；
+- macOS 26+：页面 `NSScrollView` 贴齐 page 顶部并 `automaticallyAdjustsContentInsets = true`，由 AppKit 为重叠的 unified toolbar / titlebar 写入 content insets，从而使用系统 scroll-edge；
+- macOS 14/15：保留 52pt 非滚动顶部空白和手动 zero content/scroller insets，避免内容进入透明 titlebar；不手写 scroll-edge；
+- 文档 `isFlipped`，初次挂载的 rest 原点是 `-contentInsets.top`（无 titlebar 重叠或旧系统 zero inset 时仍为文档顶部）；
 - 卡片圆角 18，可见行高度至少 62pt（个别行另有更高最小值）。
 
 About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advanced 页内日志查看器另有内部 `NSTextView` 滚动（固定深色 VS Code 配色），与页面滚动独立。

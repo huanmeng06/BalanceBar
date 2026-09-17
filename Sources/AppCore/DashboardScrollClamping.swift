@@ -97,6 +97,54 @@ enum DashboardScrollClampingPolicy {
     }
 }
 
+/// Page-scroll chrome for the running OS.
+///
+/// macOS 26+ lets the scroll view overlap the transparent titlebar so AppKit
+/// can write content insets and draw the system scroll-edge. macOS 14/15 keep
+/// the pre-Tahoe 52pt non-scrolling clearance: `.fullSizeContentView` plus a
+/// transparent titlebar does not reliably produce that inset, and this app
+/// still supports 14+.
+struct DashboardPageScrollLayoutPolicy: Equatable {
+    /// Non-scrolling gap above the page `NSScrollView`.
+    let viewportTopInset: CGFloat
+    let automaticallyAdjustsContentInsets: Bool
+    /// When true, force zero `contentInsets` / `scrollerInsets` so AppKit
+    /// cannot leave a stale titlebar inset on the old layout.
+    let zerosManualInsets: Bool
+
+    /// Pre-#401 clearance that kept the first row out of the titlebar.
+    static let preTahoeTitlebarClearanceInset: CGFloat = 52
+
+    static let systemScrollEdge = DashboardPageScrollLayoutPolicy(
+        viewportTopInset: 0,
+        automaticallyAdjustsContentInsets: true,
+        zerosManualInsets: false
+    )
+
+    static let titlebarClearance = DashboardPageScrollLayoutPolicy(
+        viewportTopInset: preTahoeTitlebarClearanceInset,
+        automaticallyAdjustsContentInsets: false,
+        zerosManualInsets: true
+    )
+
+    static var current: DashboardPageScrollLayoutPolicy {
+        forOperatingSystemVersion(ProcessInfo.processInfo.operatingSystemVersion)
+    }
+
+    static func forOperatingSystemVersion(
+        _ version: OperatingSystemVersion
+    ) -> DashboardPageScrollLayoutPolicy {
+        version.majorVersion >= 26 ? systemScrollEdge : titlebarClearance
+    }
+
+    func apply(to scrollView: NSScrollView) {
+        scrollView.automaticallyAdjustsContentInsets = automaticallyAdjustsContentInsets
+        guard zerosManualInsets else { return }
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+    }
+}
+
 /// Describes the vertical geometry of a document inside a clip view.
 ///
 /// `visualOffset` is measured from the document's rest position. For a
