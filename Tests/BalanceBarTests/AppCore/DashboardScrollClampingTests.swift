@@ -333,6 +333,18 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(DashboardPageScrollLayoutPolicy.systemScrollEdge.viewportTopInset, 0)
         XCTAssertTrue(DashboardPageScrollLayoutPolicy.systemScrollEdge.automaticallyAdjustsContentInsets)
         XCTAssertFalse(DashboardPageScrollLayoutPolicy.systemScrollEdge.zerosManualInsets)
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.systemScrollEdge.windowTitlebarSeparatorStyle,
+            .automatic
+        )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.systemScrollEdge.sidebarTitlebarSeparatorStyle,
+            .none
+        )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.systemScrollEdge.contentTitlebarSeparatorStyle,
+            .automatic
+        )
 
         XCTAssertEqual(
             DashboardPageScrollLayoutPolicy.titlebarClearance.viewportTopInset,
@@ -341,6 +353,18 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset, 52)
         XCTAssertFalse(DashboardPageScrollLayoutPolicy.titlebarClearance.automaticallyAdjustsContentInsets)
         XCTAssertTrue(DashboardPageScrollLayoutPolicy.titlebarClearance.zerosManualInsets)
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.titlebarClearance.windowTitlebarSeparatorStyle,
+            .none
+        )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.titlebarClearance.sidebarTitlebarSeparatorStyle,
+            .none
+        )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.titlebarClearance.contentTitlebarSeparatorStyle,
+            .none
+        )
     }
 
     func testPageScrollLayoutPolicyAppliesInsetFlagsWithoutPrivateScrollPocketAPI() {
@@ -359,6 +383,42 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
         XCTAssertEqual(scrollView.scrollerInsets.top, 0, accuracy: 0.001)
         XCTAssertEqual(scrollView.scrollerInsets.bottom, 0, accuracy: 0.001)
+    }
+
+    func testPageScrollLayoutPolicyAppliesPaneTitlebarSeparatorsWithoutPrivateAPI() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 400),
+            styleMask: [.titled, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.titlebarSeparatorStyle = .none
+        let sidebarController = NSViewController()
+        sidebarController.view = NSView()
+        let contentController = NSViewController()
+        contentController.view = NSView()
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
+        let contentItem = NSSplitViewItem(viewController: contentController)
+        sidebarItem.titlebarSeparatorStyle = .line
+        contentItem.titlebarSeparatorStyle = .line
+
+        DashboardPageScrollLayoutPolicy.systemScrollEdge.applyTitlebarSeparators(
+            to: window,
+            sidebarItem: sidebarItem,
+            contentItem: contentItem
+        )
+        XCTAssertEqual(window.titlebarSeparatorStyle, .automatic)
+        XCTAssertEqual(sidebarItem.titlebarSeparatorStyle, .none)
+        XCTAssertEqual(contentItem.titlebarSeparatorStyle, .automatic)
+
+        DashboardPageScrollLayoutPolicy.titlebarClearance.applyTitlebarSeparators(
+            to: window,
+            sidebarItem: sidebarItem,
+            contentItem: contentItem
+        )
+        XCTAssertEqual(window.titlebarSeparatorStyle, .none)
+        XCTAssertEqual(sidebarItem.titlebarSeparatorStyle, .none)
+        XCTAssertEqual(contentItem.titlebarSeparatorStyle, .none)
     }
 
     private func firstDescendant<T: NSView>(of view: NSView, as type: T.Type) -> T? {

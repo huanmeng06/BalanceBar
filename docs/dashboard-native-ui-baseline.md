@@ -48,7 +48,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 最小尺寸 | 代码写入 `minSize` 800×540；安装 unified toolbar 后 AppKit 把 frame 高度下限抬到 **560**（XCTest 在 macOS 26.5 上测得）。宽度下限仍为 800。 | 创建窗口后的运行时 `window.minSize` |
 | 样式 | `.titled` `.closable` `.miniaturizable` `.resizable` `.fullSizeContentView` | 同上 |
 | 标题 | `titleVisibility = .hidden`；`window.title` 仍写入当前页标题 | 同上；`showSection` / `showProvider` |
-| 标题栏 | 透明、无分隔线；`toolbarStyle = .unified`；icon-only、不可自定义、不自动保存的 `NSToolbar`。默认系统项：`.flexibleSpace`、`.toggleSidebar`、`.sidebarTrackingSeparator`。`.flexibleSpace` 是 AppKit 系统 flexible space（`NSToolbarItem.Identifier.flexibleSpace`），不是应用手写 spacer / 固定宽度 / magic number；它把 toggle 推到侧栏 toolbar 段 trailing，靠近 tracking separator / divider。由独立 `DashboardToolbarController` 作为 delegate 提供；toggle 走 `NSSplitViewController` responder chain，separator 由 AppKit 跟踪 split divider。 | 同上；`DashboardToolbarController` |
+| 标题栏 | 透明；`toolbarStyle = .unified`；icon-only、不可自定义、不自动保存的 `NSToolbar`。默认系统项：`.flexibleSpace`、`.toggleSidebar`、`.sidebarTrackingSeparator`。`.flexibleSpace` 是 AppKit 系统 flexible space（`NSToolbarItem.Identifier.flexibleSpace`），不是应用手写 spacer / 固定宽度 / magic number；它把 toggle 推到侧栏 toolbar 段 trailing，靠近 tracking separator / divider。由独立 `DashboardToolbarController` 作为 delegate 提供；toggle 走 `NSSplitViewController` responder chain，separator 由 AppKit 跟踪 split divider。macOS 26+：窗口 `titlebarSeparatorStyle = .automatic`（不能写死 `.none`，否则会覆盖 split item 偏好），sidebar item `.none`、content item `.automatic`，让系统在内容 pane 使用 scroll-aware titlebar separator / scroll-edge；macOS 14/15：窗口与 split item 均保持 `.none`。不安装空 accessory，也不使用私有 `NSScrollPocket` API。 | 同上；`DashboardToolbarController`；`DashboardPageScrollLayoutPolicy` |
 | 背景 | `isOpaque = false`，`backgroundColor = .clear`，`hasShadow = true` | 同上；测试宿主会改 alpha/shadow，不能用 XCTest 证明最终像素 |
 | 外观 | `appearance = nil`，跟随系统；`AppleInterfaceThemeChangedNotification` 后异步 `rebuild()` | `start()` / `createDashboardWindow` |
 | 缩放按钮 | **可见且 `isEnabled = true`**；使用系统标准 zoom 按钮 | `createDashboardWindow` |
@@ -82,8 +82,8 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 `DashboardSettingsComponents.makeSettingsPage`：
 
 - 垂直 overlay 滚动条，无水平滚动条，无弹性；
-- macOS 26+：页面 `NSScrollView` 贴齐 page 顶部并 `automaticallyAdjustsContentInsets = true`，由 AppKit 为重叠的 unified toolbar / titlebar 写入 content insets，从而使用系统 scroll-edge；
-- macOS 14/15：保留 52pt 非滚动顶部空白和手动 zero content/scroller insets，避免内容进入透明 titlebar；不手写 scroll-edge；
+- macOS 26+：页面 `NSScrollView` 贴齐 page 顶部并 `automaticallyAdjustsContentInsets = true`，由 AppKit 为重叠的 unified toolbar / titlebar 写入 content insets。窗口不写死 `titlebarSeparatorStyle = .none`（该值会覆盖 split item 偏好）；content pane 使用 `.automatic`，sidebar 使用 `.none`，配合已有 `NSTrackingSeparatorToolbarItem`。不发明空 accessory，也不调用私有 `NSScrollPocket` / `preferredScrollEdgeEffectStyle`（后者只挂在 accessory 上，当前页面 accessory 为 `.none`）；
+- macOS 14/15：保留 52pt 非滚动顶部空白、手动 zero content/scroller insets，以及 `.none` titlebar separator，避免内容进入透明 titlebar；不手写 scroll-edge；
 - 文档 `isFlipped`，初次挂载的 rest 原点是 `-contentInsets.top`（无 titlebar 重叠或旧系统 zero inset 时仍为文档顶部）；
 - 卡片圆角 18，可见行高度至少 62pt（个别行另有更高最小值）。
 

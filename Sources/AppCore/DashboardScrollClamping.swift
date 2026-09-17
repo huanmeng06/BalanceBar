@@ -100,10 +100,16 @@ enum DashboardScrollClampingPolicy {
 /// Page-scroll chrome for the running OS.
 ///
 /// macOS 26+ lets the scroll view overlap the transparent titlebar so AppKit
-/// can write content insets and draw the system scroll-edge. macOS 14/15 keep
-/// the pre-Tahoe 52pt non-scrolling clearance: `.fullSizeContentView` plus a
-/// transparent titlebar does not reliably produce that inset, and this app
-/// still supports 14+.
+/// can write content insets and draw the system scroll-edge. The public
+/// scroll-edge *style* API (`NSScrollEdgeEffectStyle` /
+/// `preferredScrollEdgeEffectStyle`) is accessory-only (macOS 26.1+) and is
+/// not installed here: current pages report no accessory. The window-level
+/// `titlebarSeparatorStyle` must stay `.automatic` on 26+ because a forced
+/// `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`. Content-pane
+/// separators then use the existing `NSTrackingSeparatorToolbarItem`.
+/// macOS 14/15 keep the pre-Tahoe 52pt non-scrolling clearance and `.none`
+/// separators: `.fullSizeContentView` plus a transparent titlebar does not
+/// reliably produce that inset, and this app still supports 14+.
 struct DashboardPageScrollLayoutPolicy: Equatable {
     /// Non-scrolling gap above the page `NSScrollView`.
     let viewportTopInset: CGFloat
@@ -111,6 +117,12 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
     /// When true, force zero `contentInsets` / `scrollerInsets` so AppKit
     /// cannot leave a stale titlebar inset on the old layout.
     let zerosManualInsets: Bool
+    /// Window chrome. `.none` overrides every split-item preference.
+    let windowTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
+    /// Sidebar pane only; `.none` keeps the separator off the source list.
+    let sidebarTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
+    /// Content pane; `.automatic` is the public scroll-aware titlebar edge.
+    let contentTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
 
     /// Pre-#401 clearance that kept the first row out of the titlebar.
     static let preTahoeTitlebarClearanceInset: CGFloat = 52
@@ -118,13 +130,19 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
     static let systemScrollEdge = DashboardPageScrollLayoutPolicy(
         viewportTopInset: 0,
         automaticallyAdjustsContentInsets: true,
-        zerosManualInsets: false
+        zerosManualInsets: false,
+        windowTitlebarSeparatorStyle: .automatic,
+        sidebarTitlebarSeparatorStyle: .none,
+        contentTitlebarSeparatorStyle: .automatic
     )
 
     static let titlebarClearance = DashboardPageScrollLayoutPolicy(
         viewportTopInset: preTahoeTitlebarClearanceInset,
         automaticallyAdjustsContentInsets: false,
-        zerosManualInsets: true
+        zerosManualInsets: true,
+        windowTitlebarSeparatorStyle: .none,
+        sidebarTitlebarSeparatorStyle: .none,
+        contentTitlebarSeparatorStyle: .none
     )
 
     static var current: DashboardPageScrollLayoutPolicy {
@@ -142,6 +160,16 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
         guard zerosManualInsets else { return }
         scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+    }
+
+    func applyTitlebarSeparators(
+        to window: NSWindow,
+        sidebarItem: NSSplitViewItem?,
+        contentItem: NSSplitViewItem?
+    ) {
+        window.titlebarSeparatorStyle = windowTitlebarSeparatorStyle
+        sidebarItem?.titlebarSeparatorStyle = sidebarTitlebarSeparatorStyle
+        contentItem?.titlebarSeparatorStyle = contentTitlebarSeparatorStyle
     }
 }
 

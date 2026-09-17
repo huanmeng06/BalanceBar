@@ -330,6 +330,15 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertFalse(windowSource.contains("firstScrollView(in: contentHost)"))
         XCTAssertTrue(windowSource.contains("currentScrollablePage?.scrollOffset"))
         XCTAssertTrue(windowSource.contains("currentScrollablePage?.restoreScrollOffset"))
+        XCTAssertTrue(windowSource.contains("applyTitlebarSeparators"))
+        XCTAssertFalse(windowSource.contains("titlebarSeparatorStyle = .none"))
+        XCTAssertFalse(windowSource.contains("allowedPocketEdges"))
+        XCTAssertFalse(windowSource.contains("alwaysShownPocketEdges"))
+        XCTAssertFalse(windowSource.contains("scrollPocketStyle"))
+        XCTAssertFalse(windowSource.contains("topShadowTopInset"))
+        XCTAssertFalse(windowSource.contains("NSScrollPocket"))
+        XCTAssertFalse(windowSource.contains("preferredScrollEdgeEffectStyle"))
+        XCTAssertFalse(windowSource.contains("dashboardPageScrollEdgeHairline"))
 
         XCTAssertTrue(pageSource.contains("boundsDidChangeNotification"))
         XCTAssertTrue(pageSource.contains("postsBoundsChangedNotifications"))
@@ -506,6 +515,22 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(page.layoutPolicy, .systemScrollEdge)
         XCTAssertTrue(page.pageScrollView.automaticallyAdjustsContentInsets)
         XCTAssertEqual(page.layoutPolicy.viewportTopInset, 0, accuracy: 0.001)
+        XCTAssertEqual(window.titlebarSeparatorStyle, .automatic)
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        XCTAssertEqual(splitController.splitViewItems[0].titlebarSeparatorStyle, .none)
+        XCTAssertEqual(
+            try XCTUnwrap(splitController.contentSplitViewItem).titlebarSeparatorStyle,
+            .automatic
+        )
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(
+                try XCTUnwrap(splitController.contentSplitViewItem)
+                    .topAlignedAccessoryViewControllers.count,
+                0
+            )
+        }
 
         let viewportFrameInPage = page.pageScrollView.convert(
             page.pageScrollView.bounds,

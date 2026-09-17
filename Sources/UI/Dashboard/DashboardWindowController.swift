@@ -292,7 +292,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.titlebarSeparatorStyle = .none
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = true
@@ -534,6 +533,15 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // controller so AppKit can bind the standard tracking separator.
         toolbarController.install(on: window)
         accessoryHost.attach(window: window, splitViewController: splitController)
+        // After the tracking separator exists, restore the public pane
+        // titlebar-separator preference. A window-level `.none` would
+        // override `NSSplitViewItem.titlebarSeparatorStyle` and suppress the
+        // system scroll-edge on macOS 26.
+        DashboardPageScrollLayoutPolicy.current.applyTitlebarSeparators(
+            to: window,
+            sidebarItem: splitController.splitViewItems.first,
+            contentItem: splitController.contentSplitViewItem
+        )
         window.layoutIfNeeded()
         if collapsed {
             splitController.splitViewItems[0].isCollapsed = true
