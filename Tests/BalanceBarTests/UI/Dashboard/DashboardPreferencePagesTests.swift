@@ -300,7 +300,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
-        let launchAtLoginRow = try XCTUnwrap(launchSwitch.superview)
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchSwitch))
         let launchAtLoginButtons = {
             self.descendants(of: launchAtLoginRow).compactMap { $0 as? NSButton }
         }
@@ -432,12 +432,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let launchWithChatGPTSwitch = try XCTUnwrap(
             switches.first { $0.identifier?.rawValue == LaunchWithChatGPTController.toggleIdentifier }
         )
-        let launchAtLoginRow = try XCTUnwrap(launchAtLoginSwitch.superview)
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchAtLoginSwitch))
         XCTAssertTrue(
             descendants(of: launchAtLoginRow).compactMap { $0 as? NSButton }.isEmpty
         )
         let launchWithChatGPTControls = try XCTUnwrap(launchWithChatGPTSwitch.superview)
-        let launchWithChatGPTRow = try XCTUnwrap(launchWithChatGPTControls.superview)
+        let launchWithChatGPTRow = try XCTUnwrap(SettingsRowView.enclosing(launchWithChatGPTControls))
         let launchWithChatGPTOpenSettingsButton = try XCTUnwrap(
             descendants(of: launchWithChatGPTRow)
                 .compactMap { $0 as? NSButton }
@@ -509,13 +509,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .compactMap { $0 as? NSSwitch }
                     .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
             )
-            let subtitle = try XCTUnwrap(
-                descendants(of: page)
-                    .compactMap { $0 as? NSTextField }
-                    .first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription) }
+            let row = try XCTUnwrap(SettingsRowView.enclosing(launchSwitch))
+            let labels = row.labelsStack
+            let subtitle = row.detailLabel
+            XCTAssertEqual(
+                subtitle.stringValue,
+                tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription)
             )
-            let labels = try XCTUnwrap(subtitle.superview)
-            let row = try XCTUnwrap(labels.superview)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 880, height: 760),
                 styleMask: [.borderless],
@@ -707,15 +707,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let runningControls = try XCTUnwrap(runningPopup.superview as? NSStackView)
         let trailingControls = try XCTUnwrap(trailingPopup.superview as? NSStackView)
         let controls = try XCTUnwrap(runningControls.superview as? DashboardAdaptiveControlsStackView)
-        let row = try XCTUnwrap(controls.superview)
-        let labels = try XCTUnwrap(
-            row.subviews
-                .compactMap { $0 as? NSStackView }
-                .first { $0 !== controls }
-        )
-        let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
-        let card = try XCTUnwrap(rowsStack.superview)
-        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let row = try XCTUnwrap(SettingsRowView.enclosing(controls))
+        let labels = row.labelsStack
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(row))
+        let rowsStack = section.rowsStack
+        let card = section.cardView
+        let separators = section.separators
 
         XCTAssertEqual(controls.arrangedSubviews.count, 2)
         XCTAssertTrue(controls.arrangedSubviews[0] === runningControls)
@@ -738,7 +735,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         func assertLayout(
             width: CGFloat,
             orientation: NSUserInterfaceLayoutOrientation,
-            usesDedicatedRow: Bool,
+            placesAccessoryBelowLabels: Bool,
             file: StaticString = #filePath,
             line: UInt = #line
         ) {
@@ -747,8 +744,35 @@ final class DashboardPreferencePagesTests: XCTestCase {
             page.setFrameSize(host.bounds.size)
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
 
             XCTAssertEqual(controls.orientation, orientation, file: file, line: line)
+            XCTAssertEqual(
+                row.contentStack.orientation,
+                placesAccessoryBelowLabels ? .vertical : .horizontal,
+                file: file,
+                line: line
+            )
+            XCTAssertGreaterThan(row.titleLabel.frame.width, 1, file: file, line: line)
+            XCTAssertGreaterThan(row.titleLabel.frame.height, 1, file: file, line: line)
+            XCTAssertGreaterThan(row.detailLabel.frame.width, 1, file: file, line: line)
+            XCTAssertGreaterThan(row.detailLabel.frame.height, 1, file: file, line: line)
+            let titleFrame = row.titleLabel.convert(row.titleLabel.bounds, to: row)
+            let detailFrame = row.detailLabel.convert(row.detailLabel.bounds, to: row)
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(titleFrame),
+                "refresh title stays inside the row at \(width)",
+                file: file,
+                line: line
+            )
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(detailFrame),
+                "refresh detail stays inside the row at \(width)",
+                file: file,
+                line: line
+            )
             let runningFrame = runningControls.convert(runningControls.bounds, to: row)
             let trailingFrame = trailingControls.convert(trailingControls.bounds, to: row)
             let labelsFrame = labels.convert(labels.bounds, to: row)
@@ -783,7 +807,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     line: line
                 )
             }
-            if usesDedicatedRow {
+            if placesAccessoryBelowLabels {
                 XCTAssertLessThanOrEqual(
                     controlsFrame.maxY,
                     labelsFrame.minY + 0.5,
@@ -795,6 +819,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     row.frame.height,
                     DashboardSettingsComponents.standardRowHeight,
                     "refresh controls move to a dedicated row at the text line threshold",
+                    file: file,
+                    line: line
+                )
+                let availableTextWidth = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
+                XCTAssertGreaterThan(
+                    row.detailLabel.preferredMaxLayoutWidth,
+                    controlsFrame.width - 0.5,
+                    "dedicated-row text uses the full content width above the accessory",
+                    file: file,
+                    line: line
+                )
+                XCTAssertEqual(
+                    row.detailLabel.preferredMaxLayoutWidth,
+                    availableTextWidth,
+                    accuracy: 1,
+                    "dedicated-row wrapping width matches the row's content column",
                     file: file,
                     line: line
                 )
@@ -823,9 +863,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
             assertCardHeight("refresh card height follows its adaptive control row", file: file, line: line)
         }
 
-        assertLayout(width: 720, orientation: .horizontal, usesDedicatedRow: false)
-        assertLayout(width: 516, orientation: .horizontal, usesDedicatedRow: true)
-        assertLayout(width: 320, orientation: .vertical, usesDedicatedRow: true)
+        assertLayout(width: 720, orientation: .horizontal, placesAccessoryBelowLabels: false)
+        let wideHeight = row.frame.height
+        assertLayout(width: 516, orientation: .horizontal, placesAccessoryBelowLabels: true)
+        assertLayout(width: 320, orientation: .vertical, placesAccessoryBelowLabels: true)
+        assertLayout(width: 516, orientation: .horizontal, placesAccessoryBelowLabels: true)
+        assertLayout(width: 720, orientation: .horizontal, placesAccessoryBelowLabels: false)
+        XCTAssertEqual(
+            row.frame.height,
+            wideHeight,
+            accuracy: 1.0,
+            "refresh row must return to its wide height before viewDidEndLiveResize"
+        )
 
         runningPopup.selectItem(at: 4)
         relay.interval(runningPopup)

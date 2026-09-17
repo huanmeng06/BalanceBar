@@ -351,7 +351,7 @@ final class LaunchAtLoginServiceTests: XCTestCase {
             controls.compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
-        let launchAtLoginRow = try XCTUnwrap(launchSwitch.superview)
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchSwitch))
 
         appDelegate.handleLaunchAtLoginActionForTesting(enabled: true)
 

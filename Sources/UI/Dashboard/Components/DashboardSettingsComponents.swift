@@ -2,8 +2,23 @@ import AppKit
 
 protocol DashboardSettingsRowControlLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
-    var usesDedicatedRow: Bool { get }
+    /// True when this accessory stacked its own controls vertically.
+    /// This is not a row-placement signal: vertical controls may still sit
+    /// beside the labels.
+    var stacksControlsVertically: Bool { get }
     var allowsTextDrivenDedicatedRow: Bool { get }
+    /// Minimum width the labels column needs to remain beside this accessory.
+    /// Zero means the accessory never requests a dedicated row for label space.
+    var minimumInlineLabelWidth: CGFloat { get }
+    /// Uncompressed width of the accessory in its current orientation.
+    /// Horizontal: sum of children natural widths + spacing.
+    /// Vertical: max of children natural widths.
+    var naturalAccessoryWidth: CGFloat { get }
+}
+
+extension DashboardSettingsRowControlLayout {
+    var minimumInlineLabelWidth: CGFloat { 0 }
+    var naturalAccessoryWidth: CGFloat { 0 }
 }
 
 enum DashboardSettingsLayoutMetrics {
@@ -135,7 +150,7 @@ private final class DashboardSettingsRowView: NSView {
     private var lastMeasuredWidth: CGFloat = -1
     private var lastPreferredHeight: CGFloat = -1
     private var lastContentIdentity: DashboardSettingsRowContentIdentity?
-    private var lastAdaptiveUsesDedicatedRow = false
+    private var lastAdaptiveStacksControlsVertically = false
     private var cachedPreferredHeight: CGFloat?
     private var cachedControlFittingSize: NSSize?
     private var cachedMinimumReadableWidth: CGFloat?
@@ -193,9 +208,9 @@ private final class DashboardSettingsRowView: NSView {
             let availableContentAndControlWidth = max(0, bounds.width - 40)
             let adaptiveControl = controlView as? DashboardSettingsRowControlLayout
             adaptiveControl?.updateAvailableRowWidth(availableContentAndControlWidth)
-            let usesDedicated = adaptiveControl?.usesDedicatedRow == true
-            if usesDedicated != lastAdaptiveUsesDedicatedRow {
-                lastAdaptiveUsesDedicatedRow = usesDedicated
+            let stacksVertically = adaptiveControl?.stacksControlsVertically == true
+            if stacksVertically != lastAdaptiveStacksControlsVertically {
+                lastAdaptiveStacksControlsVertically = stacksVertically
                 cachedControlFittingSize = nil
                 cachedPreferredHeight = nil
             }
@@ -223,7 +238,7 @@ private final class DashboardSettingsRowView: NSView {
             let placement: DashboardSettingsControlPlacement
             if forceDedicatedControlRow || contentNeedsDedicatedRow {
                 placement = .dedicatedRow
-            } else if usesDedicated {
+            } else if stacksVertically {
                 placement = .verticalBesideContent
             } else {
                 placement = .horizontal

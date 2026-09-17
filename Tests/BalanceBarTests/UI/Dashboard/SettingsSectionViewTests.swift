@@ -114,16 +114,17 @@ final class SettingsSectionViewTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(native.frame.height, SettingsRowView.minimumHeight)
     }
 
-    func testGeneralStartupSectionUsesNativeContainerAndLeavesOtherCardsOnLegacyFactory() throws {
+    func testGeneralPageUsesNativeSectionsForSystemRefreshStartupAndApplication() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .english
 
-        let suiteName = "SettingsSectionViewTests.Startup.\(UUID().uuidString)"
+        let suiteName = "SettingsSectionViewTests.GeneralNative.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
+        DashboardSettingsLayoutMetrics.reset()
         let page = DashboardGeneralPage().make(.init(
             preferences: AppPreferences(defaults: defaults),
             currentProviderName: "OpenAI",
@@ -150,14 +151,39 @@ final class SettingsSectionViewTests: XCTestCase {
                 .compactMap { $0 as? NSButton }
                 .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesOpenCcSwitch) }
         )
-        XCTAssertNil(SettingsSectionView.enclosing(openButton))
+        let system = try XCTUnwrap(SettingsSectionView.enclosing(openButton))
+        XCTAssertEqual(
+            system.headingLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesSystem)
+        )
+        XCTAssertNotNil(SettingsRowView.enclosing(openButton))
 
         let refreshButton = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSButton }
                 .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) }
         )
-        XCTAssertNil(SettingsSectionView.enclosing(refreshButton))
+        let refresh = try XCTUnwrap(SettingsSectionView.enclosing(refreshButton))
+        XCTAssertEqual(
+            refresh.headingLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesRefresh)
+        )
+        XCTAssertNotNil(SettingsRowView.enclosing(refreshButton))
+
+        let languagePopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppLanguage.preferenceKey }
+        )
+        let application = try XCTUnwrap(SettingsSectionView.enclosing(languagePopup))
+        XCTAssertEqual(
+            application.headingLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesApplication)
+        )
+        XCTAssertNotNil(SettingsRowView.enclosing(languagePopup))
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
     }
 
     func testAdvancedDiagnosticsSectionUsesNativeContainerAndSkipsLegacyMeasurement() throws {
@@ -543,7 +569,9 @@ final class SettingsSectionViewTests: XCTestCase {
             window.layoutIfNeeded()
             host.layoutSubtreeIfNeeded()
             section.layoutSubtreeIfNeeded()
-            refreshNativeRowWrapping(in: section)
+            SettingsRowView.flushPendingWrappingHeightCommits(in: section)
+            window.layoutIfNeeded()
+            section.layoutSubtreeIfNeeded()
             let fitted = section.fittingSize.height
             if abs(fitted - previousHeight) < 0.5 {
                 break
@@ -559,13 +587,6 @@ final class SettingsSectionViewTests: XCTestCase {
             return 0
         }
         return maxY - minY
-    }
-
-    private func refreshNativeRowWrapping(in view: NSView) {
-        if let row = view as? SettingsRowView {
-            row.refreshWrappingLayout()
-        }
-        view.subviews.forEach { refreshNativeRowWrapping(in: $0) }
     }
 
     private func descendants(of view: NSView) -> [NSView] {
