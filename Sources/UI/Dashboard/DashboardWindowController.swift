@@ -388,6 +388,27 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         sourceListController?.setShowsUpdateAvailableBadge(visible)
     }
 
+    func bindSearchQueryHandler(_ handler: @escaping (String) -> Void) {
+        toolbarController.onSearchQueryChanged = handler
+    }
+
+    func setSearchQuery(_ query: String) {
+        toolbarController.setQuery(query)
+    }
+
+    var searchQuery: String { toolbarController.searchQuery }
+
+    func currentHostedPageContent() -> NSView {
+        if let scrollable = currentScrollablePage {
+            return scrollable.hostedContent
+        }
+        return pageContainer.currentPage?.view ?? pageContainer.view
+    }
+
+    func restoreCurrentPageScrollToTop() {
+        currentScrollablePage?.restoreScrollOffset(0)
+    }
+
     func teardown() {
         guard !isTornDown else { return }
         persistShellGeometry()

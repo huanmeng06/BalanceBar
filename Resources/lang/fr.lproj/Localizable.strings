@@ -126,6 +126,9 @@
 "dashboard.components.about" = "À propos";
 "dashboard.window.controller.appearance" = "Apparence";
 "dashboard.window.controller.system" = "Système";
+"dashboard.search.placeholder" = "Rechercher";
+"dashboard.search.no_results" = "Aucun résultat";
+"dashboard.search.no_results_detail" = "Aucun réglage ne correspond à cette recherche.";
 "dashboard.about.page.github_repository" = "Dépôt GitHub";
 "dashboard.about.page.version_value" = "Version %1$@";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Consulter les soldes et quotas dans la barre des menus via CC Switch";

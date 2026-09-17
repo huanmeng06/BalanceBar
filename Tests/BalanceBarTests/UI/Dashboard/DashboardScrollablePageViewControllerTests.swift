@@ -700,7 +700,12 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(dashboardWindow.titlebarAccessoryViewControllers.isEmpty)
         XCTAssertEqual(
             DashboardToolbarController.defaultItemIdentifiers,
-            [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator]
+            [
+                .flexibleSpace,
+                .toggleSidebar,
+                .sidebarTrackingSeparator,
+                DashboardToolbarController.searchItemIdentifier
+            ]
         )
         XCTAssertEqual(
             dashboardWindow.toolbar?.items.map(\.itemIdentifier),

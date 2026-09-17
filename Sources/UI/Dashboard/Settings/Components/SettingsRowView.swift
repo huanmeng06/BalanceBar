@@ -282,6 +282,7 @@ final class SettingsRowView: NSView {
         titleAccessory: NSView?,
         accessoryView: NSView?
     ) {
+        identifier = DashboardPageSearch.rowIdentifier
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

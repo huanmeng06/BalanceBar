@@ -51,6 +51,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains(".flexibleSpace"))
         XCTAssertTrue(source.contains(".toggleSidebar"))
         XCTAssertTrue(source.contains(".sidebarTrackingSeparator"))
+        XCTAssertTrue(source.contains("NSSearchToolbarItem"))
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
         XCTAssertTrue(source.contains("autosavesConfiguration = false"))
         XCTAssertFalse(source.contains("toolbarNavigationalItemIdentifiers"))
@@ -64,6 +65,10 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(source.contains("NSClassFromString"))
         XCTAssertFalse(source.contains("NSGlassEffectView"))
         XCTAssertFalse(source.contains("NSView("))
+        XCTAssertFalse(source.contains("NSSearchField("))
+        XCTAssertFalse(source.contains("NSTitlebarAccessoryViewController"))
+        XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
+        XCTAssertFalse(source.contains("NSScrollPocket"))
     }
 
     func testWindowEnablesNativeZoomAndStaysResizable() throws {
@@ -1088,7 +1093,12 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(toolbar.delegate is DashboardToolbarController, file: file, line: line)
         XCTAssertEqual(
             DashboardToolbarController.defaultItemIdentifiers,
-            [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator],
+            [
+                .flexibleSpace,
+                .toggleSidebar,
+                .sidebarTrackingSeparator,
+                DashboardToolbarController.searchItemIdentifier
+            ],
             file: file,
             line: line
         )
@@ -1096,13 +1106,21 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let identifiers = toolbar.items.map(\.itemIdentifier)
         XCTAssertEqual(
             identifiers,
-            [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator],
-            "System flexibleSpace should precede the sidebar toggle so AppKit can push it to the tracking separator",
+            [
+                .flexibleSpace,
+                .toggleSidebar,
+                .sidebarTrackingSeparator,
+                DashboardToolbarController.searchItemIdentifier
+            ],
+            "System flexibleSpace should precede the sidebar toggle; content-pane search follows the tracking separator",
             file: file,
             line: line
         )
         let customIdentifiers = identifiers.filter {
-            $0 != .flexibleSpace && $0 != .toggleSidebar && $0 != .sidebarTrackingSeparator
+            $0 != .flexibleSpace
+                && $0 != .toggleSidebar
+                && $0 != .sidebarTrackingSeparator
+                && $0 != DashboardToolbarController.searchItemIdentifier
         }
         XCTAssertTrue(
             customIdentifiers.isEmpty,
@@ -1118,6 +1136,19 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
         XCTAssertNotNil(
             toolbar.items.first { $0.itemIdentifier == .toggleSidebar },
+            file: file,
+            line: line
+        )
+        let searchItem = toolbar.items.last
+        XCTAssertEqual(
+            searchItem?.itemIdentifier,
+            DashboardToolbarController.searchItemIdentifier,
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            searchItem is NSSearchToolbarItem,
+            "Content-pane search must be NSSearchToolbarItem, not a hand-rolled NSSearchField",
             file: file,
             line: line
         )
@@ -1808,6 +1839,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         window.displayIfNeeded()
         let page = try XCTUnwrap(menuPage(in: window))
         layoutDescendants(of: page)
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
+        layoutDescendants(of: page)
         let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
         let documentView = try XCTUnwrap(scrollView.documentView)
         let editor = try XCTUnwrap(findStatusLinksEditor(in: page))
@@ -1820,6 +1854,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         appDelegate.dashboardCompositionForTesting.addStatusLinkForTesting()
 
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
         window.layoutIfNeeded()
         window.displayIfNeeded()
 
@@ -2000,7 +2035,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(hiddenEditor.rowCount, customLinks.count)
 
         finalToggle.state = .on
-        let statusRow = try XCTUnwrap(finalToggle.superview)
+        let statusRow = try XCTUnwrap(SettingsRowView.enclosing(finalToggle))
         let editorCard = try XCTUnwrap(
             ancestors(of: hiddenEditor).first { $0.layer?.cornerRadius == 18 }
         )
@@ -2091,7 +2126,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 let heading: NSTextField
                 let card: NSView
                 let rowsStack: NSStackView
-                if let native = sectionView as? SettingsSectionView {
+                if let native = sectionView as? SettingsSectionView
+                    ?? sectionView.subviews.first as? SettingsSectionView {
                     heading = native.headingLabel
                     card = native.cardView
                     rowsStack = native.rowsStack

@@ -46,6 +46,7 @@ enum DashboardAboutPage {
         githubRow.spacing = 0
 
         let stack = NSStackView(views: [icon, name, version, detail, githubRow])
+        stack.identifier = DashboardPageSearch.aboutContentIdentifier
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 8
