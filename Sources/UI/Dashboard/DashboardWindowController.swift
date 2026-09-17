@@ -292,6 +292,11 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        // Keep `.none`. `.automatic` / `.line` / `.shadow` are not
+        // scroll-dependent on this transparent unified toolbar, and a
+        // window-level separator would span the sidebar. The observable
+        // rest↔scrolled edge is the page-local hairline in
+        // `DashboardScrollablePageViewController`.
         window.titlebarSeparatorStyle = .none
         window.backgroundColor = .clear
         window.isOpaque = false
