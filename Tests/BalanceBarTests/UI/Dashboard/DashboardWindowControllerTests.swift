@@ -1788,6 +1788,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         window.displayIfNeeded()
         let page = try XCTUnwrap(menuPage(in: window))
         layoutDescendants(of: page)
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
+        layoutDescendants(of: page)
         let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
         let documentView = try XCTUnwrap(scrollView.documentView)
         let editor = try XCTUnwrap(findStatusLinksEditor(in: page))
@@ -1800,6 +1803,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         appDelegate.dashboardCompositionForTesting.addStatusLinkForTesting()
 
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
         window.layoutIfNeeded()
         window.displayIfNeeded()
 
@@ -1980,7 +1984,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(hiddenEditor.rowCount, customLinks.count)
 
         finalToggle.state = .on
-        let statusRow = try XCTUnwrap(finalToggle.superview)
+        let statusRow = try XCTUnwrap(SettingsRowView.enclosing(finalToggle))
         let editorCard = try XCTUnwrap(
             ancestors(of: hiddenEditor).first { $0.layer?.cornerRadius == 18 }
         )
@@ -2071,7 +2075,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 let heading: NSTextField
                 let card: NSView
                 let rowsStack: NSStackView
-                if let native = sectionView as? SettingsSectionView {
+                if let native = sectionView as? SettingsSectionView
+                    ?? sectionView.subviews.first as? SettingsSectionView {
                     heading = native.headingLabel
                     card = native.cardView
                     rowsStack = native.rowsStack
