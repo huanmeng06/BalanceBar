@@ -524,6 +524,19 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             try XCTUnwrap(splitController.contentSplitViewItem).titlebarSeparatorStyle,
             .automatic
         )
+        XCTAssertFalse(page.layoutPolicy.contentSurfaceExtendsUnderTitlebar)
+        let surfaceFrame = splitController.contentSurface.convert(
+            splitController.contentSurface.bounds,
+            to: nil
+        )
+        XCTAssertEqual(surfaceFrame.maxY, window.contentLayoutRect.maxY, accuracy: 1)
+        XCTAssertEqual(surfaceFrame.minY, 0, accuracy: 1)
+        let splitFrame = splitController.splitView.convert(
+            splitController.splitView.bounds,
+            to: nil
+        )
+        XCTAssertGreaterThan(splitFrame.maxY, window.contentLayoutRect.maxY + 1)
+        XCTAssertFalse(splitController.contentSurface.layer?.isOpaque ?? true)
         if #available(macOS 26.0, *) {
             XCTAssertEqual(
                 try XCTUnwrap(splitController.contentSplitViewItem)
