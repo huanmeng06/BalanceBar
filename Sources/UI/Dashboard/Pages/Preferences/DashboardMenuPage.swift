@@ -1,12 +1,12 @@
 import AppKit
 
 private final class QuotaColorSelectionStack: NSStackView, DashboardSettingsRowControlLayout {
-    private(set) var usesDedicatedRow = false
+    private(set) var stacksControlsVertically = false
     let allowsTextDrivenDedicatedRow = true
     func updateAvailableRowWidth(_ width: CGFloat) {
         let shouldStack = width < 300
-        guard usesDedicatedRow != shouldStack else { return }
-        usesDedicatedRow = shouldStack
+        guard stacksControlsVertically != shouldStack else { return }
+        stacksControlsVertically = shouldStack
         orientation = shouldStack ? .vertical : .horizontal
         alignment = shouldStack ? .leading : .centerY
         needsLayout = true

@@ -36,8 +36,9 @@ final class SettingsRowView: NSView {
     private var detailWidthConstraint: NSLayoutConstraint?
     private var dedicatedLabelsWidthConstraint: NSLayoutConstraint?
     private var wrappingHeightIsDirty = false
-    private var wrappingCommitIsScheduled = false
+    private var wrappingCommitWorkItem: DispatchWorkItem?
     private var isPerformingLayout = false
+    private var accessoryNaturalWidthConstraint: NSLayoutConstraint?
 
     init(
         title: String,
@@ -76,12 +77,15 @@ final class SettingsRowView: NSView {
     override func layout() {
         isPerformingLayout = true
         syncAdaptiveAccessory()
+        updateAccessoryNaturalWidthLock()
         super.layout()
-        // Never invalidate intrinsic size here. Doing so during live resize
-        // exploded AppKit's Update Constraints cycle on dual-button rows;
-        // doing so in ordinary layout also desynchronized in-place
-        // localization rebuilds in the broader Dashboard tests.
-        applyWrappingWidths(invalidateHeight: false)
+        // Constraint solver has already set this row's and contentStack's
+        // frames. Force the content stack to re-layout against those frames so
+        // labelsStack.bounds.width is the solved column, including when the
+        // row grows and AppKit would otherwise skip a laid-out subtree.
+        contentStack.needsLayout = true
+        contentStack.layoutSubtreeIfNeeded()
+        recordSolvedWrappingWidthIfNeeded()
         isPerformingLayout = false
         scheduleWrappingHeightCommitIfNeeded()
     }
@@ -89,9 +93,12 @@ final class SettingsRowView: NSView {
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
         if newWindow == nil {
-            wrappingHeightIsDirty = false
-            wrappingCommitIsScheduled = false
+            cancelPendingWrappingHeightCommit()
         }
+    }
+
+    deinit {
+        wrappingCommitWorkItem?.cancel()
     }
 
     override func viewDidEndLiveResize() {
@@ -102,10 +109,29 @@ final class SettingsRowView: NSView {
     /// Apply wrapping from the current bounds and update intrinsic height.
     /// Call only outside an in-flight window layout pass.
     func refreshWrappingLayout() {
+        cancelPendingWrappingHeightCommitKeepingDirtyFlag()
         syncAdaptiveAccessory()
-        applyWrappingWidths(invalidateHeight: true)
         needsLayout = true
         layoutSubtreeIfNeeded()
+        wrappingHeightIsDirty = true
+        performScheduledWrappingHeightCommit()
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    /// Runs the same coalesced height commit production schedules after
+    /// `layout()`. Tests use this to observe the mouse-down path without
+    /// calling `refreshWrappingLayout()` (the mouse-up settle).
+    func flushPendingWrappingHeightCommitForTesting() {
+        wrappingCommitWorkItem?.cancel()
+        performScheduledWrappingHeightCommit()
+    }
+
+    static func flushPendingWrappingHeightCommits(in view: NSView) {
+        if let row = view as? SettingsRowView {
+            row.flushPendingWrappingHeightCommitForTesting()
+        }
+        view.subviews.forEach { flushPendingWrappingHeightCommits(in: $0) }
     }
 
     func updateDetail(_ text: String?) {
@@ -130,53 +156,93 @@ final class SettingsRowView: NSView {
         notifyHeightHost()
     }
 
-    private func applyWrappingWidths(invalidateHeight: Bool) {
+    private func recordSolvedWrappingWidthIfNeeded() {
         let labelWidth = wrappingWidthForLabels()
-        guard labelWidth > 1 else { return }
+        guard labelWidth > 1 else {
+            wrappingHeightIsDirty = true
+            return
+        }
         let titleWidth = wrappingWidthForTitle(labelWidth: labelWidth)
-        let widthChanged = wrappingNeedsUpdate(titleWidth: titleWidth, labelWidth: labelWidth)
-        guard widthChanged || (invalidateHeight && wrappingHeightIsDirty) else { return }
+        guard wrappingNeedsUpdate(titleWidth: titleWidth, labelWidth: labelWidth) else { return }
+        wrappingHeightIsDirty = true
+        // Assign wrapping now so title and detail share the solved column
+        // before the deferred ICS commit. Do not invalidate ICS here:
+        // that is what caused Update Constraints loops inside layout().
+        writeWrappingWidths(
+            titleWidth: titleWidth,
+            labelWidth: labelWidth,
+            invalidateLabels: false
+        )
+    }
 
-        if invalidateHeight {
+    private func scheduleWrappingHeightCommitIfNeeded() {
+        guard wrappingHeightIsDirty else { return }
+        guard !isPerformingLayout else { return }
+        guard wrappingCommitWorkItem == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            self?.performScheduledWrappingHeightCommit()
+        }
+        wrappingCommitWorkItem = work
+        DispatchQueue.main.async(execute: work)
+    }
+
+    private func performScheduledWrappingHeightCommit() {
+        wrappingCommitWorkItem = nil
+        guard wrappingHeightIsDirty else { return }
+        let labelWidth = wrappingWidthForLabels()
+        guard labelWidth > 1 else {
+            needsLayout = true
+            return
+        }
+        let titleWidth = wrappingWidthForTitle(labelWidth: labelWidth)
+        wrappingHeightIsDirty = false
+        writeWrappingWidths(
+            titleWidth: titleWidth,
+            labelWidth: labelWidth,
+            invalidateLabels: true
+        )
+        labelsStack.invalidateIntrinsicContentSize()
+        contentStack.invalidateIntrinsicContentSize()
+        invalidateIntrinsicContentSize()
+        labelsStack.needsLayout = true
+        contentStack.needsLayout = true
+        needsLayout = true
+        notifyHeightHost()
+    }
+
+    private func writeWrappingWidths(
+        titleWidth: CGFloat,
+        labelWidth: CGFloat,
+        invalidateLabels: Bool
+    ) {
+        if invalidateLabels {
             titleLabel.preferredMaxLayoutWidth = titleWidth
             if !detailLabel.isHidden {
                 detailLabel.preferredMaxLayoutWidth = labelWidth
             }
-            wrappingHeightIsDirty = false
-            invalidateIntrinsicContentSize()
-            notifyHeightHost()
+            titleLabel.invalidateIntrinsicContentSize()
+            if !detailLabel.isHidden {
+                detailLabel.invalidateIntrinsicContentSize()
+            }
             return
         }
-
         (titleLabel as? SettingsWrappingLabel)?
             .setPreferredMaxLayoutWidthWithoutInvalidation(titleWidth)
         if !detailLabel.isHidden {
             (detailLabel as? SettingsWrappingLabel)?
                 .setPreferredMaxLayoutWidthWithoutInvalidation(labelWidth)
         }
-        wrappingHeightIsDirty = true
-        scheduleWrappingHeightCommitIfNeeded()
     }
 
-    private func scheduleWrappingHeightCommitIfNeeded() {
-        guard wrappingHeightIsDirty else { return }
-        guard window?.inLiveResize != true else { return }
-        guard !isPerformingLayout else { return }
-        guard !wrappingCommitIsScheduled else { return }
-        // XCTest shares one AppKit constraint solver. A deferred ICS
-        // invalidation here races later tests' in-place localization
-        // rebuilds. Tests call `refreshWrappingLayout()` after pinning.
-        if AutomatedTestHost.isRunning {
-            return
-        }
-        wrappingCommitIsScheduled = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.wrappingCommitIsScheduled = false
-            guard self.wrappingHeightIsDirty, self.window != nil else { return }
-            guard self.window?.inLiveResize != true else { return }
-            self.refreshWrappingLayout()
-        }
+    private func cancelPendingWrappingHeightCommit() {
+        wrappingCommitWorkItem?.cancel()
+        wrappingCommitWorkItem = nil
+        wrappingHeightIsDirty = false
+    }
+
+    private func cancelPendingWrappingHeightCommitKeepingDirtyFlag() {
+        wrappingCommitWorkItem?.cancel()
+        wrappingCommitWorkItem = nil
     }
 
     private func wrappingNeedsUpdate(titleWidth: CGFloat, labelWidth: CGFloat) -> Bool {
@@ -191,28 +257,22 @@ final class SettingsRowView: NSView {
     }
 
     private func wrappingWidthForLabels() -> CGFloat {
-        if stacksVertically {
-            if bounds.width > 1 {
-                return max(0, bounds.width - Self.horizontalPadding * 2)
-            }
-            return max(0, contentStack.bounds.width)
-        }
-        var reserved = Self.horizontalPadding * 2
-        if let accessoryView, !accessoryView.isHidden {
-            let fitted = accessoryView.fittingSize.width
-            let accessoryWidth = fitted > 1 ? fitted : accessoryView.bounds.width
-            reserved += max(1, accessoryWidth) + Self.contentSpacing
-        }
-        let available = bounds.width > 1 ? bounds.width : labelsStack.bounds.width
-        guard available > 1 else { return 0 }
-        // Keep a usable wrapping width even when the accessory stack reports a
-        // stretched fitting size during live resize.
-        return max(80, available - reserved)
+        let width = labelsStack.bounds.width
+        return width > 1 ? width : 0
     }
 
     private func wrappingWidthForTitle(labelWidth: CGFloat) -> CGFloat {
         guard let titleAccessory, !titleAccessory.isHidden else { return labelWidth }
-        let accessoryWidth = max(1, titleAccessory.fittingSize.width)
+        let accessoryWidth: CGFloat
+        if titleAccessory.bounds.width > 1 {
+            accessoryWidth = titleAccessory.bounds.width
+        } else {
+            let intrinsic = titleAccessory.intrinsicContentSize.width
+            accessoryWidth = intrinsic > 1 && intrinsic != NSView.noIntrinsicMetric
+                ? intrinsic
+                : 0
+        }
+        guard accessoryWidth > 0 else { return labelWidth }
         return max(0, labelWidth - accessoryWidth - Self.titleAccessorySpacing)
     }
 
@@ -371,9 +431,50 @@ final class SettingsRowView: NSView {
         adaptive.updateAvailableRowWidth(availableWidth)
         // Control orientation (horizontal vs vertical) is independent of row
         // placement (inline / vertical-beside / dedicated-below). Measure
-        // leftover label width against the accessory's current fitting size
-        // after the stack has chosen its own orientation.
+        // leftover label width against the accessory's natural width for its
+        // current orientation, never the stack's compressed fitting size.
         applyVerticalStacking(shouldPlaceAccessoryOnDedicatedRow(adaptive, availableWidth: availableWidth))
+        updateAccessoryNaturalWidthLock()
+    }
+
+    private func updateAccessoryNaturalWidthLock() {
+        guard let accessoryView, !accessoryView.isHidden else { return }
+        if stacksVertically {
+            accessoryNaturalWidthConstraint?.isActive = false
+            return
+        }
+        let naturalWidth: CGFloat
+        if let adaptive = accessoryView as? DashboardSettingsRowControlLayout {
+            naturalWidth = adaptive.naturalAccessoryWidth
+        } else {
+            naturalWidth = Self.naturalWidth(of: accessoryView)
+        }
+        guard naturalWidth > 1 else {
+            accessoryNaturalWidthConstraint?.isActive = false
+            return
+        }
+        if let constraint = accessoryNaturalWidthConstraint {
+            constraint.constant = naturalWidth
+            constraint.isActive = true
+            return
+        }
+        let constraint = accessoryView.widthAnchor.constraint(equalToConstant: naturalWidth)
+        constraint.priority = NSLayoutConstraint.Priority(999)
+        constraint.isActive = true
+        accessoryNaturalWidthConstraint = constraint
+    }
+
+    private static func naturalWidth(of view: NSView) -> CGFloat {
+        if let stack = view as? NSStackView {
+            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
+            let widths = visible.map(naturalWidth(of:))
+            if stack.orientation == .vertical {
+                return widths.max() ?? 0
+            }
+            return widths.reduce(0, +) + max(0, CGFloat(visible.count - 1)) * stack.spacing
+        }
+        let fitting = view.fittingSize.width
+        return fitting.isFinite && fitting > 0 ? fitting : 0
     }
 
     private func shouldPlaceAccessoryOnDedicatedRow(
@@ -386,10 +487,8 @@ final class SettingsRowView: NSView {
         else { return false }
         let minimumLabelWidth = adaptive.minimumInlineLabelWidth
         guard minimumLabelWidth > 0 else { return false }
-        // Uses the accessory's current fitting width, so a vertical control
-        // stack can remain beside the labels when leftover space is enough.
         let remainingWhenBeside = availableWidth
-            - max(1, accessoryView.fittingSize.width)
+            - max(1, adaptive.naturalAccessoryWidth)
             - Self.contentSpacing
         return remainingWhenBeside + 0.5 < minimumLabelWidth
     }

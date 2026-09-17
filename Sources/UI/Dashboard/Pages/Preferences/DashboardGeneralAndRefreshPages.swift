@@ -192,7 +192,7 @@ struct DashboardUpdatePresentation: Equatable {
 /// controls retain their existing style, targets, and dimensions.
 final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRowControlLayout {
     private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
-    private(set) var usesDedicatedRow = false
+    private(set) var stacksControlsVertically = false
     var allowsTextDrivenDedicatedRow = false
     var minimumInlineLabelWidth: CGFloat = 0
 
@@ -204,13 +204,24 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
         updateOrientationIfNeeded()
     }
 
-    private var horizontalFittingWidth: CGFloat {
+    /// Natural width of this accessory in its current orientation, composed
+    /// from children rather than this stack's compressed `fittingSize`.
+    var naturalAccessoryWidth: CGFloat {
+        let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
+        let widths = visibleButtons.map(Self.naturalWidth(of:))
+        if orientation == .vertical {
+            return widths.max() ?? 0
+        }
+        return widths.reduce(0, +) + max(0, CGFloat(visibleButtons.count - 1)) * spacing
+    }
+
+    private var naturalHorizontalAccessoryWidth: CGFloat {
         let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
         let buttonWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
-            max(total, view.fittingSize.width)
+            max(total, Self.naturalWidth(of: view))
         }
         let totalWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
-            total + view.fittingSize.width
+            total + Self.naturalWidth(of: view)
         }
         return max(buttonWidth, totalWidth + max(0, CGFloat(visibleButtons.count - 1)) * spacing) + 1
     }
@@ -221,18 +232,18 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
     }
 
     private func updateOrientationIfNeeded() {
-        let wantsVertical = availableRowWidth > 0 && availableRowWidth + 0.5 < horizontalFittingWidth
+        let wantsVertical = availableRowWidth > 0 && availableRowWidth + 0.5 < naturalHorizontalAccessoryWidth
         let desiredOrientation: NSUserInterfaceLayoutOrientation = wantsVertical ? .vertical : .horizontal
         let orientationChanged = orientation != desiredOrientation
-        let placementChanged = usesDedicatedRow != wantsVertical
+        let stackingChanged = stacksControlsVertically != wantsVertical
         if orientationChanged {
             orientation = desiredOrientation
             alignment = wantsVertical ? .trailing : .centerY
         }
-        if placementChanged {
-            usesDedicatedRow = wantsVertical
+        if stackingChanged {
+            stacksControlsVertically = wantsVertical
         }
-        if orientationChanged || placementChanged {
+        if orientationChanged || stackingChanged {
             invalidateIntrinsicContentSize()
             superview?.needsLayout = true
             superview?.superview?.needsLayout = true
@@ -244,16 +255,28 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
         guard !visibleButtons.isEmpty else { return .zero }
         if orientation == .vertical {
             return NSSize(
-                width: visibleButtons.map { $0.fittingSize.width }.max() ?? 0,
+                width: naturalAccessoryWidth,
                 height: visibleButtons.reduce(CGFloat(0)) { $0 + $1.fittingSize.height }
                     + max(0, CGFloat(visibleButtons.count - 1)) * spacing
             )
         }
         return NSSize(
-            width: visibleButtons.reduce(CGFloat(0)) { $0 + $1.fittingSize.width }
-                + max(0, CGFloat(visibleButtons.count - 1)) * spacing,
+            width: naturalAccessoryWidth,
             height: visibleButtons.map { $0.fittingSize.height }.max() ?? 0
         )
+    }
+
+    private static func naturalWidth(of view: NSView) -> CGFloat {
+        if let stack = view as? NSStackView {
+            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
+            let widths = visible.map(naturalWidth(of:))
+            if stack.orientation == .vertical {
+                return widths.max() ?? 0
+            }
+            return widths.reduce(0, +) + max(0, CGFloat(visible.count - 1)) * stack.spacing
+        }
+        let fitting = view.fittingSize.width
+        return fitting.isFinite && fitting > 0 ? fitting : 0
     }
 
     func invalidateLayoutAfterContentChange() {

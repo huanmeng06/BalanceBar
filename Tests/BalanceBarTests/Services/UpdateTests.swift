@@ -3003,7 +3003,7 @@ final class UpdateTests: XCTestCase {
                 .compactMap { $0 as? NSTextField }
                 .first { $0.identifier?.rawValue == "checkForUpdatesSubtitle" }
         )
-        row.refreshWrappingLayout()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
         window.layoutIfNeeded()
         page.layoutSubtreeIfNeeded()
 
@@ -3020,7 +3020,7 @@ final class UpdateTests: XCTestCase {
 
         page.setFrameSize(NSSize(width: 760, height: 300))
         page.layoutSubtreeIfNeeded()
-        row.refreshWrappingLayout()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
         window.layoutIfNeeded()
         page.layoutSubtreeIfNeeded()
         XCTAssertEqual(controls.orientation, .horizontal)
@@ -3085,7 +3085,7 @@ final class UpdateTests: XCTestCase {
             page.setFrameSize(NSSize(width: width, height: 360))
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
-            row.refreshWrappingLayout()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
 
@@ -3174,7 +3174,7 @@ final class UpdateTests: XCTestCase {
             narrowPageController.refresh(updateState: state)
             narrowWindow.layoutIfNeeded()
             narrowPage.layoutSubtreeIfNeeded()
-            narrowRow.refreshWrappingLayout()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: narrowPage)
             narrowWindow.layoutIfNeeded()
             narrowPage.layoutSubtreeIfNeeded()
 
@@ -3331,7 +3331,7 @@ final class UpdateTests: XCTestCase {
             func frames() -> (labels: NSRect, controls: NSRect, subtitle: NSRect) {
                 window.layoutIfNeeded()
                 page.layoutSubtreeIfNeeded()
-                row.refreshWrappingLayout()
+                SettingsRowView.flushPendingWrappingHeightCommits(in: page)
                 window.layoutIfNeeded()
                 page.layoutSubtreeIfNeeded()
                 return (
@@ -3466,6 +3466,92 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(row.frame.height, narrowRowHeight, accuracy: 0.5, "row height must be reversible for \(language)")
             XCTAssertEqual(card.frame.height, narrowCardHeight, accuracy: 0.5, "card height must be reversible for \(language)")
         }
+    }
+
+    func testSpanishUpdateRowFollowsMouseDownWidthSequenceWithoutClipping() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .spanish
+
+        let suiteName = "UpdateTests.UI.spanish-sequence.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        let pageController = DashboardGeneralPage()
+        let page = DashboardScrollablePageViewController.makePageView(
+            hosting: pageController.make(.init(
+                preferences: preferences,
+                currentProviderName: "OpenAI",
+                relay: DashboardPreferencePageRelay(),
+                updateState: .available(
+                    current: try XCTUnwrap(AppSemanticVersion("1.2.3")),
+                    latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))
+                )
+            ))
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 720, height: 520))
+        window.contentView = host
+        page.frame = host.bounds
+        page.autoresizingMask = []
+        host.addSubview(page)
+
+        let updateButton = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
+        )
+        let controls = try XCTUnwrap(updateButton.superview as? DashboardAdaptiveControlsStackView)
+        let row = try XCTUnwrap(SettingsRowView.enclosing(controls))
+
+        func layout(at width: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: 520))
+            host.setFrameSize(NSSize(width: width, height: 520))
+            page.setFrameSize(NSSize(width: width, height: 520))
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
+        }
+
+        layout(at: 720)
+        let wideHeight = row.frame.height
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+
+        for width in [516, 320, 516, 720] as [CGFloat] {
+            layout(at: width)
+            let labelsFrame = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+            let controlsFrame = controls.convert(controls.bounds, to: row)
+            let titleFrame = row.titleLabel.convert(row.titleLabel.bounds, to: row)
+            let detailFrame = row.detailLabel.convert(row.detailLabel.bounds, to: row)
+            XCTAssertGreaterThan(titleFrame.width, 1, "Spanish title width at \(width)")
+            XCTAssertGreaterThan(titleFrame.height, 1, "Spanish title height at \(width)")
+            XCTAssertGreaterThan(detailFrame.width, 1, "Spanish detail width at \(width)")
+            XCTAssertGreaterThan(detailFrame.height, 1, "Spanish detail height at \(width)")
+            XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(titleFrame), "Spanish title clipped at \(width)")
+            XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(detailFrame), "Spanish detail clipped at \(width)")
+            XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(controlsFrame), "Spanish actions clipped at \(width)")
+            XCTAssertFalse(labelsFrame.intersects(controlsFrame), "Spanish labels overlap actions at \(width)")
+            XCTAssertGreaterThan(row.titleLabel.preferredMaxLayoutWidth, 80)
+            XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 80)
+        }
+
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertEqual(
+            row.frame.height,
+            wideHeight,
+            accuracy: 1.0,
+            "Spanish update row must restore wide height before viewDidEndLiveResize"
+        )
     }
 
     func testDashboardUpdateCopyIsLocalizedAcrossAllSupportedLanguages() throws {

@@ -735,7 +735,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         func assertLayout(
             width: CGFloat,
             orientation: NSUserInterfaceLayoutOrientation,
-            usesDedicatedRow: Bool,
+            placesAccessoryBelowLabels: Bool,
             file: StaticString = #filePath,
             line: UInt = #line
         ) {
@@ -744,11 +744,35 @@ final class DashboardPreferencePagesTests: XCTestCase {
             page.setFrameSize(host.bounds.size)
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
-            row.refreshWrappingLayout()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
 
             XCTAssertEqual(controls.orientation, orientation, file: file, line: line)
+            XCTAssertEqual(
+                row.contentStack.orientation,
+                placesAccessoryBelowLabels ? .vertical : .horizontal,
+                file: file,
+                line: line
+            )
+            XCTAssertGreaterThan(row.titleLabel.frame.width, 1, file: file, line: line)
+            XCTAssertGreaterThan(row.titleLabel.frame.height, 1, file: file, line: line)
+            XCTAssertGreaterThan(row.detailLabel.frame.width, 1, file: file, line: line)
+            XCTAssertGreaterThan(row.detailLabel.frame.height, 1, file: file, line: line)
+            let titleFrame = row.titleLabel.convert(row.titleLabel.bounds, to: row)
+            let detailFrame = row.detailLabel.convert(row.detailLabel.bounds, to: row)
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(titleFrame),
+                "refresh title stays inside the row at \(width)",
+                file: file,
+                line: line
+            )
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(detailFrame),
+                "refresh detail stays inside the row at \(width)",
+                file: file,
+                line: line
+            )
             let runningFrame = runningControls.convert(runningControls.bounds, to: row)
             let trailingFrame = trailingControls.convert(trailingControls.bounds, to: row)
             let labelsFrame = labels.convert(labels.bounds, to: row)
@@ -783,7 +807,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     line: line
                 )
             }
-            if usesDedicatedRow {
+            if placesAccessoryBelowLabels {
                 XCTAssertLessThanOrEqual(
                     controlsFrame.maxY,
                     labelsFrame.minY + 0.5,
@@ -839,10 +863,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
             assertCardHeight("refresh card height follows its adaptive control row", file: file, line: line)
         }
 
-        assertLayout(width: 720, orientation: .horizontal, usesDedicatedRow: false)
-        assertLayout(width: 516, orientation: .horizontal, usesDedicatedRow: true)
-        assertLayout(width: 320, orientation: .vertical, usesDedicatedRow: true)
-        assertLayout(width: 720, orientation: .horizontal, usesDedicatedRow: false)
+        assertLayout(width: 720, orientation: .horizontal, placesAccessoryBelowLabels: false)
+        let wideHeight = row.frame.height
+        assertLayout(width: 516, orientation: .horizontal, placesAccessoryBelowLabels: true)
+        assertLayout(width: 320, orientation: .vertical, placesAccessoryBelowLabels: true)
+        assertLayout(width: 516, orientation: .horizontal, placesAccessoryBelowLabels: true)
+        assertLayout(width: 720, orientation: .horizontal, placesAccessoryBelowLabels: false)
+        XCTAssertEqual(
+            row.frame.height,
+            wideHeight,
+            accuracy: 1.0,
+            "refresh row must return to its wide height before viewDidEndLiveResize"
+        )
 
         runningPopup.selectItem(at: 4)
         relay.interval(runningPopup)

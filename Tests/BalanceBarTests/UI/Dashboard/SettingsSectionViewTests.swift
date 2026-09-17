@@ -569,7 +569,9 @@ final class SettingsSectionViewTests: XCTestCase {
             window.layoutIfNeeded()
             host.layoutSubtreeIfNeeded()
             section.layoutSubtreeIfNeeded()
-            refreshNativeRowWrapping(in: section)
+            SettingsRowView.flushPendingWrappingHeightCommits(in: section)
+            window.layoutIfNeeded()
+            section.layoutSubtreeIfNeeded()
             let fitted = section.fittingSize.height
             if abs(fitted - previousHeight) < 0.5 {
                 break
@@ -585,13 +587,6 @@ final class SettingsSectionViewTests: XCTestCase {
             return 0
         }
         return maxY - minY
-    }
-
-    private func refreshNativeRowWrapping(in view: NSView) {
-        if let row = view as? SettingsRowView {
-            row.refreshWrappingLayout()
-        }
-        view.subviews.forEach { refreshNativeRowWrapping(in: $0) }
     }
 
     private func descendants(of view: NSView) -> [NSView] {
