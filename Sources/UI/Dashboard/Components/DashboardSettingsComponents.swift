@@ -1242,6 +1242,7 @@ enum DashboardSettingsComponents {
         section.setContentCompressionResistancePriority(.required, for: .vertical)
         section.setHuggingPriority(.required, for: .vertical)
         section.setClippingResistancePriority(.required, for: .vertical)
+        section.identifier = DashboardPageSearch.sectionIdentifier
         section.addView(heading, in: .top)
         section.addView(card, in: .top)
         card.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
@@ -1267,6 +1268,7 @@ enum DashboardSettingsComponents {
             minimumHeight: minimumHeight,
             verticalPadding: verticalPadding
         )
+        row.identifier = DashboardPageSearch.rowIdentifier
         row.forceDedicatedControlRow = forceDedicatedControlRow
         // Keep a required floor for short rows. The low-priority equality
         // preserves the old compact geometry as a fallback while allowing

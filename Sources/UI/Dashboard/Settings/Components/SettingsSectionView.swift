@@ -67,6 +67,7 @@ final class SettingsSectionView: NSView {
         headingLabel.heightAnchor.constraint(
             greaterThanOrEqualToConstant: ceil(Self.headingFont.boundingRectForFont.height)
         ).isActive = true
+        identifier = DashboardPageSearch.sectionIdentifier
         headingLabel.isHidden = title.isEmpty
 
         cardView.translatesAutoresizingMaskIntoConstraints = false

@@ -126,6 +126,9 @@
 "dashboard.components.about" = "情報";
 "dashboard.window.controller.appearance" = "外観";
 "dashboard.window.controller.system" = "システム";
+"dashboard.search.placeholder" = "検索";
+"dashboard.search.no_results" = "結果なし";
+"dashboard.search.no_results_detail" = "この検索に一致する設定はありません。";
 "dashboard.about.page.github_repository" = "GitHub リポジトリ";
 "dashboard.about.page.version_value" = "バージョン %1$@";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "CC Switch を通じてメニューバーで残高とクォータを確認";

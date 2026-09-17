@@ -109,6 +109,7 @@ private final class MenuDedicatedControlRow: NSView {
         self.trailingControl = trailingControl
         self.control = control
         super.init(frame: .zero)
+        identifier = DashboardPageSearch.rowIdentifier
         configure(
             title: title,
             detail: detail,
