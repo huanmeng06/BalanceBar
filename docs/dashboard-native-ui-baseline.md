@@ -82,8 +82,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 `DashboardSettingsComponents.makeSettingsPage`：
 
 - 垂直 overlay 滚动条，无水平滚动条，无弹性；
-- 页面 `NSScrollView` 贴齐 page 顶部并 `automaticallyAdjustsContentInsets = true`，由 AppKit 为重叠的 unified toolbar / titlebar 写入 content insets 并安装系统 `NSScrollPocket`；不再用 52pt 非滚动布局空白把滚动视图挡在 chrome 下方；
-- 本窗口空 unified toolbar、透明 titlebar、`.none` 分隔线（避免横跨 sidebar 的常驻分隔）以及与 toolbar 同色的 #383 `contentSurface` 使系统 pocket 在 1x 下不可观察。Issue 401 允许页面局部回退：1pt `separatorColor` 发丝线画在 toolbar / 卡片交界，由该页 `isAtTop` / `scrollOffset` 驱动，滚离顶部出现、回到顶部消失；不是第二层玻璃条、窗口级 overlay 或手绘渐变；
+- 页面 `NSScrollView` 贴齐 page 顶部并 `automaticallyAdjustsContentInsets = true`，由 AppKit 为重叠的 unified toolbar / titlebar 写入 content insets，从而使用系统 scroll-edge；不再用 52pt 非滚动布局空白把滚动视图挡在 chrome 下方；
 - 文档 `isFlipped`，初次挂载的 rest 原点是 `-contentInsets.top`（无 titlebar 重叠时仍为文档顶部）；
 - 卡片圆角 18，可见行高度至少 62pt（个别行另有更高最小值）。
 

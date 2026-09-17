@@ -35,14 +35,6 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(controller.clipViewForTesting.postsBoundsChangedNotifications)
         XCTAssertTrue(controller.isAtTop)
         XCTAssertEqual(controller.scrollOffset, 0, accuracy: 1)
-        XCTAssertEqual(
-            controller.scrollEdgeHairlineForTesting.identifier,
-            DashboardScrollablePageViewController.scrollEdgeHairlineIdentifier
-        )
-        XCTAssertFalse(controller.scrollEdgeHairlineVisibleForTesting)
-        XCTAssertFalse(
-            controller.scrollEdgeHairlineForTesting.isDescendant(of: controller.documentViewForTesting)
-        )
 
         let viewportFrameInPage = controller.pageScrollView.convert(
             controller.pageScrollView.bounds,
@@ -186,10 +178,6 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         window.layoutIfNeeded()
         XCTAssertEqual(controller.scrollOffset, 140, accuracy: 2)
         XCTAssertFalse(controller.isAtTop)
-        XCTAssertFalse(
-            controller.scrollEdgeHairlineVisibleForTesting,
-            "Hairline stays off when there is no titlebar inset to mark"
-        )
 
         let geometry = DashboardScrollGeometry(
             documentBounds: try XCTUnwrap(controller.documentViewForTesting).bounds,
@@ -250,12 +238,10 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(windowController.pageContainerForTesting.currentPage === page)
         XCTAssertTrue(hostedPage.pageScrollView === page.pageScrollView)
 
-        XCTAssertFalse(hostedPage.scrollEdgeHairlineVisibleForTesting)
         windowController.restorePageScrollOffsetY(160)
         XCTAssertEqual(hostedPage.scrollOffset, 160, accuracy: 2)
         XCTAssertEqual(windowController.pageScrollOffsetY(), 160, accuracy: 2)
         XCTAssertFalse(hostedPage.isAtTop)
-        XCTAssertTrue(hostedPage.scrollEdgeHairlineVisibleForTesting)
         XCTAssertEqual(
             DashboardPageScrollPosition.visualOffsetY(of: hostedPage.pageScrollView),
             hostedPage.scrollOffset,
@@ -310,14 +296,6 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(composition.pageScrollOffsetY(), 96, accuracy: 2)
         XCTAssertEqual(menuBarPage.scrollOffset, 96, accuracy: 2)
         XCTAssertFalse(menuBarPage.isAtTop)
-        XCTAssertTrue(menuBarPage.scrollEdgeHairlineVisibleForTesting)
-
-        composition.showSection(.general)
-        window.layoutIfNeeded()
-        let generalPage = try XCTUnwrap(composition.scrollablePageForTesting)
-        XCTAssertTrue(generalPage.isAtTop)
-        XCTAssertFalse(generalPage.scrollEdgeHairlineVisibleForTesting)
-        XCTAssertFalse(generalPage === menuBarPage)
         XCTAssertTrue(menuBarPage.pageScrollView === menuBarPage.scrollViewForTesting)
     }
 
@@ -363,9 +341,6 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(pageSource.contains("greaterThanOrEqualTo: scrollView.safeAreaLayoutGuide.heightAnchor"))
         XCTAssertTrue(pageSource.contains("automaticallyAdjustsContentInsets = true"))
         XCTAssertTrue(pageSource.contains("static let viewportTopInset: CGFloat = 0"))
-        XCTAssertTrue(pageSource.contains("NSColor.separatorColor"))
-        XCTAssertTrue(pageSource.contains("dashboardPageScrollEdgeHairline"))
-        XCTAssertTrue(pageSource.contains("updateScrollEdgeHairline"))
         XCTAssertTrue(pageSource.contains("documentView.addSubview(contentHost)"))
         XCTAssertTrue(pageSource.contains("documentView.addSubview(documentFill)"))
         XCTAssertTrue(pageSource.contains("contentView.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor)"))
@@ -405,7 +380,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertFalse(settingsSource.contains("NSScrollView()"))
     }
 
-    func testDashboardWindowUsesPageLocalHairlineWhenSystemScrollEdgeIsNotObservable() throws {
+    func testDashboardWindowUsesSystemTitlebarInsetsWithoutCustomScrollEdgeOverlay() throws {
         let page = DashboardScrollablePageViewController(
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)])
         )
@@ -448,12 +423,6 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
 
         XCTAssertTrue(page.isAtTop)
         XCTAssertEqual(page.scrollOffset, 0, accuracy: 1)
-        XCTAssertEqual(window.titlebarSeparatorStyle, .none)
-        XCTAssertFalse(page.scrollEdgeHairlineVisibleForTesting)
-        XCTAssertEqual(
-            page.scrollEdgeHairlineForTesting.identifier,
-            DashboardScrollablePageViewController.scrollEdgeHairlineIdentifier
-        )
         let restVisible = page.clipViewForTesting.convert(
             page.clipViewForTesting.bounds,
             to: page.documentViewForTesting
@@ -466,36 +435,13 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
 
         page.restoreScrollOffset(140)
         window.layoutIfNeeded()
-        page.view.layoutSubtreeIfNeeded()
         XCTAssertFalse(page.isAtTop)
         XCTAssertEqual(page.scrollOffset, 140, accuracy: 2)
-        XCTAssertTrue(page.scrollEdgeHairlineVisibleForTesting)
-        XCTAssertFalse(
-            page.scrollEdgeHairlineForTesting.isDescendant(of: page.documentViewForTesting)
-        )
-        let hairlineFrameInPage = page.scrollEdgeHairlineForTesting.convert(
-            page.scrollEdgeHairlineForTesting.bounds,
-            to: page.view
-        )
-        let scrollFrameInPage = page.pageScrollView.convert(
-            page.pageScrollView.bounds,
-            to: page.view
-        )
-        XCTAssertEqual(
-            hairlineFrameInPage.minY,
-            scrollFrameInPage.minY + page.pageScrollView.contentInsets.top,
-            accuracy: 1
-        )
-        XCTAssertEqual(hairlineFrameInPage.minX, scrollFrameInPage.minX, accuracy: 1)
-        XCTAssertEqual(hairlineFrameInPage.maxX, scrollFrameInPage.maxX, accuracy: 1)
-        XCTAssertEqual(hairlineFrameInPage.height, 1, accuracy: 0.5)
 
         page.restoreScrollOffset(0)
         window.layoutIfNeeded()
-        page.view.layoutSubtreeIfNeeded()
         XCTAssertTrue(page.isAtTop)
         XCTAssertEqual(page.scrollOffset, 0, accuracy: 1)
-        XCTAssertFalse(page.scrollEdgeHairlineVisibleForTesting)
 
         XCTAssertNil(firstDescendant(of: page.view, as: NSVisualEffectView.self))
         XCTAssertEqual(

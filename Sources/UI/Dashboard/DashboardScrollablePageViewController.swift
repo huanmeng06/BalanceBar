@@ -4,16 +4,12 @@ import AppKit
 /// clip/document/content host, content insets, restore hooks, and clip-view
 /// bounds listening.
 ///
-/// Settings row layout stays in the hosted content. The page scroll view
-/// occupies the pane top so AppKit can overlap the titlebar, write content
-/// insets, and install the macOS 26 `NSScrollPocket`. That pocket is not
-/// observable at 1x on this window: the unified toolbar is almost empty, the
-/// titlebar is transparent, `titlebarSeparatorStyle` stays `.none` so a
-/// window-wide line does not span the sidebar, and the #383 `contentSurface`
-/// matches the toolbar band. Issue 401 then allows a page-local fallback:
-/// a 1pt `separatorColor` hairline at the toolbar/content boundary, driven
-/// by this page's `isAtTop` / `scrollOffset`. It is not a second glass bar,
-/// a window-wide overlay, or a gradient over system chrome.
+/// Settings row layout stays in the hosted content. Scroll-edge visuals are
+/// AppKit's: the page scroll view occupies the pane top so it can overlap the
+/// titlebar, and `automaticallyAdjustsContentInsets` lets the system inset
+/// content and draw the macOS 26 scroll-edge. No custom blur, shadow, or
+/// gradient overlay is installed. `isAtTop` and `scrollOffset` remain
+/// page-local signals.
 final class DashboardScrollablePageViewController: NSViewController {
     static let viewportTopInset: CGFloat = 0
     static let viewportBottomInset: CGFloat = 0
@@ -22,16 +18,11 @@ final class DashboardScrollablePageViewController: NSViewController {
     static let documentFillIdentifier = NSUserInterfaceItemIdentifier(
         "dashboardPageDocumentFill"
     )
-    static let scrollEdgeHairlineIdentifier = NSUserInterfaceItemIdentifier(
-        "dashboardPageScrollEdgeHairline"
-    )
 
     private let hostedContent: NSView
     let pageScrollView: NSScrollView
     private let pageClipView: NSClipView
     private let pageDocumentView: DashboardSettingsDocumentView
-    private let scrollEdgeHairline = DashboardScrollEdgeHairline()
-    private var scrollEdgeHairlineTopConstraint: NSLayoutConstraint?
     private var clipViewObserver: NSObjectProtocol?
 
     init(wrapping contentView: NSView) {
@@ -56,23 +47,11 @@ final class DashboardScrollablePageViewController: NSViewController {
             clipView: pageClipView,
             documentView: pageDocumentView
         )
-        installScrollEdgeHairline()
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         installClipViewObserver(on: pageClipView)
-        updateScrollEdgeHairline()
-    }
-
-    override func viewDidLayout() {
-        super.viewDidLayout()
-        updateScrollEdgeHairline()
-    }
-
-    override func viewDidAppear() {
-        super.viewDidAppear()
-        updateScrollEdgeHairline()
     }
 
     var isAtTop: Bool {
@@ -86,7 +65,6 @@ final class DashboardScrollablePageViewController: NSViewController {
     func restoreScrollOffset(_ offset: CGFloat) {
         view.layoutSubtreeIfNeeded()
         DashboardPageScrollPosition.restore(visualOffsetY: offset, in: pageScrollView)
-        updateScrollEdgeHairline()
     }
 
     var scrollViewForTesting: NSScrollView { pageScrollView }
@@ -94,10 +72,6 @@ final class DashboardScrollablePageViewController: NSViewController {
     var clipViewForTesting: NSClipView { pageClipView }
     var hostedContentForTesting: NSView { hostedContent }
     var clipViewObserverInstalledForTesting: Bool { clipViewObserver != nil }
-    var scrollEdgeHairlineForTesting: NSView { scrollEdgeHairline }
-    var scrollEdgeHairlineVisibleForTesting: Bool {
-        !scrollEdgeHairline.isHidden && scrollEdgeHairline.alphaValue > 0.01
-    }
 
     /// Compatibility assembler for tests that still need a complete page view
     /// without a controller. Production pages go through this controller so
@@ -128,8 +102,8 @@ final class DashboardScrollablePageViewController: NSViewController {
         scrollView.verticalScrollElasticity = .none
         scrollView.horizontalScrollElasticity = .none
         // Overlap the titlebar/toolbar so AppKit can apply content insets and
-        // install NSScrollPocket. A layout gap above the scroll view would
-        // keep content below chrome and suppress that pocket.
+        // the system scroll-edge. A layout gap above the scroll view would
+        // keep content below chrome and suppress that effect.
         scrollView.automaticallyAdjustsContentInsets = true
         // Keep the scrollbar discoverable on dense settings pages. The
         // document is taller than the viewport when the status-link editor is
@@ -234,80 +208,17 @@ final class DashboardScrollablePageViewController: NSViewController {
         }
     }
 
-    private func installScrollEdgeHairline() {
-        scrollEdgeHairline.identifier = Self.scrollEdgeHairlineIdentifier
-        scrollEdgeHairline.translatesAutoresizingMaskIntoConstraints = false
-        scrollEdgeHairline.isHidden = true
-        scrollEdgeHairline.alphaValue = 0
-        view.addSubview(scrollEdgeHairline)
-
-        let top = scrollEdgeHairline.topAnchor.constraint(
-            equalTo: pageScrollView.topAnchor
-        )
-        scrollEdgeHairlineTopConstraint = top
-        NSLayoutConstraint.activate([
-            top,
-            scrollEdgeHairline.leadingAnchor.constraint(equalTo: pageScrollView.leadingAnchor),
-            scrollEdgeHairline.trailingAnchor.constraint(equalTo: pageScrollView.trailingAnchor),
-            scrollEdgeHairline.heightAnchor.constraint(equalToConstant: 1)
-        ])
-    }
-
-    private func updateScrollEdgeHairline() {
-        let inset = pageScrollView.contentInsets.top
-        if let constraint = scrollEdgeHairlineTopConstraint,
-           abs(constraint.constant - inset) > 0.5 {
-            constraint.constant = inset
-        }
-        // Only the toolbar/content boundary. Untitled fixtures without a
-        // titlebar inset have nothing to mark, so stay hidden.
-        let shouldShow = !isAtTop && inset > 0.5
-        if scrollEdgeHairline.isHidden == !shouldShow,
-           (scrollEdgeHairline.alphaValue > 0.01) == shouldShow {
-            return
-        }
-        scrollEdgeHairline.isHidden = !shouldShow
-        scrollEdgeHairline.alphaValue = shouldShow ? 1 : 0
-    }
-
     private func handleClipViewBoundsChange() {
-        updateScrollEdgeHairline()
+        // Signal-only: AppKit owns the scroll-edge. Do not install a page
+        // overlay, blur, or shadow from this observer.
+        _ = isAtTop
+        _ = scrollOffset
     }
 
     private func removeClipViewObserver() {
         if let clipViewObserver {
             NotificationCenter.default.removeObserver(clipViewObserver)
             self.clipViewObserver = nil
-        }
-    }
-}
-
-/// 1pt native-colored hairline at the toolbar/content boundary. `NSBox.separator`
-/// keeps a 5pt margin and is not a visible 1x edge here. Hit-testing is off
-/// so the line cannot steal clicks from rows or the titlebar.
-private final class DashboardScrollEdgeHairline: NSView {
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        updateHairlineColor()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        updateHairlineColor()
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        _ = point
-        return nil
-    }
-
-    private func updateHairlineColor() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.separatorColor.cgColor
         }
     }
 }
