@@ -1077,6 +1077,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
+                .flexibleSpace,
                 DashboardToolbarController.searchItemIdentifier
             ],
             file: file,
@@ -1090,9 +1091,10 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
+                .flexibleSpace,
                 DashboardToolbarController.searchItemIdentifier
             ],
-            "System flexibleSpace should precede the sidebar toggle; content-pane search follows the tracking separator",
+            "System flexible spaces should preserve the sidebar layout and push content-pane search to the trailing edge",
             file: file,
             line: line
         )
