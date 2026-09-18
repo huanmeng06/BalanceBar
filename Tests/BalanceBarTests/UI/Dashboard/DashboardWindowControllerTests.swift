@@ -471,9 +471,11 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         if #available(macOS 26.0, *) {
             XCTAssertTrue(window.isOpaque)
             XCTAssertEqual(window.backgroundColor, .windowBackgroundColor)
+            XCTAssertFalse(window.titlebarAppearsTransparent)
         } else {
             XCTAssertFalse(window.isOpaque)
             XCTAssertEqual(window.backgroundColor, .clear)
+            XCTAssertTrue(window.titlebarAppearsTransparent)
         }
     }
 
@@ -602,7 +604,14 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(window.styleMask.contains(.fullSizeContentView))
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
         XCTAssertEqual(window.titleVisibility, .hidden)
-        XCTAssertTrue(window.titlebarAppearsTransparent)
+        if #available(macOS 26.0, *) {
+            XCTAssertFalse(
+                window.titlebarAppearsTransparent,
+                "Tahoe scroll-edge composition needs an opaque titlebar"
+            )
+        } else {
+            XCTAssertTrue(window.titlebarAppearsTransparent)
+        }
         let policy = DashboardPageScrollLayoutPolicy.current
         XCTAssertEqual(window.titlebarSeparatorStyle, policy.windowTitlebarSeparatorStyle)
         XCTAssertEqual(sidebarItem.titlebarSeparatorStyle, policy.sidebarTitlebarSeparatorStyle)
