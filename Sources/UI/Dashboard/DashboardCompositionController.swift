@@ -232,6 +232,9 @@ final class DashboardCompositionController {
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive
         )
+        if !windowController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            applyMountedPageSearch()
+        }
     }
 
     func refreshMenuPage() {

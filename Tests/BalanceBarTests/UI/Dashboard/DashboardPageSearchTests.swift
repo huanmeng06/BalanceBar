@@ -500,6 +500,71 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
     }
 
+    func testMenuBarRefreshReconcilesActiveSearchWhenBusinessVisibilityChanges() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-436-menubar-refresh.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
+        window.layoutIfNeeded()
+
+        let rightClick = try XCTUnwrap(
+            firstDescendant(of: composition.currentHostedPageContentForTesting()) { view in
+                (view as? NSPopUpButton)?.identifier?.rawValue
+                    == DashboardMenuBarPage.rightClickActionIdentifier
+            } as? NSPopUpButton
+        )
+        let reverseTitle = tr(.keyDashboardMenuBarPageReverseMouseButtons)
+        let reverseRow = try XCTUnwrap(
+            row(containingTitle: reverseTitle, in: composition.currentHostedPageContentForTesting())
+        )
+
+        func select(_ action: MenuBarRightClickAction) throws {
+            let index = try XCTUnwrap(
+                rightClick.itemArray.firstIndex {
+                    ($0.representedObject as? String) == action.rawValue
+                }
+            )
+            rightClick.selectItem(at: index)
+            _ = NSApp.sendAction(
+                try XCTUnwrap(rightClick.action),
+                to: rightClick.target,
+                from: rightClick
+            )
+            window.layoutIfNeeded()
+        }
+
+        try select(.openMainWindow)
+        XCTAssertFalse(reverseRow.isHidden)
+
+        composition.applySearchQueryForTesting(reverseTitle)
+        window.layoutIfNeeded()
+        XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
+        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
+
+        try select(.matchLeftClick)
+        XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
+        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
+
+        composition.applySearchQueryForTesting("")
+        window.layoutIfNeeded()
+        XCTAssertTrue(reverseRow.isHidden)
+
+        try select(.openMainWindow)
+        XCTAssertFalse(reverseRow.isHidden)
+
+        composition.applySearchQueryForTesting(reverseTitle)
+        window.layoutIfNeeded()
+        XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
+        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
+    }
+
     func testSearchSeparatorReappearsWhenBusinessHiddenMatchingRowIsRevealed() throws {
         let first = SettingsRowView(title: "Option A")
         let second = SettingsRowView(title: "Option B")
