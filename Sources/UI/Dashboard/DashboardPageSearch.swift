@@ -5,6 +5,7 @@ import AppKit
 /// must not be stored as business visibility.
 enum DashboardSearchVisibility {
     static var isMutatingSearchVisibility = false
+    static var onBusinessVisibilityChanged: (() -> Void)?
     private static var businessKey: UInt8 = 0
     private static var searchKey: UInt8 = 0
 
@@ -24,6 +25,9 @@ enum DashboardSearchVisibility {
         let wasBusinessHidden = isBusinessHidden(view)
         setBusinessHidden(view, hidden)
         superSetter(isEffectivelyHidden(view))
+        if !wasBusinessHidden || hidden {
+            onBusinessVisibilityChanged?()
+        }
         if wasBusinessHidden, !hidden, !isEffectivelyHidden(view) {
             revealSearchHiddenSectionAncestors(of: view)
             hideSearchEmptyState(from: view)
@@ -114,8 +118,12 @@ enum DashboardSearchVisibility {
                 !isCollapsedForSearchLayout($0)
             } ?? false
             let shouldHide = !(previousVisible && nextVisible)
-            if shouldHide, !candidate.isHidden {
-                candidate.isHidden = true
+            if shouldHide {
+                if !candidate.isHidden {
+                    candidate.isHidden = true
+                }
+            } else if candidate.isHidden {
+                candidate.isHidden = false
             }
         }
     }
@@ -285,6 +293,12 @@ enum DashboardSettingsSearchCatalog {
                 tr(.keyDashboardAboutPageVersionValue, arguments: [""])
             ]
         case .general, .menu, .advanced:
+            if section == .menu {
+                return [
+                    tr(.keyDashboardMenuPageLunaReserveDisplayMode, arguments: [tr(.keyLunaReserveTitle)]),
+                    tr(.keyDashboardMenuPageHideExhaustedQuota)
+                ]
+            }
             return []
         }
     }
@@ -293,6 +307,7 @@ enum DashboardSettingsSearchCatalog {
 final class DashboardPageSearchFilter {
     private let hiddenBySearch = NSHashTable<NSView>.weakObjects()
     private let originalStackVisibilityPriority = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
+    private var isApplying = false
 
     @discardableResult
     func apply(
@@ -301,6 +316,14 @@ final class DashboardPageSearchFilter {
         pageTitle: String,
         mode: DashboardPageSearchMode
     ) -> Bool {
+        guard !isApplying else { return true }
+        isApplying = true
+        defer { isApplying = false }
+        DashboardSearchVisibility.onBusinessVisibilityChanged = { [weak self, weak root] in
+            guard let self, !self.isApplying, let root,
+                  !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            self.apply(query: query, to: root, pageTitle: pageTitle, mode: mode)
+        }
         restoreSearchHiddens()
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if needle.isEmpty {
@@ -621,6 +644,10 @@ final class DashboardPageSearchFilter {
 
     private func hideForSearch(_ view: NSView) {
         guard !DashboardSearchVisibility.isSearchHidden(view) else { return }
+        DashboardSearchVisibility.setBusinessHidden(
+            view,
+            DashboardSearchVisibility.isBusinessHidden(view)
+        )
         DashboardSearchVisibility.setSearchHidden(view, true)
         hiddenBySearch.add(view)
         guard !DashboardSearchVisibility.isBusinessHidden(view) else { return }

@@ -1492,7 +1492,10 @@ enum DashboardSettingsComponents {
         rowHeight: ((NSView) -> CGFloat?)? = nil
     ) -> CGFloat {
         let rowsHeight = rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, row in
-            guard !(row is NSBox), !row.isHidden else { return total }
+            guard !(row is NSBox),
+                  !row.isHidden,
+                  !DashboardSearchVisibility.isCollapsedForSearchLayout(row)
+            else { return total }
             return total + settingsRowHeight(row, rowHeight: rowHeight)
         }
         let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count) * settingsSeparatorHeight

@@ -215,6 +215,9 @@ final class DashboardCompositionController {
             )
         )
         refreshMenuBarPage(snapshot: snapshot)
+        if !windowController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            applyMountedPageSearch()
+        }
     }
 
     func refreshMenuBarPage(snapshot: Snapshot) {
