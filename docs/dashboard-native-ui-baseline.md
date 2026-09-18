@@ -48,7 +48,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 最小尺寸 | 代码写入 `minSize` 800×540；安装 unified toolbar 后 AppKit 把 frame 高度下限抬到 **560**（XCTest 在 macOS 26.5 上测得）。宽度下限仍为 800。 | 创建窗口后的运行时 `window.minSize` |
 | 样式 | `.titled` `.closable` `.miniaturizable` `.resizable` `.fullSizeContentView` | 同上 |
 | 标题 | `titleVisibility = .hidden`；`window.title` 仍写入当前页标题 | 同上；`showSection` / `showProvider` |
-| 标题栏 | 透明、无分隔线；`toolbarStyle = .unified`；icon-only、不可自定义、不自动保存的 `NSToolbar`。默认系统项：`.flexibleSpace`、`.toggleSidebar`、`.sidebarTrackingSeparator`。`.flexibleSpace` 是 AppKit 系统 flexible space（`NSToolbarItem.Identifier.flexibleSpace`），不是应用手写 spacer / 固定宽度 / magic number；它把 toggle 推到侧栏 toolbar 段 trailing，靠近 tracking separator / divider。由独立 `DashboardToolbarController` 作为 delegate 提供；toggle 走 `NSSplitViewController` responder chain，separator 由 AppKit 跟踪 split divider。 | 同上；`DashboardToolbarController` |
+| 标题栏 | 透明、无分隔线；`toolbarStyle = .unified`；icon-only、不可自定义、不自动保存的 `NSToolbar`。默认项：`.flexibleSpace`、`.toggleSidebar`、`.sidebarTrackingSeparator`、content-pane `NSSearchToolbarItem`。`.flexibleSpace` 是 AppKit 系统 flexible space（`NSToolbarItem.Identifier.flexibleSpace`），不是应用手写 spacer / 固定宽度 / magic number；它把 toggle 推到侧栏 toolbar 段 trailing，靠近 tracking separator / divider。搜索项在 tracking separator 之后，只属于右侧 content 段。由独立 `DashboardToolbarController` 作为 delegate 提供；toggle 走 `NSSplitViewController` responder chain，separator 由 AppKit 跟踪 split divider。 | 同上；`DashboardToolbarController` |
 | 背景 | `isOpaque = false`，`backgroundColor = .clear`，`hasShadow = true` | 同上；测试宿主会改 alpha/shadow，不能用 XCTest 证明最终像素 |
 | 外观 | `appearance = nil`，跟随系统；`AppleInterfaceThemeChangedNotification` 后异步 `rebuild()` | `start()` / `createDashboardWindow` |
 | 缩放按钮 | **可见且 `isEnabled = true`**；使用系统标准 zoom 按钮 | `createDashboardWindow` |
@@ -149,7 +149,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 这些已有或本次新增的测试是回归闸门，不是视觉通过证明：
 
-- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator`、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、内容表面浅 82% / 深 20%、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
+- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator` 以及 content-pane `NSSearchToolbarItem`、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、内容表面浅 82% / 深 20%、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
 - `DashboardWindowControllerTests.testWindowEnablesNativeZoomAndStaysResizable`
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`
 - `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome

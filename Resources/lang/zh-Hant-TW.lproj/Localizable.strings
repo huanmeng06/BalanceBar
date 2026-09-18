@@ -126,6 +126,9 @@
 "dashboard.components.about" = "關於";
 "dashboard.window.controller.appearance" = "外觀";
 "dashboard.window.controller.system" = "系統";
+"dashboard.search.placeholder" = "搜尋";
+"dashboard.search.no_results" = "沒有結果";
+"dashboard.search.no_results_detail" = "沒有符合此搜尋的設定項目。";
 "dashboard.about.page.github_repository" = "GitHub 儲存庫";
 "dashboard.about.page.version_value" = "版本 %1$@";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "透過 CC Switch 在選單列檢視餘額與配額";

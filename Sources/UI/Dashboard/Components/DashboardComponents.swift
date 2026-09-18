@@ -363,6 +363,13 @@ final class LunaReserveCardView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
+    override var isHidden: Bool {
+        get { super.isHidden }
+        set {
+            DashboardSearchVisibility.writeHidden(self, newValue) { super.isHidden = $0 }
+        }
+    }
+
     func update(quota: LunaReserveQuota) {
         titleLabel.stringValue = tr(.keyLunaReserveTitle)
         statusLabel.stringValue = quota.status.localizedText

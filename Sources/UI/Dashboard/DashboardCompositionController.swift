@@ -131,6 +131,7 @@ final class DashboardCompositionController {
         launchAtLoginController: launchAtLoginController,
         launchWithChatGPTController: launchWithChatGPTController
     )
+    private let pageSearchFilter = DashboardPageSearchFilter()
     private lazy var windowController = DashboardWindowController(
         actions: DashboardWindowControllerActions(
             makeSectionPage: { [weak self] section in
@@ -144,6 +145,7 @@ final class DashboardCompositionController {
             providerChoices: { [weak self] in self?.state.providerChoices() ?? [] },
             prepareForPageReplacement: { [weak self] in self?.prepareForPageReplacement() },
             didShowPage: { [weak self] in
+                self?.applyMountedPageSearch()
                 self?.actions.onDidShowPage()
             },
             didClose: { [weak self] in
@@ -180,6 +182,7 @@ final class DashboardCompositionController {
     }
 
     func start() {
+        bindDashboardSearch()
         windowController.start()
         installMenuBarRestoreSnapshotProvider()
     }
@@ -187,6 +190,7 @@ final class DashboardCompositionController {
         initialSection: DashboardSection = .general,
         scrollOffsetY: CGFloat? = nil
     ) {
+        bindDashboardSearch()
         installMenuBarRestoreSnapshotProvider()
         windowController.open(initialSection: initialSection, scrollOffsetY: scrollOffsetY)
         refreshLaunchAtLogin()
@@ -211,6 +215,9 @@ final class DashboardCompositionController {
             )
         )
         refreshMenuBarPage(snapshot: snapshot)
+        if !windowController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            applyMountedPageSearch()
+        }
     }
 
     func refreshMenuBarPage(snapshot: Snapshot) {
@@ -225,11 +232,17 @@ final class DashboardCompositionController {
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive
         )
+        if !windowController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            applyMountedPageSearch()
+        }
     }
 
     func refreshMenuPage() {
         guard window?.isVisible == true, section == .menu else { return }
         dashboardPreferencePages.refreshMenu()
+        if !windowController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            applyMountedPageSearch()
+        }
     }
 
     /// Mirrors an already-rendered menu bar frame into the visible preview.
@@ -405,6 +418,7 @@ final class DashboardCompositionController {
     }
 
     func makeWindowForTesting(showing section: DashboardSection) -> NSWindow? {
+        bindDashboardSearch()
         installMenuBarRestoreSnapshotProvider()
         windowController.open(initialSection: section)
         return windowController.window
@@ -441,6 +455,87 @@ final class DashboardCompositionController {
     }
 
     func teardownForTesting() { teardown() }
+
+    var searchQueryForTesting: String { windowController.searchQuery }
+
+    func applySearchQueryForTesting(_ query: String) {
+        windowController.setSearchQuery(query)
+    }
+
+    func currentHostedPageContentForTesting() -> NSView {
+        windowController.currentHostedPageContent()
+    }
+
+    private func bindDashboardSearch() {
+        windowController.bindSearchQueryHandler { [weak self] query in
+            self?.handleDashboardSearch(query)
+        }
+    }
+
+    private func handleDashboardSearch(_ query: String) {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if needle.isEmpty {
+            applyMountedPageSearch()
+            return
+        }
+        if currentPageContainsSearchMatch(needle) {
+            applyMountedPageSearch()
+            return
+        }
+
+        let originSection = section
+        let originProviderID = selectedProviderID
+        let candidates = DashboardSettingsSearchCatalog.matchingSections(query: needle)
+            .filter { originProviderID != nil || $0 != originSection }
+        for destination in candidates {
+            windowController.showSection(destination)
+            if currentPageContainsSearchMatch(needle) {
+                return
+            }
+        }
+
+        if selectedProviderID != originProviderID || section != originSection {
+            if let originProviderID {
+                windowController.showProvider(originProviderID)
+            } else {
+                windowController.showSection(originSection)
+            }
+        }
+        applyMountedPageSearch()
+    }
+
+    private func applyMountedPageSearch() {
+        let query = windowController.searchQuery
+        _ = pageSearchFilter.apply(
+            query: query,
+            to: windowController.currentHostedPageContent(),
+            pageTitle: currentSearchPageTitle(),
+            mode: currentSearchMode()
+        )
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
+        windowController.restoreCurrentPageScrollToTop()
+    }
+
+    private func currentPageContainsSearchMatch(_ query: String) -> Bool {
+        pageSearchFilter.pageContainsMatch(
+            query: query,
+            in: windowController.currentHostedPageContent(),
+            pageTitle: currentSearchPageTitle(),
+            mode: currentSearchMode()
+        )
+    }
+
+    private func currentSearchPageTitle() -> String {
+        if let selectedProviderID,
+           let name = state.providerChoices().first(where: { $0.id == selectedProviderID })?.name {
+            return name
+        }
+        return section.title
+    }
+
+    private func currentSearchMode() -> DashboardPageSearchMode {
+        selectedProviderID != nil || section == .about ? .visibleCopy : .titles
+    }
 
     private func prepareForPageReplacement() {
         dashboardProviderPages.unmount()

@@ -51,6 +51,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains(".flexibleSpace"))
         XCTAssertTrue(source.contains(".toggleSidebar"))
         XCTAssertTrue(source.contains(".sidebarTrackingSeparator"))
+        XCTAssertTrue(source.contains("NSSearchToolbarItem"))
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
         XCTAssertTrue(source.contains("autosavesConfiguration = false"))
         XCTAssertFalse(source.contains("toolbarNavigationalItemIdentifiers"))
@@ -64,6 +65,10 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(source.contains("NSClassFromString"))
         XCTAssertFalse(source.contains("NSGlassEffectView"))
         XCTAssertFalse(source.contains("NSView("))
+        XCTAssertFalse(source.contains("NSSearchField("))
+        XCTAssertFalse(source.contains("NSTitlebarAccessoryViewController"))
+        XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
+        XCTAssertFalse(source.contains("NSScrollPocket"))
     }
 
     func testWindowEnablesNativeZoomAndStaysResizable() throws {
@@ -1068,7 +1073,13 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(toolbar.delegate is DashboardToolbarController, file: file, line: line)
         XCTAssertEqual(
             DashboardToolbarController.defaultItemIdentifiers,
-            [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator],
+            [
+                .flexibleSpace,
+                .toggleSidebar,
+                .sidebarTrackingSeparator,
+                .flexibleSpace,
+                DashboardToolbarController.searchItemIdentifier
+            ],
             file: file,
             line: line
         )
@@ -1076,13 +1087,22 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let identifiers = toolbar.items.map(\.itemIdentifier)
         XCTAssertEqual(
             identifiers,
-            [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator],
-            "System flexibleSpace should precede the sidebar toggle so AppKit can push it to the tracking separator",
+            [
+                .flexibleSpace,
+                .toggleSidebar,
+                .sidebarTrackingSeparator,
+                .flexibleSpace,
+                DashboardToolbarController.searchItemIdentifier
+            ],
+            "System flexible spaces should preserve the sidebar layout and push content-pane search to the trailing edge",
             file: file,
             line: line
         )
         let customIdentifiers = identifiers.filter {
-            $0 != .flexibleSpace && $0 != .toggleSidebar && $0 != .sidebarTrackingSeparator
+            $0 != .flexibleSpace
+                && $0 != .toggleSidebar
+                && $0 != .sidebarTrackingSeparator
+                && $0 != DashboardToolbarController.searchItemIdentifier
         }
         XCTAssertTrue(
             customIdentifiers.isEmpty,
@@ -1098,6 +1118,19 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
         XCTAssertNotNil(
             toolbar.items.first { $0.itemIdentifier == .toggleSidebar },
+            file: file,
+            line: line
+        )
+        let searchItem = toolbar.items.last
+        XCTAssertEqual(
+            searchItem?.itemIdentifier,
+            DashboardToolbarController.searchItemIdentifier,
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            searchItem is NSSearchToolbarItem,
+            "Content-pane search must be NSSearchToolbarItem, not a hand-rolled NSSearchField",
             file: file,
             line: line
         )

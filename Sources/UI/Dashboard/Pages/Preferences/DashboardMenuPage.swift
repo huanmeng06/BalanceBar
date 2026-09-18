@@ -109,6 +109,8 @@ private final class MenuDedicatedControlRow: NSView {
         self.trailingControl = trailingControl
         self.control = control
         super.init(frame: .zero)
+        identifier = DashboardPageSearch.rowIdentifier
+        DashboardPageSearch.markSearchableRow(self)
         configure(
             title: title,
             detail: detail,
@@ -773,7 +775,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             : tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar2)
         statusLinksEditor?.setVisible(visible, animated: animated)
         statusLinksEditorHost?.syncHeight()
-        statusLinksSeparators.forEach { $0.isHidden = !visible }
+        statusLinksSeparators.forEach {
+            DashboardSearchVisibility.setBusinessHidden($0, !visible)
+            $0.isHidden = !visible
+        }
         invalidateHostedSection(for: statusLinksEditorHost ?? statusLinksEditor)
     }
 
@@ -864,13 +869,17 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         if let separator = balanceDisplaySeparators.first {
             // When the dependent switch is hidden, collapse the separator
             // between the two remaining balance-display rows.
+            DashboardSearchVisibility.setBusinessHidden(separator, !shouldShowHideOption)
             separator.isHidden = !shouldShowHideOption
         }
         invalidateHostedSection(for: lunaReserveHideExhaustedQuotaRow)
     }
 
     private func updateProgressBarSettingsVisibility(_ visible: Bool) {
-        progressBarDetailRows.forEach { $0.isHidden = !visible }
+        progressBarDetailRows.forEach {
+            DashboardSearchVisibility.setBusinessHidden($0, !visible)
+            $0.isHidden = !visible
+        }
         updateSeparatorVisibility(
             separators: progressBarSeparators,
             visibleRows: [true] + progressBarDetailRows.map { _ in visible }
@@ -879,7 +888,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     private func updateBankedResetSettingsVisibility(_ visible: Bool) {
-        bankedResetDetailRows.forEach { $0.isHidden = !visible }
+        bankedResetDetailRows.forEach {
+            DashboardSearchVisibility.setBusinessHidden($0, !visible)
+            $0.isHidden = !visible
+        }
         updateSeparatorVisibility(
             separators: bankedResetSeparators,
             visibleRows: [true] + bankedResetDetailRows.map { _ in visible }
@@ -890,11 +902,14 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private func updateSeparatorVisibility(separators: [NSView], visibleRows: [Bool]) {
         for (index, separator) in separators.enumerated() {
             guard index < visibleRows.count - 1 else {
+                DashboardSearchVisibility.setBusinessHidden(separator, true)
                 separator.isHidden = true
                 continue
             }
             let hasVisibleRowAfter = visibleRows[(index + 1)...].contains(true)
-            separator.isHidden = !(visibleRows[index] && hasVisibleRowAfter)
+            let shouldShow = visibleRows[index] && hasVisibleRowAfter
+            DashboardSearchVisibility.setBusinessHidden(separator, !shouldShow)
+            separator.isHidden = !shouldShow
         }
     }
 
