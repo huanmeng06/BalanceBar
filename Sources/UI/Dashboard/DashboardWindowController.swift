@@ -343,13 +343,18 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.title = initialSection.title
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
         if #available(macOS 26.0, *) {
+            // Apple’s macOS 26 scroll-edge path requires the title bar to
+            // participate in the native window surface; a transparent title
+            // bar leaves the inset geometry present but disables the visible
+            // toolbar/content edge composition.
+            window.titlebarAppearsTransparent = false
             // Use the native window surface on Tahoe rather than the legacy
             // translucent shell. AppKit owns scroll-edge rendering.
             window.backgroundColor = .windowBackgroundColor
             window.isOpaque = true
         } else {
+            window.titlebarAppearsTransparent = true
             window.backgroundColor = .clear
             window.isOpaque = false
         }
