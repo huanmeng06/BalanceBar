@@ -382,6 +382,170 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(reverseMouseButtons.isHidden)
     }
 
+    func testLegacySettingsCardSearchCollapseRemeasuresAndRestoresHeight() throws {
+        let kept = DashboardSettingsComponents.makeSettingsRow("Keep")
+        let filtered = DashboardSettingsComponents.makeSettingsRow("Filter")
+        let alsoFiltered = DashboardSettingsComponents.makeSettingsRow("Also Filter")
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Legacy",
+            rows: [kept, filtered, alsoFiltered]
+        )
+        let root = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 640),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        window.contentView = root
+        root.frame = window.contentView?.bounds ?? .zero
+        root.autoresizingMask = [.width, .height]
+
+        func layout() {
+            root.needsLayout = true
+            root.layoutSubtreeIfNeeded()
+            window.layoutIfNeeded()
+            root.layoutSubtreeIfNeeded()
+        }
+
+        layout()
+        let rowsStack = try XCTUnwrap(kept.superview as? NSStackView)
+        let card = try XCTUnwrap(rowsStack.superview)
+        let expandedHeight = card.frame.height
+        XCTAssertGreaterThan(expandedHeight, SettingsRowView.minimumHeight * 2)
+
+        let filter = DashboardPageSearchFilter()
+        XCTAssertTrue(
+            filter.apply(
+                query: "Keep",
+                to: root,
+                pageTitle: "Legacy",
+                mode: .titles
+            )
+        )
+        layout()
+        XCTAssertLessThan(card.frame.height, expandedHeight - SettingsRowView.minimumHeight)
+        XCTAssertFalse(kept.isHidden)
+        XCTAssertTrue(filtered.isHidden || DashboardSearchVisibility.isSearchHidden(filtered))
+        XCTAssertTrue(alsoFiltered.isHidden || DashboardSearchVisibility.isSearchHidden(alsoFiltered))
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "",
+                to: root,
+                pageTitle: "Legacy",
+                mode: .titles
+            )
+        )
+        layout()
+        XCTAssertEqual(card.frame.height, expandedHeight, accuracy: 1.0)
+        XCTAssertFalse(filtered.isHidden)
+        XCTAssertFalse(alsoFiltered.isHidden)
+    }
+
+    func testMenuPageRefreshReconcilesActiveSearchForDedicatedProgressRow() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-436-menu-refresh.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menu))
+        window.layoutIfNeeded()
+
+        let progressSwitch = try XCTUnwrap(
+            firstDescendant(of: composition.currentHostedPageContentForTesting()) { view in
+                (view as? NSSwitch)?.identifier?.rawValue == AppPreferences.showQuotaProgressBarKey
+            } as? NSSwitch
+        )
+        if progressSwitch.state != .on {
+            progressSwitch.state = .on
+            _ = NSApp.sendAction(
+                try XCTUnwrap(progressSwitch.action),
+                to: progressSwitch.target,
+                from: progressSwitch
+            )
+        }
+
+        let query = tr(.keyDashboardMenuPageProgressColorRanges)
+        composition.applySearchQueryForTesting(query)
+        window.layoutIfNeeded()
+        let progressRow = try XCTUnwrap(
+            row(containingTitle: query, in: composition.currentHostedPageContentForTesting())
+        )
+        XCTAssertFalse(progressRow.isHidden)
+
+        progressSwitch.state = .off
+        _ = NSApp.sendAction(
+            try XCTUnwrap(progressSwitch.action),
+            to: progressSwitch.target,
+            from: progressSwitch
+        )
+        window.layoutIfNeeded()
+        XCTAssertEqual(composition.searchQueryForTesting, query)
+        XCTAssertTrue(progressRow.isHidden)
+        XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
+
+        progressSwitch.state = .on
+        _ = NSApp.sendAction(
+            try XCTUnwrap(progressSwitch.action),
+            to: progressSwitch.target,
+            from: progressSwitch
+        )
+        window.layoutIfNeeded()
+        XCTAssertEqual(composition.searchQueryForTesting, query)
+        XCTAssertFalse(progressRow.isHidden)
+        XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
+    }
+
+    func testSearchSeparatorReappearsWhenBusinessHiddenMatchingRowIsRevealed() throws {
+        let first = SettingsRowView(title: "Option A")
+        let second = SettingsRowView(title: "Option B")
+        second.isHidden = true
+        let section = SettingsSectionView(title: "Settings", contentViews: [first, second])
+        let root = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertTrue(filter.apply(query: "Option", to: root, pageTitle: "Settings", mode: .titles))
+        let separator = try XCTUnwrap(section.separators.first)
+        XCTAssertFalse(first.isHidden)
+        XCTAssertTrue(second.isHidden)
+        XCTAssertTrue(separator.isHidden)
+        XCTAssertTrue(DashboardSearchVisibility.isSearchHidden(separator))
+
+        second.isHidden = false
+        XCTAssertFalse(second.isHidden)
+        XCTAssertFalse(separator.isHidden)
+        XCTAssertFalse(DashboardSearchVisibility.isSearchHidden(separator))
+        XCTAssertNotEqual(section.cardView.visibilityPriority(for: separator), .notVisible)
+    }
+
+    func testSearchSeparatorConvergesWhenBusinessRowHidesAndStaysHiddenAfterClear() throws {
+        let first = SettingsRowView(title: "Option A")
+        let second = SettingsRowView(title: "Option B")
+        let section = SettingsSectionView(title: "Settings", contentViews: [first, second])
+        let root = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+        let query = "Option"
+
+        XCTAssertTrue(filter.apply(query: query, to: root, pageTitle: "Settings", mode: .titles))
+        let separator = try XCTUnwrap(section.separators.first)
+        XCTAssertFalse(separator.isHidden)
+
+        second.isHidden = true
+        XCTAssertTrue(filter.apply(query: query, to: root, pageTitle: "Settings", mode: .titles))
+        XCTAssertFalse(first.isHidden)
+        XCTAssertTrue(second.isHidden)
+        XCTAssertTrue(separator.isHidden)
+
+        XCTAssertTrue(filter.apply(query: "", to: root, pageTitle: "Settings", mode: .titles))
+        XCTAssertFalse(first.isHidden)
+        XCTAssertTrue(second.isHidden)
+        XCTAssertTrue(separator.isHidden)
+    }
+
     func testVisibleCopySkipsHiddenSubtreeCopy() {
         let hiddenField = NSTextField(labelWithString: "Hidden Provider Copy")
         hiddenField.isHidden = true

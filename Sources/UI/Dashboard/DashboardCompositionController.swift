@@ -237,6 +237,9 @@ final class DashboardCompositionController {
     func refreshMenuPage() {
         guard window?.isVisible == true, section == .menu else { return }
         dashboardPreferencePages.refreshMenu()
+        if !windowController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            applyMountedPageSearch()
+        }
     }
 
     /// Mirrors an already-rendered menu bar frame into the visible preview.

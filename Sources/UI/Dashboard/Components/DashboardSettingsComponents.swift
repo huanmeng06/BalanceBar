@@ -810,6 +810,21 @@ enum DashboardSettingsComponents {
     static let settingsTitleMaximumNumberOfLines = 0
     static let settingsSubtitleMaximumNumberOfLines = 0
 
+    static func invalidateHostedSettingsRowHeight(for view: NSView) {
+        var current: NSView? = view
+        while let candidate = current {
+            if let invalidating = candidate as? SettingsRowHeightInvalidating {
+                invalidating.invalidateHostedSettingsRowHeight()
+                candidate.invalidateIntrinsicContentSize()
+                candidate.needsLayout = true
+                candidate.superview?.invalidateIntrinsicContentSize()
+                candidate.superview?.needsLayout = true
+                return
+            }
+            current = candidate.superview
+        }
+    }
+
     /// CJK UI copy is naturally breakable between characters. Word wrapping
     /// treats a run without spaces as one large word, which leaves an entire
     /// suffix stranded on the next line even though adaptive row height can
