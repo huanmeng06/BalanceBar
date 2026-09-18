@@ -10,6 +10,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         .flexibleSpace,
         .toggleSidebar,
         .sidebarTrackingSeparator,
+        .flexibleSpace,
         searchItemIdentifier
     ]
 
