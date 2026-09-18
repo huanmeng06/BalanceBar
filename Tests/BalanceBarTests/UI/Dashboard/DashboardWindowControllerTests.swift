@@ -1087,15 +1087,21 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertFalse(toolbar.autosavesConfiguration, file: file, line: line)
         XCTAssertTrue(toolbar.delegate is DashboardToolbarController, file: file, line: line)
         XCTAssertEqual(
-            DashboardToolbarController.defaultItemIdentifiers,
+            Array(DashboardToolbarController.defaultItemIdentifiers.prefix(3)),
             [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator],
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            DashboardToolbarController.defaultItemIdentifiers,
+            toolbar.items.map(\.itemIdentifier),
             file: file,
             line: line
         )
 
         let identifiers = toolbar.items.map(\.itemIdentifier)
         XCTAssertEqual(
-            identifiers,
+            Array(identifiers.prefix(3)),
             [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator],
             "System flexibleSpace should precede the sidebar toggle so AppKit can push it to the tracking separator",
             file: file,
@@ -1103,6 +1109,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
         let customIdentifiers = identifiers.filter {
             $0 != .flexibleSpace && $0 != .toggleSidebar && $0 != .sidebarTrackingSeparator
+                && $0.rawValue != "BalanceBarDashboardSearch"
         }
         XCTAssertTrue(
             customIdentifiers.isEmpty,

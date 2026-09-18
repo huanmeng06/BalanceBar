@@ -5,11 +5,11 @@ import AppKit
 /// bounds listening.
 ///
 /// Settings row layout stays in the hosted content. macOS 26+ overlaps the
-/// titlebar so AppKit can inset content and draw the system scroll-edge.
-/// macOS 14/15 keep the 52pt titlebar clearance and do not imitate that
-/// effect. No custom blur, shadow, gradient, hairline, or private
-/// scroll-pocket API is installed. `isAtTop` and `scrollOffset` remain
-/// page-local signals.
+/// titlebar so AppKit can inset content and choose Soft or Hard scroll-edge
+/// automatically. macOS 14/15 keep the 52pt titlebar clearance and do not
+/// imitate that effect. No custom blur, shadow, gradient, hairline, forced
+/// `.soft` / `.hard`, or private scroll-pocket API is installed. `isAtTop`
+/// and `scrollOffset` remain page-local signals.
 final class DashboardScrollablePageViewController: NSViewController {
     static let viewportBottomInset: CGFloat = 0
     static let documentHorizontalInset: CGFloat = 34

@@ -100,10 +100,11 @@ enum DashboardScrollClampingPolicy {
 /// Page-scroll chrome for the running OS.
 ///
 /// macOS 26+ lets the scroll view overlap the transparent titlebar so AppKit
-/// can write content insets and draw the system scroll-edge. The public
-/// scroll-edge *style* API (`NSScrollEdgeEffectStyle` /
-/// `preferredScrollEdgeEffectStyle`) is accessory-only (macOS 26.1+) and is
-/// not installed here: current pages report no accessory. The window-level
+/// can write content insets and choose the system scroll-edge automatically.
+/// Soft and Hard are both valid system results; this policy never forces
+/// `NSScrollEdgeEffectStyle`. The public style API
+/// (`preferredScrollEdgeEffectStyle`) is accessory-only (macOS 26.1+) and is
+/// not installed here: production pages report no accessory. The window-level
 /// `titlebarSeparatorStyle` must stay `.automatic` on 26+ because a forced
 /// `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`. Content-pane
 /// separators then use the existing `NSTrackingSeparatorToolbarItem`.

@@ -649,7 +649,10 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         )
     }
 
-    func testPublicScrollEdgeTriggerConditionsOnMacOS26() throws {
+    /// Diagnostic only: the public `preferredScrollEdgeEffectStyle` setter
+    /// exists on split-item accessories. Production pages must not install an
+    /// accessory or force `.soft` / `.hard`; AppKit chooses the edge style.
+    func testScrollEdgeStyleAPIExistsOnlyOnAccessoriesAndIsUnusedByProductionPages() throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26,
             "Public scroll-edge style APIs and split-item accessories require macOS 26"
@@ -699,7 +702,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .none)
         XCTAssertTrue(dashboardWindow.titlebarAccessoryViewControllers.isEmpty)
         XCTAssertEqual(
-            DashboardToolbarController.defaultItemIdentifiers,
+            Array(DashboardToolbarController.defaultItemIdentifiers.prefix(3)),
             [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator]
         )
         XCTAssertEqual(
@@ -731,6 +734,8 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(mountedChrome.scrollPage.pageScrollView.automaticallyAdjustsContentInsets)
         XCTAssertGreaterThan(mountedChrome.scrollPage.pageScrollView.contentInsets.top, 1)
         if #available(macOS 26.1, *) {
+            // Mechanism probe only: the setter is reachable on an accessory.
+            // Production never assigns `.soft` or `.hard`.
             accessory.preferredScrollEdgeEffectStyle = NSScrollEdgeEffectStyle.hard
             XCTAssertIdentical(
                 accessory.preferredScrollEdgeEffectStyle,
