@@ -108,6 +108,8 @@ enum DashboardScrollClampingPolicy {
 /// `titlebarSeparatorStyle` must stay `.automatic` on 26+ because a forced
 /// `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`. Content-pane
 /// separators then use the existing `NSTrackingSeparatorToolbarItem`.
+/// Separator policy is independent of the Soft/Hard effect; its value is not
+/// evidence that AppKit has rendered a visible scroll-edge transition.
 /// macOS 14/15 keep the pre-Tahoe 52pt non-scrolling clearance and `.none`
 /// separators: `.fullSizeContentView` plus a transparent titlebar does not
 /// reliably produce that inset, and this app still supports 14+.
@@ -122,7 +124,7 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
     let windowTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
     /// Sidebar pane only; `.none` keeps the separator off the source list.
     let sidebarTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
-    /// Content pane; `.automatic` is the public scroll-aware titlebar edge.
+    /// Content pane's titlebar separator preference, not its scroll-edge style.
     let contentTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
 
     /// Pre-#401 clearance that kept the first row out of the titlebar.

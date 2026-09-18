@@ -140,9 +140,9 @@ final class DashboardSplitViewController: NSSplitViewController {
         }
 
         if usesNativeTahoeSurface {
-            // Tahoe's toolbar/sidebar/scroll-edge chrome must see the actual
-            // window + scrolling content. Do not place the legacy #383 tint or
-            // visual-effect backdrop behind the floating system bars.
+            // Leave the window surface to AppKit. The legacy #383 backdrop
+            // and tint are not needed behind Tahoe's floating system bars.
+            // Native surface ownership alone does not prove the edge's pixels.
             root.layer?.backgroundColor = nil
             root.layer?.cornerRadius = 0
             root.layer?.masksToBounds = false
@@ -319,6 +319,21 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func createDashboardWindow(initialSection: DashboardSection) {
+        let window = Self.makeUnpresentedWindow(initialSection: initialSection)
+        restoreWindowedFrame(on: window)
+        window.delegate = self
+
+        self.window = window
+        windowCreationCount += 1
+        installLayout(in: window)
+        installMouseMonitor()
+        showSection(initialSection)
+    }
+
+    /// Production window configuration before restoration/presentation. The
+    /// XCTest host deliberately changes opacity when parking a window, so
+    /// surface assertions must inspect this boundary rather than `open()`.
+    static func makeUnpresentedWindow(initialSection: DashboardSection) -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -330,9 +345,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         if #available(macOS 26.0, *) {
-            // Use the native window surface on Tahoe. Custom translucent
-            // backgrounds behind toolbar items interfere with scroll-edge
-            // composition.
+            // Use the native window surface on Tahoe rather than the legacy
+            // translucent shell. AppKit owns scroll-edge rendering.
             window.backgroundColor = .windowBackgroundColor
             window.isOpaque = true
         } else {
@@ -343,15 +357,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.appearance = nil
         window.isMovableByWindowBackground = false
         window.identifier = NSUserInterfaceItemIdentifier(DashboardShellRestoration.identity)
-        restoreWindowedFrame(on: window)
         window.isReleasedWhenClosed = false
-        window.delegate = self
-
-        self.window = window
-        windowCreationCount += 1
-        installLayout(in: window)
-        installMouseMonitor()
-        showSection(initialSection)
+        return window
     }
 
     private func presentOpenedDashboardWindow() {
@@ -580,8 +587,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         accessoryHost.attach(window: window, splitViewController: splitController)
         // After the tracking separator exists, restore the public pane
         // titlebar-separator preference. A window-level `.none` would
-        // override `NSSplitViewItem.titlebarSeparatorStyle` and suppress the
-        // system scroll-edge on macOS 26.
+        // override `NSSplitViewItem.titlebarSeparatorStyle`. This controls
+        // separators, not the Soft/Hard scroll-edge effect or its visibility.
         DashboardPageScrollLayoutPolicy.current.applyTitlebarSeparators(
             to: window,
             sidebarItem: splitController.splitViewItems.first,

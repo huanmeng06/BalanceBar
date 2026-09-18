@@ -462,6 +462,21 @@ final class DashboardWindowControllerTests: XCTestCase {
 
 @MainActor
 final class DashboardNativeUIBaselineTests: XCTestCase {
+    func testProductionWindowSurfaceBeforeTestHostParking() {
+        let window = DashboardWindowController.makeUnpresentedWindow(initialSection: .general)
+        defer { window.close() }
+
+        XCTAssertFalse(window.isVisible)
+        XCTAssertTrue(window.hasShadow)
+        if #available(macOS 26.0, *) {
+            XCTAssertTrue(window.isOpaque)
+            XCTAssertEqual(window.backgroundColor, .windowBackgroundColor)
+        } else {
+            XCTAssertFalse(window.isOpaque)
+            XCTAssertEqual(window.backgroundColor, .clear)
+        }
+    }
+
     func testWindowChromeMatchesCurrentNativeBaseline() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -543,7 +558,6 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         if #available(macOS 26.0, *) {
             XCTAssertNil(splitController.legacyBackdrop)
             XCTAssertTrue(splitController.contentSurface.isHidden)
-            XCTAssertTrue(window.isOpaque)
             XCTAssertNil(backdrop.layer?.backgroundColor)
         } else {
             let legacyBackdrop = try XCTUnwrap(splitController.legacyBackdrop)
@@ -551,7 +565,6 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             XCTAssertEqual(legacyBackdrop.blendingMode, .behindWindow)
             XCTAssertEqual(legacyBackdrop.state, .active)
             XCTAssertFalse(splitController.contentSurface.isHidden)
-            XCTAssertFalse(window.isOpaque)
         }
         XCTAssertTrue(splitController.view.subviews.contains(splitController.contentSurface))
         XCTAssertTrue(splitController.view.subviews.contains(splitController.splitView))
@@ -666,13 +679,11 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             if #available(macOS 26.0, *) {
                 XCTAssertNil(splitController.legacyBackdrop)
                 XCTAssertTrue(splitController.contentSurface.isHidden)
-                XCTAssertTrue(window.isOpaque)
             } else {
                 let legacyBackdrop = try XCTUnwrap(splitController.legacyBackdrop)
                 XCTAssertEqual(legacyBackdrop.material, .underWindowBackground)
                 XCTAssertEqual(legacyBackdrop.blendingMode, .behindWindow)
                 XCTAssertFalse(splitController.contentSurface.isHidden)
-                XCTAssertFalse(window.isOpaque)
             }
             XCTAssertEqual(
                 splitController.contentSurface.layer?.backgroundColor?.alpha ?? -1,
@@ -2194,7 +2205,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
 
             XCTAssertTrue(documentView.isFlipped)
-            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 0, accuracy: 1)
+            XCTAssertEqual(
+                viewportFrameInPage.minY - page.bounds.minY,
+                DashboardPageScrollLayoutPolicy.current.viewportTopInset,
+                accuracy: 1
+            )
             XCTAssertEqual(visibleRect.minY, documentView.bounds.minY, accuracy: 1)
             XCTAssertEqual(
                 pageStack.frame.minY,
@@ -2252,9 +2267,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertTrue(document.isFlipped)
             XCTAssertEqual(
                 viewportFrameInPage.minY - page.bounds.minY,
-                0,
+                DashboardPageScrollLayoutPolicy.current.viewportTopInset,
                 accuracy: 1,
-                "Settings scroll viewport must occupy the page top so AppKit can apply titlebar insets for \(section)"
+                "Settings scroll viewport must follow the current OS layout policy for \(section)"
             )
             XCTAssertEqual(
                 visible.minY,
