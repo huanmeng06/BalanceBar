@@ -49,14 +49,14 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 样式 | `.titled` `.closable` `.miniaturizable` `.resizable` `.fullSizeContentView` | 同上 |
 | 标题 | `titleVisibility = .hidden`；`window.title` 仍写入当前页标题 | 同上；`showSection` / `showProvider` |
 | 标题栏 | 透明；`toolbarStyle = .unified`；icon-only、不可自定义、不自动保存的 `NSToolbar`。侧栏段系统项：`.flexibleSpace`、`.toggleSidebar`、`.sidebarTrackingSeparator`。`.flexibleSpace` 是 AppKit 系统 flexible space（`NSToolbarItem.Identifier.flexibleSpace`），不是应用手写 spacer / 固定宽度 / magic number；它把 toggle 推到侧栏 toolbar 段 trailing，靠近 tracking separator / divider。内容段由独立产品 Issue（#436）提供公开 `NSSearchToolbarItem` 时，再加第二个 `.flexibleSpace` 把搜索推到 trailing edge。由独立 `DashboardToolbarController` 作为 delegate 提供；toggle 走 `NSSplitViewController` responder chain，separator 由 AppKit 跟踪 split divider。macOS 26+：窗口 `titlebarSeparatorStyle = .automatic`（不能写死 `.none`，否则会覆盖 split item 偏好），sidebar item `.none`、content item `.automatic`，让 AppKit 自动选择 Soft 或 Hard scroll-edge；二者都合法。macOS 14/15：窗口与 split item 均保持 `.none`。不安装空 accessory，也不使用私有 `NSScrollPocket` API，也不强制 `.soft` / `.hard`。 | 同上；`DashboardToolbarController`；`DashboardPageScrollLayoutPolicy` |
-| 背景 | `isOpaque = false`，`backgroundColor = .clear`，`hasShadow = true` | 同上；测试宿主会改 alpha/shadow，不能用 XCTest 证明最终像素 |
+| 背景 | macOS 26+ 使用原生 `windowBackgroundColor` 且 `isOpaque = true`；macOS 14/15 保留 `backgroundColor = .clear` / `isOpaque = false` 兼容外壳；`hasShadow = true` | 同上；测试宿主会改 alpha/shadow，不能用 XCTest 证明最终像素 |
 | 外观 | `appearance = nil`，跟随系统；`AppleInterfaceThemeChangedNotification` 后异步 `rebuild()` | `start()` / `createDashboardWindow` |
 | 缩放按钮 | **可见且 `isEnabled = true`**；使用系统标准 zoom 按钮 | `createDashboardWindow` |
 | 红黄绿 | 使用系统 `standardWindowButton`；不手动排除热区、不另做自定义拖拽覆盖层 | `standardWindowButton` |
 | 拖拽 | `isMovableByWindowBackground = false`；`DashboardContentRootView.mouseDownCanMoveWindow = false`，内容区不拖窗口；拖动由原生标题栏 / AppKit 处理，无全窗口 drag overlay | `createDashboardWindow` / `DashboardContentRootView` |
 | 双击标题栏 | `DashboardContentRootView.hitTest` 对 `contentLayoutRect` 以上返回 `nil`，让 NSThemeFrame 执行系统 `AppleActionOnDoubleClick`；不再调用 `toggleWindowZoom()` | `DashboardContentRootView.hitTest` |
 | 全屏 | 使用标准 zoom / 全屏行为；不再在 `.fullScreen` 时用自定义 `hitTest` 抑制双击 | AppKit |
-| 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。其 `view` 是挂载中的 `DashboardContentRootView`：material `.underWindowBackground`，圆角 16。全宽 `contentSurface` 叠在透明 `NSSplitView` 下方；左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。macOS 26+ 对**相邻 content item**（不是 sidebar item）设置公开 `automaticallyAdjustsSafeAreaInsets = true`，允许 floating sidebar 叠在内容 pane 上并由 AppKit 更新该 pane 的 safe area；页面挂载到 `DashboardPageContainerViewController` 的水平 `safeAreaLayoutGuide`，不按 sidebar 当前宽度手算 left inset。原生 `NSSplitView` 为 `isVertical = true`、`.thin` divider。打开时侧栏约 216pt（sidebar 视图一次性 frame seed，不是 `preferredThicknessFraction`）；`minimumThickness` 约 212、`maximumThickness` 320；`canCollapse = true`。折叠/展开走 `isCollapsed` 与 `toggleSidebar(_:)`；用户可见的系统 toolbar toggle 由 `DashboardToolbarController` 接入同一 responder chain。不把 divider 厚度锁成 0，也不另造 hit strip；`holdingPriority` 为 sidebar 251 / content `.defaultLow`。 | `installLayout` / `DashboardSplitViewController` / `DashboardPageContainerViewController` / `DashboardToolbarController` |
+| 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。macOS 26+ 的 `DashboardContentRootView` 是普通 `NSView`，不再把 #383 的 `NSVisualEffectView` / 自定义根 tint / `contentSurface` 放在系统 toolbar 与滚动内容之间；`contentSurface` 保留为旧系统兼容对象但在 Tahoe 隐藏。macOS 14/15 仍挂载 legacy `NSVisualEffectView` + 全宽 `contentSurface`。左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。macOS 26+ 对**相邻 content item**（不是 sidebar item）设置公开 `automaticallyAdjustsSafeAreaInsets = true`，允许 floating sidebar 叠在内容 pane 上并由 AppKit 更新该 pane 的 safe area；页面挂载到 `DashboardPageContainerViewController` 的水平 `safeAreaLayoutGuide`，不按 sidebar 当前宽度手算 left inset。原生 `NSSplitView` 为 `isVertical = true`、`.thin` divider。打开时侧栏约 216pt（sidebar 视图一次性 frame seed，不是 `preferredThicknessFraction`）；`minimumThickness` 约 212、`maximumThickness` 320；`canCollapse = true`。折叠/展开走 `isCollapsed` 与 `toggleSidebar(_:)`；用户可见的系统 toolbar toggle 由 `DashboardToolbarController` 接入同一 responder chain。不把 divider 厚度锁成 0，也不另造 hit strip；`holdingPriority` 为 sidebar 251 / content `.defaultLow`。 | `installLayout` / `DashboardSplitViewController` / `DashboardPageContainerViewController` / `DashboardToolbarController` |
 | 侧栏材质 | 由 `NSSplitViewItem(sidebarWithViewController:)` 提供系统 sidebar chrome；侧栏根视图透明，仅承载 source-list | `makeSidebar` / `DashboardSplitViewController` |
 | 点击编辑 | 窗口级 `leftMouseDown` monitor：点在可编辑 `NSTextField` 内保持编辑，点在标签/卡片/空白处 `makeFirstResponder(nil)` | `installMouseMonitor` |
 
@@ -119,8 +119,8 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 窗口不锁定 `appearance`。重建时按 `NSApp.effectiveAppearance` 选择：
 
-- 根层浅色白 8% / 深色黑 14%；
-- 内容表面浅色 0.94×82% / 深色黑 20%；
+- macOS 26+：最外层回归系统 window surface，不叠加 #383 根 tint / contentSurface；
+- macOS 14/15：保留根层浅色白 8% / 深色黑 14%，以及内容表面浅色 0.94×82% / 深色黑 20%；
 - 侧栏阴影透明度浅 0.08 / 深 0.18；
 - 设置卡片浅白 94% / 深白 6.5%，阴影浅 0.08 / 深 0.20。
 
@@ -150,7 +150,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 这些已有或本次新增的测试是回归闸门，不是视觉通过证明：
 
-- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator`（内容段搜索由 #436 另测）、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、内容表面浅 82% / 深 20%、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
+- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator`（内容段搜索由 #436 另测）、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、Tahoe 原生 window surface / 旧系统 legacy tint、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
 - `DashboardWindowControllerTests.testWindowEnablesNativeZoomAndStaysResizable`
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`
 - `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome
