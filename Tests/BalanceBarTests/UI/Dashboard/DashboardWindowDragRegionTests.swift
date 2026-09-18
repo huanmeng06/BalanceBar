@@ -60,7 +60,17 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
 
         let splitController = try XCTUnwrap(window.contentViewController as? DashboardSplitViewController)
-        XCTAssertEqual(contentView.subviews, [splitController.contentSurface, splitController.splitView])
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(contentView.subviews, [splitController.contentSurface, splitController.splitView])
+            XCTAssertTrue(splitController.contentSurface.isHidden)
+            XCTAssertNil(splitController.legacyBackdrop)
+        } else {
+            XCTAssertEqual(
+                contentView.subviews,
+                [try XCTUnwrap(splitController.legacyBackdrop), splitController.contentSurface, splitController.splitView]
+            )
+            XCTAssertFalse(splitController.contentSurface.isHidden)
+        }
     }
 
     func testContentRootPassesTitlebarHitsThroughForNativeDoubleClick() throws {

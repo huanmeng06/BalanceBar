@@ -23,7 +23,7 @@ struct DashboardWindowControllerActions {
     let didResize: () -> Void
 }
 
-final class DashboardContentRootView: NSVisualEffectView {
+final class DashboardContentRootView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -83,6 +83,7 @@ final class DashboardSplitViewController: NSSplitViewController {
     let sidebarController: NSViewController
     let contentController: NSViewController
     private(set) var contentSurface = NSView()
+    private(set) var legacyBackdrop: NSVisualEffectView?
     var contentSplitViewItem: NSSplitViewItem? {
         splitViewItems.first { $0.viewController === contentController }
     }
@@ -128,34 +129,60 @@ final class DashboardSplitViewController: NSSplitViewController {
     }
 
     override func loadView() {
-        let backdrop = DashboardContentRootView(frame: .zero)
-        backdrop.material = .underWindowBackground
-        backdrop.blendingMode = .behindWindow
-        backdrop.state = .active
-        backdrop.wantsLayer = true
-        backdrop.layer?.cornerRadius = 16
-        backdrop.layer?.masksToBounds = true
-        backdrop.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor.white.withAlphaComponent(0.08),
-            dark: NSColor.black.withAlphaComponent(0.14)
-        ).cgColor
+        let root = DashboardContentRootView(frame: .zero)
+        root.wantsLayer = true
+
+        let usesNativeTahoeSurface: Bool
+        if #available(macOS 26.0, *) {
+            usesNativeTahoeSurface = true
+        } else {
+            usesNativeTahoeSurface = false
+        }
+
+        if usesNativeTahoeSurface {
+            // Leave the window surface to AppKit. The legacy #383 backdrop
+            // and tint are not needed behind Tahoe's floating system bars.
+            // Native surface ownership alone does not prove the edge's pixels.
+            root.layer?.backgroundColor = nil
+            root.layer?.cornerRadius = 0
+            root.layer?.masksToBounds = false
+            legacyBackdrop = nil
+        } else {
+            // Preserve the pre-Tahoe shell for macOS 14/15.
+            root.layer?.cornerRadius = 16
+            root.layer?.masksToBounds = true
+
+            let effect = NSVisualEffectView(frame: .zero)
+            effect.material = .underWindowBackground
+            effect.blendingMode = .behindWindow
+            effect.state = .active
+            effect.wantsLayer = true
+            effect.layer?.backgroundColor = dashboardAdaptiveColor(
+                light: NSColor.white.withAlphaComponent(0.08),
+                dark: NSColor.black.withAlphaComponent(0.14)
+            ).cgColor
+            effect.translatesAutoresizingMaskIntoConstraints = false
+            legacyBackdrop = effect
+            root.addSubview(effect)
+        }
 
         contentSurface.identifier = Self.contentSurfaceIdentifier
         contentSurface.wantsLayer = true
         contentSurface.layer?.isOpaque = false
-        // Full-window tint from the #383 baseline. The split view stays
-        // transparent so this surface, not a darker content-pane overlay,
-        // provides light/dark contrast over the visual-effect backdrop.
         contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
             light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
             dark: NSColor.black.withAlphaComponent(0.20)
         ).cgColor
+        // The #383 surface is a legacy compatibility layer. Hiding it across
+        // the entire Tahoe window avoids the rejected "safe-area split" that
+        // created a broad gray band at the titlebar boundary.
+        contentSurface.isHidden = usesNativeTahoeSurface
         contentSurface.translatesAutoresizingMaskIntoConstraints = false
         splitView.translatesAutoresizingMaskIntoConstraints = false
 
-        view = backdrop
-        backdrop.addSubview(contentSurface)
-        backdrop.addSubview(splitView)
+        view = root
+        root.addSubview(contentSurface)
+        root.addSubview(splitView)
         if let splitResizeObserver {
             NotificationCenter.default.removeObserver(splitResizeObserver)
         }
@@ -166,16 +193,26 @@ final class DashboardSplitViewController: NSSplitViewController {
         ) { [weak self] _ in
             self?.onSidebarGeometryDidChange?()
         }
-        NSLayoutConstraint.activate([
-            contentSurface.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor),
-            contentSurface.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor),
-            contentSurface.topAnchor.constraint(equalTo: backdrop.topAnchor),
-            contentSurface.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor),
-            splitView.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor),
-            splitView.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor),
-            splitView.topAnchor.constraint(equalTo: backdrop.topAnchor),
-            splitView.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor)
-        ])
+
+        var constraints = [
+            contentSurface.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            contentSurface.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            contentSurface.topAnchor.constraint(equalTo: root.topAnchor),
+            contentSurface.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            splitView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            splitView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            splitView.topAnchor.constraint(equalTo: root.topAnchor),
+            splitView.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+        ]
+        if let legacyBackdrop {
+            constraints.append(contentsOf: [
+                legacyBackdrop.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+                legacyBackdrop.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+                legacyBackdrop.topAnchor.constraint(equalTo: root.topAnchor),
+                legacyBackdrop.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+            ])
+        }
+        NSLayoutConstraint.activate(constraints)
     }
 
     deinit {
@@ -282,6 +319,21 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func createDashboardWindow(initialSection: DashboardSection) {
+        let window = Self.makeUnpresentedWindow(initialSection: initialSection)
+        restoreWindowedFrame(on: window)
+        window.delegate = self
+
+        self.window = window
+        windowCreationCount += 1
+        installLayout(in: window)
+        installMouseMonitor()
+        showSection(initialSection)
+    }
+
+    /// Production window configuration before restoration/presentation. The
+    /// XCTest host deliberately changes opacity when parking a window, so
+    /// surface assertions must inspect this boundary rather than `open()`.
+    static func makeUnpresentedWindow(initialSection: DashboardSection) -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -291,23 +343,27 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.title = initialSection.title
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.titlebarSeparatorStyle = .none
-        window.backgroundColor = .clear
-        window.isOpaque = false
+        if #available(macOS 26.0, *) {
+            // Apple’s macOS 26 scroll-edge path requires the title bar to
+            // participate in the native window surface; a transparent title
+            // bar leaves the inset geometry present but disables the visible
+            // toolbar/content edge composition.
+            window.titlebarAppearsTransparent = false
+            // Use the native window surface on Tahoe rather than the legacy
+            // translucent shell. AppKit owns scroll-edge rendering.
+            window.backgroundColor = .windowBackgroundColor
+            window.isOpaque = true
+        } else {
+            window.titlebarAppearsTransparent = true
+            window.backgroundColor = .clear
+            window.isOpaque = false
+        }
         window.hasShadow = true
         window.appearance = nil
         window.isMovableByWindowBackground = false
         window.identifier = NSUserInterfaceItemIdentifier(DashboardShellRestoration.identity)
-        restoreWindowedFrame(on: window)
         window.isReleasedWhenClosed = false
-        window.delegate = self
-
-        self.window = window
-        windowCreationCount += 1
-        installLayout(in: window)
-        installMouseMonitor()
-        showSection(initialSection)
+        return window
     }
 
     private func presentOpenedDashboardWindow() {
@@ -555,6 +611,15 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // controller so AppKit can bind the standard tracking separator.
         toolbarController.install(on: window)
         accessoryHost.attach(window: window, splitViewController: splitController)
+        // After the tracking separator exists, restore the public pane
+        // titlebar-separator preference. A window-level `.none` would
+        // override `NSSplitViewItem.titlebarSeparatorStyle`. This controls
+        // separators, not the Soft/Hard scroll-edge effect or its visibility.
+        DashboardPageScrollLayoutPolicy.current.applyTitlebarSeparators(
+            to: window,
+            sidebarItem: splitController.splitViewItems.first,
+            contentItem: splitController.contentSplitViewItem
+        )
         window.layoutIfNeeded()
         if collapsed {
             splitController.splitViewItems[0].isCollapsed = true

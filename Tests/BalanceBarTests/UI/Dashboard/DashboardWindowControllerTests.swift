@@ -467,6 +467,23 @@ final class DashboardWindowControllerTests: XCTestCase {
 
 @MainActor
 final class DashboardNativeUIBaselineTests: XCTestCase {
+    func testProductionWindowSurfaceBeforeTestHostParking() {
+        let window = DashboardWindowController.makeUnpresentedWindow(initialSection: .general)
+        defer { window.close() }
+
+        XCTAssertFalse(window.isVisible)
+        XCTAssertTrue(window.hasShadow)
+        if #available(macOS 26.0, *) {
+            XCTAssertTrue(window.isOpaque)
+            XCTAssertEqual(window.backgroundColor, .windowBackgroundColor)
+            XCTAssertFalse(window.titlebarAppearsTransparent)
+        } else {
+            XCTAssertFalse(window.isOpaque)
+            XCTAssertEqual(window.backgroundColor, .clear)
+            XCTAssertTrue(window.titlebarAppearsTransparent)
+        }
+    }
+
     func testWindowChromeMatchesCurrentNativeBaseline() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -544,9 +561,18 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
 
         let backdrop = try XCTUnwrap(splitController.view as? DashboardContentRootView)
         XCTAssertTrue(contentView === backdrop)
-        XCTAssertEqual(backdrop.material, .underWindowBackground)
-        XCTAssertEqual(backdrop.blendingMode, .behindWindow)
-        XCTAssertEqual(backdrop.state, .active)
+        XCTAssertFalse(backdrop is NSVisualEffectView)
+        if #available(macOS 26.0, *) {
+            XCTAssertNil(splitController.legacyBackdrop)
+            XCTAssertTrue(splitController.contentSurface.isHidden)
+            XCTAssertNil(backdrop.layer?.backgroundColor)
+        } else {
+            let legacyBackdrop = try XCTUnwrap(splitController.legacyBackdrop)
+            XCTAssertEqual(legacyBackdrop.material, .underWindowBackground)
+            XCTAssertEqual(legacyBackdrop.blendingMode, .behindWindow)
+            XCTAssertEqual(legacyBackdrop.state, .active)
+            XCTAssertFalse(splitController.contentSurface.isHidden)
+        }
         XCTAssertTrue(splitController.view.subviews.contains(splitController.contentSurface))
         XCTAssertTrue(splitController.view.subviews.contains(splitController.splitView))
         XCTAssertLessThan(
@@ -583,8 +609,21 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(window.styleMask.contains(.fullSizeContentView))
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
         XCTAssertEqual(window.titleVisibility, .hidden)
-        XCTAssertTrue(window.titlebarAppearsTransparent)
-        XCTAssertEqual(window.titlebarSeparatorStyle, .none)
+        if #available(macOS 26.0, *) {
+            XCTAssertFalse(
+                window.titlebarAppearsTransparent,
+                "Tahoe scroll-edge composition needs an opaque titlebar"
+            )
+        } else {
+            XCTAssertTrue(window.titlebarAppearsTransparent)
+        }
+        let policy = DashboardPageScrollLayoutPolicy.current
+        XCTAssertEqual(window.titlebarSeparatorStyle, policy.windowTitlebarSeparatorStyle)
+        XCTAssertEqual(sidebarItem.titlebarSeparatorStyle, policy.sidebarTitlebarSeparatorStyle)
+        XCTAssertEqual(
+            try XCTUnwrap(splitController.contentSplitViewItem).titlebarSeparatorStyle,
+            policy.contentTitlebarSeparatorStyle
+        )
         XCTAssertEqual(window.toolbarStyle, .unified)
         try assertNativeDashboardToolbar(window)
         XCTAssertNil(window.appearance)
@@ -650,13 +689,21 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 window.contentViewController as? DashboardSplitViewController
             )
             let backdrop = try XCTUnwrap(splitController.view as? DashboardContentRootView)
-            XCTAssertEqual(backdrop.material, .underWindowBackground)
-            XCTAssertEqual(backdrop.blendingMode, .behindWindow)
+            XCTAssertFalse(backdrop is NSVisualEffectView)
+            if #available(macOS 26.0, *) {
+                XCTAssertNil(splitController.legacyBackdrop)
+                XCTAssertTrue(splitController.contentSurface.isHidden)
+            } else {
+                let legacyBackdrop = try XCTUnwrap(splitController.legacyBackdrop)
+                XCTAssertEqual(legacyBackdrop.material, .underWindowBackground)
+                XCTAssertEqual(legacyBackdrop.blendingMode, .behindWindow)
+                XCTAssertFalse(splitController.contentSurface.isHidden)
+            }
             XCTAssertEqual(
                 splitController.contentSurface.layer?.backgroundColor?.alpha ?? -1,
                 expectedAlpha,
                 accuracy: 0.01,
-                "Content surface alpha mismatch for \(name.rawValue)"
+                "Legacy content surface alpha mismatch for \(name.rawValue)"
             )
             XCTAssertEqual(try XCTUnwrap(sidebarWidth(in: window)), 216, accuracy: 1)
             XCTAssertTrue(splitController.splitViewItems[0].canCollapse)
@@ -955,9 +1002,23 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             XCTAssertTrue(scrollView.hasVerticalScroller)
             XCTAssertFalse(scrollView.hasHorizontalScroller)
             XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
-            XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            let policy = DashboardPageScrollLayoutPolicy.current
+            XCTAssertEqual(
+                scrollView.automaticallyAdjustsContentInsets,
+                policy.automaticallyAdjustsContentInsets
+            )
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
-            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+            XCTAssertEqual(
+                viewportFrameInPage.minY - page.bounds.minY,
+                policy.viewportTopInset,
+                accuracy: 1
+            )
+            let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+            if policy.automaticallyAdjustsContentInsets {
+                XCTAssertEqual(scrollView.contentInsets.top, titlebarHeight, accuracy: 1)
+            } else {
+                XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            }
         }
 
         appDelegate.dashboardCompositionForTesting.showSection(.about)
@@ -1080,6 +1141,12 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 DashboardToolbarController.searchItemIdentifier
             ],
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            DashboardToolbarController.defaultItemIdentifiers,
+            toolbar.items.map(\.itemIdentifier),
             file: file,
             line: line
         )
@@ -2184,7 +2251,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
 
             XCTAssertTrue(documentView.isFlipped)
-            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+            XCTAssertEqual(
+                viewportFrameInPage.minY - page.bounds.minY,
+                DashboardPageScrollLayoutPolicy.current.viewportTopInset,
+                accuracy: 1
+            )
             XCTAssertEqual(visibleRect.minY, documentView.bounds.minY, accuracy: 1)
             XCTAssertEqual(
                 pageStack.frame.minY,
@@ -2242,13 +2313,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertTrue(document.isFlipped)
             XCTAssertEqual(
                 viewportFrameInPage.minY - page.bounds.minY,
-                52,
+                DashboardPageScrollLayoutPolicy.current.viewportTopInset,
                 accuracy: 1,
-                "Settings scroll viewport lost its measured non-document top inset for \(section)"
+                "Settings scroll viewport must follow the current OS layout policy for \(section)"
             )
             XCTAssertEqual(
                 visible.minY,
-                document.bounds.minY,
+                document.bounds.minY - scrollView.contentInsets.top,
                 accuracy: 1,
                 "Initial visible origin mismatch for \(section): visible=\(visible), document=\(document.bounds), clipBounds=\(scrollView.contentView.bounds), contentInsets=\(scrollView.contentInsets)"
             )
@@ -2292,19 +2363,31 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let firstHeading = try XCTUnwrap(
                 firstDescendant(of: stack.arrangedSubviews.first!, as: NSTextField.self)
             )
-            let geometry = DashboardScrollGeometry(
-                documentBounds: document.bounds,
-                viewportHeight: contentView.bounds.height,
-                isDocumentFlipped: document.isFlipped
-            )
+            let geometry = DashboardScrollGeometry(scrollView: scrollView)
 
-            XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets)
-            XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            let policy = DashboardPageScrollLayoutPolicy.current
+            XCTAssertEqual(
+                scrollView.automaticallyAdjustsContentInsets,
+                policy.automaticallyAdjustsContentInsets
+            )
+            if policy.automaticallyAdjustsContentInsets {
+                XCTAssertEqual(
+                    scrollView.contentInsets.top,
+                    window.frame.height - window.contentLayoutRect.height,
+                    accuracy: 1
+                )
+            } else {
+                XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            }
             XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
             XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
             XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
             XCTAssertTrue(document.isFlipped)
-            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+            XCTAssertEqual(
+                viewportFrameInPage.minY - page.bounds.minY,
+                policy.viewportTopInset,
+                accuracy: 1
+            )
             XCTAssertEqual(viewportFrameInPage.maxY, page.bounds.maxY, accuracy: 1)
 
             let proposals = geometry.maximumOffset > 1
@@ -2327,7 +2410,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 let visible = contentView.convert(contentView.bounds, to: document)
                 let actual = geometry.visualOffset(for: visible)
                 XCTAssertEqual(actual, proposal, accuracy: 1, "Native endpoint replay moved \(section) unexpectedly")
-                XCTAssertGreaterThanOrEqual(visible.minY, document.bounds.minY - 1)
+                XCTAssertGreaterThanOrEqual(
+                    visible.minY,
+                    document.bounds.minY - scrollView.contentInsets.top - 1
+                )
                 XCTAssertLessThanOrEqual(visible.maxY, document.bounds.maxY + 1)
                 if abs(proposal - geometry.maximumOffset) < 0.001 {
                     bottomVisible = visible
