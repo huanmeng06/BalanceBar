@@ -347,6 +347,41 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(other.isHidden)
     }
 
+    func testBusinessHiddenRowThatBecomesVisibleDuringSearchRemainsFiltered() {
+        let rightClick = SettingsRowView(title: "Right Click")
+        let reverseMouseButtons = SettingsRowView(title: "Reverse Mouse Buttons")
+        reverseMouseButtons.isHidden = true
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([
+            SettingsSectionView(title: "Behavior", contentViews: [rightClick, reverseMouseButtons])
+        ])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "Right Click",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertTrue(reverseMouseButtons.isHidden)
+        XCTAssertTrue(DashboardSearchVisibility.isSearchHidden(reverseMouseButtons))
+
+        reverseMouseButtons.isHidden = false
+        XCTAssertTrue(reverseMouseButtons.isHidden)
+        XCTAssertTrue(DashboardSearchVisibility.isSearchHidden(reverseMouseButtons))
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(reverseMouseButtons.isHidden)
+    }
+
     func testVisibleCopySkipsHiddenSubtreeCopy() {
         let hiddenField = NSTextField(labelWithString: "Hidden Provider Copy")
         hiddenField.isHidden = true
