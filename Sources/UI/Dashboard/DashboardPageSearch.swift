@@ -1,7 +1,56 @@
 import AppKit
 
+/// Search hiding is tracked separately from business `isHidden`.
+/// AppKit may echo `isHidden` while search is mutating layout; those writes
+/// must not be stored as business visibility.
+enum DashboardSearchVisibility {
+    static var isMutatingSearchVisibility = false
+    private static var businessKey: UInt8 = 0
+    private static var searchKey: UInt8 = 0
+
+    static func writeHidden(_ view: NSView, _ hidden: Bool, superSetter: (Bool) -> Void) {
+        if isMutatingSearchVisibility {
+            superSetter(hidden)
+            return
+        }
+        setBusinessHidden(view, hidden)
+        superSetter(isEffectivelyHidden(view))
+    }
+
+    static func setBusinessHidden(_ view: NSView, _ hidden: Bool) {
+        objc_setAssociatedObject(view, &businessKey, hidden, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    static func setSearchHidden(_ view: NSView, _ hidden: Bool) {
+        objc_setAssociatedObject(view, &searchKey, hidden, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    static func isSearchHidden(_ view: NSView) -> Bool {
+        objc_getAssociatedObject(view, &searchKey) as? Bool ?? false
+    }
+
+    static func isBusinessHidden(_ view: NSView) -> Bool {
+        if let stored = objc_getAssociatedObject(view, &businessKey) as? Bool {
+            return stored
+        }
+        return view.isHidden && !isSearchHidden(view)
+    }
+
+    static func isEffectivelyHidden(_ view: NSView) -> Bool {
+        isBusinessHidden(view) || isSearchHidden(view)
+    }
+
+    static func restoreBusinessHidden(_ view: NSView) {
+        let hidden = isBusinessHidden(view)
+        isMutatingSearchVisibility = true
+        view.isHidden = hidden
+        isMutatingSearchVisibility = false
+    }
+}
+
 /// Dashboard settings search: toolbar query interpretation, page filtering,
 /// and cross-section jump catalog. Empty results reuse SettingsSectionView.
+/// The catalog is a candidate list only; live pages re-check business visibility.
 enum DashboardPageSearch {
     static let sectionIdentifier = NSUserInterfaceItemIdentifier("dashboard.settings.section")
     static let rowIdentifier = NSUserInterfaceItemIdentifier("dashboard.settings.row")
@@ -30,10 +79,14 @@ enum DashboardSettingsSearchCatalog {
         return values
     }
 
-    static func firstMatchingSection(query: String) -> DashboardSection? {
-        DashboardSection.allCases.first { section in
+    static func matchingSections(query: String) -> [DashboardSection] {
+        DashboardSection.allCases.filter { section in
             titles(for: section).contains { DashboardPageSearch.matches($0, query: query) }
         }
+    }
+
+    static func firstMatchingSection(query: String) -> DashboardSection? {
+        matchingSections(query: query).first
     }
 
     static func keys(for section: DashboardSection) -> [LocalizationKey] {
@@ -256,9 +309,12 @@ final class DashboardPageSearchFilter {
         }
         var visibleRowCount = 0
         for view in stack.arrangedSubviews where !(view is NSBox) {
+            if DashboardSearchVisibility.isBusinessHidden(view) {
+                continue
+            }
             if rowMatches(view, query: query, includeVisibleCopy: includeVisibleCopy) {
                 visibleRowCount += 1
-            } else if !view.isHidden {
+            } else {
                 hideForSearch(view)
             }
         }
@@ -278,6 +334,7 @@ final class DashboardPageSearchFilter {
         query: String,
         includeVisibleCopy: Bool
     ) -> Bool {
+        guard !DashboardSearchVisibility.isBusinessHidden(row) else { return false }
         if DashboardPageSearch.matches(rowTitle(of: row), query: query) {
             return true
         }
@@ -287,6 +344,9 @@ final class DashboardPageSearchFilter {
 
     private func collectSections(in view: NSView) -> [NSView] {
         if view.identifier == DashboardPageSearch.emptyStateIdentifier {
+            return []
+        }
+        if DashboardSearchVisibility.isBusinessHidden(view) {
             return []
         }
         if view is SettingsSectionView || view.identifier == DashboardPageSearch.sectionIdentifier {
@@ -360,6 +420,12 @@ final class DashboardPageSearchFilter {
         if view.identifier == DashboardPageSearch.emptyStateIdentifier {
             return []
         }
+        if DashboardSearchVisibility.isBusinessHidden(view) {
+            return []
+        }
+        if isHiddenSubtree(view) {
+            return []
+        }
         var values: [String] = []
         if let field = view as? NSTextField {
             let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -382,31 +448,49 @@ final class DashboardPageSearchFilter {
         return values
     }
 
+    private func isHiddenSubtree(_ view: NSView) -> Bool {
+        view.isHidden && !DashboardSearchVisibility.isSearchHidden(view)
+    }
+
     private func syncSeparators(in stack: NSStackView) {
         let arranged = stack.arrangedSubviews
         for (index, view) in arranged.enumerated() {
             guard view is NSBox else { continue }
             let previousVisible = arranged[..<index].reversed().first { !($0 is NSBox) }.map {
-                !$0.isHidden
+                !isCollapsedForSearchLayout($0)
             } ?? false
             let nextVisible = arranged[(index + 1)...].first { !($0 is NSBox) }.map {
-                !$0.isHidden
+                !isCollapsedForSearchLayout($0)
             } ?? false
-            if !(previousVisible && nextVisible), !view.isHidden {
+            if !(previousVisible && nextVisible), !isCollapsedForSearchLayout(view) {
                 hideForSearch(view)
             }
         }
     }
 
     private func hideForSearch(_ view: NSView) {
-        guard !view.isHidden else { return }
-        view.isHidden = true
+        guard !DashboardSearchVisibility.isBusinessHidden(view) else { return }
+        guard !DashboardSearchVisibility.isSearchHidden(view) else { return }
+        DashboardSearchVisibility.setSearchHidden(view, true)
         hiddenBySearch.add(view)
+        DashboardSearchVisibility.isMutatingSearchVisibility = true
+        if let stack = view.superview as? NSStackView, stack.arrangedSubviews.contains(view) {
+            stack.setVisibilityPriority(.notVisible, for: view)
+        } else {
+            view.isHidden = true
+        }
+        DashboardSearchVisibility.isMutatingSearchVisibility = false
     }
 
     private func restoreSearchHiddens() {
         for view in hiddenBySearch.allObjects {
-            view.isHidden = false
+            DashboardSearchVisibility.setSearchHidden(view, false)
+            DashboardSearchVisibility.isMutatingSearchVisibility = true
+            if let stack = view.superview as? NSStackView, stack.arrangedSubviews.contains(view) {
+                stack.setVisibilityPriority(.mustHold, for: view)
+            }
+            DashboardSearchVisibility.isMutatingSearchVisibility = false
+            DashboardSearchVisibility.restoreBusinessHidden(view)
         }
         hiddenBySearch.removeAllObjects()
     }
@@ -491,8 +575,12 @@ final class DashboardPageSearchFilter {
         match.scrollToVisible(match.bounds)
     }
 
+    private func isCollapsedForSearchLayout(_ view: NSView) -> Bool {
+        view.isHidden || DashboardSearchVisibility.isSearchHidden(view)
+    }
+
     private func firstVisibleMatch(in view: NSView) -> NSView? {
-        if view.identifier == DashboardPageSearch.emptyStateIdentifier || view.isHidden {
+        if view.identifier == DashboardPageSearch.emptyStateIdentifier || isCollapsedForSearchLayout(view) {
             return nil
         }
         if view is SettingsRowView || view.identifier == DashboardPageSearch.rowIdentifier {

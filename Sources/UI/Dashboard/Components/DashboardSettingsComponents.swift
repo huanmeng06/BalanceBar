@@ -176,9 +176,13 @@ private final class DashboardSettingsRowView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override var isHidden: Bool {
-        didSet {
-            guard isHidden != oldValue else { return }
-            cardView?.markHeightDirty()
+        get { super.isHidden }
+        set {
+            let wasHidden = super.isHidden
+            DashboardSearchVisibility.writeHidden(self, newValue) { super.isHidden = $0 }
+            if super.isHidden != wasHidden {
+                cardView?.markHeightDirty()
+            }
         }
     }
 

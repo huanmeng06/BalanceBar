@@ -129,6 +129,13 @@ final class SettingsSectionView: NSView {
         ])
     }
 
+    override var isHidden: Bool {
+        get { super.isHidden }
+        set {
+            DashboardSearchVisibility.writeHidden(self, newValue) { super.isHidden = $0 }
+        }
+    }
+
     override var intrinsicContentSize: NSSize {
         let stackHeight = contentStack.intrinsicContentSize.height
         let height = stackHeight > 0 ? stackHeight : contentStack.fittingSize.height

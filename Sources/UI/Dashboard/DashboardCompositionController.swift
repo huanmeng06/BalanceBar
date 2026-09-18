@@ -473,10 +473,24 @@ final class DashboardCompositionController {
             applyMountedPageSearch()
             return
         }
-        if let destination = DashboardSettingsSearchCatalog.firstMatchingSection(query: needle),
-           selectedProviderID != nil || destination != section {
+
+        let originSection = section
+        let originProviderID = selectedProviderID
+        let candidates = DashboardSettingsSearchCatalog.matchingSections(query: needle)
+            .filter { originProviderID != nil || $0 != originSection }
+        for destination in candidates {
             windowController.showSection(destination)
-            return
+            if currentPageContainsSearchMatch(needle) {
+                return
+            }
+        }
+
+        if selectedProviderID != originProviderID || section != originSection {
+            if let originProviderID {
+                windowController.showProvider(originProviderID)
+            } else {
+                windowController.showSection(originSection)
+            }
         }
         applyMountedPageSearch()
     }
