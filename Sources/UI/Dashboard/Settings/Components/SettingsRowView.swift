@@ -290,6 +290,7 @@ final class SettingsRowView: NSView {
         accessoryView: NSView?
     ) {
         identifier = DashboardPageSearch.rowIdentifier
+        DashboardPageSearch.markSearchableRow(self)
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

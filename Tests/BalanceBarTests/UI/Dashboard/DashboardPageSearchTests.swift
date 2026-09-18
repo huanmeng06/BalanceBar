@@ -580,6 +580,262 @@ final class DashboardPageSearchTests: XCTestCase {
         )
         XCTAssertTrue(reverseRow.isHidden)
     }
+
+    func testBusinessHiddenNonMatchingRowStaysSearchHiddenWhenBusinessRevealsItDuringActiveQuery() {
+        let rightClick = SettingsRowView(title: "Right Click")
+        let reverseMouseButtons = SettingsRowView(title: "Reverse Mouse Buttons")
+        reverseMouseButtons.isHidden = true
+        let section = SettingsSectionView(
+            title: "Behavior",
+            contentViews: [rightClick, reverseMouseButtons]
+        )
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "Right Click",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(isCollapsedForSearch(rightClick))
+        XCTAssertTrue(isCollapsedForSearch(reverseMouseButtons))
+        XCTAssertTrue(DashboardSearchVisibility.isSearchHidden(reverseMouseButtons))
+
+        reverseMouseButtons.isHidden = false
+
+        XCTAssertTrue(DashboardSearchVisibility.isSearchHidden(reverseMouseButtons))
+        XCTAssertTrue(isCollapsedForSearch(reverseMouseButtons))
+        XCTAssertTrue(reverseMouseButtons.isHidden)
+        XCTAssertFalse(isCollapsedForSearch(rightClick))
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(DashboardSearchVisibility.isSearchHidden(reverseMouseButtons))
+        XCTAssertFalse(isCollapsedForSearch(reverseMouseButtons))
+        XCTAssertFalse(reverseMouseButtons.isHidden)
+    }
+
+    func testBusinessHiddenMatchingRowBecomesVisibleResultWhenBusinessRevealsItDuringActiveQuery() {
+        let rightClick = SettingsRowView(title: "Right Click")
+        let reverseMouseButtons = SettingsRowView(title: "Reverse Mouse Buttons")
+        reverseMouseButtons.isHidden = true
+        let section = SettingsSectionView(
+            title: "Behavior",
+            contentViews: [rightClick, reverseMouseButtons]
+        )
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertFalse(
+            filter.apply(
+                query: "Reverse Mouse Buttons",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertTrue(reverseMouseButtons.isHidden)
+        XCTAssertTrue(isCollapsedForSearch(section))
+        XCTAssertFalse(try XCTUnwrap(emptyState(in: stack)).isHidden)
+        XCTAssertFalse(
+            filter.pageContainsMatch(
+                query: "Reverse Mouse Buttons",
+                in: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+
+        reverseMouseButtons.isHidden = false
+
+        XCTAssertFalse(DashboardSearchVisibility.isSearchHidden(reverseMouseButtons))
+        XCTAssertFalse(isCollapsedForSearch(reverseMouseButtons))
+        XCTAssertFalse(reverseMouseButtons.isHidden)
+        XCTAssertFalse(isCollapsedForSearch(section))
+        XCTAssertTrue(emptyState(in: stack)?.isHidden != false)
+        XCTAssertTrue(
+            filter.pageContainsMatch(
+                query: "Reverse Mouse Buttons",
+                in: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertTrue(isCollapsedForSearch(rightClick))
+    }
+
+    func testSearchAndBusinessVisibilityChangesDoNotLeaveLeadingTrailingOrDoubleSeparators() {
+        let first = SettingsRowView(title: "Right Click")
+        let middle = SettingsRowView(title: "Reverse Mouse Buttons")
+        let last = SettingsRowView(title: "Layout")
+        middle.isHidden = true
+        let section = SettingsSectionView(
+            title: "Behavior",
+            contentViews: [first, middle, last]
+        )
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "Right Click",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        assertSectionSeparatorsAreValid(section)
+
+        middle.isHidden = false
+        XCTAssertTrue(isCollapsedForSearch(middle))
+        assertSectionSeparatorsAreValid(section)
+
+        last.isHidden = true
+        XCTAssertFalse(
+            filter.apply(
+                query: "Layout",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(try XCTUnwrap(emptyState(in: stack)).isHidden)
+        assertSectionSeparatorsAreValid(section)
+
+        last.isHidden = false
+        XCTAssertFalse(isCollapsedForSearch(last))
+        XCTAssertTrue(emptyState(in: stack)?.isHidden != false)
+        assertSectionSeparatorsAreValid(section)
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(first.isHidden)
+        XCTAssertFalse(middle.isHidden)
+        XCTAssertFalse(last.isHidden)
+        assertSectionSeparatorsAreValid(section)
+    }
+
+    func testSearchRestoreDoesNotOverwriteCustomStackVisibilityPriority() {
+        let kept = SettingsRowView(title: "Right Click")
+        let filtered = SettingsRowView(title: "Reverse Mouse Buttons")
+        let section = SettingsSectionView(
+            title: "Behavior",
+            contentViews: [kept, filtered]
+        )
+        let customPriority = NSStackView.VisibilityPriority(rawValue: 250)
+        section.cardView.setVisibilityPriority(customPriority, for: filtered)
+        XCTAssertEqual(section.cardView.visibilityPriority(for: filtered), customPriority)
+
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+        XCTAssertTrue(
+            filter.apply(
+                query: "Right Click",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertEqual(section.cardView.visibilityPriority(for: filtered), .notVisible)
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertEqual(section.cardView.visibilityPriority(for: filtered), customPriority)
+        XCTAssertEqual(section.cardView.visibilityPriority(for: kept), .mustHold)
+    }
+
+    func testMenuBarSearchableRowsUseDefaultStackVisibilityPriority() throws {
+        let suiteName = "DashboardPageSearchTests.VisibilityPriority.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let page = DashboardMenuBarPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            snapshot: Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        let rows = searchableRows(in: page)
+        XCTAssertFalse(rows.isEmpty)
+        var visibleRowCount = 0
+        for row in rows {
+            guard let stack = row.superview as? NSStackView,
+                  stack.arrangedSubviews.contains(row) else {
+                continue
+            }
+            if row.isHidden || DashboardSearchVisibility.isBusinessHidden(row) {
+                continue
+            }
+            visibleRowCount += 1
+            XCTAssertEqual(
+                stack.visibilityPriority(for: row),
+                .mustHold,
+                "visible production searchable rows keep default stack visibility priority"
+            )
+        }
+        XCTAssertGreaterThan(visibleRowCount, 0)
+    }
+
+    func testSearchStillFiltersLegacyRowAfterBusinessIdentifierOverwrite() {
+        let matching = DashboardSettingsComponents.makeSettingsRow("Right Click")
+        let hiddenBySearch = DashboardSettingsComponents.makeSettingsRow("Reverse Mouse Buttons")
+        hiddenBySearch.identifier = NSUserInterfaceItemIdentifier("menuBar.animationFallbackWarningRow")
+        XCTAssertNotEqual(hiddenBySearch.identifier, DashboardPageSearch.rowIdentifier)
+        XCTAssertTrue(DashboardPageSearch.isSearchableRow(hiddenBySearch))
+
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Behavior",
+            rows: [matching, hiddenBySearch]
+        )
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "Right Click",
+                to: stack,
+                pageTitle: "Menu Bar",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(isCollapsedForSearch(matching))
+        XCTAssertTrue(isCollapsedForSearch(hiddenBySearch))
+    }
+
+    func testSearchVisibilityMutationRestoresFlagWhenNested() {
+        DashboardSearchVisibility.isMutatingSearchVisibility = false
+        DashboardSearchVisibility.withSearchVisibilityMutation {
+            XCTAssertTrue(DashboardSearchVisibility.isMutatingSearchVisibility)
+            DashboardSearchVisibility.withSearchVisibilityMutation {
+                XCTAssertTrue(DashboardSearchVisibility.isMutatingSearchVisibility)
+            }
+            XCTAssertTrue(DashboardSearchVisibility.isMutatingSearchVisibility)
+        }
+        XCTAssertFalse(DashboardSearchVisibility.isMutatingSearchVisibility)
+    }
 }
 
 private func emptyState(in root: NSView) -> NSView? {
@@ -602,11 +858,43 @@ private func settingsRow(titled title: String, in root: NSView) -> SettingsRowVi
     row(containingTitle: title, in: root) as? SettingsRowView
 }
 
+private func searchableRows(in root: NSView) -> [NSView] {
+    var rows: [NSView] = []
+    if DashboardPageSearch.isSearchableRow(root) {
+        rows.append(root)
+    }
+    for child in root.subviews {
+        rows.append(contentsOf: searchableRows(in: child))
+    }
+    return rows
+}
+
+private func assertSectionSeparatorsAreValid(_ section: SettingsSectionView) {
+    let visible = section.cardView.arrangedSubviews.filter { view in
+        if view is NSBox {
+            return !view.isHidden && !DashboardSearchVisibility.isSearchHidden(view)
+        }
+        return !isCollapsedForSearch(view)
+    }
+    if visible.isEmpty {
+        XCTAssertTrue(isCollapsedForSearch(section))
+        return
+    }
+    XCTAssertFalse(visible.first is NSBox, "leading separator")
+    XCTAssertFalse(visible.last is NSBox, "trailing separator")
+    for index in 1..<visible.count {
+        XCTAssertFalse(
+            visible[index] is NSBox && visible[index - 1] is NSBox,
+            "double separator"
+        )
+    }
+}
+
 private func row(containingTitle title: String, in root: NSView) -> NSView? {
     if let row = root as? SettingsRowView, row.titleLabel.stringValue == title {
         return row
     }
-    if root.identifier == DashboardPageSearch.rowIdentifier,
+    if DashboardPageSearch.isSearchableRow(root),
        firstLabel(in: root, matching: title) != nil {
         return root
     }

@@ -1273,6 +1273,7 @@ enum DashboardSettingsComponents {
             verticalPadding: verticalPadding
         )
         row.identifier = DashboardPageSearch.rowIdentifier
+        DashboardPageSearch.markSearchableRow(row)
         row.forceDedicatedControlRow = forceDedicatedControlRow
         // Keep a required floor for short rows. The low-priority equality
         // preserves the old compact geometry as a fallback while allowing

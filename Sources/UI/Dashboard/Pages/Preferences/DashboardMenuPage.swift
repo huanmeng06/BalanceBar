@@ -110,6 +110,7 @@ private final class MenuDedicatedControlRow: NSView {
         self.control = control
         super.init(frame: .zero)
         identifier = DashboardPageSearch.rowIdentifier
+        DashboardPageSearch.markSearchableRow(self)
         configure(
             title: title,
             detail: detail,
