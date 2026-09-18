@@ -67,6 +67,7 @@ final class SettingsSectionView: NSView {
         headingLabel.heightAnchor.constraint(
             greaterThanOrEqualToConstant: ceil(Self.headingFont.boundingRectForFont.height)
         ).isActive = true
+        identifier = DashboardPageSearch.sectionIdentifier
         headingLabel.isHidden = title.isEmpty
 
         cardView.translatesAutoresizingMaskIntoConstraints = false
@@ -126,6 +127,13 @@ final class SettingsSectionView: NSView {
             contentStack.bottomAnchor.constraint(equalTo: bottomAnchor),
             cardView.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
         ])
+    }
+
+    override var isHidden: Bool {
+        get { super.isHidden }
+        set {
+            DashboardSearchVisibility.writeHidden(self, newValue) { super.isHidden = $0 }
+        }
     }
 
     override var intrinsicContentSize: NSSize {

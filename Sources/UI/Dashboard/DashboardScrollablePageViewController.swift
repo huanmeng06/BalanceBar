@@ -19,7 +19,7 @@ final class DashboardScrollablePageViewController: NSViewController {
     )
 
     let layoutPolicy: DashboardPageScrollLayoutPolicy
-    private let hostedContent: NSView
+    let hostedContent: NSView
     let pageScrollView: NSScrollView
     private let pageClipView: NSClipView
     private let pageDocumentView: DashboardSettingsDocumentView

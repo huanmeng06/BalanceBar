@@ -176,9 +176,13 @@ private final class DashboardSettingsRowView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override var isHidden: Bool {
-        didSet {
-            guard isHidden != oldValue else { return }
-            cardView?.markHeightDirty()
+        get { super.isHidden }
+        set {
+            let wasHidden = super.isHidden
+            DashboardSearchVisibility.writeHidden(self, newValue) { super.isHidden = $0 }
+            if super.isHidden != wasHidden {
+                cardView?.markHeightDirty()
+            }
         }
     }
 
@@ -806,6 +810,21 @@ enum DashboardSettingsComponents {
     static let settingsTitleMaximumNumberOfLines = 0
     static let settingsSubtitleMaximumNumberOfLines = 0
 
+    static func invalidateHostedSettingsRowHeight(for view: NSView) {
+        var current: NSView? = view
+        while let candidate = current {
+            if let invalidating = candidate as? SettingsRowHeightInvalidating {
+                invalidating.invalidateHostedSettingsRowHeight()
+                candidate.invalidateIntrinsicContentSize()
+                candidate.needsLayout = true
+                candidate.superview?.invalidateIntrinsicContentSize()
+                candidate.superview?.needsLayout = true
+                return
+            }
+            current = candidate.superview
+        }
+    }
+
     /// CJK UI copy is naturally breakable between characters. Word wrapping
     /// treats a run without spaces as one large word, which leaves an entire
     /// suffix stranded on the next line even though adaptive row height can
@@ -1242,6 +1261,7 @@ enum DashboardSettingsComponents {
         section.setContentCompressionResistancePriority(.required, for: .vertical)
         section.setHuggingPriority(.required, for: .vertical)
         section.setClippingResistancePriority(.required, for: .vertical)
+        section.identifier = DashboardPageSearch.sectionIdentifier
         section.addView(heading, in: .top)
         section.addView(card, in: .top)
         card.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
@@ -1267,6 +1287,8 @@ enum DashboardSettingsComponents {
             minimumHeight: minimumHeight,
             verticalPadding: verticalPadding
         )
+        row.identifier = DashboardPageSearch.rowIdentifier
+        DashboardPageSearch.markSearchableRow(row)
         row.forceDedicatedControlRow = forceDedicatedControlRow
         // Keep a required floor for short rows. The low-priority equality
         // preserves the old compact geometry as a fallback while allowing
@@ -1485,7 +1507,10 @@ enum DashboardSettingsComponents {
         rowHeight: ((NSView) -> CGFloat?)? = nil
     ) -> CGFloat {
         let rowsHeight = rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, row in
-            guard !(row is NSBox), !row.isHidden else { return total }
+            guard !(row is NSBox),
+                  !row.isHidden,
+                  !DashboardSearchVisibility.isCollapsedForSearchLayout(row)
+            else { return total }
             return total + settingsRowHeight(row, rowHeight: rowHeight)
         }
         let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count) * settingsSeparatorHeight

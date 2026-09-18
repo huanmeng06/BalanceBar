@@ -63,6 +63,13 @@ final class SettingsRowView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override var isHidden: Bool {
+        get { super.isHidden }
+        set {
+            DashboardSearchVisibility.writeHidden(self, newValue) { super.isHidden = $0 }
+        }
+    }
+
     static func enclosing(_ view: NSView) -> SettingsRowView? {
         var current: NSView? = view
         while let candidate = current {
@@ -282,6 +289,8 @@ final class SettingsRowView: NSView {
         titleAccessory: NSView?,
         accessoryView: NSView?
     ) {
+        identifier = DashboardPageSearch.rowIdentifier
+        DashboardPageSearch.markSearchableRow(self)
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
