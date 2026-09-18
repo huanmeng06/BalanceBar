@@ -539,9 +539,20 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
 
         let backdrop = try XCTUnwrap(splitController.view as? DashboardContentRootView)
         XCTAssertTrue(contentView === backdrop)
-        XCTAssertEqual(backdrop.material, .underWindowBackground)
-        XCTAssertEqual(backdrop.blendingMode, .behindWindow)
-        XCTAssertEqual(backdrop.state, .active)
+        XCTAssertFalse(backdrop is NSVisualEffectView)
+        if #available(macOS 26.0, *) {
+            XCTAssertNil(splitController.legacyBackdrop)
+            XCTAssertTrue(splitController.contentSurface.isHidden)
+            XCTAssertTrue(window.isOpaque)
+            XCTAssertNil(backdrop.layer?.backgroundColor)
+        } else {
+            let legacyBackdrop = try XCTUnwrap(splitController.legacyBackdrop)
+            XCTAssertEqual(legacyBackdrop.material, .underWindowBackground)
+            XCTAssertEqual(legacyBackdrop.blendingMode, .behindWindow)
+            XCTAssertEqual(legacyBackdrop.state, .active)
+            XCTAssertFalse(splitController.contentSurface.isHidden)
+            XCTAssertFalse(window.isOpaque)
+        }
         XCTAssertTrue(splitController.view.subviews.contains(splitController.contentSurface))
         XCTAssertTrue(splitController.view.subviews.contains(splitController.splitView))
         XCTAssertLessThan(
@@ -651,13 +662,23 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 window.contentViewController as? DashboardSplitViewController
             )
             let backdrop = try XCTUnwrap(splitController.view as? DashboardContentRootView)
-            XCTAssertEqual(backdrop.material, .underWindowBackground)
-            XCTAssertEqual(backdrop.blendingMode, .behindWindow)
+            XCTAssertFalse(backdrop is NSVisualEffectView)
+            if #available(macOS 26.0, *) {
+                XCTAssertNil(splitController.legacyBackdrop)
+                XCTAssertTrue(splitController.contentSurface.isHidden)
+                XCTAssertTrue(window.isOpaque)
+            } else {
+                let legacyBackdrop = try XCTUnwrap(splitController.legacyBackdrop)
+                XCTAssertEqual(legacyBackdrop.material, .underWindowBackground)
+                XCTAssertEqual(legacyBackdrop.blendingMode, .behindWindow)
+                XCTAssertFalse(splitController.contentSurface.isHidden)
+                XCTAssertFalse(window.isOpaque)
+            }
             XCTAssertEqual(
                 splitController.contentSurface.layer?.backgroundColor?.alpha ?? -1,
                 expectedAlpha,
                 accuracy: 0.01,
-                "Content surface alpha mismatch for \(name.rawValue)"
+                "Legacy content surface alpha mismatch for \(name.rawValue)"
             )
             XCTAssertEqual(try XCTUnwrap(sidebarWidth(in: window)), 216, accuracy: 1)
             XCTAssertTrue(splitController.splitViewItems[0].canCollapse)
