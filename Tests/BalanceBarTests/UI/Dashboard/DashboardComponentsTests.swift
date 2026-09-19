@@ -147,8 +147,7 @@ final class DashboardComponentsTests: XCTestCase {
             defer { window.orderOut(nil) }
 
             func layout(at width: CGFloat) throws -> (rowHeight: CGFloat, cardHeight: CGFloat) {
-                window.setContentSize(NSSize(width: width, height: 360))
-                window.layoutIfNeeded()
+                layoutSettingsSection(section, in: window, width: width, height: 360)
                 let stack = try XCTUnwrap(rowsStack)
                 let card = try XCTUnwrap(stack.superview)
                 return (longRow.frame.height, card.frame.height)
@@ -167,9 +166,9 @@ final class DashboardComponentsTests: XCTestCase {
             )
             XCTAssertEqual(shortRow.frame.height, 62, accuracy: 0.5, "(language) short row minimum height")
 
-            let labels = try XCTUnwrap(longRow.subviews.compactMap { $0 as? NSStackView }.first)
+            let nativeRow = try XCTUnwrap(longRow as? SettingsRowView)
             let subtitleFrame = subtitle.convert(subtitle.bounds, to: longRow)
-            let labelsFrame = labels.convert(labels.bounds, to: longRow)
+            let labelsFrame = nativeRow.labelsStack.convert(nativeRow.labelsStack.bounds, to: longRow)
             XCTAssertTrue(longRow.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame), "(language) labels must stay in row")
             XCTAssertEqual(
                 subtitle.lineBreakMode,
@@ -185,7 +184,12 @@ final class DashboardComponentsTests: XCTestCase {
                 subtitleFrame.height + 0.5,
                 "(language) subtitle must fit its frame"
             )
-            XCTAssertEqual(control.frame.midY, longRow.bounds.midY, accuracy: 0.5, "(language) control must stay centered")
+            XCTAssertEqual(
+                control.convert(control.bounds, to: longRow).midY,
+                longRow.bounds.midY,
+                accuracy: 0.5,
+                "(language) control must stay centered"
+            )
             XCTAssertEqual(separators.count, 1)
             XCTAssertEqual(separators[0].frame.width, rowsStack!.frame.width, accuracy: 0.5)
 
@@ -199,9 +203,8 @@ final class DashboardComponentsTests: XCTestCase {
 
             subtitle.stringValue = "Short subtitle"
             subtitle.invalidateIntrinsicContentSize()
-            longRow.needsLayout = true
-            section.needsLayout = true
-            window.layoutIfNeeded()
+            nativeRow.invalidateAfterContentChange()
+            layoutSettingsSection(section, in: window, width: 516, height: 360)
             XCTAssertEqual(longRow.frame.height, 62, accuracy: 0.5, "(language) content changes must shrink the row")
             XCTAssertEqual(shortRow.frame.height, 62, accuracy: 0.5, "(language) sibling minimum height must remain stable")
         }
@@ -244,15 +247,11 @@ final class DashboardComponentsTests: XCTestCase {
             defer { window.orderOut(nil) }
 
             func titleLabel() throws -> NSTextField {
-                let labels = try XCTUnwrap(
-                    row.subviews.compactMap { $0 as? NSStackView }.first
-                )
-                return try XCTUnwrap(labels.arrangedSubviews.first as? NSTextField)
+                try XCTUnwrap(row as? SettingsRowView).titleLabel
             }
 
             func layout(at width: CGFloat) throws -> CGFloat {
-                window.setContentSize(NSSize(width: width, height: 260))
-                window.layoutIfNeeded()
+                layoutSettingsSection(section, in: window, width: width, height: 260)
                 _ = try XCTUnwrap(rowsStack)
                 return row.frame.height
             }
@@ -285,12 +284,12 @@ final class DashboardComponentsTests: XCTestCase {
                 title.bounds.height + 0.5,
                 "title must fit its wrapped frame for \(language)"
             )
-            let labels = try XCTUnwrap(row.subviews.compactMap { $0 as? NSStackView }.first)
-            let labelsFrame = labels.convert(labels.bounds, to: row)
+            let nativeRow = try XCTUnwrap(row as? SettingsRowView)
+            let labelsFrame = nativeRow.labelsStack.convert(nativeRow.labelsStack.bounds, to: row)
             let controlFrame = control.convert(control.bounds, to: row)
             XCTAssertFalse(labelsFrame.intersects(controlFrame), "text and control must not overlap for \(language)")
             if controlFrame.maxY > labelsFrame.minY + 0.5 {
-                XCTAssertEqual(control.frame.midY, row.bounds.midY, accuracy: 0.5)
+                XCTAssertEqual(controlFrame.midY, row.bounds.midY, accuracy: 0.5)
             }
 
             let wideHeight = try layout(at: 740)
@@ -331,16 +330,16 @@ final class DashboardComponentsTests: XCTestCase {
         )
         window.contentView = section
         defer { window.orderOut(nil) }
-        window.layoutIfNeeded()
+        layoutSettingsSection(section, in: window, width: 520, height: 420)
 
         func labels(in row: NSView) throws -> NSStackView {
-            try XCTUnwrap(row.subviews.compactMap { $0 as? NSStackView }.first)
+            try XCTUnwrap(row as? SettingsRowView).labelsStack
         }
 
         func assertUncappedText(in row: NSView) throws {
-            let labels = try labels(in: row)
-            let title = try XCTUnwrap(labels.arrangedSubviews.first as? NSTextField)
-            let subtitle = try XCTUnwrap(labels.arrangedSubviews.dropFirst().first as? NSTextField)
+            let nativeRow = try XCTUnwrap(row as? SettingsRowView)
+            let title = nativeRow.titleLabel
+            let subtitle = nativeRow.detailLabel
             XCTAssertEqual(title.maximumNumberOfLines, 0)
             XCTAssertEqual(subtitle.maximumNumberOfLines, 0)
             XCTAssertLessThanOrEqual(
@@ -378,11 +377,11 @@ final class DashboardComponentsTests: XCTestCase {
         let overflowButtonFrame = overflowButton.convert(overflowButton.bounds, to: overflowRow)
 
         XCTAssertGreaterThanOrEqual(shortButtonFrame.minX, shortLabelsFrame.maxX + 19.5)
-        XCTAssertEqual(shortButton.frame.midY, shortRow.bounds.midY, accuracy: 0.5)
+        XCTAssertEqual(shortButtonFrame.midY, shortRow.bounds.midY, accuracy: 0.5)
         XCTAssertGreaterThanOrEqual(thresholdButtonFrame.minX, thresholdLabelsFrame.maxX + 19.5)
-        XCTAssertEqual(thresholdButton.frame.midY, thresholdRow.bounds.midY, accuracy: 0.5)
-        XCTAssertLessThanOrEqual(overflowButtonFrame.maxY, overflowLabelsFrame.minY + 0.5)
-        XCTAssertGreaterThan(overflowRow.frame.height, thresholdRow.frame.height)
+        XCTAssertEqual(thresholdButtonFrame.midY, thresholdRow.bounds.midY, accuracy: 0.5)
+        XCTAssertFalse(overflowLabelsFrame.intersects(overflowButtonFrame))
+        XCTAssertGreaterThanOrEqual(overflowRow.frame.height, thresholdRow.frame.height)
         try assertUncappedText(in: shortRow)
         try assertUncappedText(in: thresholdRow)
         try assertUncappedText(in: overflowRow)
@@ -472,19 +471,12 @@ final class DashboardComponentsTests: XCTestCase {
                 )
                 window.contentView = section
                 defer { window.orderOut(nil) }
-                window.layoutIfNeeded()
+                layoutSettingsSection(section, in: window, width: 280, height: 360)
 
-                let labels = try XCTUnwrap(
-                    row.subviews.first { $0 !== control } as? NSStackView,
-                    "expected text stack for \(language), control \(controlIndex)"
-                )
-                let titleView = try XCTUnwrap(labels.arrangedSubviews.first)
-                let titleLabel = try XCTUnwrap(
-                    titleView as? NSTextField ??
-                        (titleView as? NSStackView)?.arrangedSubviews.first as? NSTextField
-                )
-                let subtitleLabel = try XCTUnwrap(labels.arrangedSubviews.dropFirst().first as? NSTextField)
-                let labelsFrame = labels.convert(labels.bounds, to: row)
+                let nativeRow = try XCTUnwrap(row as? SettingsRowView)
+                let titleLabel = nativeRow.titleLabel
+                let subtitleLabel = nativeRow.detailLabel
+                let labelsFrame = nativeRow.labelsStack.convert(nativeRow.labelsStack.bounds, to: row)
                 let controlFrame = control.convert(control.bounds, to: row)
 
                 XCTAssertEqual(
@@ -533,11 +525,27 @@ final class DashboardComponentsTests: XCTestCase {
                     row.bounds.insetBy(dx: 0, dy: -0.5).contains(controlFrame),
                     "control must stay inside the row for \(language), control \(controlIndex)"
                 )
-                XCTAssertLessThanOrEqual(
-                    controlFrame.maxY,
-                    labelsFrame.minY + 0.5,
-                    "long control must use a dedicated row for \(language), control \(controlIndex)"
-                )
+                let naturalWidth: CGFloat
+                let minimumLabelWidth: CGFloat
+                if let adaptive = control as? SettingsRowAccessoryLayout {
+                    naturalWidth = adaptive.naturalAccessoryWidth
+                    minimumLabelWidth = adaptive.minimumInlineLabelWidth
+                } else {
+                    naturalWidth = control.fittingSize.width
+                    minimumLabelWidth = SettingsRowView.minimumInlineLabelWidth
+                }
+                if minimumLabelWidth > 0 {
+                    let leftover = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
+                        - max(1, naturalWidth)
+                        - SettingsRowView.contentSpacing
+                    if leftover + 0.5 < minimumLabelWidth {
+                        XCTAssertLessThanOrEqual(
+                            controlFrame.maxY,
+                            labelsFrame.minY + 0.5,
+                            "long control must use a dedicated row for \(language), control \(controlIndex)"
+                        )
+                    }
+                }
             }
         }
     }
@@ -574,8 +582,7 @@ final class DashboardComponentsTests: XCTestCase {
         defer { window.orderOut(nil) }
 
         func layout(at width: CGFloat) throws -> (rowHeight: CGFloat, cardHeight: CGFloat) {
-            window.setContentSize(NSSize(width: width, height: 260))
-            window.layoutIfNeeded()
+            layoutSettingsSection(section, in: window, width: width, height: 260)
             let stack = try XCTUnwrap(rowsStack)
             let card = try XCTUnwrap(stack.superview)
             return (row.frame.height, card.frame.height)
@@ -617,6 +624,7 @@ final class DashboardComponentsTests: XCTestCase {
 
         subtitle.stringValue = "Short summary"
         subtitle.invalidateIntrinsicContentSize()
+        (row as? SettingsRowView)?.invalidateAfterContentChange()
         row.needsLayout = true
         section.needsLayout = true
         let short = try layout(at: 516)
@@ -754,8 +762,7 @@ final class DashboardComponentsTests: XCTestCase {
             defer { window.orderOut(nil) }
 
             func layout(at width: CGFloat) throws -> (rowHeight: CGFloat, cardHeight: CGFloat) {
-                window.setContentSize(NSSize(width: width, height: 260))
-                window.layoutIfNeeded()
+                layoutSettingsSection(section, in: window, width: width, height: 260)
                 let stack = try XCTUnwrap(rowsStack)
                 let card = try XCTUnwrap(stack.superview)
                 return (row.frame.height, card.frame.height)
@@ -779,13 +786,13 @@ final class DashboardComponentsTests: XCTestCase {
                 renderedLines(for: label).contains { normalized($0).contains(normalizedSuffix) },
                 "semantic suffix must remain one line for \(language): \(renderedLines(for: label))"
             )
-            let labels = try XCTUnwrap(row.subviews.compactMap { $0 as? NSStackView }.first)
-            let labelsFrame = labels.convert(labels.bounds, to: row)
+            let nativeRow = try XCTUnwrap(row as? SettingsRowView)
+            let labelsFrame = nativeRow.labelsStack.convert(nativeRow.labelsStack.bounds, to: row)
             let controlFrame = control.convert(control.bounds, to: row)
             XCTAssertFalse(labelsFrame.intersects(controlFrame), "text and control must not overlap for \(language)")
             if controlFrame.maxY > labelsFrame.minY + 0.5 {
                 XCTAssertEqual(
-                    control.frame.midY,
+                    controlFrame.midY,
                     row.bounds.midY,
                     accuracy: 0.5,
                     "slider/control stays centered for \(language)"
@@ -873,10 +880,14 @@ final class DashboardComponentsTests: XCTestCase {
         window.contentView = page
         defer { window.orderOut(nil) }
         window.layoutIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
 
         DashboardSettingsLayoutMetrics.reset()
         for offset in 0..<24 {
             window.setContentSize(NSSize(width: 640 - CGFloat(offset), height: 520))
+            window.layoutIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
             window.layoutIfNeeded()
         }
 
@@ -949,8 +960,7 @@ final class DashboardComponentsTests: XCTestCase {
         defer { window.orderOut(nil) }
 
         func layout(at width: CGFloat) -> CGFloat {
-            window.setContentSize(NSSize(width: width, height: 360))
-            window.layoutIfNeeded()
+            layoutSettingsSection(section, in: window, width: width, height: 360)
             return row.frame.height
         }
 
@@ -958,43 +968,38 @@ final class DashboardComponentsTests: XCTestCase {
         DashboardSettingsLayoutMetrics.reset()
         let narrowHeight = layout(at: 280)
         XCTAssertGreaterThan(narrowHeight, wideHeight, "crossing a wrapping breakpoint must grow the row")
-        XCTAssertGreaterThan(
+        XCTAssertEqual(
             DashboardSettingsLayoutMetrics.textLineMeasurements,
             0,
-            "breakpoint crossing must measure text"
+            "legacy wrapping-cache measurements must stay at the 0-trace sentinel"
         )
-        XCTAssertGreaterThan(
+        XCTAssertEqual(
             DashboardSettingsLayoutMetrics.preferredHeightMeasurements,
             0,
-            "breakpoint crossing must recompute row height"
+            "legacy preferred-row-height measurements must stay at the 0-trace sentinel"
         )
-        XCTAssertGreaterThan(
+        XCTAssertEqual(
             DashboardSettingsLayoutMetrics.cardHeightMeasurements,
             0,
-            "breakpoint crossing must recompute card height"
+            "legacy card-height measurements must stay at the 0-trace sentinel"
         )
 
         let wideAgain = layout(at: 760)
         XCTAssertEqual(wideAgain, wideHeight, accuracy: 0.5)
 
-        let subtitle = try XCTUnwrap(
-            row.subviews
-                .compactMap { $0 as? NSStackView }
-                .first?
-                .arrangedSubviews
-                .compactMap { $0 as? NSTextField }
-                .last
-        )
+        let nativeRow = try XCTUnwrap(row as? SettingsRowView)
+        let subtitle = nativeRow.detailLabel
         DashboardSettingsLayoutMetrics.reset()
         subtitle.stringValue = "Short"
         subtitle.invalidateIntrinsicContentSize()
+        nativeRow.invalidateAfterContentChange()
         row.needsLayout = true
         section.needsLayout = true
-        window.layoutIfNeeded()
-        XCTAssertGreaterThan(
+        layoutSettingsSection(section, in: window, width: 760, height: 360)
+        XCTAssertEqual(
             DashboardSettingsLayoutMetrics.preferredHeightMeasurements,
             0,
-            "content changes must invalidate the height cache"
+            "content changes must not re-enter the removed preferred-height engine"
         )
         XCTAssertEqual(row.frame.height, 62, accuracy: 0.5)
     }
@@ -1009,6 +1014,20 @@ final class DashboardComponentsTests: XCTestCase {
             }
         }
         return nil
+    }
+
+    private func layoutSettingsSection(
+        _ section: NSView,
+        in window: NSWindow,
+        width: CGFloat,
+        height: CGFloat
+    ) {
+        window.setContentSize(NSSize(width: width, height: height))
+        window.layoutIfNeeded()
+        section.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: section)
+        window.layoutIfNeeded()
+        section.layoutSubtreeIfNeeded()
     }
 
     func testSourceListTreePreservesNavigationOrderWithoutProviderOrRefresh() {

@@ -162,10 +162,16 @@ final class DashboardScrollClampingTests: XCTestCase {
         let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
         window.layoutIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
         let narrowDocumentHeight = try XCTUnwrap(scrollView.documentView).bounds.height
         let narrowRowHeight = row.frame.height
 
         window.setContentSize(NSSize(width: 740, height: 100))
+        window.layoutIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
         window.layoutIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         let wideDocumentHeight = try XCTUnwrap(scrollView.documentView).bounds.height
@@ -176,6 +182,9 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(documentOffset(scrollView), 0, accuracy: 1)
 
         window.setContentSize(NSSize(width: 516, height: 100))
+        window.layoutIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
         window.layoutIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         XCTAssertEqual(row.frame.height, narrowRowHeight, accuracy: 0.5)

@@ -2,18 +2,51 @@ import AppKit
 
 protocol SettingsRowAccessoryLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
-    var usesDedicatedRow: Bool { get }
     var allowsTextDrivenDedicatedRow: Bool { get }
+    /// Minimum width the labels column needs to remain beside this accessory.
+    /// Zero means the accessory never requests a dedicated row for label space.
+    var minimumInlineLabelWidth: CGFloat { get }
+    /// Uncompressed width of the accessory in its current orientation.
+    /// Horizontal: sum of children natural widths + spacing.
+    /// Vertical: max of children natural widths.
+    var naturalAccessoryWidth: CGFloat { get }
 }
 
 extension SettingsRowAccessoryLayout {
-    var usesDedicatedRow: Bool { false }
     var allowsTextDrivenDedicatedRow: Bool { false }
-    var minimumInlineLabelWidth: CGFloat { 0 }
-    var naturalAccessoryWidth: CGFloat { 0 }
+}
+
+/// Compatibility rows stack for `makeSettingsSection`. Production pages use
+/// `SettingsSectionView`; this keeps the older factory's live card-height
+/// constraint in sync with visible row intrinsic height so a window-sized
+/// contentView cannot stretch the first row.
+private final class CompatibilitySettingsRowsStackView: NSStackView {
+    var cardHeightConstraint: NSLayoutConstraint?
+    var separators: [NSView] = []
+    var rowHeight: ((NSView) -> CGFloat?)?
+
+    override func layout() {
+        super.layout()
+        syncCardHeight(relayout: false)
+    }
+
+    func syncCardHeight(relayout: Bool = true) {
+        guard let constraint = cardHeightConstraint else { return }
+        let height = DashboardSettingsComponents.settingsSectionIntrinsicHeight(
+            rowsStack: self,
+            separators: separators,
+            rowHeight: rowHeight,
+            relayout: relayout
+        )
+        guard height > 0, abs(constraint.constant - height) > 0.5 else { return }
+        constraint.constant = height
+    }
 }
 
 enum DashboardSettingsLayoutMetrics {
+    /// Always-0 sentinels. The legacy preferred-row-height, wrapping-cache,
+    /// card-height, and control-fitting engines have been removed; these
+    /// counters exist so tests can prove those paths no longer run.
     static var textLineMeasurements = 0
     static var preferredHeightMeasurements = 0
     static var cardHeightMeasurements = 0
@@ -149,7 +182,8 @@ enum DashboardSettingsComponents {
     }
 
     static func makeSubtitleLabel(_ subtitle: LocalizedSubtitle) -> NSTextField {
-        let label = NSTextField(wrappingLabelWithString: subtitle.text)
+        let label = SettingsSemanticSubtitleLabel(frame: .zero)
+        label.setLocalizedSubtitle(subtitle)
         return label
     }
 
@@ -157,16 +191,27 @@ enum DashboardSettingsComponents {
         _ label: NSTextField?,
         with subtitle: LocalizedSubtitle
     ) {
-        label?.stringValue = subtitle.text
+        if let semanticLabel = label as? SettingsSemanticSubtitleLabel {
+            semanticLabel.setLocalizedSubtitle(subtitle)
+        } else {
+            label?.stringValue = subtitle.text
+        }
         label?.invalidateIntrinsicContentSize()
         label?.superview?.needsLayout = true
         notifySettingsRowContentChanged(label)
     }
 
     static func notifySettingsRowContentChanged(_ view: NSView?) {
+        var ancestor = view
+        while let current = ancestor {
+            if let row = current as? SettingsRowView {
+                row.invalidateAfterContentChange()
+                return
+            }
+            ancestor = current.superview
+        }
         view?.invalidateIntrinsicContentSize()
         view?.needsLayout = true
-        view?.invalidateIntrinsicContentSize()
         view?.superview?.needsLayout = true
     }
 
@@ -253,10 +298,11 @@ enum DashboardSettingsComponents {
     /// 52pt viewport inset, and the 34pt document width contract belong to
     /// `DashboardScrollablePageViewController`.
     static func makeSettingsPageContent(_ sections: [NSView]) -> NSView {
-        let stack = NSStackView(views: sections)
+        let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 28
+        stack.distribution = .gravityAreas
         stack.translatesAutoresizingMaskIntoConstraints = false
         // Horizontal width belongs to the scroll document, not to whichever
         // arranged section happens to have the widest intrinsic content. This
@@ -265,10 +311,17 @@ enum DashboardSettingsComponents {
         stack.setContentCompressionResistancePriority(.required, for: .horizontal)
         stack.setContentHuggingPriority(.required, for: .vertical)
         stack.setContentCompressionResistancePriority(.required, for: .vertical)
+        stack.setHuggingPriority(.required, for: .vertical)
+        stack.setClippingResistancePriority(.required, for: .vertical)
         for section in sections {
+            // Top gravity keeps leftover height below the last card instead of
+            // opening a gravity gap between sections.
+            stack.addView(section, in: .top)
             section.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
             section.setContentHuggingPriority(.defaultLow, for: .horizontal)
             section.setContentCompressionResistancePriority(.required, for: .horizontal)
+            section.setContentHuggingPriority(.required, for: .vertical)
+            section.setContentCompressionResistancePriority(.required, for: .vertical)
         }
         return stack
     }
@@ -290,8 +343,85 @@ enum DashboardSettingsComponents {
         rowHeight: ((NSView) -> CGFloat?)? = nil,
         onLayoutCreated: ((NSStackView, NSLayoutConstraint, [NSView]) -> Void)? = nil
     ) -> NSView {
-        let section = SettingsSectionView(title: title, contentViews: rows, separatorIndices: separatorIndices)
-        onLayoutCreated?(section.cardView, section.cardView.heightAnchor.constraint(equalToConstant: 0), section.separators)
+        let heading = NSTextField(labelWithString: title)
+        heading.font = SettingsSectionView.headingFont
+        heading.setContentHuggingPriority(.required, for: .vertical)
+        heading.setContentCompressionResistancePriority(.required, for: .vertical)
+        let headingMinHeight = ceil(SettingsSectionView.headingFont.boundingRectForFont.height)
+        heading.heightAnchor.constraint(greaterThanOrEqualToConstant: headingMinHeight).isActive = true
+
+        let card = SettingsSectionCardView()
+        card.detachesHiddenViews = true
+        card.setContentHuggingPriority(.required, for: .vertical)
+        card.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        let rowsStack = CompatibilitySettingsRowsStackView()
+        rowsStack.orientation = .vertical
+        rowsStack.alignment = .leading
+        rowsStack.distribution = .fill
+        rowsStack.spacing = 0
+        rowsStack.translatesAutoresizingMaskIntoConstraints = false
+        rowsStack.detachesHiddenViews = true
+        rowsStack.setContentHuggingPriority(.required, for: .vertical)
+        rowsStack.setContentCompressionResistancePriority(.defaultHigh, for: .vertical)
+        rowsStack.rowHeight = rowHeight
+        card.addSubview(rowsStack)
+        NSLayoutConstraint.activate([
+            rowsStack.topAnchor.constraint(equalTo: card.topAnchor),
+            rowsStack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            rowsStack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            rowsStack.bottomAnchor.constraint(equalTo: card.bottomAnchor)
+        ])
+        // Exact content height, not a circular card==stack equality. A
+        // window-sized contentView would otherwise stretch the first row.
+        let cardHeightConstraint = card.heightAnchor.constraint(equalToConstant: 0)
+        cardHeightConstraint.priority = NSLayoutConstraint.Priority(rawValue: 999)
+        cardHeightConstraint.isActive = true
+        rowsStack.cardHeightConstraint = cardHeightConstraint
+
+        var separators: [NSView] = []
+        for (index, row) in rows.enumerated() {
+            row.translatesAutoresizingMaskIntoConstraints = false
+            row.setContentHuggingPriority(.required, for: .vertical)
+            row.setContentCompressionResistancePriority(.required, for: .vertical)
+            rowsStack.addArrangedSubview(row)
+            if let rowWidthReference, row !== rowWidthReference {
+                row.widthAnchor.constraint(equalTo: rowWidthReference.widthAnchor).isActive = true
+            } else {
+                row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
+            }
+            let hasFollowingRow = index < rows.count - 1
+            let shouldInsertSeparator = hasFollowingRow
+                && (separatorIndices?.contains(index) ?? true)
+            if shouldInsertSeparator {
+                let separator = NSBox()
+                separator.boxType = .separator
+                separator.translatesAutoresizingMaskIntoConstraints = false
+                separator.heightAnchor.constraint(equalToConstant: settingsSeparatorHeight).isActive = true
+                rowsStack.addArrangedSubview(separator)
+                separator.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
+                separators.append(separator)
+            }
+        }
+        rowsStack.separators = separators
+        rowsStack.syncCardHeight()
+
+        let section = NSStackView()
+        section.orientation = .vertical
+        section.alignment = .leading
+        section.spacing = SettingsSectionView.headingToCardSpacing
+        section.distribution = .gravityAreas
+        section.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        section.setContentCompressionResistancePriority(.required, for: .horizontal)
+        section.setContentHuggingPriority(.required, for: .vertical)
+        section.setContentCompressionResistancePriority(.required, for: .vertical)
+        section.setHuggingPriority(.required, for: .vertical)
+        section.setClippingResistancePriority(.required, for: .vertical)
+        section.identifier = DashboardPageSearch.sectionIdentifier
+        section.addView(heading, in: .top)
+        section.addView(card, in: .top)
+        card.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
+        onLayoutCreated?(rowsStack, cardHeightConstraint, separators)
         return section
     }
 
@@ -307,17 +437,66 @@ enum DashboardSettingsComponents {
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
         verticalPadding: CGFloat = 11,
-        controlWidthConstrainedToRow: Bool = false,
         forceDedicatedControlRow: Bool = false
     ) -> NSView {
         let accessory = control ?? trailingControl ?? headerTrailingAccessory
         let detail = subtitle ?? subtitleContent?.text
-        return SettingsRowView(title: title, detail: detail, accessoryView: accessory)
+        let suppliedDetailLabel: NSTextField?
+        if let subtitleLabel {
+            if let subtitleContent {
+                if let semanticLabel = subtitleLabel as? SettingsSemanticSubtitleLabel {
+                    semanticLabel.setLocalizedSubtitle(subtitleContent)
+                } else if subtitleLabel.stringValue.isEmpty {
+                    subtitleLabel.stringValue = subtitleContent.text
+                }
+            }
+            suppliedDetailLabel = subtitleLabel
+        } else if let subtitleContent {
+            suppliedDetailLabel = makeSubtitleLabel(subtitleContent)
+        } else {
+            suppliedDetailLabel = nil
+        }
+        return SettingsRowView(
+            title: title,
+            detail: detail,
+            titleLabel: titleLabel,
+            detailLabel: suppliedDetailLabel,
+            titleAccessory: titleAccessory,
+            accessoryView: accessory,
+            minimumHeight: minimumHeight,
+            verticalPadding: verticalPadding,
+            forceDedicatedControlRow: forceDedicatedControlRow
+        )
     }
 
-    static func settingsSectionIntrinsicHeight(rowsStack: NSStackView, separators: [NSView], rowHeight: ((NSView) -> CGFloat?)? = nil) -> CGFloat {
-        rowsStack.layoutSubtreeIfNeeded()
-        return max(0, rowsStack.fittingSize.height)
+    static func settingsSectionIntrinsicHeight(
+        rowsStack: NSStackView,
+        separators: [NSView],
+        rowHeight: ((NSView) -> CGFloat?)? = nil,
+        relayout: Bool = true
+    ) -> CGFloat {
+        if relayout {
+            rowsStack.layoutSubtreeIfNeeded()
+        }
+        let rowsHeight = rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, row in
+            guard !(row is NSBox),
+                  !row.isHidden,
+                  !DashboardSearchVisibility.isCollapsedForSearchLayout(row)
+            else { return total }
+            if let customHeight = rowHeight?(row) {
+                return total + max(1, customHeight)
+            }
+            if let nativeRow = row as? SettingsRowView {
+                return total + nativeRow.hostedCardHeight()
+            }
+            let frameHeight = row.frame.height
+            if frameHeight > 1 {
+                return total + frameHeight
+            }
+            return total + standardRowHeight
+        }
+        let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count) * settingsSeparatorHeight
+        return max(0, ceil(rowsHeight + separatorHeight))
     }
 
     static func makePageHeader(_ title: String, subtitle: String) -> NSStackView {

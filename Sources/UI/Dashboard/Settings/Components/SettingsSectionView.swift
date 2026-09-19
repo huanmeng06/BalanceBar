@@ -170,6 +170,10 @@ final class SettingsSectionCardView: NSStackView, SettingsRowHeightInvalidating 
             }
             current = view.superview
         }
+        for subview in subviews {
+            subview.invalidateIntrinsicContentSize()
+            subview.needsLayout = true
+        }
     }
 
     private func configure() {
