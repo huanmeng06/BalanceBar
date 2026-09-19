@@ -9,7 +9,7 @@ protocol SettingsRowHeightInvalidating: AnyObject {
 /// Native Auto Layout settings row: title, optional detail, trailing control.
 ///
 /// The row itself is an `NSView` so the 62pt floor can live on the outer view
-/// (centerY + inequality padding), matching `DashboardSettingsRowView`. Making
+/// (centerY + inequality padding) without a parent-side measurement pass. Making
 /// `SettingsRowView` an `NSStackView` stretched the nested labels stack to the
 /// inner 40pt and then stretched the title field, which kept a 2pt *frame* gap
 /// while the drawn glyphs sat much farther apart.
