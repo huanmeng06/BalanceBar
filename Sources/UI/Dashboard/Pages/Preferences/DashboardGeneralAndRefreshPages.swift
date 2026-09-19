@@ -192,8 +192,9 @@ struct DashboardUpdatePresentation: Equatable {
 /// controls retain their existing style, targets, and dimensions.
 final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRowControlLayout {
     private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
-    private(set) var usesDedicatedRow = false
+    private(set) var stacksControlsVertically = false
     var allowsTextDrivenDedicatedRow = false
+    var minimumInlineLabelWidth: CGFloat = 0
 
     func updateAvailableRowWidth(_ width: CGFloat) {
         let normalizedWidth = max(0, width)
@@ -203,13 +204,24 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
         updateOrientationIfNeeded()
     }
 
-    private var horizontalFittingWidth: CGFloat {
+    /// Natural width of this accessory in its current orientation, composed
+    /// from children rather than this stack's compressed `fittingSize`.
+    var naturalAccessoryWidth: CGFloat {
+        let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
+        let widths = visibleButtons.map(Self.naturalWidth(of:))
+        if orientation == .vertical {
+            return widths.max() ?? 0
+        }
+        return widths.reduce(0, +) + max(0, CGFloat(visibleButtons.count - 1)) * spacing
+    }
+
+    private var naturalHorizontalAccessoryWidth: CGFloat {
         let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
         let buttonWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
-            max(total, view.fittingSize.width)
+            max(total, Self.naturalWidth(of: view))
         }
         let totalWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
-            total + view.fittingSize.width
+            total + Self.naturalWidth(of: view)
         }
         return max(buttonWidth, totalWidth + max(0, CGFloat(visibleButtons.count - 1)) * spacing) + 1
     }
@@ -220,18 +232,18 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
     }
 
     private func updateOrientationIfNeeded() {
-        let wantsVertical = availableRowWidth > 0 && availableRowWidth + 0.5 < horizontalFittingWidth
+        let wantsVertical = availableRowWidth > 0 && availableRowWidth + 0.5 < naturalHorizontalAccessoryWidth
         let desiredOrientation: NSUserInterfaceLayoutOrientation = wantsVertical ? .vertical : .horizontal
         let orientationChanged = orientation != desiredOrientation
-        let placementChanged = usesDedicatedRow != wantsVertical
+        let stackingChanged = stacksControlsVertically != wantsVertical
         if orientationChanged {
             orientation = desiredOrientation
             alignment = wantsVertical ? .trailing : .centerY
         }
-        if placementChanged {
-            usesDedicatedRow = wantsVertical
+        if stackingChanged {
+            stacksControlsVertically = wantsVertical
         }
-        if orientationChanged || placementChanged {
+        if orientationChanged || stackingChanged {
             invalidateIntrinsicContentSize()
             superview?.needsLayout = true
             superview?.superview?.needsLayout = true
@@ -243,16 +255,28 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
         guard !visibleButtons.isEmpty else { return .zero }
         if orientation == .vertical {
             return NSSize(
-                width: visibleButtons.map { $0.fittingSize.width }.max() ?? 0,
+                width: naturalAccessoryWidth,
                 height: visibleButtons.reduce(CGFloat(0)) { $0 + $1.fittingSize.height }
                     + max(0, CGFloat(visibleButtons.count - 1)) * spacing
             )
         }
         return NSSize(
-            width: visibleButtons.reduce(CGFloat(0)) { $0 + $1.fittingSize.width }
-                + max(0, CGFloat(visibleButtons.count - 1)) * spacing,
+            width: naturalAccessoryWidth,
             height: visibleButtons.map { $0.fittingSize.height }.max() ?? 0
         )
+    }
+
+    private static func naturalWidth(of view: NSView) -> CGFloat {
+        if let stack = view as? NSStackView {
+            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
+            let widths = visible.map(naturalWidth(of:))
+            if stack.orientation == .vertical {
+                return widths.max() ?? 0
+            }
+            return widths.reduce(0, +) + max(0, CGFloat(visible.count - 1)) * stack.spacing
+        }
+        let fitting = view.fittingSize.width
+        return fitting.isFinite && fitting > 0 ? fitting : 0
     }
 
     func invalidateLayoutAfterContentChange() {
@@ -312,13 +336,16 @@ final class DashboardGeneralPage {
             action: #selector(DashboardPreferencePageRelay.openCCSwitch(_:))
         )
         let currentProviderText = tr(.keyDashboardGeneralAndRefreshPagesCurrentProviderValue, arguments: [String(describing: input.currentProviderName)])
-        let system = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesSystem), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardGeneralAndRefreshPagesCcSwitch),
-                subtitle: currentProviderText,
-                control: openButton
-            )
-        ])
+        let system = SettingsSectionView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesSystem),
+            contentViews: [
+                SettingsRowView(
+                    title: tr(.keyDashboardGeneralAndRefreshPagesCcSwitch),
+                    detail: currentProviderText,
+                    accessoryView: openButton
+                )
+            ]
+        )
 
         let launchAtLoginSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: LaunchAtLoginController.toggleIdentifier,
@@ -326,19 +353,15 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.launchAtLogin(_:))
         )
-        let launchAtLoginSubtitleLabel = NSTextField(
-            wrappingLabelWithString: launchAtLoginSubtitle(for: input.launchAtLoginState)
+        let launchAtLoginRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
+            detail: launchAtLoginSubtitle(for: input.launchAtLoginState),
+            accessoryView: launchAtLoginSwitch
         )
         apply(
             input.launchAtLoginState,
             to: launchAtLoginSwitch,
-            subtitle: launchAtLoginSubtitleLabel
-        )
-        let launchAtLoginRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
-            subtitle: launchAtLoginSubtitle(for: input.launchAtLoginState),
-            subtitleLabel: launchAtLoginSubtitleLabel,
-            control: launchAtLoginSwitch
+            subtitle: launchAtLoginRow.detailLabel
         )
 
         let silentLaunchSwitch = DashboardSettingsComponents.makeSwitch(
@@ -360,9 +383,6 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.launchWithChatGPT(_:))
         )
-        let launchWithChatGPTSubtitleLabel = NSTextField(
-            wrappingLabelWithString: launchWithChatGPTSubtitle(for: input.launchWithChatGPTState)
-        )
         let launchWithChatGPTOpenSettingsButton = NSButton(
             title: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings),
             target: input.relay,
@@ -375,17 +395,16 @@ final class DashboardGeneralPage {
         launchWithChatGPTControls.orientation = .horizontal
         launchWithChatGPTControls.alignment = .centerY
         launchWithChatGPTControls.spacing = 8
+        let launchWithChatGPTRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPT),
+            detail: launchWithChatGPTSubtitle(for: input.launchWithChatGPTState),
+            accessoryView: launchWithChatGPTControls
+        )
         apply(
             input.launchWithChatGPTState,
             to: launchWithChatGPTSwitch,
-            subtitle: launchWithChatGPTSubtitleLabel,
+            subtitle: launchWithChatGPTRow.detailLabel,
             openSettingsButton: launchWithChatGPTOpenSettingsButton
-        )
-        let launchWithChatGPTRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPT),
-            subtitle: launchWithChatGPTSubtitle(for: input.launchWithChatGPTState),
-            subtitleLabel: launchWithChatGPTSubtitleLabel,
-            control: launchWithChatGPTControls
         )
 
         let startup = SettingsSectionView(
@@ -433,8 +452,13 @@ final class DashboardGeneralPage {
         let commonRefreshPopupWidth = ceil(
             max(108, max(activeRefreshPopup.fittingSize.width, trailingRefreshPopup.fittingSize.width))
         )
-        [activeRefreshPopup, trailingRefreshPopup].forEach {
-            $0.widthAnchor.constraint(equalToConstant: commonRefreshPopupWidth).isActive = true
+        [activeRefreshPopup, trailingRefreshPopup].forEach { popup in
+            for constraint in popup.constraints where constraint.firstAttribute == .width {
+                constraint.priority = .defaultHigh
+            }
+            let preferredWidth = popup.widthAnchor.constraint(equalToConstant: commonRefreshPopupWidth)
+            preferredWidth.priority = .defaultHigh
+            preferredWidth.isActive = true
         }
         let runningControls = NSStackView(views: [runningLabel, activeRefreshPopup])
         runningControls.orientation = .horizontal
@@ -448,6 +472,7 @@ final class DashboardGeneralPage {
             views: [runningControls, trailingControls]
         )
         activeRefreshControls.allowsTextDrivenDedicatedRow = true
+        activeRefreshControls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         activeRefreshControls.orientation = .horizontal
         activeRefreshControls.alignment = .centerY
         activeRefreshControls.spacing = 5
@@ -456,19 +481,21 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.manualRefresh(_:))
         )
-        let refreshing = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesRefresh), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
-                subtitle: tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning),
-                control: activeRefreshControls,
-                minimumHeight: DashboardSettingsComponents.standardRowHeight
-            ),
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardGeneralAndRefreshPagesBalanceData),
-                subtitle: tr(.keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow),
-                control: refreshButton
-            )
-        ])
+        let refreshing = SettingsSectionView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
+            contentViews: [
+                SettingsRowView(
+                    title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
+                    detail: tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning),
+                    accessoryView: activeRefreshControls
+                ),
+                SettingsRowView(
+                    title: tr(.keyDashboardGeneralAndRefreshPagesBalanceData),
+                    detail: tr(.keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow),
+                    accessoryView: refreshButton
+                )
+            ]
+        )
 
         let languagePopup = DashboardSettingsComponents.makePopUpButton(
             identifier: AppLanguage.preferenceKey,
@@ -486,8 +513,6 @@ final class DashboardGeneralPage {
         let updatePresentation = DashboardUpdatePresentation.make(for: input.updateState)
         let updateBadge = DashboardUpdateBadgeView()
         updateBadge.isHidden = !updatePresentation.showsUpdateBadge
-        let updateSubtitle = NSTextField(wrappingLabelWithString: updatePresentation.subtitle)
-        updateSubtitle.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesSubtitle")
         let updateButton = NSButton(
             title: updatePresentation.buttonTitle,
             target: input.relay,
@@ -495,7 +520,6 @@ final class DashboardGeneralPage {
         )
         updateButton.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesButton")
         updateButton.bezelStyle = .rounded
-        apply(updatePresentation, to: updateButton, subtitle: updateSubtitle)
         let updateNotesButton = NSButton(
             title: tr(.keyDashboardGeneralAndRefreshPagesViewReleaseNotes),
             target: input.relay,
@@ -517,44 +541,49 @@ final class DashboardGeneralPage {
             action: #selector(DashboardPreferencePageRelay.updateChannel(_:))
         )
         updateChannelPopup.widthAnchor.constraint(equalToConstant: 112).isActive = true
-        let updateChannelRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardGeneralAndRefreshPagesUpdateChannel),
-            subtitle: tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription),
-            control: updateChannelPopup
+        let updateChannelRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesUpdateChannel),
+            detail: tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription),
+            accessoryView: updateChannelPopup
         )
         let updateControls = DashboardAdaptiveControlsStackView(views: [updateNotesButton, updateButton])
         updateControls.orientation = .horizontal
         updateControls.alignment = .centerY
         updateControls.spacing = 8
+        updateControls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         updateControls.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         updateControls.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        self.updateSubtitleLabel = updateSubtitle
+        let updateRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates3),
+            detail: updatePresentation.subtitle,
+            titleAccessory: updateBadge,
+            accessoryView: updateControls
+        )
+        updateRow.detailLabel.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesSubtitle")
+        apply(updatePresentation, to: updateButton, subtitle: updateRow.detailLabel)
+        self.updateSubtitleLabel = updateRow.detailLabel
         self.updateButton = updateButton
         self.updateNotesButton = updateNotesButton
         self.updateBadge = updateBadge
         self.launchAtLoginSwitch = launchAtLoginSwitch
-        self.launchAtLoginSubtitleLabel = launchAtLoginSubtitleLabel
+        self.launchAtLoginSubtitleLabel = launchAtLoginRow.detailLabel
         self.launchWithChatGPTSwitch = launchWithChatGPTSwitch
-        self.launchWithChatGPTSubtitleLabel = launchWithChatGPTSubtitleLabel
+        self.launchWithChatGPTSubtitleLabel = launchWithChatGPTRow.detailLabel
         self.launchWithChatGPTOpenSettingsButton = launchWithChatGPTOpenSettingsButton
         self.launchWithChatGPTControls = launchWithChatGPTControls
 
-        let app = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesApplication), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardGeneralAndRefreshPagesLanguage),
-                subtitle: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
-                control: languagePopup
-            ),
-            updateChannelRow,
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates3),
-                subtitle: updatePresentation.subtitle,
-                subtitleLabel: updateSubtitle,
-                titleAccessory: updateBadge,
-                control: updateControls,
-                controlWidthConstrainedToRow: true
-            )
-        ])
+        let app = SettingsSectionView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesApplication),
+            contentViews: [
+                SettingsRowView(
+                    title: tr(.keyDashboardGeneralAndRefreshPagesLanguage),
+                    detail: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
+                    accessoryView: languagePopup
+                ),
+                updateChannelRow,
+                updateRow
+            ]
+        )
         return DashboardSettingsComponents.makeSettingsPageContent([system, refreshing, startup, app])
     }
 
@@ -643,8 +672,12 @@ final class DashboardGeneralPage {
             launchAtLoginSwitch.state = .off
             launchAtLoginSwitch.isEnabled = true
         }
-        subtitle.stringValue = launchAtLoginSubtitle(for: state)
-        subtitle.invalidateIntrinsicContentSize()
+        if let row = SettingsRowView.enclosing(subtitle) {
+            row.updateDetail(launchAtLoginSubtitle(for: state))
+        } else {
+            subtitle.stringValue = launchAtLoginSubtitle(for: state)
+            subtitle.invalidateIntrinsicContentSize()
+        }
     }
 
     private func apply(
@@ -662,8 +695,12 @@ final class DashboardGeneralPage {
             launchWithChatGPTSwitch.isEnabled = true
         }
         openSettingsButton.isHidden = state.notice == .none
-        subtitle.stringValue = launchWithChatGPTSubtitle(for: state)
-        subtitle.invalidateIntrinsicContentSize()
+        if let row = SettingsRowView.enclosing(subtitle) {
+            row.updateDetail(launchWithChatGPTSubtitle(for: state))
+        } else {
+            subtitle.stringValue = launchWithChatGPTSubtitle(for: state)
+            subtitle.invalidateIntrinsicContentSize()
+        }
     }
 
     private func apply(
@@ -674,7 +711,11 @@ final class DashboardGeneralPage {
         button.title = presentation.buttonTitle
         button.isEnabled = presentation.buttonEnabled
         button.tag = presentation.performsInstall ? 1 : 0
-        subtitle.stringValue = presentation.subtitle
+        if let row = SettingsRowView.enclosing(subtitle) {
+            row.updateDetail(presentation.subtitle)
+        } else {
+            subtitle.stringValue = presentation.subtitle
+        }
     }
 
     private func apply(

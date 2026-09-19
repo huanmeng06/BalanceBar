@@ -126,6 +126,9 @@
 "dashboard.components.about" = "About";
 "dashboard.window.controller.appearance" = "Appearance";
 "dashboard.window.controller.system" = "System";
+"dashboard.search.placeholder" = "Search";
+"dashboard.search.no_results" = "No Results";
+"dashboard.search.no_results_detail" = "No settings match this search.";
 "dashboard.about.page.github_repository" = "GitHub repository";
 "dashboard.about.page.version_value" = "Version %1$@";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "View balances and quotas in the menu bar through CC Switch";

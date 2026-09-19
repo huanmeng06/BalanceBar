@@ -46,13 +46,14 @@ enum DashboardAboutPage {
         githubRow.spacing = 0
 
         let stack = NSStackView(views: [icon, name, version, detail, githubRow])
+        stack.identifier = DashboardPageSearch.aboutContentIdentifier
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            stack.centerXAnchor.constraint(equalTo: root.safeAreaLayoutGuide.centerXAnchor),
             stack.topAnchor.constraint(equalTo: root.topAnchor, constant: 92)
         ])
         return root

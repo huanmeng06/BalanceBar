@@ -64,6 +64,10 @@ final class SettingsSectionView: NSView {
         headingLabel.setContentHuggingPriority(.required, for: .vertical)
         headingLabel.setContentCompressionResistancePriority(.required, for: .vertical)
         headingLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        headingLabel.heightAnchor.constraint(
+            greaterThanOrEqualToConstant: ceil(Self.headingFont.boundingRectForFont.height)
+        ).isActive = true
+        identifier = DashboardPageSearch.sectionIdentifier
         headingLabel.isHidden = title.isEmpty
 
         cardView.translatesAutoresizingMaskIntoConstraints = false
@@ -73,6 +77,7 @@ final class SettingsSectionView: NSView {
         cardView.setContentCompressionResistancePriority(.required, for: .vertical)
         cardView.setHuggingPriority(.required, for: .vertical)
         cardView.setClippingResistancePriority(.required, for: .vertical)
+        cardView.detachesHiddenViews = true
 
         for (index, row) in contentViews.enumerated() {
             row.translatesAutoresizingMaskIntoConstraints = false
@@ -108,10 +113,11 @@ final class SettingsSectionView: NSView {
         contentStack.setContentCompressionResistancePriority(.required, for: .vertical)
         contentStack.setHuggingPriority(.required, for: .vertical)
         contentStack.setClippingResistancePriority(.required, for: .vertical)
+        contentStack.detachesHiddenViews = true
         if !headingLabel.isHidden {
-            contentStack.addArrangedSubview(headingLabel)
+            contentStack.addView(headingLabel, in: .top)
         }
-        contentStack.addArrangedSubview(cardView)
+        contentStack.addView(cardView, in: .top)
 
         addSubview(contentStack)
         NSLayoutConstraint.activate([
@@ -121,6 +127,19 @@ final class SettingsSectionView: NSView {
             contentStack.bottomAnchor.constraint(equalTo: bottomAnchor),
             cardView.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
         ])
+    }
+
+    override var isHidden: Bool {
+        get { super.isHidden }
+        set {
+            DashboardSearchVisibility.writeHidden(self, newValue) { super.isHidden = $0 }
+        }
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let stackHeight = contentStack.intrinsicContentSize.height
+        let height = stackHeight > 0 ? stackHeight : contentStack.fittingSize.height
+        return NSSize(width: NSView.noIntrinsicMetric, height: height)
     }
 }
 
@@ -142,10 +161,15 @@ final class SettingsSectionCardView: NSStackView, SettingsRowHeightInvalidating 
     }
 
     func invalidateHostedSettingsRowHeight() {
-        invalidateIntrinsicContentSize()
-        superview?.invalidateIntrinsicContentSize()
-        needsLayout = true
-        superview?.needsLayout = true
+        var current: NSView? = self
+        while let view = current {
+            view.invalidateIntrinsicContentSize()
+            view.needsLayout = true
+            if view is SettingsSectionView {
+                break
+            }
+            current = view.superview
+        }
     }
 
     private func configure() {

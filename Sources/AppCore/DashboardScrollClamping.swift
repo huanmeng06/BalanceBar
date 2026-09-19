@@ -97,28 +97,126 @@ enum DashboardScrollClampingPolicy {
     }
 }
 
+/// Page-scroll chrome for the running OS.
+///
+/// macOS 26+ lets the scroll view overlap the transparent titlebar so AppKit
+/// can write content insets and choose the system scroll-edge automatically.
+/// Soft and Hard are both valid system results; this policy never forces
+/// `NSScrollEdgeEffectStyle`. The public style API
+/// (`preferredScrollEdgeEffectStyle`) is accessory-only (macOS 26.1+) and is
+/// not installed here: production pages report no accessory. The window-level
+/// `titlebarSeparatorStyle` must stay `.automatic` on 26+ because a forced
+/// `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`. Content-pane
+/// separators then use the existing `NSTrackingSeparatorToolbarItem`.
+/// Separator policy is independent of the Soft/Hard effect; its value is not
+/// evidence that AppKit has rendered a visible scroll-edge transition.
+/// macOS 14/15 keep the pre-Tahoe 52pt non-scrolling clearance and `.none`
+/// separators: `.fullSizeContentView` plus a transparent titlebar does not
+/// reliably produce that inset, and this app still supports 14+.
+struct DashboardPageScrollLayoutPolicy: Equatable {
+    /// Non-scrolling gap above the page `NSScrollView`.
+    let viewportTopInset: CGFloat
+    let automaticallyAdjustsContentInsets: Bool
+    /// When true, force zero `contentInsets` / `scrollerInsets` so AppKit
+    /// cannot leave a stale titlebar inset on the old layout.
+    let zerosManualInsets: Bool
+    /// Window chrome. `.none` overrides every split-item preference.
+    let windowTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
+    /// Sidebar pane only; `.none` keeps the separator off the source list.
+    let sidebarTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
+    /// Content pane's titlebar separator preference, not its scroll-edge style.
+    let contentTitlebarSeparatorStyle: NSTitlebarSeparatorStyle
+
+    /// Pre-#401 clearance that kept the first row out of the titlebar.
+    static let preTahoeTitlebarClearanceInset: CGFloat = 52
+
+    static let systemScrollEdge = DashboardPageScrollLayoutPolicy(
+        viewportTopInset: 0,
+        automaticallyAdjustsContentInsets: true,
+        zerosManualInsets: false,
+        windowTitlebarSeparatorStyle: .automatic,
+        sidebarTitlebarSeparatorStyle: .none,
+        contentTitlebarSeparatorStyle: .automatic
+    )
+
+    static let titlebarClearance = DashboardPageScrollLayoutPolicy(
+        viewportTopInset: preTahoeTitlebarClearanceInset,
+        automaticallyAdjustsContentInsets: false,
+        zerosManualInsets: true,
+        windowTitlebarSeparatorStyle: .none,
+        sidebarTitlebarSeparatorStyle: .none,
+        contentTitlebarSeparatorStyle: .none
+    )
+
+    static var current: DashboardPageScrollLayoutPolicy {
+        forOperatingSystemVersion(ProcessInfo.processInfo.operatingSystemVersion)
+    }
+
+    static func forOperatingSystemVersion(
+        _ version: OperatingSystemVersion
+    ) -> DashboardPageScrollLayoutPolicy {
+        version.majorVersion >= 26 ? systemScrollEdge : titlebarClearance
+    }
+
+    func apply(to scrollView: NSScrollView) {
+        scrollView.automaticallyAdjustsContentInsets = automaticallyAdjustsContentInsets
+        guard zerosManualInsets else { return }
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+    }
+
+    func applyTitlebarSeparators(
+        to window: NSWindow,
+        sidebarItem: NSSplitViewItem?,
+        contentItem: NSSplitViewItem?
+    ) {
+        window.titlebarSeparatorStyle = windowTitlebarSeparatorStyle
+        sidebarItem?.titlebarSeparatorStyle = sidebarTitlebarSeparatorStyle
+        contentItem?.titlebarSeparatorStyle = contentTitlebarSeparatorStyle
+    }
+}
+
 /// Describes the vertical geometry of a document inside a clip view.
 ///
-/// `visualOffset` is measured from the document's visual top edge. Keeping
-/// that value independent from AppKit's coordinate direction lets the same
-/// clamp work for flipped and unflipped document views.
+/// `visualOffset` is measured from the document's rest position. For a
+/// flipped document whose scroll view overlaps the titlebar, AppKit's rest
+/// origin is `-contentInsets.top`; treating that as offset 0 keeps restore
+/// and `isAtTop` aligned with the system scroll-edge inset.
 struct DashboardScrollGeometry {
     let documentBounds: NSRect
     let viewportHeight: CGFloat
     let isDocumentFlipped: Bool
+    let topContentInset: CGFloat
 
     init(
         documentBounds: NSRect,
         viewportHeight: CGFloat,
-        isDocumentFlipped: Bool
+        isDocumentFlipped: Bool,
+        topContentInset: CGFloat = 0
     ) {
         self.documentBounds = documentBounds
         self.viewportHeight = viewportHeight.isFinite ? max(0, viewportHeight) : 0
         self.isDocumentFlipped = isDocumentFlipped
+        self.topContentInset = topContentInset.isFinite ? max(0, topContentInset) : 0
+    }
+
+    init(scrollView: NSScrollView) {
+        let document = scrollView.documentView
+        self.init(
+            documentBounds: document?.bounds ?? .zero,
+            viewportHeight: scrollView.contentView.bounds.height,
+            isDocumentFlipped: document?.isFlipped ?? true,
+            topContentInset: scrollView.contentInsets.top
+        )
+    }
+
+    var restOriginY: CGFloat {
+        isDocumentFlipped ? documentBounds.minY - topContentInset : documentBounds.minY
     }
 
     var maximumOffset: CGFloat {
-        max(0, documentBounds.height - viewportHeight)
+        let inset = isDocumentFlipped ? topContentInset : 0
+        return max(0, documentBounds.height + inset - viewportHeight)
     }
 
     func clampedVisualOffset(_ proposedOffset: CGFloat) -> CGFloat {
@@ -130,7 +228,7 @@ struct DashboardScrollGeometry {
 
     func visualOffset(for visibleDocumentRect: NSRect) -> CGFloat {
         if isDocumentFlipped {
-            return visibleDocumentRect.minY - documentBounds.minY
+            return visibleDocumentRect.minY - restOriginY
         }
         return documentBounds.maxY - visibleDocumentRect.maxY
     }
@@ -148,7 +246,7 @@ struct DashboardScrollGeometry {
         let offset = clampedVisualOffset(proposedOffset)
         let originY: CGFloat
         if isDocumentFlipped {
-            originY = documentBounds.minY + offset
+            originY = restOriginY + offset
         } else {
             originY = documentBounds.minY + maximumOffset - offset
         }
@@ -194,11 +292,7 @@ enum DashboardPageScrollPosition {
             scrollView.contentView.bounds,
             to: document
         )
-        return DashboardScrollGeometry(
-            documentBounds: document.bounds,
-            viewportHeight: scrollView.contentView.bounds.height,
-            isDocumentFlipped: document.isFlipped
-        ).visualOffset(for: visible)
+        return DashboardScrollGeometry(scrollView: scrollView).visualOffset(for: visible)
     }
 
     static func visualOffsetY(in root: NSView) -> CGFloat {
@@ -209,11 +303,7 @@ enum DashboardPageScrollPosition {
     static func restore(visualOffsetY: CGFloat, in scrollView: NSScrollView) {
         guard let document = scrollView.documentView else { return }
         let contentView = scrollView.contentView
-        let geometry = DashboardScrollGeometry(
-            documentBounds: document.bounds,
-            viewportHeight: contentView.bounds.height,
-            isDocumentFlipped: document.isFlipped
-        )
+        let geometry = DashboardScrollGeometry(scrollView: scrollView)
         let targetRect = geometry.visibleDocumentRect(forVisualOffset: visualOffsetY)
         let targetDocumentY = geometry.contentOriginDocumentY(
             for: targetRect,

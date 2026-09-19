@@ -19,16 +19,20 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(controller.documentViewForTesting is DashboardSettingsDocumentView)
         XCTAssertTrue(controller.pageScrollView.contentView is NSClipView)
         XCTAssertFalse(controller.pageScrollView.contentView is DashboardClipView)
-        XCTAssertTrue(content.superview === controller.documentViewForTesting)
+        XCTAssertTrue(content.isDescendant(of: controller.documentViewForTesting))
+        XCTAssertFalse(content.superview === controller.documentViewForTesting)
         XCTAssertEqual(
             descendants(of: controller.view).compactMap { $0 as? NSScrollView }.count,
             1
         )
 
-        XCTAssertFalse(controller.pageScrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(controller.layoutPolicy, DashboardPageScrollLayoutPolicy.current)
+        XCTAssertEqual(
+            controller.pageScrollView.automaticallyAdjustsContentInsets,
+            controller.layoutPolicy.automaticallyAdjustsContentInsets
+        )
         XCTAssertEqual(controller.pageScrollView.contentInsets.top, 0, accuracy: 0.001)
         XCTAssertEqual(controller.pageScrollView.contentInsets.bottom, 0, accuracy: 0.001)
-        XCTAssertEqual(controller.pageScrollView.scrollerInsets.top, 0, accuracy: 0.001)
         XCTAssertEqual(controller.pageScrollView.verticalScrollElasticity, .none)
         XCTAssertEqual(controller.pageScrollView.horizontalScrollElasticity, .none)
         XCTAssertTrue(controller.clipViewObserverInstalledForTesting)
@@ -42,7 +46,17 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         )
         XCTAssertEqual(
             viewportFrameInPage.minY - controller.view.bounds.minY,
-            DashboardScrollablePageViewController.viewportTopInset,
+            controller.layoutPolicy.viewportTopInset,
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            viewportFrameInPage.minX,
+            controller.view.safeAreaRect.minX,
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            viewportFrameInPage.maxX,
+            controller.view.safeAreaRect.maxX,
             accuracy: 1
         )
 
@@ -316,21 +330,427 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertFalse(windowSource.contains("firstScrollView(in: contentHost)"))
         XCTAssertTrue(windowSource.contains("currentScrollablePage?.scrollOffset"))
         XCTAssertTrue(windowSource.contains("currentScrollablePage?.restoreScrollOffset"))
+        XCTAssertTrue(windowSource.contains("applyTitlebarSeparators"))
+        XCTAssertFalse(windowSource.contains("titlebarSeparatorStyle = .none"))
+        XCTAssertFalse(windowSource.contains("allowedPocketEdges"))
+        XCTAssertFalse(windowSource.contains("alwaysShownPocketEdges"))
+        XCTAssertFalse(windowSource.contains("scrollPocketStyle"))
+        XCTAssertFalse(windowSource.contains("topShadowTopInset"))
+        XCTAssertFalse(windowSource.contains("NSScrollPocket"))
+        XCTAssertFalse(windowSource.contains("preferredScrollEdgeEffectStyle"))
+        XCTAssertFalse(windowSource.contains("dashboardPageScrollEdgeHairline"))
 
         XCTAssertTrue(pageSource.contains("boundsDidChangeNotification"))
         XCTAssertTrue(pageSource.contains("postsBoundsChangedNotifications"))
         XCTAssertTrue(pageSource.contains("let pageScrollView: NSScrollView"))
         XCTAssertTrue(pageSource.contains("var isAtTop"))
         XCTAssertTrue(pageSource.contains("var scrollOffset"))
+        XCTAssertTrue(pageSource.contains("root.safeAreaLayoutGuide.leadingAnchor"))
+        XCTAssertTrue(pageSource.contains("root.safeAreaLayoutGuide.trailingAnchor"))
+        XCTAssertTrue(pageSource.contains("dashboardPageDocumentFill"))
+        XCTAssertTrue(pageSource.contains("DashboardSettingsDocumentFillView"))
+        XCTAssertTrue(pageSource.contains("DashboardSettingsContentHost"))
+        XCTAssertTrue(pageSource.contains("greaterThanOrEqualTo: scrollView.safeAreaLayoutGuide.heightAnchor"))
+        XCTAssertTrue(pageSource.contains("layoutPolicy.apply(to: scrollView)"))
+        XCTAssertTrue(pageSource.contains("layoutPolicy.viewportTopInset"))
+        XCTAssertTrue(pageSource.contains("documentView.addSubview(contentHost)"))
+        XCTAssertTrue(pageSource.contains("documentView.addSubview(documentFill)"))
+        XCTAssertTrue(pageSource.contains("contentView.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor)"))
+        XCTAssertFalse(pageSource.contains("static let viewportTopInset: CGFloat = 0"))
+        XCTAssertFalse(pageSource.contains("static let viewportTopInset: CGFloat = 52"))
+        XCTAssertFalse(pageSource.contains("dashboardPageScrollEdgeHairline"))
+        XCTAssertFalse(pageSource.contains("DashboardScrollEdgeHairline"))
+        XCTAssertFalse(pageSource.contains("CAGradientLayer"))
+        XCTAssertFalse(pageSource.contains("shadowRadius"))
+        XCTAssertFalse(pageSource.contains("shadowOffset"))
+        XCTAssertFalse(pageSource.contains("compressedContentHeight"))
+        XCTAssertFalse(pageSource.contains("arrangedSubviews.filter"))
+        XCTAssertFalse(pageSource.contains("content.fittingSize"))
+        XCTAssertFalse(pageSource.contains("view.fittingSize.height"))
+        XCTAssertFalse(pageSource.contains("content.intrinsicContentSize.height"))
+        XCTAssertFalse(pageSource.contains("lastReportedHeight"))
+        XCTAssertFalse(pageSource.contains("override func layout()"))
+        XCTAssertFalse(pageSource.contains("greaterThanOrEqualTo: contentView.bottomAnchor"))
+        XCTAssertFalse(pageSource.contains("lessThanOrEqualTo: contentHost.bottomAnchor"))
+        XCTAssertFalse(pageSource.contains("NSStackView(views: [contentHost, documentFill])"))
         XCTAssertFalse(pageSource.contains("firstScrollView(in:"))
+        XCTAssertFalse(pageSource.contains("allowedPocketEdges"))
+        XCTAssertFalse(pageSource.contains("alwaysShownPocketEdges"))
+        XCTAssertFalse(pageSource.contains("scrollPocketStyle"))
+        XCTAssertFalse(pageSource.contains("topShadowTopInset"))
+        XCTAssertFalse(pageSource.contains("NSScrollPocket"))
+        XCTAssertFalse(pageSource.contains("automaticallyAdjustsSafeAreaInsets"))
+        XCTAssertFalse(pageSource.contains("preferredSidebarThickness"))
+        XCTAssertFalse(pageSource.contains("minimumSidebarThickness"))
+        XCTAssertFalse(pageSource.contains("additionalSafeAreaInsets"))
         XCTAssertFalse(pageSource.contains("NSGlassEffectView"))
         XCTAssertFalse(pageSource.contains("NSVisualEffectView"))
         XCTAssertFalse(pageSource.contains("shadowOpacity"))
         XCTAssertFalse(pageSource.contains("titlebarAccessory"))
 
         XCTAssertTrue(settingsSource.contains("makeSettingsPageContent"))
+        XCTAssertTrue(settingsSource.contains("addView(section, in: .top)"))
+        XCTAssertTrue(settingsSource.contains("addView(heading, in: .top)"))
         XCTAssertFalse(settingsSource.contains("let viewportTopInset: CGFloat = 52"))
         XCTAssertFalse(settingsSource.contains("NSScrollView()"))
+    }
+
+    func testPreTahoeLayoutKeepsTitlebarClearanceWithoutSystemInsetAssumptions() throws {
+        let shortPage = DashboardScrollablePageViewController(
+            wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 80)]),
+            layoutPolicy: .titlebarClearance
+        )
+        let shortWindow = makeWindow(width: 480, height: 280, hosting: shortPage)
+        defer { shortWindow.orderOut(nil) }
+        shortWindow.setContentSize(NSSize(width: 480, height: 280))
+        shortPage.view.frame = NSRect(x: 0, y: 0, width: 480, height: 280)
+        shortWindow.layoutIfNeeded()
+        shortPage.view.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(shortPage.layoutPolicy, .titlebarClearance)
+        XCTAssertFalse(shortPage.pageScrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(shortPage.pageScrollView.contentInsets.top, 0, accuracy: 0.001)
+        XCTAssertEqual(shortPage.pageScrollView.contentInsets.bottom, 0, accuracy: 0.001)
+        XCTAssertEqual(shortPage.pageScrollView.scrollerInsets.top, 0, accuracy: 0.001)
+        let shortViewport = shortPage.pageScrollView.convert(
+            shortPage.pageScrollView.bounds,
+            to: shortPage.view
+        )
+        XCTAssertEqual(
+            shortViewport.minY - shortPage.view.bounds.minY,
+            DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset,
+            accuracy: 1
+        )
+        XCTAssertTrue(shortPage.isAtTop)
+        XCTAssertEqual(shortPage.scrollOffset, 0, accuracy: 1)
+        let shortGeometry = DashboardScrollGeometry(scrollView: shortPage.pageScrollView)
+        XCTAssertEqual(shortGeometry.topContentInset, 0, accuracy: 0.001)
+        XCTAssertEqual(shortGeometry.restOriginY, shortPage.documentViewForTesting.bounds.minY, accuracy: 1)
+        XCTAssertGreaterThan(shortPage.pageScrollView.bounds.height, 1)
+        XCTAssertLessThanOrEqual(
+            shortPage.documentViewForTesting.bounds.height - shortPage.pageScrollView.bounds.height,
+            1
+        )
+
+        let tallPage = DashboardScrollablePageViewController(
+            wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
+            layoutPolicy: .titlebarClearance
+        )
+        let tallWindow = makeWindow(width: 480, height: 280, hosting: tallPage)
+        defer { tallWindow.orderOut(nil) }
+
+        XCTAssertEqual(tallPage.scrollOffset, 0, accuracy: 1)
+        XCTAssertTrue(tallPage.isAtTop)
+        let tallViewport = tallPage.pageScrollView.convert(
+            tallPage.pageScrollView.bounds,
+            to: tallPage.view
+        )
+        XCTAssertEqual(
+            tallViewport.minY - tallPage.view.bounds.minY,
+            DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset,
+            accuracy: 1
+        )
+        let firstRow = tallPage.hostedContentForTesting
+        let firstRowInPage = firstRow.convert(firstRow.bounds, to: tallPage.view)
+        XCTAssertEqual(
+            firstRowInPage.minY,
+            DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset,
+            accuracy: 1
+        )
+
+        tallPage.restoreScrollOffset(140)
+        tallWindow.layoutIfNeeded()
+        XCTAssertFalse(tallPage.isAtTop)
+        XCTAssertEqual(tallPage.scrollOffset, 140, accuracy: 2)
+
+        let geometry = DashboardScrollGeometry(scrollView: tallPage.pageScrollView)
+        XCTAssertGreaterThan(geometry.maximumOffset, 140)
+        tallPage.restoreScrollOffset(geometry.maximumOffset)
+        tallWindow.layoutIfNeeded()
+        XCTAssertEqual(tallPage.scrollOffset, geometry.maximumOffset, accuracy: 2)
+
+        let replacement = DashboardScrollablePageViewController(
+            wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
+            layoutPolicy: .titlebarClearance
+        )
+        tallWindow.contentViewController = replacement
+        tallWindow.layoutIfNeeded()
+        replacement.view.layoutSubtreeIfNeeded()
+        XCTAssertTrue(replacement.isAtTop)
+        XCTAssertEqual(replacement.scrollOffset, 0, accuracy: 1)
+        XCTAssertFalse(replacement.pageScrollView.automaticallyAdjustsContentInsets)
+    }
+
+    func testDashboardWindowUsesSystemTitlebarInsetsWithoutCustomScrollEdgeOverlay() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26,
+            "Requires macOS 26 AppKit titlebar content insets; 14/15 layout is covered by injected titlebarClearance tests"
+        )
+        let page = DashboardScrollablePageViewController(
+            wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
+            layoutPolicy: .systemScrollEdge
+        )
+        let windowController = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in page },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { windowController.teardown() }
+
+        windowController.open(initialSection: .advanced)
+        let window = try XCTUnwrap(windowController.window)
+        window.setContentSize(NSSize(width: 880, height: 620))
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        windowController.contentHost.layoutSubtreeIfNeeded()
+
+        let hostedPage = try XCTUnwrap(windowController.scrollablePageForTesting)
+        XCTAssertTrue(hostedPage === page)
+        XCTAssertEqual(page.layoutPolicy, .systemScrollEdge)
+        XCTAssertTrue(page.pageScrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(page.layoutPolicy.viewportTopInset, 0, accuracy: 0.001)
+        XCTAssertEqual(window.titlebarSeparatorStyle, .automatic)
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        XCTAssertEqual(splitController.splitViewItems[0].titlebarSeparatorStyle, .none)
+        XCTAssertEqual(
+            try XCTUnwrap(splitController.contentSplitViewItem).titlebarSeparatorStyle,
+            .automatic
+        )
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(
+                try XCTUnwrap(splitController.contentSplitViewItem)
+                    .topAlignedAccessoryViewControllers.count,
+                0
+            )
+        }
+
+        let viewportFrameInPage = page.pageScrollView.convert(
+            page.pageScrollView.bounds,
+            to: page.view
+        )
+        XCTAssertEqual(viewportFrameInPage.minY - page.view.bounds.minY, 0, accuracy: 1)
+
+        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+        XCTAssertGreaterThan(titlebarHeight, 1)
+        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
+        XCTAssertEqual(page.pageScrollView.contentInsets.bottom, 0, accuracy: 0.001)
+        XCTAssertEqual(page.clipViewForTesting.contentInsets.top, titlebarHeight, accuracy: 1)
+
+        XCTAssertTrue(page.isAtTop)
+        XCTAssertEqual(page.scrollOffset, 0, accuracy: 1)
+        let restVisible = page.clipViewForTesting.convert(
+            page.clipViewForTesting.bounds,
+            to: page.documentViewForTesting
+        )
+        XCTAssertEqual(
+            restVisible.minY,
+            page.documentViewForTesting.bounds.minY - page.pageScrollView.contentInsets.top,
+            accuracy: 1
+        )
+
+        page.restoreScrollOffset(140)
+        window.layoutIfNeeded()
+        XCTAssertFalse(page.isAtTop)
+        XCTAssertEqual(page.scrollOffset, 140, accuracy: 2)
+
+        window.setContentSize(NSSize(width: 880, height: 720))
+        window.layoutIfNeeded()
+        page.view.layoutSubtreeIfNeeded()
+        let resizedGeometry = DashboardScrollGeometry(scrollView: page.pageScrollView)
+        XCTAssertGreaterThan(page.pageScrollView.contentInsets.top, 0)
+        XCTAssertGreaterThanOrEqual(page.scrollOffset, 0)
+        XCTAssertLessThanOrEqual(
+            page.scrollOffset,
+            resizedGeometry.maximumOffset + 1
+        )
+        XCTAssertEqual(
+            page.scrollOffset,
+            resizedGeometry.clampedVisualOffset(page.scrollOffset),
+            accuracy: 2
+        )
+
+        page.restoreScrollOffset(0)
+        window.layoutIfNeeded()
+        XCTAssertTrue(page.isAtTop)
+        XCTAssertEqual(page.scrollOffset, 0, accuracy: 1)
+
+        XCTAssertNil(firstDescendant(of: page.view, as: NSVisualEffectView.self))
+        XCTAssertEqual(
+            descendants(of: page.view).compactMap { $0 as? NSScrollView }.count,
+            1
+        )
+        XCTAssertTrue(
+            descendants(of: page.view).allSatisfy { view in
+                view.layer?.shadowOpacity ?? 0 == 0
+            }
+        )
+        XCTAssertTrue(windowController.accessoryHostForTesting.mountedKind == .none)
+    }
+
+    func testOfficialDashboardPagesDoNotPublishTopAccessory() throws {
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
+        let dashboardRoot = repositoryRoot.appendingPathComponent("Sources/UI/Dashboard")
+        let enumerator = try XCTUnwrap(
+            FileManager.default.enumerator(
+                at: dashboardRoot,
+                includingPropertiesForKeys: nil
+            )
+        )
+        var pageSources: [URL] = []
+        var dashboardSources: [URL] = []
+        while let item = enumerator.nextObject() as? URL {
+            guard item.pathExtension == "swift" else { continue }
+            dashboardSources.append(item)
+            if item.path.contains("/Pages/") {
+                pageSources.append(item)
+            }
+        }
+        XCTAssertFalse(pageSources.isEmpty)
+
+        for url in pageSources {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            XCTAssertFalse(
+                source.contains("DashboardPageTopAccessoryProviding"),
+                "Official page \(url.lastPathComponent) must not invent accessory ownership"
+            )
+            XCTAssertFalse(source.contains("dashboardPageTopAccessory"))
+            XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
+            XCTAssertFalse(source.contains("preferredScrollEdgeEffectStyle"))
+            XCTAssertFalse(
+                source.contains("NSSearchField("),
+                "Official page \(url.lastPathComponent) has no floating search chrome"
+            )
+        }
+
+        var protocolAdopters: [String] = []
+        for url in dashboardSources {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let name = url.lastPathComponent
+            if name == "DashboardPageTopAccessory.swift" {
+                XCTAssertTrue(source.contains("protocol DashboardPageTopAccessoryProviding"))
+                continue
+            }
+            if source.contains("DashboardPageTopAccessoryProviding") {
+                protocolAdopters.append(name)
+            }
+        }
+        XCTAssertEqual(
+            protocolAdopters,
+            ["DashboardAccessoryHarnessController.swift"],
+            "Only the non-production harness may adopt page top accessory ownership"
+        )
+    }
+
+    /// Diagnostic only: the public `preferredScrollEdgeEffectStyle` setter
+    /// exists on split-item accessories. Production pages must not install an
+    /// accessory or force `.soft` / `.hard`; AppKit chooses the edge style.
+    func testScrollEdgeStyleAPIExistsOnlyOnAccessoriesAndIsUnusedByProductionPages() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26,
+            "Public scroll-edge style APIs and split-item accessories require macOS 26"
+        )
+
+        let chrome = ScrollEdgeProbeAccessoryController()
+        var chromePage: ScrollEdgeChromePage?
+        let dashboard = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { section in
+                    let content = DashboardSettingsComponents.makeSettingsPageContent(
+                        [self.tallFiller(height: 1800)]
+                    )
+                    if section == .menu {
+                        let page = ScrollEdgeChromePage(
+                            wrapping: content,
+                            accessory: .contentSplitItem(viewController: chrome)
+                        )
+                        chromePage = page
+                        return page
+                    }
+                    return DashboardScrollablePageViewController(
+                        wrapping: content,
+                        layoutPolicy: .systemScrollEdge
+                    )
+                },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { dashboard.teardown() }
+        dashboard.open(initialSection: .general)
+        let dashboardWindow = try XCTUnwrap(dashboard.window)
+        dashboardWindow.setContentSize(NSSize(width: 880, height: 620))
+        dashboardWindow.layoutIfNeeded()
+        dashboardWindow.displayIfNeeded()
+
+        let dashboardPage = try XCTUnwrap(dashboard.scrollablePageForTesting)
+        let dashboardSplit = try XCTUnwrap(
+            dashboardWindow.contentViewController as? DashboardSplitViewController
+        )
+        let dashboardContentItem = try XCTUnwrap(dashboardSplit.contentSplitViewItem)
+        XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .none)
+        XCTAssertTrue(dashboardWindow.titlebarAccessoryViewControllers.isEmpty)
+        XCTAssertEqual(
+            Array(DashboardToolbarController.defaultItemIdentifiers.prefix(3)),
+            [.flexibleSpace, .toggleSidebar, .sidebarTrackingSeparator]
+        )
+        XCTAssertEqual(
+            dashboardWindow.toolbar?.items.map(\.itemIdentifier),
+            DashboardToolbarController.defaultItemIdentifiers
+        )
+        XCTAssertTrue(dashboardPage.pageScrollView.automaticallyAdjustsContentInsets)
+        XCTAssertGreaterThan(dashboardPage.pageScrollView.contentInsets.top, 1)
+        dashboardPage.restoreScrollOffset(120)
+        dashboardWindow.layoutIfNeeded()
+        XCTAssertGreaterThan(dashboardPage.scrollOffset, 1)
+        XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .none)
+
+        guard #available(macOS 26.0, *) else { return }
+        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, 0)
+
+        dashboard.showSection(.menu)
+        dashboardWindow.layoutIfNeeded()
+        dashboardWindow.displayIfNeeded()
+        XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .contentSplitItem)
+        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, 1)
+        let accessory = try XCTUnwrap(
+            dashboard.accessoryHostForTesting.contentSplitItemAccessoryForTesting
+                as? NSSplitViewItemAccessoryViewController
+        )
+        XCTAssertTrue(dashboardContentItem.topAlignedAccessoryViewControllers.contains(accessory))
+        XCTAssertGreaterThan(chrome.view.fittingSize.height, 1)
+        let mountedChrome = try XCTUnwrap(chromePage)
+        XCTAssertTrue(mountedChrome.scrollPage.pageScrollView.automaticallyAdjustsContentInsets)
+        XCTAssertGreaterThan(mountedChrome.scrollPage.pageScrollView.contentInsets.top, 1)
+        if #available(macOS 26.1, *) {
+            // Mechanism probe only: the setter is reachable on an accessory.
+            // Production never assigns `.soft` or `.hard`.
+            accessory.preferredScrollEdgeEffectStyle = NSScrollEdgeEffectStyle.hard
+            XCTAssertIdentical(
+                accessory.preferredScrollEdgeEffectStyle,
+                NSScrollEdgeEffectStyle.hard
+            )
+        }
+        mountedChrome.scrollPage.restoreScrollOffset(120)
+        dashboardWindow.layoutIfNeeded()
+        XCTAssertGreaterThan(mountedChrome.scrollPage.scrollOffset, 1)
+        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, 1)
+
+        dashboard.showSection(.general)
+        dashboardWindow.layoutIfNeeded()
+        XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .none)
+        XCTAssertTrue(dashboardContentItem.topAlignedAccessoryViewControllers.isEmpty)
     }
 
     private func makeWindow(
@@ -367,5 +787,61 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+}
+
+private final class ScrollEdgeChromePage: NSViewController, DashboardPageTopAccessoryProviding {
+    let dashboardPageTopAccessory: DashboardPageTopAccessory
+    let scrollPage: DashboardScrollablePageViewController
+
+    init(wrapping content: NSView, accessory: DashboardPageTopAccessory) {
+        dashboardPageTopAccessory = accessory
+        scrollPage = DashboardScrollablePageViewController(
+            wrapping: content,
+            layoutPolicy: .systemScrollEdge
+        )
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func loadView() {
+        addChild(scrollPage)
+        view = scrollPage.view
+    }
+}
+
+private final class ScrollEdgeProbeAccessoryController: NSViewController {
+    init() {
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func loadView() {
+        let strip = ScrollEdgeProbeAccessoryView()
+        let label = NSTextField(labelWithString: "Scroll-edge probe")
+        label.translatesAutoresizingMaskIntoConstraints = false
+        strip.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: strip.leadingAnchor, constant: 12),
+            label.centerYAnchor.constraint(equalTo: strip.centerYAnchor)
+        ])
+        view = strip
+    }
+}
+
+private final class ScrollEdgeProbeAccessoryView: NSView {
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: 240, height: 36))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: 36)
     }
 }

@@ -126,6 +126,9 @@
 "dashboard.components.about" = "Acerca de";
 "dashboard.window.controller.appearance" = "Apariencia";
 "dashboard.window.controller.system" = "Sistema";
+"dashboard.search.placeholder" = "Buscar";
+"dashboard.search.no_results" = "Sin resultados";
+"dashboard.search.no_results_detail" = "Ningún ajuste coincide con esta búsqueda.";
 "dashboard.about.page.github_repository" = "Repositorio de GitHub";
 "dashboard.about.page.version_value" = "Versión %1$@";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Consulta saldos y cuotas en la barra de menús mediante CC Switch";

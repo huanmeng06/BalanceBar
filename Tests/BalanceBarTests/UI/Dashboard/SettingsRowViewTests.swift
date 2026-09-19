@@ -54,6 +54,60 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
     }
 
+    func testNativeRowDoesNotOverwriteSuppliedDetailLabelContent() {
+        let detail = RecordingSettingsLabel(labelWithString: "Fine-tune the icon's vertical position Y axis + 0.0 pt")
+        detail.resetAssignments()
+        let row = SettingsRowView(
+            title: "Icon Offset",
+            detail: "Fine-tune the icon's vertical position Y axis + 0.0 pt",
+            detailLabel: detail,
+            accessoryView: NSSlider()
+        )
+        XCTAssertIdentical(row.detailLabel, detail)
+        XCTAssertEqual(
+            detail.stringValue,
+            "Fine-tune the icon's vertical position Y axis + 0.0 pt"
+        )
+        XCTAssertTrue(
+            detail.assignedValues.isEmpty,
+            "supplied detail label content must not be rewritten"
+        )
+        XCTAssertEqual(detail.font, .systemFont(ofSize: 12))
+        XCTAssertEqual(detail.textColor, .secondaryLabelColor)
+        XCTAssertFalse(detail.usesSingleLineMode)
+    }
+
+    func testSuppliedSemanticSubtitleKeepsForcedLineBreakWithoutRefresh() throws {
+        let text = "Fine-tune the icon's vertical position Y axis + 0.0 pt"
+        let suffix = "Y axis + 0.0 pt"
+        let range = (text as NSString).range(of: suffix)
+        XCTAssertNotEqual(range.location, NSNotFound)
+        let subtitle = DashboardSettingsComponents.makeSubtitleLabel(
+            LocalizedSubtitle(
+                text: text,
+                semanticGroups: [range],
+                lineBreakBeforeSemanticGroups: [range]
+            )
+        )
+        let row = SettingsRowView(
+            title: "Icon Offset",
+            detail: text,
+            detailLabel: subtitle,
+            accessoryView: NSSlider(),
+            minimumHeight: 66
+        )
+        let section = SettingsSectionView(title: "Layout", contentViews: [row])
+        let window = makeTestWindow(width: 880)
+        _ = pinningHost(for: section, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        XCTAssertIdentical(row.detailLabel, subtitle)
+        XCTAssertTrue(
+            subtitle.stringValue.contains("\n"),
+            "semantic line-break metadata must survive SettingsRowView configuration without a later refresh"
+        )
+    }
+
     func testLongDetailWrapsAndGrowsHeightAtNarrowWidthWithoutOverlappingControl() throws {
         let longDetail = "This native settings description must wrap onto additional lines when the dashboard content column is narrow so the switch stays visible beside the complete text."
         let control = NSSwitch()
@@ -167,6 +221,151 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertEqual(row.titleLabel.stringValue, longTitle)
     }
 
+    func testDualButtonRowWrappingSettlesAcrossWideNarrowWideResize() throws {
+        let accessory = NSStackView(views: [
+            NSButton(title: "Reload", target: nil, action: nil),
+            NSButton(title: "Show in Finder", target: nil, action: nil)
+        ])
+        accessory.orientation = .horizontal
+        accessory.spacing = 8
+        accessory.setHuggingPriority(.required, for: .horizontal)
+        accessory.setClippingResistancePriority(.required, for: .horizontal)
+        let row = SettingsRowView(
+            title: "Debug Log",
+            detail: "Records runtime status and errors so wrapping must follow the remaining label width beside the two trailing buttons.",
+            accessoryView: accessory
+        )
+        let section = SettingsSectionView(title: "Diagnostics", contentViews: [row])
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: section, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        var wrappingByWidth: [CGFloat: CGFloat] = [:]
+        var heightByWidth: [CGFloat: CGFloat] = [:]
+        for width in [880, 640, 516, 720, 880, 516] as [CGFloat] {
+            pin(section, to: host, window: window, width: width)
+            let wrappingWidth = row.detailLabel.preferredMaxLayoutWidth
+            XCTAssertGreaterThan(wrappingWidth, 1)
+            section.layoutSubtreeIfNeeded()
+            XCTAssertEqual(
+                row.detailLabel.preferredMaxLayoutWidth,
+                wrappingWidth,
+                accuracy: 0.5,
+                "wrapping width must already be settled after layout; layout must not keep mutating it at \(width)"
+            )
+            XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+            assertLabelsDoNotOverlapControl(in: row, control: accessory, width: width)
+            wrappingByWidth[width] = wrappingWidth
+            heightByWidth[width] = row.frame.height
+        }
+        XCTAssertGreaterThan(
+            wrappingByWidth[880] ?? 0,
+            wrappingByWidth[516] ?? 0,
+            "narrower rows must wrap against a smaller preferredMaxLayoutWidth"
+        )
+        XCTAssertGreaterThanOrEqual(
+            heightByWidth[516] ?? 0,
+            heightByWidth[880] ?? 0,
+            "narrow width must not shrink the dual-button row below its wide height"
+        )
+    }
+
+    func testWrappingHeightCommitsAfterLiveResizeEndsWithoutLayoutInvalidation() throws {
+        let longDetail = "This native settings description must wrap onto additional lines when the dashboard content column is narrow so the switch stays visible beside the complete text."
+        let row = SettingsRowView(
+            title: "Silent Launch",
+            detail: longDetail,
+            accessoryView: NSSwitch()
+        )
+        let section = SettingsSectionView(title: "Startup", contentViews: [row])
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: section, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        let wideHeight = row.frame.height
+        let wideWrappingWidth = row.detailLabel.preferredMaxLayoutWidth
+        XCTAssertGreaterThan(wideWrappingWidth, 1)
+
+        window.setContentSize(NSSize(width: 516, height: 360))
+        host.setFrameSize(NSSize(width: 516, height: 360))
+        window.layoutIfNeeded()
+        section.layoutSubtreeIfNeeded()
+
+        row.viewDidEndLiveResize()
+        XCTAssertLessThan(row.detailLabel.preferredMaxLayoutWidth, wideWrappingWidth)
+        XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 1)
+        XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertGreaterThanOrEqual(
+            row.frame.height,
+            wideHeight - 0.5,
+            "viewDidEndLiveResize must commit wrapping height after a narrow resize"
+        )
+    }
+
+    func testWrappingHeightCommitsDuringWidthSequenceWithoutMouseUpSettle() throws {
+        let longDetail = "This native settings description must wrap onto additional lines when the dashboard content column is narrow so the switch stays visible beside the complete text."
+        let row = SettingsRowView(
+            title: "Silent Launch",
+            detail: longDetail,
+            accessoryView: NSSwitch()
+        )
+        let section = SettingsSectionView(title: "Startup", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        let wideHeight = row.frame.height
+        XCTAssertGreaterThanOrEqual(wideHeight, SettingsRowView.minimumHeight)
+        XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 80)
+
+        for width in [516, 320, 516, 720] as [CGFloat] {
+            pin(section, to: host, window: window, width: width)
+            assertLabelsAreVisibleAndUnclipped(in: row, width: width)
+            XCTAssertGreaterThan(
+                row.titleLabel.preferredMaxLayoutWidth,
+                80,
+                "title wrapping must follow the solved labels column at \(width), not an 80pt leftover floor"
+            )
+            XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 80)
+            XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+        }
+
+        XCTAssertEqual(
+            row.frame.height,
+            wideHeight,
+            accuracy: 0.5,
+            "returning to 720 must restore ordinary height before viewDidEndLiveResize"
+        )
+        XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 80)
+    }
+
+    func testRepeatedLayoutPassesDoNotChurnWrappingWidth() throws {
+        let row = SettingsRowView(
+            title: "Silent Launch",
+            detail: "Start in the background without opening the dashboard.",
+            accessoryView: NSSwitch()
+        )
+        let section = SettingsSectionView(title: "Startup", contentViews: [row])
+        let window = makeTestWindow(width: 640)
+        _ = pinningHost(for: section, in: window, width: 640)
+        defer { window.orderOut(nil) }
+
+        let wrappingWidth = row.detailLabel.preferredMaxLayoutWidth
+        XCTAssertGreaterThan(wrappingWidth, 1)
+        for _ in 0..<24 {
+            row.layoutSubtreeIfNeeded()
+            section.layoutSubtreeIfNeeded()
+            window.layoutIfNeeded()
+        }
+        XCTAssertEqual(
+            row.detailLabel.preferredMaxLayoutWidth,
+            wrappingWidth,
+            accuracy: 0.5,
+            "stable width must not keep mutating preferredMaxLayoutWidth across extra layout passes"
+        )
+        XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+    }
+
     func testGeneralSilentLaunchRowUsesNativeSettingsRowView() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -206,14 +405,98 @@ final class SettingsRowViewTests: XCTestCase {
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
-        XCTAssertNil(SettingsRowView.enclosing(launchAtLoginSwitch))
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchAtLoginSwitch))
+        XCTAssertEqual(
+            launchAtLoginRow.titleLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin)
+        )
 
         let launchWithChatGPTSwitch = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == LaunchWithChatGPTController.toggleIdentifier }
         )
-        XCTAssertNil(SettingsRowView.enclosing(launchWithChatGPTSwitch))
+        XCTAssertNotNil(SettingsRowView.enclosing(launchWithChatGPTSwitch))
+    }
+
+    func testAdvancedDebugLogRowUsesNativeSettingsRowView() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let logViewer = NSView()
+        logViewer.translatesAutoresizingMaskIntoConstraints = false
+        logViewer.heightAnchor.constraint(equalToConstant: 190).isActive = true
+        let page = DashboardAdvancedPage().make(.init(
+            relay: DashboardPreferencePageRelay(),
+            logViewer: logViewer
+        ))
+        let reloadButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardAdvancedPageReload) }
+        )
+        let revealButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardAdvancedPageShowInFinder) }
+        )
+        let row = try XCTUnwrap(SettingsRowView.enclosing(reloadButton))
+        XCTAssertIdentical(SettingsRowView.enclosing(revealButton), row)
+        XCTAssertEqual(row.titleLabel.stringValue, tr(.keyDashboardAdvancedPageDebugLog))
+        XCTAssertEqual(
+            row.detailLabel.stringValue,
+            tr(.keyDashboardAdvancedPageRecordsRuntimeStatusAndErrors)
+        )
+        XCTAssertIdentical(row.accessoryView, reloadButton.superview)
+        XCTAssertEqual(reloadButton.action, #selector(DashboardPreferencePageRelay.refreshLog(_:)))
+        XCTAssertEqual(revealButton.action, #selector(DashboardPreferencePageRelay.revealLog(_:)))
+        XCTAssertNil(SettingsRowView.enclosing(logViewer))
+    }
+
+    func testAdvancedDebugLogRowWrappingSettlesWithoutMutatingDuringLayout() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let logViewer = NSView()
+        logViewer.translatesAutoresizingMaskIntoConstraints = false
+        logViewer.heightAnchor.constraint(
+            equalToConstant: DashboardAdvancedPage.logViewerHeight
+        ).isActive = true
+        let page = DashboardAdvancedPage().make(.init(
+            relay: DashboardPreferencePageRelay(),
+            logViewer: logViewer
+        ))
+        let window = makeTestWindow(width: 880)
+        let host = pinningHost(for: page, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        let reloadButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardAdvancedPageReload) }
+        )
+        let row = try XCTUnwrap(SettingsRowView.enclosing(reloadButton))
+
+        for width in [880, 640, 516, 720, 880, 516] as [CGFloat] {
+            pin(page, to: host, window: window, width: width)
+            let wrappingWidth = row.detailLabel.preferredMaxLayoutWidth
+            XCTAssertGreaterThan(wrappingWidth, 1)
+            page.layoutSubtreeIfNeeded()
+            XCTAssertEqual(
+                row.detailLabel.preferredMaxLayoutWidth,
+                wrappingWidth,
+                accuracy: 0.5,
+                "wrapping width must already be settled after layout; layout must not keep mutating it at \(width)"
+            )
+            XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+            assertLabelsDoNotOverlapControl(
+                in: row,
+                control: try XCTUnwrap(row.accessoryView),
+                width: width
+            )
+        }
     }
 
     func testTitleToSubtitleVisualSpacingMatchesLegacyRowInTheSameCard() throws {
@@ -240,6 +523,9 @@ final class SettingsRowViewTests: XCTestCase {
         let window = makeTestWindow(width: 880)
         window.contentView = section
         defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        section.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: section)
         window.layoutIfNeeded()
         section.layoutSubtreeIfNeeded()
 
@@ -282,7 +568,7 @@ final class SettingsRowViewTests: XCTestCase {
         )
     }
 
-    func testGeneralSilentLaunchVisualSpacingMatchesNeighboringLegacyRow() throws {
+    func testGeneralSilentLaunchVisualSpacingMatchesNeighboringNativeRow() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -301,16 +587,8 @@ final class SettingsRowViewTests: XCTestCase {
             launchWithChatGPTState: LaunchWithChatGPTState(status: .notRegistered)
         ))
         let window = makeTestWindow(width: 880)
-        let host = NSView(frame: NSRect(x: 0, y: 0, width: 880, height: 760))
-        window.contentView = host
-        host.addSubview(page)
-        page.setFrameSize(host.bounds.size)
-        defer {
-            window.contentView = nil
-            window.orderOut(nil)
-        }
-        window.layoutIfNeeded()
-        page.layoutSubtreeIfNeeded()
+        _ = pinningHost(for: page, in: window, width: 880, height: 760)
+        defer { window.orderOut(nil) }
 
         let silentLaunchSwitch = try XCTUnwrap(
             descendants(of: page)
@@ -318,25 +596,21 @@ final class SettingsRowViewTests: XCTestCase {
                 .first { $0.identifier?.rawValue == AppPreferences.silentLaunchKey }
         )
         let nativeRow = try XCTUnwrap(SettingsRowView.enclosing(silentLaunchSwitch))
-        let launchAtLoginTitle = try XCTUnwrap(
+        let launchAtLoginSwitch = try XCTUnwrap(
             descendants(of: page)
-                .compactMap { $0 as? NSTextField }
-                .first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin) }
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
-        let launchAtLoginSubtitle = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSTextField }
-                .first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription) }
-        )
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchAtLoginSwitch))
 
         assertLabelUsesIntrinsicHeight(nativeRow.titleLabel, name: "Silent Launch title")
         assertLabelUsesIntrinsicHeight(nativeRow.detailLabel, name: "Silent Launch subtitle")
-        assertLabelUsesIntrinsicHeight(launchAtLoginTitle, name: "登录时自动启动 title")
-        assertLabelUsesIntrinsicHeight(launchAtLoginSubtitle, name: "登录时自动启动 subtitle")
+        assertLabelUsesIntrinsicHeight(launchAtLoginRow.titleLabel, name: "登录时自动启动 title")
+        assertLabelUsesIntrinsicHeight(launchAtLoginRow.detailLabel, name: "登录时自动启动 subtitle")
 
-        let legacyVisual = visualTitleToSubtitleSpacing(
-            title: launchAtLoginTitle,
-            subtitle: launchAtLoginSubtitle
+        let neighboringVisual = visualTitleToSubtitleSpacing(
+            title: launchAtLoginRow.titleLabel,
+            subtitle: launchAtLoginRow.detailLabel
         )
         let nativeVisual = visualTitleToSubtitleSpacing(
             title: nativeRow.titleLabel,
@@ -344,16 +618,16 @@ final class SettingsRowViewTests: XCTestCase {
         )
         XCTAssertEqual(
             nativeVisual,
-            legacyVisual,
+            neighboringVisual,
             accuracy: 1.0,
             "Silent Launch drawn title-to-subtitle gap must match 登录时自动启动. "
             + "A stretched title field (frame taller than intrinsic height) is the "
             + "regression from f840971: frame edge gap stayed 2pt while glyphs sat farther apart."
         )
 
-        let legacyBaseline = titleToSubtitleBaselineSpacing(
-            title: launchAtLoginTitle,
-            subtitle: launchAtLoginSubtitle
+        let neighboringBaseline = titleToSubtitleBaselineSpacing(
+            title: launchAtLoginRow.titleLabel,
+            subtitle: launchAtLoginRow.detailLabel
         )
         let nativeBaseline = titleToSubtitleBaselineSpacing(
             title: nativeRow.titleLabel,
@@ -361,9 +635,300 @@ final class SettingsRowViewTests: XCTestCase {
         )
         XCTAssertEqual(
             nativeBaseline,
-            legacyBaseline,
+            neighboringBaseline,
             accuracy: 1.0,
             "Silent Launch baseline gap must match 登录时自动启动 in the Startup card"
+        )
+    }
+
+    func testTitleAccessorySitsBesideTitleWithoutConsumingDetailWrappingWidth() throws {
+        let badge = DashboardUpdateBadgeView()
+        let control = NSButton(title: "Download and Install", target: nil, action: nil)
+        let row = SettingsRowView(
+            title: "Check for Updates",
+            detail: "A new version is available: 1.0.6 -> 1.0.7",
+            titleAccessory: badge,
+            accessoryView: control
+        )
+        XCTAssertIdentical(row.titleAccessory, badge)
+        XCTAssertIdentical(badge.superview, row.titleHeaderStack)
+        XCTAssertIdentical(row.titleLabel.superview, row.titleHeaderStack)
+        XCTAssertIdentical(row.detailLabel.superview, row.labelsStack)
+
+        let section = SettingsSectionView(title: "Application", contentViews: [row])
+        let window = makeTestWindow(width: 640)
+        let host = pinningHost(for: section, in: window, width: 640)
+        defer { window.orderOut(nil) }
+
+        XCTAssertGreaterThan(row.titleLabel.preferredMaxLayoutWidth, 1)
+        XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 1)
+        XCTAssertGreaterThan(
+            row.detailLabel.preferredMaxLayoutWidth,
+            row.titleLabel.preferredMaxLayoutWidth,
+            "detail wrapping uses the full labels column; the title yields space to the badge"
+        )
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        _ = host
+    }
+
+    func testDedicatedRowUsesInlineLabelWidthContractNotLineCount() throws {
+        DashboardSettingsLayoutMetrics.reset()
+        let leading = NSButton(title: "Every 10 sec", target: nil, action: nil)
+        let trailing = NSButton(title: "For 30 sec", target: nil, action: nil)
+        [leading, trailing].forEach { button in
+            button.bezelStyle = .rounded
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        }
+        let controls = DashboardAdaptiveControlsStackView(views: [leading, trailing])
+        controls.orientation = .horizontal
+        controls.alignment = .centerY
+        controls.spacing = 5
+        controls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        let row = SettingsRowView(
+            title: "Balance updates during tasks",
+            detail: "Requests the current provider's balance while an agent is running.",
+            accessoryView: controls
+        )
+        let section = SettingsSectionView(title: "Refresh", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        func layout(at width: CGFloat) {
+            pin(section, to: host, window: window, width: width)
+        }
+        func remainingInlineLabelWidth() -> CGFloat {
+            let available = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
+            return available - max(1, controls.naturalAccessoryWidth) - SettingsRowView.contentSpacing
+        }
+
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertGreaterThanOrEqual(remainingInlineLabelWidth() + 0.5, SettingsRowView.minimumInlineLabelWidth)
+
+        layout(at: 400)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .vertical)
+        XCTAssertLessThan(remainingInlineLabelWidth() + 0.5, SettingsRowView.minimumInlineLabelWidth)
+        let labelsFrame = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+        let controlsFrame = controls.convert(controls.bounds, to: row)
+        XCTAssertLessThanOrEqual(controlsFrame.maxY, labelsFrame.minY + 0.5)
+        XCTAssertEqual(
+            row.detailLabel.preferredMaxLayoutWidth,
+            max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2),
+            accuracy: 1
+        )
+
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+    }
+
+    func testVerticalControlsCanStayBesideContentUntilInlineLabelWidthIsExhausted() throws {
+        DashboardSettingsLayoutMetrics.reset()
+        let leading = NSButton(title: "View Release Notes", target: nil, action: nil)
+        let trailing = NSButton(title: "Download and Install", target: nil, action: nil)
+        [leading, trailing].forEach { button in
+            button.bezelStyle = .rounded
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        }
+        let controls = DashboardAdaptiveControlsStackView(views: [leading, trailing])
+        controls.orientation = .horizontal
+        controls.alignment = .centerY
+        controls.spacing = 8
+        controls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        let row = SettingsRowView(
+            title: "Check for Updates",
+            detail: "New version available: 1.2.3 -> 123.456.789",
+            accessoryView: controls
+        )
+        let section = SettingsSectionView(title: "Application", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        func layout(at width: CGFloat) {
+            pin(section, to: host, window: window, width: width)
+        }
+
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+
+        layout(at: 380)
+        XCTAssertEqual(controls.orientation, .vertical)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        let besideLabels = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+        let besideControls = controls.convert(controls.bounds, to: row)
+        XCTAssertLessThan(besideLabels.maxX, besideControls.minX - 0.5)
+        XCTAssertFalse(besideLabels.intersects(besideControls))
+
+        layout(at: 280)
+        XCTAssertEqual(controls.orientation, .vertical)
+        XCTAssertEqual(row.contentStack.orientation, .vertical)
+        XCTAssertEqual(
+            row.detailLabel.preferredMaxLayoutWidth,
+            max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2),
+            accuracy: 1
+        )
+
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+    }
+
+    func testStartupChineseTitlesDoNotPrematurelyWrapWhenSpaceIsSufficient() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "SettingsRowViewTests.StartupChineseWrap.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let page = DashboardGeneralPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            launchAtLoginState: LaunchAtLoginState(status: .notRegistered),
+            launchWithChatGPTState: LaunchWithChatGPTState(status: .notRegistered)
+        ))
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: page, in: window, width: 720, height: 760)
+        defer { window.orderOut(nil) }
+
+        let launchAtLoginSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
+        )
+        let launchWithChatGPTSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == LaunchWithChatGPTController.toggleIdentifier }
+        )
+        let launchAtLoginRow = try XCTUnwrap(SettingsRowView.enclosing(launchAtLoginSwitch))
+        let launchWithChatGPTRow = try XCTUnwrap(SettingsRowView.enclosing(launchWithChatGPTSwitch))
+        XCTAssertEqual(
+            launchAtLoginRow.titleLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin)
+        )
+        XCTAssertEqual(
+            launchWithChatGPTRow.titleLabel.stringValue,
+            tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPT)
+        )
+
+        for width in [720, 516, 320, 516, 720] as [CGFloat] {
+            pin(page, to: host, window: window, width: width, height: 760)
+            for row in [launchAtLoginRow, launchWithChatGPTRow] {
+                assertLabelsAreVisibleAndUnclipped(in: row, width: width)
+                XCTAssertGreaterThan(
+                    row.titleLabel.preferredMaxLayoutWidth,
+                    80,
+                    "\(row.titleLabel.stringValue) must not use the 80pt leftover floor at \(width)"
+                )
+                if width >= 516 {
+                    XCTAssertEqual(
+                        row.titleLabel.frame.height,
+                        row.titleLabel.intrinsicContentSize.height,
+                        accuracy: 1.0
+                    )
+                    XCTAssertLessThan(
+                        row.titleLabel.frame.height,
+                        28,
+                        "\(row.titleLabel.stringValue) must stay on one line when space is sufficient at \(width)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testUpdateDualButtonRowPlacementFollowsMouseDownWidthSequence() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "SettingsRowViewTests.UpdateDualButtonSequence.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let page = DashboardGeneralPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: DashboardPreferencePageRelay(),
+            updateState: .available(
+                current: try XCTUnwrap(AppSemanticVersion("1.2.3")),
+                latest: try XCTUnwrap(AppSemanticVersion("1.2.5"))
+            )
+        ))
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: page, in: window, width: 720, height: 760)
+        defer { window.orderOut(nil) }
+
+        let updateButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
+        )
+        let controls = try XCTUnwrap(updateButton.superview as? DashboardAdaptiveControlsStackView)
+        let row = try XCTUnwrap(SettingsRowView.enclosing(controls))
+        let wideHeight = row.frame.height
+
+        func leftoverLabelWidth() -> CGFloat {
+            let available = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
+            return available - max(1, controls.naturalAccessoryWidth) - SettingsRowView.contentSpacing
+        }
+
+        func assertStage(width: CGFloat) {
+            pin(page, to: host, window: window, width: width, height: 760)
+            assertLabelsAreVisibleAndUnclipped(in: row, width: width)
+            let labelsFrame = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+            let controlsFrame = controls.convert(controls.bounds, to: row)
+            XCTAssertFalse(labelsFrame.intersects(controlsFrame), "update actions overlap labels at \(width)")
+            let placesAccessoryBelowLabels = leftoverLabelWidth() + 0.5 < SettingsRowView.minimumInlineLabelWidth
+            if width >= 720 {
+                XCTAssertEqual(controls.orientation, .horizontal)
+                XCTAssertEqual(row.contentStack.orientation, .horizontal)
+                XCTAssertGreaterThanOrEqual(controlsFrame.minX, labelsFrame.maxX + 19.5)
+            } else if width <= 320 {
+                XCTAssertEqual(controls.orientation, .vertical)
+                XCTAssertEqual(row.contentStack.orientation, .vertical)
+                XCTAssertLessThanOrEqual(controlsFrame.maxY, labelsFrame.minY + 0.5)
+            } else {
+                XCTAssertEqual(
+                    row.contentStack.orientation,
+                    placesAccessoryBelowLabels ? .vertical : .horizontal,
+                    "medium width may stack buttons but placement follows leftover vs 120pt at \(width)"
+                )
+                if !placesAccessoryBelowLabels, controls.orientation == .vertical {
+                    XCTAssertGreaterThanOrEqual(controlsFrame.minX, labelsFrame.maxX + 0.5)
+                }
+            }
+        }
+
+        assertStage(width: 720)
+        assertStage(width: 516)
+        assertStage(width: 320)
+        assertStage(width: 516)
+        assertStage(width: 720)
+        XCTAssertEqual(
+            row.frame.height,
+            wideHeight,
+            accuracy: 1.0,
+            "update row must return to ordinary height before viewDidEndLiveResize"
         )
     }
 
@@ -429,17 +994,28 @@ final class SettingsRowViewTests: XCTestCase {
         )
     }
 
-    private func pinningHost(for section: NSView, in window: NSWindow, width: CGFloat) -> NSView {
-        let host = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 360))
+    private func pinningHost(
+        for section: NSView,
+        in window: NSWindow,
+        width: CGFloat,
+        height: CGFloat = 360
+    ) -> NSView {
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         window.contentView = host
         host.addSubview(section)
-        pin(section, to: host, window: window, width: width)
+        pin(section, to: host, window: window, width: width, height: height)
         return host
     }
 
-    private func pin(_ section: NSView, to host: NSView, window: NSWindow, width: CGFloat) {
-        window.setContentSize(NSSize(width: width, height: 360))
-        host.setFrameSize(NSSize(width: width, height: 360))
+    private func pin(
+        _ section: NSView,
+        to host: NSView,
+        window: NSWindow,
+        width: CGFloat,
+        height: CGFloat = 360
+    ) {
+        window.setContentSize(NSSize(width: width, height: height))
+        host.setFrameSize(NSSize(width: width, height: height))
         section.translatesAutoresizingMaskIntoConstraints = false
         section.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         host.removeConstraints(host.constraints)
@@ -451,11 +1027,55 @@ final class SettingsRowViewTests: XCTestCase {
         window.layoutIfNeeded()
         host.layoutSubtreeIfNeeded()
         section.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: section)
         window.layoutIfNeeded()
         section.layoutSubtreeIfNeeded()
     }
 
+    private func assertLabelsAreVisibleAndUnclipped(in row: SettingsRowView, width: CGFloat) {
+        let titleFrame = row.titleLabel.convert(row.titleLabel.bounds, to: row)
+        XCTAssertGreaterThan(titleFrame.width, 1, "title width at \(width)")
+        XCTAssertGreaterThan(titleFrame.height, 1, "title height at \(width)")
+        XCTAssertTrue(
+            row.bounds.insetBy(dx: 0, dy: -0.5).contains(titleFrame),
+            "title stays inside the row at \(width)"
+        )
+        XCTAssertGreaterThan(row.titleLabel.preferredMaxLayoutWidth, 1)
+        if !row.detailLabel.isHidden {
+            let detailFrame = row.detailLabel.convert(row.detailLabel.bounds, to: row)
+            XCTAssertGreaterThan(detailFrame.width, 1, "detail width at \(width)")
+            XCTAssertGreaterThan(detailFrame.height, 1, "detail height at \(width)")
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(detailFrame),
+                "detail stays inside the row at \(width)"
+            )
+            XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 1)
+            XCTAssertEqual(
+                row.detailLabel.preferredMaxLayoutWidth,
+                row.labelsStack.bounds.width,
+                accuracy: 1,
+                "detail wrapping must share the solved labels column at \(width)"
+            )
+        }
+    }
+
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
+    }
+}
+
+private final class RecordingSettingsLabel: NSTextField {
+    private(set) var assignedValues: [String] = []
+
+    func resetAssignments() {
+        assignedValues.removeAll()
+    }
+
+    override var stringValue: String {
+        get { super.stringValue }
+        set {
+            assignedValues.append(newValue)
+            super.stringValue = newValue
+        }
     }
 }

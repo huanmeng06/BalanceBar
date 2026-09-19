@@ -1203,9 +1203,55 @@ final class DashboardComponentsTests: XCTestCase {
         ))
         XCTAssertEqual(activations, 0)
 
+        let beforePhrase = NSPoint(x: field.linkHitRect.minX - 20, y: field.linkHitRect.midY)
+        XCTAssertFalse(
+            field.linkHitRects.contains { $0.contains(beforePhrase) },
+            "same-line text before the phrase must stay outside the glyph hit fragments"
+        )
+        field.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: beforePhrase))
+        XCTAssertEqual(activations, 0)
+        XCTAssertLessThan(field.linkHitRect.width, field.bounds.width * 0.7)
+
+        let phraseRect = field.linkHitRects.first { !$0.isEmpty } ?? field.linkHitRect
         field.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
-            location: NSPoint(x: field.linkHitRect.midX, y: field.linkHitRect.midY)
+            location: NSPoint(x: phraseRect.midX, y: phraseRect.midY)
+        ))
+        XCTAssertEqual(activations, 1)
+    }
+
+    func testInlineRangeLinkHitTestingStaysOnChineseRestartPhrase() {
+        let field = InlineRangeLinkTextField()
+        field.frame = NSRect(x: 0, y: 0, width: 280, height: 96)
+        field.preferredMaxLayoutWidth = 280
+        var activations = 0
+        let text = DashboardMenuBarPage.animationModeDescription(
+            mode: .efficient,
+            language: .simplifiedChinese
+        )
+        let phrase = DashboardMenuBarPage.animationModeRestartLinkPhrase(language: .simplifiedChinese)
+        field.setContent(text, linkPhrase: phrase, onActivate: { activations += 1 })
+        field.layout()
+
+        XCTAssertEqual(phrase, "重启 BalanceBar")
+        XCTAssertTrue(text.contains("时候"))
+        XCTAssertTrue(field.hasLink)
+        XCTAssertFalse(field.linkHitRects.isEmpty)
+        XCTAssertLessThan(field.linkHitRect.width, field.bounds.width)
+
+        let beforePhrase = NSPoint(x: field.linkHitRect.minX - 16, y: field.linkHitRect.midY)
+        XCTAssertTrue(field.bounds.contains(beforePhrase) || beforePhrase.x >= 0)
+        XCTAssertFalse(
+            field.linkHitRects.contains { $0.contains(beforePhrase) },
+            "gray text on the same line as 重启 BalanceBar must not be inside the link"
+        )
+        field.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: beforePhrase))
+        XCTAssertEqual(activations, 0)
+
+        let phraseRect = field.linkHitRects.first { !$0.isEmpty } ?? field.linkHitRect
+        field.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: phraseRect.midX, y: phraseRect.midY)
         ))
         XCTAssertEqual(activations, 1)
     }
