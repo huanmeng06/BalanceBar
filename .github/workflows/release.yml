@@ -314,9 +314,12 @@ jobs:
               pr_pids=("${pr_pids[@]:1}")
             fi
           done < <(jq -r '.[].number' "$selection_json")
-          for pid in "${pr_pids[@]}"; do
-            wait "$pid"
-          done
+          # Empty arrays are unbound under `set -u` on the macOS runner bash.
+          if ((${#pr_pids[@]} > 0)); then
+            for pid in "${pr_pids[@]}"; do
+              wait "$pid"
+            done
+          fi
 
           while IFS= read -r pr_number; do
             [[ "$pr_number" =~ ^[0-9]+$ ]] || continue
@@ -351,9 +354,12 @@ jobs:
               issue_pids=("${issue_pids[@]:1}")
             fi
           done < "$issue_numbers_file"
-          for pid in "${issue_pids[@]}"; do
-            wait "$pid"
-          done
+          # A merged PR with no closingIssuesReferences leaves this array empty.
+          if ((${#issue_pids[@]} > 0)); then
+            for pid in "${issue_pids[@]}"; do
+              wait "$pid"
+            done
+          fi
 
           printf '[]\n' > "$issue_details_json"
           while IFS= read -r issue_number; do
