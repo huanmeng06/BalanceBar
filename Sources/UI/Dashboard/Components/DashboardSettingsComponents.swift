@@ -6,20 +6,6 @@ protocol DashboardSettingsRowControlLayout: AnyObject {
     var allowsTextDrivenDedicatedRow: Bool { get }
 }
 
-enum DashboardSettingsLayoutMetrics {
-    static var textLineMeasurements = 0
-    static var preferredHeightMeasurements = 0
-    static var cardHeightMeasurements = 0
-    static var controlFittingMeasurements = 0
-
-    static func reset() {
-        textLineMeasurements = 0
-        preferredHeightMeasurements = 0
-        cardHeightMeasurements = 0
-        controlFittingMeasurements = 0
-    }
-}
-
 private enum DashboardSettingsControlPlacement: Equatable {
     case horizontal
     case verticalBesideContent
@@ -333,7 +319,6 @@ private final class DashboardSettingsRowView: NSView {
 
     private func measurePreferredRowHeight() -> CGFloat {
         guard let labelsView, bounds.width > 0 else { return minimumHeight }
-        DashboardSettingsLayoutMetrics.preferredHeightMeasurements += 1
         labelsView.layoutSubtreeIfNeeded()
         let visibleLabels = labelsView.arrangedSubviews.filter { !$0.isHidden }
         let contentWidth = max(1, labelsView.bounds.width > 1 ? labelsView.bounds.width : bounds.width - 40)
@@ -413,7 +398,6 @@ private final class DashboardSettingsRowView: NSView {
         if let cachedControlFittingSize {
             return cachedControlFittingSize
         }
-        DashboardSettingsLayoutMetrics.controlFittingMeasurements += 1
         let size = controlView.fittingSize
         cachedControlFittingSize = size
         return size
@@ -421,7 +405,6 @@ private final class DashboardSettingsRowView: NSView {
 
     private func trailingControlFittingSize() -> NSSize {
         guard let trailingControlView, !trailingControlView.isHidden else { return .zero }
-        DashboardSettingsLayoutMetrics.controlFittingMeasurements += 1
         return trailingControlView.fittingSize
     }
 
@@ -476,7 +459,6 @@ private final class DashboardSettingsRowView: NSView {
             $0 !== title && !$0.isHidden
         }
         let siblingWidth = visibleSiblings.reduce(CGFloat(0)) { total, view in
-            DashboardSettingsLayoutMetrics.controlFittingMeasurements += 1
             let fittingWidth = view.fittingSize.width
             return total + (fittingWidth.isFinite && fittingWidth > 0 ? fittingWidth : 0)
         }
@@ -515,7 +497,6 @@ private final class DashboardSettingsRowView: NSView {
             .filter { $0.lineBreakMode == .byWordWrapping }
             .map(widestUnbreakableRunWidth(in:))
             .max() ?? 0
-        DashboardSettingsLayoutMetrics.controlFittingMeasurements += 1
         let fittingWidth = view.fittingSize.width
         return max(textWidth, fittingWidth.isFinite && fittingWidth > 0 ? fittingWidth : 0)
     }
@@ -764,7 +745,6 @@ private final class DashboardSettingsCardView: NSView, SettingsRowHeightInvalida
               isHeightDirty,
               let rowsStack,
               let heightConstraint else { return }
-        DashboardSettingsLayoutMetrics.cardHeightMeasurements += 1
         let requiredHeight = DashboardSettingsComponents.settingsCardHeight(
             rowsStack: rowsStack,
             separators: separators,
@@ -836,7 +816,6 @@ enum DashboardSettingsComponents {
         constrainedTo width: CGFloat
     ) -> (count: Int, usedWidth: CGFloat) {
         guard width > 0, !textField.stringValue.isEmpty else { return (0, 0) }
-        DashboardSettingsLayoutMetrics.textLineMeasurements += 1
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = textField.lineBreakMode

@@ -873,8 +873,6 @@ final class DashboardComponentsTests: XCTestCase {
         window.contentView = page
         defer { window.orderOut(nil) }
         window.layoutIfNeeded()
-
-        DashboardSettingsLayoutMetrics.reset()
         for offset in 0..<24 {
             window.setContentSize(NSSize(width: 640 - CGFloat(offset), height: 520))
             window.layoutIfNeeded()
@@ -904,7 +902,6 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(peerRow.frame.height, 62, accuracy: 0.5)
 
         let scrollView = try XCTUnwrap(findScrollView(in: page))
-        DashboardSettingsLayoutMetrics.reset()
         scrollView.contentView.bounds.origin = CGPoint(x: 0, y: 40)
         scrollView.layoutSubtreeIfNeeded()
         window.layoutIfNeeded()
@@ -955,7 +952,6 @@ final class DashboardComponentsTests: XCTestCase {
         }
 
         let wideHeight = layout(at: 760)
-        DashboardSettingsLayoutMetrics.reset()
         let narrowHeight = layout(at: 280)
         XCTAssertGreaterThan(narrowHeight, wideHeight, "crossing a wrapping breakpoint must grow the row")
         XCTAssertGreaterThan(
@@ -985,7 +981,6 @@ final class DashboardComponentsTests: XCTestCase {
                 .compactMap { $0 as? NSTextField }
                 .last
         )
-        DashboardSettingsLayoutMetrics.reset()
         subtitle.stringValue = "Short"
         subtitle.invalidateIntrinsicContentSize()
         row.needsLayout = true
