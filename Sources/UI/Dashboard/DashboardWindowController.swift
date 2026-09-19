@@ -248,6 +248,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private(set) var lastFramePlacement: DashboardShellFramePlacement?
 
     private var sourceListController: DashboardSourceListController?
+    var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current
     private var showsUpdateAvailableBadge = false
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
@@ -579,7 +580,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private func installLayout(in window: NSWindow) {
         let liveSidebar = liveSidebarSeed()
         detachPageContainerFromParent()
-        let sidebar = makeSidebar(in: window)
+        let sidebar = makeSidebar(in: window, layoutPolicy: sidebarScrollLayoutPolicy)
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         let plan = restorationPlan(for: window)
         let seedWidth = liveSidebar.width ?? plan.sidebarWidth
@@ -618,6 +619,12 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             to: window,
             sidebarItem: splitController.splitViewItems.first,
             contentItem: splitController.contentSplitViewItem
+        )
+        window.layoutIfNeeded()
+        applySidebarScrollViewportTopInset(
+            layoutPolicy: sidebarScrollLayoutPolicy,
+            sidebar: sidebar,
+            window: window
         )
         window.layoutIfNeeded()
         if collapsed {
@@ -715,11 +722,33 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         )
     }
 
-    private func makeSidebar(in window: NSWindow) -> NSView {
+    private func applySidebarScrollViewportTopInset(
+        layoutPolicy: DashboardSidebarScrollLayoutPolicy,
+        sidebar: NSView,
+        window: NSWindow
+    ) {
+        guard let navigation = sourceListController?.view else { return }
+        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
+        let constant = layoutPolicy.viewportTopInset(titlebarHeight: titlebarHeight)
+        for constraint in sidebar.constraints
+        where constraint.firstAttribute == .top
+            && constraint.secondAttribute == .top
+            && constraint.firstItem === navigation
+            && constraint.secondItem === sidebar
+        {
+            constraint.constant = constant
+            break
+        }
+    }
+
+    private func makeSidebar(
+        in window: NSWindow,
+        layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current
+    ) -> NSView {
         let sidebar = NSView()
 
         sourceListController?.teardown()
-        let sourceList = DashboardSourceListController()
+        let sourceList = DashboardSourceListController(layoutPolicy: layoutPolicy)
         sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
         sourceList.onSelectSection = { [weak self] section in
             self?.showSection(section)
@@ -729,12 +758,11 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         let navigation = sourceList.view
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebar.addSubview(navigation)
-        let policy = DashboardSidebarScrollLayoutPolicy.current
         let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
         NSLayoutConstraint.activate([
             navigation.topAnchor.constraint(
                 equalTo: sidebar.topAnchor,
-                constant: policy.viewportTopInset(titlebarHeight: titlebarHeight)
+                constant: layoutPolicy.viewportTopInset(titlebarHeight: titlebarHeight)
             ),
             navigation.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor),
             navigation.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor),

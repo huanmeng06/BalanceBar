@@ -152,14 +152,15 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 - `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、Tahoe 不透明标题栏 / 旧系统透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator` 以及 content-pane `NSSearchToolbarItem`、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、Tahoe 原生 window surface / 旧系统 legacy tint、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
 - `DashboardWindowControllerTests.testWindowEnablesNativeZoomAndStaysResizable`
-- `DashboardNativeUIBaselineTests.testSidebarSourceListUsesPolicyOwnedScrollEdgeLayout`
+- `DashboardNativeUIBaselineTests.testSidebarSourceListUsesPolicyOwnedScrollEdgeLayout`：生产 `.current`（macOS 26 全高 + 自动 inset）
+- `DashboardNativeUIBaselineTests.testSidebarSourceListTitlebarClearanceKeepsFirstRowOutOfTitlebar`：注入 `.titlebarClearance`，在 CI 的 macOS 26 上也走 14/15 的 titlebarHeight+14 分支，第一行不得进入 titlebar
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`
 - `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome
 - `DashboardComponentsTests.testDashboardSectionsPreserveNavigationOrderAndMetadata`
 - `SettingsSectionViewTests`：原生 section 高度由子 View 约束推导，不走 `settingsSectionIntrinsicHeight` / 父级 preferred-height 循环；General Startup 是试点卡片
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
 - `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
-- `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权；source-list 走 `DashboardSidebarScrollLayoutPolicy.apply(to:)`，不写死 `automaticallyAdjustsContentInsets`
+- `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权；source-list 接受可注入的 `layoutPolicy` 并对其实例 `apply(to:)`，不写死 `automaticallyAdjustsContentInsets`
 - `DashboardScrollClampingTests`：page 与 sidebar scroll-layout policy 的 OS 分支、inset flags、titlebar separator 契约
 
 ## 明确不在本基线内

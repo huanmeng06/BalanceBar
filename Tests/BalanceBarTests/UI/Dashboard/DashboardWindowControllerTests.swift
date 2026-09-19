@@ -12,12 +12,19 @@ final class DashboardWindowControllerTests: XCTestCase {
             ),
             encoding: .utf8
         )
-        let start = try XCTUnwrap(source.range(of: "private func makeSidebar(in window: NSWindow) -> NSView {"))
+        let start = try XCTUnwrap(source.range(of: "private func makeSidebar("))
         let end = try XCTUnwrap(
             source.range(of: "var sourceListForTesting: DashboardSourceListController? { sourceListController }")
         )
         let makeSidebarSource = String(source[start.lowerBound..<end.lowerBound])
-        XCTAssertTrue(makeSidebarSource.contains("DashboardSourceListController"))
+        XCTAssertTrue(
+            makeSidebarSource.contains(
+                "layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current"
+            )
+        )
+        XCTAssertTrue(
+            makeSidebarSource.contains("DashboardSourceListController(layoutPolicy: layoutPolicy)")
+        )
         XCTAssertFalse(makeSidebarSource.contains("NSGlassEffectView"))
         XCTAssertFalse(makeSidebarSource.contains("NSClassFromString"))
         XCTAssertFalse(makeSidebarSource.contains("makeDashboardGlassEffectView"))
@@ -32,8 +39,9 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(source.contains("DashboardSidebarChromeBaseline"))
         XCTAssertFalse(source.contains("sourceListTopConstraint"))
         XCTAssertFalse(source.contains("titlebarHeight + 14"))
-        XCTAssertTrue(source.contains("DashboardSidebarScrollLayoutPolicy.current"))
-        XCTAssertTrue(source.contains("viewportTopInset(titlebarHeight:"))
+        XCTAssertTrue(source.contains("var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current"))
+        XCTAssertTrue(source.contains("makeSidebar(in: window, layoutPolicy: sidebarScrollLayoutPolicy)"))
+        XCTAssertTrue(source.contains("layoutPolicy.viewportTopInset(titlebarHeight:"))
         XCTAssertFalse(source.contains("sidebarInteractiveViews"))
         XCTAssertFalse(source.contains("windowDidEnterFullScreen"))
         XCTAssertFalse(source.contains("windowWillExitFullScreen"))
@@ -872,32 +880,49 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         controller.open()
         let window = try XCTUnwrap(controller.window)
         window.setContentSize(NSSize(width: 880, height: 620))
-        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller, policy: .current)
 
         window.setContentSize(NSSize(width: 800, height: 560))
-        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller, policy: .current)
 
         window.setContentSize(NSSize(width: 1100, height: 760))
-        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller, policy: .current)
 
         let splitController = try XCTUnwrap(
             window.contentViewController as? DashboardSplitViewController
         )
         let sidebarItem = splitController.splitViewItems[0]
         splitController.splitView.setPosition(sidebarItem.minimumThickness, ofDividerAt: 0)
-        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller, policy: .current)
         splitController.splitView.setPosition(sidebarItem.maximumThickness, ofDividerAt: 0)
-        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller, policy: .current)
 
         sidebarItem.isCollapsed = true
-        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller, policy: .current)
         splitController.toggleSidebar(nil)
-        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller, policy: .current)
         XCTAssertFalse(sidebarItem.isCollapsed)
 
         controller.rebuild()
-        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller, policy: .current)
         XCTAssertTrue(window.styleMask.contains(.fullSizeContentView))
+    }
+
+    func testSidebarSourceListTitlebarClearanceKeepsFirstRowOutOfTitlebar() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.sidebarScrollLayoutPolicy = .titlebarClearance
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.setContentSize(NSSize(width: 880, height: 620))
+        try assertSidebarScrollLayoutFollowsPolicy(
+            in: controller,
+            policy: .titlebarClearance
+        )
+        XCTAssertEqual(
+            controller.sourceListForTesting?.layoutPolicy,
+            .titlebarClearance
+        )
     }
 
     func testNativeToolbarUsesSystemSidebarItemsWithoutCustomFillers() throws {
@@ -1480,6 +1505,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
 
     private func assertSidebarScrollLayoutFollowsPolicy(
         in controller: DashboardWindowController,
+        policy: DashboardSidebarScrollLayoutPolicy,
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
@@ -1498,9 +1524,9 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(window.styleMask.contains(.fullSizeContentView), file: file, line: line)
 
         let sourceList = try XCTUnwrap(controller.sourceListForTesting, file: file, line: line)
+        XCTAssertEqual(sourceList.layoutPolicy, policy, file: file, line: line)
         XCTAssertEqual(sourceList.outlineView.style, .sourceList, file: file, line: line)
         let scrollView = sourceList.scrollView
-        let policy = DashboardSidebarScrollLayoutPolicy.current
         XCTAssertEqual(
             scrollView.automaticallyAdjustsContentInsets,
             policy.automaticallyAdjustsContentInsets,
@@ -1524,33 +1550,31 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let viewportInSidebar = scrollView.convert(scrollView.bounds, to: sidebar)
         let viewportGap = sidebar.bounds.maxY - viewportInSidebar.maxY
         let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+        let titlebarClearance = titlebarHeight
+            + DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance
 
         if policy.automaticallyAdjustsContentInsets {
             XCTAssertEqual(viewportGap, 0, accuracy: 1, file: file, line: line)
-            XCTAssertGreaterThan(scrollView.contentInsets.top, 1, file: file, line: line)
-            XCTAssertEqual(
-                scrollView.contentInsets.top,
-                sidebar.safeAreaInsets.top,
+            XCTAssertGreaterThan(scrollView.contentInsets.top, 0, file: file, line: line)
+            XCTAssertNotEqual(
+                viewportGap,
+                titlebarClearance,
                 accuracy: 1,
                 file: file,
                 line: line
             )
             XCTAssertNotEqual(
-                viewportGap,
-                titlebarHeight + DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance,
+                scrollView.contentInsets.top,
+                titlebarClearance,
                 accuracy: 1,
                 file: file,
                 line: line
             )
         } else {
-            XCTAssertGreaterThan(viewportGap, 1, file: file, line: line)
+            XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets, file: file, line: line)
             XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001, file: file, line: line)
-            XCTAssertGreaterThanOrEqual(
-                viewportGap,
-                DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance - 1,
-                file: file,
-                line: line
-            )
+            XCTAssertEqual(scrollView.scrollerInsets.top, 0, accuracy: 0.001, file: file, line: line)
+            XCTAssertEqual(viewportGap, titlebarClearance, accuracy: 1, file: file, line: line)
         }
         let outline = sourceList.outlineView
         XCTAssertGreaterThan(outline.numberOfRows, 0, file: file, line: line)
@@ -1831,7 +1855,9 @@ final class DashboardSourceListContractTests: XCTestCase {
             ),
             encoding: .utf8
         )
-        XCTAssertTrue(source.contains("DashboardSidebarScrollLayoutPolicy.current.apply(to: scrollView)"))
+        XCTAssertTrue(source.contains("init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current)"))
+        XCTAssertTrue(source.contains("layoutPolicy.apply(to: scrollView)"))
+        XCTAssertFalse(source.contains("DashboardSidebarScrollLayoutPolicy.current.apply(to: scrollView)"))
         XCTAssertFalse(source.contains("automaticallyAdjustsContentInsets = false"))
         XCTAssertFalse(source.contains("automaticallyAdjustsContentInsets = true"))
         XCTAssertFalse(source.contains("titlebarHeight + 14"))
