@@ -1025,9 +1025,10 @@ final class InlineRangeLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     private(set) var linkRange = NSRange(location: NSNotFound, length: 0)
     private(set) var linkHitRect = NSRect.zero
+    private(set) var linkHitRects: [NSRect] = []
     private var sourceText = ""
     private var linkPhrase: String?
-    private var trackingAreaReference: NSTrackingArea?
+    private var trackingAreaReferences: [NSTrackingArea] = []
     private var isHovered = false
     private var isApplyingStyle = false
 
@@ -1106,15 +1107,18 @@ final class InlineRangeLinkTextField: NSTextField {
         removeTrackingAreaReference()
         super.updateTrackingAreas()
         updateLinkHitRect()
-        installTrackingArea()
+        if trackingAreaReferences.isEmpty {
+            installTrackingArea()
+        }
         synchronizeHoverStateWithMouseLocation()
     }
 
     override func resetCursorRects() {
         super.resetCursorRects()
         updateLinkHitRect()
-        guard !linkHitRect.isEmpty else { return }
-        addCursorRect(linkHitRect, cursor: .pointingHand)
+        for rect in linkHitRects where !rect.isEmpty {
+            addCursorRect(rect, cursor: .pointingHand)
+        }
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -1188,22 +1192,23 @@ final class InlineRangeLinkTextField: NSTextField {
     }
 
     private func installTrackingArea() {
-        let trackingRect = bounds.isEmpty ? .zero : bounds
-        let area = NSTrackingArea(
-            rect: trackingRect,
-            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeInKeyWindow, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingAreaReference = area
+        trackingAreaReferences = linkHitRects.filter { !$0.isEmpty }.map { rect in
+            let area = NSTrackingArea(
+                rect: rect,
+                options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeInKeyWindow],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(area)
+            return area
+        }
     }
 
     private func removeTrackingAreaReference() {
-        if let trackingAreaReference {
-            removeTrackingArea(trackingAreaReference)
-            self.trackingAreaReference = nil
+        for area in trackingAreaReferences {
+            removeTrackingArea(area)
         }
+        trackingAreaReferences = []
     }
 
     private func setHovering(_ hovered: Bool) {
@@ -1229,7 +1234,7 @@ final class InlineRangeLinkTextField: NSTextField {
             return
         }
         let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-        setHovering(linkHitRect.contains(point))
+        setHovering(isPointInsideLink(point))
     }
 
     private func tearDownInteraction() {
@@ -1248,39 +1253,55 @@ final class InlineRangeLinkTextField: NSTextField {
         } else {
             point = event.locationInWindow
         }
-        return linkHitRect.contains(point)
+        return isPointInsideLink(point)
+    }
+
+    private func isPointInsideLink(_ point: NSPoint) -> Bool {
+        linkHitRects.contains { $0.contains(point) }
     }
 
     private func updateLinkHitRect() {
-        let previous = linkHitRect
-        linkHitRect = calculateLinkHitRect()
-        guard previous != linkHitRect else { return }
+        let previousRects = linkHitRects
+        let rects = calculateLinkHitRects()
+        linkHitRects = rects
+        linkHitRect = rects.first.map { first in
+            rects.dropFirst().reduce(first) { $0.union($1) }
+        } ?? .zero
+        guard previousRects != rects else { return }
         window?.invalidateCursorRects(for: self)
         refreshTrackingArea()
         synchronizeHoverStateWithMouseLocation()
     }
 
     private func refreshTrackingArea() {
-        guard trackingAreaReference != nil || window != nil else { return }
+        guard !trackingAreaReferences.isEmpty || window != nil else { return }
         removeTrackingAreaReference()
         installTrackingArea()
     }
 
-    private func calculateLinkHitRect() -> NSRect {
+    private func calculateLinkHitRects() -> [NSRect] {
         guard hasLink,
               !bounds.isEmpty,
               let cell,
               attributedStringValue.length >= NSMaxRange(linkRange)
         else {
-            return .zero
+            return []
         }
 
         let titleRect = cell.titleRect(forBounds: bounds)
-        guard !titleRect.isEmpty else { return .zero }
+        guard !titleRect.isEmpty else { return [] }
 
+        let layoutWidth: CGFloat
+        if preferredMaxLayoutWidth > 1 {
+            layoutWidth = min(preferredMaxLayoutWidth, max(1, titleRect.width))
+        } else {
+            layoutWidth = max(1, titleRect.width)
+        }
         let textStorage = NSTextStorage(attributedString: attributedStringValue)
         let layoutManager = NSLayoutManager()
-        let textContainer = NSTextContainer(size: titleRect.size)
+        let textContainer = NSTextContainer(
+            size: NSSize(width: layoutWidth, height: .greatestFiniteMagnitude)
+        )
         textContainer.lineFragmentPadding = 0
         textContainer.lineBreakMode = cell.lineBreakMode
         textContainer.maximumNumberOfLines = 0
@@ -1293,16 +1314,27 @@ final class InlineRangeLinkTextField: NSTextField {
             forCharacterRange: linkRange,
             actualCharacterRange: &actualRange
         )
-        guard glyphRange.length > 0 else { return .zero }
-        let glyphRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-        guard !glyphRect.isEmpty else { return .zero }
-        return NSRect(
-            x: titleRect.minX + glyphRect.minX,
-            y: titleRect.minY + glyphRect.minY,
-            width: glyphRect.width,
-            height: glyphRect.height
-        )
-        .insetBy(dx: -2, dy: -2)
-        .intersection(bounds)
+        guard glyphRange.length > 0 else { return [] }
+
+        var fragmentRects: [NSRect] = []
+        layoutManager.enumerateEnclosingRects(
+            forGlyphRange: glyphRange,
+            withinSelectedGlyphRange: glyphRange,
+            in: textContainer
+        ) { rect, _ in
+            guard !rect.isEmpty else { return }
+            let hitRect = NSRect(
+                x: titleRect.minX + rect.minX,
+                y: titleRect.minY + rect.minY,
+                width: rect.width,
+                height: rect.height
+            )
+            .insetBy(dx: -2, dy: -2)
+            .intersection(self.bounds)
+            if !hitRect.isEmpty {
+                fragmentRects.append(hitRect)
+            }
+        }
+        return fragmentRects
     }
 }

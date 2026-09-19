@@ -5052,6 +5052,42 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertTrue(subtitle.hasLink)
         XCTAssertFalse(subtitle.linkHitRect.isEmpty)
+        XCTAssertFalse(subtitle.linkHitRects.isEmpty)
+        XCTAssertLessThan(
+            subtitle.linkHitRect.width,
+            subtitle.bounds.width,
+            "the restart phrase must not occupy the whole subtitle field"
+        )
+
+        let linkTrackingRects = subtitle.trackingAreas
+            .filter { ($0.owner as AnyObject?) === subtitle && !$0.rect.isEmpty }
+            .map(\.rect)
+        XCTAssertEqual(
+            linkTrackingRects.count,
+            subtitle.linkHitRects.filter { !$0.isEmpty }.count
+        )
+        for rect in subtitle.linkHitRects where !rect.isEmpty {
+            XCTAssertTrue(
+                linkTrackingRects.contains { NSEqualRects($0, rect) },
+                "tracking areas must match glyph fragments, not the full subtitle"
+            )
+        }
+
+        let sameLineBeforePhrase = NSPoint(
+            x: subtitle.linkHitRect.minX - 16,
+            y: subtitle.linkHitRect.midY
+        )
+        XCTAssertFalse(
+            subtitle.linkHitRects.contains { $0.contains(sameLineBeforePhrase) },
+            "gray text such as 时候 on the same line must stay outside the blue phrase"
+        )
+        subtitle.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: subtitle.convert(sameLineBeforePhrase, to: nil)
+        ))
+        XCTAssertNil(window.attachedSheet)
+        XCTAssertNil(controller.restartConfirmationAlertForTesting)
+        XCTAssertEqual(relaunchCount, 0)
 
         let outsideCandidates = [
             NSPoint(x: subtitle.bounds.minX + 2, y: subtitle.bounds.minY + 2),
@@ -5060,7 +5096,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             NSPoint(x: subtitle.bounds.maxX - 2, y: subtitle.bounds.maxY - 2)
         ]
         let outsideLink = try XCTUnwrap(
-            outsideCandidates.first { !subtitle.linkHitRect.contains($0) },
+            outsideCandidates.first { point in
+                !subtitle.linkHitRects.contains { $0.contains(point) }
+            },
             "the link must leave an interactive area outside the restart phrase"
         )
         subtitle.mouseDown(with: makeMouseEvent(
@@ -5073,10 +5111,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         subtitle.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
-            location: subtitle.convert(
-                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
-                to: nil
-            )
+            location: subtitle.convert(linkActivationPoint(in: subtitle), to: nil)
         ))
         let alert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
         XCTAssertEqual(NSStringFromClass(type(of: alert)), "NSAlert")
@@ -5110,10 +5145,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         subtitle.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
-            location: subtitle.convert(
-                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
-                to: nil
-            )
+            location: subtitle.convert(linkActivationPoint(in: subtitle), to: nil)
         ))
         let restartAlert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
         XCTAssertEqual(window.attachedSheet, restartAlert.window)
@@ -5126,10 +5158,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         subtitle.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
-            location: subtitle.convert(
-                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
-                to: nil
-            )
+            location: subtitle.convert(linkActivationPoint(in: subtitle), to: nil)
         ))
         let confirmAlert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
         XCTAssertEqual(window.attachedSheet, confirmAlert.window)
@@ -5220,10 +5249,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         subtitle.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
-            location: subtitle.convert(
-                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
-                to: nil
-            )
+            location: subtitle.convert(linkActivationPoint(in: subtitle), to: nil)
         ))
         let cancelSheet = try XCTUnwrap(window.attachedSheet)
         cancelSheet.sheetParent?.endSheet(cancelSheet, returnCode: .alertSecondButtonReturn)
@@ -5232,10 +5258,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         subtitle.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
-            location: subtitle.convert(
-                NSPoint(x: subtitle.linkHitRect.midX, y: subtitle.linkHitRect.midY),
-                to: nil
-            )
+            location: subtitle.convert(linkActivationPoint(in: subtitle), to: nil)
         ))
         let confirmSheet = try XCTUnwrap(window.attachedSheet)
         confirmSheet.sheetParent?.endSheet(confirmSheet, returnCode: .alertFirstButtonReturn)
@@ -6111,7 +6134,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
-        for language in [AppLanguage.japanese, .english] {
+        let subtitleByLanguage: [AppLanguage: String] = [
+            .japanese: "サービスプロバイダーのデータをメニューバーにリアルタイム表示",
+            .english: "The menu bar updates with Provider data in real time",
+            .simplifiedChinese: "菜单栏会随服务商数据实时更新"
+        ]
+        for language in [AppLanguage.japanese, .english, .simplifiedChinese] {
             AppLanguage.selected = language
             let page = DashboardMenuBarPage().make(.init(
                 preferences: AppPreferences(defaults: defaults),
@@ -6126,12 +6154,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 backing: .buffered,
                 defer: false
             )
-            window.contentView = page
             defer { window.orderOut(nil) }
+            pinMenuPage(page, in: window, width: 516, height: 520)
 
-            let subtitleText = language == .japanese
-                ? "サービスプロバイダーのデータをメニューバーにリアルタイム表示"
-                : "The menu bar updates with Provider data in real time"
+            let subtitleText = try XCTUnwrap(subtitleByLanguage[language])
             let subtitle = try XCTUnwrap(
                 descendants(of: page)
                     .compactMap { $0 as? NSTextField }
@@ -6141,46 +6167,59 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let section = try XCTUnwrap(SettingsSectionView.enclosing(row))
             let card = section.cardView
             let control = try XCTUnwrap(row.accessoryView)
-
-            window.layoutIfNeeded()
-            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
-            window.layoutIfNeeded()
             let narrowHeight = row.frame.height
-            let narrowCardHeight = card.frame.height
-            XCTAssertGreaterThan(narrowHeight, DashboardMenuBarPage.previewRowHeight, "(language) preview must grow when its subtitle wraps")
-            XCTAssertLessThanOrEqual(
-                subtitle.cell!.cellSize(
-                    forBounds: NSRect(x: 0, y: 0, width: subtitle.bounds.width, height: .greatestFiniteMagnitude)
-                ).height,
-                subtitle.bounds.height + 0.5,
-                "(language) preview subtitle must not be clipped"
+            let labelsFrame = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+            let previewFrame = control.convert(control.bounds, to: row)
+            XCTAssertEqual(
+                row.contentStack.orientation,
+                .horizontal,
+                "\(language.rawValue) preview must stay beside the labels instead of wrapping below"
             )
-            XCTAssertGreaterThanOrEqual(control.frame.minY, row.bounds.minY - 0.5, "(language) preview control must stay inside the row")
-            XCTAssertLessThanOrEqual(control.frame.maxY, row.bounds.maxY + 0.5, "(language) preview control must stay inside the row")
+            XCTAssertLessThan(
+                labelsFrame.maxX,
+                previewFrame.minX - 0.5,
+                "\(language.rawValue) preview must stay to the right of the labels"
+            )
+            XCTAssertFalse(
+                labelsFrame.intersects(previewFrame),
+                "\(language.rawValue) preview must not sit on a dedicated row below the labels"
+            )
+            let subtitleFrame = subtitle.convert(subtitle.bounds, to: row)
+            XCTAssertGreaterThan(subtitle.bounds.width, 40, "\(language.rawValue) preview subtitle must remain readable beside the preview")
+            XCTAssertGreaterThan(subtitle.bounds.height, 1, "\(language.rawValue) preview subtitle must remain visible")
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(subtitleFrame),
+                "\(language.rawValue) preview subtitle must stay inside the row"
+            )
+            XCTAssertGreaterThanOrEqual(control.frame.minY, row.bounds.minY - 0.5, "\(language.rawValue) preview control must stay inside the row")
+            XCTAssertLessThanOrEqual(control.frame.maxY, row.bounds.maxY + 0.5, "\(language.rawValue) preview control must stay inside the row")
             XCTAssertGreaterThan(card.frame.height, 0)
 
-            window.setContentSize(NSSize(width: 740, height: 520))
-            window.layoutIfNeeded()
-            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
-            window.layoutIfNeeded()
+            pinMenuPage(page, in: window, width: 740, height: 520)
+            XCTAssertEqual(
+                row.contentStack.orientation,
+                .horizontal,
+                "\(language.rawValue) preview must stay beside the labels at a wide width"
+            )
             XCTAssertEqual(
                 row.frame.height,
                 DashboardSettingsComponents.standardRowHeight,
                 accuracy: 0.5,
-                "(language) preview row must match the standard settings-row height at a wide width"
-            )
-            XCTAssertLessThan(row.frame.height, narrowHeight, "(language) preview row should shrink at wide width")
-            XCTAssertLessThan(
-                card.frame.height,
-                narrowCardHeight,
-                "(language) preview card should shrink at wide width"
+                "\(language.rawValue) preview row must match the standard settings-row height at a wide width"
             )
 
-            window.setContentSize(NSSize(width: 516, height: 520))
-            window.layoutIfNeeded()
-            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
-            window.layoutIfNeeded()
-            XCTAssertEqual(row.frame.height, narrowHeight, accuracy: 0.5, "(language) preview row should recover at narrow width")
+            pinMenuPage(page, in: window, width: 516, height: 520)
+            XCTAssertEqual(
+                row.frame.height,
+                narrowHeight,
+                accuracy: 0.5,
+                "\(language.rawValue) preview row should recover at narrow width"
+            )
+            XCTAssertEqual(
+                row.contentStack.orientation,
+                .horizontal,
+                "\(language.rawValue) preview must stay beside the labels after returning to 516"
+            )
         }
     }
 
@@ -7917,6 +7956,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
         )
         return try XCTUnwrap(NSEvent(cgEvent: cgEvent))
+    }
+
+    private func linkActivationPoint(in field: InlineRangeLinkTextField) -> NSPoint {
+        let rect = field.linkHitRects.first { !$0.isEmpty } ?? field.linkHitRect
+        return NSPoint(x: rect.midX, y: rect.midY)
     }
 
     private func makeMouseEvent(

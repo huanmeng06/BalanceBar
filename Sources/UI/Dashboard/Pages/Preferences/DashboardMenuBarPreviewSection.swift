@@ -9,12 +9,12 @@ final class DashboardMenuBarPageActionTarget: NSObject {
     }
 }
 
-/// Lets the native settings row place the fixed-size preview below its labels
-/// when the Menu Bar page is narrow. The preview itself remains the same
-/// custom AppKit surface and keeps its existing 42pt visual height.
+/// Hosts the fixed-size preview in a native settings row. The preview stays
+/// beside the labels; the labels wrap in the leftover column instead of
+/// sending this 190×42 control onto its own row.
 private final class MenuBarPreviewAccessoryHost: NSView, DashboardSettingsRowControlLayout {
-    let allowsTextDrivenDedicatedRow = true
-    let minimumInlineLabelWidth: CGFloat = 320
+    let allowsTextDrivenDedicatedRow = false
+    let minimumInlineLabelWidth: CGFloat = 0
     let preview: NSView
 
     init(preview: NSView) {
