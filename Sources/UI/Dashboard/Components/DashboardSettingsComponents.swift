@@ -6,6 +6,20 @@ protocol DashboardSettingsRowControlLayout: AnyObject {
     var allowsTextDrivenDedicatedRow: Bool { get }
 }
 
+enum DashboardSettingsLayoutMetrics {
+    static var textLineMeasurements = 0
+    static var preferredHeightMeasurements = 0
+    static var cardHeightMeasurements = 0
+    static var controlFittingMeasurements = 0
+
+    static func reset() {
+        textLineMeasurements = 0
+        preferredHeightMeasurements = 0
+        cardHeightMeasurements = 0
+        controlFittingMeasurements = 0
+    }
+}
+
 private enum DashboardSettingsControlPlacement: Equatable {
     case horizontal
     case verticalBesideContent
