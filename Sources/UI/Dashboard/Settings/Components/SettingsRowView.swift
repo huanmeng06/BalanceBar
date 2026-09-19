@@ -398,7 +398,7 @@ final class SettingsRowView: NSView {
         if let accessoryView {
             accessoryView.translatesAutoresizingMaskIntoConstraints = false
             accessoryView.setContentHuggingPriority(.required, for: .horizontal)
-            if accessoryView is DashboardSettingsRowControlLayout {
+            if accessoryView is SettingsRowAccessoryLayout {
                 accessoryView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             } else {
                 accessoryView.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -481,7 +481,7 @@ final class SettingsRowView: NSView {
 
     private func syncAdaptiveAccessory() {
         guard let accessoryView,
-              let adaptive = accessoryView as? DashboardSettingsRowControlLayout
+              let adaptive = accessoryView as? SettingsRowAccessoryLayout
         else { return }
         let availableWidth = max(0, bounds.width - Self.horizontalPadding * 2)
         adaptive.updateAvailableRowWidth(availableWidth)
@@ -502,7 +502,7 @@ final class SettingsRowView: NSView {
             return
         }
         let naturalWidth: CGFloat
-        if let adaptive = accessoryView as? DashboardSettingsRowControlLayout {
+        if let adaptive = accessoryView as? SettingsRowAccessoryLayout {
             naturalWidth = adaptive.naturalAccessoryWidth
         } else {
             naturalWidth = Self.naturalWidth(of: accessoryView)
@@ -536,7 +536,7 @@ final class SettingsRowView: NSView {
     }
 
     private func shouldPlaceAccessoryOnDedicatedRow(
-        _ adaptive: DashboardSettingsRowControlLayout,
+        _ adaptive: SettingsRowAccessoryLayout,
         availableWidth: CGFloat
     ) -> Bool {
         guard let accessoryView,

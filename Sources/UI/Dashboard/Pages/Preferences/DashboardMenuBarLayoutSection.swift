@@ -12,7 +12,7 @@ final class DashboardMenuBarLayoutSection {
     /// macOS 26 showed up as `slider.midY` 39 vs row `midY` 38. Endpoint
     /// labels and the slider are pinned with bounds `centerY` instead, matching
     /// the legacy settings row's `control.centerY` pin.
-    private final class MenuBarSliderControls: NSView, DashboardSettingsRowControlLayout {
+    private final class MenuBarSliderControls: NSView, SettingsRowAccessoryLayout {
         private static let spacing: CGFloat = 6
 
         let allowsTextDrivenDedicatedRow = true

@@ -190,7 +190,7 @@ struct DashboardUpdatePresentation: Equatable {
 /// those same controls only when the settings row cannot fit them. The update
 /// actions and refresh interval pairs both use this layout contract; their
 /// controls retain their existing style, targets, and dimensions.
-final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRowControlLayout {
+final class DashboardAdaptiveControlsStackView: NSStackView, SettingsRowAccessoryLayout {
     private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
     private(set) var stacksControlsVertically = false
     var allowsTextDrivenDedicatedRow = false

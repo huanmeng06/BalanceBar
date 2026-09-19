@@ -12,7 +12,7 @@ final class DashboardMenuBarPageActionTarget: NSObject {
 /// Hosts the fixed-size preview in a native settings row. The preview stays
 /// beside the labels; the labels wrap in the leftover column instead of
 /// sending this 190×42 control onto its own row.
-private final class MenuBarPreviewAccessoryHost: NSView, DashboardSettingsRowControlLayout {
+private final class MenuBarPreviewAccessoryHost: NSView, SettingsRowAccessoryLayout {
     let allowsTextDrivenDedicatedRow = false
     let minimumInlineLabelWidth: CGFloat = 0
     let preview: NSView

@@ -1,9 +1,16 @@
 import AppKit
 
-protocol DashboardSettingsRowControlLayout: AnyObject {
+protocol SettingsRowAccessoryLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
     var usesDedicatedRow: Bool { get }
     var allowsTextDrivenDedicatedRow: Bool { get }
+}
+
+extension SettingsRowAccessoryLayout {
+    var usesDedicatedRow: Bool { false }
+    var allowsTextDrivenDedicatedRow: Bool { false }
+    var minimumInlineLabelWidth: CGFloat { 0 }
+    var naturalAccessoryWidth: CGFloat { 0 }
 }
 
 enum DashboardSettingsLayoutMetrics {
@@ -21,6 +28,12 @@ enum DashboardSettingsLayoutMetrics {
 }
 
 enum DashboardSettingsComponents {
+    static func invalidateHostedSettingsRowHeight(for view: NSView) {
+        view.invalidateIntrinsicContentSize()
+        view.needsLayout = true
+        view.superview?.invalidateIntrinsicContentSize()
+        view.superview?.needsLayout = true
+    }
     static let settingsSeparatorHeight: CGFloat = 1
     static let standardRowHeight: CGFloat = 62
     static let settingsRowContentControlSpacing: CGFloat = 12

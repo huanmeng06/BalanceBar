@@ -1856,7 +1856,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let row = try XCTUnwrap(SettingsRowView.enclosing(colorButton))
         let colorControls = try XCTUnwrap(row.accessoryView as? NSStackView)
-        let adaptive = try XCTUnwrap(row.accessoryView as? DashboardSettingsRowControlLayout)
+        let adaptive = try XCTUnwrap(row.accessoryView as? SettingsRowAccessoryLayout)
         let thresholdField = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSTextField }
