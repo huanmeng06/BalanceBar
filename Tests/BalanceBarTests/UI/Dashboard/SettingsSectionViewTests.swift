@@ -104,7 +104,7 @@ final class SettingsSectionViewTests: XCTestCase {
         _ = pinningHost(for: section, in: window, width: 880)
         defer { window.orderOut(nil) }
 
-        let expected = DashboardSettingsComponents.settingsCardHeight(
+        let expected = DashboardSettingsComponents.settingsSectionIntrinsicHeight(
             rowsStack: section.rowsStack,
             separators: section.separators
         )
@@ -517,7 +517,7 @@ final class SettingsSectionViewTests: XCTestCase {
                     && constraint.secondItem == nil
                     && constraint.relation == .equal
                     && constraint.constant > 1
-                    && constraint.identifier == "settingsCardHeight"
+                    && constraint.identifier == "settingsSectionIntrinsicHeight"
             }
         )
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)

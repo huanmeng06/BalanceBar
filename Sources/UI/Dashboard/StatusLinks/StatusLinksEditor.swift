@@ -1327,7 +1327,7 @@ final class StatusLinksEditorHostingView: NSView,
         guard let rowsStack = superview as? NSStackView,
               let card = rowsStack.superview else { return }
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-        let requiredHeight = DashboardSettingsComponents.settingsCardHeight(
+        let requiredHeight = DashboardSettingsComponents.settingsSectionIntrinsicHeight(
             rowsStack: rowsStack,
             separators: separators,
             rowHeight: { [weak self] row in

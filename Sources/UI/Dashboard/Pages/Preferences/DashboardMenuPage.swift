@@ -2,7 +2,7 @@ import AppKit
 
 /// Composite Displayed Colors accessory. Internal H/V stacking is independent
 /// of SettingsRowView's inline / dedicated-row placement.
-private final class QuotaColorSelectionStack: NSStackView, DashboardSettingsRowControlLayout {
+private final class QuotaColorSelectionStack: NSStackView, SettingsRowAccessoryLayout {
     private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
     private(set) var stacksControlsVertically = false
     let allowsTextDrivenDedicatedRow = true

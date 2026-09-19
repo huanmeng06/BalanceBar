@@ -406,6 +406,9 @@ final class DashboardPageSearchTests: XCTestCase {
             root.needsLayout = true
             root.layoutSubtreeIfNeeded()
             window.layoutIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: root)
+            root.layoutSubtreeIfNeeded()
+            window.layoutIfNeeded()
             root.layoutSubtreeIfNeeded()
         }
 

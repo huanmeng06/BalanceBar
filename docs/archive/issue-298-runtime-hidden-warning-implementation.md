@@ -100,7 +100,7 @@ For the fixed row order `[currentLayout, overflowWarning, runtimeWarning]`, the 
 | false | true | visible | hidden |
 | true | true | visible | visible |
 
-Continue using `DashboardSettingsComponents.settingsCardHeight(...)` after row visibility changes; do not hard-code separate heights for zero/one/two warnings.
+Continue using `DashboardSettingsComponents.settingsSectionIntrinsicHeight(...)` after row visibility changes; do not hard-code separate heights for zero/one/two warnings.
 
 ## 6. `立即设置` is same-page scrolling, not System Settings
 

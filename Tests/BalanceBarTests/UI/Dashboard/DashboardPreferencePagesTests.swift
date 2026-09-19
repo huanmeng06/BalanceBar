@@ -721,7 +721,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         func assertCardHeight(_ message: String, file: StaticString = #filePath, line: UInt = #line) {
             XCTAssertEqual(
                 card.frame.height,
-                DashboardSettingsComponents.settingsCardHeight(
+                DashboardSettingsComponents.settingsSectionIntrinsicHeight(
                     rowsStack: rowsStack,
                     separators: separators
                 ),
@@ -1856,7 +1856,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let row = try XCTUnwrap(SettingsRowView.enclosing(colorButton))
         let colorControls = try XCTUnwrap(row.accessoryView as? NSStackView)
-        let adaptive = try XCTUnwrap(row.accessoryView as? DashboardSettingsRowControlLayout)
+        let adaptive = try XCTUnwrap(row.accessoryView as? SettingsRowAccessoryLayout)
         let thresholdField = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSTextField }
@@ -6010,18 +6010,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         let iconSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
-        XCTAssertEqual(
-            iconSummary.map { normalizeSettingsText($0.stringValue) },
-            "微调图标的上下位置Y 轴 - 0.3 pt"
+        XCTAssertTrue(
+            settingsText(
+                iconSummary?.stringValue,
+                equals: "微调图标的上下位置Y 轴 - 0.3 pt"
+            ),
+            "icon offset summary"
         )
-        XCTAssertEqual(
-            amountSummary.map { normalizeSettingsText($0.stringValue) },
-            "微调数值的上下位置Y 轴 + 0.5 pt"
+        XCTAssertTrue(
+            settingsText(
+                amountSummary?.stringValue,
+                equals: "微调数值的上下位置Y 轴 + 0.5 pt"
+            ),
+            "amount offset summary"
         )
-        XCTAssertEqual(
-            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }
-                .map { normalizeSettingsText($0.stringValue) },
-            "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 0.6 pt"
+        XCTAssertTrue(
+            settingsText(
+                labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }?.stringValue,
+                equals: "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 0.6 pt"
+            ),
+            "width adjustment summary"
         )
         let labelStrings = labels.map(\.stringValue)
         XCTAssertTrue(labelStrings.contains("布局"))
@@ -6932,9 +6940,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             AppPreferences.menuBarStatusItemWidthAdjustmentDefault,
             accuracy: 0.001
         )
-        XCTAssertEqual(
-            summary.map { normalizeSettingsText($0.stringValue) },
-            "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 7.4 pt"
+        XCTAssertTrue(
+            settingsText(
+                summary?.stringValue,
+                equals: "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 7.4 pt"
+            ),
+            "width-only refresh summary"
         )
 
         controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
@@ -7404,7 +7415,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             let labels = descendants(of: page).compactMap { $0 as? NSTextField }
             let labelStrings = labels.map(\.stringValue)
-            let normalizedLabelStrings = labelStrings.map(normalizeSettingsText)
             let expectedEndpointLabels: (minimum: String, maximum: String)
             switch language {
             case .simplifiedChinese:
@@ -7491,7 +7501,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
             for expectedSubtitle in expectedSubtitles {
                 XCTAssertTrue(
-                    normalizedLabelStrings.contains(expectedSubtitle),
+                    labelStrings.contains { settingsText($0, contains: expectedSubtitle) },
                     "localized subtitle \(expectedSubtitle) for \(language)"
                 )
             }
@@ -8311,6 +8321,32 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .replacingOccurrences(of: "\u{00A0}", with: " ")
             .replacingOccurrences(of: "\u{2060}", with: "")
             .replacingOccurrences(of: "\n", with: " ")
+    }
+
+    /// Semantic subtitles keep source copy for accessibility, then insert a
+    /// layout line break at a whitespace or zero-width CJK boundary. Compare
+    /// both the source form and the laid-out form.
+    private func settingsTextVariants(_ text: String) -> Set<String> {
+        let canonical = text
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+            .replacingOccurrences(of: "\u{2060}", with: "")
+        return [
+            canonical,
+            canonical.replacingOccurrences(of: "\n", with: " "),
+            canonical.replacingOccurrences(of: "\n", with: "")
+        ]
+    }
+
+    private func settingsText(_ actual: String?, equals expected: String) -> Bool {
+        guard let actual else { return false }
+        return !settingsTextVariants(actual).isDisjoint(with: settingsTextVariants(expected))
+    }
+
+    private func settingsText(_ actual: String, contains expected: String) -> Bool {
+        let expectedVariants = settingsTextVariants(expected)
+        return settingsTextVariants(actual).contains { actualForm in
+            expectedVariants.contains { actualForm.contains($0) }
+        }
     }
 
     private func renderedTextLines(for field: NSTextField) -> [String] {

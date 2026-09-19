@@ -1,6 +1,153 @@
 import AppKit
 
-/// Hosts that still own card height (the legacy settings card) can remeasure
+/// A subtitle label that keeps localization metadata available while AppKit
+/// solves the native row's label width. The display copy may gain explicit
+/// semantic line breaks at the solved width; the source value remains intact
+/// for accessibility and later updates.
+final class SettingsSemanticSubtitleLabel: NSTextField {
+    private var localizedSubtitle: LocalizedSubtitle?
+    private var isApplyingLayoutText = false
+    private var isApplyingEmphasis = false
+    private var lastAppliedWidth: CGFloat = -1
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configureSubtitleAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureSubtitleAppearance()
+    }
+
+    private func configureSubtitleAppearance() {
+        isBezeled = false
+        drawsBackground = false
+        backgroundColor = .clear
+        isEditable = false
+        isSelectable = false
+        usesSingleLineMode = false
+        lineBreakMode = .byWordWrapping
+        maximumNumberOfLines = 0
+        cell?.wraps = true
+        cell?.isScrollable = false
+    }
+
+    override var stringValue: String {
+        didSet {
+            guard !isApplyingLayoutText else { return }
+            localizedSubtitle = nil
+            lastAppliedWidth = -1
+        }
+    }
+
+    override var font: NSFont? {
+        get { super.font }
+        set {
+            super.font = newValue
+            applyEmphasisFontsIfNeeded()
+        }
+    }
+
+    override var textColor: NSColor? {
+        get { super.textColor }
+        set {
+            super.textColor = newValue
+            applyEmphasisFontsIfNeeded()
+        }
+    }
+
+    func setLocalizedSubtitle(_ subtitle: LocalizedSubtitle) {
+        localizedSubtitle = subtitle
+        lastAppliedWidth = -1
+        isApplyingLayoutText = true
+        super.stringValue = subtitle.text
+        isApplyingLayoutText = false
+        applyLayoutTextIfNeeded()
+        applyEmphasisFontsIfNeeded()
+        invalidateIntrinsicContentSize()
+    }
+
+    override func layout() {
+        applyLayoutTextIfNeeded()
+        super.layout()
+    }
+
+    override var intrinsicContentSize: NSSize {
+        applyLayoutTextIfNeeded()
+        return super.intrinsicContentSize
+    }
+
+    private func applyLayoutTextIfNeeded() {
+        guard let localizedSubtitle else { return }
+        let width = bounds.width
+        guard width > 0 else {
+            if super.stringValue != localizedSubtitle.text {
+                isApplyingLayoutText = true
+                super.stringValue = localizedSubtitle.text
+                isApplyingLayoutText = false
+            }
+            applyEmphasisFontsIfNeeded()
+            return
+        }
+        guard abs(width - lastAppliedWidth) > 0.5 || super.stringValue == localizedSubtitle.text else {
+            return
+        }
+        let font = self.font ?? NSFont.systemFont(ofSize: 12)
+        let layoutText = DashboardSettingsComponents.subtitleDisplayText(
+            localizedSubtitle,
+            constrainedTo: width,
+            font: font
+        )
+        guard layoutText != super.stringValue else {
+            lastAppliedWidth = width
+            applyEmphasisFontsIfNeeded()
+            return
+        }
+        isApplyingLayoutText = true
+        super.stringValue = layoutText
+        isApplyingLayoutText = false
+        lastAppliedWidth = width
+        applyEmphasisFontsIfNeeded()
+        invalidateIntrinsicContentSize()
+    }
+
+    private func applyEmphasisFontsIfNeeded() {
+        guard !isApplyingLayoutText, !isApplyingEmphasis else { return }
+        guard let localizedSubtitle, !localizedSubtitle.emphasisGroups.isEmpty else { return }
+        let displayed = super.stringValue
+        guard !displayed.isEmpty else { return }
+        let font = self.font ?? NSFont.systemFont(ofSize: 12)
+        let attributed = NSMutableAttributedString(
+            string: displayed,
+            attributes: [
+                .font: font,
+                .foregroundColor: textColor ?? NSColor.secondaryLabelColor
+            ]
+        )
+        let bold = NSFont.systemFont(ofSize: font.pointSize, weight: .bold)
+        let source = localizedSubtitle.text as NSString
+        let layout = displayed as NSString
+        for range in localizedSubtitle.emphasisGroups {
+            guard range.location >= 0,
+                  range.length > 0,
+                  NSMaxRange(range) <= source.length else {
+                continue
+            }
+            let token = source.substring(with: range)
+            let found = layout.range(of: token)
+            guard found.location != NSNotFound else { continue }
+            attributed.addAttribute(.font, value: bold, range: found)
+        }
+        isApplyingEmphasis = true
+        isApplyingLayoutText = true
+        attributedStringValue = attributed
+        isApplyingLayoutText = false
+        isApplyingEmphasis = false
+    }
+}
+
+/// Hosts that still own card height (the native settings card) can remeasure
 /// after a native row's wrapping width changes.
 protocol SettingsRowHeightInvalidating: AnyObject {
     func invalidateHostedSettingsRowHeight()
@@ -9,7 +156,7 @@ protocol SettingsRowHeightInvalidating: AnyObject {
 /// Native Auto Layout settings row: title, optional detail, trailing control.
 ///
 /// The row itself is an `NSView` so the 62pt floor can live on the outer view
-/// (centerY + inequality padding), matching `DashboardSettingsRowView`. Making
+/// (centerY + inequality padding) without a parent-side measurement pass. Making
 /// `SettingsRowView` an `NSStackView` stretched the nested labels stack to the
 /// inner 40pt and then stretched the title field, which kept a 2pt *frame* gap
 /// while the drawn glyphs sat much farther apart.
@@ -189,11 +336,35 @@ final class SettingsRowView: NSView {
         detailLabel.invalidateIntrinsicContentSize()
         labelsStack.invalidateIntrinsicContentSize()
         contentStack.invalidateIntrinsicContentSize()
-        updateLabelsMinimumHeight()
         wrappingHeightIsDirty = true
-        invalidateIntrinsicContentSize()
-        needsLayout = true
+        refreshWrappingLayout()
         notifyHeightHost()
+    }
+
+    /// Content height used by the compatibility section factory. Not an
+    /// Auto Layout intrinsic size — an equal height constraint on the row
+    /// itself would resurrect the legacy measurement engine.
+    func hostedCardHeight() -> CGFloat {
+        let labelsHeight = labelsContentHeight()
+        let accessoryHeight: CGFloat
+        if let accessoryView, !accessoryView.isHidden {
+            let intrinsic = accessoryView.intrinsicContentSize.height
+            if intrinsic > 0, intrinsic != NSView.noIntrinsicMetric {
+                accessoryHeight = intrinsic
+            } else if accessoryView.bounds.height > 1 {
+                accessoryHeight = accessoryView.bounds.height
+            } else {
+                accessoryHeight = 0
+            }
+        } else {
+            accessoryHeight = 0
+        }
+        let contentHeight = stacksVertically
+            ? labelsHeight
+                + DashboardSettingsComponents.settingsRowContentControlSpacing
+                + accessoryHeight
+            : max(labelsHeight, accessoryHeight)
+        return max(rowMinimumHeight, contentHeight + rowVerticalPadding * 2)
     }
 
     private func recordSolvedWrappingWidthIfNeeded() {
@@ -304,8 +475,23 @@ final class SettingsRowView: NSView {
     }
 
     private func wrappingWidthForLabels() -> CGFloat {
-        let width = labelsStack.bounds.width
-        return width > 1 ? width : 0
+        let laidOut = labelsStack.bounds.width
+        if laidOut > 1 { return laidOut }
+        let available = max(0, bounds.width - Self.horizontalPadding * 2)
+        guard available > 1 else { return 0 }
+        if stacksVertically || accessoryView == nil || accessoryView?.isHidden == true {
+            return available
+        }
+        let accessoryWidth: CGFloat
+        if let adaptive = accessoryView as? SettingsRowAccessoryLayout {
+            accessoryWidth = adaptive.naturalAccessoryWidth
+        } else if let accessoryView {
+            accessoryWidth = Self.naturalWidth(of: accessoryView)
+        } else {
+            accessoryWidth = 0
+        }
+        guard accessoryWidth > 1 else { return available }
+        return max(0, available - accessoryWidth - Self.contentSpacing)
     }
 
     private func wrappingWidthForTitle(labelWidth: CGFloat) -> CGFloat {
@@ -398,7 +584,7 @@ final class SettingsRowView: NSView {
         if let accessoryView {
             accessoryView.translatesAutoresizingMaskIntoConstraints = false
             accessoryView.setContentHuggingPriority(.required, for: .horizontal)
-            if accessoryView is DashboardSettingsRowControlLayout {
+            if accessoryView is SettingsRowAccessoryLayout {
                 accessoryView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             } else {
                 accessoryView.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -452,7 +638,7 @@ final class SettingsRowView: NSView {
         color: NSColor,
         overwriteContent: Bool
     ) {
-        if overwriteContent {
+        if overwriteContent, !(label is SettingsSemanticSubtitleLabel) {
             label.stringValue = text
         }
         label.font = font
@@ -461,7 +647,13 @@ final class SettingsRowView: NSView {
         label.isSelectable = false
         label.usesSingleLineMode = false
         let wrappingText = overwriteContent || label.stringValue.isEmpty ? text : label.stringValue
-        label.lineBreakMode = DashboardSettingsComponents.settingsSubtitleLineBreakMode(for: wrappingText)
+        if label is SettingsSemanticSubtitleLabel {
+            label.lineBreakMode = DashboardSettingsComponents.settingsSubtitleLineBreakMode(
+                for: LocalizedSubtitle(text: wrappingText)
+            )
+        } else {
+            label.lineBreakMode = DashboardSettingsComponents.settingsSubtitleLineBreakMode(for: wrappingText)
+        }
         label.maximumNumberOfLines = 0
         label.cell?.wraps = true
         label.cell?.isScrollable = false
@@ -480,17 +672,19 @@ final class SettingsRowView: NSView {
     }
 
     private func syncAdaptiveAccessory() {
-        guard let accessoryView,
-              let adaptive = accessoryView as? DashboardSettingsRowControlLayout
-        else { return }
+        guard let accessoryView, !accessoryView.isHidden else { return }
         let availableWidth = max(0, bounds.width - Self.horizontalPadding * 2)
-        adaptive.updateAvailableRowWidth(availableWidth)
+        if let adaptive = accessoryView as? SettingsRowAccessoryLayout {
+            adaptive.updateAvailableRowWidth(availableWidth)
+        }
         // Control orientation (horizontal vs vertical) is independent of row
         // placement (inline / vertical-beside / dedicated-below). Measure
         // leftover label width against the accessory's natural width for its
         // current orientation, never the stack's compressed fitting size.
+        // Ordinary controls use the same 120pt leftover floor unless an
+        // adaptive accessory opts out with minimumInlineLabelWidth == 0.
         let placeOnDedicatedRow = forceDedicatedControlRow
-            || shouldPlaceAccessoryOnDedicatedRow(adaptive, availableWidth: availableWidth)
+            || shouldPlaceAccessoryOnDedicatedRow(availableWidth: availableWidth)
         applyVerticalStacking(placeOnDedicatedRow)
         updateAccessoryNaturalWidthLock()
     }
@@ -502,7 +696,7 @@ final class SettingsRowView: NSView {
             return
         }
         let naturalWidth: CGFloat
-        if let adaptive = accessoryView as? DashboardSettingsRowControlLayout {
+        if let adaptive = accessoryView as? SettingsRowAccessoryLayout {
             naturalWidth = adaptive.naturalAccessoryWidth
         } else {
             naturalWidth = Self.naturalWidth(of: accessoryView)
@@ -535,18 +729,23 @@ final class SettingsRowView: NSView {
         return fitting.isFinite && fitting > 0 ? fitting : 0
     }
 
-    private func shouldPlaceAccessoryOnDedicatedRow(
-        _ adaptive: DashboardSettingsRowControlLayout,
-        availableWidth: CGFloat
-    ) -> Bool {
+    private func shouldPlaceAccessoryOnDedicatedRow(availableWidth: CGFloat) -> Bool {
         guard let accessoryView,
               !accessoryView.isHidden,
               availableWidth > 0
         else { return false }
-        let minimumLabelWidth = adaptive.minimumInlineLabelWidth
+        let minimumLabelWidth: CGFloat
+        let naturalWidth: CGFloat
+        if let adaptive = accessoryView as? SettingsRowAccessoryLayout {
+            minimumLabelWidth = adaptive.minimumInlineLabelWidth
+            naturalWidth = adaptive.naturalAccessoryWidth
+        } else {
+            minimumLabelWidth = Self.minimumInlineLabelWidth
+            naturalWidth = Self.naturalWidth(of: accessoryView)
+        }
         guard minimumLabelWidth > 0 else { return false }
         let remainingWhenBeside = availableWidth
-            - max(1, adaptive.naturalAccessoryWidth)
+            - max(1, naturalWidth)
             - Self.contentSpacing
         return remainingWhenBeside + 0.5 < minimumLabelWidth
     }
@@ -586,21 +785,22 @@ final class SettingsRowView: NSView {
     }
 
     private func labelsContentHeight() -> CGFloat {
-        let titleHeight = measuredFieldHeight(titleLabel)
+        let titleHeight = measuredFieldHeight(titleLabel, isTitle: true)
         guard !detailLabel.isHidden else { return titleHeight }
-        return titleHeight + Self.labelSpacing + measuredFieldHeight(detailLabel)
+        return titleHeight + Self.labelSpacing + measuredFieldHeight(detailLabel, isTitle: false)
     }
 
-    private func measuredFieldHeight(_ field: NSTextField) -> CGFloat {
-        let intrinsic = field.intrinsicContentSize.height
-        let width = field.preferredMaxLayoutWidth > 1
-            ? field.preferredMaxLayoutWidth
-            : field.bounds.width
-        guard width > 1, let cell = field.cell else { return max(0, intrinsic) }
-        let fitted = cell.cellSize(
-            forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
-        ).height
-        return max(0, max(intrinsic, fitted))
+    private func measuredFieldHeight(_ field: NSTextField, isTitle: Bool) -> CGFloat {
+        let solved = wrappingWidthForLabels()
+        let width: CGFloat
+        if solved > 1 {
+            width = isTitle ? wrappingWidthForTitle(labelWidth: solved) : solved
+        } else if field.preferredMaxLayoutWidth > 1 {
+            width = field.preferredMaxLayoutWidth
+        } else {
+            width = field.bounds.width
+        }
+        return SettingsTextHeight.measured(field, at: width)
     }
 
     private func updateLabelsMinimumHeight() {
@@ -652,6 +852,12 @@ private final class SettingsLabelsStackView: NSStackView {
     }
 
     private func measuredHeight(_ view: NSView) -> CGFloat {
+        if let field = view as? NSTextField {
+            let width = field.preferredMaxLayoutWidth > 1
+                ? field.preferredMaxLayoutWidth
+                : field.bounds.width
+            return SettingsTextHeight.measured(field, at: width)
+        }
         if let stack = view as? NSStackView {
             let visible = stack.arrangedSubviews.filter { !$0.isHidden }
             let heights = visible.map(measuredHeight).filter { $0 > 0 }
@@ -664,6 +870,22 @@ private final class SettingsLabelsStackView: NSStackView {
         let intrinsic = view.intrinsicContentSize.height
         guard intrinsic > 0, intrinsic != NSView.noIntrinsicMetric else { return 0 }
         return intrinsic
+    }
+}
+
+/// Height of a wrapping settings label at a solved column width. Unconstrained
+/// `intrinsicContentSize` is ignored because AppKit reports a stacked glyph
+/// height when `preferredMaxLayoutWidth` is still 0.
+private enum SettingsTextHeight {
+    static func measured(_ field: NSTextField, at width: CGFloat) -> CGFloat {
+        let fontHeight = ceil(
+            (field.font ?? NSFont.systemFont(ofSize: 12)).boundingRectForFont.height
+        )
+        guard width > 1, let cell = field.cell else { return fontHeight }
+        let fitted = cell.cellSize(
+            forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
+        ).height
+        return max(fontHeight, fitted)
     }
 }
 
