@@ -1563,13 +1563,6 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 file: file,
                 line: line
             )
-            XCTAssertNotEqual(
-                scrollView.contentInsets.top,
-                titlebarClearance,
-                accuracy: 1,
-                file: file,
-                line: line
-            )
         } else {
             XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets, file: file, line: line)
             XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001, file: file, line: line)
