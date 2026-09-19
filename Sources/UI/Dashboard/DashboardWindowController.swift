@@ -579,8 +579,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private func installLayout(in window: NSWindow) {
         let liveSidebar = liveSidebarSeed()
         detachPageContainerFromParent()
-        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
-        let sidebar = makeSidebar(titlebarHeight: titlebarHeight)
+        let sidebar = makeSidebar(in: window)
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         let plan = restorationPlan(for: window)
         let seedWidth = liveSidebar.width ?? plan.sidebarWidth
@@ -716,7 +715,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         )
     }
 
-    private func makeSidebar(titlebarHeight: CGFloat) -> NSView {
+    private func makeSidebar(in window: NSWindow) -> NSView {
         let sidebar = NSView()
 
         sourceListController?.teardown()
@@ -730,13 +729,12 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         let navigation = sourceList.view
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebar.addSubview(navigation)
-        // Full-height sidebar sits under the titlebar. Keep the source-list
-        // below traffic lights without a custom glass/card wrapper.
-        // Scroll-edge content insets belong to #401.
+        let policy = DashboardSidebarScrollLayoutPolicy.current
+        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
         NSLayoutConstraint.activate([
             navigation.topAnchor.constraint(
                 equalTo: sidebar.topAnchor,
-                constant: max(0, titlebarHeight + 14)
+                constant: policy.viewportTopInset(titlebarHeight: titlebarHeight)
             ),
             navigation.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor),
             navigation.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor),

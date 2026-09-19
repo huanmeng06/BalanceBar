@@ -176,6 +176,60 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
     }
 }
 
+/// Sidebar source-list chrome for the running OS.
+///
+/// macOS 26+ pins the source-list `NSScrollView` to the sidebar root so
+/// AppKit can write content insets for the overlapping unified toolbar /
+/// titlebar. The former `titlebarHeight + 14` gap was a non-scrolling
+/// viewport offset and is not translated into a Tahoe fixed content inset.
+/// `sidebarTitlebarSeparatorStyle` stays `.none` on the page policy: that
+/// value does not block automatic insets, and the tracking separator owns
+/// the split divider. macOS 14/15 keep the titlebar clearance because a
+/// transparent titlebar plus `.fullSizeContentView` does not reliably
+/// produce that inset.
+struct DashboardSidebarScrollLayoutPolicy: Equatable {
+    /// Extra visual spacing that used to sit below the titlebar on old OS.
+    static let preTahoeExtraClearance: CGFloat = 14
+
+    let automaticallyAdjustsContentInsets: Bool
+    let zerosManualInsets: Bool
+
+    static let systemScrollEdge = DashboardSidebarScrollLayoutPolicy(
+        automaticallyAdjustsContentInsets: true,
+        zerosManualInsets: false
+    )
+
+    static let titlebarClearance = DashboardSidebarScrollLayoutPolicy(
+        automaticallyAdjustsContentInsets: false,
+        zerosManualInsets: true
+    )
+
+    static var current: DashboardSidebarScrollLayoutPolicy {
+        forOperatingSystemVersion(ProcessInfo.processInfo.operatingSystemVersion)
+    }
+
+    static func forOperatingSystemVersion(
+        _ version: OperatingSystemVersion
+    ) -> DashboardSidebarScrollLayoutPolicy {
+        version.majorVersion >= 26 ? systemScrollEdge : titlebarClearance
+    }
+
+    /// Non-scrolling gap between the sidebar root and the source-list
+    /// `NSScrollView`. Tahoe uses 0 so the scroll view overlaps chrome.
+    func viewportTopInset(titlebarHeight: CGFloat) -> CGFloat {
+        automaticallyAdjustsContentInsets
+            ? 0
+            : max(0, titlebarHeight + Self.preTahoeExtraClearance)
+    }
+
+    func apply(to scrollView: NSScrollView) {
+        scrollView.automaticallyAdjustsContentInsets = automaticallyAdjustsContentInsets
+        guard zerosManualInsets else { return }
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+    }
+}
+
 /// Describes the vertical geometry of a document inside a clip view.
 ///
 /// `visualOffset` is measured from the document's rest position. For a

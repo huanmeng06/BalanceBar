@@ -368,7 +368,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
-        scrollView.automaticallyAdjustsContentInsets = false
+        DashboardSidebarScrollLayoutPolicy.current.apply(to: scrollView)
     }
 
     private func reloadAndExpand() {

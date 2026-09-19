@@ -57,7 +57,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 双击标题栏 | `DashboardContentRootView.hitTest` 对 `contentLayoutRect` 以上返回 `nil`，让 NSThemeFrame 执行系统 `AppleActionOnDoubleClick`；不再调用 `toggleWindowZoom()` | `DashboardContentRootView.hitTest` |
 | 全屏 | 使用标准 zoom / 全屏行为；不再在 `.fullScreen` 时用自定义 `hitTest` 抑制双击 | AppKit |
 | 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。macOS 26+ 的 `DashboardContentRootView` 是普通 `NSView`，不再显示 #383 的 `NSVisualEffectView` / 自定义根 tint / `contentSurface` 背景层；这些旧层位于 split view 后方，不能仅凭层级认定它们遮挡了系统 effect；`contentSurface` 保留为旧系统兼容对象但在 Tahoe 隐藏。macOS 14/15 仍挂载 legacy `NSVisualEffectView` + 全宽 `contentSurface`。左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。macOS 26+ 对**相邻 content item**（不是 sidebar item）设置公开 `automaticallyAdjustsSafeAreaInsets = true`，允许 floating sidebar 叠在内容 pane 上并由 AppKit 更新该 pane 的 safe area；页面挂载到 `DashboardPageContainerViewController` 的水平 `safeAreaLayoutGuide`，不按 sidebar 当前宽度手算 left inset。原生 `NSSplitView` 为 `isVertical = true`、`.thin` divider。打开时侧栏约 216pt（sidebar 视图一次性 frame seed，不是 `preferredThicknessFraction`）；`minimumThickness` 约 212、`maximumThickness` 320；`canCollapse = true`。折叠/展开走 `isCollapsed` 与 `toggleSidebar(_:)`；用户可见的系统 toolbar toggle 由 `DashboardToolbarController` 接入同一 responder chain。不把 divider 厚度锁成 0，也不另造 hit strip；`holdingPriority` 为 sidebar 251 / content `.defaultLow`。 | `installLayout` / `DashboardSplitViewController` / `DashboardPageContainerViewController` / `DashboardToolbarController` |
-| 侧栏材质 | 由 `NSSplitViewItem(sidebarWithViewController:)` 提供系统 sidebar chrome；侧栏根视图透明，仅承载 source-list | `makeSidebar` / `DashboardSplitViewController` |
+| 侧栏材质 | 由 `NSSplitViewItem(sidebarWithViewController:)` 提供系统 sidebar chrome；侧栏根视图透明，仅承载 source-list。macOS 26+：source-list `NSScrollView` 贴齐 Sidebar root（top constant 0），`automaticallyAdjustsContentInsets = true`，由 AppKit 为 overlapping unified toolbar / titlebar 写入 content insets；不再用 `titlebarHeight + 14` 把整个 viewport 下移。`sidebarTitlebarSeparatorStyle` 仍为 `.none`（配合已有 `NSTrackingSeparatorToolbarItem`；该值不是 Soft/Hard 开关，也不阻止系统 inset）。macOS 14/15：保留 `titlebarHeight + 14` 非滚动 clearance 与 zero content insets，避免第一行进入透明 titlebar。几何由 `DashboardSidebarScrollLayoutPolicy` 拥有。 | `makeSidebar` / `DashboardSourceListController` / `DashboardSidebarScrollLayoutPolicy` |
 | 点击编辑 | 窗口级 `leftMouseDown` monitor：点在可编辑 `NSTextField` 内保持编辑，点在标签/卡片/空白处 `makeFirstResponder(nil)` | `installMouseMonitor` |
 
 测试宿主（`ApplicationWindowPresentation`）会把窗口停到屏幕外并关闭阴影、设置 `isOpaque = false` / `alphaValue = 0`。生产窗口背景及 opacity 在 `makeUnpresentedWindow` 返回、进入测试宿主之前验证，不能对 `open()` 后的窗口断言生产 opacity。下面标为「代码已锁定」的项可以在 XCTest 里断言；标为「人工」的项必须看开发版。
@@ -152,13 +152,15 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 - `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、Tahoe 不透明标题栏 / 旧系统透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator` 以及 content-pane `NSSearchToolbarItem`、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、Tahoe 原生 window surface / 旧系统 legacy tint、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
 - `DashboardWindowControllerTests.testWindowEnablesNativeZoomAndStaysResizable`
+- `DashboardNativeUIBaselineTests.testSidebarSourceListUsesPolicyOwnedScrollEdgeLayout`
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`
 - `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome
 - `DashboardComponentsTests.testDashboardSectionsPreserveNavigationOrderAndMetadata`
 - `SettingsSectionViewTests`：原生 section 高度由子 View 约束推导，不走 `settingsSectionIntrinsicHeight` / 父级 preferred-height 循环；General Startup 是试点卡片
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
 - `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
-- `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权
+- `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权；source-list 走 `DashboardSidebarScrollLayoutPolicy.apply(to:)`，不写死 `automaticallyAdjustsContentInsets`
+- `DashboardScrollClampingTests`：page 与 sidebar scroll-layout policy 的 OS 分支、inset flags、titlebar separator 契约
 
 ## 明确不在本基线内
 

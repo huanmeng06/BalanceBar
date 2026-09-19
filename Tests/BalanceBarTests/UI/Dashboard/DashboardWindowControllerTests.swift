@@ -12,7 +12,7 @@ final class DashboardWindowControllerTests: XCTestCase {
             ),
             encoding: .utf8
         )
-        let start = try XCTUnwrap(source.range(of: "private func makeSidebar(titlebarHeight: CGFloat) -> NSView {"))
+        let start = try XCTUnwrap(source.range(of: "private func makeSidebar(in window: NSWindow) -> NSView {"))
         let end = try XCTUnwrap(
             source.range(of: "var sourceListForTesting: DashboardSourceListController? { sourceListController }")
         )
@@ -31,6 +31,9 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains("accessoryHost.detach"))
         XCTAssertFalse(source.contains("DashboardSidebarChromeBaseline"))
         XCTAssertFalse(source.contains("sourceListTopConstraint"))
+        XCTAssertFalse(source.contains("titlebarHeight + 14"))
+        XCTAssertTrue(source.contains("DashboardSidebarScrollLayoutPolicy.current"))
+        XCTAssertTrue(source.contains("viewportTopInset(titlebarHeight:"))
         XCTAssertFalse(source.contains("sidebarInteractiveViews"))
         XCTAssertFalse(source.contains("windowDidEnterFullScreen"))
         XCTAssertFalse(source.contains("windowWillExitFullScreen"))
@@ -863,6 +866,40 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         assertSplitPanesDoNotOverlap(in: window)
     }
 
+    func testSidebarSourceListUsesPolicyOwnedScrollEdgeLayout() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.setContentSize(NSSize(width: 880, height: 620))
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+
+        window.setContentSize(NSSize(width: 800, height: 560))
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+
+        window.setContentSize(NSSize(width: 1100, height: 760))
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        let sidebarItem = splitController.splitViewItems[0]
+        splitController.splitView.setPosition(sidebarItem.minimumThickness, ofDividerAt: 0)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        splitController.splitView.setPosition(sidebarItem.maximumThickness, ofDividerAt: 0)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+
+        sidebarItem.isCollapsed = true
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        splitController.toggleSidebar(nil)
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        XCTAssertFalse(sidebarItem.isCollapsed)
+
+        controller.rebuild()
+        try assertSidebarScrollLayoutFollowsPolicy(in: controller)
+        XCTAssertTrue(window.styleMask.contains(.fullSizeContentView))
+    }
+
     func testNativeToolbarUsesSystemSidebarItemsWithoutCustomFillers() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -1440,6 +1477,104 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertNotNil(outline, "Sidebar must still host the #386 source-list", file: file, line: line)
         XCTAssertEqual(outline?.style, .sourceList, file: file, line: line)
     }
+
+    private func assertSidebarScrollLayoutFollowsPolicy(
+        in controller: DashboardWindowController,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let window = try XCTUnwrap(controller.window, file: file, line: line)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController,
+            file: file,
+            line: line
+        )
+        let sidebarItem = splitController.splitViewItems[0]
+        XCTAssertEqual(sidebarItem.behavior, .sidebar, file: file, line: line)
+        XCTAssertTrue(sidebarItem.allowsFullHeightLayout, file: file, line: line)
+        XCTAssertTrue(window.styleMask.contains(.fullSizeContentView), file: file, line: line)
+
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting, file: file, line: line)
+        XCTAssertEqual(sourceList.outlineView.style, .sourceList, file: file, line: line)
+        let scrollView = sourceList.scrollView
+        let policy = DashboardSidebarScrollLayoutPolicy.current
+        XCTAssertEqual(
+            scrollView.automaticallyAdjustsContentInsets,
+            policy.automaticallyAdjustsContentInsets,
+            file: file,
+            line: line
+        )
+
+        if #available(macOS 26.0, *) {
+            XCTAssertFalse(window.titlebarAppearsTransparent, file: file, line: line)
+            XCTAssertFalse(sidebarItem.automaticallyAdjustsSafeAreaInsets, file: file, line: line)
+            XCTAssertTrue(
+                try XCTUnwrap(splitController.contentSplitViewItem).automaticallyAdjustsSafeAreaInsets,
+                file: file,
+                line: line
+            )
+        }
+
+        let sidebar = sidebarItem.viewController.view
+        guard sidebar.frame.width > 1, sidebar.frame.height > 1, !sidebarItem.isCollapsed else { return }
+
+        let viewportInSidebar = scrollView.convert(scrollView.bounds, to: sidebar)
+        let viewportGap = sidebar.bounds.maxY - viewportInSidebar.maxY
+        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+
+        if policy.automaticallyAdjustsContentInsets {
+            XCTAssertEqual(viewportGap, 0, accuracy: 1, file: file, line: line)
+            XCTAssertGreaterThan(scrollView.contentInsets.top, 1, file: file, line: line)
+            XCTAssertEqual(
+                scrollView.contentInsets.top,
+                sidebar.safeAreaInsets.top,
+                accuracy: 1,
+                file: file,
+                line: line
+            )
+            XCTAssertNotEqual(
+                viewportGap,
+                titlebarHeight + DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance,
+                accuracy: 1,
+                file: file,
+                line: line
+            )
+        } else {
+            XCTAssertGreaterThan(viewportGap, 1, file: file, line: line)
+            XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001, file: file, line: line)
+            XCTAssertGreaterThanOrEqual(
+                viewportGap,
+                DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance - 1,
+                file: file,
+                line: line
+            )
+        }
+        let outline = sourceList.outlineView
+        XCTAssertGreaterThan(outline.numberOfRows, 0, file: file, line: line)
+        let firstRow = outline.convert(outline.rect(ofRow: 0), to: nil)
+        XCTAssertGreaterThan(firstRow.height, 0, file: file, line: line)
+        if let closeButton = window.standardWindowButton(.closeButton) {
+            let closeFrame = closeButton.convert(closeButton.bounds, to: nil)
+            XCTAssertFalse(
+                firstRow.intersects(closeFrame),
+                "First source-list row must not sit under the traffic lights",
+                file: file,
+                line: line
+            )
+        }
+        if !policy.automaticallyAdjustsContentInsets {
+            XCTAssertLessThanOrEqual(
+                firstRow.maxY,
+                window.contentLayoutRect.maxY + 1,
+                "Old-OS first source-list row must stay out of the transparent titlebar",
+                file: file,
+                line: line
+            )
+        }
+    }
 }
 
 @MainActor
@@ -1686,6 +1821,22 @@ final class DashboardSourceListContractTests: XCTestCase {
         XCTAssertNil(survivingOutline.dataSource)
         XCTAssertNil(survivingOutline.delegate)
         XCTAssertNil(controller.sourceListForTesting)
+    }
+
+    func testSourceListAppliesSidebarScrollLayoutPolicyInsteadOfHardcodedInsets() throws {
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardSourceListController.swift"
+            ),
+            encoding: .utf8
+        )
+        XCTAssertTrue(source.contains("DashboardSidebarScrollLayoutPolicy.current.apply(to: scrollView)"))
+        XCTAssertFalse(source.contains("automaticallyAdjustsContentInsets = false"))
+        XCTAssertFalse(source.contains("automaticallyAdjustsContentInsets = true"))
+        XCTAssertFalse(source.contains("titlebarHeight + 14"))
+        XCTAssertFalse(source.contains("NSScrollPocket"))
+        XCTAssertFalse(source.contains("preferredScrollEdgeEffectStyle"))
     }
 
     private func makeController(
