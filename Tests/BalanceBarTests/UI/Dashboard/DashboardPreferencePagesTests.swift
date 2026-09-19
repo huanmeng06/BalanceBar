@@ -5863,6 +5863,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(amountXButtons.isEmpty)
         XCTAssertTrue(iconOffsetSlider is MenuBarWidthSlider)
         XCTAssertTrue(amountOffsetSlider is MenuBarWidthSlider)
+        for offsetSlider in [iconOffsetSlider, amountOffsetSlider, widthSlider] {
+            XCTAssertEqual(offsetSlider.alignmentRectInsets.top, 0)
+            XCTAssertEqual(offsetSlider.alignmentRectInsets.left, 0)
+            XCTAssertEqual(offsetSlider.alignmentRectInsets.bottom, 0)
+            XCTAssertEqual(offsetSlider.alignmentRectInsets.right, 0)
+            XCTAssertEqual(offsetSlider.superview?.alignmentRectInsets.bottom, 0)
+        }
         for offsetSlider in [iconOffsetSlider, amountOffsetSlider] {
             XCTAssertEqual(
                 offsetSlider.minValue,

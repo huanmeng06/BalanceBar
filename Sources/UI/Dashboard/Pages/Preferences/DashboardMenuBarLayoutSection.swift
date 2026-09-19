@@ -19,6 +19,14 @@ final class DashboardMenuBarLayoutSection {
             fatalError("init(coder:) has not been implemented")
         }
 
+        /// Native rows center accessories through `NSStackView` alignment,
+        /// which uses alignment rects. Tick-mark sliders report a 1pt-class
+        /// bottom inset, so the track's bounds sit off the row's geometric
+        /// center on some macOS 26 SDKs. The legacy settings row pinned
+        /// `control.centerY` with bounds anchors. Zero insets keep the
+        /// complete slider group bounds-centered in the native row.
+        override var alignmentRectInsets: NSEdgeInsets { .init() }
+
         func updateAvailableRowWidth(_ width: CGFloat) {
             // The slider itself keeps its fixed track width. The row moves the
             // complete group below the labels when the remaining inline text
