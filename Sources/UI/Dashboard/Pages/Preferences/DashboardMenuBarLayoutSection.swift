@@ -2,6 +2,82 @@ import AppKit
 
 /// Font, icon size, offset, and spacing controls for the Menu Bar page.
 final class DashboardMenuBarLayoutSection {
+    /// Slider groups have a stable natural width, but their labels should
+    /// move below the row text when the Menu Bar page becomes narrow. The
+    /// native settings row owns that placement decision through this contract.
+    ///
+    /// This is a plain `NSView` host so the native row can bounds-center the
+    /// group. An inner `NSStackView` would derive `alignmentRect(forFrame:)`
+    /// from arranged subviews and ignore `alignmentRectInsets`, which on CI
+    /// macOS 26 showed up as `slider.midY` 39 vs row `midY` 38. Endpoint
+    /// labels and the slider are pinned with bounds `centerY` instead, matching
+    /// the legacy settings row's `control.centerY` pin.
+    private final class MenuBarSliderControls: NSView, DashboardSettingsRowControlLayout {
+        private static let spacing: CGFloat = 6
+
+        let allowsTextDrivenDedicatedRow = true
+        let minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        private(set) var stacksControlsVertically = false
+        private let arrangedViews: [NSView]
+
+        init(views: [NSView]) {
+            arrangedViews = views
+            super.init(frame: .zero)
+            translatesAutoresizingMaskIntoConstraints = false
+            var previous: NSView?
+            var constraints: [NSLayoutConstraint] = []
+            for view in views {
+                view.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(view)
+                constraints.append(contentsOf: [
+                    view.centerYAnchor.constraint(equalTo: centerYAnchor),
+                    view.topAnchor.constraint(greaterThanOrEqualTo: topAnchor),
+                    view.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+                    heightAnchor.constraint(greaterThanOrEqualTo: view.heightAnchor)
+                ])
+                if let previous {
+                    constraints.append(
+                        view.leadingAnchor.constraint(
+                            equalTo: previous.trailingAnchor,
+                            constant: Self.spacing
+                        )
+                    )
+                } else {
+                    constraints.append(view.leadingAnchor.constraint(equalTo: leadingAnchor))
+                }
+                previous = view
+            }
+            if let previous {
+                constraints.append(previous.trailingAnchor.constraint(equalTo: trailingAnchor))
+            }
+            NSLayoutConstraint.activate(constraints)
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override var alignmentRectInsets: NSEdgeInsets { .init() }
+
+        override func alignmentRect(forFrame frame: NSRect) -> NSRect { frame }
+
+        override func frame(forAlignmentRect alignmentRect: NSRect) -> NSRect { alignmentRect }
+
+        func updateAvailableRowWidth(_ width: CGFloat) {
+            // The slider itself keeps its fixed track width. The row moves the
+            // complete group below the labels when the remaining inline text
+            // column would become too narrow.
+            _ = width
+        }
+
+        var naturalAccessoryWidth: CGFloat {
+            let visible = arrangedViews.filter { !$0.isHidden }
+            return visible.reduce(CGFloat(0)) { total, view in
+                total + max(0, view.fittingSize.width)
+            } + max(0, CGFloat(visible.count - 1)) * Self.spacing
+        }
+    }
+
     private struct SliderEndpointWidths {
         let minimum: CGFloat
         let maximum: CGFloat
@@ -137,40 +213,40 @@ final class DashboardMenuBarLayoutSection {
             for: iconSizeControls.control,
             preferences: input.preferences
         )
-        return DashboardSettingsComponents.makeSettingsSection(
-            tr(.keyDashboardMenuBarPageLayout),
-            rows: [
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuBarPageMenuBarFontSize),
-                    subtitle: tr(.keyDashboardMenuBarPageAdjustsTheMenuBarFontSize),
-                    control: fontSizeControls.view,
+        return SettingsSectionView(
+            title: tr(.keyDashboardMenuBarPageLayout),
+            contentViews: [
+                SettingsRowView(
+                    title: tr(.keyDashboardMenuBarPageMenuBarFontSize),
+                    detail: tr(.keyDashboardMenuBarPageAdjustsTheMenuBarFontSize),
+                    accessoryView: fontSizeControls.view,
                     minimumHeight: 66
                 ),
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuBarPageMenuBarIconSize),
-                    subtitle: tr(.keyDashboardMenuBarPageAdjustsTheMenuBarIconSize),
-                    control: iconSizeControls.view,
+                SettingsRowView(
+                    title: tr(.keyDashboardMenuBarPageMenuBarIconSize),
+                    detail: tr(.keyDashboardMenuBarPageAdjustsTheMenuBarIconSize),
+                    accessoryView: iconSizeControls.view,
                     minimumHeight: 66
                 ),
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuBarPageIconOffset),
-                    subtitleContent: iconOffsetSummaryContent,
-                    subtitleLabel: iconOffsetSummary,
-                    control: iconOffsetControls.view,
+                SettingsRowView(
+                    title: tr(.keyDashboardMenuBarPageIconOffset),
+                    detail: iconOffsetSummaryContent.text,
+                    detailLabel: iconOffsetSummary,
+                    accessoryView: iconOffsetControls.view,
                     minimumHeight: 66
                 ),
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuBarPageAmountOffset),
-                    subtitleContent: amountOffsetSummaryContent,
-                    subtitleLabel: amountOffsetSummary,
-                    control: amountOffsetControls.view,
+                SettingsRowView(
+                    title: tr(.keyDashboardMenuBarPageAmountOffset),
+                    detail: amountOffsetSummaryContent.text,
+                    detailLabel: amountOffsetSummary,
+                    accessoryView: amountOffsetControls.view,
                     minimumHeight: 66
                 ),
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuBarPageMenuBarWidth),
-                    subtitleContent: widthAdjustmentSummaryContent,
-                    subtitleLabel: widthAdjustmentSummary,
-                    control: widthAdjustmentControls.view,
+                SettingsRowView(
+                    title: tr(.keyDashboardMenuBarPageMenuBarWidth),
+                    detail: widthAdjustmentSummaryContent.text,
+                    detailLabel: widthAdjustmentSummary,
+                    accessoryView: widthAdjustmentControls.view,
                     minimumHeight: 66
                 )
             ]
@@ -503,12 +579,9 @@ final class DashboardMenuBarLayoutSection {
             width: endpointWidths.maximum,
             alignment: AppLanguage.resolved == .english ? .right : .center
         )
-        let stack = NSStackView(views: [minimumLabel, slider, maximumLabel])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 6
-        stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return CenteredSliderControls(view: stack, slider: slider)
+        let controls = MenuBarSliderControls(views: [minimumLabel, slider, maximumLabel])
+        controls.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return CenteredSliderControls(view: controls, slider: slider)
     }
 
     private func makeWidthSliderEndpointLabel(

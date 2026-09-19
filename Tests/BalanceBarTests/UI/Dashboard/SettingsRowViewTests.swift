@@ -54,6 +54,60 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
     }
 
+    func testNativeRowDoesNotOverwriteSuppliedDetailLabelContent() {
+        let detail = RecordingSettingsLabel(labelWithString: "Fine-tune the icon's vertical position Y axis + 0.0 pt")
+        detail.resetAssignments()
+        let row = SettingsRowView(
+            title: "Icon Offset",
+            detail: "Fine-tune the icon's vertical position Y axis + 0.0 pt",
+            detailLabel: detail,
+            accessoryView: NSSlider()
+        )
+        XCTAssertIdentical(row.detailLabel, detail)
+        XCTAssertEqual(
+            detail.stringValue,
+            "Fine-tune the icon's vertical position Y axis + 0.0 pt"
+        )
+        XCTAssertTrue(
+            detail.assignedValues.isEmpty,
+            "supplied detail label content must not be rewritten"
+        )
+        XCTAssertEqual(detail.font, .systemFont(ofSize: 12))
+        XCTAssertEqual(detail.textColor, .secondaryLabelColor)
+        XCTAssertFalse(detail.usesSingleLineMode)
+    }
+
+    func testSuppliedSemanticSubtitleKeepsForcedLineBreakWithoutRefresh() throws {
+        let text = "Fine-tune the icon's vertical position Y axis + 0.0 pt"
+        let suffix = "Y axis + 0.0 pt"
+        let range = (text as NSString).range(of: suffix)
+        XCTAssertNotEqual(range.location, NSNotFound)
+        let subtitle = DashboardSettingsComponents.makeSubtitleLabel(
+            LocalizedSubtitle(
+                text: text,
+                semanticGroups: [range],
+                lineBreakBeforeSemanticGroups: [range]
+            )
+        )
+        let row = SettingsRowView(
+            title: "Icon Offset",
+            detail: text,
+            detailLabel: subtitle,
+            accessoryView: NSSlider(),
+            minimumHeight: 66
+        )
+        let section = SettingsSectionView(title: "Layout", contentViews: [row])
+        let window = makeTestWindow(width: 880)
+        _ = pinningHost(for: section, in: window, width: 880)
+        defer { window.orderOut(nil) }
+
+        XCTAssertIdentical(row.detailLabel, subtitle)
+        XCTAssertTrue(
+            subtitle.stringValue.contains("\n"),
+            "semantic line-break metadata must survive SettingsRowView configuration without a later refresh"
+        )
+    }
+
     func testLongDetailWrapsAndGrowsHeightAtNarrowWidthWithoutOverlappingControl() throws {
         let longDetail = "This native settings description must wrap onto additional lines when the dashboard content column is narrow so the switch stays visible beside the complete text."
         let control = NSSwitch()
@@ -1007,5 +1061,21 @@ final class SettingsRowViewTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
+    }
+}
+
+private final class RecordingSettingsLabel: NSTextField {
+    private(set) var assignedValues: [String] = []
+
+    func resetAssignments() {
+        assignedValues.removeAll()
+    }
+
+    override var stringValue: String {
+        get { super.stringValue }
+        set {
+            assignedValues.append(newValue)
+            super.stringValue = newValue
+        }
     }
 }

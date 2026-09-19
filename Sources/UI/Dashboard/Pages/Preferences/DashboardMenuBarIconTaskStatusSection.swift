@@ -94,9 +94,8 @@ final class DashboardMenuBarIconTaskStatusSection {
     private weak var animationFrameRateRow: NSView?
     private weak var animationFallbackWarningLabel: NSTextField?
     private weak var animationFallbackWarningRow: NSView?
-    private weak var iconTaskStatusRowsStack: NSStackView?
-    private weak var iconTaskStatusCardHeightConstraint: NSLayoutConstraint?
     private var iconTaskStatusSeparators: [NSView] = []
+    private weak var iconTaskStatusSection: SettingsSectionView?
     private struct IconTaskVisibilitySignature: Equatable {
         let showIcon: Bool
         let showDelay: Bool
@@ -129,9 +128,8 @@ final class DashboardMenuBarIconTaskStatusSection {
     }
 
     func make(input: DashboardMenuBarPage.Input) -> NSView {
-        iconTaskStatusRowsStack = nil
-        iconTaskStatusCardHeightConstraint = nil
         iconTaskStatusSeparators = []
+        iconTaskStatusSection = nil
         lastIconTaskVisibilitySignature = nil
         animationFallbackActive = input.animationFallbackActive
         animationFrameRate = input.preferences.menuBarAnimationFrameRate
@@ -165,10 +163,10 @@ final class DashboardMenuBarIconTaskStatusSection {
         animationFallbackWarningLabel.identifier = NSUserInterfaceItemIdentifier(
             DashboardMenuBarPage.animationFallbackWarningIdentifier
         )
-        let animationFallbackWarningRow = DashboardSettingsComponents.makeSettingsRow(
-            "",
-            subtitle: DashboardMenuBarPage.animationFallbackWarningText(),
-            subtitleLabel: animationFallbackWarningLabel,
+        let animationFallbackWarningRow = SettingsRowView(
+            title: "",
+            detail: DashboardMenuBarPage.animationFallbackWarningText(),
+            detailLabel: animationFallbackWarningLabel,
             minimumHeight: 58,
             verticalPadding: 11
         )
@@ -178,40 +176,36 @@ final class DashboardMenuBarIconTaskStatusSection {
         self.animationFallbackWarningLabel = animationFallbackWarningLabel
         self.animationFallbackWarningRow = animationFallbackWarningRow
         animationFallbackWarningRow.isHidden = true
-        let taskStatusIconRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageAgentIcon),
-            subtitle: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus),
-            control: iconToggle
+        let taskStatusIconRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageAgentIcon),
+            detail: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus),
+            accessoryView: iconToggle
         )
         self.taskStatusIconRow = taskStatusIconRow
-        let animationRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning),
-            subtitle: tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunningDescription),
-            control: animationToggle
+        let animationRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning),
+            detail: tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunningDescription),
+            accessoryView: animationToggle
         )
         self.animationRow = animationRow
         let animationModeSubtitle = DashboardMenuBarPage.animationModeDescription(
             mode: input.preferences.menuBarAnimationMode
         )
-        let animationModeTitleLabel = NSTextField(
-            wrappingLabelWithString: DashboardMenuBarPage.animationModeTitle()
-        )
-        animationModeTitleLabel.identifier = NSUserInterfaceItemIdentifier(
-            DashboardMenuBarPage.animationModeTitleIdentifier
-        )
-        self.animationModeTitleLabel = animationModeTitleLabel
         let animationModeSubtitleLabel = InlineRangeLinkTextField()
         animationModeSubtitleLabel.identifier = NSUserInterfaceItemIdentifier(
             DashboardMenuBarPage.animationModeSubtitleIdentifier
         )
         self.animationModeSubtitleLabel = animationModeSubtitleLabel
-        let animationModeRow = DashboardSettingsComponents.makeSettingsRow(
-            DashboardMenuBarPage.animationModeTitle(),
-            titleLabel: animationModeTitleLabel,
-            subtitle: animationModeSubtitle,
-            subtitleLabel: animationModeSubtitleLabel,
-            control: animationModeControl
+        let animationModeRow = SettingsRowView(
+            title: DashboardMenuBarPage.animationModeTitle(),
+            detail: animationModeSubtitle,
+            detailLabel: animationModeSubtitleLabel,
+            accessoryView: animationModeControl
         )
+        animationModeRow.titleLabel.identifier = NSUserInterfaceItemIdentifier(
+            DashboardMenuBarPage.animationModeTitleIdentifier
+        )
+        self.animationModeTitleLabel = animationModeRow.titleLabel
         self.animationModeRow = animationModeRow
         applyAnimationModeSubtitle(mode: input.preferences.menuBarAnimationMode)
         let animationFrameRateSubtitle = DashboardMenuBarPage.animationFrameRateSubtitleContent(
@@ -225,38 +219,35 @@ final class DashboardMenuBarIconTaskStatusSection {
             DashboardMenuBarPage.animationFrameRateIdentifier + "Subtitle"
         )
         self.animationFrameRateSubtitleLabel = animationFrameRateSubtitleLabel
-        let animationFrameRateRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageAnimationFrameRate),
-            subtitleContent: animationFrameRateSubtitle,
-            subtitleLabel: animationFrameRateSubtitleLabel,
-            control: animationFrameRateControl
+        let animationFrameRateRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageAnimationFrameRate),
+            detail: animationFrameRateSubtitle.text,
+            detailLabel: animationFrameRateSubtitleLabel,
+            accessoryView: animationFrameRateControl
         )
         animationFrameRateRow.identifier = NSUserInterfaceItemIdentifier(
             DashboardMenuBarPage.animationFrameRateRowIdentifier
         )
         self.animationFrameRateRow = animationFrameRateRow
-        return DashboardSettingsComponents.makeSettingsSection(
-            tr(.keyDashboardMenuBarPageIconAndTaskStatus),
-            rows: [
+        let iconTaskStatusSection = SettingsSectionView(
+            title: tr(.keyDashboardMenuBarPageIconAndTaskStatus),
+            contentViews: [
                 taskStatusIconRow,
                 animationRow,
                 animationModeRow,
                 animationFrameRateRow,
                 animationFallbackWarningRow
-            ],
-            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
-                guard let self else { return }
-                self.iconTaskStatusRowsStack = rowsStack
-                self.iconTaskStatusCardHeightConstraint = cardHeightConstraint
-                self.iconTaskStatusSeparators = separators
-                self.updateVisibility(
-                    showTaskStatusIcon: input.preferences.showMenuBarIcon,
-                    displayMode: input.preferences.menuBarIconDisplayMode,
-                    animationEnabled: input.preferences.animateCodexActivity,
-                    animationMode: input.preferences.menuBarAnimationMode
-                )
-            }
+            ]
         )
+        self.iconTaskStatusSection = iconTaskStatusSection
+        self.iconTaskStatusSeparators = iconTaskStatusSection.separators
+        updateVisibility(
+            showTaskStatusIcon: input.preferences.showMenuBarIcon,
+            displayMode: input.preferences.menuBarIconDisplayMode,
+            animationEnabled: input.preferences.animateCodexActivity,
+            animationMode: input.preferences.menuBarAnimationMode
+        )
+        return iconTaskStatusSection
     }
 
     func refresh(preferences: AppPreferences) {
@@ -344,18 +335,13 @@ final class DashboardMenuBarIconTaskStatusSection {
     }
 
     private func updateCardLayout() {
-        guard let iconTaskStatusRowsStack,
-              let iconTaskStatusCardHeightConstraint else { return }
+        guard let iconTaskStatusSection else { return }
         iconTaskCardLayoutCountForTesting += 1
-        iconTaskStatusRowsStack.needsLayout = true
-        iconTaskStatusRowsStack.layoutSubtreeIfNeeded()
-        iconTaskStatusCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
-            rowsStack: iconTaskStatusRowsStack,
-            separators: iconTaskStatusSeparators
-        )
-        iconTaskStatusRowsStack.superview?.invalidateIntrinsicContentSize()
-        iconTaskStatusRowsStack.superview?.needsLayout = true
-        iconTaskStatusRowsStack.superview?.superview?.needsLayout = true
+        iconTaskStatusSection.cardView.invalidateHostedSettingsRowHeight()
+        iconTaskStatusSection.invalidateIntrinsicContentSize()
+        iconTaskStatusSection.needsLayout = true
+        iconTaskStatusSection.superview?.invalidateIntrinsicContentSize()
+        iconTaskStatusSection.superview?.needsLayout = true
     }
 
     private func applyAnimationModeSubtitle(mode: MenuBarAnimationMode) {
