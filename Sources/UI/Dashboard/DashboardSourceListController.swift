@@ -207,6 +207,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     let outlineView = DashboardSourceListOutlineView()
     let roots: [DashboardSidebarNode]
     var onSelectSection: ((DashboardSection) -> Void)?
+    let layoutPolicy: DashboardSidebarScrollLayoutPolicy
 
     var view: NSView { scrollView }
 
@@ -214,7 +215,8 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     private var isApplyingProgrammaticSelection = false
     private var isTornDown = false
 
-    override init() {
+    init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current) {
+        self.layoutPolicy = layoutPolicy
         roots = DashboardSidebarNode.makeNavigationTree()
         super.init()
         configureOutline()
@@ -368,7 +370,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
-        scrollView.automaticallyAdjustsContentInsets = false
+        layoutPolicy.apply(to: scrollView)
     }
 
     private func reloadAndExpand() {

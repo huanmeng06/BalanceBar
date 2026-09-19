@@ -24,7 +24,10 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         XCTAssertTrue(source.contains("override var mouseDownCanMoveWindow: Bool { false }"))
         XCTAssertTrue(source.contains("override func hitTest(_ point: NSPoint) -> NSView?"))
         XCTAssertTrue(source.contains("isMovableByWindowBackground = false"))
-        XCTAssertTrue(source.contains("private func makeSidebar(titlebarHeight: CGFloat) -> NSView {"))
+        XCTAssertTrue(source.contains("private func makeSidebar("))
+        XCTAssertTrue(
+            source.contains("layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current")
+        )
         XCTAssertFalse(source.contains("sidebarInteractiveViews"))
         XCTAssertTrue(source.contains("contentLayoutRect"))
         XCTAssertFalse(source.contains("equalTo: contentLayoutGuide.topAnchor"))

@@ -430,6 +430,90 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(contentItem.titlebarSeparatorStyle, .none)
     }
 
+    func testSidebarScrollLayoutPolicySelectsSystemScrollEdgeOnlyOnMacOS26AndLater() {
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 14, minorVersion: 0, patchVersion: 0)
+            ),
+            .titlebarClearance
+        )
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 15, minorVersion: 6, patchVersion: 1)
+            ),
+            .titlebarClearance
+        )
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 25, minorVersion: 9, patchVersion: 0)
+            ),
+            .titlebarClearance
+        )
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
+            ),
+            .systemScrollEdge
+        )
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.forOperatingSystemVersion(
+                OperatingSystemVersion(majorVersion: 27, minorVersion: 1, patchVersion: 0)
+            ),
+            .systemScrollEdge
+        )
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.current,
+            DashboardSidebarScrollLayoutPolicy.forOperatingSystemVersion(
+                ProcessInfo.processInfo.operatingSystemVersion
+            )
+        )
+
+        XCTAssertEqual(DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance, 14)
+        XCTAssertTrue(DashboardSidebarScrollLayoutPolicy.systemScrollEdge.automaticallyAdjustsContentInsets)
+        XCTAssertFalse(DashboardSidebarScrollLayoutPolicy.systemScrollEdge.zerosManualInsets)
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.systemScrollEdge.viewportTopInset(titlebarHeight: 32),
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.systemScrollEdge.viewportTopInset(titlebarHeight: 52),
+            0,
+            accuracy: 0.001
+        )
+
+        XCTAssertFalse(DashboardSidebarScrollLayoutPolicy.titlebarClearance.automaticallyAdjustsContentInsets)
+        XCTAssertTrue(DashboardSidebarScrollLayoutPolicy.titlebarClearance.zerosManualInsets)
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.titlebarClearance.viewportTopInset(titlebarHeight: 32),
+            46,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.titlebarClearance.viewportTopInset(titlebarHeight: 0),
+            DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance,
+            accuracy: 0.001
+        )
+    }
+
+    func testSidebarScrollLayoutPolicyAppliesInsetFlagsWithoutPrivateScrollPocketAPI() {
+        let scrollView = NSScrollView()
+        scrollView.contentInsets = NSEdgeInsets(top: 18, left: 1, bottom: 2, right: 3)
+        scrollView.scrollerInsets = NSEdgeInsets(top: 9, left: 0, bottom: 0, right: 0)
+
+        DashboardSidebarScrollLayoutPolicy.systemScrollEdge.apply(to: scrollView)
+        XCTAssertTrue(scrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(scrollView.contentInsets.top, 18, accuracy: 0.001)
+        XCTAssertEqual(scrollView.scrollerInsets.top, 9, accuracy: 0.001)
+
+        DashboardSidebarScrollLayoutPolicy.titlebarClearance.apply(to: scrollView)
+        XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.scrollerInsets.top, 0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.scrollerInsets.bottom, 0, accuracy: 0.001)
+    }
+
     private func firstDescendant<T: NSView>(of view: NSView, as type: T.Type) -> T? {
         if let match = view as? T { return match }
         for child in view.subviews {
