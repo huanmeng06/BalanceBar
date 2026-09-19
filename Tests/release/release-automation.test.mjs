@@ -1532,6 +1532,31 @@ test("release workflow keeps build, tag, and publish failures fatal", () => {
   assert.match(workflow, /sort -n -u > "\$issue_numbers_file"/);
   assert.match(workflow, /pr_pids=\(\)/);
   assert.match(workflow, /issue_pids=\(\)/);
+  assert.match(workflow, /if \(\(\$\{#pr_pids\[@\]\} > 0\)\); then/);
+  assert.match(workflow, /if \(\(\$\{#issue_pids\[@\]\} > 0\)\); then/);
+});
+
+test("release workflow waits on empty PR and Issue pid arrays under nounset", () => {
+  const workflow = fs.readFileSync(".github/workflows/release.yml", "utf8");
+  const waitBlocks = [
+    { name: "pr_pids", marker: "for pid in \"${pr_pids[@]}\"" },
+    { name: "issue_pids", marker: "for pid in \"${issue_pids[@]}\"" },
+  ].map(({ name, marker }) => {
+    const start = workflow.lastIndexOf(`if ((\${#${name}[@]} > 0)); then`);
+    const loop = workflow.indexOf(marker, start);
+    const end = workflow.indexOf("fi", loop);
+    assert.ok(start >= 0 && loop > start && end > loop, `missing ${name} wait guard`);
+    return workflow.slice(start, end + 2).replace(/^ {10}/gm, "");
+  });
+
+  const script = `set -Eeuo pipefail
+pr_pids=()
+issue_pids=()
+${waitBlocks.join("\n")}
+echo EMPTY_PID_WAIT_OK
+`;
+  const output = execFileSync("bash", ["-c", script], { encoding: "utf8" });
+  assert.match(output, /EMPTY_PID_WAIT_OK/);
 });
 
 test("manual rebuild is guarded and preserves a DMG-only Release", () => {
