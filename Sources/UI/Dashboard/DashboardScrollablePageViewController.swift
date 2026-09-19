@@ -7,12 +7,15 @@ import AppKit
 /// Settings row layout stays in the hosted content. macOS 26+ overlaps the
 /// titlebar so AppKit can inset content and choose Soft or Hard scroll-edge
 /// automatically. macOS 14/15 keep the 52pt titlebar clearance and do not
-/// imitate that effect. No custom blur, shadow, gradient, hairline, forced
+/// imitate that effect. The first section is separated from the document top
+/// by Auto Layout system spacing; that margin belongs to the scroll document
+/// and scrolls away. No custom blur, shadow, gradient, hairline, forced
 /// `.soft` / `.hard`, or private scroll-pocket API is installed. `isAtTop`
 /// and `scrollOffset` remain page-local signals.
 final class DashboardScrollablePageViewController: NSViewController {
     static let viewportBottomInset: CGFloat = 0
     static let documentHorizontalInset: CGFloat = 34
+    static let documentTopSpacingMultiplier: CGFloat = 2
     static let documentBottomInset: CGFloat = 34
     static let documentFillIdentifier = NSUserInterfaceItemIdentifier(
         "dashboardPageDocumentFill"
@@ -77,6 +80,13 @@ final class DashboardScrollablePageViewController: NSViewController {
     var clipViewForTesting: NSClipView { pageClipView }
     var hostedContentForTesting: NSView { hostedContent }
     var clipViewObserverInstalledForTesting: Bool { clipViewObserver != nil }
+    /// Scroll-document margin above the first section. Chrome insets stay on
+    /// `NSScrollView`; this value is content layout, so it scrolls away.
+    /// Measured in the flipped document, not the unflipped host `frame`.
+    var documentTopSpacingForTesting: CGFloat {
+        let contentRect = hostedContent.convert(hostedContent.bounds, to: pageDocumentView)
+        return contentRect.minY - pageDocumentView.bounds.minY
+    }
 
     /// Compatibility assembler for tests that still need a complete page view
     /// without a controller. Production pages go through this controller so
@@ -191,7 +201,10 @@ final class DashboardScrollablePageViewController: NSViewController {
             documentFill.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
             documentFill.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
             documentFill.heightAnchor.constraint(greaterThanOrEqualToConstant: documentBottomInset),
-            contentView.topAnchor.constraint(equalTo: contentHost.topAnchor),
+            contentView.topAnchor.constraint(
+                equalToSystemSpacingBelow: contentHost.topAnchor,
+                multiplier: documentTopSpacingMultiplier
+            ),
             contentView.leadingAnchor.constraint(
                 equalTo: contentHost.leadingAnchor,
                 constant: documentHorizontalInset
