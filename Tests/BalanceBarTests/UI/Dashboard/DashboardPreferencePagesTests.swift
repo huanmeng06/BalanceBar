@@ -721,7 +721,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         func assertCardHeight(_ message: String, file: StaticString = #filePath, line: UInt = #line) {
             XCTAssertEqual(
                 card.frame.height,
-                DashboardSettingsComponents.settingsCardHeight(
+                DashboardSettingsComponents.settingsSectionIntrinsicHeight(
                     rowsStack: rowsStack,
                     separators: separators
                 ),

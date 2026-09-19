@@ -3344,7 +3344,7 @@ final class UpdateTests: XCTestCase {
             func assertCardHeight(_ message: String) {
                 XCTAssertEqual(
                     card.frame.height,
-                    DashboardSettingsComponents.settingsCardHeight(
+                    DashboardSettingsComponents.settingsSectionIntrinsicHeight(
                         rowsStack: rowsStack,
                         separators: separators
                     ),

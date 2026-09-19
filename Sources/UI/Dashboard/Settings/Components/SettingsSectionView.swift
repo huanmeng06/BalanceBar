@@ -5,7 +5,7 @@ import AppKit
 ///
 /// Height comes from the arranged content's intrinsic sizes and constraints.
 /// The card does not install an explicit `heightConstraint`, call
-/// `settingsCardHeight`, or remeasure hosted rows through the legacy
+/// `settingsSectionIntrinsicHeight`, or remeasure hosted rows through the legacy
 /// preferred-height engine.
 final class SettingsSectionView: NSView {
     static let headingFont = NSFont.systemFont(ofSize: 17, weight: .semibold)

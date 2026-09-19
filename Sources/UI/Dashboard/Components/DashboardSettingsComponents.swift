@@ -74,61 +74,6 @@ enum DashboardSettingsComponents {
         return .byWordWrapping
     }
 
-    /// Measures the natural AppKit line count without applying a row display
-    /// cap. The row supplies the labels' current inline width when deciding
-    /// whether the control needs its own row.
-    static func settingsTextLineCount(
-        _ textField: NSTextField,
-        constrainedTo width: CGFloat
-    ) -> Int {
-        measureTextLineLayout(textField, constrainedTo: width).count
-    }
-
-    fileprivate static func measureTextLineLayout(
-        _ textField: NSTextField,
-        constrainedTo width: CGFloat
-    ) -> (count: Int, usedWidth: CGFloat) {
-        guard width > 0, !textField.stringValue.isEmpty else { return (0, 0) }
-
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineBreakMode = textField.lineBreakMode
-        if #available(macOS 10.15, *) {
-            paragraphStyle.lineBreakStrategy = textField.lineBreakStrategy
-        }
-        let storage = NSTextStorage(
-            string: textField.stringValue,
-            attributes: [
-                .font: textField.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
-                .paragraphStyle: paragraphStyle
-            ]
-        )
-        let layoutManager = NSLayoutManager()
-        let textContainer = NSTextContainer(
-            size: NSSize(width: max(1, width), height: .greatestFiniteMagnitude)
-        )
-        textContainer.lineFragmentPadding = 0
-        textContainer.lineBreakMode = textField.lineBreakMode
-        layoutManager.addTextContainer(textContainer)
-        storage.addLayoutManager(layoutManager)
-        layoutManager.ensureLayout(for: textContainer)
-
-        var lineCount = 0
-        var glyphIndex = 0
-        while glyphIndex < layoutManager.numberOfGlyphs {
-            var glyphRange = NSRange()
-            layoutManager.lineFragmentRect(
-                forGlyphAt: glyphIndex,
-                effectiveRange: &glyphRange,
-                withoutAdditionalLayout: true
-            )
-            let nextGlyphIndex = NSMaxRange(glyphRange)
-            guard nextGlyphIndex > glyphIndex else { break }
-            lineCount += 1
-            glyphIndex = nextGlyphIndex
-        }
-        return (lineCount, layoutManager.usedRect(for: textContainer).width)
-    }
-
     /// Builds the text used by AppKit for one subtitle layout pass. The
     /// source ranges come from the localization resource and remain valid for
     /// any language or key that uses the shared semantic marker contract.
@@ -370,7 +315,7 @@ enum DashboardSettingsComponents {
         return SettingsRowView(title: title, detail: detail, accessoryView: accessory)
     }
 
-    static func settingsCardHeight(rowsStack: NSStackView, separators: [NSView], rowHeight: ((NSView) -> CGFloat?)? = nil) -> CGFloat {
+    static func settingsSectionIntrinsicHeight(rowsStack: NSStackView, separators: [NSView], rowHeight: ((NSView) -> CGFloat?)? = nil) -> CGFloat {
         rowsStack.layoutSubtreeIfNeeded()
         return max(0, rowsStack.fittingSize.height)
     }

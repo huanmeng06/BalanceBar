@@ -155,7 +155,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`
 - `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome
 - `DashboardComponentsTests.testDashboardSectionsPreserveNavigationOrderAndMetadata`
-- `SettingsSectionViewTests`：原生 section 高度由子 View 约束推导，不走 `settingsCardHeight` / 父级 preferred-height 循环；General Startup 是试点卡片
+- `SettingsSectionViewTests`：原生 section 高度由子 View 约束推导，不走 `settingsSectionIntrinsicHeight` / 父级 preferred-height 循环；General Startup 是试点卡片
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
 - `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
 - `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权

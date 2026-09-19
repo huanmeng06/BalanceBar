@@ -158,7 +158,7 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertGreaterThan(narrow.rowHeight, 62, "(language) long subtitle should grow at narrow width")
             XCTAssertEqual(
                 narrow.cardHeight,
-                DashboardSettingsComponents.settingsCardHeight(
+                DashboardSettingsComponents.settingsSectionIntrinsicHeight(
                     rowsStack: try XCTUnwrap(rowsStack),
                     separators: separators
                 ),
@@ -604,7 +604,7 @@ final class DashboardComponentsTests: XCTestCase {
         )
         XCTAssertEqual(
             narrow.cardHeight,
-            DashboardSettingsComponents.settingsCardHeight(
+            DashboardSettingsComponents.settingsSectionIntrinsicHeight(
                 rowsStack: try XCTUnwrap(rowsStack),
                 separators: separators
             ),
@@ -793,7 +793,7 @@ final class DashboardComponentsTests: XCTestCase {
             }
             XCTAssertEqual(
                 narrow.cardHeight,
-                DashboardSettingsComponents.settingsCardHeight(
+                DashboardSettingsComponents.settingsSectionIntrinsicHeight(
                     rowsStack: try XCTUnwrap(rowsStack),
                     separators: separators
                 ),
