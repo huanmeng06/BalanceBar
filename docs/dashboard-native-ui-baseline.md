@@ -85,6 +85,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 - macOS 26+：页面 `NSScrollView` 贴齐 page 顶部并 `automaticallyAdjustsContentInsets = true`，由 AppKit 为重叠的 unified toolbar / titlebar 写入 content insets 并自动选择 Soft 或 Hard scroll-edge。窗口不写死 `titlebarSeparatorStyle = .none`（该值会覆盖 split item 偏好）；content pane 使用 `.automatic`，sidebar 使用 `.none`，配合已有 `NSTrackingSeparatorToolbarItem`。不发明空 accessory，不强制 `.soft` / `.hard`，不调用私有 `NSScrollPocket`。公开的 `preferredScrollEdgeEffectStyle` 仅用于 accessory（macOS 26.1+），当前生产页面无 accessory，不为指定 style 而创建它；
 - macOS 14/15：保留 52pt 非滚动顶部空白、手动 zero content/scroller insets，以及 `.none` titlebar separator，避免内容进入透明 titlebar；不手写 scroll-edge；
 - 文档 `isFlipped`，初次挂载的 rest 原点是 `-contentInsets.top`（无 titlebar 重叠或旧系统 zero inset 时仍为文档顶部）；
+- 第一个 settings section 与 document 顶之间有一层公开 Auto Layout system spacing（`equalToSystemSpacingBelow` × `documentTopSpacingMultiplier`，当前为 2）。该间距属于 scroll document，随内容滚入 toolbar / Scroll-Edge 下方并消失；不是 `contentInsets`、`viewportTopInset` 或 `additionalSafeAreaInsets`。水平 34pt 与底部 34pt document inset 不变；
 - 卡片圆角 18，可见行高度至少 62pt（个别行另有更高最小值）。
 
 About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advanced 页内日志查看器另有内部 `NSTextView` 滚动（固定深色 VS Code 配色），与页面滚动独立。
@@ -138,7 +139,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 | 浅色 / 深色跟随系统，卡片与侧栏对比可读 | `人工` | `人工` | `人工` | `人工` | `人工`（日志查看器保持深色底） | `人工` | `人工` |
 | 侧栏选中态 | General 选中 `代码` | 仍为 General `代码` | Menu Bar 选中 `代码` | Menu 选中 `代码` | Advanced 选中 `代码` | About 选中 `代码` | **全部不选中** `代码` |
 | 窗口缩放（绿钮） | 绿钮可见且启用 `代码` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
-| 页面滚动 | 滚动视图贴齐 page 顶，系统 titlebar insets + scroll-edge；可垂直滚到卡片底部 `代码`+`人工` | 同一 General 文档内 `人工` | 同 General；FPS 恢复滚动不得抢焦点 `代码` | Status Links 超出视口时可滚到 `代码`+`人工` | 页滚动 + 日志内部滚动互不替代 `人工` | 无设置页滚动；内容居中 `代码`+`人工` | 走设置页滚动 `代码` |
+| 页面滚动 | 滚动视图贴齐 page 顶，系统 titlebar insets + scroll-edge；document 顶部 system spacing 可随内容滚走；可垂直滚到卡片底部 `代码`+`人工` | 同一 General 文档内 `人工` | 同 General；FPS 恢复滚动不得抢焦点 `代码` | Status Links 超出视口时可滚到 `代码`+`人工` | 页滚动 + 日志内部滚动互不替代 `人工` | 无设置页滚动；内容居中 `代码`+`人工` | 走设置页滚动 `代码` |
 | 红黄绿位置 | 系统标题栏左侧；不另做自定义拖拽排除热区 `代码`；像素位置 `人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
 | 全屏 | 标准 AppKit zoom / 全屏；不再用自定义拖拽 overlay 抑制双击 `代码`+`人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
 | 双击标题栏 | 标题栏命中穿透到 NSThemeFrame，遵循系统 `AppleActionOnDoubleClick`，不再自定义 `setFrame` `代码`+`人工` | 同左 | 同左 | 同左 | 同左 | 同左 | 同左 |
@@ -151,6 +152,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 这些已有或本次新增的测试是回归闸门，不是视觉通过证明：
 
 - `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、Tahoe 不透明标题栏 / 旧系统透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator` 以及 content-pane `NSSearchToolbarItem`、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、Tahoe 原生 window surface / 旧系统 legacy tint、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
+- `DashboardScrollablePageViewControllerTests`：右侧设置页 document 顶部使用 `equalToSystemSpacingBelow`；该间距 `> 0` 且属于 scroll document；旧系统 52pt clearance 与 document spacing 分属 viewport / document；下滚后间距消失且不形成固定灰带；macOS 26 automatic `contentInsets.top` 仍等于 titlebar 高度。
 - `DashboardWindowControllerTests.testWindowEnablesNativeZoomAndStaysResizable`
 - `DashboardNativeUIBaselineTests.testSidebarSourceListUsesPolicyOwnedScrollEdgeLayout`：生产 `.current`（macOS 26 全高 + 自动 inset）
 - `DashboardNativeUIBaselineTests.testSidebarSourceListTitlebarClearanceKeepsFirstRowOutOfTitlebar`：注入 `.titlebarClearance`，在 CI 的 macOS 26 上也走 14/15 的 titlebarHeight+14 分支，第一行不得进入 titlebar

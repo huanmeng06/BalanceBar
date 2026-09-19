@@ -71,6 +71,13 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             DashboardScrollablePageViewController.documentHorizontalInset,
             accuracy: 1
         )
+        XCTAssertGreaterThan(controller.documentTopSpacingForTesting, 0)
+        let contentInDocument = content.convert(content.bounds, to: document)
+        XCTAssertEqual(
+            contentInDocument.minY - document.bounds.minY,
+            controller.documentTopSpacingForTesting,
+            accuracy: 1
+        )
     }
 
     func testNestedScrollViewIsNotTreatedAsThePageScrollView() throws {
@@ -356,6 +363,11 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(pageSource.contains("documentView.addSubview(contentHost)"))
         XCTAssertTrue(pageSource.contains("documentView.addSubview(documentFill)"))
         XCTAssertTrue(pageSource.contains("contentView.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor)"))
+        XCTAssertTrue(pageSource.contains("equalToSystemSpacingBelow"))
+        XCTAssertTrue(pageSource.contains("documentTopSpacingMultiplier"))
+        XCTAssertFalse(
+            pageSource.contains("contentView.topAnchor.constraint(equalTo: contentHost.topAnchor)")
+        )
         XCTAssertFalse(pageSource.contains("static let viewportTopInset: CGFloat = 0"))
         XCTAssertFalse(pageSource.contains("static let viewportTopInset: CGFloat = 52"))
         XCTAssertFalse(pageSource.contains("dashboardPageScrollEdgeHairline"))
@@ -452,9 +464,11 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         )
         let firstRow = tallPage.hostedContentForTesting
         let firstRowInPage = firstRow.convert(firstRow.bounds, to: tallPage.view)
+        let documentTopSpacing = tallPage.documentTopSpacingForTesting
+        XCTAssertGreaterThan(documentTopSpacing, 0)
         XCTAssertEqual(
             firstRowInPage.minY,
-            DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset,
+            DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset + documentTopSpacing,
             accuracy: 1
         )
 
@@ -479,6 +493,102 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(replacement.isAtTop)
         XCTAssertEqual(replacement.scrollOffset, 0, accuracy: 1)
         XCTAssertFalse(replacement.pageScrollView.automaticallyAdjustsContentInsets)
+    }
+
+    func testDocumentTopSpacingBelongsToTheScrollDocumentAndScrollsAway() throws {
+        let page = DashboardScrollablePageViewController(
+            wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
+            layoutPolicy: .titlebarClearance
+        )
+        let window = makeWindow(width: 480, height: 280, hosting: page)
+        defer { window.orderOut(nil) }
+
+        let documentTopSpacing = page.documentTopSpacingForTesting
+        XCTAssertGreaterThan(documentTopSpacing, 0)
+        XCTAssertEqual(page.pageScrollView.contentInsets.top, 0, accuracy: 0.001)
+        XCTAssertEqual(page.scrollOffset, 0, accuracy: 1)
+        XCTAssertTrue(page.isAtTop)
+
+        let viewportAtRest = page.pageScrollView.convert(
+            page.pageScrollView.bounds,
+            to: page.view
+        )
+        XCTAssertEqual(
+            viewportAtRest.minY - page.view.bounds.minY,
+            DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset,
+            accuracy: 1
+        )
+
+        let firstRowInDocument = page.hostedContentForTesting.convert(
+            page.hostedContentForTesting.bounds,
+            to: page.documentViewForTesting
+        )
+        XCTAssertEqual(firstRowInDocument.minY, documentTopSpacing, accuracy: 1)
+
+        let restVisible = page.clipViewForTesting.convert(
+            page.clipViewForTesting.bounds,
+            to: page.documentViewForTesting
+        )
+        XCTAssertEqual(
+            restVisible.minY,
+            page.documentViewForTesting.bounds.minY,
+            accuracy: 1
+        )
+        XCTAssertGreaterThan(firstRowInDocument.minY, restVisible.minY)
+
+        page.restoreScrollOffset(documentTopSpacing)
+        window.layoutIfNeeded()
+        XCTAssertEqual(page.scrollOffset, documentTopSpacing, accuracy: 2)
+        XCTAssertFalse(page.isAtTop)
+
+        let visibleAfterSpacing = page.clipViewForTesting.convert(
+            page.clipViewForTesting.bounds,
+            to: page.documentViewForTesting
+        )
+        XCTAssertEqual(visibleAfterSpacing.minY, firstRowInDocument.minY, accuracy: 2)
+
+        let viewportAfterSpacing = page.pageScrollView.convert(
+            page.pageScrollView.bounds,
+            to: page.view
+        )
+        XCTAssertEqual(
+            viewportAfterSpacing.minY - page.view.bounds.minY,
+            DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset,
+            accuracy: 1
+        )
+        XCTAssertEqual(page.pageScrollView.contentInsets.top, 0, accuracy: 0.001)
+
+        page.restoreScrollOffset(documentTopSpacing + 80)
+        window.layoutIfNeeded()
+        let visibleFurther = page.clipViewForTesting.convert(
+            page.clipViewForTesting.bounds,
+            to: page.documentViewForTesting
+        )
+        XCTAssertGreaterThan(visibleFurther.minY, firstRowInDocument.minY)
+        XCTAssertEqual(page.scrollOffset, documentTopSpacing + 80, accuracy: 2)
+        let viewportFurther = page.pageScrollView.convert(
+            page.pageScrollView.bounds,
+            to: page.view
+        )
+        XCTAssertEqual(
+            viewportFurther.minY - page.view.bounds.minY,
+            DashboardPageScrollLayoutPolicy.preTahoeTitlebarClearanceInset,
+            accuracy: 1
+        )
+
+        page.restoreScrollOffset(0)
+        window.layoutIfNeeded()
+        XCTAssertTrue(page.isAtTop)
+        XCTAssertEqual(page.scrollOffset, 0, accuracy: 1)
+        let restoredVisible = page.clipViewForTesting.convert(
+            page.clipViewForTesting.bounds,
+            to: page.documentViewForTesting
+        )
+        XCTAssertEqual(
+            restoredVisible.minY,
+            page.documentViewForTesting.bounds.minY,
+            accuracy: 1
+        )
     }
 
     func testDashboardWindowUsesSystemTitlebarInsetsWithoutCustomScrollEdgeOverlay() throws {
@@ -555,6 +665,45 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             page.documentViewForTesting.bounds.minY - page.pageScrollView.contentInsets.top,
             accuracy: 1
         )
+
+        let documentTopSpacing = page.documentTopSpacingForTesting
+        XCTAssertGreaterThan(documentTopSpacing, 0)
+        let firstRowInDocument = page.hostedContentForTesting.convert(
+            page.hostedContentForTesting.bounds,
+            to: page.documentViewForTesting
+        )
+        XCTAssertEqual(firstRowInDocument.minY, documentTopSpacing, accuracy: 1)
+
+        page.restoreScrollOffset(documentTopSpacing)
+        window.layoutIfNeeded()
+        XCTAssertEqual(page.scrollOffset, documentTopSpacing, accuracy: 2)
+        XCTAssertFalse(page.isAtTop)
+        let visibleAfterSpacing = page.clipViewForTesting.convert(
+            page.clipViewForTesting.bounds,
+            to: page.documentViewForTesting
+        )
+        XCTAssertEqual(
+            visibleAfterSpacing.minY,
+            restVisible.minY + documentTopSpacing,
+            accuracy: 2
+        )
+        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
+        let viewportAfterSpacing = page.pageScrollView.convert(
+            page.pageScrollView.bounds,
+            to: page.view
+        )
+        XCTAssertEqual(viewportAfterSpacing.minY - page.view.bounds.minY, 0, accuracy: 1)
+
+        page.restoreScrollOffset(documentTopSpacing + 40)
+        window.layoutIfNeeded()
+        let visibleUnderChrome = page.clipViewForTesting.convert(
+            page.clipViewForTesting.bounds,
+            to: page.documentViewForTesting
+        )
+        let firstRowVisualY = firstRowInDocument.minY - visibleUnderChrome.minY
+        XCTAssertLessThan(firstRowVisualY, titlebarHeight)
+        XCTAssertGreaterThan(page.scrollOffset, documentTopSpacing)
+        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
 
         page.restoreScrollOffset(140)
         window.layoutIfNeeded()
