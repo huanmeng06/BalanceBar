@@ -194,11 +194,15 @@ final class MenuBarWidthSlider: NSSlider {
     private var lastPointerValue: Double?
 
     /// Tick marks below the track add a 1pt-class bottom alignment inset on
-    /// some macOS 26 SDKs. Native settings rows center accessories through
-    /// `NSStackView` alignment rects, so that inset shows up as a bounds
-    /// offset against the row's geometric center. Report zero insets so the
-    /// slider stays bounds-centered without rewriting the control.
+    /// some macOS 26 SDKs. Native settings rows and `NSStackView` center
+    /// using alignment rects, which then shows up as a bounds offset against
+    /// the row's geometric center. Keep alignment identical to bounds so the
+    /// slider can stay centered without rewriting the control.
     override var alignmentRectInsets: NSEdgeInsets { .init() }
+
+    override func alignmentRect(forFrame frame: NSRect) -> NSRect { frame }
+
+    override func frame(forAlignmentRect alignmentRect: NSRect) -> NSRect { alignmentRect }
 
     static func integerValuesCrossed(
         from previousValue: Double,

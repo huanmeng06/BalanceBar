@@ -5,27 +5,55 @@ final class DashboardMenuBarLayoutSection {
     /// Slider groups have a stable natural width, but their labels should
     /// move below the row text when the Menu Bar page becomes narrow. The
     /// native settings row owns that placement decision through this contract.
-    private final class MenuBarSliderControls: NSStackView, DashboardSettingsRowControlLayout {
+    ///
+    /// This is a plain `NSView` host so the native row can bounds-center the
+    /// group. `NSStackView` derives `alignmentRect(forFrame:)` from arranged
+    /// subviews and ignores `alignmentRectInsets`, which on CI macOS 26 showed
+    /// up as `slider.midY` 39 vs row `midY` 38. The inner stack also reports
+    /// identity alignment and is edge-pinned so Auto Layout `centerYAnchor`
+    /// cannot reintroduce that inset. The legacy settings row pinned
+    /// `control.centerY` with bounds anchors.
+    private final class MenuBarSliderControls: NSView, DashboardSettingsRowControlLayout {
         let allowsTextDrivenDedicatedRow = true
         let minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         private(set) var stacksControlsVertically = false
+        private let stack: InnerStack
+
+        private final class InnerStack: NSStackView {
+            override var alignmentRectInsets: NSEdgeInsets { .init() }
+
+            override func alignmentRect(forFrame frame: NSRect) -> NSRect { frame }
+
+            override func frame(forAlignmentRect alignmentRect: NSRect) -> NSRect { alignmentRect }
+        }
 
         init(views: [NSView]) {
+            stack = InnerStack(views: views)
             super.init(frame: .zero)
-            views.forEach(addArrangedSubview)
+            translatesAutoresizingMaskIntoConstraints = false
+            stack.orientation = .horizontal
+            stack.alignment = .centerY
+            stack.spacing = 6
+            stack.translatesAutoresizingMaskIntoConstraints = false
+            stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            addSubview(stack)
+            NSLayoutConstraint.activate([
+                stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+                stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+                stack.topAnchor.constraint(equalTo: topAnchor),
+                stack.bottomAnchor.constraint(equalTo: bottomAnchor)
+            ])
         }
 
         required init?(coder: NSCoder) {
             fatalError("init(coder:) has not been implemented")
         }
 
-        /// Native rows center accessories through `NSStackView` alignment,
-        /// which uses alignment rects. Tick-mark sliders report a 1pt-class
-        /// bottom inset, so the track's bounds sit off the row's geometric
-        /// center on some macOS 26 SDKs. The legacy settings row pinned
-        /// `control.centerY` with bounds anchors. Zero insets keep the
-        /// complete slider group bounds-centered in the native row.
         override var alignmentRectInsets: NSEdgeInsets { .init() }
+
+        override func alignmentRect(forFrame frame: NSRect) -> NSRect { frame }
+
+        override func frame(forAlignmentRect alignmentRect: NSRect) -> NSRect { alignmentRect }
 
         func updateAvailableRowWidth(_ width: CGFloat) {
             // The slider itself keeps its fixed track width. The row moves the
@@ -35,10 +63,10 @@ final class DashboardMenuBarLayoutSection {
         }
 
         var naturalAccessoryWidth: CGFloat {
-            let visible = arrangedSubviews.filter { !$0.isHidden }
+            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
             return visible.reduce(CGFloat(0)) { total, view in
                 total + max(0, view.fittingSize.width)
-            } + max(0, CGFloat(visible.count - 1)) * spacing
+            } + max(0, CGFloat(visible.count - 1)) * stack.spacing
         }
     }
 
@@ -543,12 +571,9 @@ final class DashboardMenuBarLayoutSection {
             width: endpointWidths.maximum,
             alignment: AppLanguage.resolved == .english ? .right : .center
         )
-        let stack = MenuBarSliderControls(views: [minimumLabel, slider, maximumLabel])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 6
-        stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return CenteredSliderControls(view: stack, slider: slider)
+        let controls = MenuBarSliderControls(views: [minimumLabel, slider, maximumLabel])
+        controls.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return CenteredSliderControls(view: controls, slider: slider)
     }
 
     private func makeWidthSliderEndpointLabel(

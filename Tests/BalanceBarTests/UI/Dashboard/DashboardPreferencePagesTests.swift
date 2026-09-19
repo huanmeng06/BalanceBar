@@ -5868,7 +5868,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(offsetSlider.alignmentRectInsets.left, 0)
             XCTAssertEqual(offsetSlider.alignmentRectInsets.bottom, 0)
             XCTAssertEqual(offsetSlider.alignmentRectInsets.right, 0)
-            XCTAssertEqual(offsetSlider.superview?.alignmentRectInsets.bottom, 0)
+            guard let host = SettingsRowView.enclosing(offsetSlider)?.accessoryView else {
+                XCTFail("Expected a native-row accessory host around the slider")
+                continue
+            }
+            XCTAssertEqual(host.alignmentRectInsets.top, 0)
+            XCTAssertEqual(host.alignmentRectInsets.bottom, 0)
+            XCTAssertEqual(host.alignmentRect(forFrame: host.bounds), host.bounds)
         }
         for offsetSlider in [iconOffsetSlider, amountOffsetSlider] {
             XCTAssertEqual(
@@ -6271,6 +6277,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 for index in summaries.indices {
                     let summary = summaries[index]
                     let row = rows[index]
+                    let summaryFrame = summary.convert(summary.bounds, to: row)
+                    XCTAssertGreaterThan(summaryFrame.height, 0, "summary must remain laid out for \(language)")
+                    let slider = try XCTUnwrap(
+                        descendants(of: row).compactMap { $0 as? NSSlider }.first
+                    )
+                    let sliderFrame = slider.convert(slider.bounds, to: row)
+                    XCTAssertEqual(
+                        sliderFrame.midY,
+                        row.bounds.midY,
+                        accuracy: 0.5,
+                        "slider remains centered for \(language)"
+                    )
+                    sliderCenters.append(sliderFrame.midX)
                     XCTAssertFalse(summary.usesSingleLineMode, "multiline mode for \(language)")
                     XCTAssertEqual(summary.lineBreakMode, expectedLineBreakMode, "wrapping mode for \(language)")
                     XCTAssertEqual(
@@ -6312,19 +6331,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
                             "signed descriptor/value suffix must stay together for \(language): \(renderedLines)"
                         )
                     }
-                    let summaryFrame = summary.convert(summary.bounds, to: row)
-                    XCTAssertGreaterThan(summaryFrame.height, 0, "summary must remain laid out for \(language)")
-                    let slider = try XCTUnwrap(
-                        descendants(of: row).compactMap { $0 as? NSSlider }.first
-                    )
-                    let sliderFrame = slider.convert(slider.bounds, to: row)
-                    XCTAssertEqual(
-                        sliderFrame.midY,
-                        row.bounds.midY,
-                        accuracy: 0.5,
-                        "slider remains centered for \(language)"
-                    )
-                    sliderCenters.append(sliderFrame.midX)
                 }
                 for center in sliderCenters.dropFirst() {
                     XCTAssertEqual(
