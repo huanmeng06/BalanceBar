@@ -35,7 +35,9 @@ final class SettingsRowView: NSView {
     private let forceDedicatedControlRow: Bool
 
     let contentStack = NSStackView()
-    let labelsStack = NSStackView()
+    let labelsStack: NSStackView = SettingsLabelsStackView()
+    private let ownsTitleLabel: Bool
+    private let ownsDetailLabel: Bool
     private var stacksVertically = false
     private var detailWidthConstraint: NSLayoutConstraint?
     private var dedicatedLabelsWidthConstraint: NSLayoutConstraint?
@@ -43,6 +45,7 @@ final class SettingsRowView: NSView {
     private var wrappingCommitWorkItem: DispatchWorkItem?
     private var isPerformingLayout = false
     private var accessoryNaturalWidthConstraint: NSLayoutConstraint?
+    private var labelsMinimumHeightConstraint: NSLayoutConstraint?
 
     init(
         title: String,
@@ -55,6 +58,8 @@ final class SettingsRowView: NSView {
         verticalPadding: CGFloat = SettingsRowView.verticalPadding,
         forceDedicatedControlRow: Bool = false
     ) {
+        ownsTitleLabel = titleLabel == nil
+        ownsDetailLabel = detailLabel == nil
         self.titleLabel = titleLabel ?? SettingsWrappingLabel(string: title)
         self.detailLabel = detailLabel ?? SettingsWrappingLabel(string: detail ?? "")
         self.titleAccessory = titleAccessory
@@ -184,6 +189,7 @@ final class SettingsRowView: NSView {
         detailLabel.invalidateIntrinsicContentSize()
         labelsStack.invalidateIntrinsicContentSize()
         contentStack.invalidateIntrinsicContentSize()
+        updateLabelsMinimumHeight()
         wrappingHeightIsDirty = true
         invalidateIntrinsicContentSize()
         needsLayout = true
@@ -237,6 +243,7 @@ final class SettingsRowView: NSView {
         )
         labelsStack.invalidateIntrinsicContentSize()
         contentStack.invalidateIntrinsicContentSize()
+        updateLabelsMinimumHeight()
         invalidateIntrinsicContentSize()
         labelsStack.needsLayout = true
         contentStack.needsLayout = true
@@ -334,14 +341,16 @@ final class SettingsRowView: NSView {
             titleLabel,
             text: title,
             font: .systemFont(ofSize: 14, weight: .semibold),
-            color: .labelColor
+            color: .labelColor,
+            overwriteContent: ownsTitleLabel
         )
-        let detailText = detail ?? ""
+        let detailText = detail ?? detailLabel.stringValue
         configureLabel(
             detailLabel,
             text: detailText,
             font: .systemFont(ofSize: 12),
-            color: .secondaryLabelColor
+            color: .secondaryLabelColor,
+            overwriteContent: ownsDetailLabel
         )
         detailLabel.isHidden = detailText.isEmpty
 
@@ -422,7 +431,8 @@ final class SettingsRowView: NSView {
             heightAnchor.constraint(
                 greaterThanOrEqualTo: contentStack.heightAnchor,
                 constant: rowVerticalPadding * 2
-            )
+            ),
+            contentStack.heightAnchor.constraint(greaterThanOrEqualTo: labelsStack.heightAnchor)
         ]
         if let accessoryView {
             constraints.append(
@@ -439,15 +449,19 @@ final class SettingsRowView: NSView {
         _ label: NSTextField,
         text: String,
         font: NSFont,
-        color: NSColor
+        color: NSColor,
+        overwriteContent: Bool
     ) {
-        label.stringValue = text
+        if overwriteContent {
+            label.stringValue = text
+        }
         label.font = font
         label.textColor = color
         label.isEditable = false
         label.isSelectable = false
         label.usesSingleLineMode = false
-        label.lineBreakMode = DashboardSettingsComponents.settingsSubtitleLineBreakMode(for: text)
+        let wrappingText = overwriteContent || label.stringValue.isEmpty ? text : label.stringValue
+        label.lineBreakMode = DashboardSettingsComponents.settingsSubtitleLineBreakMode(for: wrappingText)
         label.maximumNumberOfLines = 0
         label.cell?.wraps = true
         label.cell?.isScrollable = false
@@ -571,6 +585,40 @@ final class SettingsRowView: NSView {
         needsLayout = true
     }
 
+    private func labelsContentHeight() -> CGFloat {
+        let titleHeight = measuredFieldHeight(titleLabel)
+        guard !detailLabel.isHidden else { return titleHeight }
+        return titleHeight + Self.labelSpacing + measuredFieldHeight(detailLabel)
+    }
+
+    private func measuredFieldHeight(_ field: NSTextField) -> CGFloat {
+        let intrinsic = field.intrinsicContentSize.height
+        let width = field.preferredMaxLayoutWidth > 1
+            ? field.preferredMaxLayoutWidth
+            : field.bounds.width
+        guard width > 1, let cell = field.cell else { return max(0, intrinsic) }
+        let fitted = cell.cellSize(
+            forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
+        ).height
+        return max(0, max(intrinsic, fitted))
+    }
+
+    private func updateLabelsMinimumHeight() {
+        let height = labelsContentHeight()
+        guard height > 1 else { return }
+        if let constraint = labelsMinimumHeightConstraint {
+            if abs(constraint.constant - height) > 0.5 {
+                constraint.constant = height
+            }
+            constraint.isActive = true
+            return
+        }
+        let constraint = labelsStack.heightAnchor.constraint(greaterThanOrEqualToConstant: height)
+        constraint.priority = .required
+        constraint.isActive = true
+        labelsMinimumHeightConstraint = constraint
+    }
+
     private func notifyHeightHost() {
         var current: NSView? = superview
         while let view = current {
@@ -580,6 +628,42 @@ final class SettingsRowView: NSView {
             }
             current = view.superview
         }
+    }
+}
+
+/// Vertical labels stack that exports a real intrinsic height from its
+/// arranged fields. A plain `NSStackView` reports `noIntrinsicMetric`, so a
+/// taller fixed accessory (the 42pt Menu Bar preview) can win the horizontal
+/// stack and clip wrapped title/detail text.
+private final class SettingsLabelsStackView: NSStackView {
+    override var intrinsicContentSize: NSSize {
+        let height = arrangedContentHeight()
+        return NSSize(
+            width: NSView.noIntrinsicMetric,
+            height: height > 0 ? height : NSView.noIntrinsicMetric
+        )
+    }
+
+    private func arrangedContentHeight() -> CGFloat {
+        let visible = arrangedSubviews.filter { !$0.isHidden }
+        let heights = visible.map(measuredHeight).filter { $0 > 0 }
+        guard !heights.isEmpty else { return 0 }
+        return heights.reduce(0, +) + spacing * CGFloat(max(0, heights.count - 1))
+    }
+
+    private func measuredHeight(_ view: NSView) -> CGFloat {
+        if let stack = view as? NSStackView {
+            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
+            let heights = visible.map(measuredHeight).filter { $0 > 0 }
+            guard !heights.isEmpty else { return 0 }
+            if stack.orientation == .vertical {
+                return heights.reduce(0, +) + stack.spacing * CGFloat(max(0, heights.count - 1))
+            }
+            return heights.max() ?? 0
+        }
+        let intrinsic = view.intrinsicContentSize.height
+        guard intrinsic > 0, intrinsic != NSView.noIntrinsicMetric else { return 0 }
+        return intrinsic
     }
 }
 

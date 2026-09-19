@@ -3521,6 +3521,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             (.hiddenByRuntimePolicy, false, true, [false, false, true, true]),
             (.hiddenByMenuBarSpaceAndRuntimePolicy, true, true, [false, false, true, false])
         ]
+        var collapsedCardHeight: CGFloat = 0
+        var expandedCardHeight: CGFloat = 0
         for (visibility, showsOverflow, showsRuntime, separatorHidden) in cases {
             controller.refresh(
                 snapshot: snapshot,
@@ -3537,8 +3539,28 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(overflowRow.isHidden, !showsOverflow)
             XCTAssertEqual(runtimeRow.isHidden, !showsRuntime)
             XCTAssertEqual(separators.map(\.isHidden), separatorHidden)
-            XCTAssertGreaterThan(previewCard.frame.height, 0)
+            assertNativeSectionCardLayout(previewSection)
+            if visibility == .unknown {
+                collapsedCardHeight = previewCard.frame.height
+            }
+            if visibility == .hiddenByMenuBarSpaceAndRuntimePolicy {
+                expandedCardHeight = previewCard.frame.height
+            }
         }
+        XCTAssertGreaterThan(expandedCardHeight, collapsedCardHeight + 8)
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            statusItemVisibility: .unknown
+        )
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
+        XCTAssertEqual(previewCard.frame.height, collapsedCardHeight, accuracy: 0.5)
+        assertNativeSectionCardLayout(previewSection)
     }
 
     func testRuntimeOnlyWarningIsLocalizedForEveryConcreteSupportedLanguage() {
@@ -4166,7 +4188,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             window.layoutIfNeeded()
             SettingsRowView.flushPendingWrappingHeightCommits(in: page)
             window.layoutIfNeeded()
-            XCTAssertGreaterThan(card.frame.height, 0)
+            assertNativeSectionCardLayout(quotaSection)
         }
 
         XCTAssertTrue([amountRow, resetRow, quotaWindowRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
@@ -4174,6 +4196,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.last?.isHidden == true)
         assertCardLayout()
+        let expandedCardHeight = card.frame.height
 
         autoSwitch.state = .on
         relay.toggle(autoSwitch)
@@ -4206,6 +4229,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(quotaResetRow.isHidden)
         XCTAssertTrue(separators.allSatisfy(\.isHidden))
         assertCardLayout()
+        XCTAssertLessThan(card.frame.height + 8, expandedCardHeight)
 
         amountSwitch.state = .on
         relay.toggle(amountSwitch)
@@ -4239,6 +4263,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.last?.isHidden == true)
         assertCardLayout()
+        XCTAssertEqual(card.frame.height, expandedCardHeight, accuracy: 0.5)
     }
 
     func testQuotaWindowPreferenceSelectorUsesLocalizedOptionsPersistsAndKeepsLayoutStable() throws {
@@ -6191,9 +6216,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 row.bounds.insetBy(dx: 0, dy: -0.5).contains(subtitleFrame),
                 "\(language.rawValue) preview subtitle must stay inside the row"
             )
+            assertTextFieldIsNotClipped(
+                subtitle,
+                "\(language.rawValue) preview subtitle must not be clipped"
+            )
             XCTAssertGreaterThanOrEqual(control.frame.minY, row.bounds.minY - 0.5, "\(language.rawValue) preview control must stay inside the row")
             XCTAssertLessThanOrEqual(control.frame.maxY, row.bounds.maxY + 0.5, "\(language.rawValue) preview control must stay inside the row")
-            XCTAssertGreaterThan(card.frame.height, 0)
+            assertNativeSectionCardLayout(section)
 
             pinMenuPage(page, in: window, width: 740, height: 520)
             XCTAssertEqual(
@@ -6286,8 +6315,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 backing: .buffered,
                 defer: false
             )
-            window.contentView = page
             defer { window.orderOut(nil) }
+            pinMenuPage(page, in: window, width: 516, height: 700)
 
             let summaries = try summaryIdentifiers.map { identifier in
                 try XCTUnwrap(
@@ -6308,16 +6337,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let expectedLineBreakMode: NSLineBreakMode = .byWordWrapping
 
             func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
-                window.setContentSize(NSSize(width: width, height: 700))
-                window.layoutIfNeeded()
-                SettingsRowView.flushPendingWrappingHeightCommits(in: page)
-                window.layoutIfNeeded()
+                pinMenuPage(page, in: window, width: width, height: 700)
                 var sliderCenters: [CGFloat] = []
                 for index in summaries.indices {
                     let summary = summaries[index]
                     let row = rows[index]
                     let summaryFrame = summary.convert(summary.bounds, to: row)
                     XCTAssertGreaterThan(summaryFrame.height, 0, "summary must remain laid out for \(language)")
+                    assertTextFieldIsNotClipped(
+                        summary,
+                        "summary fitting height for \(language)"
+                    )
                     let slider = try XCTUnwrap(
                         descendants(of: row).compactMap { $0 as? NSSlider }.first
                     )
@@ -6379,7 +6409,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         "slider tracks must share one horizontal alignment for \(language) at width \(width)"
                     )
                 }
-                XCTAssertGreaterThan(card.frame.height, 0, "typography card height for \(language)")
+                assertNativeSectionCardLayout(section)
                 return (rows.map(\.frame.height), card.frame.height)
             }
 
@@ -6406,16 +6436,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             summaries[0].stringValue = "Short summary"
             summaries[0].invalidateIntrinsicContentSize()
-            rows[0].needsLayout = true
-            page.needsLayout = true
+            rows[0].invalidateAfterContentChange()
             let short = try layout(at: 516)
             summaries[0].stringValue = longReplacement
             summaries[0].invalidateIntrinsicContentSize()
-            rows[0].needsLayout = true
-            page.needsLayout = true
+            rows[0].invalidateAfterContentChange()
             let changed = try layout(at: 516)
-            XCTAssertGreaterThan(changed.rowHeights[0], 0, "content changes must keep the real row laid out for \(language)")
-            XCTAssertGreaterThan(changed.cardHeight, 0, "content changes must keep the real card laid out for \(language)")
+            XCTAssertGreaterThan(changed.rowHeights[0], short.rowHeights[0], "content changes must grow the real row for \(language)")
+            XCTAssertGreaterThan(changed.cardHeight, short.cardHeight, "content changes must grow the real card for \(language)")
         }
     }
 
@@ -6445,8 +6473,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
-        window.contentView = page
         defer { window.orderOut(nil) }
+        pinMenuPage(page, in: window, width: 516, height: 700)
 
         let summaryIdentifiers = [
             DashboardMenuBarPage.iconOffsetSummaryIdentifier,
@@ -6476,10 +6504,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
 
         func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
-            window.setContentSize(NSSize(width: width, height: 700))
-            window.layoutIfNeeded()
-            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
-            window.layoutIfNeeded()
+            pinMenuPage(page, in: window, width: width, height: 700)
 
             var sliderCenters: [CGFloat] = []
             for index in rows.indices {
@@ -6494,6 +6519,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     lines.count,
                     2,
                     "Japanese summary must remain multiline at width \(width): \(lines)"
+                )
+                assertTextFieldIsNotClipped(
+                    summary,
+                    "Japanese summary \(index) must not be clipped at width \(width)"
                 )
                 XCTAssertEqual(
                     sliderFrame.midY,
@@ -6517,7 +6546,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "Japanese slider tracks must share one horizontal alignment at width \(width)"
                 )
             }
-            XCTAssertGreaterThan(card.frame.height, 0, "Japanese card must follow its rows at width \(width)")
+            assertNativeSectionCardLayout(section)
             return (rows.map(\.frame.height), card.frame.height)
         }
 
@@ -7923,6 +7952,104 @@ final class DashboardPreferencePagesTests: XCTestCase {
             return 0
         }
         return maxY - minY
+    }
+
+    private func assertNativeSectionCardLayout(
+        _ section: SettingsSectionView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let card = section.cardView
+        let visible = card.arrangedSubviews.filter { !$0.isHidden && $0.superview === card }
+        XCTAssertFalse(
+            visible.isEmpty,
+            "native card must keep visible arranged content",
+            file: file,
+            line: line
+        )
+        for view in visible {
+            XCTAssertGreaterThanOrEqual(
+                view.frame.minY,
+                card.bounds.minY - 0.5,
+                "visible arranged subview must stay inside the card",
+                file: file,
+                line: line
+            )
+            XCTAssertLessThanOrEqual(
+                view.frame.maxY,
+                card.bounds.maxY + 0.5,
+                "visible arranged subview must stay inside the card",
+                file: file,
+                line: line
+            )
+            XCTAssertGreaterThanOrEqual(
+                view.frame.minX,
+                card.bounds.minX - 0.5,
+                file: file,
+                line: line
+            )
+            XCTAssertLessThanOrEqual(
+                view.frame.maxX,
+                card.bounds.maxX + 0.5,
+                file: file,
+                line: line
+            )
+        }
+        XCTAssertEqual(
+            card.frame.height,
+            visibleArrangedHeight(in: card),
+            accuracy: 0.5,
+            "card height must follow visible arranged content instead of a leftover measured height",
+            file: file,
+            line: line
+        )
+        if let minY = visible.map(\.frame.minY).min() {
+            XCTAssertEqual(
+                minY,
+                card.bounds.minY,
+                accuracy: 0.5,
+                "last visible arranged subview must meet the card bottom",
+                file: file,
+                line: line
+            )
+        }
+        if let maxY = visible.map(\.frame.maxY).max() {
+            XCTAssertEqual(
+                maxY,
+                card.bounds.maxY,
+                accuracy: 0.5,
+                "first visible arranged subview must meet the card top",
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    private func assertTextFieldIsNotClipped(
+        _ field: NSTextField,
+        _ message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard let cell = field.cell else {
+            XCTFail(message, file: file, line: line)
+            return
+        }
+        let needed = cell.cellSize(
+            forBounds: NSRect(
+                x: 0,
+                y: 0,
+                width: max(1, field.bounds.width),
+                height: .greatestFiniteMagnitude
+            )
+        ).height
+        XCTAssertLessThanOrEqual(
+            needed,
+            field.bounds.height + 0.5,
+            message,
+            file: file,
+            line: line
+        )
     }
 
     private func languagePopUpButton(
