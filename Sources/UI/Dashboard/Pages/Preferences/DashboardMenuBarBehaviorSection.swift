@@ -6,8 +6,6 @@ final class DashboardMenuBarBehaviorSection {
     private weak var reverseMouseButtonsSwitch: NSSwitch?
     private weak var rightClickActionRow: NSView?
     private weak var reverseMouseButtonsRow: NSView?
-    private var behaviorRowsStack: NSStackView?
-    private var behaviorCardHeightConstraint: NSLayoutConstraint?
     private var behaviorSeparators: [NSView] = []
 
     func make(input: DashboardMenuBarPage.Input) -> NSView {
@@ -23,31 +21,27 @@ final class DashboardMenuBarBehaviorSection {
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
         self.reverseMouseButtonsSwitch = reverseMouseButtonsSwitch
-        let rightClickActionRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageRightClick),
-            subtitle: tr(.keyDashboardMenuBarPageRightClickDescription),
-            control: rightClickActionControl
+        let rightClickActionRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageRightClick),
+            detail: tr(.keyDashboardMenuBarPageRightClickDescription),
+            accessoryView: rightClickActionControl
         )
         self.rightClickActionRow = rightClickActionRow
-        let reverseMouseButtonsRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageReverseMouseButtons),
-            subtitle: tr(.keyDashboardMenuBarPageReverseMouseButtonsDescription),
-            control: reverseMouseButtonsSwitch
+        let reverseMouseButtonsRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageReverseMouseButtons),
+            detail: tr(.keyDashboardMenuBarPageReverseMouseButtonsDescription),
+            accessoryView: reverseMouseButtonsSwitch
         )
         reverseMouseButtonsRow.isHidden = input.preferences.menuBarRightClickAction == .matchLeftClick
         self.reverseMouseButtonsRow = reverseMouseButtonsRow
-        let behaviorSection = DashboardSettingsComponents.makeSettingsSection(
-            tr(.keyDashboardMenuBarPageBehavior),
-            rows: [
+        let behaviorSection = SettingsSectionView(
+            title: tr(.keyDashboardMenuBarPageBehavior),
+            contentViews: [
                 rightClickActionRow,
                 reverseMouseButtonsRow
-            ],
-            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
-                self?.behaviorRowsStack = rowsStack
-                self?.behaviorCardHeightConstraint = cardHeightConstraint
-                self?.behaviorSeparators = separators
-            }
+            ]
         )
+        behaviorSeparators = behaviorSection.separators
         updateVisibility(rightClickAction: input.preferences.menuBarRightClickAction)
         return behaviorSection
     }
@@ -79,21 +73,13 @@ final class DashboardMenuBarBehaviorSection {
             let hasVisibleRowAfter = rows[(index + 1)...].contains { $0?.isHidden == false }
             separator.isHidden = !(rows[index]?.isHidden == false && hasVisibleRowAfter)
         }
-        updateCardLayout()
-    }
-
-    private func updateCardLayout() {
-        guard let behaviorRowsStack,
-              let behaviorCardHeightConstraint else { return }
-        behaviorRowsStack.needsLayout = true
-        behaviorRowsStack.layoutSubtreeIfNeeded()
-        behaviorCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
-            rowsStack: behaviorRowsStack,
-            separators: behaviorSeparators
-        )
-        behaviorRowsStack.superview?.invalidateIntrinsicContentSize()
-        behaviorRowsStack.superview?.needsLayout = true
-        behaviorRowsStack.superview?.superview?.needsLayout = true
+        guard let row = rightClickActionRow ?? reverseMouseButtonsRow,
+              let section = SettingsSectionView.enclosing(row) else { return }
+        section.cardView.invalidateHostedSettingsRowHeight()
+        section.invalidateIntrinsicContentSize()
+        section.needsLayout = true
+        section.superview?.invalidateIntrinsicContentSize()
+        section.superview?.needsLayout = true
     }
 
     private func makeRightClickActionControl(

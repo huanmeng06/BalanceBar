@@ -30,6 +30,10 @@ final class SettingsRowView: NSView {
     private(set) var titleAccessory: NSView?
     private(set) var accessoryView: NSView?
 
+    private let rowMinimumHeight: CGFloat
+    private let rowVerticalPadding: CGFloat
+    private let forceDedicatedControlRow: Bool
+
     let contentStack = NSStackView()
     let labelsStack = NSStackView()
     private var stacksVertically = false
@@ -43,13 +47,21 @@ final class SettingsRowView: NSView {
     init(
         title: String,
         detail: String? = nil,
+        titleLabel: NSTextField? = nil,
+        detailLabel: NSTextField? = nil,
         titleAccessory: NSView? = nil,
-        accessoryView: NSView? = nil
+        accessoryView: NSView? = nil,
+        minimumHeight: CGFloat = SettingsRowView.minimumHeight,
+        verticalPadding: CGFloat = SettingsRowView.verticalPadding,
+        forceDedicatedControlRow: Bool = false
     ) {
-        titleLabel = SettingsWrappingLabel(string: title)
-        detailLabel = SettingsWrappingLabel(string: detail ?? "")
+        self.titleLabel = titleLabel ?? SettingsWrappingLabel(string: title)
+        self.detailLabel = detailLabel ?? SettingsWrappingLabel(string: detail ?? "")
         self.titleAccessory = titleAccessory
         self.accessoryView = accessoryView
+        rowMinimumHeight = max(SettingsRowView.minimumHeight, minimumHeight)
+        rowVerticalPadding = max(0, verticalPadding)
+        self.forceDedicatedControlRow = forceDedicatedControlRow
         super.init(frame: .zero)
         configure(
             title: title,
@@ -163,6 +175,21 @@ final class SettingsRowView: NSView {
         notifyHeightHost()
     }
 
+    /// Invalidates the row after a caller updates a supplied title or detail
+    /// label in place (for example a localized subtitle or inline link).
+    /// Native sections derive their height from the row's intrinsic content;
+    /// no parent-side fitting-size measurement is needed.
+    func invalidateAfterContentChange() {
+        titleLabel.invalidateIntrinsicContentSize()
+        detailLabel.invalidateIntrinsicContentSize()
+        labelsStack.invalidateIntrinsicContentSize()
+        contentStack.invalidateIntrinsicContentSize()
+        wrappingHeightIsDirty = true
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+        notifyHeightHost()
+    }
+
     private func recordSolvedWrappingWidthIfNeeded() {
         let labelWidth = wrappingWidthForLabels()
         guard labelWidth > 1 else {
@@ -233,11 +260,17 @@ final class SettingsRowView: NSView {
             }
             return
         }
-        (titleLabel as? SettingsWrappingLabel)?
-            .setPreferredMaxLayoutWidthWithoutInvalidation(titleWidth)
+        if let wrappingTitle = titleLabel as? SettingsWrappingLabel {
+            wrappingTitle.setPreferredMaxLayoutWidthWithoutInvalidation(titleWidth)
+        } else {
+            titleLabel.preferredMaxLayoutWidth = titleWidth
+        }
         if !detailLabel.isHidden {
-            (detailLabel as? SettingsWrappingLabel)?
-                .setPreferredMaxLayoutWidthWithoutInvalidation(labelWidth)
+            if let wrappingDetail = detailLabel as? SettingsWrappingLabel {
+                wrappingDetail.setPreferredMaxLayoutWidthWithoutInvalidation(labelWidth)
+            } else {
+                detailLabel.preferredMaxLayoutWidth = labelWidth
+            }
         }
     }
 
@@ -379,16 +412,16 @@ final class SettingsRowView: NSView {
             contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             contentStack.topAnchor.constraint(
                 greaterThanOrEqualTo: topAnchor,
-                constant: Self.verticalPadding
+                constant: rowVerticalPadding
             ),
             contentStack.bottomAnchor.constraint(
                 lessThanOrEqualTo: bottomAnchor,
-                constant: -Self.verticalPadding
+                constant: -rowVerticalPadding
             ),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumHeight),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: rowMinimumHeight),
             heightAnchor.constraint(
                 greaterThanOrEqualTo: contentStack.heightAnchor,
-                constant: Self.verticalPadding * 2
+                constant: rowVerticalPadding * 2
             )
         ]
         if let accessoryView {
@@ -442,7 +475,9 @@ final class SettingsRowView: NSView {
         // placement (inline / vertical-beside / dedicated-below). Measure
         // leftover label width against the accessory's natural width for its
         // current orientation, never the stack's compressed fitting size.
-        applyVerticalStacking(shouldPlaceAccessoryOnDedicatedRow(adaptive, availableWidth: availableWidth))
+        let placeOnDedicatedRow = forceDedicatedControlRow
+            || shouldPlaceAccessoryOnDedicatedRow(adaptive, availableWidth: availableWidth)
+        applyVerticalStacking(placeOnDedicatedRow)
         updateAccessoryNaturalWidthLock()
     }
 

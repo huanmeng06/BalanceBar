@@ -1008,6 +1008,10 @@ enum DashboardSettingsComponents {
     static func notifySettingsRowContentChanged(_ view: NSView?) {
         var ancestor = view
         while let current = ancestor {
+            if let row = current as? SettingsRowView {
+                row.invalidateAfterContentChange()
+                return
+            }
             if let row = current as? DashboardSettingsRowView {
                 row.invalidateAfterContentChange()
                 return

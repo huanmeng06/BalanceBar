@@ -15,9 +15,8 @@ final class DashboardMenuBarQuotaSection {
     private weak var autoSwitchLunaReserveSwitch: NSSwitch?
     private weak var lunaReserveResetTimeModeControl: NSPopUpButton?
     private weak var quotaResetDisplayModeControl: NSPopUpButton?
-    private weak var quotaRowsStack: NSStackView?
-    private weak var quotaCardHeightConstraint: NSLayoutConstraint?
     private var quotaSeparators: [NSView] = []
+    private weak var quotaSection: SettingsSectionView?
     private var lastQuotaVisibilitySignature: [Bool]?
 
     func resetRefreshSignatures() {
@@ -33,9 +32,8 @@ final class DashboardMenuBarQuotaSection {
     }
 
     func make(input: DashboardMenuBarPage.Input) -> NSView {
-        quotaRowsStack = nil
-        quotaCardHeightConstraint = nil
         quotaSeparators = []
+        quotaSection = nil
         lastQuotaVisibilitySignature = nil
 
         let amountToggle = DashboardSettingsComponents.makeSwitch(
@@ -80,10 +78,10 @@ final class DashboardMenuBarQuotaSection {
             relay: input.relay
         )
         self.quotaResetDisplayModeControl = quotaResetDisplayModeControl
-        let quotaWindowPreferenceRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageQuotaDisplayPriority),
-            subtitle: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
-            control: quotaWindowPreferenceControl
+        let quotaWindowPreferenceRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageQuotaDisplayPriority),
+            detail: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
+            accessoryView: quotaWindowPreferenceControl
         )
         self.quotaWindowPreferenceRow = quotaWindowPreferenceRow
         autoSwitchLunaReserveRow = nil
@@ -91,27 +89,27 @@ final class DashboardMenuBarQuotaSection {
         let autoSwitchLunaReserveRow: NSView?
         let lunaReserveResetTimeRow: NSView?
         if let autoSwitchLunaReserve, let lunaReserveResetTimeModeControl {
-            let autoSwitchRow = DashboardSettingsComponents.makeSettingsRow(
-                tr(
+            let autoSwitchRow = SettingsRowView(
+                title: tr(
                     .keyDashboardMenuBarPageAutoSwitchLunaReserve,
                     arguments: [tr(.keyLunaReserveTitle)]
                 ),
-                subtitle: tr(
+                detail: tr(
                     .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
                     arguments: [tr(.keyLunaReserveTitle)]
                 ),
-                control: autoSwitchLunaReserve
+                accessoryView: autoSwitchLunaReserve
             )
-            let resetTimeRow = DashboardSettingsComponents.makeSettingsRow(
-                tr(
+            let resetTimeRow = SettingsRowView(
+                title: tr(
                     .keyDashboardMenuBarPageLunaReserveResetTime,
                     arguments: [tr(.keyLunaReserveTitle)]
                 ),
-                subtitle: tr(
+                detail: tr(
                     .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
                     arguments: [tr(.keyLunaReserveTitle)]
                 ),
-                control: lunaReserveResetTimeModeControl
+                accessoryView: lunaReserveResetTimeModeControl
             )
             self.autoSwitchLunaReserveRow = autoSwitchRow
             self.lunaReserveResetTimeRow = resetTimeRow
@@ -121,47 +119,44 @@ final class DashboardMenuBarQuotaSection {
             autoSwitchLunaReserveRow = nil
             lunaReserveResetTimeRow = nil
         }
-        let amountDisplayRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageBalanceAmount),
-            subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
-            control: amountToggle
+        let amountDisplayRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageBalanceAmount),
+            detail: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
+            accessoryView: amountToggle
         )
         self.amountDisplayRow = amountDisplayRow
-        let resetCountdownRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageResetCountdown),
-            subtitle: tr(.keyDashboardMenuBarPageOnlyShownWhenOfficialQuotaDataIsAvailable),
-            control: resetToggle
+        let resetCountdownRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageResetCountdown),
+            detail: tr(.keyDashboardMenuBarPageOnlyShownWhenOfficialQuotaDataIsAvailable),
+            accessoryView: resetToggle
         )
         self.resetCountdownRow = resetCountdownRow
-        let quotaResetDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageQuotaResetDisplayMode),
-            subtitle: tr(.keyDashboardMenuBarPageQuotaResetDisplayModeDescription),
-            control: quotaResetDisplayModeControl
+        let quotaResetDisplayModeRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageQuotaResetDisplayMode),
+            detail: tr(.keyDashboardMenuBarPageQuotaResetDisplayModeDescription),
+            accessoryView: quotaResetDisplayModeControl
         )
         self.quotaResetDisplayModeRow = quotaResetDisplayModeRow
-        return DashboardSettingsComponents.makeSettingsSection(
-            tr(.keyDashboardMenuBarPageQuotaAndReset),
-            rows: [
+        let quotaSection = SettingsSectionView(
+            title: tr(.keyDashboardMenuBarPageQuotaAndReset),
+            contentViews: [
                 amountDisplayRow,
                 resetCountdownRow,
                 quotaWindowPreferenceRow,
                 quotaResetDisplayModeRow,
                 autoSwitchLunaReserveRow,
                 lunaReserveResetTimeRow
-            ].compactMap { $0 },
-            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
-                guard let self else { return }
-                self.quotaRowsStack = rowsStack
-                self.quotaCardHeightConstraint = cardHeightConstraint
-                self.quotaSeparators = separators
-                self.updateVisibility(
-                    showAmount: input.preferences.showMenuBarAmount,
-                    showReset: input.preferences.showMenuBarReset,
-                    autoSwitchLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
-                        && input.preferences.menuBarAutoSwitchLunaReserve
-                )
-            }
+            ].compactMap { $0 }
         )
+        self.quotaSection = quotaSection
+        self.quotaSeparators = quotaSection.separators
+        updateVisibility(
+            showAmount: input.preferences.showMenuBarAmount,
+            showReset: input.preferences.showMenuBarReset,
+            autoSwitchLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
+                && input.preferences.menuBarAutoSwitchLunaReserve
+        )
+        return quotaSection
     }
 
     func refresh(preferences: AppPreferences) {
@@ -241,22 +236,13 @@ final class DashboardMenuBarQuotaSection {
             let hasVisibleRowAfter = rows[(index + 1)...].contains { $0?.isHidden == false }
             separator.isHidden = !(rows[index]?.isHidden == false && hasVisibleRowAfter)
         }
-        updateCardLayout()
-    }
-
-    private func updateCardLayout() {
-        guard let quotaRowsStack,
-              let quotaCardHeightConstraint else { return }
+        guard let quotaSection else { return }
         quotaCardLayoutCountForTesting += 1
-        quotaRowsStack.needsLayout = true
-        quotaRowsStack.layoutSubtreeIfNeeded()
-        quotaCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
-            rowsStack: quotaRowsStack,
-            separators: quotaSeparators
-        )
-        quotaRowsStack.superview?.invalidateIntrinsicContentSize()
-        quotaRowsStack.superview?.needsLayout = true
-        quotaRowsStack.superview?.superview?.needsLayout = true
+        quotaSection.cardView.invalidateHostedSettingsRowHeight()
+        quotaSection.invalidateIntrinsicContentSize()
+        quotaSection.needsLayout = true
+        quotaSection.superview?.invalidateIntrinsicContentSize()
+        quotaSection.superview?.needsLayout = true
     }
 
     private func makeQuotaWindowPreferenceControl(

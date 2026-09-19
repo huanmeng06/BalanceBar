@@ -9,6 +9,52 @@ final class DashboardMenuBarPageActionTarget: NSObject {
     }
 }
 
+/// Lets the native settings row place the fixed-size preview below its labels
+/// when the Menu Bar page is narrow. The preview itself remains the same
+/// custom AppKit surface and keeps its existing 42pt visual height.
+private final class MenuBarPreviewAccessoryHost: NSView, DashboardSettingsRowControlLayout {
+    let allowsTextDrivenDedicatedRow = true
+    let minimumInlineLabelWidth: CGFloat = 320
+    let preview: NSView
+
+    init(preview: NSView) {
+        self.preview = preview
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        preview.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(preview)
+        NSLayoutConstraint.activate([
+            preview.topAnchor.constraint(equalTo: topAnchor),
+            preview.leadingAnchor.constraint(equalTo: leadingAnchor),
+            preview.trailingAnchor.constraint(equalTo: trailingAnchor),
+            preview.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    var stacksControlsVertically: Bool { false }
+
+    func updateAvailableRowWidth(_ width: CGFloat) {
+        _ = width
+    }
+
+    var naturalAccessoryWidth: CGFloat {
+        let width = preview.fittingSize.width
+        return width.isFinite && width > 0 ? width : 190
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let size = preview.fittingSize
+        return NSSize(
+            width: naturalAccessoryWidth,
+            height: size.height.isFinite && size.height > 0 ? size.height : 42
+        )
+    }
+}
+
 /// Live preview, status-item visibility, and overflow/runtime warnings.
 final class DashboardMenuBarPreviewSection {
     private struct WarningRefreshSignature: Equatable {
@@ -36,9 +82,8 @@ final class DashboardMenuBarPreviewSection {
     private weak var runtimeOnlyWarningLabel: NSTextField?
     private weak var runtimeOnlyWarningSettingsButton: NSButton?
     private weak var runtimeOnlyWarningRow: NSView?
-    private weak var previewRowsStack: NSStackView?
-    private weak var previewCardHeightConstraint: NSLayoutConstraint?
     private var previewSeparators: [NSView] = []
+    private weak var previewSection: SettingsSectionView?
     private var capsuleLeadingConstraint: NSLayoutConstraint?
     private var capsuleTrailingConstraint: NSLayoutConstraint?
     private var previewWidthConstraint: NSLayoutConstraint?
@@ -121,9 +166,8 @@ final class DashboardMenuBarPreviewSection {
 
     func make(input: DashboardMenuBarPage.Input) -> NSView {
         prepare(input: input)
-        previewRowsStack = nil
-        previewCardHeightConstraint = nil
         previewSeparators = []
+        previewSection = nil
         lastWarningRefreshSignature = nil
 
         let previewContent = NSView()
@@ -347,36 +391,39 @@ final class DashboardMenuBarPreviewSection {
         self.runtimeOnlyWarningLabel = runtimeOnlyWarningLabel
         self.runtimeOnlyWarningSettingsButton = runtimeOnlyWarningSettingsButton
         self.runtimeOnlyWarningRow = runtimeOnlyWarningRow
-        let iconDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageIconDisplayMode),
-            subtitle: tr(.keyDashboardMenuBarPageIconDisplayModeDescription),
-            control: iconDisplayModeControl
+        let iconDisplayModeRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageIconDisplayMode),
+            detail: tr(.keyDashboardMenuBarPageIconDisplayModeDescription),
+            accessoryView: iconDisplayModeControl
         )
         self.iconDisplayModeRow = iconDisplayModeRow
-        let iconDisplayDelayRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageIconDisplayDelay),
-            subtitle: tr(.keyDashboardMenuBarPageIconDisplayDelayDescription),
-            control: iconDisplayDelayControl
+        let iconDisplayDelayRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageIconDisplayDelay),
+            detail: tr(.keyDashboardMenuBarPageIconDisplayDelayDescription),
+            accessoryView: iconDisplayDelayControl
         )
         iconDisplayDelayRow.isHidden = input.preferences.menuBarIconDisplayMode != .onlyWhileRunning
         self.iconDisplayDelayRow = iconDisplayDelayRow
-        let previewSection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPagePreview), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardMenuBarPageCurrentLayout),
-                subtitle: tr(.keyDashboardMenuBarPageTheMenuBarUpdatesWithProviderDataInRealTime),
-                control: preview,
-                minimumHeight: DashboardMenuBarPage.previewRowHeight,
-                verticalPadding: DashboardMenuBarPage.previewRowVerticalPadding
-            ),
-            iconDisplayModeRow,
-            iconDisplayDelayRow,
-            overflowWarningRow,
-            runtimeOnlyWarningRow
-        ], onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
-            self?.previewRowsStack = rowsStack
-            self?.previewCardHeightConstraint = cardHeightConstraint
-            self?.previewSeparators = separators
-        })
+        let previewAccessory = MenuBarPreviewAccessoryHost(preview: preview)
+        let previewSettingsRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageCurrentLayout),
+            detail: tr(.keyDashboardMenuBarPageTheMenuBarUpdatesWithProviderDataInRealTime),
+            accessoryView: previewAccessory,
+            minimumHeight: DashboardMenuBarPage.previewRowHeight,
+            verticalPadding: DashboardMenuBarPage.previewRowVerticalPadding
+        )
+        let previewSection = SettingsSectionView(
+            title: tr(.keyDashboardMenuBarPagePreview),
+            contentViews: [
+                previewSettingsRow,
+                iconDisplayModeRow,
+                iconDisplayDelayRow,
+                overflowWarningRow,
+                runtimeOnlyWarningRow
+            ]
+        )
+        self.previewSection = previewSection
+        self.previewSeparators = previewSection.separators
         isBuilt = true
         return previewSection
     }
@@ -905,17 +952,13 @@ final class DashboardMenuBarPreviewSection {
     }
 
     private func updatePreviewCardLayout() {
-        guard let previewRowsStack,
-              let previewCardHeightConstraint else { return }
+        guard let previewSection else { return }
         previewCardLayoutCountForTesting += 1
-        previewRowsStack.needsLayout = true
-        previewCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
-            rowsStack: previewRowsStack,
-            separators: previewSeparators
-        )
-        previewRowsStack.superview?.invalidateIntrinsicContentSize()
-        previewRowsStack.superview?.needsLayout = true
-        previewRowsStack.superview?.superview?.needsLayout = true
+        previewSection.cardView.invalidateHostedSettingsRowHeight()
+        previewSection.invalidateIntrinsicContentSize()
+        previewSection.needsLayout = true
+        previewSection.superview?.invalidateIntrinsicContentSize()
+        previewSection.superview?.needsLayout = true
     }
 
     func revealIconDisplayModeSetting() {

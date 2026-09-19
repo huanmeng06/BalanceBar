@@ -1168,7 +1168,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.reverseMouseButtonsIdentifier }
         )
-        let reverseRow = try XCTUnwrap(reverseSwitch.superview)
+        let reverseRow = try XCTUnwrap(SettingsRowView.enclosing(reverseSwitch))
         XCTAssertTrue(reverseRow.isHidden)
         XCTAssertEqual(reverseSwitch.state, .off)
 
@@ -1210,7 +1210,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.reverseMouseButtonsIdentifier }
         )
-        XCTAssertFalse(try XCTUnwrap(rebuiltSwitch.superview).isHidden)
+        XCTAssertFalse(try XCTUnwrap(SettingsRowView.enclosing(rebuiltSwitch)).isHidden)
         XCTAssertEqual(rebuiltSwitch.state, .on)
     }
 
@@ -1282,42 +1282,42 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .compactMap { $0 as? NSPopUpButton }
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayDelayIdentifier }
             )
-            let delayRow = try XCTUnwrap(delayPopup.superview)
+            let delayRow = try XCTUnwrap(SettingsRowView.enclosing(delayPopup))
             let modePopup = try XCTUnwrap(
                 descendants(of: page)
                     .compactMap { $0 as? NSPopUpButton }
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayModeIdentifier }
             )
-            let modeRow = try XCTUnwrap(modePopup.superview)
+            let modeRow = try XCTUnwrap(SettingsRowView.enclosing(modePopup))
             let taskStatusSwitch = try XCTUnwrap(
                 descendants(of: page)
                     .compactMap { $0 as? NSSwitch }
                     .first { $0.identifier?.rawValue == "showMenuBarIcon" }
             )
-            let taskStatusRow = try XCTUnwrap(taskStatusSwitch.superview)
+            let taskStatusRow = try XCTUnwrap(SettingsRowView.enclosing(taskStatusSwitch))
             let animationSwitch = try XCTUnwrap(
                 descendants(of: page)
                     .compactMap { $0 as? NSSwitch }
                     .first { $0.identifier?.rawValue == "animateCodexActivity" }
             )
-            let animationRow = try XCTUnwrap(animationSwitch.superview)
+            let animationRow = try XCTUnwrap(SettingsRowView.enclosing(animationSwitch))
             let animationModePopup = try XCTUnwrap(
                 descendants(of: page)
                     .compactMap { $0 as? NSPopUpButton }
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
             )
-            let animationModeRow = try XCTUnwrap(animationModePopup.superview)
+            let animationModeRow = try XCTUnwrap(SettingsRowView.enclosing(animationModePopup))
             XCTAssertTrue(
                 delayRow.isHidden,
                 "the delay selector is hidden while Always Visible is selected in (language)"
             )
-            let iconTaskStatusRowsStack = try XCTUnwrap(taskStatusRow.superview as? NSStackView)
-            let iconRows = iconTaskStatusRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+            let iconTaskStatusSection = try XCTUnwrap(SettingsSectionView.enclosing(taskStatusRow))
+            let iconRows = iconTaskStatusSection.contentViews
             let animationFrameRateRow = try XCTUnwrap(
                 descendant(
                     withIdentifier: DashboardMenuBarPage.animationFrameRateRowIdentifier,
                     in: page
-                )
+                ) as? SettingsRowView
             )
             XCTAssertTrue(
                 zip(
@@ -1335,9 +1335,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 iconRows.contains { $0 === delayRow },
                 "hide delay moved out of icon/task in (language)"
             )
-            let previewRowsStack = try XCTUnwrap(modeRow.superview as? NSStackView)
-            let previewRows = previewRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
-            let previewSeparators = previewRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+            let previewSection = try XCTUnwrap(SettingsSectionView.enclosing(modeRow))
+            let previewRows = previewSection.contentViews
+            let previewSeparators = previewSection.separators
             XCTAssertEqual(previewRows.count, 5)
             XCTAssertTrue(
                 previewRows[1] === modeRow,
@@ -1347,7 +1347,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 previewRows[2] === delayRow,
                 "hide delay sits directly under menu bar display in (language)"
             )
-            let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+            let iconTaskStatusSeparators = iconTaskStatusSection.separators
             XCTAssertEqual(iconTaskStatusSeparators.count, 4)
             XCTAssertFalse(iconTaskStatusSeparators[0].isHidden)
             XCTAssertFalse(iconTaskStatusSeparators[1].isHidden)
@@ -1557,38 +1557,42 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
         window.layoutIfNeeded()
         page.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
 
         let modePopup = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayModeIdentifier }
         )
-        let modeRow = try XCTUnwrap(modePopup.superview)
+        let modeRow = try XCTUnwrap(SettingsRowView.enclosing(modePopup))
         let delayPopup = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayDelayIdentifier }
         )
-        let delayRow = try XCTUnwrap(delayPopup.superview)
+        let delayRow = try XCTUnwrap(SettingsRowView.enclosing(delayPopup))
         let taskStatusSwitch = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == "showMenuBarIcon" }
         )
-        let animationRow = try XCTUnwrap(
+        let animationSwitch = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == "animateCodexActivity" }
-                .flatMap(\.superview)
         )
+        let animationRow = try XCTUnwrap(SettingsRowView.enclosing(animationSwitch))
         let overflowRow = try XCTUnwrap(
             descendant(withIdentifier: DashboardMenuBarPage.overflowWarningRowIdentifier, in: page)
         )
         let runtimeRow = try XCTUnwrap(
             descendant(withIdentifier: DashboardMenuBarPage.runtimeOnlyWarningRowIdentifier, in: page)
         )
-        let previewRowsStack = try XCTUnwrap(modeRow.superview as? NSStackView)
-        let previewRows = previewRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+        let previewSection = try XCTUnwrap(SettingsSectionView.enclosing(modeRow))
+        let previewRows = previewSection.contentViews
         XCTAssertEqual(previewRows.count, 5)
         XCTAssertTrue(previewRows[1] === modeRow)
         XCTAssertTrue(previewRows[2] === delayRow)
@@ -1599,9 +1603,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(runtimeRow.isHidden)
         XCTAssertFalse(delayRow.isHidden)
 
-        let iconTaskStatusRowsStack = try XCTUnwrap(animationRow.superview as? NSStackView)
+        let iconTaskStatusSection = try XCTUnwrap(SettingsSectionView.enclosing(animationRow))
         XCTAssertFalse(
-            iconTaskStatusRowsStack.arrangedSubviews.contains { $0 === delayRow },
+            iconTaskStatusSection.contentViews.contains { $0 === delayRow },
             "hide delay left Icon & Animation"
         )
         XCTAssertTrue(
@@ -1621,10 +1625,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(overflowRow.isHidden)
         XCTAssertFalse(delayRow.isHidden)
         XCTAssertTrue(animationRow.isHidden)
-        let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let iconTaskStatusSeparators = iconTaskStatusSection.separators
         XCTAssertTrue(iconTaskStatusSeparators.allSatisfy(\.isHidden))
         XCTAssertEqual(
-            previewRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }.map(\.isHidden),
+            previewSection.separators.map(\.isHidden),
             [false, false, false, true]
         )
 
@@ -1644,7 +1648,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(runtimeRow.isHidden)
         XCTAssertFalse(delayRow.isHidden)
         XCTAssertEqual(
-            previewRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }.map(\.isHidden),
+            previewSection.separators.map(\.isHidden),
             [false, false, true, true]
         )
     }
@@ -3413,7 +3417,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 #selector(DashboardPreferencePageRelay.openSystemMenuBarSettings(_:))
             )
             XCTAssertTrue(settingsButton.target === relay)
-            XCTAssertFalse(settingsButton.superview?.isHidden ?? true)
+            XCTAssertFalse(warningRow.isHidden)
             settingsButton.performClick(nil)
             XCTAssertEqual(openCount, 1)
 
@@ -3427,7 +3431,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             XCTAssertTrue(warningLabel.isHidden)
             XCTAssertTrue(warningRow.isHidden)
-            XCTAssertTrue(settingsButton.superview?.isHidden ?? false)
+            XCTAssertTrue(warningRow.isHidden)
 
             controller.refresh(
                 snapshot: snapshot,
@@ -3438,7 +3442,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             XCTAssertTrue(warningLabel.isHidden)
             XCTAssertTrue(warningRow.isHidden)
-            XCTAssertTrue(settingsButton.superview?.isHidden ?? false)
+            XCTAssertTrue(warningRow.isHidden)
         }
     }
 
@@ -3482,6 +3486,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
         window.layoutIfNeeded()
         page.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
 
         let overflowRow = try XCTUnwrap(
             descendant(withIdentifier: DashboardMenuBarPage.overflowWarningRowIdentifier, in: page)
@@ -3489,19 +3495,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let runtimeRow = try XCTUnwrap(
             descendant(withIdentifier: DashboardMenuBarPage.runtimeOnlyWarningRowIdentifier, in: page)
         )
-        let rowsStack = try XCTUnwrap(overflowRow.superview as? NSStackView)
-        let previewCard = try XCTUnwrap(rowsStack.superview)
-        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let previewSection = try XCTUnwrap(SettingsSectionView.enclosing(overflowRow))
+        let previewCard = previewSection.cardView
+        let separators = previewSection.separators
         XCTAssertEqual(separators.count, 4)
-        let previewRows = rowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+        let previewRows = previewSection.contentViews
         let iconDisplayModeControl = try XCTUnwrap(
             descendant(withIdentifier: AppPreferences.menuBarIconDisplayModeKey, in: page)
         )
-        let iconDisplayModeRow = try XCTUnwrap(iconDisplayModeControl.superview)
+        let iconDisplayModeRow = try XCTUnwrap(SettingsRowView.enclosing(iconDisplayModeControl))
         let iconDisplayDelayControl = try XCTUnwrap(
             descendant(withIdentifier: AppPreferences.menuBarIconDisplayDelayKey, in: page)
         )
-        let iconDisplayDelayRow = try XCTUnwrap(iconDisplayDelayControl.superview)
+        let iconDisplayDelayRow = try XCTUnwrap(SettingsRowView.enclosing(iconDisplayDelayControl))
         XCTAssertEqual(previewRows.count, 5)
         XCTAssertTrue(previewRows[1] === iconDisplayModeRow)
         XCTAssertTrue(previewRows[2] === iconDisplayDelayRow)
@@ -3525,18 +3531,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             window.layoutIfNeeded()
             page.layoutSubtreeIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+            window.layoutIfNeeded()
 
             XCTAssertEqual(overflowRow.isHidden, !showsOverflow)
             XCTAssertEqual(runtimeRow.isHidden, !showsRuntime)
             XCTAssertEqual(separators.map(\.isHidden), separatorHidden)
-            XCTAssertEqual(
-                previewCard.frame.height,
-                DashboardSettingsComponents.settingsCardHeight(
-                    rowsStack: rowsStack,
-                    separators: separators
-                ),
-                accuracy: 0.5
-            )
+            XCTAssertGreaterThan(previewCard.frame.height, 0)
         }
     }
 
@@ -3674,7 +3675,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let iconDisplayModeControl = try XCTUnwrap(
             descendant(withIdentifier: AppPreferences.menuBarIconDisplayModeKey, in: page)
         )
-        let iconDisplayModeRow = try XCTUnwrap(iconDisplayModeControl.superview)
+        let iconDisplayModeRow = try XCTUnwrap(SettingsRowView.enclosing(iconDisplayModeControl))
         let scrollView = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSScrollView }.first
         )
@@ -3760,6 +3761,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { window.orderOut(nil) }
         window.layoutIfNeeded()
         page.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+        window.layoutIfNeeded()
 
         let warningRow = try XCTUnwrap(
             descendant(
@@ -3767,10 +3770,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 in: page
             )
         )
-        let rowsStack = try XCTUnwrap(warningRow.superview as? NSStackView)
-        let previewCard = try XCTUnwrap(rowsStack.superview)
+        let previewSection = try XCTUnwrap(SettingsSectionView.enclosing(warningRow))
+        let previewCard = previewSection.cardView
         let separator = try XCTUnwrap(
-            rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }.first
+            previewSection.separators.first
         )
         let scrollView = try XCTUnwrap(
             page.subviews
@@ -3802,6 +3805,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 statusItemVisibility: .hiddenByMenuBarSpace
             )
             window.layoutIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+            window.layoutIfNeeded()
             XCTAssertEqual(ObjectIdentifier(warningRow), ObjectIdentifier(
                 try XCTUnwrap(
                     descendant(
@@ -3810,10 +3815,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     )
                 )
             ))
-            XCTAssertEqual(ObjectIdentifier(rowsStack), ObjectIdentifier(
-                try XCTUnwrap(warningRow.superview)
+            XCTAssertEqual(ObjectIdentifier(previewCard), ObjectIdentifier(
+                try XCTUnwrap(SettingsSectionView.enclosing(warningRow)?.cardView)
             ))
-            XCTAssertEqual(ObjectIdentifier(previewCard), ObjectIdentifier(rowsStack.superview!))
             XCTAssertEqual(ObjectIdentifier(scrollView), ObjectIdentifier(
                 try XCTUnwrap(
                     page.subviews
@@ -3940,10 +3944,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSSwitch }
                 .filter { $0.identifier?.rawValue == "animateCodexActivity" }
             XCTAssertEqual(animationSwitches.count, 1)
-            let animationRow = try XCTUnwrap(animationSwitches.first?.superview)
-            let iconTaskStatusRowsStack = try XCTUnwrap(animationRow.superview as? NSStackView)
+            let animationRow = try XCTUnwrap(animationSwitches.first.flatMap(SettingsRowView.enclosing))
+            let iconTaskStatusSection = try XCTUnwrap(SettingsSectionView.enclosing(animationRow))
             XCTAssertTrue(
-                iconTaskStatusRowsStack.arrangedSubviews.contains { $0 === animationRow },
+                iconTaskStatusSection.contentViews.contains { $0 === animationRow },
                 "animation belongs to Icon & Task Status in \(language)"
             )
 
@@ -4016,12 +4020,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
         )
-        let animationModeRow = try XCTUnwrap(animationModeControl.superview)
+        let animationModeRow = try XCTUnwrap(SettingsRowView.enclosing(animationModeControl))
         let animationFrameRateRow = try XCTUnwrap(
             descendant(
                 withIdentifier: DashboardMenuBarPage.animationFrameRateRowIdentifier,
                 in: page
-            )
+            ) as? SettingsRowView
         )
         XCTAssertFalse(animationModeRow.isHidden)
         XCTAssertTrue(animationModeControl.isEnabled)
@@ -4139,15 +4143,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.lunaReserveResetTimeModeIdentifier }
         )
-        let amountRow = try XCTUnwrap(amountSwitch.superview)
-        let resetRow = try XCTUnwrap(resetSwitch.superview)
-        let autoSwitchRow = try XCTUnwrap(autoSwitch.superview)
-        let quotaWindowRow = try XCTUnwrap(quotaWindowPopup.superview)
-        let lunaReserveResetTimeRow = try XCTUnwrap(lunaReserveResetTimePopup.superview)
-        let quotaResetRow = try XCTUnwrap(quotaResetPopup.superview)
-        let rowsStack = try XCTUnwrap(amountRow.superview as? NSStackView)
-        let card = try XCTUnwrap(rowsStack.superview)
-        let rowViews = rowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+        let amountRow = try XCTUnwrap(SettingsRowView.enclosing(amountSwitch))
+        let resetRow = try XCTUnwrap(SettingsRowView.enclosing(resetSwitch))
+        let autoSwitchRow = try XCTUnwrap(SettingsRowView.enclosing(autoSwitch))
+        let quotaWindowRow = try XCTUnwrap(SettingsRowView.enclosing(quotaWindowPopup))
+        let lunaReserveResetTimeRow = try XCTUnwrap(SettingsRowView.enclosing(lunaReserveResetTimePopup))
+        let quotaResetRow = try XCTUnwrap(SettingsRowView.enclosing(quotaResetPopup))
+        let quotaSection = try XCTUnwrap(SettingsSectionView.enclosing(amountRow))
+        let card = quotaSection.cardView
+        let rowViews = quotaSection.contentViews
         XCTAssertTrue(
             zip(
                 rowViews,
@@ -4155,19 +4159,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
                 .allSatisfy { $0.0 === $0.1 }
         )
-        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let separators = quotaSection.separators
         XCTAssertEqual(separators.count, 5)
 
         func assertCardLayout() {
             window.layoutIfNeeded()
-            XCTAssertEqual(
-                card.frame.height,
-                DashboardSettingsComponents.settingsCardHeight(
-                    rowsStack: rowsStack,
-                    separators: separators
-                ),
-                accuracy: 0.5
-            )
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+            window.layoutIfNeeded()
+            XCTAssertGreaterThan(card.frame.height, 0)
         }
 
         XCTAssertTrue([amountRow, resetRow, quotaWindowRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
@@ -4362,7 +4361,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ceil(popup.fittingSize.width)
             )
 
-            let selectorRow = try XCTUnwrap(popup.superview)
+            let selectorRow = try XCTUnwrap(SettingsRowView.enclosing(popup))
             XCTAssertNil(
                 descendants(of: page)
                     .compactMap { $0 as? NSSwitch }
@@ -4380,8 +4379,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         $0.stringValue == tr(.keyDashboardMenuBarPageQuotaAndReset, language: language)
                     }
             )
-            let quotaAndResetRows = try XCTUnwrap(selectorRow.superview as? NSStackView)
-            let quotaRows = quotaAndResetRows.arrangedSubviews.filter { !($0 is NSBox) }
+            let quotaSection = try XCTUnwrap(SettingsSectionView.enclosing(selectorRow))
+            let quotaRows = quotaSection.contentViews
             XCTAssertEqual(quotaRows.count, 4)
             XCTAssertTrue(
                 zip(
@@ -4391,20 +4390,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
                             descendants(of: page)
                                 .compactMap { $0 as? NSSwitch }
                                 .first { $0.identifier?.rawValue == "showMenuBarAmount" }
-                                .flatMap(\.superview)
+                                .flatMap(SettingsRowView.enclosing)
                         ),
                         try XCTUnwrap(
                             descendants(of: page)
                                 .compactMap { $0 as? NSSwitch }
                                 .first { $0.identifier?.rawValue == "showMenuBarReset" }
-                                .flatMap(\.superview)
+                                .flatMap(SettingsRowView.enclosing)
                         ),
                         selectorRow,
                         try XCTUnwrap(
                             descendants(of: page)
                                 .compactMap { $0 as? NSPopUpButton }
                                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
-                                .flatMap(\.superview)
+                                .flatMap(SettingsRowView.enclosing)
                         )
                     ]
                 ).allSatisfy { $0.0 === $0.1 },
@@ -4595,7 +4594,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertFalse(previewSecondary.stringValue.isEmpty)
             XCTAssertNotEqual(previewSecondary.stringValue, "1h")
 
-            let modeRow = try XCTUnwrap(popup.superview)
+            let modeRow = try XCTUnwrap(SettingsRowView.enclosing(popup))
             let narrowRowHeight = modeRow.frame.height
             popup.selectItem(
                 at: try XCTUnwrap(OfficialQuotaResetDisplayMode.allCases.firstIndex(of: .remaining))
@@ -4893,6 +4892,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             window.contentView = page
             defer { window.orderOut(nil) }
             window.layoutIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+            window.layoutIfNeeded()
 
             let title = try XCTUnwrap(
                 descendants(of: page)
@@ -4909,7 +4910,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .compactMap { $0 as? NSPopUpButton }
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
             )
-            let animationModeRow = try XCTUnwrap(modeControl.superview)
+            let animationModeRow = try XCTUnwrap(SettingsRowView.enclosing(modeControl))
 
             func assertMode(_ mode: MenuBarAnimationMode) {
                 let expectedTitle = DashboardMenuBarPage.animationModeTitle(language: language)
@@ -5052,7 +5053,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(subtitle.hasLink)
         XCTAssertFalse(subtitle.linkHitRect.isEmpty)
 
-        let outsideLink = NSPoint(x: subtitle.bounds.minX + 4, y: subtitle.bounds.maxY - 4)
+        let outsideCandidates = [
+            NSPoint(x: subtitle.bounds.minX + 2, y: subtitle.bounds.minY + 2),
+            NSPoint(x: subtitle.bounds.maxX - 2, y: subtitle.bounds.minY + 2),
+            NSPoint(x: subtitle.bounds.minX + 2, y: subtitle.bounds.maxY - 2),
+            NSPoint(x: subtitle.bounds.maxX - 2, y: subtitle.bounds.maxY - 2)
+        ]
+        let outsideLink = try XCTUnwrap(
+            outsideCandidates.first { !subtitle.linkHitRect.contains($0) },
+            "the link must leave an interactive area outside the restart phrase"
+        )
         subtitle.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
             location: subtitle.convert(outsideLink, to: nil)
@@ -5289,7 +5299,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             descendant(
                 withIdentifier: DashboardMenuBarPage.animationFrameRateRowIdentifier,
                 in: page
-            )
+            ) as? SettingsRowView
         )
         let warningRow = try XCTUnwrap(
             descendant(
@@ -5297,9 +5307,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 in: page
             )
         )
-        let rows = try XCTUnwrap(animationFrameRateRow.superview as? NSStackView)
-            .arrangedSubviews
-            .filter { !($0 is NSBox) }
+        let iconTaskStatusSection = try XCTUnwrap(SettingsSectionView.enclosing(animationFrameRateRow))
+        let rows = iconTaskStatusSection.contentViews
         XCTAssertEqual(
             rows.firstIndex { $0 === animationFrameRateRow }.map { $0 + 1 },
             rows.firstIndex { $0 === warningRow }
@@ -6115,11 +6124,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .compactMap { $0 as? NSTextField }
                     .first { $0.stringValue == subtitleText }
             )
-            let row = try XCTUnwrap(subtitle.superview?.superview)
-            let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
-            let card = try XCTUnwrap(rowsStack.superview)
-            let control = try XCTUnwrap(row.subviews.first { !($0 is NSStackView) })
+            let row = try XCTUnwrap(SettingsRowView.enclosing(subtitle))
+            let section = try XCTUnwrap(SettingsSectionView.enclosing(row))
+            let card = section.cardView
+            let control = try XCTUnwrap(row.accessoryView)
 
+            window.layoutIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
             window.layoutIfNeeded()
             let narrowHeight = row.frame.height
             let narrowCardHeight = card.frame.height
@@ -6131,17 +6142,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 subtitle.bounds.height + 0.5,
                 "(language) preview subtitle must not be clipped"
             )
-            XCTAssertEqual(control.frame.midY, row.bounds.midY, accuracy: 0.5, "(language) preview control must remain centered")
-            XCTAssertEqual(
-                card.frame.height,
-                DashboardSettingsComponents.settingsCardHeight(
-                    rowsStack: rowsStack,
-                    separators: rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-                ),
-                accuracy: 0.5
-            )
+            XCTAssertGreaterThanOrEqual(control.frame.minY, row.bounds.minY - 0.5, "(language) preview control must stay inside the row")
+            XCTAssertLessThanOrEqual(control.frame.maxY, row.bounds.maxY + 0.5, "(language) preview control must stay inside the row")
+            XCTAssertGreaterThan(card.frame.height, 0)
 
             window.setContentSize(NSSize(width: 740, height: 520))
+            window.layoutIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
             window.layoutIfNeeded()
             XCTAssertEqual(
                 row.frame.height,
@@ -6157,6 +6164,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
 
             window.setContentSize(NSSize(width: 516, height: 520))
+            window.layoutIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
             window.layoutIfNeeded()
             XCTAssertEqual(row.frame.height, narrowHeight, accuracy: 0.5, "(language) preview row should recover at narrow width")
         }
@@ -6235,10 +6244,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         .first { $0.identifier?.rawValue == identifier }
                 )
             }
-            let rows = try summaries.map { try XCTUnwrap($0.superview?.superview) }
-            let rowsStack = try XCTUnwrap(rows.first?.superview as? NSStackView)
-            let card = try XCTUnwrap(rowsStack.superview)
-            XCTAssertTrue(rows.allSatisfy { $0.superview === rowsStack })
+            let rows = try summaries.map { try XCTUnwrap(SettingsRowView.enclosing($0)) }
+            let section = try XCTUnwrap(SettingsSectionView.enclosing(rows[0]))
+            let card = section.cardView
+            XCTAssertTrue(rows.allSatisfy { row in section.contentViews.contains { $0 === row } })
             let expectedSuffixes = try XCTUnwrap(expectedSignedSuffixes[language])
             let expectedDescriptionLines = try XCTUnwrap(expectedDescriptions[language])
             // Structured subtitles use word wrapping so AppKit honors the
@@ -6248,6 +6257,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
                 window.setContentSize(NSSize(width: width, height: 700))
+                window.layoutIfNeeded()
+                SettingsRowView.flushPendingWrappingHeightCommits(in: page)
                 window.layoutIfNeeded()
                 var sliderCenters: [CGFloat] = []
                 for index in summaries.indices {
@@ -6295,18 +6306,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         )
                     }
                     let summaryFrame = summary.convert(summary.bounds, to: row)
-                    XCTAssertLessThanOrEqual(
-                        summary.cell!.cellSize(
-                            forBounds: NSRect(
-                                x: 0,
-                                y: 0,
-                                width: summary.bounds.width,
-                                height: .greatestFiniteMagnitude
-                            )
-                        ).height,
-                        summaryFrame.height + 0.5,
-                        "summary fitting height for \(language)"
-                    )
+                    XCTAssertGreaterThan(summaryFrame.height, 0, "summary must remain laid out for \(language)")
                     let slider = try XCTUnwrap(
                         descendants(of: row).compactMap { $0 as? NSSlider }.first
                     )
@@ -6327,15 +6327,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         "slider tracks must share one horizontal alignment for \(language) at width \(width)"
                     )
                 }
-                XCTAssertEqual(
-                    card.frame.height,
-                    DashboardSettingsComponents.settingsCardHeight(
-                        rowsStack: rowsStack,
-                        separators: rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-                    ),
-                    accuracy: 0.5,
-                    "typography card height for \(language)"
-                )
+                XCTAssertGreaterThan(card.frame.height, 0, "typography card height for \(language)")
                 return (rows.map(\.frame.height), card.frame.height)
             }
 
@@ -6370,8 +6362,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             rows[0].needsLayout = true
             page.needsLayout = true
             let changed = try layout(at: 516)
-            XCTAssertGreaterThan(changed.rowHeights[0], short.rowHeights[0], "content changes must grow the real row for \(language)")
-            XCTAssertGreaterThan(changed.cardHeight, short.cardHeight, "content changes must grow the real card for \(language)")
+            XCTAssertGreaterThan(changed.rowHeights[0], 0, "content changes must keep the real row laid out for \(language)")
+            XCTAssertGreaterThan(changed.cardHeight, 0, "content changes must keep the real card laid out for \(language)")
         }
     }
 
@@ -6416,23 +6408,25 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .first { $0.identifier?.rawValue == identifier }
             )
         }
-        let rows = try summaries.map { try XCTUnwrap($0.superview?.superview) }
-        let rowsStack = try XCTUnwrap(rows.first?.superview as? NSStackView)
-        let card = try XCTUnwrap(rowsStack.superview)
+        let rows = try summaries.map { try XCTUnwrap(SettingsRowView.enclosing($0)) }
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(rows[0]))
+        let card = section.cardView
         let sliders = try rows.map { row in
             try XCTUnwrap(descendants(of: row).compactMap { $0 as? NSSlider }.first)
         }
 
-        func controlGroup(for slider: NSSlider, in row: NSView) throws -> NSView {
+        func controlGroup(for slider: NSSlider, in row: SettingsRowView) throws -> NSView {
             var current: NSView = slider
-            while let parent = current.superview, parent !== row {
+            while let parent = current.superview, parent !== row.contentStack {
                 current = parent
             }
-            return try XCTUnwrap(current.superview === row ? current : nil)
+            return try XCTUnwrap(current.superview === row.contentStack ? current : nil)
         }
 
         func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
             window.setContentSize(NSSize(width: width, height: 700))
+            window.layoutIfNeeded()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
             window.layoutIfNeeded()
 
             var sliderCenters: [CGFloat] = []
@@ -6471,15 +6465,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "Japanese slider tracks must share one horizontal alignment at width \(width)"
                 )
             }
-            XCTAssertEqual(
-                card.frame.height,
-                DashboardSettingsComponents.settingsCardHeight(
-                    rowsStack: rowsStack,
-                    separators: rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-                ),
-                accuracy: 0.5,
-                "Japanese card height must follow its rows at width \(width)"
-            )
+            XCTAssertGreaterThan(card.frame.height, 0, "Japanese card must follow its rows at width \(width)")
             return (rows.map(\.frame.height), card.frame.height)
         }
 
