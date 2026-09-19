@@ -5,6 +5,7 @@ import XCTest
 @MainActor
 final class SettingsSectionViewTests: XCTestCase {
     func testNativeSectionUsesAutoLayoutHierarchyAndSkipsLegacyCardHeightLoop() throws {
+        DashboardSettingsLayoutMetrics.reset()
         let row = SettingsRowView(
             title: "Silent Launch",
             detail: "Start in the background without opening the dashboard.",
@@ -41,9 +42,14 @@ final class SettingsSectionViewTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
         XCTAssertEqual(section.cardView.frame.height, row.frame.height, accuracy: 0.5)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
     }
 
     func testSectionHeightFollowsArrangedRowsAndSeparatorsWithoutParentRemeasurement() throws {
+        DashboardSettingsLayoutMetrics.reset()
         let first = SettingsRowView(title: "First", accessoryView: NSSwitch())
         let second = SettingsRowView(
             title: "Second",
@@ -66,6 +72,7 @@ final class SettingsSectionViewTests: XCTestCase {
             SettingsSectionView.headingToCardSpacing,
             accuracy: 1.0
         )
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
 
         pin(section, to: host, window: window, width: 516)
         let narrowHeight = first.frame.height
@@ -74,9 +81,11 @@ final class SettingsSectionViewTests: XCTestCase {
         XCTAssertEqual(section.cardView.frame.height, narrowHeight, accuracy: 0.5)
         XCTAssertEqual(section.cardView.frame.width, section.frame.width, accuracy: 0.5)
         XCTAssertEqual(first.frame.width, section.cardView.frame.width, accuracy: 0.5)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
     }
 
     func testMixedLegacyAndNativeRowsKeepBaselineCardHeightWithoutLegacyCardView() throws {
+        DashboardSettingsLayoutMetrics.reset()
         let legacy = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
             subtitle: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription),
@@ -100,6 +109,7 @@ final class SettingsSectionViewTests: XCTestCase {
             separators: section.separators
         )
         XCTAssertEqual(section.cardView.frame.height, expected, accuracy: 1.0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
         XCTAssertGreaterThanOrEqual(legacy.frame.height, DashboardSettingsComponents.standardRowHeight)
         XCTAssertGreaterThanOrEqual(native.frame.height, SettingsRowView.minimumHeight)
     }
@@ -161,6 +171,8 @@ final class SettingsSectionViewTests: XCTestCase {
         let window = makeTestWindow(width: 880)
         let host = pinningHost(for: section, in: window, width: 880)
         defer { window.orderOut(nil) }
+
+        DashboardSettingsLayoutMetrics.reset()
         let wideCardHeight = section.cardView.frame.height
         pin(section, to: host, window: window, width: 516)
         XCTAssertGreaterThanOrEqual(
@@ -169,6 +181,7 @@ final class SettingsSectionViewTests: XCTestCase {
         )
         XCTAssertEqual(section.cardView.frame.height, row.frame.height, accuracy: 0.5)
         XCTAssertGreaterThan(row.detailLabel.preferredMaxLayoutWidth, 1)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
     }
 
     private func makeTestWindow(width: CGFloat) -> NSWindow {

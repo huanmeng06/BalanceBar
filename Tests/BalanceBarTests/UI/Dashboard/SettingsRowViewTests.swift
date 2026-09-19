@@ -5,6 +5,7 @@ import XCTest
 @MainActor
 final class SettingsRowViewTests: XCTestCase {
     func testNativeRowUsesAutoLayoutHierarchyAndSkipsLegacyHeightCaches() throws {
+        DashboardSettingsLayoutMetrics.reset()
         let control = NSSwitch()
         let row = SettingsRowView(
             title: "Silent Launch",
@@ -48,6 +49,9 @@ final class SettingsRowViewTests: XCTestCase {
         section.layoutSubtreeIfNeeded()
 
         XCTAssertGreaterThanOrEqual(row.frame.height, SettingsRowView.minimumHeight)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.textLineMeasurements, 0)
+        XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
     }
 
     func testLongDetailWrapsAndGrowsHeightAtNarrowWidthWithoutOverlappingControl() throws {
