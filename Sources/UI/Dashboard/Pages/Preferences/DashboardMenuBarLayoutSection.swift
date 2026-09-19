@@ -7,42 +7,50 @@ final class DashboardMenuBarLayoutSection {
     /// native settings row owns that placement decision through this contract.
     ///
     /// This is a plain `NSView` host so the native row can bounds-center the
-    /// group. `NSStackView` derives `alignmentRect(forFrame:)` from arranged
-    /// subviews and ignores `alignmentRectInsets`, which on CI macOS 26 showed
-    /// up as `slider.midY` 39 vs row `midY` 38. The inner stack also reports
-    /// identity alignment and is edge-pinned so Auto Layout `centerYAnchor`
-    /// cannot reintroduce that inset. The legacy settings row pinned
-    /// `control.centerY` with bounds anchors.
+    /// group. An inner `NSStackView` would derive `alignmentRect(forFrame:)`
+    /// from arranged subviews and ignore `alignmentRectInsets`, which on CI
+    /// macOS 26 showed up as `slider.midY` 39 vs row `midY` 38. Endpoint
+    /// labels and the slider are pinned with bounds `centerY` instead, matching
+    /// the legacy settings row's `control.centerY` pin.
     private final class MenuBarSliderControls: NSView, DashboardSettingsRowControlLayout {
+        private static let spacing: CGFloat = 6
+
         let allowsTextDrivenDedicatedRow = true
         let minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         private(set) var stacksControlsVertically = false
-        private let stack: InnerStack
-
-        private final class InnerStack: NSStackView {
-            override var alignmentRectInsets: NSEdgeInsets { .init() }
-
-            override func alignmentRect(forFrame frame: NSRect) -> NSRect { frame }
-
-            override func frame(forAlignmentRect alignmentRect: NSRect) -> NSRect { alignmentRect }
-        }
+        private let arrangedViews: [NSView]
 
         init(views: [NSView]) {
-            stack = InnerStack(views: views)
+            arrangedViews = views
             super.init(frame: .zero)
             translatesAutoresizingMaskIntoConstraints = false
-            stack.orientation = .horizontal
-            stack.alignment = .centerY
-            stack.spacing = 6
-            stack.translatesAutoresizingMaskIntoConstraints = false
-            stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            addSubview(stack)
-            NSLayoutConstraint.activate([
-                stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-                stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-                stack.topAnchor.constraint(equalTo: topAnchor),
-                stack.bottomAnchor.constraint(equalTo: bottomAnchor)
-            ])
+            var previous: NSView?
+            var constraints: [NSLayoutConstraint] = []
+            for view in views {
+                view.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(view)
+                constraints.append(contentsOf: [
+                    view.centerYAnchor.constraint(equalTo: centerYAnchor),
+                    view.topAnchor.constraint(greaterThanOrEqualTo: topAnchor),
+                    view.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+                    heightAnchor.constraint(greaterThanOrEqualTo: view.heightAnchor)
+                ])
+                if let previous {
+                    constraints.append(
+                        view.leadingAnchor.constraint(
+                            equalTo: previous.trailingAnchor,
+                            constant: Self.spacing
+                        )
+                    )
+                } else {
+                    constraints.append(view.leadingAnchor.constraint(equalTo: leadingAnchor))
+                }
+                previous = view
+            }
+            if let previous {
+                constraints.append(previous.trailingAnchor.constraint(equalTo: trailingAnchor))
+            }
+            NSLayoutConstraint.activate(constraints)
         }
 
         required init?(coder: NSCoder) {
@@ -63,10 +71,10 @@ final class DashboardMenuBarLayoutSection {
         }
 
         var naturalAccessoryWidth: CGFloat {
-            let visible = stack.arrangedSubviews.filter { !$0.isHidden }
+            let visible = arrangedViews.filter { !$0.isHidden }
             return visible.reduce(CGFloat(0)) { total, view in
                 total + max(0, view.fittingSize.width)
-            } + max(0, CGFloat(visible.count - 1)) * stack.spacing
+            } + max(0, CGFloat(visible.count - 1)) * Self.spacing
         }
     }
 

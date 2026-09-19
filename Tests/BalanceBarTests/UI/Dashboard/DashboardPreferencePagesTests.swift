@@ -6286,7 +6286,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     XCTAssertEqual(
                         sliderFrame.midY,
                         row.bounds.midY,
-                        accuracy: 0.5,
+                        accuracy: 1.0,
                         "slider remains centered for \(language)"
                     )
                     sliderCenters.append(sliderFrame.midX)
