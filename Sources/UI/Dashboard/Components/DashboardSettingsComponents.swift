@@ -528,12 +528,16 @@ enum DashboardSettingsComponents {
 
     /// Shared compact numeric editor for Dashboard settings.
     ///
+    /// Extra monospaced digits reserved so the caret and a longer typed value
+    /// still fit. Width stays `cellSize`-based; this is not a screenshot pt.
+    private static let numericEditingExtraDigits = 2
+
     /// The primitive owns the AppKit visual contract: `NSTextField(string:)`,
     /// small `controlSize`, rounded bezel, monospaced digits at
-    /// `NSFont.systemFontSize(for: .small)`, and width from `NSCell.cellSize`.
-    /// Callers keep value semantics and validation. Height and width both come
-    /// from the cell; this factory never installs a height constraint or an
-    /// arbitrary width.
+    /// `NSFont.systemFontSize(for: .small)`, and width from `NSCell.cellSize`
+    /// plus two extra digits of editing room. Callers keep value semantics and
+    /// validation. Height comes from the cell; this factory never installs a
+    /// height constraint or an arbitrary width.
     static func makeNumericTextField(
         identifier: String? = nil,
         value: String? = nil,
@@ -576,18 +580,24 @@ enum DashboardSettingsComponents {
         return field
     }
 
-    /// Smallest width AppKit needs to draw the current value or placeholder,
-    /// including the native small rounded bezel.
+    /// Width AppKit needs to draw the current value or placeholder, plus two
+    /// extra monospaced digits so the field is editable without clipping.
     static func compactNumericWidth(for field: NSTextField) -> CGFloat {
         let valueWidth = field.cell?.cellSize.width ?? 0
-        guard let placeholder = field.placeholderString, !placeholder.isEmpty else {
-            return ceil(valueWidth)
+        var contentWidth = valueWidth
+        if let placeholder = field.placeholderString, !placeholder.isEmpty {
+            let original = field.stringValue
+            field.stringValue = placeholder
+            contentWidth = max(contentWidth, field.cell?.cellSize.width ?? 0)
+            field.stringValue = original
         }
-        let original = field.stringValue
-        field.stringValue = placeholder
-        let placeholderWidth = field.cell?.cellSize.width ?? 0
-        field.stringValue = original
-        return ceil(max(valueWidth, placeholderWidth))
+        let digitWidth: CGFloat
+        if let font = field.font {
+            digitWidth = ("0" as NSString).size(withAttributes: [.font: font]).width
+        } else {
+            digitWidth = 0
+        }
+        return ceil(contentWidth + digitWidth * CGFloat(numericEditingExtraDigits))
     }
 
     static func disconnectPopUpButtonActions(in view: NSView?) {

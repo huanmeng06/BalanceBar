@@ -56,7 +56,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             field.constraints.first(where: { $0.firstAttribute == .width })?.constant,
             compactWidth
         )
-        XCTAssertEqual(compactWidth, ceil(field.cell?.cellSize.width ?? 0), accuracy: 0.5)
+        XCTAssertGreaterThan(compactWidth, field.cell?.cellSize.width ?? 0)
         XCTAssertLessThan(compactWidth, 92)
     }
 
@@ -174,6 +174,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             accuracy: 1,
             "threshold field must keep the small rounded cell height, not the 62pt row"
         )
+        XCTAssertGreaterThan(
+            menuField.bounds.width,
+            menuField.cell?.cellSize.width ?? 0,
+            "threshold field keeps extra horizontal room for typing"
+        )
         XCTAssertEqual(
             menuBarField.bounds.width,
             DashboardSettingsComponents.compactNumericWidth(for: menuBarField),
@@ -184,6 +189,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             menuBarField.cell?.cellSize.height ?? 0,
             accuracy: 1,
             "FPS field must keep the small rounded cell height, not the 62pt row"
+        )
+        XCTAssertGreaterThan(
+            menuBarField.bounds.width,
+            menuBarField.cell?.cellSize.width ?? 0,
+            "FPS field keeps extra horizontal room for typing"
         )
         XCTAssertLessThan(menuField.bounds.width, 92)
         XCTAssertFalse(iconOffsetSummary.isBezeled)
