@@ -599,9 +599,11 @@ enum DashboardSettingsComponents {
         }
 
         func controlTextDidEndEditing(_ notification: Notification) {
-            if let field = notification.object as? NSTextField,
-               let textView = field.currentEditor() as? NSTextView {
-                restoreNumericFieldEditorPolicy(on: textView)
+            if let field = notification.object as? NSTextField {
+                if let textView = field.currentEditor() as? NSTextView {
+                    restoreNumericFieldEditorPolicy(on: textView)
+                }
+                acceptPlaceholderIfFieldIsEmpty(field)
             }
             externalDelegate?.controlTextDidEndEditing?(notification)
         }
@@ -709,6 +711,21 @@ enum DashboardSettingsComponents {
             storedFieldEditorPolicy = nil
             configuredFieldEditor = nil
         }
+
+        /// An empty numeric field shows a gray placeholder. Tab / focus loss
+        /// should commit that placeholder, not restore the previous value.
+        private func acceptPlaceholderIfFieldIsEmpty(_ field: NSTextField) {
+            let current = (field.currentEditor()?.string ?? field.stringValue)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard current.isEmpty,
+                  let placeholder = field.placeholderString?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !placeholder.isEmpty else {
+                return
+            }
+            field.currentEditor()?.string = placeholder
+            field.stringValue = placeholder
+        }
     }
 
     /// Snapshot of window-shared field-editor traits so numeric editing
@@ -777,7 +794,8 @@ enum DashboardSettingsComponents {
     /// Overflow and the caret scroll inside the cell (`isScrollable`,
     /// `wraps == false`); AppKit pairs that with clipping instead of wrapping.
     /// Height comes from the cell; this factory never installs a height
-    /// constraint or a screenshot width. Tab commits the current string; the
+    /// constraint or a screenshot width. Tab commits the current string; an
+    /// empty field commits `placeholderString` before page validation. The
     /// shared field editor's text completion / inline prediction is off for
     /// this editing session only. The returned stack is the accessory.
     static func makeNumericTextField(

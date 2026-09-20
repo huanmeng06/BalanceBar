@@ -172,6 +172,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(menuField.cell?.controlSize, .regular)
         XCTAssertEqual(menuField.controlSize, menuBarField.controlSize)
         XCTAssertEqual(menuBarField.cell?.controlSize, .regular)
+        XCTAssertEqual(menuField.placeholderString, "0.10")
+        XCTAssertEqual(
+            menuBarField.placeholderString,
+            String(MenuBarAnimationTiming.defaultFrameRate)
+        )
         XCTAssertEqual(menuField.isBezeled, menuBarField.isBezeled)
         XCTAssertEqual(menuField.bezelStyle, menuBarField.bezelStyle)
         XCTAssertEqual(menuField.focusRingType, menuBarField.focusRingType)
@@ -407,6 +412,107 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ) ?? false
         )
         XCTAssertEqual(menuBarField.integerValue, 25)
+    }
+
+    func testNumericFieldsCommitPlaceholderWhenClearedBeforeEndEditing() throws {
+        let suiteName = "DashboardPreferencePagesTests.NumericPlaceholder.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        var committedThresholds: [Double] = []
+
+        let menuPage = DashboardMenuPage()
+        let menuView = menuPage.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { committedThresholds.append($0) }
+        ))
+        defer { menuPage.teardown() }
+
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let menuBarPage = DashboardMenuBarPage()
+        let menuBarView = menuBarPage.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        defer { menuBarPage.teardown() }
+
+        let menuField = try XCTUnwrap(
+            descendants(of: menuView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }
+        )
+        let menuBarField = try XCTUnwrap(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier }
+        )
+
+        XCTAssertEqual(menuField.placeholderString, "0.10")
+        XCTAssertEqual(menuBarField.placeholderString, "24")
+        XCTAssertFalse(menuField.isAutomaticTextCompletionEnabled)
+        XCTAssertEqual(menuField.controlSize, .regular)
+
+        menuField.stringValue = "123"
+        menuField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(menuField.stringValue, "123.00")
+        XCTAssertEqual(committedThresholds, [123])
+
+        menuField.stringValue = "abc"
+        menuField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(
+            menuField.stringValue,
+            "123.00",
+            "invalid non-empty input must roll back to the last committed value, not the placeholder"
+        )
+        XCTAssertEqual(committedThresholds, [123])
+
+        menuField.stringValue = ""
+        menuField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(
+            menuField.stringValue,
+            "0.10",
+            "clearing the field must accept the gray placeholder, not restore 123.00"
+        )
+        XCTAssertEqual(committedThresholds, [123, 0.10])
+
+        menuBarField.stringValue = "15"
+        menuBarField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuBarField)
+        )
+        XCTAssertEqual(menuBarField.integerValue, 15)
+
+        menuBarField.stringValue = ""
+        menuBarField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuBarField)
+        )
+        XCTAssertEqual(menuBarField.stringValue, "24")
+        XCTAssertEqual(menuBarField.integerValue, 24)
     }
 
     func testRelayRoutesEachPreferenceActionOnce() {

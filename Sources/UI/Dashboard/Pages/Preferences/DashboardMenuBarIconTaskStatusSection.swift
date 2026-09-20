@@ -435,6 +435,7 @@ final class DashboardMenuBarIconTaskStatusSection {
         let accessory = DashboardSettingsComponents.makeNumericTextField(
             identifier: DashboardMenuBarPage.animationFrameRateIdentifier,
             value: String(clamped),
+            placeholder: String(MenuBarAnimationTiming.defaultFrameRate),
             capacityTemplate: DashboardSettingsComponents.frameRateCapacityTemplate,
             trailingViews: [unit],
             delegate: animationFrameRateEditor,
