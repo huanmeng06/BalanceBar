@@ -2,8 +2,519 @@ import AppKit
 import XCTest
 @testable import BalanceBar
 
+private final class NumericTextFieldTestTarget: NSObject {
+    @objc func commit(_ sender: Any?) {}
+}
+
 @MainActor
 final class DashboardPreferencePagesTests: XCTestCase {
+    func testSharedNumericTextFieldUsesNativeCompactConfiguration() {
+        let target = NumericTextFieldTestTarget()
+        let compactFont = NSFont.monospacedDigitSystemFont(
+            ofSize: NSFont.systemFontSize(for: .regular),
+            weight: .regular
+        )
+        let accessory = DashboardSettingsComponents.makeNumericTextField(
+            identifier: "numericField",
+            value: "0.10",
+            placeholder: "0.01",
+            capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate,
+            target: target,
+            action: #selector(NumericTextFieldTestTarget.commit(_:)),
+            toolTip: "Numeric value"
+        )
+        let field = accessory.field
+        let compactWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: field,
+            capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+        )
+        let tenThousandWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: field,
+            capacityTemplate: "10000.00"
+        )
+        let defaultValueWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: field,
+            capacityTemplate: "0.10"
+        )
+
+        XCTAssertTrue(accessory.arrangedSubviews.contains(field))
+        XCTAssertEqual(accessory.capacityTemplate, DashboardSettingsComponents.amountCapacityTemplate)
+        XCTAssertEqual(field.identifier?.rawValue, "numericField")
+        XCTAssertEqual(field.stringValue, "0.10")
+        XCTAssertEqual(field.placeholderString, "0.01")
+        XCTAssertEqual(field.alignment, .right)
+        XCTAssertEqual(field.controlSize, .regular)
+        XCTAssertEqual(field.cell?.controlSize, .regular)
+        XCTAssertTrue(field.isBezeled)
+        XCTAssertEqual(field.bezelStyle, .roundedBezel)
+        XCTAssertEqual(field.focusRingType, .default)
+        XCTAssertTrue(field.isEditable)
+        XCTAssertTrue(field.isSelectable)
+        XCTAssertTrue(field.usesSingleLineMode)
+        XCTAssertEqual(field.maximumNumberOfLines, 1)
+        XCTAssertEqual(field.cell?.wraps, false)
+        XCTAssertEqual(field.cell?.isScrollable, true)
+        XCTAssertFalse(
+            field.cell?.responds(to: NSSelectorFromString("completes")) ?? true,
+            "NSTextFieldCell has no completes in the current SDK; NSComboBoxCell does"
+        )
+        XCTAssertFalse(field.isAutomaticTextCompletionEnabled)
+        XCTAssertFalse(field.allowsCharacterPickerTouchBarItem)
+        XCTAssertEqual(field.font, compactFont)
+        XCTAssertEqual(field.font?.pointSize ?? 0, NSFont.systemFontSize(for: .regular), accuracy: 0.01)
+        XCTAssertIdentical(field.target as AnyObject?, target)
+        XCTAssertNotNil(field.action)
+        XCTAssertEqual(field.toolTip, "Numeric value")
+        XCTAssertEqual(field.intrinsicContentSize.height, field.cell?.cellSize.height ?? 0, accuracy: 0.5)
+        XCTAssertEqual(field.contentHuggingPriority(for: .vertical), .required)
+        XCTAssertEqual(field.contentHuggingPriority(for: .horizontal), .required)
+        XCTAssertFalse(
+            field.constraints.contains { constraint in
+                constraint.firstAttribute == .height || constraint.secondAttribute == .height
+            },
+            "the primitive must use intrinsic height instead of a fixed height constraint"
+        )
+        XCTAssertEqual(
+            field.constraints.first(where: { $0.firstAttribute == .width })?.constant,
+            compactWidth
+        )
+        XCTAssertGreaterThanOrEqual(compactWidth, tenThousandWidth)
+        XCTAssertGreaterThan(
+            compactWidth,
+            defaultValueWidth,
+            "width must come from the amount template, not the initial 0.10 value"
+        )
+
+        let row = SettingsRowView(
+            title: "Threshold",
+            detail: "Keep the compact cell after SettingsRowView adjusts accessory hugging.",
+            accessoryView: accessory
+        )
+        XCTAssertTrue(row.accessoryView === accessory)
+        XCTAssertEqual(field.contentHuggingPriority(for: .vertical), .required)
+        XCTAssertEqual(accessory.contentHuggingPriority(for: .vertical), .defaultHigh)
+    }
+
+    func testMenuAndMenuBarNumericFieldsShareCompactVisualContract() throws {
+        let suiteName = "DashboardPreferencePagesTests.NumericFields.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        let compactFont = NSFont.monospacedDigitSystemFont(
+            ofSize: NSFont.systemFontSize(for: .regular),
+            weight: .regular
+        )
+
+        let menuPage = DashboardMenuPage()
+        let menuView = menuPage.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        defer { menuPage.teardown() }
+
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let menuBarPage = DashboardMenuBarPage()
+        let menuBarView = menuBarPage.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        defer { menuBarPage.teardown() }
+
+        let menuField = try XCTUnwrap(
+            descendants(of: menuView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }
+        )
+        let menuBarField = try XCTUnwrap(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier }
+        )
+        let iconOffsetSummary = try XCTUnwrap(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
+        )
+
+        let amountWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: menuField,
+            capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+        )
+        let frameRateWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: menuBarField,
+            capacityTemplate: DashboardSettingsComponents.frameRateCapacityTemplate
+        )
+        let tenThousandWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: menuField,
+            capacityTemplate: "10000.00"
+        )
+        XCTAssertEqual(menuField.controlSize, .regular)
+        XCTAssertEqual(menuField.cell?.controlSize, .regular)
+        XCTAssertEqual(menuField.controlSize, menuBarField.controlSize)
+        XCTAssertEqual(menuBarField.cell?.controlSize, .regular)
+        XCTAssertEqual(menuField.placeholderString, "0.10")
+        XCTAssertEqual(
+            menuBarField.placeholderString,
+            String(MenuBarAnimationTiming.defaultFrameRate)
+        )
+        XCTAssertEqual(menuField.isBezeled, menuBarField.isBezeled)
+        XCTAssertEqual(menuField.bezelStyle, menuBarField.bezelStyle)
+        XCTAssertEqual(menuField.focusRingType, menuBarField.focusRingType)
+        XCTAssertEqual(menuField.alignment, menuBarField.alignment)
+        XCTAssertEqual(menuField.font, compactFont)
+        XCTAssertEqual(menuField.font, menuBarField.font)
+        XCTAssertEqual(menuField.intrinsicContentSize.height, menuBarField.intrinsicContentSize.height, accuracy: 0.5)
+        XCTAssertEqual(menuField.cell?.wraps, false)
+        XCTAssertEqual(menuField.cell?.isScrollable, true)
+        XCTAssertEqual(menuBarField.cell?.wraps, false)
+        XCTAssertEqual(menuBarField.cell?.isScrollable, true)
+        XCTAssertTrue(menuField.superview is DashboardSettingsComponents.CompactNumericFieldAccessory)
+        XCTAssertTrue(menuBarField.superview is DashboardSettingsComponents.CompactNumericFieldAccessory)
+        let frameRateUnit = try XCTUnwrap(
+            (menuBarField.superview as? NSStackView)?.arrangedSubviews
+                .compactMap { $0 as? NSTextField }
+                .first { $0 !== menuBarField }
+        )
+        XCTAssertEqual(
+            frameRateUnit.font?.pointSize ?? 0,
+            NSFont.systemFontSize(for: .regular),
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            menuField.constraints.first(where: { $0.firstAttribute == .width })?.constant,
+            amountWidth
+        )
+        XCTAssertEqual(
+            menuBarField.constraints.first(where: { $0.firstAttribute == .width })?.constant,
+            frameRateWidth
+        )
+        XCTAssertGreaterThanOrEqual(amountWidth, tenThousandWidth)
+        XCTAssertEqual(menuField.contentHuggingPriority(for: .vertical), .required)
+        XCTAssertEqual(menuBarField.contentHuggingPriority(for: .vertical), .required)
+
+        let menuWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 1400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let menuBarWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 1400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer {
+            menuWindow.orderOut(nil)
+            menuBarWindow.orderOut(nil)
+        }
+        pinMenuPage(menuView, in: menuWindow, width: 720)
+        pinMenuPage(menuBarView, in: menuBarWindow, width: 720)
+        XCTAssertEqual(menuField.stringValue, "0.10")
+        XCTAssertEqual(menuField.bounds.width, amountWidth, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(
+            menuField.bounds.width,
+            tenThousandWidth,
+            "default 0.10 must not lock a width that clips 10000.00"
+        )
+        XCTAssertEqual(
+            menuField.bounds.height,
+            menuField.cell?.cellSize.height ?? 0,
+            accuracy: 1,
+            "threshold field must keep the regular rounded cell height, not the 62pt row"
+        )
+        XCTAssertLessThan(menuField.bounds.height, 62)
+        XCTAssertEqual(menuBarField.bounds.width, frameRateWidth, accuracy: 1)
+        XCTAssertEqual(
+            menuBarField.bounds.height,
+            menuBarField.cell?.cellSize.height ?? 0,
+            accuracy: 1,
+            "FPS field must keep the regular rounded cell height, not the 62pt row"
+        )
+        XCTAssertLessThan(menuBarField.bounds.height, 62)
+
+        let widthBeforeTyping = menuField.bounds.width
+        menuField.stringValue = "10000.00"
+        pinMenuPage(menuView, in: menuWindow, width: 720)
+        XCTAssertEqual(menuField.bounds.width, widthBeforeTyping, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(
+            menuField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(
+                for: menuField,
+                capacityTemplate: "10000.00"
+            )
+        )
+        XCTAssertEqual(menuField.cell?.isScrollable, true)
+        XCTAssertEqual(menuField.cell?.wraps, false)
+        menuPage.controlTextDidEndEditing(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(menuField.stringValue, "10000.00")
+        pinMenuPage(menuView, in: menuWindow, width: 720)
+        XCTAssertEqual(menuField.bounds.width, widthBeforeTyping, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(
+            menuField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(
+                for: menuField,
+                capacityTemplate: menuField.stringValue
+            ),
+            "committed 10000.00 must remain fully visible and editable"
+        )
+        XCTAssertEqual(
+            menuField.bounds.height,
+            menuField.cell?.cellSize.height ?? 0,
+            accuracy: 1
+        )
+
+        XCTAssertFalse(iconOffsetSummary.isBezeled)
+        XCTAssertFalse(iconOffsetSummary.isEditable)
+        XCTAssertFalse(iconOffsetSummary.drawsBackground)
+    }
+
+    func testNumericFieldsRejectCompletionAndCommitPartialThresholdOnEndEditing() throws {
+        let suiteName = "DashboardPreferencePagesTests.NumericCompletion.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        var committedThresholds: [Double] = []
+
+        let accessory = DashboardSettingsComponents.makeNumericTextField(
+            identifier: "numericCompletion",
+            value: "0.10",
+            capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+        )
+        let field = accessory.field
+        XCTAssertFalse(
+            field.cell?.responds(to: NSSelectorFromString("completes")) ?? true
+        )
+        XCTAssertFalse(field.isAutomaticTextCompletionEnabled)
+        assertNumericFieldRejectsCompletion(field)
+
+        let editor = NSTextView()
+        editor.isAutomaticTextCompletionEnabled = true
+        editor.isAutomaticQuoteSubstitutionEnabled = true
+        editor.isAutomaticSpellingCorrectionEnabled = true
+        editor.inlinePredictionType = .yes
+        XCTAssertEqual(field.delegate?.control?(field, textShouldBeginEditing: editor), true)
+        XCTAssertFalse(editor.isAutomaticTextCompletionEnabled)
+        XCTAssertFalse(editor.isAutomaticQuoteSubstitutionEnabled)
+        XCTAssertFalse(editor.isAutomaticSpellingCorrectionEnabled)
+        XCTAssertEqual(editor.inlinePredictionType, .no)
+        XCTAssertEqual(field.delegate?.control?(field, textShouldEndEditing: editor), true)
+        XCTAssertTrue(editor.isAutomaticTextCompletionEnabled)
+        XCTAssertTrue(editor.isAutomaticQuoteSubstitutionEnabled)
+        XCTAssertTrue(editor.isAutomaticSpellingCorrectionEnabled)
+        XCTAssertEqual(editor.inlinePredictionType, .yes)
+
+        let menuPage = DashboardMenuPage()
+        let menuView = menuPage.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { committedThresholds.append($0) }
+        ))
+        defer { menuPage.teardown() }
+
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let menuBarPage = DashboardMenuBarPage()
+        let menuBarView = menuBarPage.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        defer { menuBarPage.teardown() }
+
+        let menuField = try XCTUnwrap(
+            descendants(of: menuView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }
+        )
+        let menuBarField = try XCTUnwrap(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier }
+        )
+
+        XCTAssertEqual(menuField.controlSize, .regular)
+        XCTAssertEqual(menuBarField.controlSize, .regular)
+        XCTAssertFalse(menuField.isAutomaticTextCompletionEnabled)
+        XCTAssertFalse(menuBarField.isAutomaticTextCompletionEnabled)
+        assertNumericFieldRejectsCompletion(menuField)
+        assertNumericFieldRejectsCompletion(menuBarField)
+
+        menuField.stringValue = "10000.00"
+        menuPage.controlTextDidEndEditing(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(menuField.stringValue, "10000.00")
+        XCTAssertEqual(committedThresholds, [10000])
+
+        menuField.stringValue = "0.1"
+        menuField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(
+            menuField.stringValue,
+            "0.10",
+            "Tab/end-editing must format the current value, not a previous record"
+        )
+        XCTAssertEqual(committedThresholds, [10000, 0.1])
+
+        menuField.stringValue = "0.1"
+        menuPage.controlTextDidEndEditing(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(menuField.stringValue, "0.10")
+        XCTAssertEqual(committedThresholds, [10000, 0.1])
+
+        XCTAssertTrue(
+            menuBarField.delegate?.control?(
+                menuBarField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.moveUp(_:))
+            ) ?? false
+        )
+        XCTAssertEqual(menuBarField.integerValue, 25)
+    }
+
+    func testNumericFieldsCommitPlaceholderWhenClearedBeforeEndEditing() throws {
+        let suiteName = "DashboardPreferencePagesTests.NumericPlaceholder.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        var committedThresholds: [Double] = []
+
+        let menuPage = DashboardMenuPage()
+        let menuView = menuPage.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { committedThresholds.append($0) }
+        ))
+        defer { menuPage.teardown() }
+
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let menuBarPage = DashboardMenuBarPage()
+        let menuBarView = menuBarPage.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        defer { menuBarPage.teardown() }
+
+        let menuField = try XCTUnwrap(
+            descendants(of: menuView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }
+        )
+        let menuBarField = try XCTUnwrap(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier }
+        )
+
+        XCTAssertEqual(menuField.placeholderString, "0.10")
+        XCTAssertEqual(menuBarField.placeholderString, "24")
+        XCTAssertFalse(menuField.isAutomaticTextCompletionEnabled)
+        XCTAssertEqual(menuField.controlSize, .regular)
+
+        menuField.stringValue = "123"
+        menuField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(menuField.stringValue, "123.00")
+        XCTAssertEqual(committedThresholds, [123])
+
+        menuField.stringValue = "abc"
+        menuField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(
+            menuField.stringValue,
+            "123.00",
+            "invalid non-empty input must roll back to the last committed value, not the placeholder"
+        )
+        XCTAssertEqual(committedThresholds, [123])
+
+        menuField.stringValue = ""
+        menuField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(
+            menuField.stringValue,
+            "0.10",
+            "clearing the field must accept the gray placeholder, not restore 123.00"
+        )
+        XCTAssertEqual(committedThresholds, [123, 0.10])
+
+        menuBarField.stringValue = "15"
+        menuBarField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuBarField)
+        )
+        XCTAssertEqual(menuBarField.integerValue, 15)
+
+        menuBarField.stringValue = ""
+        menuBarField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuBarField)
+        )
+        XCTAssertEqual(menuBarField.stringValue, "24")
+        XCTAssertEqual(menuBarField.integerValue, 24)
+    }
+
     func testRelayRoutesEachPreferenceActionOnce() {
         let relay = DashboardPreferencePageRelay()
         var calls: [(String, Bool)] = []
@@ -1925,7 +2436,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
             accuracy: 2,
             "wide Displayed Colors swatches stay packed at their natural width"
         )
-        XCTAssertEqual(thresholdField.bounds.width, 92, accuracy: 1)
+        XCTAssertEqual(
+            thresholdField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(
+                for: thresholdField,
+                capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+            ),
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            thresholdField.bounds.height,
+            thresholdField.cell?.cellSize.height ?? 0,
+            accuracy: 1
+        )
         assertLabelsStayReadable(at: 720)
 
         layout(at: 320)
@@ -1950,14 +2473,28 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let controlsFrame = colorControls.convert(colorControls.bounds, to: row)
         XCTAssertLessThanOrEqual(controlsFrame.maxY, labelsFrame.minY + 0.5)
         XCTAssertGreaterThan(row.frame.height, wideHeight - 0.5)
-        XCTAssertEqual(thresholdField.bounds.width, 92, accuracy: 1)
+        XCTAssertEqual(
+            thresholdField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(
+                for: thresholdField,
+                capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+            ),
+            accuracy: 1
+        )
         assertLabelsStayReadable(at: 320)
 
         layout(at: 720)
         XCTAssertEqual(colorControls.orientation, .horizontal)
         XCTAssertEqual(row.contentStack.orientation, .horizontal)
         XCTAssertEqual(row.frame.height, wideHeight, accuracy: 1.0)
-        XCTAssertEqual(thresholdField.bounds.width, 92, accuracy: 1)
+        XCTAssertEqual(
+            thresholdField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(
+                for: thresholdField,
+                capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+            ),
+            accuracy: 1
+        )
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
         assertLabelsStayReadable(at: 720)
@@ -7913,6 +8450,55 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
+    }
+
+    private func assertNumericFieldRejectsCompletion(
+        _ field: NSTextField,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        var selectedIndex = 0
+        let completions = field.delegate?.control?(
+            field,
+            textView: NSTextView(),
+            completions: ["10000.00", "0.10", "30"],
+            forPartialWordRange: NSRange(location: 0, length: 1),
+            indexOfSelectedItem: &selectedIndex
+        )
+        XCTAssertEqual(completions ?? ["missing-delegate"], [], file: file, line: line)
+        XCTAssertEqual(selectedIndex, -1, file: file, line: line)
+        XCTAssertEqual(
+            field.delegate?.control?(
+                field,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.complete(_:))
+            ),
+            true,
+            "complete: must be swallowed so Tab cannot accept a prediction",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            field.delegate?.control?(
+                field,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.insertTab(_:))
+            ),
+            false,
+            "insertTab must end editing and keep the current value",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            field.delegate?.control?(
+                field,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.insertBacktab(_:))
+            ),
+            false,
+            file: file,
+            line: line
+        )
     }
 
     private func pinMenuPage(_ page: NSView, in window: NSWindow, width: CGFloat, height: CGFloat = 1400) {

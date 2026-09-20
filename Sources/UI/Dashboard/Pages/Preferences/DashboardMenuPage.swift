@@ -449,27 +449,17 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         }
         statusLinksSeparators = []
 
-        let balanceDisplayThreshold = NSTextField()
-        balanceDisplayThreshold.identifier = NSUserInterfaceItemIdentifier(
-            AppPreferences.balanceDisplayThresholdKey
+        let balanceDisplayThreshold = DashboardSettingsComponents.makeNumericTextField(
+            identifier: AppPreferences.balanceDisplayThresholdKey,
+            value: Self.formattedBalanceDisplayThreshold(balanceDisplayThresholdValue),
+            placeholder: Self.formattedBalanceDisplayThreshold(
+                AppPreferences.defaultBalanceDisplayThreshold
+            ),
+            capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate,
+            delegate: self,
+            toolTip: tr(.keyDashboardMenuPageEnterAnAmountOfAtLeast001WithUpToTwoDecimalPlaces)
         )
-        balanceDisplayThreshold.stringValue = Self.formattedBalanceDisplayThreshold(
-            balanceDisplayThresholdValue
-        )
-        balanceDisplayThreshold.placeholderString = Self.formattedBalanceDisplayThreshold(
-            AppPreferences.defaultBalanceDisplayThreshold
-        )
-        balanceDisplayThreshold.alignment = .right
-        balanceDisplayThreshold.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-        balanceDisplayThreshold.isEditable = true
-        balanceDisplayThreshold.isSelectable = true
-        balanceDisplayThreshold.usesSingleLineMode = true
-        balanceDisplayThreshold.delegate = self
-        balanceDisplayThreshold.toolTip = tr(.keyDashboardMenuPageEnterAnAmountOfAtLeast001WithUpToTwoDecimalPlaces)
-        balanceDisplayThreshold.widthAnchor.constraint(equalToConstant: 92).isActive = true
-        balanceDisplayThreshold.setContentHuggingPriority(.required, for: .horizontal)
-        balanceDisplayThreshold.setContentCompressionResistancePriority(.required, for: .horizontal)
-        balanceDisplayThresholdField = balanceDisplayThreshold
+        balanceDisplayThresholdField = balanceDisplayThreshold.field
 
         let slider = QuotaColorThresholdSlider(configuration: quotaColorConfiguration)
         slider.onChange = { [weak self] configuration in
