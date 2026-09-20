@@ -18,17 +18,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
             identifier: "numericField",
             value: "0.10",
             placeholder: "0.01",
-            width: 92,
             target: target,
             action: #selector(NumericTextFieldTestTarget.commit(_:)),
             toolTip: "Numeric value"
         )
+        let compactWidth = DashboardSettingsComponents.compactNumericWidth(for: field)
 
         XCTAssertEqual(field.identifier?.rawValue, "numericField")
         XCTAssertEqual(field.stringValue, "0.10")
         XCTAssertEqual(field.placeholderString, "0.01")
         XCTAssertEqual(field.alignment, .right)
         XCTAssertEqual(field.controlSize, .small)
+        XCTAssertEqual(field.cell?.controlSize, .small)
         XCTAssertTrue(field.isBezeled)
         XCTAssertEqual(field.bezelStyle, .roundedBezel)
         XCTAssertEqual(field.focusRingType, .default)
@@ -43,13 +44,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertNotNil(field.action)
         XCTAssertEqual(field.toolTip, "Numeric value")
         XCTAssertEqual(field.intrinsicContentSize.height, field.cell?.cellSize.height ?? 0, accuracy: 0.5)
+        XCTAssertEqual(field.contentHuggingPriority(for: .vertical), .required)
+        XCTAssertEqual(field.contentHuggingPriority(for: .horizontal), .required)
         XCTAssertFalse(
             field.constraints.contains { constraint in
                 constraint.firstAttribute == .height || constraint.secondAttribute == .height
             },
             "the primitive must use intrinsic height instead of a fixed height constraint"
         )
-        XCTAssertEqual(field.constraints.first(where: { $0.firstAttribute == .width })?.constant, 92)
+        XCTAssertEqual(
+            field.constraints.first(where: { $0.firstAttribute == .width })?.constant,
+            compactWidth
+        )
+        XCTAssertEqual(compactWidth, ceil(field.cell?.cellSize.width ?? 0), accuracy: 0.5)
+        XCTAssertLessThan(compactWidth, 92)
     }
 
     func testMenuAndMenuBarNumericFieldsShareCompactVisualContract() throws {
@@ -124,12 +132,60 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(menuField.intrinsicContentSize.height, menuBarField.intrinsicContentSize.height, accuracy: 0.5)
         XCTAssertEqual(
             menuField.constraints.first(where: { $0.firstAttribute == .width })?.constant,
-            92
+            DashboardSettingsComponents.compactNumericWidth(for: menuField)
         )
         XCTAssertEqual(
             menuBarField.constraints.first(where: { $0.firstAttribute == .width })?.constant,
-            44
+            DashboardSettingsComponents.compactNumericWidth(for: menuBarField)
         )
+        XCTAssertLessThan(
+            menuField.constraints.first(where: { $0.firstAttribute == .width })?.constant ?? .greatestFiniteMagnitude,
+            92
+        )
+        XCTAssertEqual(menuField.contentHuggingPriority(for: .vertical), .required)
+        XCTAssertEqual(menuBarField.contentHuggingPriority(for: .vertical), .required)
+
+        let menuWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 1400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let menuBarWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 1400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer {
+            menuWindow.orderOut(nil)
+            menuBarWindow.orderOut(nil)
+        }
+        pinMenuPage(menuView, in: menuWindow, width: 720)
+        pinMenuPage(menuBarView, in: menuBarWindow, width: 720)
+        XCTAssertEqual(
+            menuField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(for: menuField),
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            menuField.bounds.height,
+            menuField.cell?.cellSize.height ?? 0,
+            accuracy: 1,
+            "threshold field must keep the small rounded cell height, not the 62pt row"
+        )
+        XCTAssertEqual(
+            menuBarField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(for: menuBarField),
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            menuBarField.bounds.height,
+            menuBarField.cell?.cellSize.height ?? 0,
+            accuracy: 1,
+            "FPS field must keep the small rounded cell height, not the 62pt row"
+        )
+        XCTAssertLessThan(menuField.bounds.width, 92)
         XCTAssertFalse(iconOffsetSummary.isBezeled)
         XCTAssertFalse(iconOffsetSummary.isEditable)
         XCTAssertFalse(iconOffsetSummary.drawsBackground)
@@ -2056,7 +2112,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             accuracy: 2,
             "wide Displayed Colors swatches stay packed at their natural width"
         )
-        XCTAssertEqual(thresholdField.bounds.width, 92, accuracy: 1)
+        XCTAssertEqual(
+            thresholdField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(for: thresholdField),
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            thresholdField.bounds.height,
+            thresholdField.cell?.cellSize.height ?? 0,
+            accuracy: 1
+        )
         assertLabelsStayReadable(at: 720)
 
         layout(at: 320)
@@ -2081,14 +2146,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let controlsFrame = colorControls.convert(colorControls.bounds, to: row)
         XCTAssertLessThanOrEqual(controlsFrame.maxY, labelsFrame.minY + 0.5)
         XCTAssertGreaterThan(row.frame.height, wideHeight - 0.5)
-        XCTAssertEqual(thresholdField.bounds.width, 92, accuracy: 1)
+        XCTAssertEqual(
+            thresholdField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(for: thresholdField),
+            accuracy: 1
+        )
         assertLabelsStayReadable(at: 320)
 
         layout(at: 720)
         XCTAssertEqual(colorControls.orientation, .horizontal)
         XCTAssertEqual(row.contentStack.orientation, .horizontal)
         XCTAssertEqual(row.frame.height, wideHeight, accuracy: 1.0)
-        XCTAssertEqual(thresholdField.bounds.width, 92, accuracy: 1)
+        XCTAssertEqual(
+            thresholdField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(for: thresholdField),
+            accuracy: 1
+        )
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
         assertLabelsStayReadable(at: 720)

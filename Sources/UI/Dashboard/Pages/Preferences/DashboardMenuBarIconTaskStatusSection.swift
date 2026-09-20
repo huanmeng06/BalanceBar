@@ -228,6 +228,8 @@ final class DashboardMenuBarIconTaskStatusSection {
         animationFrameRateRow.identifier = NSUserInterfaceItemIdentifier(
             DashboardMenuBarPage.animationFrameRateRowIdentifier
         )
+        animationFrameRateControl.setContentHuggingPriority(.required, for: .vertical)
+        animationFrameRateControl.setContentCompressionResistancePriority(.required, for: .vertical)
         self.animationFrameRateRow = animationFrameRateRow
         let iconTaskStatusSection = SettingsSectionView(
             title: tr(.keyDashboardMenuBarPageIconAndTaskStatus),
@@ -428,7 +430,7 @@ final class DashboardMenuBarIconTaskStatusSection {
         let clamped = MenuBarAnimationTiming.clampedFrameRate(value)
         let field = DashboardSettingsComponents.makeNumericTextField(
             identifier: DashboardMenuBarPage.animationFrameRateIdentifier,
-            width: 44,
+            value: String(clamped),
             delegate: animationFrameRateEditor,
             target: animationFrameRateEditor,
             action: #selector(AnimationFrameRateEditor.fieldAction(_:)),
@@ -453,7 +455,9 @@ final class DashboardMenuBarIconTaskStatusSection {
         stack.alignment = .centerY
         stack.spacing = 6
         stack.setContentHuggingPriority(.required, for: .horizontal)
+        stack.setContentHuggingPriority(.required, for: .vertical)
         stack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        stack.setContentCompressionResistancePriority(.required, for: .vertical)
         return stack
     }
 

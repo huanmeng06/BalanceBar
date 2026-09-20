@@ -529,15 +529,15 @@ enum DashboardSettingsComponents {
     /// Shared compact numeric editor for Dashboard settings.
     ///
     /// The primitive owns the AppKit visual contract: `NSTextField(string:)`,
-    /// small `controlSize`, rounded bezel, and monospaced digits at
-    /// `NSFont.systemFontSize(for: .small)`. Callers keep value semantics,
-    /// validation, and any field-specific width. Height comes from the cell's
-    /// intrinsic size; this factory never installs a height constraint.
+    /// small `controlSize`, rounded bezel, monospaced digits at
+    /// `NSFont.systemFontSize(for: .small)`, and width from `NSCell.cellSize`.
+    /// Callers keep value semantics and validation. Height and width both come
+    /// from the cell; this factory never installs a height constraint or an
+    /// arbitrary width.
     static func makeNumericTextField(
         identifier: String? = nil,
         value: String? = nil,
         placeholder: String? = nil,
-        width: CGFloat? = nil,
         delegate: NSTextFieldDelegate? = nil,
         target: AnyObject? = nil,
         action: Selector? = nil,
@@ -549,6 +549,7 @@ enum DashboardSettingsComponents {
         }
         field.placeholderString = placeholder
         field.controlSize = .small
+        field.cell?.controlSize = .small
         field.isBezeled = true
         field.bezelStyle = .roundedBezel
         field.font = .monospacedDigitSystemFont(
@@ -562,16 +563,31 @@ enum DashboardSettingsComponents {
         field.maximumNumberOfLines = 1
         field.lineBreakMode = .byClipping
         field.focusRingType = .default
+        field.toolTip = toolTip
+        let compactWidth = compactNumericWidth(for: field)
+        field.widthAnchor.constraint(equalToConstant: compactWidth).isActive = true
+        field.setContentHuggingPriority(.required, for: .horizontal)
+        field.setContentHuggingPriority(.required, for: .vertical)
+        field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        field.setContentCompressionResistancePriority(.required, for: .vertical)
         field.delegate = delegate
         field.target = target
         field.action = action
-        field.toolTip = toolTip
-        if let width {
-            field.widthAnchor.constraint(equalToConstant: width).isActive = true
-        }
-        field.setContentHuggingPriority(.required, for: .horizontal)
-        field.setContentCompressionResistancePriority(.required, for: .horizontal)
         return field
+    }
+
+    /// Smallest width AppKit needs to draw the current value or placeholder,
+    /// including the native small rounded bezel.
+    static func compactNumericWidth(for field: NSTextField) -> CGFloat {
+        let valueWidth = field.cell?.cellSize.width ?? 0
+        guard let placeholder = field.placeholderString, !placeholder.isEmpty else {
+            return ceil(valueWidth)
+        }
+        let original = field.stringValue
+        field.stringValue = placeholder
+        let placeholderWidth = field.cell?.cellSize.width ?? 0
+        field.stringValue = original
+        return ceil(max(valueWidth, placeholderWidth))
     }
 
     static func disconnectPopUpButtonActions(in view: NSView?) {

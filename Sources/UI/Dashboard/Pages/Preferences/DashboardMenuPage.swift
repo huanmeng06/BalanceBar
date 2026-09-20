@@ -455,7 +455,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             placeholder: Self.formattedBalanceDisplayThreshold(
                 AppPreferences.defaultBalanceDisplayThreshold
             ),
-            width: 92,
             delegate: self,
             toolTip: tr(.keyDashboardMenuPageEnterAnAmountOfAtLeast001WithUpToTwoDecimalPlaces)
         )
@@ -575,11 +574,20 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             subtitle: tr(.keyDashboardMenuPageDisplayedColorsDescription),
             control: colorControls
         )
+        let thresholdControl = NSStackView(views: [balanceDisplayThreshold])
+        thresholdControl.orientation = .horizontal
+        thresholdControl.alignment = .centerY
+        thresholdControl.setContentHuggingPriority(.required, for: .horizontal)
+        thresholdControl.setContentHuggingPriority(.required, for: .vertical)
+        thresholdControl.setContentCompressionResistancePriority(.required, for: .horizontal)
+        thresholdControl.setContentCompressionResistancePriority(.required, for: .vertical)
         let thresholdRow = makeRow(
             tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
             subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
-            control: balanceDisplayThreshold
+            control: thresholdControl
         )
+        thresholdControl.setContentHuggingPriority(.required, for: .vertical)
+        thresholdControl.setContentCompressionResistancePriority(.required, for: .vertical)
         progressBarDetailRows = [colorRangesRow, displayedColorsRow, thresholdRow]
         let progressBar = SettingsSectionView(
             title: tr(.keyDashboardMenuPageProgressBar),
