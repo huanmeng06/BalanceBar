@@ -11,7 +11,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
     func testSharedNumericTextFieldUsesNativeCompactConfiguration() {
         let target = NumericTextFieldTestTarget()
         let compactFont = NSFont.monospacedDigitSystemFont(
-            ofSize: NSFont.systemFontSize(for: .small),
+            ofSize: NSFont.systemFontSize(for: .regular),
             weight: .regular
         )
         let accessory = DashboardSettingsComponents.makeNumericTextField(
@@ -43,8 +43,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(field.stringValue, "0.10")
         XCTAssertEqual(field.placeholderString, "0.01")
         XCTAssertEqual(field.alignment, .right)
-        XCTAssertEqual(field.controlSize, .small)
-        XCTAssertEqual(field.cell?.controlSize, .small)
+        XCTAssertEqual(field.controlSize, .regular)
+        XCTAssertEqual(field.cell?.controlSize, .regular)
         XCTAssertTrue(field.isBezeled)
         XCTAssertEqual(field.bezelStyle, .roundedBezel)
         XCTAssertEqual(field.focusRingType, .default)
@@ -55,7 +55,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(field.cell?.wraps, false)
         XCTAssertEqual(field.cell?.isScrollable, true)
         XCTAssertEqual(field.font, compactFont)
-        XCTAssertEqual(field.font?.pointSize ?? 0, NSFont.systemFontSize(for: .small), accuracy: 0.01)
+        XCTAssertEqual(field.font?.pointSize ?? 0, NSFont.systemFontSize(for: .regular), accuracy: 0.01)
         XCTAssertIdentical(field.target as AnyObject?, target)
         XCTAssertNotNil(field.action)
         XCTAssertEqual(field.toolTip, "Numeric value")
@@ -78,7 +78,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defaultValueWidth,
             "width must come from the amount template, not the initial 0.10 value"
         )
-        XCTAssertLessThan(compactWidth, 92)
 
         let row = SettingsRowView(
             title: "Threshold",
@@ -97,7 +96,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let preferences = AppPreferences(defaults: defaults)
         let compactFont = NSFont.monospacedDigitSystemFont(
-            ofSize: NSFont.systemFontSize(for: .small),
+            ofSize: NSFont.systemFontSize(for: .regular),
             weight: .regular
         )
 
@@ -163,8 +162,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             for: menuField,
             capacityTemplate: "10000.00"
         )
-        XCTAssertEqual(menuField.controlSize, .small)
+        XCTAssertEqual(menuField.controlSize, .regular)
+        XCTAssertEqual(menuField.cell?.controlSize, .regular)
         XCTAssertEqual(menuField.controlSize, menuBarField.controlSize)
+        XCTAssertEqual(menuBarField.cell?.controlSize, .regular)
         XCTAssertEqual(menuField.isBezeled, menuBarField.isBezeled)
         XCTAssertEqual(menuField.bezelStyle, menuBarField.bezelStyle)
         XCTAssertEqual(menuField.focusRingType, menuBarField.focusRingType)
@@ -178,6 +179,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(menuBarField.cell?.isScrollable, true)
         XCTAssertTrue(menuField.superview is DashboardSettingsComponents.CompactNumericFieldAccessory)
         XCTAssertTrue(menuBarField.superview is DashboardSettingsComponents.CompactNumericFieldAccessory)
+        let frameRateUnit = try XCTUnwrap(
+            (menuBarField.superview as? NSStackView)?.arrangedSubviews
+                .compactMap { $0 as? NSTextField }
+                .first { $0 !== menuBarField }
+        )
+        XCTAssertEqual(
+            frameRateUnit.font?.pointSize ?? 0,
+            NSFont.systemFontSize(for: .regular),
+            accuracy: 0.01
+        )
         XCTAssertEqual(
             menuField.constraints.first(where: { $0.firstAttribute == .width })?.constant,
             amountWidth
@@ -187,10 +198,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             frameRateWidth
         )
         XCTAssertGreaterThanOrEqual(amountWidth, tenThousandWidth)
-        XCTAssertLessThan(
-            menuField.constraints.first(where: { $0.firstAttribute == .width })?.constant ?? .greatestFiniteMagnitude,
-            92
-        )
         XCTAssertEqual(menuField.contentHuggingPriority(for: .vertical), .required)
         XCTAssertEqual(menuBarField.contentHuggingPriority(for: .vertical), .required)
 
@@ -223,7 +230,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             menuField.bounds.height,
             menuField.cell?.cellSize.height ?? 0,
             accuracy: 1,
-            "threshold field must keep the small rounded cell height, not the 62pt row"
+            "threshold field must keep the regular rounded cell height, not the 62pt row"
         )
         XCTAssertLessThan(menuField.bounds.height, 62)
         XCTAssertEqual(menuBarField.bounds.width, frameRateWidth, accuracy: 1)
@@ -231,10 +238,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             menuBarField.bounds.height,
             menuBarField.cell?.cellSize.height ?? 0,
             accuracy: 1,
-            "FPS field must keep the small rounded cell height, not the 62pt row"
+            "FPS field must keep the regular rounded cell height, not the 62pt row"
         )
         XCTAssertLessThan(menuBarField.bounds.height, 62)
-        XCTAssertLessThan(menuField.bounds.width, 92)
 
         let widthBeforeTyping = menuField.bounds.width
         menuField.stringValue = "10000.00"

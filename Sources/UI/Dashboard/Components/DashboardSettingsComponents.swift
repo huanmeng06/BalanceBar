@@ -526,7 +526,7 @@ enum DashboardSettingsComponents {
         return control
     }
 
-    /// Amount editors (low-balance threshold). Fits `10000.00` at small cell size.
+    /// Amount editors (low-balance threshold). Fits `10000.00` at regular cell size.
     static let amountCapacityTemplate = "00000.00"
     /// FPS editors. Legal values are two digits (`6...30`).
     static let frameRateCapacityTemplate = "00"
@@ -565,8 +565,8 @@ enum DashboardSettingsComponents {
         }
     }
 
-    /// Compact numeric editor: `NSTextField(string:)`, small `controlSize`,
-    /// rounded bezel, monospaced digits at `NSFont.systemFontSize(for: .small)`.
+    /// Compact numeric editor: `NSTextField(string:)`, regular `controlSize`,
+    /// rounded bezel, monospaced digits at `NSFont.systemFontSize(for: .regular)`.
     /// Width is `NSCell.cellSize` of `capacityTemplate`, not the current value.
     /// Overflow and the caret scroll inside the cell (`isScrollable`,
     /// `wraps == false`); AppKit pairs that with clipping instead of wrapping.
@@ -588,12 +588,12 @@ enum DashboardSettingsComponents {
             field.identifier = NSUserInterfaceItemIdentifier(identifier)
         }
         field.placeholderString = placeholder
-        field.controlSize = .small
-        field.cell?.controlSize = .small
+        field.controlSize = .regular
+        field.cell?.controlSize = .regular
         field.isBezeled = true
         field.bezelStyle = .roundedBezel
         field.font = .monospacedDigitSystemFont(
-            ofSize: NSFont.systemFontSize(for: .small),
+            ofSize: NSFont.systemFontSize(for: .regular),
             weight: .regular
         )
         field.alignment = .right

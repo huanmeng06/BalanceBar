@@ -427,7 +427,7 @@ final class DashboardMenuBarIconTaskStatusSection {
     ) -> NSView {
         let clamped = MenuBarAnimationTiming.clampedFrameRate(value)
         let unit = NSTextField(labelWithString: tr(.keyDashboardMenuBarPageAnimationFrameRateUnit))
-        unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
+        unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
         unit.setContentHuggingPriority(.required, for: .horizontal)
         unit.setContentCompressionResistancePriority(.required, for: .horizontal)
         animationFrameRateUnitLabel = unit
