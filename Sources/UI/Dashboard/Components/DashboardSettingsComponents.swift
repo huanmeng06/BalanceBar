@@ -526,27 +526,63 @@ enum DashboardSettingsComponents {
         return control
     }
 
-    /// Shared compact numeric editor for Dashboard settings.
-    ///
-    /// Extra monospaced digits reserved so the caret and a longer typed value
-    /// still fit. Width stays `cellSize`-based; this is not a screenshot pt.
-    private static let numericEditingExtraDigits = 2
+    /// Amount editors (low-balance threshold). Fits `10000.00` at small cell size.
+    static let amountCapacityTemplate = "00000.00"
+    /// FPS editors. Legal values are two digits (`6...30`).
+    static let frameRateCapacityTemplate = "00"
 
-    /// The primitive owns the AppKit visual contract: `NSTextField(string:)`,
-    /// small `controlSize`, rounded bezel, monospaced digits at
-    /// `NSFont.systemFontSize(for: .small)`, and width from `NSCell.cellSize`
-    /// plus two extra digits of editing room. Callers keep value semantics and
-    /// validation. Height comes from the cell; this factory never installs a
-    /// height constraint or an arbitrary width.
+    /// SettingsRow-safe accessory around a compact numeric `NSTextField`.
+    /// `SettingsRowView` may lower this stack's vertical hugging; the inner
+    /// field keeps `.required` so the cell is not stretched to the row height.
+    final class CompactNumericFieldAccessory: NSStackView {
+        let field: NSTextField
+        let capacityTemplate: String
+
+        fileprivate init(
+            field: NSTextField,
+            capacityTemplate: String,
+            trailingViews: [NSView]
+        ) {
+            self.field = field
+            self.capacityTemplate = capacityTemplate
+            super.init(frame: .zero)
+            translatesAutoresizingMaskIntoConstraints = false
+            orientation = .horizontal
+            alignment = .centerY
+            spacing = trailingViews.isEmpty ? 0 : 6
+            setContentHuggingPriority(.required, for: .horizontal)
+            setContentHuggingPriority(.required, for: .vertical)
+            setContentCompressionResistancePriority(.required, for: .horizontal)
+            setContentCompressionResistancePriority(.required, for: .vertical)
+            addArrangedSubview(field)
+            for view in trailingViews {
+                addArrangedSubview(view)
+            }
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+    }
+
+    /// Compact numeric editor: `NSTextField(string:)`, small `controlSize`,
+    /// rounded bezel, monospaced digits at `NSFont.systemFontSize(for: .small)`.
+    /// Width is `NSCell.cellSize` of `capacityTemplate`, not the current value.
+    /// Overflow and the caret scroll inside the cell (`isScrollable`,
+    /// `wraps == false`); AppKit pairs that with clipping instead of wrapping.
+    /// Height comes from the cell; this factory never installs a height
+    /// constraint or a screenshot width. The returned stack is the accessory.
     static func makeNumericTextField(
         identifier: String? = nil,
         value: String? = nil,
         placeholder: String? = nil,
+        capacityTemplate: String,
+        trailingViews: [NSView] = [],
         delegate: NSTextFieldDelegate? = nil,
         target: AnyObject? = nil,
         action: Selector? = nil,
         toolTip: String? = nil
-    ) -> NSTextField {
+    ) -> CompactNumericFieldAccessory {
         let field = NSTextField(string: value ?? "")
         if let identifier {
             field.identifier = NSUserInterfaceItemIdentifier(identifier)
@@ -565,10 +601,12 @@ enum DashboardSettingsComponents {
         field.isSelectable = true
         field.usesSingleLineMode = true
         field.maximumNumberOfLines = 1
-        field.lineBreakMode = .byClipping
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
         field.focusRingType = .default
         field.toolTip = toolTip
-        let compactWidth = compactNumericWidth(for: field)
+        field.translatesAutoresizingMaskIntoConstraints = false
+        let compactWidth = compactNumericWidth(for: field, capacityTemplate: capacityTemplate)
         field.widthAnchor.constraint(equalToConstant: compactWidth).isActive = true
         field.setContentHuggingPriority(.required, for: .horizontal)
         field.setContentHuggingPriority(.required, for: .vertical)
@@ -577,27 +615,24 @@ enum DashboardSettingsComponents {
         field.delegate = delegate
         field.target = target
         field.action = action
-        return field
+        return CompactNumericFieldAccessory(
+            field: field,
+            capacityTemplate: capacityTemplate,
+            trailingViews: trailingViews
+        )
     }
 
-    /// Width AppKit needs to draw the current value or placeholder, plus two
-    /// extra monospaced digits so the field is editable without clipping.
-    static func compactNumericWidth(for field: NSTextField) -> CGFloat {
-        let valueWidth = field.cell?.cellSize.width ?? 0
-        var contentWidth = valueWidth
-        if let placeholder = field.placeholderString, !placeholder.isEmpty {
-            let original = field.stringValue
-            field.stringValue = placeholder
-            contentWidth = max(contentWidth, field.cell?.cellSize.width ?? 0)
-            field.stringValue = original
-        }
-        let digitWidth: CGFloat
-        if let font = field.font {
-            digitWidth = ("0" as NSString).size(withAttributes: [.font: font]).width
-        } else {
-            digitWidth = 0
-        }
-        return ceil(contentWidth + digitWidth * CGFloat(numericEditingExtraDigits))
+    /// Width AppKit needs to draw `capacityTemplate` in this field's cell,
+    /// including bezel chrome. Independent of the live `stringValue`.
+    static func compactNumericWidth(
+        for field: NSTextField,
+        capacityTemplate: String
+    ) -> CGFloat {
+        let original = field.stringValue
+        field.stringValue = capacityTemplate
+        let width = ceil(field.cell?.cellSize.width ?? 0)
+        field.stringValue = original
+        return width
     }
 
     static func disconnectPopUpButtonActions(in view: NSView?) {

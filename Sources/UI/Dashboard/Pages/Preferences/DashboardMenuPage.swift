@@ -455,10 +455,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             placeholder: Self.formattedBalanceDisplayThreshold(
                 AppPreferences.defaultBalanceDisplayThreshold
             ),
+            capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate,
             delegate: self,
             toolTip: tr(.keyDashboardMenuPageEnterAnAmountOfAtLeast001WithUpToTwoDecimalPlaces)
         )
-        balanceDisplayThresholdField = balanceDisplayThreshold
+        balanceDisplayThresholdField = balanceDisplayThreshold.field
 
         let slider = QuotaColorThresholdSlider(configuration: quotaColorConfiguration)
         slider.onChange = { [weak self] configuration in
@@ -574,20 +575,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             subtitle: tr(.keyDashboardMenuPageDisplayedColorsDescription),
             control: colorControls
         )
-        let thresholdControl = NSStackView(views: [balanceDisplayThreshold])
-        thresholdControl.orientation = .horizontal
-        thresholdControl.alignment = .centerY
-        thresholdControl.setContentHuggingPriority(.required, for: .horizontal)
-        thresholdControl.setContentHuggingPriority(.required, for: .vertical)
-        thresholdControl.setContentCompressionResistancePriority(.required, for: .horizontal)
-        thresholdControl.setContentCompressionResistancePriority(.required, for: .vertical)
         let thresholdRow = makeRow(
             tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
             subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
-            control: thresholdControl
+            control: balanceDisplayThreshold
         )
-        thresholdControl.setContentHuggingPriority(.required, for: .vertical)
-        thresholdControl.setContentCompressionResistancePriority(.required, for: .vertical)
         progressBarDetailRows = [colorRangesRow, displayedColorsRow, thresholdRow]
         let progressBar = SettingsSectionView(
             title: tr(.keyDashboardMenuPageProgressBar),

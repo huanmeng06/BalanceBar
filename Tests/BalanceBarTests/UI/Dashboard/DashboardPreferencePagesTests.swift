@@ -14,16 +14,31 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ofSize: NSFont.systemFontSize(for: .small),
             weight: .regular
         )
-        let field = DashboardSettingsComponents.makeNumericTextField(
+        let accessory = DashboardSettingsComponents.makeNumericTextField(
             identifier: "numericField",
             value: "0.10",
             placeholder: "0.01",
+            capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate,
             target: target,
             action: #selector(NumericTextFieldTestTarget.commit(_:)),
             toolTip: "Numeric value"
         )
-        let compactWidth = DashboardSettingsComponents.compactNumericWidth(for: field)
+        let field = accessory.field
+        let compactWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: field,
+            capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+        )
+        let tenThousandWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: field,
+            capacityTemplate: "10000.00"
+        )
+        let defaultValueWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: field,
+            capacityTemplate: "0.10"
+        )
 
+        XCTAssertTrue(accessory.arrangedSubviews.contains(field))
+        XCTAssertEqual(accessory.capacityTemplate, DashboardSettingsComponents.amountCapacityTemplate)
         XCTAssertEqual(field.identifier?.rawValue, "numericField")
         XCTAssertEqual(field.stringValue, "0.10")
         XCTAssertEqual(field.placeholderString, "0.01")
@@ -37,7 +52,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(field.isSelectable)
         XCTAssertTrue(field.usesSingleLineMode)
         XCTAssertEqual(field.maximumNumberOfLines, 1)
-        XCTAssertEqual(field.lineBreakMode, .byClipping)
+        XCTAssertEqual(field.cell?.wraps, false)
+        XCTAssertEqual(field.cell?.isScrollable, true)
         XCTAssertEqual(field.font, compactFont)
         XCTAssertEqual(field.font?.pointSize ?? 0, NSFont.systemFontSize(for: .small), accuracy: 0.01)
         XCTAssertIdentical(field.target as AnyObject?, target)
@@ -56,8 +72,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
             field.constraints.first(where: { $0.firstAttribute == .width })?.constant,
             compactWidth
         )
-        XCTAssertGreaterThan(compactWidth, field.cell?.cellSize.width ?? 0)
+        XCTAssertGreaterThanOrEqual(compactWidth, tenThousandWidth)
+        XCTAssertGreaterThan(
+            compactWidth,
+            defaultValueWidth,
+            "width must come from the amount template, not the initial 0.10 value"
+        )
         XCTAssertLessThan(compactWidth, 92)
+
+        let row = SettingsRowView(
+            title: "Threshold",
+            detail: "Keep the compact cell after SettingsRowView adjusts accessory hugging.",
+            accessoryView: accessory
+        )
+        XCTAssertTrue(row.accessoryView === accessory)
+        XCTAssertEqual(field.contentHuggingPriority(for: .vertical), .required)
+        XCTAssertEqual(accessory.contentHuggingPriority(for: .vertical), .defaultHigh)
     }
 
     func testMenuAndMenuBarNumericFieldsShareCompactVisualContract() throws {
@@ -121,6 +151,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
         )
 
+        let amountWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: menuField,
+            capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+        )
+        let frameRateWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: menuBarField,
+            capacityTemplate: DashboardSettingsComponents.frameRateCapacityTemplate
+        )
+        let tenThousandWidth = DashboardSettingsComponents.compactNumericWidth(
+            for: menuField,
+            capacityTemplate: "10000.00"
+        )
         XCTAssertEqual(menuField.controlSize, .small)
         XCTAssertEqual(menuField.controlSize, menuBarField.controlSize)
         XCTAssertEqual(menuField.isBezeled, menuBarField.isBezeled)
@@ -130,14 +172,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(menuField.font, compactFont)
         XCTAssertEqual(menuField.font, menuBarField.font)
         XCTAssertEqual(menuField.intrinsicContentSize.height, menuBarField.intrinsicContentSize.height, accuracy: 0.5)
+        XCTAssertEqual(menuField.cell?.wraps, false)
+        XCTAssertEqual(menuField.cell?.isScrollable, true)
+        XCTAssertEqual(menuBarField.cell?.wraps, false)
+        XCTAssertEqual(menuBarField.cell?.isScrollable, true)
+        XCTAssertTrue(menuField.superview is DashboardSettingsComponents.CompactNumericFieldAccessory)
+        XCTAssertTrue(menuBarField.superview is DashboardSettingsComponents.CompactNumericFieldAccessory)
         XCTAssertEqual(
             menuField.constraints.first(where: { $0.firstAttribute == .width })?.constant,
-            DashboardSettingsComponents.compactNumericWidth(for: menuField)
+            amountWidth
         )
         XCTAssertEqual(
             menuBarField.constraints.first(where: { $0.firstAttribute == .width })?.constant,
-            DashboardSettingsComponents.compactNumericWidth(for: menuBarField)
+            frameRateWidth
         )
+        XCTAssertGreaterThanOrEqual(amountWidth, tenThousandWidth)
         XCTAssertLessThan(
             menuField.constraints.first(where: { $0.firstAttribute == .width })?.constant ?? .greatestFiniteMagnitude,
             92
@@ -163,10 +212,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
         pinMenuPage(menuView, in: menuWindow, width: 720)
         pinMenuPage(menuBarView, in: menuBarWindow, width: 720)
-        XCTAssertEqual(
+        XCTAssertEqual(menuField.stringValue, "0.10")
+        XCTAssertEqual(menuField.bounds.width, amountWidth, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(
             menuField.bounds.width,
-            DashboardSettingsComponents.compactNumericWidth(for: menuField),
-            accuracy: 1
+            tenThousandWidth,
+            "default 0.10 must not lock a width that clips 10000.00"
         )
         XCTAssertEqual(
             menuField.bounds.height,
@@ -174,28 +225,50 @@ final class DashboardPreferencePagesTests: XCTestCase {
             accuracy: 1,
             "threshold field must keep the small rounded cell height, not the 62pt row"
         )
-        XCTAssertGreaterThan(
-            menuField.bounds.width,
-            menuField.cell?.cellSize.width ?? 0,
-            "threshold field keeps extra horizontal room for typing"
-        )
-        XCTAssertEqual(
-            menuBarField.bounds.width,
-            DashboardSettingsComponents.compactNumericWidth(for: menuBarField),
-            accuracy: 1
-        )
+        XCTAssertLessThan(menuField.bounds.height, 62)
+        XCTAssertEqual(menuBarField.bounds.width, frameRateWidth, accuracy: 1)
         XCTAssertEqual(
             menuBarField.bounds.height,
             menuBarField.cell?.cellSize.height ?? 0,
             accuracy: 1,
             "FPS field must keep the small rounded cell height, not the 62pt row"
         )
-        XCTAssertGreaterThan(
-            menuBarField.bounds.width,
-            menuBarField.cell?.cellSize.width ?? 0,
-            "FPS field keeps extra horizontal room for typing"
-        )
+        XCTAssertLessThan(menuBarField.bounds.height, 62)
         XCTAssertLessThan(menuField.bounds.width, 92)
+
+        let widthBeforeTyping = menuField.bounds.width
+        menuField.stringValue = "10000.00"
+        pinMenuPage(menuView, in: menuWindow, width: 720)
+        XCTAssertEqual(menuField.bounds.width, widthBeforeTyping, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(
+            menuField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(
+                for: menuField,
+                capacityTemplate: "10000.00"
+            )
+        )
+        XCTAssertEqual(menuField.cell?.isScrollable, true)
+        XCTAssertEqual(menuField.cell?.wraps, false)
+        menuPage.controlTextDidEndEditing(
+            Notification(name: NSControl.textDidEndEditingNotification, object: menuField)
+        )
+        XCTAssertEqual(menuField.stringValue, "10000.00")
+        pinMenuPage(menuView, in: menuWindow, width: 720)
+        XCTAssertEqual(menuField.bounds.width, widthBeforeTyping, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(
+            menuField.bounds.width,
+            DashboardSettingsComponents.compactNumericWidth(
+                for: menuField,
+                capacityTemplate: menuField.stringValue
+            ),
+            "committed 10000.00 must remain fully visible and editable"
+        )
+        XCTAssertEqual(
+            menuField.bounds.height,
+            menuField.cell?.cellSize.height ?? 0,
+            accuracy: 1
+        )
+
         XCTAssertFalse(iconOffsetSummary.isBezeled)
         XCTAssertFalse(iconOffsetSummary.isEditable)
         XCTAssertFalse(iconOffsetSummary.drawsBackground)
@@ -2124,7 +2197,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             thresholdField.bounds.width,
-            DashboardSettingsComponents.compactNumericWidth(for: thresholdField),
+            DashboardSettingsComponents.compactNumericWidth(
+                for: thresholdField,
+                capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+            ),
             accuracy: 1
         )
         XCTAssertEqual(
@@ -2158,7 +2234,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertGreaterThan(row.frame.height, wideHeight - 0.5)
         XCTAssertEqual(
             thresholdField.bounds.width,
-            DashboardSettingsComponents.compactNumericWidth(for: thresholdField),
+            DashboardSettingsComponents.compactNumericWidth(
+                for: thresholdField,
+                capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+            ),
             accuracy: 1
         )
         assertLabelsStayReadable(at: 320)
@@ -2169,7 +2248,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(row.frame.height, wideHeight, accuracy: 1.0)
         XCTAssertEqual(
             thresholdField.bounds.width,
-            DashboardSettingsComponents.compactNumericWidth(for: thresholdField),
+            DashboardSettingsComponents.compactNumericWidth(
+                for: thresholdField,
+                capacityTemplate: DashboardSettingsComponents.amountCapacityTemplate
+            ),
             accuracy: 1
         )
         XCTAssertEqual(DashboardSettingsLayoutMetrics.preferredHeightMeasurements, 0)

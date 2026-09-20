@@ -228,8 +228,6 @@ final class DashboardMenuBarIconTaskStatusSection {
         animationFrameRateRow.identifier = NSUserInterfaceItemIdentifier(
             DashboardMenuBarPage.animationFrameRateRowIdentifier
         )
-        animationFrameRateControl.setContentHuggingPriority(.required, for: .vertical)
-        animationFrameRateControl.setContentCompressionResistancePriority(.required, for: .vertical)
         self.animationFrameRateRow = animationFrameRateRow
         let iconTaskStatusSection = SettingsSectionView(
             title: tr(.keyDashboardMenuBarPageIconAndTaskStatus),
@@ -428,37 +426,29 @@ final class DashboardMenuBarIconTaskStatusSection {
         relay: DashboardPreferencePageRelay
     ) -> NSView {
         let clamped = MenuBarAnimationTiming.clampedFrameRate(value)
-        let field = DashboardSettingsComponents.makeNumericTextField(
-            identifier: DashboardMenuBarPage.animationFrameRateIdentifier,
-            value: String(clamped),
-            delegate: animationFrameRateEditor,
-            target: animationFrameRateEditor,
-            action: #selector(AnimationFrameRateEditor.fieldAction(_:)),
-            toolTip: tr(.keyDashboardMenuBarPageAnimationFrameRateDescription)
-        )
-        field.integerValue = clamped
-        animationFrameRateField = field
-
         let unit = NSTextField(labelWithString: tr(.keyDashboardMenuBarPageAnimationFrameRateUnit))
         unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
         unit.setContentHuggingPriority(.required, for: .horizontal)
         unit.setContentCompressionResistancePriority(.required, for: .horizontal)
         animationFrameRateUnitLabel = unit
 
-        animationFrameRateEditor.field = field
+        let accessory = DashboardSettingsComponents.makeNumericTextField(
+            identifier: DashboardMenuBarPage.animationFrameRateIdentifier,
+            value: String(clamped),
+            capacityTemplate: DashboardSettingsComponents.frameRateCapacityTemplate,
+            trailingViews: [unit],
+            delegate: animationFrameRateEditor,
+            target: animationFrameRateEditor,
+            action: #selector(AnimationFrameRateEditor.fieldAction(_:)),
+            toolTip: tr(.keyDashboardMenuBarPageAnimationFrameRateDescription)
+        )
+        accessory.field.integerValue = clamped
+        animationFrameRateField = accessory.field
+        animationFrameRateEditor.field = accessory.field
         animationFrameRateEditor.onChange = { [weak relay] fps in
             relay?.commitMenuBarAnimationFrameRate(fps)
         }
-
-        let stack = NSStackView(views: [field, unit])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 6
-        stack.setContentHuggingPriority(.required, for: .horizontal)
-        stack.setContentHuggingPriority(.required, for: .vertical)
-        stack.setContentCompressionResistancePriority(.required, for: .horizontal)
-        stack.setContentCompressionResistancePriority(.required, for: .vertical)
-        return stack
+        return accessory
     }
 
     private static func animationModeLabel(_ mode: MenuBarAnimationMode) -> String {
