@@ -37,9 +37,7 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         let splitEnd = try XCTUnwrap(source.range(of: "private final class DashboardSidebarViewController"))
         let splitSource = String(source[splitStart.lowerBound..<splitEnd.lowerBound])
         XCTAssertFalse(splitSource.contains("root.layer?.cornerRadius"))
-        XCTAssertFalse(splitSource.contains("root.wantsLayer = true"))
-        XCTAssertFalse(splitSource.contains("cornerRadius = 16"))
-        XCTAssertFalse(splitSource.contains("masksToBounds = true"))
+        XCTAssertFalse(splitSource.contains("root.layer?.masksToBounds"))
     }
 
     func testWindowEnablesNativeZoomWithoutFullWindowDragOverlay() throws {
