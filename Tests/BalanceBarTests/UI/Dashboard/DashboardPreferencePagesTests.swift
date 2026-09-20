@@ -2,8 +2,139 @@ import AppKit
 import XCTest
 @testable import BalanceBar
 
+private final class NumericTextFieldTestTarget: NSObject {
+    @objc func commit(_ sender: Any?) {}
+}
+
 @MainActor
 final class DashboardPreferencePagesTests: XCTestCase {
+    func testSharedNumericTextFieldUsesNativeCompactConfiguration() {
+        let target = NumericTextFieldTestTarget()
+        let compactFont = NSFont.monospacedDigitSystemFont(
+            ofSize: NSFont.systemFontSize(for: .small),
+            weight: .regular
+        )
+        let field = DashboardSettingsComponents.makeNumericTextField(
+            identifier: "numericField",
+            value: "0.10",
+            placeholder: "0.01",
+            width: 92,
+            target: target,
+            action: #selector(NumericTextFieldTestTarget.commit(_:)),
+            toolTip: "Numeric value"
+        )
+
+        XCTAssertEqual(field.identifier?.rawValue, "numericField")
+        XCTAssertEqual(field.stringValue, "0.10")
+        XCTAssertEqual(field.placeholderString, "0.01")
+        XCTAssertEqual(field.alignment, .right)
+        XCTAssertEqual(field.controlSize, .small)
+        XCTAssertTrue(field.isBezeled)
+        XCTAssertEqual(field.bezelStyle, .roundedBezel)
+        XCTAssertEqual(field.focusRingType, .default)
+        XCTAssertTrue(field.isEditable)
+        XCTAssertTrue(field.isSelectable)
+        XCTAssertTrue(field.usesSingleLineMode)
+        XCTAssertEqual(field.maximumNumberOfLines, 1)
+        XCTAssertEqual(field.lineBreakMode, .byClipping)
+        XCTAssertEqual(field.font, compactFont)
+        XCTAssertEqual(field.font?.pointSize ?? 0, NSFont.systemFontSize(for: .small), accuracy: 0.01)
+        XCTAssertIdentical(field.target as AnyObject?, target)
+        XCTAssertNotNil(field.action)
+        XCTAssertEqual(field.toolTip, "Numeric value")
+        XCTAssertEqual(field.intrinsicContentSize.height, field.cell?.cellSize.height ?? 0, accuracy: 0.5)
+        XCTAssertFalse(
+            field.constraints.contains { constraint in
+                constraint.firstAttribute == .height || constraint.secondAttribute == .height
+            },
+            "the primitive must use intrinsic height instead of a fixed height constraint"
+        )
+        XCTAssertEqual(field.constraints.first(where: { $0.firstAttribute == .width })?.constant, 92)
+    }
+
+    func testMenuAndMenuBarNumericFieldsShareCompactVisualContract() throws {
+        let suiteName = "DashboardPreferencePagesTests.NumericFields.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        let compactFont = NSFont.monospacedDigitSystemFont(
+            ofSize: NSFont.systemFontSize(for: .small),
+            weight: .regular
+        )
+
+        let menuPage = DashboardMenuPage()
+        let menuView = menuPage.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        defer { menuPage.teardown() }
+
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let menuBarPage = DashboardMenuBarPage()
+        let menuBarView = menuBarPage.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        defer { menuBarPage.teardown() }
+
+        let menuField = try XCTUnwrap(
+            descendants(of: menuView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }
+        )
+        let menuBarField = try XCTUnwrap(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationFrameRateIdentifier }
+        )
+        let iconOffsetSummary = try XCTUnwrap(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
+        )
+
+        XCTAssertEqual(menuField.controlSize, .small)
+        XCTAssertEqual(menuField.controlSize, menuBarField.controlSize)
+        XCTAssertEqual(menuField.isBezeled, menuBarField.isBezeled)
+        XCTAssertEqual(menuField.bezelStyle, menuBarField.bezelStyle)
+        XCTAssertEqual(menuField.focusRingType, menuBarField.focusRingType)
+        XCTAssertEqual(menuField.alignment, menuBarField.alignment)
+        XCTAssertEqual(menuField.font, compactFont)
+        XCTAssertEqual(menuField.font, menuBarField.font)
+        XCTAssertEqual(menuField.intrinsicContentSize.height, menuBarField.intrinsicContentSize.height, accuracy: 0.5)
+        XCTAssertEqual(
+            menuField.constraints.first(where: { $0.firstAttribute == .width })?.constant,
+            92
+        )
+        XCTAssertEqual(
+            menuBarField.constraints.first(where: { $0.firstAttribute == .width })?.constant,
+            44
+        )
+        XCTAssertFalse(iconOffsetSummary.isBezeled)
+        XCTAssertFalse(iconOffsetSummary.isEditable)
+        XCTAssertFalse(iconOffsetSummary.drawsBackground)
+    }
+
     func testRelayRoutesEachPreferenceActionOnce() {
         let relay = DashboardPreferencePageRelay()
         var calls: [(String, Bool)] = []

@@ -526,6 +526,54 @@ enum DashboardSettingsComponents {
         return control
     }
 
+    /// Shared compact numeric editor for Dashboard settings.
+    ///
+    /// The primitive owns the AppKit visual contract: `NSTextField(string:)`,
+    /// small `controlSize`, rounded bezel, and monospaced digits at
+    /// `NSFont.systemFontSize(for: .small)`. Callers keep value semantics,
+    /// validation, and any field-specific width. Height comes from the cell's
+    /// intrinsic size; this factory never installs a height constraint.
+    static func makeNumericTextField(
+        identifier: String? = nil,
+        value: String? = nil,
+        placeholder: String? = nil,
+        width: CGFloat? = nil,
+        delegate: NSTextFieldDelegate? = nil,
+        target: AnyObject? = nil,
+        action: Selector? = nil,
+        toolTip: String? = nil
+    ) -> NSTextField {
+        let field = NSTextField(string: value ?? "")
+        if let identifier {
+            field.identifier = NSUserInterfaceItemIdentifier(identifier)
+        }
+        field.placeholderString = placeholder
+        field.controlSize = .small
+        field.isBezeled = true
+        field.bezelStyle = .roundedBezel
+        field.font = .monospacedDigitSystemFont(
+            ofSize: NSFont.systemFontSize(for: .small),
+            weight: .regular
+        )
+        field.alignment = .right
+        field.isEditable = true
+        field.isSelectable = true
+        field.usesSingleLineMode = true
+        field.maximumNumberOfLines = 1
+        field.lineBreakMode = .byClipping
+        field.focusRingType = .default
+        field.delegate = delegate
+        field.target = target
+        field.action = action
+        field.toolTip = toolTip
+        if let width {
+            field.widthAnchor.constraint(equalToConstant: width).isActive = true
+        }
+        field.setContentHuggingPriority(.required, for: .horizontal)
+        field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return field
+    }
+
     static func disconnectPopUpButtonActions(in view: NSView?) {
         guard let view else { return }
         if let popup = view as? NSPopUpButton {

@@ -426,27 +426,19 @@ final class DashboardMenuBarIconTaskStatusSection {
         relay: DashboardPreferencePageRelay
     ) -> NSView {
         let clamped = MenuBarAnimationTiming.clampedFrameRate(value)
-        let field = NSTextField()
-        field.identifier = NSUserInterfaceItemIdentifier(
-            DashboardMenuBarPage.animationFrameRateIdentifier
+        let field = DashboardSettingsComponents.makeNumericTextField(
+            identifier: DashboardMenuBarPage.animationFrameRateIdentifier,
+            width: 44,
+            delegate: animationFrameRateEditor,
+            target: animationFrameRateEditor,
+            action: #selector(AnimationFrameRateEditor.fieldAction(_:)),
+            toolTip: tr(.keyDashboardMenuBarPageAnimationFrameRateDescription)
         )
-        field.alignment = .right
-        field.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-        field.isEditable = true
-        field.isSelectable = true
-        field.usesSingleLineMode = true
         field.integerValue = clamped
-        field.toolTip = tr(.keyDashboardMenuBarPageAnimationFrameRateDescription)
-        field.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        field.setContentHuggingPriority(.required, for: .horizontal)
-        field.setContentCompressionResistancePriority(.required, for: .horizontal)
-        field.delegate = animationFrameRateEditor
-        field.target = animationFrameRateEditor
-        field.action = #selector(AnimationFrameRateEditor.fieldAction(_:))
         animationFrameRateField = field
 
         let unit = NSTextField(labelWithString: tr(.keyDashboardMenuBarPageAnimationFrameRateUnit))
-        unit.font = .systemFont(ofSize: 13)
+        unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
         unit.setContentHuggingPriority(.required, for: .horizontal)
         unit.setContentCompressionResistancePriority(.required, for: .horizontal)
         animationFrameRateUnitLabel = unit
