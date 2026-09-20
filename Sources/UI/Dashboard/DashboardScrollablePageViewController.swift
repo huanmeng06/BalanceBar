@@ -9,8 +9,9 @@ import AppKit
 /// automatically. macOS 14/15 keep the 52pt titlebar clearance and do not
 /// imitate that effect. Compact viewports keep zero extra document spacing.
 /// Tall viewports add one system-spacing document margin above the first
-/// section; that margin scrolls away. The breakpoint is the page scroll
-/// view's laid-out height, not zoom or fullscreen. No custom blur, shadow, gradient, hairline, forced
+/// section; that margin scrolls away. The breakpoint is the page clip
+/// view's visible height (`NSScrollView.contentView`), not the outer scroll
+/// view frame, zoom, or fullscreen. No custom blur, shadow, gradient, hairline, forced
 /// `.soft` / `.hard`, or private scroll-pocket API is installed. `isAtTop`
 /// and `scrollOffset` remain page-local signals.
 final class DashboardScrollablePageViewController: NSViewController {
@@ -40,12 +41,12 @@ final class DashboardScrollablePageViewController: NSViewController {
     private var spaciousContentTopConstraint: NSLayoutConstraint?
     private var usesSpaciousTopLayout = false
     /// `offset - spacing` captured when the breakpoint flips while scrolled.
-    /// Applied on the next layout pass, after the new top constraint is in
-    /// geometry; `layoutSubtreeIfNeeded()` is a no-op inside `viewDidLayout`.
+    /// Constraint changes take effect on a later layout pass; compensation
+    /// waits until measured spacing matches the new mode. Do not force a
+    /// subtree layout from `viewDidLayout()`.
     private var pendingScrolledOffsetBase: CGFloat?
+    private var pendingCompensationLayoutPasses = 0
     private var clipViewObserver: NSObjectProtocol?
-    private var scrollViewFrameObserver: NSObjectProtocol?
-    private var isUpdatingTopSpacingMode = false
 
     init(
         wrapping contentView: NSView,
@@ -118,17 +119,13 @@ final class DashboardScrollablePageViewController: NSViewController {
         return contentRect.minY - pageDocumentView.bounds.minY
     }
 
-    /// Right-pane vertical space: the page `NSScrollView`'s laid-out height.
-    /// That is the clip view's height once AppKit tiles; the scroll view
-    /// frame is available during Auto Layout, so resize/zoom/fullscreen all
-    /// use one number. Clip-only bounds can stay 0 or stale in offscreen tests.
+    /// Right-pane visible viewport: the clip view that crops the document.
+    /// `NSScrollView.bounds` is outer chrome and is not this value.
     private var pageViewportHeight: CGFloat {
-        let scrollHeight = pageScrollView.bounds.height
-        return scrollHeight > 1 ? scrollHeight : pageClipView.bounds.height
+        pageClipView.bounds.height
     }
 
     private func updateTopSpacingModeIfNeeded() {
-        guard !isUpdatingTopSpacingMode else { return }
         let shouldUseSpaciousLayout =
             pageViewportHeight >= Self.spaciousViewportHeight
         guard shouldUseSpaciousLayout != usesSpaciousTopLayout else { return }
@@ -146,32 +143,31 @@ final class DashboardScrollablePageViewController: NSViewController {
             compactContentTopConstraint?.isActive = true
         }
 
-        isUpdatingTopSpacingMode = true
-        hostedContent.superview?.needsLayout = true
-        hostedContent.needsLayout = true
-        hostedContent.superview?.layoutSubtreeIfNeeded()
-        isUpdatingTopSpacingMode = false
-
-        let spacingAfter = documentTopSpacing
+        pendingCompensationLayoutPasses = 0
         if stayAtTop {
             pendingScrolledOffsetBase = nil
-        } else if abs(spacingAfter - spacingBefore) > 0.5 {
-            pendingScrolledOffsetBase = nil
-            DashboardPageScrollPosition.restore(
-                visualOffsetY: offsetBefore + (spacingAfter - spacingBefore),
-                in: pageScrollView
-            )
         } else {
             pendingScrolledOffsetBase = offsetBefore - spacingBefore
-            view.needsLayout = true
         }
+        hostedContent.superview?.needsLayout = true
+        hostedContent.needsLayout = true
+        view.needsLayout = true
     }
 
     private func applyPendingScrolledOffsetCompensationIfNeeded() {
         guard let offsetBase = pendingScrolledOffsetBase else { return }
+        let spacing = documentTopSpacing
+        let spacingMatchesMode = usesSpaciousTopLayout ? spacing > 0.5 : spacing <= 0.5
+        if !spacingMatchesMode, pendingCompensationLayoutPasses < 3 {
+            pendingCompensationLayoutPasses += 1
+            hostedContent.superview?.needsLayout = true
+            view.needsLayout = true
+            return
+        }
+        pendingCompensationLayoutPasses = 0
         pendingScrolledOffsetBase = nil
         DashboardPageScrollPosition.restore(
-            visualOffsetY: offsetBase + documentTopSpacing,
+            visualOffsetY: offsetBase + spacing,
             in: pageScrollView
         )
     }
@@ -326,33 +322,17 @@ final class DashboardScrollablePageViewController: NSViewController {
         ) { [weak self] _ in
             self?.handleClipViewBoundsChange()
         }
-        pageScrollView.postsFrameChangedNotifications = true
-        scrollViewFrameObserver = NotificationCenter.default.addObserver(
-            forName: NSView.frameDidChangeNotification,
-            object: pageScrollView,
-            queue: nil
-        ) { [weak self] _ in
-            self?.updateTopSpacingModeIfNeeded()
-        }
     }
 
     private func handleClipViewBoundsChange() {
-        // Signal-only for scroll-edge chrome. Height changes also retarget
-        // compact/spacious document spacing; origin-only scrolls are no-ops
-        // because the mode guard compares viewport height, not offset.
         _ = isAtTop
         _ = scrollOffset
-        updateTopSpacingModeIfNeeded()
     }
 
     private func removeLayoutObservers() {
         if let clipViewObserver {
             NotificationCenter.default.removeObserver(clipViewObserver)
             self.clipViewObserver = nil
-        }
-        if let scrollViewFrameObserver {
-            NotificationCenter.default.removeObserver(scrollViewFrameObserver)
-            self.scrollViewFrameObserver = nil
         }
     }
 }

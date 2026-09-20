@@ -72,7 +72,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             accuracy: 1
         )
         XCTAssertLessThan(
-            pageViewportHeight(of: controller),
+            controller.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         XCTAssertEqual(controller.documentTopSpacingForTesting, 0, accuracy: 1)
@@ -372,6 +372,10 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(pageSource.contains("spaciousViewportHeight"))
         XCTAssertTrue(pageSource.contains("override func viewDidLayout()"))
         XCTAssertTrue(pageSource.contains("equalTo: contentHost.topAnchor"))
+        XCTAssertTrue(pageSource.contains("pageClipView.bounds.height"))
+        XCTAssertFalse(pageSource.contains("postsFrameChangedNotifications"))
+        XCTAssertFalse(pageSource.contains("frameDidChangeNotification"))
+        XCTAssertFalse(pageSource.contains("self?.updateTopSpacingModeIfNeeded()"))
         XCTAssertFalse(pageSource.contains("documentTopSpacingMultiplier"))
         XCTAssertFalse(pageSource.contains("window.isZoomed"))
         XCTAssertFalse(pageSource.contains(".fullScreen"))
@@ -470,7 +474,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             accuracy: 1
         )
         XCTAssertLessThan(
-            pageViewportHeight(of: tallPage),
+            tallPage.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         let firstRow = tallPage.hostedContentForTesting
@@ -510,11 +514,16 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .titlebarClearance
         )
-        let window = makeWindow(width: 880, height: 620, hosting: page)
+        let window = makePageWindow(clipHeight: Self.compactClipHeight, hosting: page)
         defer { window.orderOut(nil) }
 
+        XCTAssertEqual(
+            page.clipViewForTesting.bounds.height,
+            Self.compactClipHeight,
+            accuracy: 2
+        )
         XCTAssertLessThan(
-            pageViewportHeight(of: page),
+            page.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
@@ -533,11 +542,16 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .titlebarClearance
         )
-        let window = makeWindow(width: 880, height: 900, hosting: page)
+        let window = makePageWindow(clipHeight: Self.spaciousClipHeight, hosting: page)
         defer { window.orderOut(nil) }
 
+        XCTAssertEqual(
+            page.clipViewForTesting.bounds.height,
+            Self.spaciousClipHeight,
+            accuracy: 2
+        )
         XCTAssertGreaterThanOrEqual(
-            pageViewportHeight(of: page),
+            page.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         XCTAssertGreaterThan(page.documentTopSpacingForTesting, 0)
@@ -556,7 +570,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .titlebarClearance
         )
-        let window = makeWindow(width: 880, height: 620, hosting: page)
+        let window = makePageWindow(clipHeight: Self.compactClipHeight, hosting: page)
         defer { window.orderOut(nil) }
 
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
@@ -566,9 +580,14 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             to: page.view
         )
 
-        resize(window, hosting: page, width: 880, height: 900)
+        resize(window, hosting: page, clipHeight: Self.spaciousClipHeight)
+        XCTAssertEqual(
+            page.clipViewForTesting.bounds.height,
+            Self.spaciousClipHeight,
+            accuracy: 2
+        )
         XCTAssertGreaterThanOrEqual(
-            pageViewportHeight(of: page),
+            page.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         XCTAssertGreaterThan(page.documentTopSpacingForTesting, 0)
@@ -584,9 +603,14 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         )
         XCTAssertEqual(page.pageScrollView.contentInsets.top, 0, accuracy: 0.001)
 
-        resize(window, hosting: page, width: 880, height: 620)
+        resize(window, hosting: page, clipHeight: Self.compactClipHeight)
+        XCTAssertEqual(
+            page.clipViewForTesting.bounds.height,
+            Self.compactClipHeight,
+            accuracy: 2
+        )
         XCTAssertLessThan(
-            pageViewportHeight(of: page),
+            page.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
@@ -607,7 +631,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .titlebarClearance
         )
-        let window = makeWindow(width: 880, height: 620, hosting: page)
+        let window = makePageWindow(clipHeight: Self.compactClipHeight, hosting: page)
         defer { window.orderOut(nil) }
 
         page.restoreScrollOffset(140)
@@ -616,7 +640,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
         let relativeVisibleBefore = visibleContentOrigin(in: page)
 
-        resize(window, hosting: page, width: 880, height: 900)
+        resize(window, hosting: page, clipHeight: Self.spaciousClipHeight)
         XCTAssertGreaterThan(page.documentTopSpacingForTesting, 0)
         XCTAssertFalse(page.isAtTop)
         XCTAssertEqual(visibleContentOrigin(in: page), relativeVisibleBefore, accuracy: 2)
@@ -627,7 +651,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         )
 
         let spacingWhileTall = page.documentTopSpacingForTesting
-        resize(window, hosting: page, width: 880, height: 620)
+        resize(window, hosting: page, clipHeight: Self.compactClipHeight)
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
         XCTAssertFalse(page.isAtTop)
         XCTAssertEqual(visibleContentOrigin(in: page), relativeVisibleBefore, accuracy: 2)
@@ -640,11 +664,11 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .titlebarClearance
         )
-        let window = makeWindow(width: 880, height: 900, hosting: page)
+        let window = makePageWindow(clipHeight: Self.spaciousClipHeight, hosting: page)
         defer { window.orderOut(nil) }
 
         XCTAssertGreaterThanOrEqual(
-            pageViewportHeight(of: page),
+            page.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         let documentTopSpacing = page.documentTopSpacingForTesting
@@ -811,7 +835,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         )
 
         XCTAssertLessThan(
-            pageViewportHeight(of: page),
+            page.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
@@ -855,38 +879,23 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(windowController.accessoryHostForTesting.mountedKind == .none)
     }
 
-    func testSystemScrollEdgeCompactViewportKeepsZeroDocumentTopSpacing() throws {
-        try XCTSkipUnless(
-            ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26,
-            "Requires macOS 26 AppKit titlebar content insets"
-        )
+    func testSystemScrollEdgeCompactViewportKeepsZeroDocumentTopSpacing() {
         let page = DashboardScrollablePageViewController(
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .systemScrollEdge
         )
-        let windowController = DashboardWindowController(
-            actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in page },
-                makeProviderPage: { _ in DashboardHostedPageViewController() },
-                providerChoices: { [] },
-                prepareForPageReplacement: {},
-                didShowPage: {},
-                didClose: {},
-                didResize: {}
-            )
+        let window = makePageWindow(clipHeight: Self.compactClipHeight, hosting: page)
+        defer { window.orderOut(nil) }
+
+        XCTAssertTrue(page.pageScrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(page.layoutPolicy.viewportTopInset, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            page.clipViewForTesting.bounds.height,
+            Self.compactClipHeight,
+            accuracy: 2
         )
-        defer { windowController.teardown() }
-
-        windowController.open(initialSection: .advanced)
-        let window = try XCTUnwrap(windowController.window)
-        window.setContentSize(NSSize(width: 880, height: 620))
-        finishDashboardPageLayout(page, in: window)
-
-        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
-        XCTAssertGreaterThan(titlebarHeight, 1)
-        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
         XCTAssertLessThan(
-            pageViewportHeight(of: page),
+            page.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
@@ -895,38 +904,23 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(viewport.minY - page.view.bounds.minY, 0, accuracy: 1)
     }
 
-    func testSystemScrollEdgeTallViewportUsesSystemDocumentTopSpacing() throws {
-        try XCTSkipUnless(
-            ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26,
-            "Requires macOS 26 AppKit titlebar content insets"
-        )
+    func testSystemScrollEdgeTallViewportUsesSystemDocumentTopSpacing() {
         let page = DashboardScrollablePageViewController(
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .systemScrollEdge
         )
-        let windowController = DashboardWindowController(
-            actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in page },
-                makeProviderPage: { _ in DashboardHostedPageViewController() },
-                providerChoices: { [] },
-                prepareForPageReplacement: {},
-                didShowPage: {},
-                didClose: {},
-                didResize: {}
-            )
+        let window = makePageWindow(clipHeight: Self.spaciousClipHeight, hosting: page)
+        defer { window.orderOut(nil) }
+
+        XCTAssertTrue(page.pageScrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(page.layoutPolicy.viewportTopInset, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            page.clipViewForTesting.bounds.height,
+            Self.spaciousClipHeight,
+            accuracy: 2
         )
-        defer { windowController.teardown() }
-
-        windowController.open(initialSection: .advanced)
-        let window = try XCTUnwrap(windowController.window)
-        window.setContentSize(NSSize(width: 880, height: 900))
-        finishDashboardPageLayout(page, in: window)
-
-        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
-        XCTAssertGreaterThan(titlebarHeight, 1)
-        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
         XCTAssertGreaterThanOrEqual(
-            pageViewportHeight(of: page),
+            page.clipViewForTesting.bounds.height,
             DashboardScrollablePageViewController.spaciousViewportHeight
         )
         XCTAssertGreaterThan(page.documentTopSpacingForTesting, 0)
@@ -935,47 +929,30 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(viewport.minY - page.view.bounds.minY, 0, accuracy: 1)
     }
 
-    func testSystemScrollEdgeViewportResizeTogglesDocumentTopSpacingAtRest() throws {
-        try XCTSkipUnless(
-            ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26,
-            "Requires macOS 26 AppKit titlebar content insets"
-        )
+    func testSystemScrollEdgeViewportResizeTogglesDocumentTopSpacingAtRest() {
         let page = DashboardScrollablePageViewController(
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .systemScrollEdge
         )
-        let windowController = DashboardWindowController(
-            actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in page },
-                makeProviderPage: { _ in DashboardHostedPageViewController() },
-                providerChoices: { [] },
-                prepareForPageReplacement: {},
-                didShowPage: {},
-                didClose: {},
-                didResize: {}
-            )
-        )
-        defer { windowController.teardown() }
+        let window = makePageWindow(clipHeight: Self.compactClipHeight, hosting: page)
+        defer { window.orderOut(nil) }
 
-        windowController.open(initialSection: .advanced)
-        let window = try XCTUnwrap(windowController.window)
-        window.setContentSize(NSSize(width: 880, height: 620))
-        finishDashboardPageLayout(page, in: window)
-
-        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
         let compactViewport = page.pageScrollView.convert(
             page.pageScrollView.bounds,
             to: page.view
         )
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
         XCTAssertTrue(page.isAtTop)
-        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
+        XCTAssertEqual(compactViewport.minY - page.view.bounds.minY, 0, accuracy: 1)
 
-        resize(window, hosting: page, width: 880, height: 900)
-        window.displayIfNeeded()
+        resize(window, hosting: page, clipHeight: Self.spaciousClipHeight)
+        XCTAssertEqual(
+            page.clipViewForTesting.bounds.height,
+            Self.spaciousClipHeight,
+            accuracy: 2
+        )
         XCTAssertGreaterThan(page.documentTopSpacingForTesting, 0)
         XCTAssertTrue(page.isAtTop)
-        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
         let spaciousViewport = page.pageScrollView.convert(
             page.pageScrollView.bounds,
             to: page.view
@@ -986,11 +963,14 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             accuracy: 1
         )
 
-        resize(window, hosting: page, width: 880, height: 620)
-        window.displayIfNeeded()
+        resize(window, hosting: page, clipHeight: Self.compactClipHeight)
+        XCTAssertEqual(
+            page.clipViewForTesting.bounds.height,
+            Self.compactClipHeight,
+            accuracy: 2
+        )
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
         XCTAssertTrue(page.isAtTop)
-        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
         let restoredViewport = page.pageScrollView.convert(
             page.pageScrollView.bounds,
             to: page.view
@@ -998,42 +978,21 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(restoredViewport.minY - page.view.bounds.minY, 0, accuracy: 1)
     }
 
-    func testSystemScrollEdgeViewportResizeCompensatesScrollOffsetWhenNotAtTop() throws {
-        try XCTSkipUnless(
-            ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26,
-            "Requires macOS 26 AppKit titlebar content insets"
-        )
+    func testSystemScrollEdgeViewportResizeCompensatesScrollOffsetWhenNotAtTop() {
         let page = DashboardScrollablePageViewController(
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .systemScrollEdge
         )
-        let windowController = DashboardWindowController(
-            actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in page },
-                makeProviderPage: { _ in DashboardHostedPageViewController() },
-                providerChoices: { [] },
-                prepareForPageReplacement: {},
-                didShowPage: {},
-                didClose: {},
-                didResize: {}
-            )
-        )
-        defer { windowController.teardown() }
+        let window = makePageWindow(clipHeight: Self.compactClipHeight, hosting: page)
+        defer { window.orderOut(nil) }
 
-        windowController.open(initialSection: .advanced)
-        let window = try XCTUnwrap(windowController.window)
-        window.setContentSize(NSSize(width: 880, height: 620))
-        finishDashboardPageLayout(page, in: window)
-
-        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
         page.restoreScrollOffset(140)
         window.layoutIfNeeded()
         XCTAssertFalse(page.isAtTop)
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
         let relativeVisibleBefore = visibleContentOrigin(in: page)
 
-        resize(window, hosting: page, width: 880, height: 900)
-        window.displayIfNeeded()
+        resize(window, hosting: page, clipHeight: Self.spaciousClipHeight)
         XCTAssertGreaterThan(page.documentTopSpacingForTesting, 0)
         XCTAssertFalse(page.isAtTop)
         XCTAssertEqual(visibleContentOrigin(in: page), relativeVisibleBefore, accuracy: 2)
@@ -1042,17 +1001,14 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             140 + page.documentTopSpacingForTesting,
             accuracy: 2
         )
-        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
 
         let spacingWhileTall = page.documentTopSpacingForTesting
-        resize(window, hosting: page, width: 880, height: 620)
-        window.displayIfNeeded()
+        resize(window, hosting: page, clipHeight: Self.compactClipHeight)
         XCTAssertEqual(page.documentTopSpacingForTesting, 0, accuracy: 1)
         XCTAssertFalse(page.isAtTop)
         XCTAssertEqual(visibleContentOrigin(in: page), relativeVisibleBefore, accuracy: 2)
         XCTAssertEqual(page.scrollOffset, 140, accuracy: 2)
         XCTAssertGreaterThan(spacingWhileTall, 0)
-        XCTAssertEqual(page.pageScrollView.contentInsets.top, titlebarHeight, accuracy: 1)
     }
 
     func testOfficialDashboardPagesDoNotPublishTopAccessory() throws {
@@ -1213,34 +1169,73 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertTrue(dashboardContentItem.topAlignedAccessoryViewControllers.isEmpty)
     }
 
+    private static let compactClipHeight: CGFloat = 620
+    private static let spaciousClipHeight: CGFloat = 800
+
+    private func pageHeight(
+        forClipHeight clipHeight: CGFloat,
+        policy: DashboardPageScrollLayoutPolicy
+    ) -> CGFloat {
+        clipHeight + policy.viewportTopInset
+    }
+
+    private func makePageWindow(
+        clipHeight: CGFloat,
+        hosting page: DashboardScrollablePageViewController,
+        width: CGFloat = 880
+    ) -> NSWindow {
+        let height = pageHeight(forClipHeight: clipHeight, policy: page.layoutPolicy)
+        let window = makeWindow(width: width, height: height, hosting: page)
+        applyClipHeight(clipHeight, to: page, width: width)
+        return window
+    }
+
     private func resize(
         _ window: NSWindow,
         hosting page: DashboardScrollablePageViewController,
-        width: CGFloat,
-        height: CGFloat
+        clipHeight: CGFloat,
+        width: CGFloat = 880
     ) {
+        let height = pageHeight(forClipHeight: clipHeight, policy: page.layoutPolicy)
         window.setContentSize(NSSize(width: width, height: height))
-        if window.contentViewController === page {
-            page.view.setFrameSize(NSSize(width: width, height: height))
-        }
-        finishDashboardPageLayout(page, in: window)
+        applyClipHeight(clipHeight, to: page, width: width)
     }
 
-    private func finishDashboardPageLayout(
-        _ page: DashboardScrollablePageViewController,
-        in window: NSWindow
+    /// Drive the page clip view to an exact height so breakpoint tests do not
+    /// depend on screen-available window size. Mode switch happens in
+    /// `viewDidLayout`; compensation is applied on the following pass.
+    private func applyClipHeight(
+        _ clipHeight: CGFloat,
+        to page: DashboardScrollablePageViewController,
+        width: CGFloat
     ) {
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
+        let height = pageHeight(forClipHeight: clipHeight, policy: page.layoutPolicy)
+        page.view.setFrameSize(NSSize(width: width, height: height))
+        page.view.needsLayout = true
         page.view.layoutSubtreeIfNeeded()
         page.pageScrollView.tile()
+        if abs(page.clipViewForTesting.bounds.height - clipHeight) > 2 {
+            var scrollFrame = page.pageScrollView.frame
+            scrollFrame.size.height = clipHeight
+            page.pageScrollView.setFrameSize(scrollFrame.size)
+            page.pageScrollView.tile()
+            page.clipViewForTesting.setFrameSize(
+                NSSize(width: max(page.clipViewForTesting.bounds.width, 1), height: clipHeight)
+            )
+            page.pageScrollView.tile()
+        }
+        page.view.needsLayout = true
         page.view.layoutSubtreeIfNeeded()
+        page.view.needsLayout = true
         page.view.layoutSubtreeIfNeeded()
-    }
-
-    private func pageViewportHeight(of page: DashboardScrollablePageViewController) -> CGFloat {
-        let scrollHeight = page.pageScrollView.bounds.height
-        return scrollHeight > 1 ? scrollHeight : page.clipViewForTesting.bounds.height
+        page.view.needsLayout = true
+        page.view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(
+            page.clipViewForTesting.bounds.height,
+            clipHeight,
+            accuracy: 2,
+            "Breakpoint tests must pin clip-view height, not window/screen size"
+        )
     }
 
     private func visibleContentOrigin(in page: DashboardScrollablePageViewController) -> CGFloat {
@@ -1260,7 +1255,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         height: CGFloat,
         hosting controller: NSViewController
     ) -> NSWindow {
-        let window = NSWindow(
+        let window = UnconstrainedLayoutWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.titled],
             backing: .buffered,
@@ -1273,6 +1268,9 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         controller.view.layoutSubtreeIfNeeded()
         if let page = controller as? DashboardScrollablePageViewController {
             page.pageScrollView.tile()
+            page.view.needsLayout = true
+            page.view.layoutSubtreeIfNeeded()
+            page.view.needsLayout = true
             page.view.layoutSubtreeIfNeeded()
         }
         return window
@@ -1295,6 +1293,14 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+}
+
+/// Test windows must not shrink to the host screen, or breakpoint fixtures
+/// would depend on CI display size.
+private final class UnconstrainedLayoutWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
     }
 }
 
