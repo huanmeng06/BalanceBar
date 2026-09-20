@@ -32,6 +32,12 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         XCTAssertTrue(source.contains("contentLayoutRect"))
         XCTAssertFalse(source.contains("equalTo: contentLayoutGuide.topAnchor"))
         XCTAssertFalse(source.contains("onDoubleClick"))
+
+        let splitStart = try XCTUnwrap(source.range(of: "final class DashboardSplitViewController"))
+        let splitEnd = try XCTUnwrap(source.range(of: "private final class DashboardSidebarViewController"))
+        let splitSource = String(source[splitStart.lowerBound..<splitEnd.lowerBound])
+        XCTAssertFalse(splitSource.contains("root.layer?.cornerRadius"))
+        XCTAssertFalse(splitSource.contains("root.layer?.masksToBounds"))
     }
 
     func testWindowEnablesNativeZoomWithoutFullWindowDragOverlay() throws {
@@ -64,15 +70,18 @@ final class DashboardWindowDragRegionTests: XCTestCase {
 
         let splitController = try XCTUnwrap(window.contentViewController as? DashboardSplitViewController)
         if #available(macOS 26.0, *) {
-            XCTAssertEqual(contentView.subviews, [splitController.contentSurface, splitController.splitView])
-            XCTAssertTrue(splitController.contentSurface.isHidden)
+            XCTAssertEqual(contentView.subviews, [splitController.splitView])
+            XCTAssertNil(splitController.legacyContentSurface)
             XCTAssertNil(splitController.legacyBackdrop)
+            XCTAssertEqual(contentView.layer?.cornerRadius ?? 0, 0)
         } else {
+            let surface = try XCTUnwrap(splitController.legacyContentSurface)
             XCTAssertEqual(
                 contentView.subviews,
-                [try XCTUnwrap(splitController.legacyBackdrop), splitController.contentSurface, splitController.splitView]
+                [try XCTUnwrap(splitController.legacyBackdrop), surface, splitController.splitView]
             )
-            XCTAssertFalse(splitController.contentSurface.isHidden)
+            XCTAssertFalse(surface.isHidden)
+            XCTAssertEqual(contentView.layer?.cornerRadius ?? 0, 0)
         }
     }
 

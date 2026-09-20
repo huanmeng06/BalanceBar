@@ -56,7 +56,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 拖拽 | `isMovableByWindowBackground = false`；`DashboardContentRootView.mouseDownCanMoveWindow = false`，内容区不拖窗口；拖动由原生标题栏 / AppKit 处理，无全窗口 drag overlay | `createDashboardWindow` / `DashboardContentRootView` |
 | 双击标题栏 | `DashboardContentRootView.hitTest` 对 `contentLayoutRect` 以上返回 `nil`，让 NSThemeFrame 执行系统 `AppleActionOnDoubleClick`；不再调用 `toggleWindowZoom()` | `DashboardContentRootView.hitTest` |
 | 全屏 | 使用标准 zoom / 全屏行为；不再在 `.fullScreen` 时用自定义 `hitTest` 抑制双击 | AppKit |
-| 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。macOS 26+ 的 `DashboardContentRootView` 是普通 `NSView`，不再显示 #383 的 `NSVisualEffectView` / 自定义根 tint / `contentSurface` 背景层；这些旧层位于 split view 后方，不能仅凭层级认定它们遮挡了系统 effect；`contentSurface` 保留为旧系统兼容对象但在 Tahoe 隐藏。macOS 14/15 仍挂载 legacy `NSVisualEffectView` + 全宽 `contentSurface`。左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。macOS 26+ 对**相邻 content item**（不是 sidebar item）设置公开 `automaticallyAdjustsSafeAreaInsets = true`，允许 floating sidebar 叠在内容 pane 上并由 AppKit 更新该 pane 的 safe area；页面挂载到 `DashboardPageContainerViewController` 的水平 `safeAreaLayoutGuide`，不按 sidebar 当前宽度手算 left inset。原生 `NSSplitView` 为 `isVertical = true`、`.thin` divider。打开时侧栏约 216pt（sidebar 视图一次性 frame seed，不是 `preferredThicknessFraction`）；`minimumThickness` 约 212、`maximumThickness` 320；`canCollapse = true`。折叠/展开走 `isCollapsed` 与 `toggleSidebar(_:)`；用户可见的系统 toolbar toggle 由 `DashboardToolbarController` 接入同一 responder chain。不把 divider 厚度锁成 0，也不另造 hit strip；`holdingPriority` 为 sidebar 251 / content `.defaultLow`。 | `installLayout` / `DashboardSplitViewController` / `DashboardPageContainerViewController` / `DashboardToolbarController` |
+| 根视图 | `window.contentViewController` 为 `DashboardSplitViewController`（`NSSplitViewController`）。macOS 26+ 的 `DashboardContentRootView` 是普通 `NSView`，层级只有 root + `splitView`；不再实例化、插入或约束 `legacyContentSurface`，也不给根视图设置固定 `cornerRadius`（窗口外轮廓由系统 window style 决定）。macOS 14/15 仍挂载 legacy `NSVisualEffectView` + 全宽 `legacyContentSurface`，同样不使用固定 16pt 根圆角。左侧 `NSSplitViewItem(sidebarWithViewController:)`，右侧普通 content item。macOS 26+ 对**相邻 content item**（不是 sidebar item）设置公开 `automaticallyAdjustsSafeAreaInsets = true`，允许 floating sidebar 叠在内容 pane 上并由 AppKit 更新该 pane 的 safe area；页面挂载到 `DashboardPageContainerViewController` 的水平 `safeAreaLayoutGuide`，不按 sidebar 当前宽度手算 left inset。原生 `NSSplitView` 为 `isVertical = true`、`.thin` divider。打开时侧栏约 216pt（sidebar 视图一次性 frame seed，不是 `preferredThicknessFraction`）；`minimumThickness` 约 212、`maximumThickness` 320；`canCollapse = true`。折叠/展开走 `isCollapsed` 与 `toggleSidebar(_:)`；用户可见的系统 toolbar toggle 由 `DashboardToolbarController` 接入同一 responder chain。不把 divider 厚度锁成 0，也不另造 hit strip；`holdingPriority` 为 sidebar 251 / content `.defaultLow`。 | `installLayout` / `DashboardSplitViewController` / `DashboardPageContainerViewController` / `DashboardToolbarController` |
 | 侧栏材质 | 由 `NSSplitViewItem(sidebarWithViewController:)` 提供系统 sidebar chrome；侧栏根视图透明，仅承载 source-list。macOS 26+：source-list `NSScrollView` 贴齐 Sidebar root（top constant 0），`automaticallyAdjustsContentInsets = true`，由 AppKit 为 overlapping unified toolbar / titlebar 写入 content insets；不再用 `titlebarHeight + 14` 把整个 viewport 下移。`sidebarTitlebarSeparatorStyle` 仍为 `.none`（配合已有 `NSTrackingSeparatorToolbarItem`；该值不是 Soft/Hard 开关，也不阻止系统 inset）。macOS 14/15：保留 `titlebarHeight + 14` 非滚动 clearance 与 zero content insets，避免第一行进入透明 titlebar。几何由 `DashboardSidebarScrollLayoutPolicy` 拥有。 | `makeSidebar` / `DashboardSourceListController` / `DashboardSidebarScrollLayoutPolicy` |
 | 点击编辑 | 窗口级 `leftMouseDown` monitor：点在可编辑 `NSTextField` 内保持编辑，点在标签/卡片/空白处 `makeFirstResponder(nil)` | `installMouseMonitor` |
 
@@ -120,8 +120,8 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 窗口不锁定 `appearance`。重建时按 `NSApp.effectiveAppearance` 选择：
 
-- macOS 26+：最外层回归系统 window surface，不叠加 #383 根 tint / contentSurface；
-- macOS 14/15：保留根层浅色白 8% / 深色黑 14%，以及内容表面浅色 0.94×82% / 深色黑 20%；
+- macOS 26+：最外层回归系统 window surface，不实例化 #383 根 tint / `legacyContentSurface`，也不设置固定 root `cornerRadius`；
+- macOS 14/15：保留根层浅色白 8% / 深色黑 14%，以及内容表面浅色 0.94×82% / 深色黑 20%；不使用固定 16pt 根圆角；
 - 侧栏阴影透明度浅 0.08 / 深 0.18；
 - 设置卡片浅白 94% / 深白 6.5%，阴影浅 0.08 / 深 0.20。
 
@@ -151,13 +151,13 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 这些已有或本次新增的测试是回归闸门，不是视觉通过证明：
 
-- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、Tahoe 不透明标题栏 / 旧系统透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator` 以及 content-pane `NSSearchToolbarItem`、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、Tahoe 原生 window surface / 旧系统 legacy tint、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
+- `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、Tahoe 不透明标题栏 / 旧系统透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator` 以及 content-pane `NSSearchToolbarItem`、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、Tahoe 原生 window surface（root + `splitView` only，无 hidden `legacyContentSurface`、无固定 root `cornerRadius`）/ 旧系统 legacy tint、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
 - `DashboardScrollablePageViewControllerTests`：右侧设置页 document 顶部间距由 page `NSClipView` / `NSScrollView.contentView` 的可见高度在 760pt 处分档；紧凑 viewport spacing = 0，宽裕 viewport 使用 `equalToSystemSpacingBelow` × 1 且属于 scroll document；旧系统 52pt clearance 与 document spacing 分属 viewport / document；下滚后间距消失且不形成固定灰带；跨 breakpoint 时 rest 出现呼吸空间、已滚动则补偿 offset；macOS 26 automatic `contentInsets.top` 仍等于 titlebar 高度。
 - `DashboardWindowControllerTests.testWindowEnablesNativeZoomAndStaysResizable`
 - `DashboardNativeUIBaselineTests.testSidebarSourceListUsesPolicyOwnedScrollEdgeLayout`：生产 `.current`（macOS 26 全高 + 自动 inset）
 - `DashboardNativeUIBaselineTests.testSidebarSourceListTitlebarClearanceKeepsFirstRowOutOfTitlebar`：注入 `.titlebarClearance`，在 CI 的 macOS 26 上也走 14/15 的 titlebarHeight+14 分支，第一行不得进入 titlebar
 - `DashboardWindowControllerTests.testOpenRestoresInitialSectionAndScrollThenAFreshOpenStaysOnGeneral`
-- `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome
+- `DashboardWindowDragRegionTests`：自定义拖拽/缩放类型已退役、全窗口 drag overlay 不存在、zoom 按钮启用、标题栏 hitTest 穿透到原生 chrome、Tahoe 层级为 root + `splitView`、源码不再写固定 16pt root `cornerRadius`
 - `DashboardComponentsTests.testDashboardSectionsPreserveNavigationOrderAndMetadata`
 - `SettingsSectionViewTests`：原生 section 高度由子 View 约束推导，不走 `settingsSectionIntrinsicHeight` / 父级 preferred-height 循环；General Startup 是试点卡片
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
@@ -179,7 +179,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 - #436 / PR #437 只负责原生搜索。先在该 PR 的实际提交上验收搜索，再合并；不要求 Soft，也不依据 edge 的外观判定搜索失败。
 - #401 / PR #433 保留 macOS 26 系统根背景、完整滚动 overlap / 自动 inset，以及旧系统的兼容布局。#437 合并后把最新 main 合入 #433 原分支，才进行真实 Search toolbar 下的最终边缘验收。
 - 不再使用旧 integration worktree 的二进制或测试结果证明当前 PR。人工记录应包含所测 SHA、开发版路径、系统版本、窗口尺寸和滚动位置。
-- 截断 `contentSurface` 到 safe-area 顶部会制造不同的上下背景组合；该实验已撤销，不得恢复。背景层完全遮挡系统采样的说法尚未证实，不作为后续修复前提。
+- 截断旧 `contentSurface` 到 safe-area 顶部会制造不同的上下背景组合；该实验已撤销，不得恢复。Tahoe 现在根本不创建该层。背景层完全遮挡系统采样的说法尚未证实，不作为后续修复前提。
 - `titlebarSeparatorStyle`、`contentInsets.top` 以及测试通过仅证明对应布局/配置契约，不是视觉 PASS。macOS 26 根背景原生化同样需要实际视觉验收。
 
 ### 最终人工验收
