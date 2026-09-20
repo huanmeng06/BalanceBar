@@ -32,6 +32,13 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         XCTAssertTrue(source.contains("contentLayoutRect"))
         XCTAssertFalse(source.contains("equalTo: contentLayoutGuide.topAnchor"))
         XCTAssertFalse(source.contains("onDoubleClick"))
+        XCTAssertFalse(source.contains("root.layer?.cornerRadius"))
+        XCTAssertFalse(source.contains("root.wantsLayer = true"))
+        XCTAssertFalse(source.contains("cornerRadius = 16"))
+        XCTAssertFalse(source.contains("private(set) var contentSurface"))
+        XCTAssertTrue(source.contains("legacyContentSurface"))
+        XCTAssertTrue(source.contains("installLegacyCompatibilitySurface"))
+        XCTAssertTrue(source.contains("func makeDashboardGlassEffectView"))
     }
 
     func testWindowEnablesNativeZoomWithoutFullWindowDragOverlay() throws {
@@ -64,15 +71,18 @@ final class DashboardWindowDragRegionTests: XCTestCase {
 
         let splitController = try XCTUnwrap(window.contentViewController as? DashboardSplitViewController)
         if #available(macOS 26.0, *) {
-            XCTAssertEqual(contentView.subviews, [splitController.contentSurface, splitController.splitView])
-            XCTAssertTrue(splitController.contentSurface.isHidden)
+            XCTAssertEqual(contentView.subviews, [splitController.splitView])
+            XCTAssertNil(splitController.legacyContentSurface)
             XCTAssertNil(splitController.legacyBackdrop)
+            XCTAssertEqual(contentView.layer?.cornerRadius ?? 0, 0)
         } else {
+            let surface = try XCTUnwrap(splitController.legacyContentSurface)
             XCTAssertEqual(
                 contentView.subviews,
-                [try XCTUnwrap(splitController.legacyBackdrop), splitController.contentSurface, splitController.splitView]
+                [try XCTUnwrap(splitController.legacyBackdrop), surface, splitController.splitView]
             )
-            XCTAssertFalse(splitController.contentSurface.isHidden)
+            XCTAssertFalse(surface.isHidden)
+            XCTAssertEqual(contentView.layer?.cornerRadius ?? 0, 0)
         }
     }
 

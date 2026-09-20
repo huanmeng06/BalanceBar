@@ -78,11 +78,12 @@ final class DashboardSplitViewController: NSSplitViewController {
         rawValue: NSLayoutConstraint.Priority.defaultLow.rawValue + 1
     )
     static let contentHoldingPriority = NSLayoutConstraint.Priority.defaultLow
-    static let contentSurfaceIdentifier = NSUserInterfaceItemIdentifier("dashboardContentSurface")
+    static let legacyContentSurfaceIdentifier = NSUserInterfaceItemIdentifier("dashboardLegacyContentSurface")
 
     let sidebarController: NSViewController
     let contentController: NSViewController
-    private(set) var contentSurface = NSView()
+    /// macOS 14/15 compatibility fill only. Tahoe must not create this view.
+    private(set) var legacyContentSurface: NSView?
     private(set) var legacyBackdrop: NSVisualEffectView?
     var contentSplitViewItem: NSSplitViewItem? {
         splitViewItems.first { $0.viewController === contentController }
@@ -130,58 +131,18 @@ final class DashboardSplitViewController: NSSplitViewController {
 
     override func loadView() {
         let root = DashboardContentRootView(frame: .zero)
-        root.wantsLayer = true
-
-        let usesNativeTahoeSurface: Bool
-        if #available(macOS 26.0, *) {
-            usesNativeTahoeSurface = true
-        } else {
-            usesNativeTahoeSurface = false
-        }
-
-        if usesNativeTahoeSurface {
-            // Leave the window surface to AppKit. The legacy #383 backdrop
-            // and tint are not needed behind Tahoe's floating system bars.
-            // Native surface ownership alone does not prove the edge's pixels.
-            root.layer?.backgroundColor = nil
-            root.layer?.cornerRadius = 0
-            root.layer?.masksToBounds = false
-            legacyBackdrop = nil
-        } else {
-            // Preserve the pre-Tahoe shell for macOS 14/15.
-            root.layer?.cornerRadius = 16
-            root.layer?.masksToBounds = true
-
-            let effect = NSVisualEffectView(frame: .zero)
-            effect.material = .underWindowBackground
-            effect.blendingMode = .behindWindow
-            effect.state = .active
-            effect.wantsLayer = true
-            effect.layer?.backgroundColor = dashboardAdaptiveColor(
-                light: NSColor.white.withAlphaComponent(0.08),
-                dark: NSColor.black.withAlphaComponent(0.14)
-            ).cgColor
-            effect.translatesAutoresizingMaskIntoConstraints = false
-            legacyBackdrop = effect
-            root.addSubview(effect)
-        }
-
-        contentSurface.identifier = Self.contentSurfaceIdentifier
-        contentSurface.wantsLayer = true
-        contentSurface.layer?.isOpaque = false
-        contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
-            dark: NSColor.black.withAlphaComponent(0.20)
-        ).cgColor
-        // The #383 surface is a legacy compatibility layer. Hiding it across
-        // the entire Tahoe window avoids the rejected "safe-area split" that
-        // created a broad gray band at the titlebar boundary.
-        contentSurface.isHidden = usesNativeTahoeSurface
-        contentSurface.translatesAutoresizingMaskIntoConstraints = false
         splitView.translatesAutoresizingMaskIntoConstraints = false
-
         view = root
-        root.addSubview(contentSurface)
+
+        if #available(macOS 26.0, *) {
+            // Leave the window surface and outline to AppKit. Do not keep a
+            // hidden compatibility fill behind Tahoe's native chrome.
+            legacyBackdrop = nil
+            legacyContentSurface = nil
+        } else {
+            installLegacyCompatibilitySurface(on: root)
+        }
+
         root.addSubview(splitView)
         if let splitResizeObserver {
             NotificationCenter.default.removeObserver(splitResizeObserver)
@@ -195,10 +156,6 @@ final class DashboardSplitViewController: NSSplitViewController {
         }
 
         var constraints = [
-            contentSurface.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            contentSurface.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            contentSurface.topAnchor.constraint(equalTo: root.topAnchor),
-            contentSurface.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             splitView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             splitView.topAnchor.constraint(equalTo: root.topAnchor),
@@ -212,7 +169,44 @@ final class DashboardSplitViewController: NSSplitViewController {
                 legacyBackdrop.bottomAnchor.constraint(equalTo: root.bottomAnchor)
             ])
         }
+        if let legacyContentSurface {
+            constraints.append(contentsOf: [
+                legacyContentSurface.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+                legacyContentSurface.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+                legacyContentSurface.topAnchor.constraint(equalTo: root.topAnchor),
+                legacyContentSurface.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+            ])
+        }
         NSLayoutConstraint.activate(constraints)
+    }
+
+    /// Pre-Tahoe translucent shell. Window outline stays with NSWindow; do
+    /// not clip this root to a fixed radius.
+    private func installLegacyCompatibilitySurface(on root: DashboardContentRootView) {
+        let effect = NSVisualEffectView(frame: .zero)
+        effect.material = .underWindowBackground
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.backgroundColor = dashboardAdaptiveColor(
+            light: NSColor.white.withAlphaComponent(0.08),
+            dark: NSColor.black.withAlphaComponent(0.14)
+        ).cgColor
+        effect.translatesAutoresizingMaskIntoConstraints = false
+        legacyBackdrop = effect
+        root.addSubview(effect)
+
+        let surface = NSView()
+        surface.identifier = Self.legacyContentSurfaceIdentifier
+        surface.wantsLayer = true
+        surface.layer?.isOpaque = false
+        surface.layer?.backgroundColor = dashboardAdaptiveColor(
+            light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
+            dark: NSColor.black.withAlphaComponent(0.20)
+        ).cgColor
+        surface.translatesAutoresizingMaskIntoConstraints = false
+        legacyContentSurface = surface
+        root.addSubview(surface)
     }
 
     deinit {
