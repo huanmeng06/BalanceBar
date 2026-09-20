@@ -78,7 +78,6 @@ final class DashboardSplitViewController: NSSplitViewController {
         rawValue: NSLayoutConstraint.Priority.defaultLow.rawValue + 1
     )
     static let contentHoldingPriority = NSLayoutConstraint.Priority.defaultLow
-    static let legacyContentSurfaceIdentifier = NSUserInterfaceItemIdentifier("dashboardLegacyContentSurface")
 
     let sidebarController: NSViewController
     let contentController: NSViewController
@@ -197,7 +196,6 @@ final class DashboardSplitViewController: NSSplitViewController {
         root.addSubview(effect)
 
         let surface = NSView()
-        surface.identifier = Self.legacyContentSurfaceIdentifier
         surface.wantsLayer = true
         surface.layer?.isOpaque = false
         surface.layer?.backgroundColor = dashboardAdaptiveColor(

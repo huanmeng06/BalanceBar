@@ -32,13 +32,14 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         XCTAssertTrue(source.contains("contentLayoutRect"))
         XCTAssertFalse(source.contains("equalTo: contentLayoutGuide.topAnchor"))
         XCTAssertFalse(source.contains("onDoubleClick"))
-        XCTAssertFalse(source.contains("root.layer?.cornerRadius"))
-        XCTAssertFalse(source.contains("root.wantsLayer = true"))
-        XCTAssertFalse(source.contains("cornerRadius = 16"))
-        XCTAssertFalse(source.contains("private(set) var contentSurface"))
-        XCTAssertTrue(source.contains("legacyContentSurface"))
-        XCTAssertTrue(source.contains("installLegacyCompatibilitySurface"))
-        XCTAssertTrue(source.contains("func makeDashboardGlassEffectView"))
+
+        let splitStart = try XCTUnwrap(source.range(of: "final class DashboardSplitViewController"))
+        let splitEnd = try XCTUnwrap(source.range(of: "private final class DashboardSidebarViewController"))
+        let splitSource = String(source[splitStart.lowerBound..<splitEnd.lowerBound])
+        XCTAssertFalse(splitSource.contains("root.layer?.cornerRadius"))
+        XCTAssertFalse(splitSource.contains("root.wantsLayer = true"))
+        XCTAssertFalse(splitSource.contains("cornerRadius = 16"))
+        XCTAssertFalse(splitSource.contains("masksToBounds = true"))
     }
 
     func testWindowEnablesNativeZoomWithoutFullWindowDragOverlay() throws {

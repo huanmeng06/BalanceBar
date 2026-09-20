@@ -589,10 +589,6 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             XCTAssertFalse(surface.isHidden)
             XCTAssertEqual(contentView.subviews, [legacyBackdrop, surface, splitController.splitView])
             XCTAssertEqual(
-                surface.identifier,
-                DashboardSplitViewController.legacyContentSurfaceIdentifier
-            )
-            XCTAssertEqual(
                 surface.layer?.backgroundColor?.alpha ?? -1,
                 dashboardUsesDarkAppearance ? 0.20 : 0.82,
                 accuracy: 0.01
@@ -675,7 +671,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertFalse(sourceList.scrollView.drawsBackground)
     }
 
-    func testContentSurfaceTintFollowsBaselineAppearancesWithoutDarkCompensation() throws {
+    func testLegacyContentSurfaceTintFollowsBaselineAppearances() throws {
         let previousAppearance = NSApp.appearance
         defer { NSApp.appearance = previousAppearance }
 
