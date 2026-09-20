@@ -534,17 +534,24 @@ enum DashboardSettingsComponents {
     /// SettingsRow-safe accessory around a compact numeric `NSTextField`.
     /// `SettingsRowView` may lower this stack's vertical hugging; the inner
     /// field keeps `.required` so the cell is not stretched to the row height.
+    /// Owns the completion-suppressing delegate wrapper because
+    /// `NSTextField.delegate` is weak.
     final class CompactNumericFieldAccessory: NSStackView {
         let field: NSTextField
         let capacityTemplate: String
+        fileprivate let numericEditingDelegate: CompactNumericFieldDelegate
 
         fileprivate init(
             field: NSTextField,
             capacityTemplate: String,
-            trailingViews: [NSView]
+            trailingViews: [NSView],
+            externalDelegate: NSTextFieldDelegate?
         ) {
             self.field = field
             self.capacityTemplate = capacityTemplate
+            self.numericEditingDelegate = CompactNumericFieldDelegate(
+                externalDelegate: externalDelegate
+            )
             super.init(frame: .zero)
             translatesAutoresizingMaskIntoConstraints = false
             orientation = .horizontal
@@ -554,6 +561,7 @@ enum DashboardSettingsComponents {
             setContentHuggingPriority(.required, for: .vertical)
             setContentCompressionResistancePriority(.required, for: .horizontal)
             setContentCompressionResistancePriority(.required, for: .vertical)
+            field.delegate = numericEditingDelegate
             addArrangedSubview(field)
             for view in trailingViews {
                 addArrangedSubview(view)
@@ -565,13 +573,213 @@ enum DashboardSettingsComponents {
         }
     }
 
+    /// Intercepts field-editor completion without replacing page delegates.
+    /// `NSTextFieldCell` has no `completes` in the current SDK; only
+    /// `NSComboBoxCell` does. Completion is disabled on the field and on
+    /// this editing session's shared field editor.
+    fileprivate final class CompactNumericFieldDelegate: NSObject, NSTextFieldDelegate {
+        weak var externalDelegate: NSTextFieldDelegate?
+        private var storedFieldEditorPolicy: NumericFieldEditorPolicy?
+        private weak var configuredFieldEditor: NSTextView?
+
+        init(externalDelegate: NSTextFieldDelegate?) {
+            self.externalDelegate = externalDelegate
+        }
+
+        func controlTextDidBeginEditing(_ notification: Notification) {
+            if let field = notification.object as? NSTextField,
+               let textView = field.currentEditor() as? NSTextView {
+                applyNumericFieldEditorPolicy(to: textView)
+            }
+            externalDelegate?.controlTextDidBeginEditing?(notification)
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            externalDelegate?.controlTextDidChange?(notification)
+        }
+
+        func controlTextDidEndEditing(_ notification: Notification) {
+            if let field = notification.object as? NSTextField,
+               let textView = field.currentEditor() as? NSTextView {
+                restoreNumericFieldEditorPolicy(on: textView)
+            }
+            externalDelegate?.controlTextDidEndEditing?(notification)
+        }
+
+        func control(_ control: NSControl, textShouldBeginEditing fieldEditor: NSText) -> Bool {
+            if let textView = fieldEditor as? NSTextView {
+                applyNumericFieldEditorPolicy(to: textView)
+            }
+            return externalDelegate?.control?(control, textShouldBeginEditing: fieldEditor) ?? true
+        }
+
+        func control(_ control: NSControl, textShouldEndEditing fieldEditor: NSText) -> Bool {
+            let allowed = externalDelegate?.control?(
+                control,
+                textShouldEndEditing: fieldEditor
+            ) ?? true
+            if allowed, let textView = fieldEditor as? NSTextView {
+                restoreNumericFieldEditorPolicy(on: textView)
+            }
+            return allowed
+        }
+
+        func control(
+            _ control: NSControl,
+            textView: NSTextView,
+            completions words: [String],
+            forPartialWordRange charRange: NSRange,
+            indexOfSelectedItem index: UnsafeMutablePointer<Int>
+        ) -> [String] {
+            index.pointee = -1
+            return []
+        }
+
+        func control(
+            _ control: NSControl,
+            textView: NSTextView,
+            doCommandBy commandSelector: Selector
+        ) -> Bool {
+            if commandSelector == #selector(NSResponder.complete(_:)) {
+                return true
+            }
+            if externalDelegate?.control?(
+                control,
+                textView: textView,
+                doCommandBy: commandSelector
+            ) == true {
+                return true
+            }
+            return false
+        }
+
+        func textField(
+            _ textField: NSTextField,
+            textView: NSTextView,
+            candidatesForSelectedRange selectedRange: NSRange
+        ) -> [Any]? {
+            []
+        }
+
+        func textField(
+            _ textField: NSTextField,
+            textView: NSTextView,
+            candidates: [NSTextCheckingResult],
+            forSelectedRange selectedRange: NSRange
+        ) -> [NSTextCheckingResult] {
+            []
+        }
+
+        func textField(
+            _ textField: NSTextField,
+            textView: NSTextView,
+            shouldSelectCandidateAt index: Int
+        ) -> Bool {
+            false
+        }
+
+        private func applyNumericFieldEditorPolicy(to textView: NSTextView) {
+            if storedFieldEditorPolicy == nil {
+                storedFieldEditorPolicy = NumericFieldEditorPolicy(textView)
+                configuredFieldEditor = textView
+            }
+            textView.isAutomaticTextCompletionEnabled = false
+            textView.isAutomaticSpellingCorrectionEnabled = false
+            textView.isAutomaticQuoteSubstitutionEnabled = false
+            textView.isAutomaticDashSubstitutionEnabled = false
+            textView.isAutomaticTextReplacementEnabled = false
+            textView.isContinuousSpellCheckingEnabled = false
+            textView.isGrammarCheckingEnabled = false
+            textView.isAutomaticDataDetectionEnabled = false
+            textView.isAutomaticLinkDetectionEnabled = false
+            textView.smartInsertDeleteEnabled = false
+            textView.inlinePredictionType = .no
+            if #available(macOS 15.0, *) {
+                textView.mathExpressionCompletionType = .no
+                textView.writingToolsBehavior = .none
+            }
+        }
+
+        private func restoreNumericFieldEditorPolicy(on textView: NSTextView) {
+            guard configuredFieldEditor === textView,
+                  let policy = storedFieldEditorPolicy else {
+                return
+            }
+            policy.apply(to: textView)
+            storedFieldEditorPolicy = nil
+            configuredFieldEditor = nil
+        }
+    }
+
+    /// Snapshot of window-shared field-editor traits so numeric editing
+    /// does not leak disabled completion into the next control.
+    fileprivate struct NumericFieldEditorPolicy {
+        var isAutomaticTextCompletionEnabled: Bool
+        var isAutomaticSpellingCorrectionEnabled: Bool
+        var isAutomaticQuoteSubstitutionEnabled: Bool
+        var isAutomaticDashSubstitutionEnabled: Bool
+        var isAutomaticTextReplacementEnabled: Bool
+        var isContinuousSpellCheckingEnabled: Bool
+        var isGrammarCheckingEnabled: Bool
+        var isAutomaticDataDetectionEnabled: Bool
+        var isAutomaticLinkDetectionEnabled: Bool
+        var smartInsertDeleteEnabled: Bool
+        var inlinePredictionType: NSTextInputTraitType
+        var mathExpressionCompletionTypeRaw: Int?
+        var writingToolsBehaviorRaw: Int?
+
+        init(_ textView: NSTextView) {
+            isAutomaticTextCompletionEnabled = textView.isAutomaticTextCompletionEnabled
+            isAutomaticSpellingCorrectionEnabled = textView.isAutomaticSpellingCorrectionEnabled
+            isAutomaticQuoteSubstitutionEnabled = textView.isAutomaticQuoteSubstitutionEnabled
+            isAutomaticDashSubstitutionEnabled = textView.isAutomaticDashSubstitutionEnabled
+            isAutomaticTextReplacementEnabled = textView.isAutomaticTextReplacementEnabled
+            isContinuousSpellCheckingEnabled = textView.isContinuousSpellCheckingEnabled
+            isGrammarCheckingEnabled = textView.isGrammarCheckingEnabled
+            isAutomaticDataDetectionEnabled = textView.isAutomaticDataDetectionEnabled
+            isAutomaticLinkDetectionEnabled = textView.isAutomaticLinkDetectionEnabled
+            smartInsertDeleteEnabled = textView.smartInsertDeleteEnabled
+            inlinePredictionType = textView.inlinePredictionType
+            if #available(macOS 15.0, *) {
+                mathExpressionCompletionTypeRaw = textView.mathExpressionCompletionType.rawValue
+                writingToolsBehaviorRaw = textView.writingToolsBehavior.rawValue
+            }
+        }
+
+        func apply(to textView: NSTextView) {
+            textView.isAutomaticTextCompletionEnabled = isAutomaticTextCompletionEnabled
+            textView.isAutomaticSpellingCorrectionEnabled = isAutomaticSpellingCorrectionEnabled
+            textView.isAutomaticQuoteSubstitutionEnabled = isAutomaticQuoteSubstitutionEnabled
+            textView.isAutomaticDashSubstitutionEnabled = isAutomaticDashSubstitutionEnabled
+            textView.isAutomaticTextReplacementEnabled = isAutomaticTextReplacementEnabled
+            textView.isContinuousSpellCheckingEnabled = isContinuousSpellCheckingEnabled
+            textView.isGrammarCheckingEnabled = isGrammarCheckingEnabled
+            textView.isAutomaticDataDetectionEnabled = isAutomaticDataDetectionEnabled
+            textView.isAutomaticLinkDetectionEnabled = isAutomaticLinkDetectionEnabled
+            textView.smartInsertDeleteEnabled = smartInsertDeleteEnabled
+            textView.inlinePredictionType = inlinePredictionType
+            if #available(macOS 15.0, *) {
+                if let mathExpressionCompletionTypeRaw,
+                   let mathType = NSTextInputTraitType(rawValue: mathExpressionCompletionTypeRaw) {
+                    textView.mathExpressionCompletionType = mathType
+                }
+                if let writingToolsBehaviorRaw,
+                   let writingTools = NSWritingToolsBehavior(rawValue: writingToolsBehaviorRaw) {
+                    textView.writingToolsBehavior = writingTools
+                }
+            }
+        }
+    }
+
     /// Compact numeric editor: `NSTextField(string:)`, regular `controlSize`,
     /// rounded bezel, monospaced digits at `NSFont.systemFontSize(for: .regular)`.
     /// Width is `NSCell.cellSize` of `capacityTemplate`, not the current value.
     /// Overflow and the caret scroll inside the cell (`isScrollable`,
     /// `wraps == false`); AppKit pairs that with clipping instead of wrapping.
     /// Height comes from the cell; this factory never installs a height
-    /// constraint or a screenshot width. The returned stack is the accessory.
+    /// constraint or a screenshot width. Tab commits the current string; the
+    /// shared field editor's text completion / inline prediction is off for
+    /// this editing session only. The returned stack is the accessory.
     static func makeNumericTextField(
         identifier: String? = nil,
         value: String? = nil,
@@ -603,6 +811,8 @@ enum DashboardSettingsComponents {
         field.maximumNumberOfLines = 1
         field.cell?.wraps = false
         field.cell?.isScrollable = true
+        field.isAutomaticTextCompletionEnabled = false
+        field.allowsCharacterPickerTouchBarItem = false
         field.focusRingType = .default
         field.toolTip = toolTip
         field.translatesAutoresizingMaskIntoConstraints = false
@@ -612,13 +822,13 @@ enum DashboardSettingsComponents {
         field.setContentHuggingPriority(.required, for: .vertical)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
         field.setContentCompressionResistancePriority(.required, for: .vertical)
-        field.delegate = delegate
         field.target = target
         field.action = action
         return CompactNumericFieldAccessory(
             field: field,
             capacityTemplate: capacityTemplate,
-            trailingViews: trailingViews
+            trailingViews: trailingViews,
+            externalDelegate: delegate
         )
     }
 
