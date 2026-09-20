@@ -84,6 +84,9 @@
 		A10000000000000000000096 /* StatusLinksEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000097 /* StatusLinksEditor.swift */; };
 		A1000000000000000000009A /* StatusLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009B /* StatusLinksTests.swift */; };
 		A1000000000000000000009D /* DashboardWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009E /* DashboardWindowController.swift */; };
+		A40300000000000000000002 /* DashboardSplitViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40300000000000000000001 /* DashboardSplitViewController.swift */; };
+		A40300000000000000000004 /* DashboardPageSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40300000000000000000003 /* DashboardPageSession.swift */; };
+		A40300000000000000000006 /* DashboardShellTestHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40300000000000000000005 /* DashboardShellTestHarness.swift */; };
 		A38600000000000000000002 /* DashboardSourceListController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38600000000000000000001 /* DashboardSourceListController.swift */; };
 		A38800000000000000000002 /* DashboardPageContainerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38800000000000000000001 /* DashboardPageContainerViewController.swift */; };
 		A40900000000000000000002 /* DashboardToolbarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40900000000000000000001 /* DashboardToolbarController.swift */; };
@@ -260,6 +263,9 @@
 		A10000000000000000000097 /* StatusLinksEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksEditor.swift; sourceTree = "<group>"; };
 		A1000000000000000000009B /* StatusLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000009E /* DashboardWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowController.swift; sourceTree = "<group>"; };
+		A40300000000000000000001 /* DashboardSplitViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSplitViewController.swift; sourceTree = "<group>"; };
+		A40300000000000000000003 /* DashboardPageSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPageSession.swift; sourceTree = "<group>"; };
+		A40300000000000000000005 /* DashboardShellTestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardShellTestHarness.swift; sourceTree = "<group>"; };
 		A38600000000000000000001 /* DashboardSourceListController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSourceListController.swift; sourceTree = "<group>"; };
 		A38800000000000000000001 /* DashboardPageContainerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPageContainerViewController.swift; sourceTree = "<group>"; };
 		A40900000000000000000001 /* DashboardToolbarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardToolbarController.swift; sourceTree = "<group>"; };
@@ -493,6 +499,7 @@
 			children = (
 				A10000000000000300000020 /* BackgroundTestHost.swift */,
 				A10000000000000300000050 /* TestRepositoryRoot.swift */,
+				A40300000000000000000005 /* DashboardShellTestHarness.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -672,6 +679,8 @@
 			children = (
 				A100000000000000000000DD /* DashboardCompositionController.swift */,
 				A1000000000000000000009E /* DashboardWindowController.swift */,
+				A40300000000000000000001 /* DashboardSplitViewController.swift */,
+				A40300000000000000000003 /* DashboardPageSession.swift */,
 				A41100000000000000000001 /* DashboardShellRestoration.swift */,
 				A40900000000000000000001 /* DashboardToolbarController.swift */,
 				A43600000000000000000001 /* DashboardPageSearch.swift */,
@@ -1033,6 +1042,8 @@
 				A39000000000000000000002 /* SettingsRowView.swift in Sources */,
 				A39100000000000000000002 /* SettingsSectionView.swift in Sources */,
 				A1000000000000000000009D /* DashboardWindowController.swift in Sources */,
+				A40300000000000000000002 /* DashboardSplitViewController.swift in Sources */,
+				A40300000000000000000004 /* DashboardPageSession.swift in Sources */,
 				A41100000000000000000002 /* DashboardShellRestoration.swift in Sources */,
 				A40900000000000000000002 /* DashboardToolbarController.swift in Sources */,
 				A43600000000000000000002 /* DashboardPageSearch.swift in Sources */,
@@ -1094,6 +1105,7 @@
 			files = (
 				A10000000000000300000021 /* BackgroundTestHost.swift in Sources */,
 				A10000000000000300000051 /* TestRepositoryRoot.swift in Sources */,
+				A40300000000000000000006 /* DashboardShellTestHarness.swift in Sources */,
 				A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */,
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
 				A33700000000000000000003 /* QuickSwitchTitleLayoutTests.swift in Sources */,

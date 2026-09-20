@@ -8,7 +8,7 @@ final class DashboardContentSafeAreaTests: XCTestCase {
         let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let windowSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Sources/UI/Dashboard/DashboardWindowController.swift"
+                "Sources/UI/Dashboard/DashboardSplitViewController.swift"
             ),
             encoding: .utf8
         )
@@ -453,8 +453,8 @@ final class DashboardContentSafeAreaTests: XCTestCase {
         return nil
     }
 
-    private func makeController() -> DashboardWindowController {
-        DashboardWindowController(
+    private func makeController() -> DashboardShellTestHarness {
+        DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in
                     DashboardScrollablePageViewController(

@@ -1,6 +1,19 @@
 import AppKit
 import QuartzCore
 
+func makeDashboardGlassEffectView(contentView: NSView, cornerRadius: CGFloat) -> NSView? {
+    guard #available(macOS 26.0, *),
+          let glassViewClass = NSClassFromString("NSGlassEffectView") as? NSView.Type else {
+        return nil
+    }
+    // Resolve this macOS 26 class dynamically so older SDKs can compile the source.
+    let glassView = glassViewClass.init(frame: .zero)
+    glassView.setValue(0, forKey: "style") // NSGlassEffectViewStyleRegular
+    glassView.setValue(cornerRadius, forKey: "cornerRadius")
+    glassView.setValue(contentView, forKey: "contentView")
+    return glassView
+}
+
 final class DashboardMenuBarPageActionTarget: NSObject {
     var onRevealIconDisplayModeSetting: (() -> Void)?
 

@@ -12,6 +12,7 @@ final class DashboardAccessoryHarnessController {
     static let contentStripIdentifier = "dashboard-accessory-harness-content"
 
     private var windowController: DashboardWindowController?
+    private var pageSession: DashboardPageSession?
 
     static var isEnabled: Bool {
         isEnabled(
@@ -39,18 +40,38 @@ final class DashboardAccessoryHarnessController {
     }
 
     func present() {
-        if windowController == nil {
-            windowController = makeWindowController()
+        if windowController == nil || pageSession == nil {
+            assembleShell()
         }
+        let isNewWindow = windowController?.window == nil
         windowController?.open(initialSection: .general)
+        if isNewWindow, let windowController, let pageSession {
+            pageSession.installShell(on: windowController)
+            pageSession.showSection(.general)
+        }
+        windowController?.present()
     }
 
     func teardown() {
+        pageSession?.teardown()
         windowController?.teardown()
+        pageSession = nil
         windowController = nil
     }
 
+    var window: NSWindow? { windowController?.window }
+    var section: DashboardSection { pageSession?.section ?? .general }
     var windowControllerForTesting: DashboardWindowController? { windowController }
+    var sourceListForTesting: DashboardSourceListController? {
+        pageSession?.sourceListController
+    }
+    var accessoryHostForTesting: DashboardAccessoryHost {
+        pageSession?.accessoryHost ?? DashboardAccessoryHost()
+    }
+
+    func showSection(_ section: DashboardSection) {
+        pageSession?.showSection(section)
+    }
 
     static func accessory(for section: DashboardSection) -> DashboardPageTopAccessory {
         switch section {
@@ -74,8 +95,8 @@ final class DashboardAccessoryHarnessController {
         }
     }
 
-    private func makeWindowController() -> DashboardWindowController {
-        DashboardWindowController(
+    private func assembleShell() {
+        pageSession = DashboardPageSession(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { section in
                     DashboardAccessoryHarnessPage(
@@ -92,6 +113,7 @@ final class DashboardAccessoryHarnessController {
                 didResize: {}
             )
         )
+        windowController = DashboardWindowController()
     }
 }
 

@@ -6,24 +6,29 @@ import XCTest
 final class DashboardWindowControllerTests: XCTestCase {
     func testSidebarChromeSourceDoesNotInstallCustomGlassPanel() throws {
         let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
-        let source = try String(
+        let windowSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Sources/UI/Dashboard/DashboardWindowController.swift"
             ),
             encoding: .utf8
         )
-        let start = try XCTUnwrap(source.range(of: "private func makeSidebar("))
-        let end = try XCTUnwrap(
-            source.range(of: "var sourceListForTesting: DashboardSourceListController? { sourceListController }")
+        let sourceListSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardSourceListController.swift"
+            ),
+            encoding: .utf8
         )
-        let makeSidebarSource = String(source[start.lowerBound..<end.lowerBound])
-        XCTAssertTrue(
-            makeSidebarSource.contains(
-                "layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current"
-            )
+        let sessionSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardPageSession.swift"
+            ),
+            encoding: .utf8
         )
+        let start = try XCTUnwrap(sourceListSource.range(of: "func makeSidebar(in window: NSWindow)"))
+        let end = try XCTUnwrap(sourceListSource.range(of: "func applyViewportTopInset(in window: NSWindow)"))
+        let makeSidebarSource = String(sourceListSource[start.lowerBound..<end.lowerBound])
         XCTAssertTrue(
-            makeSidebarSource.contains("DashboardSourceListController(layoutPolicy: layoutPolicy)")
+            makeSidebarSource.contains("layoutPolicy.viewportTopInset(titlebarHeight:")
         )
         XCTAssertFalse(makeSidebarSource.contains("NSGlassEffectView"))
         XCTAssertFalse(makeSidebarSource.contains("NSClassFromString"))
@@ -33,22 +38,26 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(makeSidebarSource.contains("cornerRadius"))
         XCTAssertFalse(makeSidebarSource.contains("shadowOpacity"))
         XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
-        XCTAssertTrue(source.contains("accessoryHost.attach"))
-        XCTAssertTrue(source.contains("accessoryHost.apply"))
-        XCTAssertTrue(source.contains("accessoryHost.detach"))
-        XCTAssertFalse(source.contains("DashboardSidebarChromeBaseline"))
-        XCTAssertFalse(source.contains("sourceListTopConstraint"))
-        XCTAssertFalse(source.contains("titlebarHeight + 14"))
-        XCTAssertTrue(source.contains("var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current"))
-        XCTAssertTrue(source.contains("makeSidebar(in: window, layoutPolicy: sidebarScrollLayoutPolicy)"))
-        XCTAssertTrue(source.contains("layoutPolicy.viewportTopInset(titlebarHeight:"))
-        XCTAssertFalse(source.contains("sidebarInteractiveViews"))
-        XCTAssertFalse(source.contains("windowDidEnterFullScreen"))
-        XCTAssertFalse(source.contains("windowWillExitFullScreen"))
-        XCTAssertFalse(source.contains("NSTitlebarAccessoryViewController"))
-        XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
-        XCTAssertFalse(source.contains("titlebarAccessoryViewControllers"))
-        XCTAssertFalse(source.contains("topAlignedAccessoryViewControllers"))
+        XCTAssertTrue(sessionSource.contains("DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)"))
+        XCTAssertTrue(sessionSource.contains("sourceList.makeSidebar(in: window)"))
+        XCTAssertTrue(sessionSource.contains("var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current"))
+        XCTAssertTrue(sessionSource.contains("accessoryHost.apply"))
+        XCTAssertTrue(windowSource.contains("accessoryHost.attach"))
+        XCTAssertTrue(windowSource.contains("attachedAccessoryHost?.detach"))
+        XCTAssertFalse(windowSource.contains("func makeSidebar("))
+        XCTAssertFalse(windowSource.contains("func showSection("))
+        XCTAssertFalse(windowSource.contains("func replacePage("))
+        XCTAssertFalse(windowSource.contains("NSGlassEffectView"))
+        XCTAssertFalse(windowSource.contains("DashboardSidebarChromeBaseline"))
+        XCTAssertFalse(windowSource.contains("sourceListTopConstraint"))
+        XCTAssertFalse(windowSource.contains("titlebarHeight + 14"))
+        XCTAssertFalse(windowSource.contains("sidebarInteractiveViews"))
+        XCTAssertFalse(windowSource.contains("windowDidEnterFullScreen"))
+        XCTAssertFalse(windowSource.contains("windowWillExitFullScreen"))
+        XCTAssertFalse(windowSource.contains("NSTitlebarAccessoryViewController"))
+        XCTAssertFalse(windowSource.contains("NSSplitViewItemAccessoryViewController"))
+        XCTAssertFalse(windowSource.contains("titlebarAccessoryViewControllers"))
+        XCTAssertFalse(windowSource.contains("topAlignedAccessoryViewControllers"))
     }
 
     func testToolbarControllerUsesPublicSystemSidebarItems() throws {
@@ -83,7 +92,7 @@ final class DashboardWindowControllerTests: XCTestCase {
     }
 
     func testWindowEnablesNativeZoomAndStaysResizable() throws {
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -104,7 +113,7 @@ final class DashboardWindowControllerTests: XCTestCase {
     }
 
     func testGeneralNavigationShowsAndHidesUpdateBadgeWithUpdateState() throws {
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -227,7 +236,7 @@ final class DashboardWindowControllerTests: XCTestCase {
             ])
         }
 
-        let restoring = DashboardWindowController(
+        let restoring = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardScrollablePageViewController(wrapping: makeTallPage()) },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -275,7 +284,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         }
         XCTAssertTrue(fpsField.isEditable)
 
-        let fresh = DashboardWindowController(
+        let fresh = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardScrollablePageViewController(wrapping: makeTallPage()) },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -300,7 +309,7 @@ final class DashboardWindowControllerTests: XCTestCase {
             ProviderChoice(id: "current", name: "Current", isCurrent: true),
             ProviderChoice(id: "other", name: "Other", isCurrent: false)
         ]
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -337,7 +346,7 @@ final class DashboardWindowControllerTests: XCTestCase {
             ProviderChoice(id: "other", name: "Other", isCurrent: false)
         ]
         var preparedPageCount = 0
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -371,7 +380,7 @@ final class DashboardWindowControllerTests: XCTestCase {
 
     func testTeardownIsIdempotentAndStopsWindowDelegateOwnership() {
         var closeCount = 0
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -395,14 +404,14 @@ final class DashboardWindowControllerTests: XCTestCase {
         let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
         let source = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Sources/UI/Dashboard/DashboardWindowController.swift"
+                "Sources/UI/Dashboard/DashboardPageSession.swift"
             ),
             encoding: .utf8
         )
         let start = try XCTUnwrap(
             source.range(of: "private func replacePage(makePage: () -> NSViewController) {")
         )
-        let end = try XCTUnwrap(source.range(of: "private func installMouseMonitor()"))
+        let end = try XCTUnwrap(source.range(of: "private func detachPageContainerFromParent()"))
         let replacePageSource = String(source[start.lowerBound..<end.lowerBound])
         XCTAssertTrue(replacePageSource.contains("pageContainer.replacePage"))
         XCTAssertFalse(replacePageSource.contains("contentHost.subviews.forEach"))
@@ -414,7 +423,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         let choices = [
             ProviderChoice(id: "current", name: "Current", isCurrent: true)
         ]
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { section in
                     let page = DashboardHostedPageViewController()
@@ -1155,8 +1164,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
 
     private func makeController(
         providerChoices: [ProviderChoice] = []
-    ) -> DashboardWindowController {
-        DashboardWindowController(
+    ) -> DashboardShellTestHarness {
+        DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in
@@ -1500,7 +1509,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
     }
 
     private func assertSidebarScrollLayoutFollowsPolicy(
-        in controller: DashboardWindowController,
+        in controller: DashboardShellTestHarness,
         policy: DashboardSidebarScrollLayoutPolicy,
         file: StaticString = #filePath,
         line: UInt = #line
@@ -1857,8 +1866,8 @@ final class DashboardSourceListContractTests: XCTestCase {
     private func makeController(
         providerChoices: [ProviderChoice] = [],
         didShowPage: @escaping () -> Void = {}
-    ) -> DashboardWindowController {
-        DashboardWindowController(
+    ) -> DashboardShellTestHarness {
+        DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -2659,7 +2668,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             target: target,
             action: #selector(ActionTarget.popupChanged(_:))
         )
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },

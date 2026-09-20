@@ -21,7 +21,8 @@ BalanceBarMain
     -> AppDelegate (composition root and lifecycle owner)
         -> StatusItemController (menu-bar UI)
         -> DashboardCompositionController
-            -> DashboardWindowController and page/component views
+            -> DashboardWindowController, DashboardPageSession,
+               DashboardSplitViewController, and page/component views
         -> ProviderRefreshCoordinator
         -> ProviderSwitchCoordinator
         -> ActivityCoordinator
@@ -118,10 +119,14 @@ resulting models; they do not parse response payloads.
 
 ### A native window or AppKit capability
 
-Dashboard window creation, window delegate behavior, title-bar drag policy,
+Dashboard window creation, window delegate behavior, presentation, restoration,
 and window-owned teardown belong in
-Sources/UI/Dashboard/DashboardWindowController.swift. Dashboard page selection
-and page inputs belong in DashboardCompositionController.swift. Status-item and
+Sources/UI/Dashboard/DashboardWindowController.swift. The native split, content
+root hit-testing, and sidebar item geometry belong in
+DashboardSplitViewController.swift. Page, source-list, toolbar, and accessory
+session wiring belong in DashboardPageSession.swift; composition still owns
+page factories and search. Dashboard page selection and page inputs belong in
+DashboardCompositionController.swift. Status-item and
 menu-bar behavior belongs in Sources/UI/MenuBar/, especially
 StatusItemController.swift.
 

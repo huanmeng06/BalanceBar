@@ -6,42 +6,56 @@ import XCTest
 final class DashboardWindowDragRegionTests: XCTestCase {
     func testDashboardWindowControllerRetiresCustomTitlebarDragAndZoom() throws {
         let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
-        let source = try String(
+        let windowSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Sources/UI/Dashboard/DashboardWindowController.swift"
             ),
             encoding: .utf8
         )
-
-        XCTAssertFalse(source.contains("struct DashboardWindowDragRegion"))
-        XCTAssertFalse(source.contains("struct DashboardWindowZoomState"))
-        XCTAssertFalse(source.contains("class DashboardTitlebarDragView"))
-        XCTAssertFalse(source.contains("enum DashboardWindowDragPolicy"))
-        XCTAssertFalse(source.contains("func toggleWindowZoom()"))
-        XCTAssertFalse(source.contains("savedNormalFrame"))
-        XCTAssertFalse(source.contains("DashboardWindowDragPolicy.install"))
-        XCTAssertFalse(source.contains("standardWindowButton(.zoomButton)?.isEnabled = false"))
-        XCTAssertTrue(source.contains("override var mouseDownCanMoveWindow: Bool { false }"))
-        XCTAssertTrue(source.contains("override func hitTest(_ point: NSPoint) -> NSView?"))
-        XCTAssertTrue(source.contains("isMovableByWindowBackground = false"))
-        XCTAssertTrue(source.contains("private func makeSidebar("))
-        XCTAssertTrue(
-            source.contains("layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current")
+        let splitFile = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardSplitViewController.swift"
+            ),
+            encoding: .utf8
         )
-        XCTAssertFalse(source.contains("sidebarInteractiveViews"))
-        XCTAssertTrue(source.contains("contentLayoutRect"))
-        XCTAssertFalse(source.contains("equalTo: contentLayoutGuide.topAnchor"))
-        XCTAssertFalse(source.contains("onDoubleClick"))
+        let sourceListSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardSourceListController.swift"
+            ),
+            encoding: .utf8
+        )
 
-        let splitStart = try XCTUnwrap(source.range(of: "final class DashboardSplitViewController"))
-        let splitEnd = try XCTUnwrap(source.range(of: "private final class DashboardSidebarViewController"))
-        let splitSource = String(source[splitStart.lowerBound..<splitEnd.lowerBound])
+        XCTAssertFalse(windowSource.contains("struct DashboardWindowDragRegion"))
+        XCTAssertFalse(windowSource.contains("struct DashboardWindowZoomState"))
+        XCTAssertFalse(windowSource.contains("class DashboardTitlebarDragView"))
+        XCTAssertFalse(windowSource.contains("enum DashboardWindowDragPolicy"))
+        XCTAssertFalse(windowSource.contains("func toggleWindowZoom()"))
+        XCTAssertFalse(windowSource.contains("savedNormalFrame"))
+        XCTAssertFalse(windowSource.contains("DashboardWindowDragPolicy.install"))
+        XCTAssertFalse(windowSource.contains("standardWindowButton(.zoomButton)?.isEnabled = false"))
+        XCTAssertTrue(windowSource.contains("isMovableByWindowBackground = false"))
+        XCTAssertFalse(windowSource.contains("sidebarInteractiveViews"))
+        XCTAssertTrue(splitFile.contains("contentLayoutRect"))
+        XCTAssertFalse(windowSource.contains("equalTo: contentLayoutGuide.topAnchor"))
+        XCTAssertFalse(windowSource.contains("onDoubleClick"))
+        XCTAssertFalse(windowSource.contains("func makeSidebar("))
+
+        XCTAssertTrue(splitFile.contains("override var mouseDownCanMoveWindow: Bool { false }"))
+        XCTAssertTrue(splitFile.contains("override func hitTest(_ point: NSPoint) -> NSView?"))
+        XCTAssertTrue(sourceListSource.contains("func makeSidebar(in window: NSWindow)"))
+        XCTAssertTrue(
+            sourceListSource.contains("init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current)")
+        )
+
+        let splitStart = try XCTUnwrap(splitFile.range(of: "final class DashboardSplitViewController"))
+        let splitEnd = try XCTUnwrap(splitFile.range(of: "private final class DashboardSidebarViewController"))
+        let splitSource = String(splitFile[splitStart.lowerBound..<splitEnd.lowerBound])
         XCTAssertFalse(splitSource.contains("root.layer?.cornerRadius"))
         XCTAssertFalse(splitSource.contains("root.layer?.masksToBounds"))
     }
 
     func testWindowEnablesNativeZoomWithoutFullWindowDragOverlay() throws {
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -86,7 +100,7 @@ final class DashboardWindowDragRegionTests: XCTestCase {
     }
 
     func testContentRootPassesTitlebarHitsThroughForNativeDoubleClick() throws {
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
