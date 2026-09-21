@@ -112,13 +112,15 @@ final class DashboardSourceListCellView: NSTableCellView {
 
     private(set) var updateBadgeView = DashboardUpdateBadgeView()
 
-    /// `NSTableCellView` retints `textField` from `backgroundStyle`. Restore
-    /// the control catalog color so AppKit can apply its inactive variant.
+    /// `NSTableCellView` retints `textField` from `backgroundStyle`. Unselected
+    /// titles use `controlTextColor` so they can follow the inactive control
+    /// variant. Selected titles keep the color AppKit just applied so the
+    /// source-list Accent mark survives resign-key.
     override var backgroundStyle: NSView.BackgroundStyle {
         get { super.backgroundStyle }
         set {
             super.backgroundStyle = newValue
-            textField?.textColor = .controlTextColor
+            restoreTitleColor()
         }
     }
 
@@ -171,11 +173,18 @@ final class DashboardSourceListCellView: NSTableCellView {
         imageView?.image = NSImage(systemSymbolName: section.symbolName, accessibilityDescription: nil)
         imageView?.setAccessibilityElement(false)
         textField?.stringValue = section.title
-        textField?.textColor = .controlTextColor
         textField?.toolTip = section.title
         textField?.setAccessibilityElement(false)
         setAccessibilityLabel(section.title)
         setShowsUpdateBadge(section == .general && showsUpdateBadge)
+        restoreTitleColor()
+    }
+
+    private func restoreTitleColor() {
+        if (superview as? NSTableRowView)?.isSelected == true {
+            return
+        }
+        textField?.textColor = .controlTextColor
     }
 
     func setShowsUpdateBadge(_ visible: Bool) {
@@ -249,25 +258,18 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     private var showsUpdateAvailableBadge = false
     private var isApplyingProgrammaticSelection = false
     private var isTornDown = false
-    private var sidebarForegroundObservers: [NSObjectProtocol] = []
 
     init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current) {
         self.layoutPolicy = layoutPolicy
         roots = DashboardSidebarNode.makeNavigationTree()
         super.init()
         configureOutline()
-        observeSidebarForegroundChanges()
         reloadAndExpand()
-    }
-
-    deinit {
-        removeSidebarForegroundObservers()
     }
 
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
-        removeSidebarForegroundObservers()
         onSelectSection = nil
         outlineView.dataSource = nil
         outlineView.delegate = nil
@@ -425,9 +427,6 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
 
     func outlineView(_ outlineView: NSOutlineView, tintConfigurationForItem item: Any) -> NSTintConfiguration? {
         guard (item as? DashboardSidebarNode)?.section != nil else { return nil }
-        if Self.sidebarUsesInactiveForeground(for: outlineView) {
-            return NSTintConfiguration.monochrome
-        }
         return NSTintConfiguration.default
     }
 
@@ -467,61 +466,6 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         layoutPolicy.apply(to: scrollView)
-    }
-
-    private static func sidebarUsesInactiveForeground(for view: NSView) -> Bool {
-        guard let window = view.window else { return false }
-        return !window.isKeyWindow || !NSApp.isActive
-    }
-
-    private func observeSidebarForegroundChanges() {
-        let center = NotificationCenter.default
-        let windowNames: [Notification.Name] = [
-            NSWindow.didBecomeKeyNotification,
-            NSWindow.didResignKeyNotification
-        ]
-        for name in windowNames {
-            sidebarForegroundObservers.append(
-                center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
-                    guard let self,
-                          let window = notification.object as? NSWindow,
-                          window === self.outlineView.window
-                    else { return }
-                    self.reloadSidebarTintConfiguration()
-                }
-            )
-        }
-        let appNames: [Notification.Name] = [
-            NSApplication.didBecomeActiveNotification,
-            NSApplication.didResignActiveNotification
-        ]
-        for name in appNames {
-            sidebarForegroundObservers.append(
-                center.addObserver(forName: name, object: NSApp, queue: .main) { [weak self] _ in
-                    self?.reloadSidebarTintConfiguration()
-                }
-            )
-        }
-    }
-
-    private func removeSidebarForegroundObservers() {
-        let center = NotificationCenter.default
-        for observer in sidebarForegroundObservers {
-            center.removeObserver(observer)
-        }
-        sidebarForegroundObservers.removeAll()
-    }
-
-    private func reloadSidebarTintConfiguration() {
-        guard !isTornDown, outlineView.numberOfRows > 0 else { return }
-        // XCTest parks windows off-screen and shares `AppLanguage` via
-        // `UserDefaults`. Reloading rows here would rewrite titles while
-        // other tests are mid-assertion.
-        if AutomatedTestHost.isRunning { return }
-        outlineView.reloadData(
-            forRowIndexes: IndexSet(integersIn: 0..<outlineView.numberOfRows),
-            columnIndexes: IndexSet(integer: 0)
-        )
     }
 
     private func reloadAndExpand() {

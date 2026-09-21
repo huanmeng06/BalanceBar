@@ -12,7 +12,7 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         XCTAssertTrue(source.contains("override var isEmphasized"))
         XCTAssertTrue(source.contains("tintConfigurationForItem"))
         XCTAssertTrue(source.contains("NSTintConfiguration.default"))
-        XCTAssertTrue(source.contains("NSTintConfiguration.monochrome"))
+        XCTAssertFalse(source.contains("NSTintConfiguration.monochrome"))
         XCTAssertTrue(source.contains("controlTextColor"))
         XCTAssertFalse(source.contains("drawSelection"))
         XCTAssertFalse(source.contains("selectionHighlightStyle = .none"))
@@ -68,9 +68,21 @@ final class DashboardSourceListSelectionTests: XCTestCase {
             XCTAssertEqual(cell.accessibilityLabel(), section.title)
             XCTAssertFalse(cell.textField?.stringValue.isEmpty ?? true)
             XCTAssertNotNil(cell.textField?.textColor)
-            XCTAssertTrue(cell.textField?.textColor?.isEqual(NSColor.controlTextColor) ?? false)
             XCTAssertNotNil(cell.imageView?.image)
+            let node = try XCTUnwrap(sourceList.node(for: section))
+            XCTAssertTrue(
+                sourceList.outlineView(outline, tintConfigurationForItem: node)?
+                    .isEqual(NSTintConfiguration.default) ?? false
+            )
         }
+
+        sourceList.applySelection(.menuBar)
+        window.layoutIfNeeded()
+        let unselectedGeneralRow = try XCTUnwrap(sourceList.row(for: .general))
+        let unselectedGeneral = try sectionCell(in: outline, row: unselectedGeneralRow)
+        XCTAssertTrue(
+            unselectedGeneral.textField?.textColor?.isEqual(NSColor.controlTextColor) ?? false
+        )
     }
 
     func testGroupRowsDoNotUseSectionSelectionRowView() throws {
@@ -159,7 +171,7 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         try assertSelectedSectionUsesPinnedRowView(.menuBar, in: sourceList)
     }
 
-    func testResigningKeyKeepsUnemphasizedSelectionAndControlTitleColor() throws {
+    func testResigningKeyKeepsUnemphasizedSelectionAndAccentTint() throws {
         let controller = makeController()
         defer { controller.teardown() }
         controller.open()
@@ -180,12 +192,17 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         try assertSelectedSectionUsesPinnedRowView(.about, in: sourceList)
         let row = try XCTUnwrap(sourceList.row(for: .about))
         let cell = try sectionCell(in: sourceList.outlineView, row: row)
-        XCTAssertTrue(cell.textField?.textColor?.isEqual(NSColor.controlTextColor) ?? false)
+        XCTAssertNotNil(cell.textField?.textColor)
         let node = try XCTUnwrap(sourceList.node(for: .about))
         let tint = sourceList.outlineView(sourceList.outlineView, tintConfigurationForItem: node)
-        XCTAssertEqual(
-            tint?.adaptsToUserAccentColor,
-            window.isKeyWindow && NSApp.isActive
+        XCTAssertTrue(
+            tint?.isEqual(NSTintConfiguration.default) ?? false,
+            "selected item must keep default Accent tint after resign-key"
+        )
+        let generalNode = try XCTUnwrap(sourceList.node(for: .general))
+        XCTAssertTrue(
+            sourceList.outlineView(sourceList.outlineView, tintConfigurationForItem: generalNode)?
+                .isEqual(NSTintConfiguration.default) ?? false
         )
     }
 
