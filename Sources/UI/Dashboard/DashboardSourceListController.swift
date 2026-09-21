@@ -123,10 +123,10 @@ final class DashboardSourceListCellView: NSTableCellView {
         icon.setAccessibilityElement(false)
 
         let title = NSTextField(labelWithString: "")
-        title.font = .systemFont(ofSize: 13, weight: .medium)
         title.lineBreakMode = .byTruncatingTail
         title.setContentHuggingPriority(.defaultLow, for: .horizontal)
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.setAccessibilityElement(false)
 
         updateBadgeView.setContentHuggingPriority(.required, for: .horizontal)
         updateBadgeView.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -158,10 +158,10 @@ final class DashboardSourceListCellView: NSTableCellView {
 
     func configure(section: DashboardSection, showsUpdateBadge: Bool) {
         imageView?.image = NSImage(systemSymbolName: section.symbolName, accessibilityDescription: nil)
-        imageView?.contentTintColor = .labelColor
         imageView?.setAccessibilityElement(false)
         textField?.stringValue = section.title
         textField?.toolTip = section.title
+        textField?.setAccessibilityElement(false)
         setAccessibilityLabel(section.title)
         setShowsUpdateBadge(section == .general && showsUpdateBadge)
     }
@@ -178,9 +178,10 @@ final class DashboardSourceListGroupCellView: NSTableCellView {
         super.init(frame: frameRect)
         identifier = Self.identifier
         let title = NSTextField(labelWithString: "")
-        title.font = .systemFont(ofSize: 11, weight: .medium)
+        title.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         title.textColor = .tertiaryLabelColor
         title.lineBreakMode = .byTruncatingTail
+        title.setAccessibilityElement(false)
         title.translatesAutoresizingMaskIntoConstraints = false
         addSubview(title)
         NSLayoutConstraint.activate([
@@ -196,6 +197,7 @@ final class DashboardSourceListGroupCellView: NSTableCellView {
 
     func configure(title: String) {
         textField?.stringValue = title
+        textField?.setAccessibilityElement(false)
         setAccessibilityLabel(title)
     }
 }
