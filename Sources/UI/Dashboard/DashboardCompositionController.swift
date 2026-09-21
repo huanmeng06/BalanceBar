@@ -132,7 +132,7 @@ final class DashboardCompositionController {
         launchWithChatGPTController: launchWithChatGPTController
     )
     private let pageSearchFilter = DashboardPageSearchFilter()
-    private lazy var windowController = DashboardWindowController(
+    private lazy var pageSession = DashboardPageSession(
         actions: DashboardWindowControllerActions(
             makeSectionPage: { [weak self] section in
                 self?.makeSectionPageController(for: section)
@@ -156,6 +156,13 @@ final class DashboardCompositionController {
             }
         )
     )
+    private lazy var windowController: DashboardWindowController = {
+        let controller = DashboardWindowController()
+        controller.didClose = { [weak self] in self?.actions.onDidClose() }
+        controller.didResize = { [weak self] in self?.actions.onDidResize() }
+        controller.onAppearanceDidChange = { [weak self] in self?.rebuild() }
+        return controller
+    }()
 
     init(
         state: DashboardCompositionState,
@@ -171,14 +178,14 @@ final class DashboardCompositionController {
 
     var window: NSWindow? { windowController.window }
     var isVisible: Bool { window?.isVisible == true }
-    var contentHost: NSView { windowController.contentHost }
-    var section: DashboardSection { windowController.section }
-    var selectedProviderID: String? { windowController.selectedProviderID }
+    var contentHost: NSView { pageSession.contentHost }
+    var section: DashboardSection { pageSession.section }
+    var selectedProviderID: String? { pageSession.selectedProviderID }
     var pageContainerForTesting: DashboardPageContainerViewController {
-        windowController.pageContainerForTesting
+        pageSession.pageContainer
     }
     var scrollablePageForTesting: DashboardScrollablePageViewController? {
-        windowController.scrollablePageForTesting
+        pageSession.scrollablePage
     }
 
     func start() {
@@ -192,16 +199,27 @@ final class DashboardCompositionController {
     ) {
         bindDashboardSearch()
         installMenuBarRestoreSnapshotProvider()
-        windowController.open(initialSection: initialSection, scrollOffsetY: scrollOffsetY)
+        let isNewWindow = windowController.window == nil
+        windowController.open(initialSection: initialSection)
+        if isNewWindow {
+            pageSession.installShell(on: windowController)
+            pageSession.showSection(initialSection)
+            if let scrollOffsetY {
+                window?.makeFirstResponder(nil)
+                restorePageScrollOffsetY(scrollOffsetY)
+            }
+        }
+        windowController.present()
         refreshLaunchAtLogin()
         refreshLaunchWithChatGPT()
     }
-    func rebuild() { windowController.rebuild() }
-    func showSection(_ section: DashboardSection) { windowController.showSection(section) }
-    func showProvider(_ providerID: String) { windowController.showProvider(providerID) }
+    func rebuild() { pageSession.rebuild(on: windowController) }
+    func showSection(_ section: DashboardSection) { pageSession.showSection(section) }
+    func showProvider(_ providerID: String) { pageSession.showProvider(providerID) }
     func teardown() {
         dashboardProviderPages.teardown()
         dashboardPreferencePages.teardown()
+        pageSession.teardown()
         windowController.teardown()
     }
 
@@ -215,7 +233,7 @@ final class DashboardCompositionController {
             )
         )
         refreshMenuBarPage(snapshot: snapshot)
-        if !windowController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
         }
     }
@@ -232,7 +250,7 @@ final class DashboardCompositionController {
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive
         )
-        if !windowController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
         }
     }
@@ -240,7 +258,7 @@ final class DashboardCompositionController {
     func refreshMenuPage() {
         guard window?.isVisible == true, section == .menu else { return }
         dashboardPreferencePages.refreshMenu()
-        if !windowController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
         }
     }
@@ -367,7 +385,7 @@ final class DashboardCompositionController {
     func refreshUpdateState() {
         let updateState = state.updateState()
         dashboardPreferencePages.refreshUpdateState(updateState)
-        windowController.setShowsUpdateAvailableBadge(
+        pageSession.setShowsUpdateAvailableBadge(
             DashboardUpdatePresentation.make(for: updateState).showsUpdateBadge
         )
     }
@@ -420,16 +438,19 @@ final class DashboardCompositionController {
     func makeWindowForTesting(showing section: DashboardSection) -> NSWindow? {
         bindDashboardSearch()
         installMenuBarRestoreSnapshotProvider()
-        windowController.open(initialSection: section)
+        open(initialSection: section)
         return windowController.window
     }
 
     func restorePageScrollOffsetY(_ offset: CGFloat) {
-        windowController.restorePageScrollOffsetY(offset)
+        window?.layoutIfNeeded()
+        contentHost.layoutSubtreeIfNeeded()
+        pageSession.restorePageScrollOffsetY(offset)
+        window?.makeFirstResponder(nil)
     }
 
     func pageScrollOffsetY() -> CGFloat {
-        windowController.pageScrollOffsetY()
+        pageSession.pageScrollOffsetY()
     }
 
     func setPersistRestoreTokenForTesting(
@@ -449,25 +470,25 @@ final class DashboardCompositionController {
             }
             return DashboardRestoreToken(
                 section: self.section,
-                scrollOffsetY: Double(self.windowController.pageScrollOffsetY())
+                scrollOffsetY: Double(self.pageSession.pageScrollOffsetY())
             )
         }
     }
 
     func teardownForTesting() { teardown() }
 
-    var searchQueryForTesting: String { windowController.searchQuery }
+    var searchQueryForTesting: String { pageSession.toolbarController.searchQuery }
 
     func applySearchQueryForTesting(_ query: String) {
-        windowController.setSearchQuery(query)
+        pageSession.toolbarController.setQuery(query)
     }
 
     func currentHostedPageContentForTesting() -> NSView {
-        windowController.currentHostedPageContent()
+        pageSession.currentHostedPageContent()
     }
 
     private func bindDashboardSearch() {
-        windowController.bindSearchQueryHandler { [weak self] query in
+        pageSession.toolbarController.onSearchQueryChanged = { [weak self] query in
             self?.handleDashboardSearch(query)
         }
     }
@@ -488,7 +509,7 @@ final class DashboardCompositionController {
         let candidates = DashboardSettingsSearchCatalog.matchingSections(query: needle)
             .filter { originProviderID != nil || $0 != originSection }
         for destination in candidates {
-            windowController.showSection(destination)
+            pageSession.showSection(destination)
             if currentPageContainsSearchMatch(needle) {
                 return
             }
@@ -496,30 +517,30 @@ final class DashboardCompositionController {
 
         if selectedProviderID != originProviderID || section != originSection {
             if let originProviderID {
-                windowController.showProvider(originProviderID)
+                pageSession.showProvider(originProviderID)
             } else {
-                windowController.showSection(originSection)
+                pageSession.showSection(originSection)
             }
         }
         applyMountedPageSearch()
     }
 
     private func applyMountedPageSearch() {
-        let query = windowController.searchQuery
+        let query = pageSession.toolbarController.searchQuery
         _ = pageSearchFilter.apply(
             query: query,
-            to: windowController.currentHostedPageContent(),
+            to: pageSession.currentHostedPageContent(),
             pageTitle: currentSearchPageTitle(),
             mode: currentSearchMode()
         )
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
-        windowController.restoreCurrentPageScrollToTop()
+        pageSession.restoreCurrentPageScrollToTop()
     }
 
     private func currentPageContainsSearchMatch(_ query: String) -> Bool {
         pageSearchFilter.pageContainsMatch(
             query: query,
-            in: windowController.currentHostedPageContent(),
+            in: pageSession.currentHostedPageContent(),
             pageTitle: currentSearchPageTitle(),
             mode: currentSearchMode()
         )
@@ -589,7 +610,7 @@ final class DashboardCompositionController {
     ) -> DashboardProviderPageInput {
         DashboardProviderPageInput(
             choices: state.providerChoices(),
-            selectedProviderID: windowController.selectedProviderID,
+            selectedProviderID: pageSession.selectedProviderID,
             snapshot: snapshot ?? state.snapshot(),
             quickSwitchSummaries: state.quickSwitchSummaries(),
             refreshDate: useLastSuccessfulRefresh ? state.refreshDate() : refreshDate,

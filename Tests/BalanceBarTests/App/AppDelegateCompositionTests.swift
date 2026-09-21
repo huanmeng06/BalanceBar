@@ -2670,7 +2670,7 @@ final class ApplicationMenuConfigurationTests: XCTestCase {
     }
 
     func testDashboardWindowKeepsMiniaturizableStyleForWindowCommandRouting() throws {
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },

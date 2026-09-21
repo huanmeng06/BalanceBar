@@ -228,7 +228,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         let page = DashboardScrollablePageViewController(
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)])
         )
-        let windowController = DashboardWindowController(
+        let windowController = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in page },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -334,13 +334,19 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             encoding: .utf8
         )
 
+        let sessionSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardPageSession.swift"
+            ),
+            encoding: .utf8
+        )
         XCTAssertFalse(windowSource.contains("boundsDidChangeNotification"))
         XCTAssertFalse(windowSource.contains("postsBoundsChangedNotifications"))
         XCTAssertFalse(windowSource.contains("visualOffsetY(in: contentHost)"))
         XCTAssertFalse(windowSource.contains("restore(visualOffsetY: offset, in: contentHost)"))
         XCTAssertFalse(windowSource.contains("firstScrollView(in: contentHost)"))
-        XCTAssertTrue(windowSource.contains("currentScrollablePage?.scrollOffset"))
-        XCTAssertTrue(windowSource.contains("currentScrollablePage?.restoreScrollOffset"))
+        XCTAssertTrue(sessionSource.contains("scrollablePage?.scrollOffset"))
+        XCTAssertTrue(sessionSource.contains("scrollablePage?.restoreScrollOffset"))
         XCTAssertTrue(windowSource.contains("applyTitlebarSeparators"))
         XCTAssertFalse(windowSource.contains("titlebarSeparatorStyle = .none"))
         XCTAssertFalse(windowSource.contains("allowedPocketEdges"))
@@ -768,7 +774,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             wrapping: DashboardSettingsComponents.makeSettingsPageContent([tallFiller(height: 1800)]),
             layoutPolicy: .systemScrollEdge
         )
-        let windowController = DashboardWindowController(
+        let windowController = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in page },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },
@@ -1076,7 +1082,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
 
         let chrome = ScrollEdgeProbeAccessoryController()
         var chromePage: ScrollEdgeChromePage?
-        let dashboard = DashboardWindowController(
+        let dashboard = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { section in
                     let content = DashboardSettingsComponents.makeSettingsPageContent(

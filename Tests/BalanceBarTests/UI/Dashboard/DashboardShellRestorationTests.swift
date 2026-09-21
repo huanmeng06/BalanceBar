@@ -558,8 +558,8 @@ final class DashboardShellRestorationWindowTests: XCTestCase {
 
     private func makeController(
         store: DashboardShellRestorationStoring = MemoryDashboardShellRestorationStore()
-    ) -> DashboardWindowController {
-        DashboardWindowController(
+    ) -> DashboardShellTestHarness {
+        DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in DashboardHostedPageViewController() },

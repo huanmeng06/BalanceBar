@@ -190,7 +190,7 @@ final class DashboardPageSearchTests: XCTestCase {
         let choices = [
             ProviderChoice(id: "current", name: "Current", isCurrent: true)
         ]
-        let controller = DashboardWindowController(
+        let controller = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { _ in DashboardHostedPageViewController() },
                 makeProviderPage: { _ in

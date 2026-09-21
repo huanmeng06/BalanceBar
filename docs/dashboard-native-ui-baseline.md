@@ -27,7 +27,9 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 
 | 职责 | 当前路径 |
 | --- | --- |
-| 窗口、标题栏拖拽、缩放状态 | `Sources/UI/Dashboard/DashboardWindowController.swift` |
+| 窗口生命周期、展示、恢复、first-responder 策略 | `Sources/UI/Dashboard/DashboardWindowController.swift` |
+| 原生 split、content-root hit-testing、侧栏几何 | `Sources/UI/Dashboard/DashboardSplitViewController.swift` |
+| 页面/侧栏/工具栏/accessory 会话装配 | `Sources/UI/Dashboard/DashboardPageSession.swift` |
 | 侧栏 source-list 导航 | `Sources/UI/Dashboard/DashboardSourceListController.swift` |
 | 页面装配与 Provider/偏好页生命周期 | `Sources/UI/Dashboard/DashboardCompositionController.swift` |
 | 通用/刷新/启动/应用设置 | `Pages/Preferences/DashboardGeneralAndRefreshPages.swift` |
@@ -47,7 +49,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 | 默认内容尺寸 | `contentRect` 880×620 | `createDashboardWindow` |
 | 最小尺寸 | 代码写入 `minSize` 800×540；安装 unified toolbar 后 AppKit 把 frame 高度下限抬到 **560**（XCTest 在 macOS 26.5 上测得）。宽度下限仍为 800。 | 创建窗口后的运行时 `window.minSize` |
 | 样式 | `.titled` `.closable` `.miniaturizable` `.resizable` `.fullSizeContentView` | 同上 |
-| 标题 | `titleVisibility = .hidden`；`window.title` 仍写入当前页标题 | 同上；`showSection` / `showProvider` |
+| 标题 | `titleVisibility = .hidden`；`window.title` 仍写入当前页标题 | 窗口创建；`DashboardPageSession.showSection` / `showProvider` |
 | 标题栏 | macOS 26+ `titlebarAppearsTransparent = false`，让 titlebar 参与原生 window surface / scroll-edge；macOS 14/15 仍透明。`toolbarStyle = .unified`；icon-only、不可自定义、不自动保存的 `NSToolbar`。默认项：`.flexibleSpace`、`.toggleSidebar`、`.sidebarTrackingSeparator`、第二个 `.flexibleSpace`、content-pane `NSSearchToolbarItem`。`.flexibleSpace` 是 AppKit 系统 flexible space（`NSToolbarItem.Identifier.flexibleSpace`），不是应用手写 spacer / 固定宽度 / magic number；第一个把 toggle 推到侧栏 toolbar 段 trailing，第二个把搜索推到 content trailing。由独立 `DashboardToolbarController` 作为 delegate 提供；toggle 走 `NSSplitViewController` responder chain，separator 由 AppKit 跟踪 split divider。macOS 26+：窗口 `titlebarSeparatorStyle = .automatic`（不能写死 `.none`，否则会覆盖 split item 偏好），sidebar item `.none`、content item `.automatic`，恢复系统 titlebar separator 策略；该策略不是 Soft/Hard style 开关。Scroll-edge 由 AppKit 在滚动内容与真实浮动控件重叠时决定，Soft/Hard 都合法。macOS 14/15：窗口与 split item 均保持 `.none`。不安装空 accessory，也不使用私有 `NSScrollPocket` API，也不强制 `.soft` / `.hard`。 | 同上；`DashboardToolbarController`；`DashboardPageScrollLayoutPolicy` |
 | 背景 | macOS 26+ 使用原生 `windowBackgroundColor` 且 `isOpaque = true`；macOS 14/15 保留 `backgroundColor = .clear` / `isOpaque = false` 兼容外壳；`hasShadow = true` | 同上；测试宿主会改 alpha/shadow，不能用 XCTest 证明最终像素 |
 | 外观 | `appearance = nil`，跟随系统；`AppleInterfaceThemeChangedNotification` 后异步 `rebuild()` | `start()` / `createDashboardWindow` |

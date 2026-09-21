@@ -509,9 +509,15 @@ final class DashboardAccessoryHostTests: XCTestCase {
             ),
             encoding: .utf8
         )
+        let sessionSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Sources/UI/Dashboard/DashboardPageSession.swift"
+            ),
+            encoding: .utf8
+        )
         XCTAssertTrue(windowSource.contains("accessoryHost.attach"))
-        XCTAssertTrue(windowSource.contains("accessoryHost.apply"))
-        XCTAssertTrue(windowSource.contains("accessoryHost.detach"))
+        XCTAssertTrue(sessionSource.contains("accessoryHost.apply"))
+        XCTAssertTrue(windowSource.contains("attachedAccessoryHost?.detach"))
         XCTAssertFalse(windowSource.contains("titlebarAccessoryViewControllers"))
         XCTAssertFalse(windowSource.contains("addTitlebarAccessoryViewController"))
         XCTAssertFalse(windowSource.contains("NSTitlebarAccessoryViewController"))
@@ -557,7 +563,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
         let harness = DashboardAccessoryHarnessController()
         defer { harness.teardown() }
         harness.present()
-        let controller = try XCTUnwrap(harness.windowControllerForTesting)
+        let controller = harness
         let window = try XCTUnwrap(controller.window)
         window.layoutIfNeeded()
         window.displayIfNeeded()
@@ -629,7 +635,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
         let harness = DashboardAccessoryHarnessController()
         defer { harness.teardown() }
         harness.present()
-        let controller = try XCTUnwrap(harness.windowControllerForTesting)
+        let controller = harness
         let window = try XCTUnwrap(controller.window)
         window.layoutIfNeeded()
         try assertNoMountedAccessory(in: controller)
@@ -730,8 +736,8 @@ final class DashboardAccessoryHostTests: XCTestCase {
     private func makeController(
         makeSectionPage: ((DashboardSection) -> NSViewController)? = nil,
         providerChoices: [ProviderChoice] = []
-    ) -> DashboardWindowController {
-        DashboardWindowController(
+    ) -> DashboardShellTestHarness {
+        DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
                 makeSectionPage: { section in
                     makeSectionPage?(section) ?? DashboardHostedPageViewController()
@@ -747,7 +753,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
     }
 
     private func assertNoMountedAccessory(
-        in controller: DashboardWindowController,
+        in controller: DashboardShellInspecting,
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
@@ -832,14 +838,14 @@ final class DashboardAccessoryHostTests: XCTestCase {
         }
     }
 
-    private func sourceListTop(in controller: DashboardWindowController) throws -> CGFloat {
+    private func sourceListTop(in controller: DashboardShellInspecting) throws -> CGFloat {
         let sourceList = try XCTUnwrap(controller.sourceListForTesting)
         return sourceList.view.convert(sourceList.view.bounds, to: nil).maxY
     }
 
     private func assertSectionRowIsInteractive(
         _ section: DashboardSection,
-        in controller: DashboardWindowController
+        in controller: DashboardShellInspecting
     ) throws {
         let window = try XCTUnwrap(controller.window)
         window.layoutIfNeeded()
@@ -874,7 +880,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
     }
 
     private func assertTitlebarChromePassThrough(
-        in controller: DashboardWindowController
+        in controller: DashboardShellInspecting
     ) throws {
         let window = try XCTUnwrap(controller.window)
         let contentView = try XCTUnwrap(window.contentView as? DashboardContentRootView)
@@ -907,7 +913,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
 
     private func clickSourceListSection(
         _ section: DashboardSection,
-        in controller: DashboardWindowController
+        in controller: DashboardShellInspecting
     ) throws {
         try assertSectionRowIsInteractive(section, in: controller)
         let sourceList = try XCTUnwrap(controller.sourceListForTesting)
@@ -939,6 +945,17 @@ final class DashboardAccessoryHostTests: XCTestCase {
         return nil
     }
 }
+
+private protocol DashboardShellInspecting: AnyObject {
+    var window: NSWindow? { get }
+    var section: DashboardSection { get }
+    var accessoryHostForTesting: DashboardAccessoryHost { get }
+    var sourceListForTesting: DashboardSourceListController? { get }
+    func showSection(_ section: DashboardSection)
+}
+
+extension DashboardShellTestHarness: DashboardShellInspecting {}
+extension DashboardAccessoryHarnessController: DashboardShellInspecting {}
 
 private final class AccessoryProbePage: NSViewController, DashboardPageTopAccessoryProviding {
     let dashboardPageTopAccessory: DashboardPageTopAccessory
