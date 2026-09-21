@@ -86,7 +86,7 @@ a public API changes behavior. Visual change alone is not a new branch.
 | Lane | Workflow | Proves | Does not prove |
 | --- | --- | --- | --- |
 | Required | `.github/workflows/build-and-test.yml` job `build-and-test` on `macos-26` | SDK 26 build, probes, Dashboard XCTest on macOS 26 | macOS 14/15 GUI |
-| Old-runtime smoke | same workflow, job `old-runtime-smoke` on `macos-15` | the SDK 26 / minos 14 artifact can be parsed and signature-checked on a pre-26 runner | Dashboard visual or interaction on 14/15 |
+| Old-runtime smoke | same workflow, job `old-runtime-smoke` on `macos-15` | the SDK 26 / minos 14 artifact can be parsed and signature-checked on a pre-26 runner. The payload is a `tar.gz` because `upload-artifact` zip drops Unix execute bits. | Dashboard visual or interaction on 14/15 |
 | Forward SDK | `.github/workflows/dashboard-forward-sdk.yml` | next available SDK still compiles and XCTest contracts hold | new macOS GUI |
 | Policy / capability XCTest | required lane | 14.x / 15.x / 26.x / 27.x **semantic** families | pixels, scroll-edge Soft vs Hard |
 | Manual checklist | development app | window chrome, scrolling, sidebar, appearance | CI green |

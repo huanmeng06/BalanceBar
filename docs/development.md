@@ -194,11 +194,13 @@ independent build checks in parallel, then runs XCTest after they all pass:
 The build and test commands share one DerivedData directory so the test run
 does not compile the app and test bundle a second time.
 
-The same workflow then uploads the SDK 26 / minos 14 CLI bundle and runs
-`scripts/probes/deployment-artifact-smoke.sh` on macos-15. That smoke parses
-load commands and the ad-hoc signature. It is not Dashboard GUI acceptance,
-and it is `continue-on-error` until the pre-26 label is a stable required
-check. Version-only commits skip both the upload and the smoke.
+The same workflow then packs the SDK 26 / minos 14 CLI bundle as
+`BalanceBar.app.tar.gz` and runs `scripts/probes/deployment-artifact-smoke.sh`
+on macos-15 after extracting it. The tar exists because `upload-artifact@v4`
+zips the payload and drops Mach-O execute bits. That smoke parses load
+commands and the ad-hoc signature. It is not Dashboard GUI acceptance, and it
+is `continue-on-error` until the pre-26 label is a stable required check.
+Version-only commits skip both the upload and the smoke.
 
 [.github/workflows/dashboard-forward-sdk.yml](../.github/workflows/dashboard-forward-sdk.yml)
 is a compile + XCTest probe for a later SDK. It is `workflow_dispatch` plus an

@@ -140,15 +140,19 @@ jobs:
           -parallel-testing-enabled NO
           test-without-building
 
-      # Stage a parent directory so the downloaded artifact keeps the
-      # BalanceBar.app wrapper. Uploading the .app path itself would flatten
-      # Contents/ to the artifact root.
+      # upload-artifact@v4 zips the payload and drops Unix execute bits on
+      # Mach-O files inside .app bundles. Tar first so old-runtime can restore
+      # a runnable minos 14 binary rather than a non-executable Contents tree.
       - name: Stage SDK 26 deployment-target artifact
         if: steps.classify.outputs.version_only != 'true'
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/BalanceBar-macos26-sdk"
-          cp -R build/BalanceBar.app "$RUNNER_TEMP/BalanceBar-macos26-sdk/BalanceBar.app"
+          COPYFILE_DISABLE=1 tar -C build -czf \
+            "$RUNNER_TEMP/BalanceBar-macos26-sdk/BalanceBar.app.tar.gz" \
+            BalanceBar.app
+          tar -tzf "$RUNNER_TEMP/BalanceBar-macos26-sdk/BalanceBar.app.tar.gz" \
+            | grep -F 'BalanceBar.app/Contents/MacOS/BalanceBar'
 
       - name: Upload SDK 26 deployment-target artifact
         if: steps.classify.outputs.version_only != 'true'
@@ -186,5 +190,11 @@ jobs:
       - name: Verify load commands without launching the GUI
         run: |
           set -Eeuo pipefail
+          artifact_root="$RUNNER_TEMP/BalanceBar-artifact"
+          tar_payload="$artifact_root/BalanceBar.app.tar.gz"
+          [[ -f "$tar_payload" ]] \
+            || { echo "expected tar payload missing: $tar_payload" >&2; ls -la "$artifact_root" >&2; exit 1; }
+          tar -C "$artifact_root" -xzf "$tar_payload"
+          ls -l "$artifact_root/BalanceBar.app/Contents/MacOS/BalanceBar"
           ./scripts/probes/deployment-artifact-smoke.sh \
-            "$RUNNER_TEMP/BalanceBar-artifact/BalanceBar.app"
+            "$artifact_root/BalanceBar.app"

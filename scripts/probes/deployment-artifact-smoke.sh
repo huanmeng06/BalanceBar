@@ -12,11 +12,34 @@ die() {
     exit 1
 }
 
+# GitHub Actions upload-artifact@v4 zips the payload. Zip often drops Unix
+# execute bits even when the Mach-O is present. Restore +x when the file
+# exists; fail separately when it is missing.
+restore_execute_bit() {
+    local path="$1"
+    local label="$2"
+    if [[ ! -e "$path" ]]; then
+        die "$label does not exist: $path"
+    fi
+    if [[ ! -f "$path" ]]; then
+        die "$label is not a regular file: $path"
+    fi
+    if [[ ! -x "$path" ]]; then
+        printf 'deployment-artifact-smoke: restoring execute bit on %s\n' "$path"
+        chmod +x "$path" || die "could not restore execute bit on $label: $path"
+    fi
+    [[ -x "$path" ]] || die "$label is not executable: $path"
+}
+
 [[ -d "$app_bundle/Contents" ]] || die "app bundle does not exist: $app_bundle"
 bundle_plist="$app_bundle/Contents/Info.plist"
 executable="$app_bundle/Contents/MacOS/BalanceBar"
+launch_agent="$app_bundle/Contents/Library/LaunchAgents/BalanceBarChatGPTLaunchAgent"
 [[ -f "$bundle_plist" ]] || die "app Info.plist is missing"
-[[ -x "$executable" ]] || die "app executable is missing or not executable: $executable"
+restore_execute_bit "$executable" "app executable"
+if [[ -e "$launch_agent" ]]; then
+    restore_execute_bit "$launch_agent" "ChatGPT launch agent"
+fi
 
 minimum_system_version="$(plutil -extract LSMinimumSystemVersion raw -o - "$bundle_plist")"
 [[ "$minimum_system_version" == "$expected_deployment_target" ]] \
