@@ -202,6 +202,27 @@ final class DashboardSourceListGroupCellView: NSTableCellView {
     }
 }
 
+/// Section rows keep AppKit source-list selection drawing and pin
+/// `isEmphasized` so AppKit uses its unemphasized presentation. AppKit writes
+/// this property after installing the row; the setter keeps the ivar aligned
+/// with the getter.
+final class DashboardSourceListRowView: NSTableRowView {
+    static let identifier = NSUserInterfaceItemIdentifier("DashboardSourceListSectionRow")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        identifier = Self.identifier
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var isEmphasized: Bool {
+        get { false }
+        set { super.isEmphasized = false }
+    }
+}
+
 /// Owns the native source-list outline. Selection lives on the outline view;
 /// this object is only the data source/delegate and badge owner.
 final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
@@ -368,6 +389,19 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
             as? DashboardSourceListCellView ?? DashboardSourceListCellView()
         cell.configure(section: section, showsUpdateBadge: section == .general && showsUpdateAvailableBadge)
         return cell
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        guard let node = item as? DashboardSidebarNode, node.section != nil else {
+            return nil
+        }
+        if let reused = outlineView.makeView(
+            withIdentifier: DashboardSourceListRowView.identifier,
+            owner: self
+        ) as? DashboardSourceListRowView {
+            return reused
+        }
+        return DashboardSourceListRowView()
     }
 
     func outlineView(_ outlineView: NSOutlineView, typeSelectStringFor tableColumn: NSTableColumn?, item: Any) -> String? {

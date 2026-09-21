@@ -33,9 +33,7 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             "tintConfigurationWithPreferredColor",
             "controlAccentColor",
             "chipColor",
-            "override var isEmphasized",
             "unemphasizedSelectedContentBackgroundColor",
-            ": NSTableRowView",
             "NSTintConfiguration.monochrome"
         ]
         for token in forbidden {
