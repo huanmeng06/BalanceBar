@@ -119,6 +119,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.isMovableByWindowBackground = false
         window.identifier = NSUserInterfaceItemIdentifier(DashboardShellRestoration.identity)
         window.isReleasedWhenClosed = false
+        window.autorecalculatesKeyViewLoop = true
         return window
     }
 
@@ -373,5 +374,93 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
                 isSidebarCollapsed: collapsed
             )
         )
+    }
+}
+
+/// AppKit automatic key-view loop maintenance for Dashboard structural changes.
+enum DashboardKeyViewLoop {
+    static func invalidate(_ window: NSWindow?) {
+        window?.recalculateKeyViewLoop()
+    }
+
+    /// Ends editing and resigns page controls before the current page is
+    /// removed. Toolbar search and the source list stay first responder.
+    static func prepareForPageReplacement(_ window: NSWindow?) {
+        guard let window else { return }
+        guard let responder = window.firstResponder,
+              !isPreservedNavigationSurface(responder) else {
+            return
+        }
+        window.endEditing(for: nil)
+        if let remaining = window.firstResponder,
+           !isPreservedNavigationSurface(remaining) {
+            _ = window.makeFirstResponder(nil)
+        }
+    }
+
+    static func resignUnreachableFirstResponder(_ window: NSWindow?) {
+        guard let window else { return }
+        guard let responder = window.firstResponder else { return }
+        if isPreservedNavigationSurface(responder) {
+            return
+        }
+        window.endEditing(for: nil)
+        guard let remaining = window.firstResponder,
+              !isPreservedNavigationSurface(remaining),
+              isUnreachable(remaining, in: window) else {
+            return
+        }
+        _ = window.makeFirstResponder(nil)
+    }
+
+    private static func isPreservedNavigationSurface(_ responder: NSResponder) -> Bool {
+        if responder is NSSearchField || responder is NSOutlineView {
+            return true
+        }
+        if let field = associatedTextField(for: responder), field is NSSearchField {
+            return true
+        }
+        return false
+    }
+
+    private static func associatedTextField(for responder: NSResponder) -> NSTextField? {
+        if let field = responder as? NSTextField {
+            return field
+        }
+        if let textView = responder as? NSTextView, textView.isFieldEditor {
+            return textView.delegate as? NSTextField
+        }
+        return nil
+    }
+
+    private static func isUnreachable(_ responder: NSResponder, in window: NSWindow) -> Bool {
+        if let textView = responder as? NSTextView, textView.isFieldEditor {
+            if let field = textView.delegate as? NSTextField {
+                return isUnreachableView(field, in: window)
+            }
+            return true
+        }
+        if let field = associatedTextField(for: responder) {
+            return isUnreachableView(field, in: window)
+        }
+        guard let view = responder as? NSView else { return false }
+        return isUnreachableView(view, in: window)
+    }
+
+    private static func isUnreachableView(_ view: NSView, in window: NSWindow) -> Bool {
+        if view.window !== window {
+            return true
+        }
+        if view.isHiddenOrHasHiddenAncestor {
+            return true
+        }
+        var current: NSView? = view
+        while let candidate = current {
+            if DashboardSearchVisibility.isCollapsedForSearchLayout(candidate) {
+                return true
+            }
+            current = candidate.superview
+        }
+        return false
     }
 }

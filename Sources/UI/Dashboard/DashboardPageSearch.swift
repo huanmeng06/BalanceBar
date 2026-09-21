@@ -26,11 +26,13 @@ enum DashboardSearchVisibility {
         superSetter(isEffectivelyHidden(view))
         if wasBusinessHidden != hidden {
             syncSeparatedRows(around: view)
+            DashboardKeyViewLoop.invalidate(view.window)
         }
         if wasBusinessHidden, !hidden, !isEffectivelyHidden(view) {
             revealSearchHiddenSectionAncestors(of: view)
             hideSearchEmptyState(from: view)
             syncSeparatedRows(around: view)
+            DashboardKeyViewLoop.invalidate(view.window)
         }
     }
 
