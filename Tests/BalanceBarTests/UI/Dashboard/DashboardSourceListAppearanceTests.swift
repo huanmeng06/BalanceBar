@@ -14,6 +14,9 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         XCTAssertFalse(sectionSource.contains("systemFont(ofSize: 13, weight: .medium)"))
         XCTAssertFalse(sectionSource.contains("contentTintColor"))
         XCTAssertFalse(sectionSource.contains("symbolConfiguration"))
+        XCTAssertTrue(sectionSource.contains("allowsVibrancy"))
+        XCTAssertFalse(sectionSource.contains("secondaryLabelColor"))
+        XCTAssertFalse(sectionSource.contains("unemphasizedSelectedTextColor"))
         XCTAssertFalse(groupSource.contains("weight: .medium"))
         XCTAssertFalse(groupSource.contains("systemFont(ofSize: 11, weight: .medium)"))
         XCTAssertTrue(groupSource.contains("smallSystemFontSize"))
@@ -66,6 +69,14 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             XCTAssertFalse(
                 cell.imageView?.contentTintColor?.isEqual(NSColor.labelColor) ?? false,
                 "\(section) icon must not lock contentTintColor to labelColor"
+            )
+            XCTAssertTrue(
+                cell.textField?.allowsVibrancy == true,
+                "\(section) title must allow sidebar vibrancy for inactive foreground"
+            )
+            XCTAssertTrue(
+                cell.textField?.textColor?.isEqual(NSColor.labelColor) ?? false,
+                "\(section) title must keep semantic labelColor instead of a locked gray"
             )
             assertRowReadable(cell)
 
@@ -219,6 +230,14 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             XCTAssertFalse(
                 cell.imageView?.contentTintColor?.isEqual(NSColor.labelColor) ?? false,
                 "\(section) icon must not lock contentTintColor to labelColor after rebuild"
+            )
+            XCTAssertTrue(
+                cell.textField?.allowsVibrancy == true,
+                "\(section) title must keep sidebar vibrancy after rebuild"
+            )
+            XCTAssertTrue(
+                cell.textField?.textColor?.isEqual(NSColor.labelColor) ?? false,
+                "\(section) title must keep semantic labelColor after rebuild"
             )
             XCTAssertEqual(cell.imageView?.isAccessibilityElement(), false)
             XCTAssertEqual(cell.textField?.isAccessibilityElement(), false)

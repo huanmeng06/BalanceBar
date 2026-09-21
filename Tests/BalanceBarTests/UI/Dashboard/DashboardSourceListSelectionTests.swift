@@ -64,6 +64,8 @@ final class DashboardSourceListSelectionTests: XCTestCase {
             XCTAssertEqual(cell.accessibilityLabel(), section.title)
             XCTAssertFalse(cell.textField?.stringValue.isEmpty ?? true)
             XCTAssertNotNil(cell.textField?.textColor)
+            XCTAssertTrue(cell.textField?.allowsVibrancy == true)
+            XCTAssertTrue(cell.textField?.textColor?.isEqual(NSColor.labelColor) ?? false)
             XCTAssertNotNil(cell.imageView?.image)
         }
     }

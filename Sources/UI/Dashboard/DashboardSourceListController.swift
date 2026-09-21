@@ -110,6 +110,12 @@ final class DashboardSourceListOutlineView: NSOutlineView {
 final class DashboardSourceListCellView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("DashboardSourceListSectionCell")
 
+    /// `NSTextField(labelWithString:)` defaults to `allowsVibrancy == false`,
+    /// which keeps `labelColor` at full strength on the sidebar material.
+    private final class VibrantLabel: NSTextField {
+        override var allowsVibrancy: Bool { true }
+    }
+
     private(set) var updateBadgeView = DashboardUpdateBadgeView()
 
     override init(frame frameRect: NSRect) {
@@ -122,7 +128,7 @@ final class DashboardSourceListCellView: NSTableCellView {
         icon.setContentCompressionResistancePriority(.required, for: .horizontal)
         icon.setAccessibilityElement(false)
 
-        let title = NSTextField(labelWithString: "")
+        let title = VibrantLabel(labelWithString: "")
         title.lineBreakMode = .byTruncatingTail
         title.setContentHuggingPriority(.defaultLow, for: .horizontal)
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

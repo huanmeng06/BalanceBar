@@ -76,7 +76,7 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 
 侧栏导航是 `NSOutlineView` source-list（`DashboardSourceListController`）。可导航项是 `DashboardSidebarNode` 数据模型；Appearance / System 是不可选择的 group header。选中由 outline view 原生管理，不再维护平行的 `navigationButtons` / `navigationRows` 或自定义 `isSelected` 背景。source-list 随侧栏宽度拉伸；#385 的 split-view 尺寸/折叠契约不变。鼠标点击 group 行（含标题右侧空白）不得改变 selection、不得导航。↑/↓ 由 outline 的 `moveUp`/`moveDown` 在五个可选项间移动并跳过 group；不得把 group proposal 重映射到相邻 section（那条路径同样处理鼠标）。
 
-Section row 的字体与 SF Symbol tint 由 `.sourceList` + `NSTableCellView` 拥有：不写死 `13pt/.medium`，也不把 `imageView.contentTintColor` 锁成 `.labelColor`。系统 label 色随 row `backgroundStyle` 适配；source-list 默认 `NSTintConfiguration` 会按当前 Accent Color 给图标着色，BalanceBar 不另赋 `controlAccentColor` 或固定 RGB。Group header 仍使用系统 `smallSystemFontSize` 与 `.tertiaryLabelColor` 表达层级（view-based cell 不会获得 cell-based `NSTextFieldCell` 的自动 group 样式）。Update badge 仍是产品状态。普通 section row 使用 `DashboardSourceListRowView`，把公开的 `isEmphasized` 固定为 `false`，让 AppKit 绘制自己的 unemphasized / neutral source-list selection；不指定灰值、radius 或 blur，也不 override `drawSelection`。Group row 不使用该 subclass，`rowViewForItem` 对其返回 `nil`，由 AppKit 提供默认 group row view。
+Section row 的字体与 SF Symbol tint 由 `.sourceList` + `NSTableCellView` 拥有：不写死 `13pt/.medium`，也不把 `imageView.contentTintColor` 锁成 `.labelColor`。系统 label 色随 row `backgroundStyle` 适配；section 标题使用公开 `allowsVibrancy = true` 的 label，让 sidebar material 在窗口 inactive / 非焦点时自己决定灰色前景，不把文字锁成 `.gray` / `secondaryLabelColor`。source-list 默认 `NSTintConfiguration` 会按当前 Accent Color 给图标着色，BalanceBar 不另赋 `controlAccentColor` 或固定 RGB。Group header 仍使用系统 `smallSystemFontSize` 与 `.tertiaryLabelColor` 表达层级（view-based cell 不会获得 cell-based `NSTextFieldCell` 的自动 group 样式）。Update badge 仍是产品状态。普通 section row 使用 `DashboardSourceListRowView`，把公开的 `isEmphasized` 固定为 `false`，让 AppKit 绘制自己的 unemphasized / neutral source-list selection；不指定灰值、radius 或 blur，也不 override `drawSelection`。Group row 不使用该 subclass，`rowViewForItem` 对其返回 `nil`，由 AppKit 提供默认 group row view。
 
 - 打开窗口默认选中 General。
 - `showSection` 同步原生 selection，但不通过 delegate 再次切页。
@@ -172,7 +172,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
 - `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
 - `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权；source-list 接受可注入的 `layoutPolicy` 并对其实例 `apply(to:)`，不写死 `automaticallyAdjustsContentInsets`
-- `DashboardSourceListAppearanceTests`：section row 不再锁 `13pt/.medium` 或 `contentTintColor = .labelColor`；icon/title 不重复进入 accessibility tree；rebuild / 语言切换 / badge 后 ownership 仍交给 AppKit；不出现自绘 selection、版本特定 RGB 或私有 API
+- `DashboardSourceListAppearanceTests`：section row 不再锁 `13pt/.medium` 或 `contentTintColor = .labelColor`；section 标题 `allowsVibrancy` 且保持 `labelColor`；icon/title 不重复进入 accessibility tree；rebuild / 语言切换 / badge 后 ownership 仍交给 AppKit；不出现自绘 selection、版本特定 RGB 或私有 API
 - `DashboardSourceListSelectionTests`：section row 使用 `DashboardSourceListRowView` 并将 `isEmphasized` 钉为 `false`；group row 不套用该 row view；`.sourceList` 与非 `.none` 的 selection highlight 保持；Provider 空选中、键盘 ↑↓、group 点击、rebuild / badge 后 presentation 不丢失
 - `DashboardScrollClampingTests`：page 与 sidebar scroll-layout policy 的 capability 映射、inset flags、titlebar separator 契约；policy 源码不再读 `majorVersion`
 
