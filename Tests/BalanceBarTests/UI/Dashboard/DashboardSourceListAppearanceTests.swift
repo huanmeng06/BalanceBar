@@ -14,13 +14,18 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         XCTAssertFalse(sectionSource.contains("systemFont(ofSize: 13, weight: .medium)"))
         XCTAssertFalse(sectionSource.contains("contentTintColor"))
         XCTAssertFalse(sectionSource.contains("symbolConfiguration"))
-        XCTAssertTrue(sectionSource.contains("allowsVibrancy"))
+        XCTAssertFalse(sectionSource.contains("allowsVibrancy"))
+        XCTAssertFalse(sectionSource.contains("VibrantLabel"))
+        XCTAssertTrue(sectionSource.contains("controlTextColor"))
         XCTAssertFalse(sectionSource.contains("secondaryLabelColor"))
         XCTAssertFalse(sectionSource.contains("unemphasizedSelectedTextColor"))
         XCTAssertFalse(groupSource.contains("weight: .medium"))
         XCTAssertFalse(groupSource.contains("systemFont(ofSize: 11, weight: .medium)"))
         XCTAssertTrue(groupSource.contains("smallSystemFontSize"))
         XCTAssertTrue(groupSource.contains("tertiaryLabelColor"))
+        XCTAssertTrue(source.contains("tintConfigurationForItem"))
+        XCTAssertTrue(source.contains("NSTintConfiguration.default"))
+        XCTAssertTrue(source.contains("NSTintConfiguration.monochrome"))
 
         let forbidden = [
             "drawSelection",
@@ -36,14 +41,10 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             "tintConfigurationWithPreferredColor",
             "controlAccentColor",
             "chipColor",
-            "unemphasizedSelectedContentBackgroundColor",
-            "NSTintConfiguration.monochrome"
+            "unemphasizedSelectedContentBackgroundColor"
         ]
         for token in forbidden {
             XCTAssertFalse(source.contains(token), "source-list file must not contain \(token)")
-        }
-        if source.contains("tintConfigurationForItem") {
-            XCTAssertTrue(source.contains("NSTintConfiguration.default"))
         }
     }
 
@@ -71,12 +72,16 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
                 "\(section) icon must not lock contentTintColor to labelColor"
             )
             XCTAssertTrue(
-                cell.textField?.allowsVibrancy == true,
-                "\(section) title must allow sidebar vibrancy for inactive foreground"
+                cell.textField?.textColor?.isEqual(NSColor.controlTextColor) ?? false,
+                "\(section) title must use controlTextColor so inactive windows can dim it"
             )
-            XCTAssertTrue(
-                cell.textField?.textColor?.isEqual(NSColor.labelColor) ?? false,
-                "\(section) title must keep semantic labelColor instead of a locked gray"
+            let node = try XCTUnwrap(sourceList.node(for: section))
+            let tint = sourceList.outlineView(outline, tintConfigurationForItem: node)
+            XCTAssertNotNil(tint)
+            XCTAssertEqual(
+                tint?.adaptsToUserAccentColor,
+                window.isKeyWindow && NSApp.isActive,
+                "\(section) tint must follow window key / app active state"
             )
             assertRowReadable(cell)
 
@@ -232,13 +237,11 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
                 "\(section) icon must not lock contentTintColor to labelColor after rebuild"
             )
             XCTAssertTrue(
-                cell.textField?.allowsVibrancy == true,
-                "\(section) title must keep sidebar vibrancy after rebuild"
+                cell.textField?.textColor?.isEqual(NSColor.controlTextColor) ?? false,
+                "\(section) title must keep controlTextColor after rebuild"
             )
-            XCTAssertTrue(
-                cell.textField?.textColor?.isEqual(NSColor.labelColor) ?? false,
-                "\(section) title must keep semantic labelColor after rebuild"
-            )
+            let node = try XCTUnwrap(sourceList.node(for: section))
+            XCTAssertNotNil(sourceList.outlineView(sourceList.outlineView, tintConfigurationForItem: node))
             XCTAssertEqual(cell.imageView?.isAccessibilityElement(), false)
             XCTAssertEqual(cell.textField?.isAccessibilityElement(), false)
             if section == .general {

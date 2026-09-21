@@ -110,13 +110,17 @@ final class DashboardSourceListOutlineView: NSOutlineView {
 final class DashboardSourceListCellView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("DashboardSourceListSectionCell")
 
-    /// `NSTextField(labelWithString:)` defaults to `allowsVibrancy == false`,
-    /// which keeps `labelColor` at full strength on the sidebar material.
-    private final class VibrantLabel: NSTextField {
-        override var allowsVibrancy: Bool { true }
-    }
-
     private(set) var updateBadgeView = DashboardUpdateBadgeView()
+
+    /// `NSTableCellView` retints `textField` from `backgroundStyle`. Restore
+    /// the control catalog color so AppKit can apply its inactive variant.
+    override var backgroundStyle: NSView.BackgroundStyle {
+        get { super.backgroundStyle }
+        set {
+            super.backgroundStyle = newValue
+            textField?.textColor = .controlTextColor
+        }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -128,7 +132,8 @@ final class DashboardSourceListCellView: NSTableCellView {
         icon.setContentCompressionResistancePriority(.required, for: .horizontal)
         icon.setAccessibilityElement(false)
 
-        let title = VibrantLabel(labelWithString: "")
+        let title = NSTextField(labelWithString: "")
+        title.textColor = .controlTextColor
         title.lineBreakMode = .byTruncatingTail
         title.setContentHuggingPriority(.defaultLow, for: .horizontal)
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -166,6 +171,7 @@ final class DashboardSourceListCellView: NSTableCellView {
         imageView?.image = NSImage(systemSymbolName: section.symbolName, accessibilityDescription: nil)
         imageView?.setAccessibilityElement(false)
         textField?.stringValue = section.title
+        textField?.textColor = .controlTextColor
         textField?.toolTip = section.title
         textField?.setAccessibilityElement(false)
         setAccessibilityLabel(section.title)
@@ -243,18 +249,25 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     private var showsUpdateAvailableBadge = false
     private var isApplyingProgrammaticSelection = false
     private var isTornDown = false
+    private var sidebarForegroundObservers: [NSObjectProtocol] = []
 
     init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current) {
         self.layoutPolicy = layoutPolicy
         roots = DashboardSidebarNode.makeNavigationTree()
         super.init()
         configureOutline()
+        observeSidebarForegroundChanges()
         reloadAndExpand()
+    }
+
+    deinit {
+        removeSidebarForegroundObservers()
     }
 
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
+        removeSidebarForegroundObservers()
         onSelectSection = nil
         outlineView.dataSource = nil
         outlineView.delegate = nil
@@ -410,6 +423,14 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         return DashboardSourceListRowView()
     }
 
+    func outlineView(_ outlineView: NSOutlineView, tintConfigurationForItem item: Any) -> NSTintConfiguration? {
+        guard (item as? DashboardSidebarNode)?.section != nil else { return nil }
+        if Self.sidebarUsesInactiveForeground(for: outlineView) {
+            return NSTintConfiguration.monochrome
+        }
+        return NSTintConfiguration.default
+    }
+
     func outlineView(_ outlineView: NSOutlineView, typeSelectStringFor tableColumn: NSTableColumn?, item: Any) -> String? {
         (item as? DashboardSidebarNode)?.title
     }
@@ -446,6 +467,61 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         layoutPolicy.apply(to: scrollView)
+    }
+
+    private static func sidebarUsesInactiveForeground(for view: NSView) -> Bool {
+        guard let window = view.window else { return false }
+        return !window.isKeyWindow || !NSApp.isActive
+    }
+
+    private func observeSidebarForegroundChanges() {
+        let center = NotificationCenter.default
+        let windowNames: [Notification.Name] = [
+            NSWindow.didBecomeKeyNotification,
+            NSWindow.didResignKeyNotification
+        ]
+        for name in windowNames {
+            sidebarForegroundObservers.append(
+                center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                    guard let self,
+                          let window = notification.object as? NSWindow,
+                          window === self.outlineView.window
+                    else { return }
+                    self.reloadSidebarTintConfiguration()
+                }
+            )
+        }
+        let appNames: [Notification.Name] = [
+            NSApplication.didBecomeActiveNotification,
+            NSApplication.didResignActiveNotification
+        ]
+        for name in appNames {
+            sidebarForegroundObservers.append(
+                center.addObserver(forName: name, object: NSApp, queue: .main) { [weak self] _ in
+                    self?.reloadSidebarTintConfiguration()
+                }
+            )
+        }
+    }
+
+    private func removeSidebarForegroundObservers() {
+        let center = NotificationCenter.default
+        for observer in sidebarForegroundObservers {
+            center.removeObserver(observer)
+        }
+        sidebarForegroundObservers.removeAll()
+    }
+
+    private func reloadSidebarTintConfiguration() {
+        guard !isTornDown, outlineView.numberOfRows > 0 else { return }
+        // XCTest parks windows off-screen and shares `AppLanguage` via
+        // `UserDefaults`. Reloading rows here would rewrite titles while
+        // other tests are mid-assertion.
+        if AutomatedTestHost.isRunning { return }
+        outlineView.reloadData(
+            forRowIndexes: IndexSet(integersIn: 0..<outlineView.numberOfRows),
+            columnIndexes: IndexSet(integer: 0)
+        )
     }
 
     private func reloadAndExpand() {

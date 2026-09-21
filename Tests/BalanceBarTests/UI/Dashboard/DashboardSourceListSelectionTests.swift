@@ -10,6 +10,10 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         XCTAssertTrue(source.contains("rowViewForItem"))
         XCTAssertTrue(source.contains("final class DashboardSourceListRowView: NSTableRowView"))
         XCTAssertTrue(source.contains("override var isEmphasized"))
+        XCTAssertTrue(source.contains("tintConfigurationForItem"))
+        XCTAssertTrue(source.contains("NSTintConfiguration.default"))
+        XCTAssertTrue(source.contains("NSTintConfiguration.monochrome"))
+        XCTAssertTrue(source.contains("controlTextColor"))
         XCTAssertFalse(source.contains("drawSelection"))
         XCTAssertFalse(source.contains("selectionHighlightStyle = .none"))
         XCTAssertFalse(source.contains("unemphasizedSelectedContentBackgroundColor"))
@@ -64,8 +68,7 @@ final class DashboardSourceListSelectionTests: XCTestCase {
             XCTAssertEqual(cell.accessibilityLabel(), section.title)
             XCTAssertFalse(cell.textField?.stringValue.isEmpty ?? true)
             XCTAssertNotNil(cell.textField?.textColor)
-            XCTAssertTrue(cell.textField?.allowsVibrancy == true)
-            XCTAssertTrue(cell.textField?.textColor?.isEqual(NSColor.labelColor) ?? false)
+            XCTAssertTrue(cell.textField?.textColor?.isEqual(NSColor.controlTextColor) ?? false)
             XCTAssertNotNil(cell.imageView?.image)
         }
     }
@@ -87,6 +90,8 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         XCTAssertFalse(sourceList.outlineView(outline, shouldSelectItem: appearance))
         XCTAssertNil(sourceList.outlineView(outline, rowViewForItem: appearance))
         XCTAssertNil(sourceList.outlineView(outline, rowViewForItem: system))
+        XCTAssertNil(sourceList.outlineView(outline, tintConfigurationForItem: appearance))
+        XCTAssertNil(sourceList.outlineView(outline, tintConfigurationForItem: system))
 
         for group in [appearance, system] {
             let row = outline.row(forItem: group)
@@ -152,6 +157,36 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         XCTAssertFalse(outline.isRowSelected(appearanceRow))
         XCTAssertEqual(pageShows, afterGeneral + 1)
         try assertSelectedSectionUsesPinnedRowView(.menuBar, in: sourceList)
+    }
+
+    func testResigningKeyKeepsUnemphasizedSelectionAndControlTitleColor() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
+        sourceList.applySelection(.about)
+        window.layoutIfNeeded()
+        XCTAssertEqual(sourceList.selectedSection(), .about)
+
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        XCTAssertEqual(sourceList.selectedSection(), .about)
+        try assertSelectedSectionUsesPinnedRowView(.about, in: sourceList)
+        let row = try XCTUnwrap(sourceList.row(for: .about))
+        let cell = try sectionCell(in: sourceList.outlineView, row: row)
+        XCTAssertTrue(cell.textField?.textColor?.isEqual(NSColor.controlTextColor) ?? false)
+        let node = try XCTUnwrap(sourceList.node(for: .about))
+        let tint = sourceList.outlineView(sourceList.outlineView, tintConfigurationForItem: node)
+        XCTAssertEqual(
+            tint?.adaptsToUserAccentColor,
+            window.isKeyWindow && NSApp.isActive
+        )
     }
 
     func testRebuildLanguageSwitchAndBadgeKeepUnemphasizedRowView() throws {
