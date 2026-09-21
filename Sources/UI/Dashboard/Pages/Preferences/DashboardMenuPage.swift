@@ -242,6 +242,20 @@ private final class MenuDedicatedControlRow: NSView {
         }
 
         NSLayoutConstraint.activate(constraints)
+        DashboardSettingsAccessibility.bind(
+            titleLabel: titleLabel,
+            detailLabel: detailLabel.isHidden ? nil : detailLabel,
+            accessory: trailingControl
+        )
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        DashboardSettingsAccessibility.bind(
+            titleLabel: titleLabel,
+            detailLabel: detailLabel.isHidden ? nil : detailLabel,
+            accessory: trailingControl
+        )
     }
 
     private func configureLabel(
@@ -770,6 +784,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             $0.isHidden = !visible
         }
         invalidateHostedSection(for: statusLinksEditorHost ?? statusLinksEditor)
+        DashboardKeyViewLoop.invalidate(statusLinksEditorHost?.window ?? statusLinksEditor?.window)
     }
 
     func updateStatusLinks(
@@ -863,6 +878,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             separator.isHidden = !shouldShowHideOption
         }
         invalidateHostedSection(for: lunaReserveHideExhaustedQuotaRow)
+        DashboardKeyViewLoop.invalidate(lunaReserveHideExhaustedQuotaRow?.window)
     }
 
     private func updateProgressBarSettingsVisibility(_ visible: Bool) {
@@ -875,6 +891,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             visibleRows: [true] + progressBarDetailRows.map { _ in visible }
         )
         invalidateHostedSection(for: showQuotaProgressBarSwitch)
+        DashboardKeyViewLoop.invalidate(showQuotaProgressBarSwitch?.window)
     }
 
     private func updateBankedResetSettingsVisibility(_ visible: Bool) {
@@ -887,6 +904,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             visibleRows: [true] + bankedResetDetailRows.map { _ in visible }
         )
         invalidateHostedSection(for: showBankedResetSwitch)
+        DashboardKeyViewLoop.invalidate(showBankedResetSwitch?.window)
     }
 
     private func updateSeparatorVisibility(separators: [NSView], visibleRows: [Bool]) {

@@ -260,6 +260,8 @@ final class DashboardCompositionController {
         dashboardPreferencePages.refreshMenu()
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
+        } else {
+            DashboardKeyViewLoop.invalidate(window)
         }
     }
 
@@ -412,6 +414,7 @@ final class DashboardCompositionController {
 
     func updateMenuStatusVisibility(_ visible: Bool, animated: Bool) {
         dashboardPreferencePages.updateMenuStatusVisibility(visible, animated: animated)
+        DashboardKeyViewLoop.invalidate(window)
     }
 
     func restoreRequiredMenuBarToggle(identifier: String) {
@@ -533,6 +536,8 @@ final class DashboardCompositionController {
             pageTitle: currentSearchPageTitle(),
             mode: currentSearchMode()
         )
+        DashboardKeyViewLoop.resignUnreachableFirstResponder(window)
+        DashboardKeyViewLoop.invalidate(window)
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
         pageSession.restoreCurrentPageScrollToTop()
     }

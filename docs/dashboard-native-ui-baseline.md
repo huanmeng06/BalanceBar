@@ -112,7 +112,9 @@ About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advance
 
 | 控件 | 当前策略 |
 | --- | --- |
+| Dashboard 窗口 | 创建时显式 `autorecalculatesKeyViewLoop = true`；page 替换 / Search 显隐 / rebuild / 业务显隐批量结束后 `recalculateKeyViewLoop()`；Menu Bar snapshot 刷新只在 overflow / runtime warning 行显隐变化时 recalc |
 | 侧栏 source-list | 原生 `NSOutlineView` 选中/焦点；group header 不可选；图标与标题字段不进入 VoiceOver，由 cell label 提供名称 |
+| SettingsRow 标准单控件 | `accessibilityTitleUIElement` 指向行标题；detail 的 source text 用作 help；多控件 accessory 与产品显式 label 不覆盖 |
 | 标准 `NSSwitch` / `NSPopUpButton` / 圆角按钮 | 工厂方法不关闭 focus ring，沿用 AppKit 默认 |
 | Status Links 文本框 | `focusRingType = .default` |
 | About GitHub 按钮 | `focusRingType = .none`，`firstResponder` 时自绘 `keyboardFocusIndicatorColor` 描边 |

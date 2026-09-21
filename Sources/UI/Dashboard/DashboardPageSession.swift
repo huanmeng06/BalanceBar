@@ -81,6 +81,7 @@ final class DashboardPageSession {
             showSection(selectedSection)
         }
         window.displayIfNeeded()
+        DashboardKeyViewLoop.invalidate(window)
         if AutomatedTestHost.isRunning {
             ApplicationWindowPresentation.presentInBackground(window)
         }
@@ -145,6 +146,7 @@ final class DashboardPageSession {
 
     private func replacePage(makePage: () -> NSViewController) {
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
+        DashboardKeyViewLoop.prepareForPageReplacement(window)
         actions.prepareForPageReplacement()
         let page = makePage()
         pageContainer.replacePage(page)
@@ -155,6 +157,7 @@ final class DashboardPageSession {
         contentHost.layoutSubtreeIfNeeded()
         window?.displayIfNeeded()
         actions.didShowPage()
+        DashboardKeyViewLoop.invalidate(window)
         if AutomatedTestHost.isRunning, let window {
             ApplicationWindowPresentation.presentInBackground(window)
         }

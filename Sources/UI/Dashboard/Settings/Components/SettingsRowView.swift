@@ -145,6 +145,101 @@ final class SettingsSemanticSubtitleLabel: NSTextField {
         isApplyingLayoutText = false
         isApplyingEmphasis = false
     }
+
+    /// Localization source, without layout-inserted line breaks.
+    var sourceAccessibilityText: String {
+        localizedSubtitle?.text ?? stringValue
+    }
+}
+
+/// AppKit accessibility relationships for a settings title and one standard
+/// trailing control. Multi-control accessories keep their existing labels.
+enum DashboardSettingsAccessibility {
+    static func bind(
+        titleLabel: NSTextField,
+        detailLabel: NSTextField?,
+        accessory: NSView?
+    ) {
+        guard let control = primaryStandardControl(in: accessory) else {
+            return
+        }
+        if hasExplicitProductLabel(control, rowTitle: titleLabel.stringValue) {
+            if (control.accessibilityTitleUIElement() as AnyObject?) === titleLabel {
+                control.setAccessibilityTitleUIElement(nil)
+                titleLabel.setAccessibilityElement(true)
+            }
+            return
+        }
+
+        control.setAccessibilityTitleUIElement(titleLabel)
+        titleLabel.setAccessibilityElement(false)
+
+        if let detailLabel, !detailLabel.isHidden {
+            let help = sourceAccessibilityText(of: detailLabel)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !help.isEmpty {
+                control.setAccessibilityHelp(help)
+                detailLabel.setAccessibilityElement(false)
+            }
+        }
+    }
+
+    static func primaryStandardControl(in accessory: NSView?) -> NSView? {
+        guard let accessory else { return nil }
+        if accessory is QuotaColorThresholdSlider {
+            return nil
+        }
+        if accessory is NSTableView || accessory is NSScrollView {
+            return nil
+        }
+        if let compact = accessory as? DashboardSettingsComponents.CompactNumericFieldAccessory {
+            return compact.field
+        }
+        if isStandardBindableControl(accessory) {
+            return accessory
+        }
+        guard let stack = accessory as? NSStackView else { return nil }
+        let candidates = stack.arrangedSubviews.compactMap { subview -> NSView? in
+            if let compact = subview as? DashboardSettingsComponents.CompactNumericFieldAccessory {
+                return compact.field
+            }
+            return isStandardBindableControl(subview) ? subview : nil
+        }
+        return candidates.count == 1 ? candidates[0] : nil
+    }
+
+    private static func isStandardBindableControl(_ view: NSView) -> Bool {
+        if view is NSSwitch { return true }
+        if view is NSPopUpButton { return true }
+        if let field = view as? NSTextField, field.isEditable { return true }
+        return false
+    }
+
+    private static func hasExplicitProductLabel(_ control: NSView, rowTitle: String) -> Bool {
+        if control is NSSwitch {
+            return false
+        }
+        let label = (control.accessibilityLabel() ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { return false }
+        if label == rowTitle { return false }
+        if let popup = control as? NSPopUpButton {
+            let selected = popup.titleOfSelectedItem ?? popup.selectedItem?.title ?? ""
+            if label == selected { return false }
+        }
+        if let field = control as? NSTextField, field.isEditable {
+            if label == field.stringValue { return false }
+            if let placeholder = field.placeholderString, label == placeholder { return false }
+        }
+        return true
+    }
+
+    private static func sourceAccessibilityText(of label: NSTextField) -> String {
+        if let semantic = label as? SettingsSemanticSubtitleLabel {
+            return semantic.sourceAccessibilityText
+        }
+        return label.stringValue
+    }
 }
 
 /// Hosts that still own card height (the native settings card) can remeasure
@@ -268,6 +363,11 @@ final class SettingsRowView: NSView {
         }
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        bindAccessibility()
+    }
+
     deinit {
         wrappingCommitWorkItem?.cancel()
     }
@@ -325,6 +425,7 @@ final class SettingsRowView: NSView {
         wrappingHeightIsDirty = true
         refreshWrappingLayout()
         notifyHeightHost()
+        bindAccessibility()
     }
 
     /// Invalidates the row after a caller updates a supplied title or detail
@@ -339,6 +440,7 @@ final class SettingsRowView: NSView {
         wrappingHeightIsDirty = true
         refreshWrappingLayout()
         notifyHeightHost()
+        bindAccessibility()
     }
 
     /// Content height used by the compatibility section factory. Not an
@@ -629,6 +731,15 @@ final class SettingsRowView: NSView {
             )
         }
         NSLayoutConstraint.activate(constraints)
+        bindAccessibility()
+    }
+
+    private func bindAccessibility() {
+        DashboardSettingsAccessibility.bind(
+            titleLabel: titleLabel,
+            detailLabel: detailLabel.isHidden ? nil : detailLabel,
+            accessory: accessoryView
+        )
     }
 
     private func configureLabel(
