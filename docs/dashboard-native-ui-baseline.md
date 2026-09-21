@@ -76,6 +76,8 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar
 
 侧栏导航是 `NSOutlineView` source-list（`DashboardSourceListController`）。可导航项是 `DashboardSidebarNode` 数据模型；Appearance / System 是不可选择的 group header。选中由 outline view 原生管理，不再维护平行的 `navigationButtons` / `navigationRows` 或自定义 `isSelected` 背景。source-list 随侧栏宽度拉伸；#385 的 split-view 尺寸/折叠契约不变。鼠标点击 group 行（含标题右侧空白）不得改变 selection、不得导航。↑/↓ 由 outline 的 `moveUp`/`moveDown` 在五个可选项间移动并跳过 group；不得把 group proposal 重映射到相邻 section（那条路径同样处理鼠标）。
 
+Section row 的字体与 SF Symbol tint 由 `.sourceList` + `NSTableCellView` 拥有：不写死 `13pt/.medium`，也不把 `imageView.contentTintColor` 锁成 `.labelColor`。系统 label 色随 row `backgroundStyle` 适配；source-list 默认 `NSTintConfiguration` 会按当前 Accent Color 给图标着色，BalanceBar 不另赋 `controlAccentColor` 或固定 RGB。Group header 仍使用系统 `smallSystemFontSize` 与 `.tertiaryLabelColor` 表达层级（view-based cell 不会获得 cell-based `NSTextFieldCell` 的自动 group 样式）。Update badge 仍是产品状态。本基线不引入自定义 `NSTableRowView`，也不把 `isEmphasized` 钉死（那是后续 selection Issue 的范围）。
+
 - 打开窗口默认选中 General。
 - `showSection` 同步原生 selection，但不通过 delegate 再次切页。
 - `showProvider` **清空全部侧栏选中**，`window.title` 改为 Provider 名称。Provider **不出现在侧栏**（#386 Issue 正文曾提到 Provider 行，以本基线与现行生产路径为准）。
@@ -110,7 +112,7 @@ About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advance
 
 | 控件 | 当前策略 |
 | --- | --- |
-| 侧栏 source-list | 原生 `NSOutlineView` 选中/焦点；group header 不可选；图标装饰不进入 VoiceOver |
+| 侧栏 source-list | 原生 `NSOutlineView` 选中/焦点；group header 不可选；图标与标题字段不进入 VoiceOver，由 cell label 提供名称 |
 | 标准 `NSSwitch` / `NSPopUpButton` / 圆角按钮 | 工厂方法不关闭 focus ring，沿用 AppKit 默认 |
 | Status Links 文本框 | `focusRingType = .default` |
 | About GitHub 按钮 | `focusRingType = .none`，`firstResponder` 时自绘 `keyboardFocusIndicatorColor` 描边 |
@@ -168,6 +170,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 - `DashboardPreferencePagesTests` 中 General 卡片顺序 System → Refresh → Startup → Application
 - `DashboardProviderPagesTests.testAppDelegateWiringKeepsNativeSourceListResponsiveAfterPageReplacement`
 - `DashboardSourceListContractTests`：原生 outline 选中、group 鼠标点击不改 selection、键盘 ↑↓ 跳过 group、Provider 清空 selection、badge / rebuild / teardown 所有权；source-list 接受可注入的 `layoutPolicy` 并对其实例 `apply(to:)`，不写死 `automaticallyAdjustsContentInsets`
+- `DashboardSourceListAppearanceTests`：section row 不再锁 `13pt/.medium` 或 `contentTintColor = .labelColor`；icon/title 不重复进入 accessibility tree；rebuild / 语言切换 / badge 后 ownership 仍交给 AppKit；不出现自绘 selection、版本特定 RGB、私有 API 或 #449 的 `isEmphasized` row view
 - `DashboardScrollClampingTests`：page 与 sidebar scroll-layout policy 的 capability 映射、inset flags、titlebar separator 契约；policy 源码不再读 `majorVersion`
 
 ## 明确不在本基线内
