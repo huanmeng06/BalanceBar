@@ -97,22 +97,23 @@ enum DashboardScrollClampingPolicy {
     }
 }
 
-/// Page-scroll chrome for the running OS.
+/// Page-scroll chrome selected from `DashboardPlatformCapabilities`.
 ///
-/// macOS 26+ lets the scroll view overlap the transparent titlebar so AppKit
-/// can write content insets and choose the system scroll-edge automatically.
+/// Native ownership lets the scroll view overlap the titlebar so AppKit can
+/// write content insets and choose the system scroll-edge automatically.
 /// Soft and Hard are both valid system results; this policy never forces
 /// `NSScrollEdgeEffectStyle`. The public style API
 /// (`preferredScrollEdgeEffectStyle`) is accessory-only (macOS 26.1+) and is
 /// not installed here: production pages report no accessory. The window-level
-/// `titlebarSeparatorStyle` must stay `.automatic` on 26+ because a forced
-/// `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`. Content-pane
-/// separators then use the existing `NSTrackingSeparatorToolbarItem`.
-/// Separator policy is independent of the Soft/Hard effect; its value is not
-/// evidence that AppKit has rendered a visible scroll-edge transition.
-/// macOS 14/15 keep the pre-Tahoe 52pt non-scrolling clearance and `.none`
-/// separators: `.fullSizeContentView` plus a transparent titlebar does not
-/// reliably produce that inset, and this app still supports 14+.
+/// `titlebarSeparatorStyle` must stay `.automatic` on the native family
+/// because a forced `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`.
+/// Content-pane separators then use the existing
+/// `NSTrackingSeparatorToolbarItem`. Separator policy is independent of the
+/// Soft/Hard effect; its value is not evidence that AppKit has rendered a
+/// visible scroll-edge transition.
+/// The legacy family keeps the pre-Tahoe 52pt non-scrolling clearance and
+/// `.none` separators: `.fullSizeContentView` plus a transparent titlebar
+/// does not reliably produce that inset, and this app still supports 14+.
 struct DashboardPageScrollLayoutPolicy: Equatable {
     /// Non-scrolling gap above the page `NSScrollView`.
     let viewportTopInset: CGFloat
@@ -149,13 +150,19 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
     )
 
     static var current: DashboardPageScrollLayoutPolicy {
-        forOperatingSystemVersion(ProcessInfo.processInfo.operatingSystemVersion)
+        forCapabilities(.current)
+    }
+
+    static func forCapabilities(
+        _ capabilities: DashboardPlatformCapabilities
+    ) -> DashboardPageScrollLayoutPolicy {
+        capabilities.usesAutomaticPageContentInsets ? systemScrollEdge : titlebarClearance
     }
 
     static func forOperatingSystemVersion(
         _ version: OperatingSystemVersion
     ) -> DashboardPageScrollLayoutPolicy {
-        version.majorVersion >= 26 ? systemScrollEdge : titlebarClearance
+        forCapabilities(.resolve(for: version))
     }
 
     func apply(to scrollView: NSScrollView) {
@@ -176,16 +183,16 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
     }
 }
 
-/// Sidebar source-list chrome for the running OS.
+/// Sidebar source-list chrome selected from `DashboardPlatformCapabilities`.
 ///
-/// macOS 26+ pins the source-list `NSScrollView` to the sidebar root so
-/// AppKit can write content insets for the overlapping unified toolbar /
+/// Native ownership pins the source-list `NSScrollView` to the sidebar root
+/// so AppKit can write content insets for the overlapping unified toolbar /
 /// titlebar. The former `titlebarHeight + 14` gap was a non-scrolling
-/// viewport offset and is not translated into a Tahoe fixed content inset.
+/// viewport offset and is not translated into a native fixed content inset.
 /// `sidebarTitlebarSeparatorStyle` stays `.none` on the page policy: that
 /// value does not block automatic insets, and the tracking separator owns
-/// the split divider. macOS 14/15 keep the titlebar clearance because a
-/// transparent titlebar plus `.fullSizeContentView` does not reliably
+/// the split divider. The legacy family keeps the titlebar clearance because
+/// a transparent titlebar plus `.fullSizeContentView` does not reliably
 /// produce that inset.
 struct DashboardSidebarScrollLayoutPolicy: Equatable {
     /// Extra visual spacing that used to sit below the titlebar on old OS.
@@ -205,17 +212,23 @@ struct DashboardSidebarScrollLayoutPolicy: Equatable {
     )
 
     static var current: DashboardSidebarScrollLayoutPolicy {
-        forOperatingSystemVersion(ProcessInfo.processInfo.operatingSystemVersion)
+        forCapabilities(.current)
+    }
+
+    static func forCapabilities(
+        _ capabilities: DashboardPlatformCapabilities
+    ) -> DashboardSidebarScrollLayoutPolicy {
+        capabilities.usesAutomaticSidebarContentInsets ? systemScrollEdge : titlebarClearance
     }
 
     static func forOperatingSystemVersion(
         _ version: OperatingSystemVersion
     ) -> DashboardSidebarScrollLayoutPolicy {
-        version.majorVersion >= 26 ? systemScrollEdge : titlebarClearance
+        forCapabilities(.resolve(for: version))
     }
 
     /// Non-scrolling gap between the sidebar root and the source-list
-    /// `NSScrollView`. Tahoe uses 0 so the scroll view overlaps chrome.
+    /// `NSScrollView`. Native ownership uses 0 so the scroll view overlaps chrome.
     func viewportTopInset(titlebarHeight: CGFloat) -> CGFloat {
         automaticallyAdjustsContentInsets
             ? 0

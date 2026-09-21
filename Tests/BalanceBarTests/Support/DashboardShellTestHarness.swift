@@ -22,6 +22,18 @@ final class DashboardShellTestHarness {
         set { pageSession.sidebarScrollLayoutPolicy = newValue }
     }
 
+    var platformCapabilities: DashboardPlatformCapabilities {
+        get { pageSession.platformCapabilities }
+        set { applyPlatformCapabilities(newValue) }
+    }
+
+    func applyPlatformCapabilities(_ capabilities: DashboardPlatformCapabilities) {
+        windowController.platformCapabilities = capabilities
+        pageSession.platformCapabilities = capabilities
+        pageSession.accessoryHost.platformCapabilities = capabilities
+        pageSession.sidebarScrollLayoutPolicy = .forCapabilities(capabilities)
+    }
+
     init(
         actions: DashboardWindowControllerActions,
         restorationStore: DashboardShellRestorationStoring = DashboardShellRestoration.makeDefaultStore()

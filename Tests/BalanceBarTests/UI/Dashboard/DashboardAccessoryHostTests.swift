@@ -449,6 +449,37 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertEqual(window.titlebarAccessoryViewControllers.count, 1)
     }
 
+    func testLegacyCapabilitiesSkipContentSplitItemAccessoryWithoutFabricatingOverlay() throws {
+        let content = ProbeAccessoryController(marker: "capability-skipped-accessory")
+        let controller = makeController(
+            makeSectionPage: { _ in
+                AccessoryProbePage(
+                    accessory: .contentSplitItem(viewController: content)
+                )
+            }
+        )
+        defer { controller.teardown() }
+        controller.applyPlatformCapabilities(.legacyCompatibility)
+
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        XCTAssertEqual(controller.accessoryHostForTesting.mountedKind, .skippedUnsupportedOS)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+        XCTAssertNil(view(withIdentifier: "capability-skipped-accessory", in: window))
+        XCTAssertNil(controller.accessoryHostForTesting.contentSplitItemAccessoryForTesting)
+        XCTAssertNil(content.parent)
+        if #available(macOS 26.0, *) {
+            let splitController = try XCTUnwrap(
+                window.contentViewController as? DashboardSplitViewController
+            )
+            XCTAssertTrue(
+                splitController.contentSplitViewItem?
+                    .topAlignedAccessoryViewControllers.isEmpty ?? true
+            )
+        }
+    }
+
     func testOlderOSDoesNotFakeContentSplitItemAccessoryWithOverlay() throws {
         guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 26 else {
             throw XCTSkip("This path is the pre-macOS 26 compatibility skip")
@@ -487,6 +518,9 @@ final class DashboardAccessoryHostTests: XCTestCase {
         XCTAssertTrue(hostSource.contains("addTopAlignedAccessoryViewController"))
         XCTAssertTrue(hostSource.contains("addTitlebarAccessoryViewController"))
         XCTAssertTrue(hostSource.contains("layoutAttribute = .bottom"))
+        XCTAssertTrue(hostSource.contains("var platformCapabilities = DashboardPlatformCapabilities.current"))
+        XCTAssertTrue(hostSource.contains("supportsSplitItemAccessories"))
+        XCTAssertTrue(hostSource.contains("guard #available(macOS 26.0, *) else"))
         XCTAssertFalse(hostSource.contains("layoutAttribute = .top"))
         XCTAssertFalse(hostSource.contains("setValue("))
         XCTAssertFalse(hostSource.contains("forKey:"))

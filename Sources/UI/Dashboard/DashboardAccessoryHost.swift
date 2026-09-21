@@ -11,6 +11,8 @@ import AppKit
 /// Content-pane content uses `NSSplitViewItemAccessoryViewController` on
 /// macOS 26+. Older OS versions do not fabricate a split-item overlay.
 final class DashboardAccessoryHost {
+    var platformCapabilities = DashboardPlatformCapabilities.current
+
     enum MountedKind: Equatable {
         case none
         case windowTitlebar
@@ -143,6 +145,10 @@ final class DashboardAccessoryHost {
     }
 
     private func mountContentSplitItem(_ content: NSViewController) {
+        guard platformCapabilities.supportsSplitItemAccessories else {
+            mountedKind = .skippedUnsupportedOS
+            return
+        }
         guard #available(macOS 26.0, *) else {
             mountedKind = .skippedUnsupportedOS
             return
