@@ -338,6 +338,10 @@ final class DashboardScrollClampingTests: XCTestCase {
                 ProcessInfo.processInfo.operatingSystemVersion
             )
         )
+        XCTAssertEqual(
+            DashboardPageScrollLayoutPolicy.current,
+            DashboardPageScrollLayoutPolicy.forCapabilities(.current)
+        )
 
         XCTAssertEqual(DashboardPageScrollLayoutPolicy.systemScrollEdge.viewportTopInset, 0)
         XCTAssertTrue(DashboardPageScrollLayoutPolicy.systemScrollEdge.automaticallyAdjustsContentInsets)
@@ -467,6 +471,10 @@ final class DashboardScrollClampingTests: XCTestCase {
                 ProcessInfo.processInfo.operatingSystemVersion
             )
         )
+        XCTAssertEqual(
+            DashboardSidebarScrollLayoutPolicy.current,
+            DashboardSidebarScrollLayoutPolicy.forCapabilities(.current)
+        )
 
         XCTAssertEqual(DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance, 14)
         XCTAssertTrue(DashboardSidebarScrollLayoutPolicy.systemScrollEdge.automaticallyAdjustsContentInsets)
@@ -494,6 +502,16 @@ final class DashboardScrollClampingTests: XCTestCase {
             DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance,
             accuracy: 0.001
         )
+    }
+
+    func testScrollLayoutPolicySourcesDoNotReadOperatingSystemMajorVersion() throws {
+        let sourceURL = try TestRepositoryRoot.locate(from: #filePath)
+            .appendingPathComponent("Sources/AppCore/DashboardScrollClamping.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        XCTAssertFalse(source.contains("majorVersion"))
+        XCTAssertTrue(source.contains("forCapabilities"))
+        XCTAssertTrue(source.contains("usesAutomaticPageContentInsets"))
+        XCTAssertTrue(source.contains("usesAutomaticSidebarContentInsets"))
     }
 
     func testSidebarScrollLayoutPolicyAppliesInsetFlagsWithoutPrivateScrollPocketAPI() {

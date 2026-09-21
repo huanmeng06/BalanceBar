@@ -14,6 +14,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private(set) var mouseMonitorInstallCount = 0
     private(set) var lastFramePlacement: DashboardShellFramePlacement?
 
+    var platformCapabilities = DashboardPlatformCapabilities.current
+
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var isTornDown = false
@@ -77,7 +79,10 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func createDashboardWindow(initialSection: DashboardSection) {
-        let window = Self.makeUnpresentedWindow(initialSection: initialSection)
+        let window = Self.makeUnpresentedWindow(
+            initialSection: initialSection,
+            capabilities: platformCapabilities
+        )
         restoreWindowedFrame(on: window)
         window.delegate = self
 
@@ -89,7 +94,10 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     /// Production window configuration before restoration/presentation. The
     /// XCTest host deliberately changes opacity when parking a window, so
     /// surface assertions must inspect this boundary rather than `open()`.
-    static func makeUnpresentedWindow(initialSection: DashboardSection) -> NSWindow {
+    static func makeUnpresentedWindow(
+        initialSection: DashboardSection,
+        capabilities: DashboardPlatformCapabilities = .current
+    ) -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -99,14 +107,11 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.title = initialSection.title
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
-        if #available(macOS 26.0, *) {
-            // Apple’s macOS 26 scroll-edge path requires the title bar to
-            // participate in the native window surface; a transparent title
-            // bar leaves the inset geometry present but disables the visible
-            // toolbar/content edge composition.
+        if capabilities.usesNativeWindowSurface {
+            // Native scroll-edge composition needs the title bar in the
+            // window surface. A transparent title bar leaves inset geometry
+            // present but disables the visible toolbar/content edge.
             window.titlebarAppearsTransparent = false
-            // Use the native window surface on Tahoe rather than the legacy
-            // translucent shell. AppKit owns scroll-edge rendering.
             window.backgroundColor = .windowBackgroundColor
             window.isOpaque = true
         } else {
@@ -163,11 +168,12 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // titlebar-separator preference. A window-level `.none` would
         // override `NSSplitViewItem.titlebarSeparatorStyle`. This controls
         // separators, not the Soft/Hard scroll-edge effect or its visibility.
-        DashboardPageScrollLayoutPolicy.current.applyTitlebarSeparators(
-            to: window,
-            sidebarItem: splitController.splitViewItems.first,
-            contentItem: splitController.contentSplitViewItem
-        )
+        DashboardPageScrollLayoutPolicy.forCapabilities(platformCapabilities)
+            .applyTitlebarSeparators(
+                to: window,
+                sidebarItem: splitController.splitViewItems.first,
+                contentItem: splitController.contentSplitViewItem
+            )
         window.layoutIfNeeded()
         applySidebarInset(window)
         window.layoutIfNeeded()

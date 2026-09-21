@@ -41,9 +41,16 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(sessionSource.contains("DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)"))
         XCTAssertTrue(sessionSource.contains("sourceList.makeSidebar(in: window)"))
         XCTAssertTrue(sessionSource.contains("var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current"))
+        XCTAssertTrue(sessionSource.contains("var platformCapabilities = DashboardPlatformCapabilities.current"))
+        XCTAssertTrue(sessionSource.contains("accessoryHost.platformCapabilities = platformCapabilities"))
+        XCTAssertTrue(sessionSource.contains("capabilities: platformCapabilities"))
         XCTAssertTrue(sessionSource.contains("accessoryHost.apply"))
         XCTAssertTrue(windowSource.contains("accessoryHost.attach"))
         XCTAssertTrue(windowSource.contains("attachedAccessoryHost?.detach"))
+        XCTAssertTrue(windowSource.contains("usesNativeWindowSurface"))
+        XCTAssertTrue(windowSource.contains("forCapabilities(platformCapabilities)"))
+        XCTAssertFalse(windowSource.contains("if #available(macOS 26.0, *)"))
+        XCTAssertFalse(windowSource.contains("majorVersion"))
         XCTAssertFalse(windowSource.contains("func makeSidebar("))
         XCTAssertFalse(windowSource.contains("func showSection("))
         XCTAssertFalse(windowSource.contains("func replacePage("))
@@ -493,15 +500,80 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
 
         XCTAssertFalse(window.isVisible)
         XCTAssertTrue(window.hasShadow)
+        assertWindowSurface(window, matches: .current)
+    }
+
+    func testInjectedLegacyCapabilitiesSelectCompatibilityWindowSurface() {
+        let window = DashboardWindowController.makeUnpresentedWindow(
+            initialSection: .general,
+            capabilities: .legacyCompatibility
+        )
+        defer { window.close() }
+        assertWindowSurface(window, matches: .legacyCompatibility)
+    }
+
+    func testInjectedNativeCapabilitiesSelectSystemWindowSurface() {
+        let window = DashboardWindowController.makeUnpresentedWindow(
+            initialSection: .general,
+            capabilities: .nativeAppKitOwnership
+        )
+        defer { window.close() }
+        assertWindowSurface(window, matches: .nativeAppKitOwnership)
+    }
+
+    func testInjectedLegacyCapabilitiesInstallCompatibilityFillWithoutClaimingOldRuntimeGeometry() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.applyPlatformCapabilities(.legacyCompatibility)
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        // Opacity and shadow are rewritten by the XCTest host after parking.
+        // Production surface is locked on `makeUnpresentedWindow`.
+        XCTAssertTrue(window.titlebarAppearsTransparent)
+        XCTAssertEqual(window.backgroundColor, .clear)
+        XCTAssertEqual(
+            window.titlebarSeparatorStyle,
+            DashboardPageScrollLayoutPolicy.titlebarClearance.windowTitlebarSeparatorStyle
+        )
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        XCTAssertEqual(splitController.platformCapabilities, .legacyCompatibility)
+        let legacyBackdrop = try XCTUnwrap(splitController.legacyBackdrop)
+        let surface = try XCTUnwrap(splitController.legacyContentSurface)
+        XCTAssertEqual(legacyBackdrop.material, .underWindowBackground)
+        XCTAssertEqual(legacyBackdrop.blendingMode, .behindWindow)
+        XCTAssertFalse(surface.isHidden)
         if #available(macOS 26.0, *) {
-            XCTAssertTrue(window.isOpaque)
-            XCTAssertEqual(window.backgroundColor, .windowBackgroundColor)
-            XCTAssertFalse(window.titlebarAppearsTransparent)
-        } else {
-            XCTAssertFalse(window.isOpaque)
-            XCTAssertEqual(window.backgroundColor, .clear)
-            XCTAssertTrue(window.titlebarAppearsTransparent)
+            XCTAssertFalse(
+                splitController.contentSplitViewItem?.automaticallyAdjustsSafeAreaInsets ?? true
+            )
         }
+    }
+
+    func testInjectedNativeCapabilitiesOmitLegacyFill() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.applyPlatformCapabilities(.nativeAppKitOwnership)
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+
+        // Opacity and shadow are rewritten by the XCTest host after parking.
+        // Production surface is locked on `makeUnpresentedWindow`.
+        XCTAssertFalse(window.titlebarAppearsTransparent)
+        XCTAssertEqual(window.backgroundColor, .windowBackgroundColor)
+        let splitController = try XCTUnwrap(
+            window.contentViewController as? DashboardSplitViewController
+        )
+        XCTAssertNil(splitController.legacyBackdrop)
+        XCTAssertNil(splitController.legacyContentSurface)
+        XCTAssertEqual(
+            window.titlebarSeparatorStyle,
+            DashboardPageScrollLayoutPolicy.systemScrollEdge.windowTitlebarSeparatorStyle
+        )
     }
 
     func testWindowChromeMatchesCurrentNativeBaseline() throws {
@@ -1187,6 +1259,24 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
     }
 
+    private func assertWindowSurface(
+        _ window: NSWindow,
+        matches capabilities: DashboardPlatformCapabilities,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(window.hasShadow, file: file, line: line)
+        if capabilities.usesNativeWindowSurface {
+            XCTAssertTrue(window.isOpaque, file: file, line: line)
+            XCTAssertEqual(window.backgroundColor, .windowBackgroundColor, file: file, line: line)
+            XCTAssertFalse(window.titlebarAppearsTransparent, file: file, line: line)
+        } else {
+            XCTAssertFalse(window.isOpaque, file: file, line: line)
+            XCTAssertEqual(window.backgroundColor, .clear, file: file, line: line)
+            XCTAssertTrue(window.titlebarAppearsTransparent, file: file, line: line)
+        }
+    }
+
     private func assertNativeDashboardToolbar(
         _ window: NSWindow,
         file: StaticString = #filePath,
@@ -1539,14 +1629,20 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             line: line
         )
 
-        if #available(macOS 26.0, *) {
+        if controller.platformCapabilities.usesNativeWindowSurface {
             XCTAssertFalse(window.titlebarAppearsTransparent, file: file, line: line)
-            XCTAssertFalse(sidebarItem.automaticallyAdjustsSafeAreaInsets, file: file, line: line)
-            XCTAssertTrue(
-                try XCTUnwrap(splitController.contentSplitViewItem).automaticallyAdjustsSafeAreaInsets,
-                file: file,
-                line: line
-            )
+        } else {
+            XCTAssertTrue(window.titlebarAppearsTransparent, file: file, line: line)
+        }
+        if controller.platformCapabilities.adjustsAdjacentContentSafeArea {
+            if #available(macOS 26.0, *) {
+                XCTAssertFalse(sidebarItem.automaticallyAdjustsSafeAreaInsets, file: file, line: line)
+                XCTAssertTrue(
+                    try XCTUnwrap(splitController.contentSplitViewItem).automaticallyAdjustsSafeAreaInsets,
+                    file: file,
+                    line: line
+                )
+            }
         }
 
         let sidebar = sidebarItem.viewController.view
