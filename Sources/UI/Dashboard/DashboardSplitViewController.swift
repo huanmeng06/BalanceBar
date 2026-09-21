@@ -58,7 +58,8 @@ final class DashboardSplitViewController: NSSplitViewController {
 
     let sidebarController: NSViewController
     let contentController: NSViewController
-    /// macOS 14/15 compatibility fill only. Tahoe must not create this view.
+    let platformCapabilities: DashboardPlatformCapabilities
+    /// Legacy compatibility fill only. Native window surface must not create this view.
     private(set) var legacyContentSurface: NSView?
     private(set) var legacyBackdrop: NSVisualEffectView?
     var contentSplitViewItem: NSSplitViewItem? {
@@ -67,16 +68,26 @@ final class DashboardSplitViewController: NSSplitViewController {
     var onSidebarGeometryDidChange: (() -> Void)?
     private var splitResizeObserver: NSObjectProtocol?
 
-    convenience init(sidebarView: NSView, content: NSViewController) {
+    convenience init(
+        sidebarView: NSView,
+        content: NSViewController,
+        capabilities: DashboardPlatformCapabilities = .current
+    ) {
         self.init(
             sidebar: DashboardSidebarViewController(view: sidebarView),
-            content: content
+            content: content,
+            capabilities: capabilities
         )
     }
 
-    init(sidebar: NSViewController, content: NSViewController) {
+    init(
+        sidebar: NSViewController,
+        content: NSViewController,
+        capabilities: DashboardPlatformCapabilities = .current
+    ) {
         self.sidebarController = sidebar
         self.contentController = content
+        self.platformCapabilities = capabilities
         super.init(nibName: nil, bundle: nil)
 
         let split = NSSplitView()
@@ -98,15 +109,23 @@ final class DashboardSplitViewController: NSSplitViewController {
         let contentItem = NSSplitViewItem(viewController: content)
         contentItem.canCollapse = false
         contentItem.holdingPriority = Self.contentHoldingPriority
-        Self.applyAdjacentContentSafeAreaPolicy(to: contentItem)
+        Self.applyAdjacentContentSafeAreaPolicy(
+            to: contentItem,
+            capabilities: capabilities
+        )
         addSplitViewItem(sidebarItem)
         addSplitViewItem(contentItem)
     }
 
-    /// macOS 26 may overlay the sidebar on the adjacent content item and then
-    /// adjust that item's `safeAreaInsets`. The flag belongs on the content
-    /// item, not the sidebar item or AccessoryHost.
-    static func applyAdjacentContentSafeAreaPolicy(to item: NSSplitViewItem) {
+    /// Native AppKit may overlay the sidebar on the adjacent content item and
+    /// then adjust that item's `safeAreaInsets`. The flag belongs on the
+    /// content item, not the sidebar item or AccessoryHost. `#available` stays
+    /// because `automaticallyAdjustsSafeAreaInsets` is a macOS 26 API.
+    static func applyAdjacentContentSafeAreaPolicy(
+        to item: NSSplitViewItem,
+        capabilities: DashboardPlatformCapabilities = .current
+    ) {
+        guard capabilities.adjustsAdjacentContentSafeArea else { return }
         if #available(macOS 26.0, *) {
             item.automaticallyAdjustsSafeAreaInsets = true
         }
@@ -117,9 +136,9 @@ final class DashboardSplitViewController: NSSplitViewController {
         splitView.translatesAutoresizingMaskIntoConstraints = false
         view = root
 
-        if #available(macOS 26.0, *) {
+        if platformCapabilities.usesNativeWindowSurface {
             // Leave the window surface and outline to AppKit. Do not keep a
-            // hidden compatibility fill behind Tahoe's native chrome.
+            // hidden compatibility fill behind the native chrome.
             legacyBackdrop = nil
             legacyContentSurface = nil
         } else {
@@ -163,7 +182,7 @@ final class DashboardSplitViewController: NSSplitViewController {
         NSLayoutConstraint.activate(constraints)
     }
 
-    /// Pre-Tahoe translucent shell. Window outline stays with NSWindow; do
+    /// Legacy translucent shell. Window outline stays with NSWindow; do
     /// not clip this root to a fixed radius.
     private func installLegacyCompatibilitySurface(on root: DashboardContentRootView) {
         let effect = NSVisualEffectView(frame: .zero)

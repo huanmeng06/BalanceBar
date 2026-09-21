@@ -19,6 +19,7 @@ final class DashboardPageSession {
     let pageContainer = DashboardPageContainerViewController()
     let toolbarController = DashboardToolbarController()
     let accessoryHost = DashboardAccessoryHost()
+    var platformCapabilities = DashboardPlatformCapabilities.current
     var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current
 
     private(set) var section: DashboardSection = .general
@@ -50,9 +51,11 @@ final class DashboardPageSession {
         sourceListController = sourceList
         let sidebar = sourceList.makeSidebar(in: window)
         sidebar.translatesAutoresizingMaskIntoConstraints = false
+        accessoryHost.platformCapabilities = platformCapabilities
         let splitController = DashboardSplitViewController(
             sidebarView: sidebar,
-            content: pageContainer
+            content: pageContainer,
+            capabilities: platformCapabilities
         )
         windowController.attachShell(
             splitController,

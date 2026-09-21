@@ -150,10 +150,12 @@ git diff --check
 for path in \
   docs/architecture.md \
   docs/development.md \
+  docs/dashboard-platform-compatibility.md \
   BalanceBar.xcodeproj/project.pbxproj \
   BalanceBar.xcodeproj/xcshareddata/xcschemes/BalanceBar.xcscheme \
   scripts/build.sh \
   scripts/probes \
+  scripts/probes/deployment-artifact-smoke.sh \
   Sources/App/BalanceBar.swift \
   Sources/AppCore \
   Sources/Domain \
@@ -165,7 +167,8 @@ for path in \
   Resources/images \
   Resources/lang \
   Tests/BalanceBarTests \
-  .github/workflows/build-and-test.yml
+  .github/workflows/build-and-test.yml \
+  .github/workflows/dashboard-forward-sdk.yml
 do
   test -e "$path" || { echo "missing documented path: $path" >&2; exit 1; }
 done
@@ -177,7 +180,7 @@ by a filesystem check.
 
 ## CI equivalence
 
-The build-and-test job in
+The required job in
 [.github/workflows/build-and-test.yml](../.github/workflows/build-and-test.yml)
 runs on macos-26 for pull requests and manual dispatch. It starts the
 independent build checks in parallel, then runs XCTest after they all pass:
@@ -190,6 +193,26 @@ independent build checks in parallel, then runs XCTest after they all pass:
 
 The build and test commands share one DerivedData directory so the test run
 does not compile the app and test bundle a second time.
+
+The same workflow then packs the SDK 26 / minos 14 CLI bundle as
+`BalanceBar.app.tar.gz` and runs `scripts/probes/deployment-artifact-smoke.sh`
+on macos-15 after extracting it. The tar exists because `upload-artifact@v4`
+zips the payload and drops Mach-O execute bits. That smoke parses load
+commands and the ad-hoc signature. It is not Dashboard GUI acceptance, and it
+is `continue-on-error` until the pre-26 label is a stable required check.
+Version-only commits skip both the upload and the smoke.
+
+[.github/workflows/dashboard-forward-sdk.yml](../.github/workflows/dashboard-forward-sdk.yml)
+is a compile + XCTest probe for a later SDK. It is `workflow_dispatch` plus an
+optional Monday schedule that stays skipped until repository variable
+`BALANCEBAR_FORWARD_SDK_RUNNER` is set. Do not set
+`BALANCEBAR_REQUIRED_SDK_MAJOR` on that lane. It is not new-macOS GUI
+acceptance.
+
+The product matrix that says what each lane proves is
+[dashboard-platform-compatibility.md](dashboard-platform-compatibility.md).
+`MACOSX_DEPLOYMENT_TARGET = 14.0` does not mean macOS 14 Dashboard GUI has
+been verified.
 
 Keep local verification aligned with those commands. Do not add a workflow
 change as part of a documentation or feature change unless the Issue explicitly

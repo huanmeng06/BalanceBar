@@ -1,0 +1,110 @@
+# Forward-SDK compatibility lane.
+#
+# Snapshot 2026-09-21: GitHub-hosted images include preview `xcode-27`.
+# There is no macos-27 product runner. This workflow is compile + XCTest
+# only. It is not new-macOS GUI acceptance.
+#
+# Scheduled runs stay skipped until the repository variable
+# BALANCEBAR_FORWARD_SDK_RUNNER is set to a currently valid label.
+# workflow_dispatch always uses the supplied runner label.
+
+name: Dashboard Forward SDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: GitHub-hosted runner label to probe
+        required: true
+        default: xcode-27
+        type: string
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-forward-sdk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  forward-sdk:
+    name: Forward SDK compile and XCTest
+    if: github.event_name == 'workflow_dispatch' || vars.BALANCEBAR_FORWARD_SDK_RUNNER != ''
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || vars.BALANCEBAR_FORWARD_SDK_RUNNER }}
+    continue-on-error: true
+    timeout-minutes: 30
+    env:
+      BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Record SDK without pinning the current required major
+        run: |
+          set -Eeuo pipefail
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Independent build checks
+        run: |
+          set -Eeuo pipefail
+
+          cli_log="$RUNNER_TEMP/BalanceBar-cli-build.log"
+          probes_log="$RUNNER_TEMP/BalanceBar-localization-probes.log"
+          xcode_log="$RUNNER_TEMP/BalanceBar-xcode-build.log"
+
+          ./scripts/build.sh >"$cli_log" 2>&1 &
+          cli_pid=$!
+
+          (
+            ./scripts/probes/balance-query-probe.sh
+            ./scripts/probes/balance-network-error-localization-probe.sh
+          ) >"$probes_log" 2>&1 &
+          probes_pid=$!
+
+          xcodebuild \
+            -project BalanceBar.xcodeproj \
+            -scheme BalanceBar \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData" \
+            -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            build-for-testing >"$xcode_log" 2>&1 &
+          xcode_pid=$!
+
+          check_status=0
+          if ! wait "$cli_pid"; then check_status=1; fi
+          if ! wait "$probes_pid"; then check_status=1; fi
+          if ! wait "$xcode_pid"; then check_status=1; fi
+
+          if ! ./scripts/probes/localization-resource-probe.sh \
+            build/BalanceBar.app; then
+            check_status=1
+          fi
+          if ! ./scripts/probes/localization-resource-probe.sh \
+            "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"; then
+            check_status=1
+          fi
+          cat "$cli_log"
+          cat "$probes_log"
+          cat "$xcode_log"
+          exit "$check_status"
+
+      - name: XCTest
+        run: >-
+          xcodebuild
+          -project BalanceBar.xcodeproj
+          -scheme BalanceBar
+          -configuration Debug
+          -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData"
+          -destination 'platform=macOS,arch=arm64'
+          CODE_SIGNING_ALLOWED=NO
+          ARCHS=arm64
+          ONLY_ACTIVE_ARCH=YES
+          -parallel-testing-enabled NO
+          test-without-building

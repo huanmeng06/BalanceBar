@@ -40,7 +40,7 @@ a network request by itself.
 | Area | Current paths | Responsibility |
 | --- | --- | --- |
 | Entry and app state | Sources/App/BalanceBar.swift, Sources/App/AppPreferences.swift | AppKit entry point, AppDelegate, lifecycle, shared application state, preferences, logging, and composition wiring. |
-| AppCore | Sources/AppCore/ | Cross-cutting UI-independent rules such as localization, dashboard scroll-bound calculations, and the XCTest host presentation policy. |
+| AppCore | Sources/AppCore/ | Cross-cutting UI-independent rules such as localization, dashboard scroll-bound calculations, Dashboard platform capabilities, and the XCTest host presentation policy. |
 | Domain | Sources/Domain/ | Value types and pure planning rules: AssistantClient, BalanceQuery, provider models, Snapshot, StatusLink, and official/balance overview card layout. |
 | Services | Sources/Services/ | CC Switch SQLite access/watchers, credential readers, URL sessions, balance/quota clients, response parsing, provider refresh, and provider switching. |
 | Monitoring | Sources/Monitoring/ | Codex/Claude activity observation and ActivityCoordinator, including process, SQLite, NSWorkspace, timer, and notification integration. |
@@ -129,6 +129,12 @@ page factories and search. Dashboard page selection and page inputs belong in
 DashboardCompositionController.swift. Status-item and
 menu-bar behavior belongs in Sources/UI/MenuBar/, especially
 StatusItemController.swift.
+
+Dashboard chrome ownership for a given OS family is a Bool-only AppCore value
+in DashboardPlatformCapabilities.swift. Window, split, accessory, and scroll
+policies read those flags. Version numbers stay in `resolve(for:)`. This is
+not a second window controller and is not a visual theme. The product matrix
+is in [docs/dashboard-platform-compatibility.md](dashboard-platform-compatibility.md).
 
 Using AppKit is allowed and is already the main UI implementation. The status
 link editor is the current, deliberately bounded SwiftUI host inside the AppKit

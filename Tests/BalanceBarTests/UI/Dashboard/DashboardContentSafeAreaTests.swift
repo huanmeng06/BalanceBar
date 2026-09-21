@@ -31,7 +31,8 @@ final class DashboardContentSafeAreaTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(windowSource.contains("applyAdjacentContentSafeAreaPolicy(to: contentItem)"))
+        XCTAssertTrue(windowSource.contains("applyAdjacentContentSafeAreaPolicy("))
+        XCTAssertTrue(windowSource.contains("adjustsAdjacentContentSafeArea"))
         XCTAssertTrue(windowSource.contains("if #available(macOS 26.0, *)"))
         XCTAssertTrue(windowSource.contains("item.automaticallyAdjustsSafeAreaInsets = true"))
         XCTAssertFalse(windowSource.contains("sidebarItem.automaticallyAdjustsSafeAreaInsets"))
@@ -44,6 +45,7 @@ final class DashboardContentSafeAreaTests: XCTestCase {
         let policySource = String(windowSource[policyStart.lowerBound...])
         XCTAssertTrue(policySource.contains("automaticallyAdjustsSafeAreaInsets = true"))
         XCTAssertTrue(policySource.contains("#available(macOS 26.0, *)"))
+        XCTAssertTrue(policySource.contains("adjustsAdjacentContentSafeArea"))
 
         XCTAssertTrue(containerSource.contains("view.safeAreaLayoutGuide.leadingAnchor"))
         XCTAssertTrue(containerSource.contains("view.safeAreaLayoutGuide.trailingAnchor"))
