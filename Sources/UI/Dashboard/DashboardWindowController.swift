@@ -404,13 +404,15 @@ enum DashboardKeyViewLoop {
         if isPreservedNavigationSurface(responder) {
             return
         }
-        window.endEditing(for: nil)
-        guard let remaining = window.firstResponder,
-              !isPreservedNavigationSurface(remaining),
-              isUnreachable(remaining, in: window) else {
+        guard isUnreachable(responder, in: window) else {
             return
         }
-        _ = window.makeFirstResponder(nil)
+        window.endEditing(for: nil)
+        if let remaining = window.firstResponder,
+           !isPreservedNavigationSurface(remaining),
+           isUnreachable(remaining, in: window) {
+            _ = window.makeFirstResponder(nil)
+        }
     }
 
     private static func isPreservedNavigationSurface(_ responder: NSResponder) -> Bool {

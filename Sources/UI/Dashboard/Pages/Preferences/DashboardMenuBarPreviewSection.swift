@@ -935,11 +935,17 @@ final class DashboardMenuBarPreviewSection {
         runtimeOnlyWarningSettingsButton?.setAccessibilityLabel(
             DashboardMenuBarPage.runtimeOnlyWarningSettingsButtonText()
         )
+        let overflowWasHidden = overflowWarningRow.isHidden
+        let runtimeWasHidden = runtimeOnlyWarningRow.isHidden
         overflowWarningLabel.isHidden = !shouldShowOverflowWarning
         overflowWarningRow.isHidden = !shouldShowOverflowWarning
         runtimeOnlyWarningLabel.isHidden = !shouldShowRuntimeOnlyWarning
         runtimeOnlyWarningRow.isHidden = !shouldShowRuntimeOnlyWarning
         updatePreviewSeparators()
+        if overflowWasHidden != overflowWarningRow.isHidden
+            || runtimeWasHidden != runtimeOnlyWarningRow.isHidden {
+            DashboardKeyViewLoop.invalidate(overflowWarningRow.window)
+        }
     }
 
     func updatePreviewSeparators() {

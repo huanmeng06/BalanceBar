@@ -252,8 +252,6 @@ final class DashboardCompositionController {
         )
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
-        } else {
-            DashboardKeyViewLoop.invalidate(window)
         }
     }
 

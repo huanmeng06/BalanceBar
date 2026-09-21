@@ -260,6 +260,109 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         XCTAssertTrue(window.autorecalculatesKeyViewLoop)
     }
 
+    func testSearchResignChecksUnreachableBeforeEndingEditing() throws {
+        let body = try functionBody(
+            named: "static func resignUnreachableFirstResponder",
+            in: "Sources/UI/Dashboard/DashboardWindowController.swift",
+            until: "private static func isPreservedNavigationSurface"
+        )
+        let unreachable = try XCTUnwrap(body.range(of: "isUnreachable("))
+        let endEditing = try XCTUnwrap(body.range(of: "endEditing("))
+        XCTAssertLessThan(
+            unreachable.lowerBound,
+            endEditing.lowerBound,
+            "Search refresh must not end editing until the first responder is unreachable"
+        )
+    }
+
+    func testMenuBarSnapshotRefreshDoesNotUnconditionallyRecalculateKeyViewLoop() throws {
+        let refreshBody = try functionBody(
+            named: "func refreshMenuBarPage(snapshot: Snapshot)",
+            in: "Sources/UI/Dashboard/DashboardCompositionController.swift",
+            until: "func refreshMenuPage()"
+        )
+        XCTAssertTrue(refreshBody.contains("applyMountedPageSearch()"))
+        XCTAssertFalse(
+            refreshBody.contains("DashboardKeyViewLoop.invalidate"),
+            "Menu Bar snapshot refresh must not recalc the key-view loop on every preview update"
+        )
+
+        let warningBody = try functionBody(
+            named: "func updateWarnings(",
+            in: "Sources/UI/Dashboard/Pages/Preferences/DashboardMenuBarPreviewSection.swift",
+            until: "func updatePreviewSeparators()"
+        )
+        XCTAssertTrue(warningBody.contains("DashboardKeyViewLoop.invalidate"))
+    }
+
+    func testReapplyingSearchKeepsEditingAVisibleNumericField() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-445-visible-field.db")
+            )
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let composition = appDelegate.dashboardCompositionForTesting
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menu))
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let page = try XCTUnwrap(composition.pageContainerForTesting.currentPage?.view)
+        let field = try XCTUnwrap(
+            descendant(in: page, as: NSTextField.self) {
+                $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey && $0.isEditable
+            }
+        )
+        let row = try XCTUnwrap(SettingsRowView.enclosing(field))
+        composition.applySearchQueryForTesting(tr(.keyDashboardMenuPageLowBalanceDisplayThreshold))
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        XCTAssertFalse(DashboardSearchVisibility.isCollapsedForSearchLayout(row))
+        XCTAssertTrue(field.window === window)
+
+        if window.makeFirstResponder(field) {
+            XCTAssertTrue(
+                window.firstResponder === field
+                    || (window.firstResponder as? NSTextView)?.delegate as AnyObject? === field
+            )
+            DashboardKeyViewLoop.resignUnreachableFirstResponder(window)
+            XCTAssertTrue(
+                window.firstResponder === field
+                    || (window.firstResponder as? NSTextView)?.delegate as AnyObject? === field,
+                "a still-visible field must keep editing across Search refresh"
+            )
+            composition.refreshMountedPage(snapshot: .placeholder, refreshDate: nil, revision: 1)
+            window.layoutIfNeeded()
+            XCTAssertFalse(DashboardSearchVisibility.isCollapsedForSearchLayout(row))
+            XCTAssertTrue(
+                window.firstResponder === field
+                    || (window.firstResponder as? NSTextView)?.delegate as AnyObject? === field,
+                "quota snapshot refresh must not end editing on a visible Search match"
+            )
+        } else {
+            composition.refreshMountedPage(snapshot: .placeholder, refreshDate: nil, revision: 1)
+            window.layoutIfNeeded()
+            XCTAssertFalse(DashboardSearchVisibility.isCollapsedForSearchLayout(row))
+            XCTAssertTrue(field.window === window)
+        }
+    }
+
+    private func functionBody(
+        named marker: String,
+        in relativePath: String,
+        until terminator: String
+    ) throws -> String {
+        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: marker))
+        let rest = start.lowerBound..<source.endIndex
+        let end = source.range(of: terminator, range: rest)?.lowerBound ?? source.endIndex
+        return String(source[start.lowerBound..<end])
+    }
+
     private func descendant<T: NSView>(
         in view: NSView,
         as type: T.Type,
