@@ -114,7 +114,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         searchItem.searchField.stringValue = ""
         publishQuery("")
         searchItem.endSearchInteraction()
-        isSearchEditing = false
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -146,11 +145,11 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
-        guard !isEndingSearch, let field = obj.object as? NSSearchField else { return }
         if (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing == true {
             return
         }
         isSearchEditing = false
+        guard !isEndingSearch, let field = obj.object as? NSSearchField else { return }
         publishQuery(field.stringValue)
     }
 

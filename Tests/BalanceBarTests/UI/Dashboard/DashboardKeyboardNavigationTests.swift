@@ -174,7 +174,7 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         }
     }
 
-    func testCommandFExpandsTheSingleSearchSlotAndEscapeClosesIt() throws {
+    func testCommandFExpandsTheSingleSearchSlotAndEscapeClosesIt() async throws {
         let controller = DashboardToolbarController()
         let window = DashboardSearchWindow(
             contentRect: NSRect(x: 0, y: 0, width: 880, height: 600),
@@ -201,14 +201,18 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
             keyCode: 3
         ))
         XCTAssertTrue(window.performKeyEquivalent(with: event))
-        controller.setQuery("Language")
-        XCTAssertTrue(controller.isSearchActive)
+        await drainMainQueue()
         let slot = try XCTUnwrap(window.toolbar?.items.last)
         let field = try XCTUnwrap(DashboardSearchToolbarProbe.searchField(in: slot))
-        if field.currentEditor() == nil {
-            _ = window.makeFirstResponder(field)
-        }
+        XCTAssertTrue(
+            controller.hostsSearchResponder(window.firstResponder),
+            "Cmd+F must let beginSearchInteraction move keyboard focus"
+        )
+        XCTAssertNotNil(field.currentEditor())
+        controller.setQuery("Language")
+        XCTAssertTrue(controller.isSearchActive)
         window.cancelOperation(nil)
+        await drainMainQueue()
         XCTAssertEqual(controller.searchQuery, "")
         XCTAssertFalse(controller.isSearchActive)
     }
@@ -418,5 +422,14 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
             }
         }
         return nil
+    }
+}
+
+@MainActor
+private func drainMainQueue() async {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.main.async {
+            continuation.resume()
+        }
     }
 }

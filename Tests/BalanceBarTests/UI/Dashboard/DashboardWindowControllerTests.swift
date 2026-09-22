@@ -85,6 +85,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains("controlTextDidBeginEditing"))
         XCTAssertTrue(source.contains("isSearchEditing"))
         XCTAssertTrue(source.contains("cancelSearch"))
+        XCTAssertFalse(source.contains("endSearchInteraction()\n        isSearchEditing = false"))
         XCTAssertFalse(source.contains("widthAnchor.constraint"))
         XCTAssertFalse(source.contains("collapsedSearchFieldWidth"))
         XCTAssertFalse(source.contains("isSearchExpanded"))
