@@ -14,10 +14,19 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         XCTAssertFalse(sectionSource.contains("systemFont(ofSize: 13, weight: .medium)"))
         XCTAssertFalse(sectionSource.contains("contentTintColor"))
         XCTAssertFalse(sectionSource.contains("symbolConfiguration"))
+        XCTAssertFalse(sectionSource.contains("allowsVibrancy"))
+        XCTAssertFalse(sectionSource.contains("VibrantLabel"))
+        XCTAssertTrue(sectionSource.contains("controlTextColor"))
+        XCTAssertFalse(sectionSource.contains("secondaryLabelColor"))
+        XCTAssertFalse(sectionSource.contains("unemphasizedSelectedTextColor"))
         XCTAssertFalse(groupSource.contains("weight: .medium"))
         XCTAssertFalse(groupSource.contains("systemFont(ofSize: 11, weight: .medium)"))
         XCTAssertTrue(groupSource.contains("smallSystemFontSize"))
         XCTAssertTrue(groupSource.contains("tertiaryLabelColor"))
+        XCTAssertTrue(source.contains("tintConfigurationForItem"))
+        XCTAssertTrue(source.contains("NSTintConfiguration.default"))
+        XCTAssertFalse(source.contains("NSTintConfiguration.monochrome"))
+        XCTAssertFalse(source.contains("sidebarUsesInactiveForeground"))
 
         let forbidden = [
             "drawSelection",
@@ -33,16 +42,10 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             "tintConfigurationWithPreferredColor",
             "controlAccentColor",
             "chipColor",
-            "override var isEmphasized",
-            "unemphasizedSelectedContentBackgroundColor",
-            ": NSTableRowView",
-            "NSTintConfiguration.monochrome"
+            "unemphasizedSelectedContentBackgroundColor"
         ]
         for token in forbidden {
             XCTAssertFalse(source.contains(token), "source-list file must not contain \(token)")
-        }
-        if source.contains("tintConfigurationForItem") {
-            XCTAssertTrue(source.contains("NSTintConfiguration.default"))
         }
     }
 
@@ -68,6 +71,13 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             XCTAssertFalse(
                 cell.imageView?.contentTintColor?.isEqual(NSColor.labelColor) ?? false,
                 "\(section) icon must not lock contentTintColor to labelColor"
+            )
+            try assertTitleColor(of: cell, selected: outline.isRowSelected(row), section: section)
+            let node = try XCTUnwrap(sourceList.node(for: section))
+            let tint = sourceList.outlineView(outline, tintConfigurationForItem: node)
+            XCTAssertTrue(
+                tint?.isEqual(NSTintConfiguration.default) ?? false,
+                "\(section) must keep default source-list tint so the selected mark stays on Accent when inactive"
             )
             assertRowReadable(cell)
 
@@ -200,6 +210,21 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         )
     }
 
+    private func assertTitleColor(
+        of cell: DashboardSourceListCellView,
+        selected: Bool,
+        section: DashboardSection
+    ) throws {
+        XCTAssertNotNil(cell.textField?.textColor, "\(section) title must remain readable")
+        if selected {
+            return
+        }
+        XCTAssertTrue(
+            cell.textField?.textColor?.isEqual(NSColor.controlTextColor) ?? false,
+            "\(section) unselected title must use controlTextColor"
+        )
+    }
+
     private func assertRowReadable(_ cell: DashboardSourceListCellView) {
         for style: NSView.BackgroundStyle in [.normal, .emphasized] {
             cell.backgroundStyle = style
@@ -222,6 +247,14 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
                 cell.imageView?.contentTintColor?.isEqual(NSColor.labelColor) ?? false,
                 "\(section) icon must not lock contentTintColor to labelColor after rebuild"
             )
+            try assertTitleColor(
+                of: cell,
+                selected: sourceList.outlineView.isRowSelected(row),
+                section: section
+            )
+            let node = try XCTUnwrap(sourceList.node(for: section))
+            let tint = sourceList.outlineView(sourceList.outlineView, tintConfigurationForItem: node)
+            XCTAssertTrue(tint?.isEqual(NSTintConfiguration.default) ?? false)
             XCTAssertEqual(cell.imageView?.isAccessibilityElement(), false)
             XCTAssertEqual(cell.textField?.isAccessibilityElement(), false)
             if section == .general {

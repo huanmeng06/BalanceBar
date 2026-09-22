@@ -112,6 +112,18 @@ final class DashboardSourceListCellView: NSTableCellView {
 
     private(set) var updateBadgeView = DashboardUpdateBadgeView()
 
+    /// `NSTableCellView` retints `textField` from `backgroundStyle`. Unselected
+    /// titles use `controlTextColor` so they can follow the inactive control
+    /// variant. Selected titles keep the color AppKit just applied so the
+    /// source-list Accent mark survives resign-key.
+    override var backgroundStyle: NSView.BackgroundStyle {
+        get { super.backgroundStyle }
+        set {
+            super.backgroundStyle = newValue
+            restoreTitleColor()
+        }
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         identifier = Self.identifier
@@ -123,6 +135,7 @@ final class DashboardSourceListCellView: NSTableCellView {
         icon.setAccessibilityElement(false)
 
         let title = NSTextField(labelWithString: "")
+        title.textColor = .controlTextColor
         title.lineBreakMode = .byTruncatingTail
         title.setContentHuggingPriority(.defaultLow, for: .horizontal)
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -164,6 +177,14 @@ final class DashboardSourceListCellView: NSTableCellView {
         textField?.setAccessibilityElement(false)
         setAccessibilityLabel(section.title)
         setShowsUpdateBadge(section == .general && showsUpdateBadge)
+        restoreTitleColor()
+    }
+
+    private func restoreTitleColor() {
+        if (superview as? NSTableRowView)?.isSelected == true {
+            return
+        }
+        textField?.textColor = .controlTextColor
     }
 
     func setShowsUpdateBadge(_ visible: Bool) {
@@ -199,6 +220,27 @@ final class DashboardSourceListGroupCellView: NSTableCellView {
         textField?.stringValue = title
         textField?.setAccessibilityElement(false)
         setAccessibilityLabel(title)
+    }
+}
+
+/// Section rows keep AppKit source-list selection drawing and pin
+/// `isEmphasized` so AppKit uses its unemphasized presentation. AppKit writes
+/// this property after installing the row; the setter keeps the ivar aligned
+/// with the getter.
+final class DashboardSourceListRowView: NSTableRowView {
+    static let identifier = NSUserInterfaceItemIdentifier("DashboardSourceListSectionRow")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        identifier = Self.identifier
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var isEmphasized: Bool {
+        get { false }
+        set { super.isEmphasized = false }
     }
 }
 
@@ -368,6 +410,24 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
             as? DashboardSourceListCellView ?? DashboardSourceListCellView()
         cell.configure(section: section, showsUpdateBadge: section == .general && showsUpdateAvailableBadge)
         return cell
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        guard let node = item as? DashboardSidebarNode, node.section != nil else {
+            return nil
+        }
+        if let reused = outlineView.makeView(
+            withIdentifier: DashboardSourceListRowView.identifier,
+            owner: self
+        ) as? DashboardSourceListRowView {
+            return reused
+        }
+        return DashboardSourceListRowView()
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, tintConfigurationForItem item: Any) -> NSTintConfiguration? {
+        guard (item as? DashboardSidebarNode)?.section != nil else { return nil }
+        return NSTintConfiguration.default
     }
 
     func outlineView(_ outlineView: NSOutlineView, typeSelectStringFor tableColumn: NSTableColumn?, item: Any) -> String? {
