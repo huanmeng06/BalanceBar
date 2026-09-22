@@ -81,6 +81,9 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains("NSSearchToolbarItem"))
         XCTAssertTrue(source.contains("beginSearchInteraction"))
         XCTAssertTrue(source.contains("endSearchInteraction"))
+        XCTAssertTrue(source.contains("preferredWidthForSearchField"))
+        XCTAssertTrue(source.contains("NSAnimationContext"))
+        XCTAssertTrue(source.contains("accessibilityDisplayShouldReduceMotion"))
         XCTAssertTrue(source.contains("widthAnchor.constraint"))
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
         XCTAssertTrue(source.contains("autosavesConfiguration = false"))
@@ -1368,7 +1371,24 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         window.layoutIfNeeded()
         if owner.isSearchExpanded {
             XCTAssertFalse(searchItem.searchField.isHidden, file: file, line: line)
-            XCTAssertGreaterThanOrEqual(searchItem.searchField.frame.width, 100, file: file, line: line)
+            XCTAssertEqual(
+                searchItem.preferredWidthForSearchField,
+                DashboardToolbarController.expandedSearchFieldWidth,
+                file: file,
+                line: line
+            )
+            XCTAssertGreaterThanOrEqual(
+                searchItem.searchField.frame.width,
+                DashboardToolbarController.expandedSearchFieldWidth - 16,
+                file: file,
+                line: line
+            )
+            XCTAssertLessThanOrEqual(
+                searchItem.searchField.frame.width,
+                DashboardToolbarController.expandedSearchFieldWidth + 16,
+                file: file,
+                line: line
+            )
         } else {
             XCTAssertTrue(
                 DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(searchItem),

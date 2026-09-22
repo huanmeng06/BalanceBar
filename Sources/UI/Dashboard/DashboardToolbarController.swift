@@ -3,11 +3,12 @@ import AppKit
 /// The sole native toolbar owner. Search is a public `NSSearchToolbarItem`
 /// (same class NetNewsWire installs in `MainWindowController`).
 ///
-/// AppKit owns the item view (`view` is unavailable). In a wide window the
-/// item stays a full field; when its search field width is the compact size
-/// AppKit already uses under space pressure, the same item shows the system
-/// magnifying-glass button. The public header allows updating that width
-/// constraint after the field is assigned.
+/// AppKit owns the item view (`view` is unavailable). The public header
+/// allows updating the search field width constraint after the field is
+/// assigned, and `beginSearchInteraction()` expands to
+/// `preferredWidthForSearchField`. Compact width shows AppKit's own
+/// magnifying-glass button; expanding animates that documented constraint
+/// inside `NSAnimationContext` and calls `beginSearchInteraction()`.
 final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
@@ -21,6 +22,12 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     /// Width AppKit uses for this item's button representation when the
     /// toolbar is space-constrained (macOS 26 SDK: 37 × 36).
     static let collapsedSearchFieldWidth: CGFloat = 37
+    /// `NSSearchToolbarItem.preferredWidthForSearchField` defaults to 240, and
+    /// the item's historical maxSize width is 325. Without a matching width
+    /// constraint the field grows to that max. Use the public preferred-width
+    /// hook, trimmed slightly for the content pane.
+    static let expandedSearchFieldWidth: CGFloat = 220
+    static let searchPresentationAnimationDuration: TimeInterval = 0.25
 
     let sessionIdentifier = NSToolbar.Identifier("BalanceBarDashboardToolbar.\(UUID().uuidString)")
     private(set) var searchQuery = ""
@@ -28,7 +35,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     var onSearchQueryChanged: ((String) -> Void)?
 
     private let searchItem: NSSearchToolbarItem
-    private var compactWidthConstraint: NSLayoutConstraint?
+    private var searchFieldWidthConstraint: NSLayoutConstraint?
     private weak var window: NSWindow?
     private weak var toolbar: NSToolbar?
     private var isEndingSearch = false
@@ -88,8 +95,8 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
             window?.toolbar = nil
         }
         (window as? DashboardSearchWindow)?.searchController = nil
-        compactWidthConstraint?.isActive = false
-        compactWidthConstraint = nil
+        searchFieldWidthConstraint?.isActive = false
+        searchFieldWidthConstraint = nil
         toolbar = nil
         window = nil
     }
@@ -116,9 +123,14 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     @objc func beginSearch(_ sender: Any? = nil) {
-        setExpanded(true)
+        let wasExpanded = isSearchExpanded
+        isSearchExpanded = true
+        applyPresentation(
+            animated: shouldAnimateSearchPresentation && !wasExpanded,
+            performSystemInteraction: true
+        )
+        window?.recalculateKeyViewLoop()
         guard searchItem.searchField.window === window else { return }
-        searchItem.beginSearchInteraction()
         _ = window?.makeFirstResponder(searchItem.searchField)
         let editor = searchItem.searchField.currentEditor() as? NSTextView
         if editor?.hasMarkedText() != true {
@@ -132,8 +144,13 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         searchItem.searchField.stringValue = ""
         publishQuery("")
         _ = searchItem.searchField.abortEditing()
-        searchItem.endSearchInteraction()
-        setExpanded(false)
+        let wasExpanded = isSearchExpanded
+        isSearchExpanded = false
+        applyPresentation(
+            animated: shouldAnimateSearchPresentation && wasExpanded,
+            performSystemInteraction: true
+        )
+        window?.recalculateKeyViewLoop()
         isEndingSearch = false
     }
 
@@ -196,6 +213,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     private func configureSearchItem() {
         updateSearchItemLabels()
         searchItem.resignsFirstResponderWithCancel = true
+        searchItem.preferredWidthForSearchField = Self.expandedSearchFieldWidth
         searchItem.searchField.sendsSearchStringImmediately = true
         searchItem.searchField.sendsWholeSearchString = false
         searchItem.searchField.delegate = self
@@ -212,6 +230,12 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         searchItem.searchField.placeholderString = label
     }
 
+    private var shouldAnimateSearchPresentation: Bool {
+        if AutomatedTestHost.isRunning { return false }
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return false }
+        return window?.isVisible == true
+    }
+
     private func setExpanded(_ expanded: Bool) {
         guard expanded != isSearchExpanded else {
             applyPresentation()
@@ -222,26 +246,55 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         window?.recalculateKeyViewLoop()
     }
 
-    private func applyPresentation() {
+    private func applyPresentation(
+        animated: Bool = false,
+        performSystemInteraction: Bool = false
+    ) {
         let field = searchItem.searchField
-        if compactWidthConstraint == nil {
-            compactWidthConstraint = field.widthAnchor.constraint(
+        searchItem.preferredWidthForSearchField = Self.expandedSearchFieldWidth
+        if searchFieldWidthConstraint == nil {
+            searchFieldWidthConstraint = field.widthAnchor.constraint(
                 equalToConstant: Self.collapsedSearchFieldWidth
             )
+            searchFieldWidthConstraint?.isActive = true
         }
-        if isSearchExpanded {
-            compactWidthConstraint?.isActive = false
+        let targetWidth = isSearchExpanded
+            ? Self.expandedSearchFieldWidth
+            : Self.collapsedSearchFieldWidth
+        let apply = {
+            self.searchFieldWidthConstraint?.constant = targetWidth
+            if performSystemInteraction {
+                if self.isSearchExpanded {
+                    self.searchItem.beginSearchInteraction()
+                } else {
+                    self.searchItem.endSearchInteraction()
+                }
+            }
+            field.window?.layoutIfNeeded()
+        }
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Self.searchPresentationAnimationDuration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.allowsImplicitAnimation = true
+                apply()
+            }
         } else {
-            compactWidthConstraint?.isActive = true
+            apply()
         }
-        field.window?.layoutIfNeeded()
     }
 
     private func collapseAfterEditing(_ field: NSSearchField) {
         DispatchQueue.main.async { [weak self, weak field] in
             guard let self, self.searchQuery.isEmpty,
                   field?.currentEditor() == nil else { return }
-            self.setExpanded(false)
+            let wasExpanded = self.isSearchExpanded
+            self.isSearchExpanded = false
+            self.applyPresentation(
+                animated: self.shouldAnimateSearchPresentation && wasExpanded,
+                performSystemInteraction: true
+            )
+            self.window?.recalculateKeyViewLoop()
         }
     }
 

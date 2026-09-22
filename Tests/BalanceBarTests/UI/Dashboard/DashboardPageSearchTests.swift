@@ -52,7 +52,9 @@ final class DashboardPageSearchTests: XCTestCase {
             window.layoutIfNeeded()
             window.displayIfNeeded()
             XCTAssertFalse(field.isHidden)
-            XCTAssertGreaterThanOrEqual(field.frame.width, 100)
+            XCTAssertEqual(slot.preferredWidthForSearchField, DashboardToolbarController.expandedSearchFieldWidth)
+            XCTAssertGreaterThanOrEqual(field.frame.width, DashboardToolbarController.expandedSearchFieldWidth - 16)
+            XCTAssertLessThanOrEqual(field.frame.width, DashboardToolbarController.expandedSearchFieldWidth + 16)
             field.stringValue = "Language"
             controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
             XCTAssertEqual(controller.searchQuery, "Language")
