@@ -157,8 +157,10 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         window.layoutIfNeeded()
         window.displayIfNeeded()
 
+        let owner = try XCTUnwrap(window.toolbar?.delegate as? DashboardToolbarController)
+        owner.beginSearch()
         let searchField = try XCTUnwrap(
-            window.toolbar?.items.compactMap { ($0 as? NSSearchToolbarItem)?.searchField }.first
+            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) as? NSSearchField
         )
         if window.makeFirstResponder(searchField) {
             composition.applySearchQueryForTesting(tr(.keyDashboardGeneralAndRefreshPagesLanguage))
@@ -170,6 +172,48 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
                 "typing a query must not resign the toolbar search field"
             )
         }
+    }
+
+    func testCommandFExpandsTheSingleSearchSlotAndEscapeClosesIt() throws {
+        let controller = DashboardToolbarController()
+        let window = DashboardSearchWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer {
+            controller.detach()
+            window.close()
+        }
+        ApplicationWindowPresentation.presentInBackground(window)
+        controller.install(on: window)
+        let event = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .command,
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: "f",
+            charactersIgnoringModifiers: "f",
+            isARepeat: false,
+            keyCode: 3
+        ))
+        XCTAssertTrue(window.performKeyEquivalent(with: event))
+        XCTAssertTrue(controller.isSearchExpanded)
+        controller.setQuery("Language")
+        let slot = try XCTUnwrap(window.toolbar?.items.last)
+        let field = try XCTUnwrap(DashboardSearchToolbarProbe.contentView(in: slot) as? NSSearchField)
+        if field.currentEditor() == nil {
+            _ = window.makeFirstResponder(field)
+        }
+        window.cancelOperation(nil)
+        XCTAssertEqual(controller.searchQuery, "")
+        XCTAssertFalse(controller.isSearchExpanded)
+        XCTAssertTrue(
+            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) is NSButton
+        )
     }
 
     func testSidebarGroupRowsAreNotSelectableAndArrowsSkipThem() throws {

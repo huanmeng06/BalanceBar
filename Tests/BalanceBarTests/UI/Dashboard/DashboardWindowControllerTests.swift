@@ -78,7 +78,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains(".flexibleSpace"))
         XCTAssertTrue(source.contains(".toggleSidebar"))
         XCTAssertTrue(source.contains(".sidebarTrackingSeparator"))
-        XCTAssertTrue(source.contains("NSSearchToolbarItem"))
+        XCTAssertTrue(source.contains("NSSearchField"))
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
         XCTAssertTrue(source.contains("autosavesConfiguration = false"))
         XCTAssertFalse(source.contains("toolbarNavigationalItemIdentifiers"))
@@ -86,13 +86,13 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(source.contains("item.isHidden"))
         XCTAssertFalse(source.contains("sidebarCollapseObservation"))
         XCTAssertFalse(source.contains("toolbarWillAddItem"))
-        XCTAssertFalse(source.contains("#selector("))
+        XCTAssertTrue(source.contains("#selector(searchButtonClicked(_:))"))
+        XCTAssertTrue(source.contains("bezelStyle = .circular"))
         XCTAssertFalse(source.contains("setValue("))
         XCTAssertFalse(source.contains("forKey:"))
         XCTAssertFalse(source.contains("NSClassFromString"))
         XCTAssertFalse(source.contains("NSGlassEffectView"))
         XCTAssertFalse(source.contains("NSView("))
-        XCTAssertFalse(source.contains("NSSearchField("))
         XCTAssertFalse(source.contains("NSTitlebarAccessoryViewController"))
         XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
         XCTAssertFalse(source.contains("NSScrollPocket"))
@@ -1284,7 +1284,12 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
     ) throws {
         let toolbar = try XCTUnwrap(window.toolbar, file: file, line: line)
         XCTAssertFalse(toolbar.items.isEmpty, "Dashboard toolbar must not be an empty unified placeholder", file: file, line: line)
-        XCTAssertEqual(toolbar.identifier, DashboardToolbarController.identifier, file: file, line: line)
+        XCTAssertEqual(toolbar.identifier, (toolbar.delegate as? DashboardToolbarController)?.sessionIdentifier, file: file, line: line)
+        XCTAssertTrue(
+            "\(toolbar.identifier)".hasPrefix("\(DashboardToolbarController.identifier)"),
+            file: file,
+            line: line
+        )
         XCTAssertEqual(toolbar.displayMode, .iconOnly, file: file, line: line)
         XCTAssertFalse(toolbar.allowsUserCustomization, file: file, line: line)
         XCTAssertFalse(toolbar.autosavesConfiguration, file: file, line: line)
@@ -1352,12 +1357,16 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
-        XCTAssertTrue(
-            searchItem is NSSearchToolbarItem,
-            "Content-pane search must be NSSearchToolbarItem, not a hand-rolled NSSearchField",
-            file: file,
-            line: line
-        )
+        let owner = try XCTUnwrap(toolbar.delegate as? DashboardToolbarController)
+        let content = DashboardSearchToolbarProbe.contentView(in: searchItem)
+        if owner.isSearchExpanded {
+            XCTAssertTrue(content is NSSearchField, file: file, line: line)
+        } else {
+            let button = try XCTUnwrap(content as? NSButton, file: file, line: line)
+            XCTAssertEqual(button.bezelStyle, .circular, file: file, line: line)
+            XCTAssertEqual(button.imagePosition, .imageOnly, file: file, line: line)
+            XCTAssertEqual(button.accessibilityLabel(), tr(.keyDashboardSearchPlaceholder), file: file, line: line)
+        }
     }
 
     private func sidebarWidth(in window: NSWindow) -> CGFloat? {

@@ -41,7 +41,8 @@ final class DashboardPageSession {
     func installShell(on windowController: DashboardWindowController) {
         guard let window = windowController.window, !isTornDown else { return }
         self.window = window
-        detachPageContainerFromParent()
+        let reuseSplit = toolbarController.isSearchExpanded
+            || toolbarController.hostsSearchResponder(window.firstResponder)
         sourceListController?.teardown()
         let sourceList = DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)
         sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
@@ -52,11 +53,21 @@ final class DashboardPageSession {
         let sidebar = sourceList.makeSidebar(in: window)
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         accessoryHost.platformCapabilities = platformCapabilities
-        let splitController = DashboardSplitViewController(
-            sidebarView: sidebar,
-            content: pageContainer,
-            capabilities: platformCapabilities
-        )
+        let splitController: DashboardSplitViewController
+        if reuseSplit,
+           let existing = window.contentViewController as? DashboardSplitViewController,
+           existing.contentController === pageContainer {
+            existing.onSidebarGeometryDidChange = nil
+            existing.replaceSidebar(with: sidebar)
+            splitController = existing
+        } else {
+            detachPageContainerFromParent()
+            splitController = DashboardSplitViewController(
+                sidebarView: sidebar,
+                content: pageContainer,
+                capabilities: platformCapabilities
+            )
+        }
         windowController.attachShell(
             splitController,
             toolbar: toolbarController,
@@ -69,6 +80,12 @@ final class DashboardPageSession {
 
     func rebuild(on windowController: DashboardWindowController) {
         guard let window = windowController.window, !isTornDown else { return }
+        let searchWindow = window as? DashboardSearchWindow
+        if toolbarController.isSearchExpanded
+            || toolbarController.hostsSearchResponder(window.firstResponder) {
+            searchWindow?.preservesToolbarSearchEditing = true
+        }
+        defer { searchWindow?.preservesToolbarSearchEditing = false }
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: window.contentView)
         let selectedSection = section
@@ -138,6 +155,7 @@ final class DashboardPageSession {
         guard !isTornDown else { return }
         isTornDown = true
         accessoryHost.detach()
+        toolbarController.detach()
         sourceListController?.teardown()
         sourceListController = nil
         pageContainer.removeCurrentPage()

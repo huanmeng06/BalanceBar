@@ -98,7 +98,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         initialSection: DashboardSection,
         capabilities: DashboardPlatformCapabilities = .current
     ) -> NSWindow {
-        let window = NSWindow(
+        let window = DashboardSearchWindow(
             contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
@@ -152,7 +152,13 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         }
         isApplyingRestoration = true
         let requestedFrame = window.frame
-        window.contentViewController = splitController
+        let searchWindow = window as? DashboardSearchWindow
+        let wasPreservingSearch = searchWindow?.preservesToolbarSearchEditing ?? false
+        searchWindow?.preservesToolbarSearchEditing = true
+        defer { searchWindow?.preservesToolbarSearchEditing = wasPreservingSearch }
+        if window.contentViewController !== splitController {
+            window.contentViewController = splitController
+        }
         // AppKit may fit a newly installed split-view controller to its
         // minimum thicknesses. Preserve the current window frame after
         // installing the native hierarchy. Sidebar width is seeded from
