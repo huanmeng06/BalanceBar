@@ -160,7 +160,7 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         let owner = try XCTUnwrap(window.toolbar?.delegate as? DashboardToolbarController)
         owner.beginSearch()
         let searchField = try XCTUnwrap(
-            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) as? NSSearchField
+            DashboardSearchToolbarProbe.searchField(in: window.toolbar?.items.last)
         )
         if window.makeFirstResponder(searchField) {
             composition.applySearchQueryForTesting(tr(.keyDashboardGeneralAndRefreshPagesLanguage))
@@ -204,7 +204,7 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         XCTAssertTrue(controller.isSearchExpanded)
         controller.setQuery("Language")
         let slot = try XCTUnwrap(window.toolbar?.items.last)
-        let field = try XCTUnwrap(DashboardSearchToolbarProbe.contentView(in: slot) as? NSSearchField)
+        let field = try XCTUnwrap(DashboardSearchToolbarProbe.searchField(in: slot))
         if field.currentEditor() == nil {
             _ = window.makeFirstResponder(field)
         }
@@ -212,7 +212,7 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         XCTAssertEqual(controller.searchQuery, "")
         XCTAssertFalse(controller.isSearchExpanded)
         XCTAssertTrue(
-            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) is NSButton
+            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
         )
     }
 

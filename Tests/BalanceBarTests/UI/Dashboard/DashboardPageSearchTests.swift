@@ -25,21 +25,33 @@ final class DashboardPageSearchTests: XCTestCase {
             window.layoutIfNeeded()
             window.displayIfNeeded()
             XCTAssertFalse(controller.isSearchExpanded)
-            let button = try XCTUnwrap(
-                DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) as? NSButton
+            let slot = try XCTUnwrap(window.toolbar?.items.last as? NSSearchToolbarItem)
+            XCTAssertTrue(DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(slot))
+            XCTAssertLessThanOrEqual(slot.searchField.frame.width, 40)
+            XCTAssertEqual(slot.toolTip, tr(.keyDashboardSearchPlaceholder))
+            let clickPoint = slot.searchField.convert(
+                NSPoint(x: slot.searchField.bounds.midX, y: slot.searchField.bounds.midY),
+                to: nil
             )
-            XCTAssertEqual(button.bezelStyle, .circular)
-            XCTAssertEqual(button.imagePosition, .imageOnly)
-            XCTAssertLessThan(button.fittingSize.width, 40)
-            XCTAssertLessThan(button.fittingSize.height, 40)
-            XCTAssertEqual(button.toolTip, tr(.keyDashboardSearchPlaceholder))
-            button.performClick(nil)
+            let click = try XCTUnwrap(NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: clickPoint,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 1,
+                clickCount: 1,
+                pressure: 1
+            ))
+            window.sendEvent(click)
             await drainMainQueue()
             XCTAssertTrue(controller.isSearchExpanded)
-            let slot = try XCTUnwrap(window.toolbar?.items.last)
-            let field = try XCTUnwrap(DashboardSearchToolbarProbe.contentView(in: slot) as? NSSearchField)
+            XCTAssertTrue(window.toolbar?.items.last === slot)
+            let field = slot.searchField
             window.layoutIfNeeded()
             window.displayIfNeeded()
+            XCTAssertFalse(field.isHidden)
             XCTAssertGreaterThanOrEqual(field.frame.width, 100)
             field.stringValue = "Language"
             controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
@@ -57,7 +69,7 @@ final class DashboardPageSearchTests: XCTestCase {
             XCTAssertEqual(controller.searchQuery, "")
             XCTAssertFalse(controller.isSearchExpanded)
             XCTAssertTrue(
-                DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) is NSButton
+                DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
             )
             XCTAssertEqual(window.toolbar?.items.map(\.itemIdentifier), DashboardToolbarController.defaultItemIdentifiers)
         }
@@ -79,7 +91,7 @@ final class DashboardPageSearchTests: XCTestCase {
         controller.install(on: window)
         controller.setQuery("a")
         let field = try XCTUnwrap(
-            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) as? NSSearchField
+            DashboardSearchToolbarProbe.searchField(in: window.toolbar?.items.last)
         )
         field.stringValue = ""
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
@@ -89,7 +101,7 @@ final class DashboardPageSearchTests: XCTestCase {
         await drainMainQueue()
         XCTAssertFalse(controller.isSearchExpanded)
         XCTAssertTrue(
-            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) is NSButton
+            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
         )
     }
 
@@ -109,7 +121,7 @@ final class DashboardPageSearchTests: XCTestCase {
         controller.setQuery("搜索")
         let toolbar = try XCTUnwrap(window.toolbar)
         let slot = try XCTUnwrap(toolbar.items.last)
-        let field = try XCTUnwrap(DashboardSearchToolbarProbe.contentView(in: slot) as? NSSearchField)
+        let field = try XCTUnwrap(DashboardSearchToolbarProbe.searchField(in: slot))
         field.stringValue = "搜索pin"
         controller.install(on: window)
         XCTAssertTrue(window.toolbar === toolbar)
@@ -135,7 +147,7 @@ final class DashboardPageSearchTests: XCTestCase {
         controller.install(on: window)
         controller.setQuery("搜索")
         let field = try XCTUnwrap(
-            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) as? NSSearchField
+            DashboardSearchToolbarProbe.searchField(in: window.toolbar?.items.last)
         )
         let editor = NSTextView()
         editor.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -180,7 +192,7 @@ final class DashboardPageSearchTests: XCTestCase {
         owner.setQuery(tr(.keyDashboardGeneralAndRefreshPagesLanguage))
         let toolbar = try XCTUnwrap(window.toolbar)
         let field = try XCTUnwrap(
-            DashboardSearchToolbarProbe.contentView(in: toolbar.items.last) as? NSSearchField
+            DashboardSearchToolbarProbe.searchField(in: toolbar.items.last)
         )
         if field.currentEditor() == nil {
             _ = window.makeFirstResponder(field)
@@ -203,7 +215,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(composition.searchQueryForTesting, "")
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
         XCTAssertTrue(
-            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) is NSButton
+            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
         )
     }
 
@@ -232,7 +244,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(owners[0].searchQuery, "Language")
         XCTAssertTrue(windows[0].toolbar?.items.last === firstItem)
         XCTAssertTrue(
-            DashboardSearchToolbarProbe.contentView(in: windows[1].toolbar?.items.last) is NSButton
+            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(windows[1].toolbar?.items.last)
         )
         for window in windows {
             XCTAssertEqual(window.toolbar?.items.map(\.itemIdentifier), DashboardToolbarController.defaultItemIdentifiers)
@@ -343,7 +355,7 @@ final class DashboardPageSearchTests: XCTestCase {
         let owner = try XCTUnwrap(window.toolbar?.delegate as? DashboardToolbarController)
         owner.beginSearch()
         let searchField = try XCTUnwrap(
-            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) as? NSSearchField
+            DashboardSearchToolbarProbe.searchField(in: window.toolbar?.items.last)
         )
         XCTAssertEqual(
             searchField.placeholderString,
@@ -470,7 +482,7 @@ final class DashboardPageSearchTests: XCTestCase {
             DashboardToolbarController.searchItemIdentifier
         )
         XCTAssertTrue(
-            DashboardSearchToolbarProbe.contentView(in: window.toolbar?.items.last) is NSButton
+            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
         )
         XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
     }

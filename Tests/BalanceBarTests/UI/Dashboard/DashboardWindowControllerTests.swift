@@ -78,7 +78,10 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains(".flexibleSpace"))
         XCTAssertTrue(source.contains(".toggleSidebar"))
         XCTAssertTrue(source.contains(".sidebarTrackingSeparator"))
-        XCTAssertTrue(source.contains("NSSearchField"))
+        XCTAssertTrue(source.contains("NSSearchToolbarItem"))
+        XCTAssertTrue(source.contains("beginSearchInteraction"))
+        XCTAssertTrue(source.contains("endSearchInteraction"))
+        XCTAssertTrue(source.contains("widthAnchor.constraint"))
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
         XCTAssertTrue(source.contains("autosavesConfiguration = false"))
         XCTAssertFalse(source.contains("toolbarNavigationalItemIdentifiers"))
@@ -86,8 +89,8 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(source.contains("item.isHidden"))
         XCTAssertFalse(source.contains("sidebarCollapseObservation"))
         XCTAssertFalse(source.contains("toolbarWillAddItem"))
-        XCTAssertTrue(source.contains("#selector(searchButtonClicked(_:))"))
-        XCTAssertTrue(source.contains("bezelStyle = .circular"))
+        XCTAssertFalse(source.contains("bezelStyle = .circular"))
+        XCTAssertFalse(source.contains("DashboardSearchSlotView"))
         XCTAssertFalse(source.contains("setValue("))
         XCTAssertFalse(source.contains("forKey:"))
         XCTAssertFalse(source.contains("NSClassFromString"))
@@ -1350,22 +1353,35 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
-        let searchItem = toolbar.items.last
+        let searchItem = try XCTUnwrap(
+            toolbar.items.last as? NSSearchToolbarItem,
+            file: file,
+            line: line
+        )
         XCTAssertEqual(
-            searchItem?.itemIdentifier,
+            searchItem.itemIdentifier,
             DashboardToolbarController.searchItemIdentifier,
             file: file,
             line: line
         )
         let owner = try XCTUnwrap(toolbar.delegate as? DashboardToolbarController)
-        let content = DashboardSearchToolbarProbe.contentView(in: searchItem)
+        window.layoutIfNeeded()
         if owner.isSearchExpanded {
-            XCTAssertTrue(content is NSSearchField, file: file, line: line)
+            XCTAssertFalse(searchItem.searchField.isHidden, file: file, line: line)
+            XCTAssertGreaterThanOrEqual(searchItem.searchField.frame.width, 100, file: file, line: line)
         } else {
-            let button = try XCTUnwrap(content as? NSButton, file: file, line: line)
-            XCTAssertEqual(button.bezelStyle, .circular, file: file, line: line)
-            XCTAssertEqual(button.imagePosition, .imageOnly, file: file, line: line)
-            XCTAssertEqual(button.accessibilityLabel(), tr(.keyDashboardSearchPlaceholder), file: file, line: line)
+            XCTAssertTrue(
+                DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(searchItem),
+                file: file,
+                line: line
+            )
+            XCTAssertLessThanOrEqual(
+                searchItem.searchField.frame.width,
+                40,
+                file: file,
+                line: line
+            )
+            XCTAssertEqual(searchItem.toolTip, tr(.keyDashboardSearchPlaceholder), file: file, line: line)
         }
     }
 

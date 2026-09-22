@@ -1,12 +1,13 @@
 import AppKit
 
-/// The sole native toolbar owner. AppKit keeps one trailing search identifier.
+/// The sole native toolbar owner. Search is a public `NSSearchToolbarItem`
+/// (same class NetNewsWire installs in `MainWindowController`).
 ///
-/// `NSSearchToolbarItem.endSearchInteraction()` only restores natural width in a
-/// wide window, inserting/removing that item crashes AppKit, and assigning its
-/// hosted `searchField` to another item leaves the field in a null window.
-/// This slot keeps one public `NSToolbarItem` whose stable host view shows
-/// either a circular button or a public `NSSearchField`.
+/// AppKit owns the item view (`view` is unavailable). In a wide window the
+/// item stays a full field; when its search field width is the compact size
+/// AppKit already uses under space pressure, the same item shows the system
+/// magnifying-glass button. The public header allows updating that width
+/// constraint after the field is assigned.
 final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
@@ -17,53 +18,34 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         .flexibleSpace,
         searchItemIdentifier
     ]
+    /// Width AppKit uses for this item's button representation when the
+    /// toolbar is space-constrained (macOS 26 SDK: 37 × 36).
+    static let collapsedSearchFieldWidth: CGFloat = 37
 
-    // AppKit synchronizes item mutations between toolbars with equal IDs even
-    // when autosaving is off. Search presentation belongs to this session only.
     let sessionIdentifier = NSToolbar.Identifier("BalanceBarDashboardToolbar.\(UUID().uuidString)")
     private(set) var searchQuery = ""
     private(set) var isSearchExpanded = false
     var onSearchQueryChanged: ((String) -> Void)?
 
-    private let slotView = DashboardSearchSlotView()
-    private let searchField = NSSearchField()
-    private let collapsedButton: NSButton
-    private var slotItem: NSToolbarItem?
+    private let searchItem: NSSearchToolbarItem
+    private var compactWidthConstraint: NSLayoutConstraint?
     private weak var window: NSWindow?
     private weak var toolbar: NSToolbar?
     private var isEndingSearch = false
 
     override init() {
-        let label = tr(.keyDashboardSearchPlaceholder)
-        collapsedButton = NSButton(
-            image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: label) ?? NSImage(),
-            target: nil,
-            action: #selector(searchButtonClicked(_:))
-        )
+        searchItem = NSSearchToolbarItem(itemIdentifier: Self.searchItemIdentifier)
         super.init()
-        collapsedButton.target = self
-        collapsedButton.bezelStyle = .circular
-        collapsedButton.isBordered = true
-        collapsedButton.imagePosition = .imageOnly
-        collapsedButton.setButtonType(.momentaryPushIn)
-        collapsedButton.sizeToFit()
-        searchField.sendsSearchStringImmediately = true
-        searchField.sendsWholeSearchString = false
-        searchField.delegate = self
-        slotView.addSubview(collapsedButton)
-        slotView.addSubview(searchField)
-        applyPresentation()
-        updateLabels()
+        configureSearchItem()
     }
 
     func install(on window: NSWindow) {
         window.isReleasedWhenClosed = false
         self.window = window
         (window as? DashboardSearchWindow)?.searchController = self
-        // Rebuilding the page shell must not detach the active field editor,
-        // discard marked text, or reset an empty-but-focused search.
         if let toolbar, window.toolbar === toolbar {
-            updateLabels()
+            updateSearchItemLabels()
+            applyPresentation()
             return
         }
         let toolbar = NSToolbar(identifier: sessionIdentifier)
@@ -74,75 +56,84 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         self.toolbar = toolbar
         window.toolbar = toolbar
         window.toolbarStyle = .unified
+        _ = window.toolbar?.items
+        window.layoutIfNeeded()
+        applyPresentation()
     }
 
     func setQuery(_ query: String) {
         if query.isEmpty {
-            guard (searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-            searchField.stringValue = ""
+            guard (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
+            searchItem.searchField.stringValue = ""
             publishQuery("")
             setExpanded(false)
             return
         }
         setExpanded(true)
-        let editor = searchField.currentEditor() as? NSTextView
-        if editor?.hasMarkedText() != true, searchField.stringValue != query {
-            searchField.stringValue = query
+        let editor = searchItem.searchField.currentEditor() as? NSTextView
+        if editor?.hasMarkedText() != true, searchItem.searchField.stringValue != query {
+            searchItem.searchField.stringValue = query
         }
         publishQuery(query)
     }
 
     func detach() {
-        searchField.delegate = nil
+        searchItem.searchField.delegate = nil
         if let window {
-            _ = searchField.abortEditing()
-            window.endEditing(for: searchField)
+            _ = searchItem.searchField.abortEditing()
+            window.endEditing(for: searchItem.searchField)
             window.makeFirstResponder(nil)
         }
         if window?.toolbar === toolbar {
             window?.toolbar = nil
         }
         (window as? DashboardSearchWindow)?.searchController = nil
-        slotItem?.view = nil
-        slotItem = nil
+        compactWidthConstraint?.isActive = false
+        compactWidthConstraint = nil
         toolbar = nil
         window = nil
     }
 
     func hostsSearchResponder(_ responder: NSResponder?) -> Bool {
         guard let responder else { return false }
-        if responder === searchField { return true }
+        if responder === searchItem.searchField { return true }
         if let textView = responder as? NSTextView,
            textView.isFieldEditor,
-           textView.delegate as AnyObject? === searchField {
+           textView.delegate as AnyObject? === searchItem.searchField {
             return true
         }
         return false
     }
 
-    @objc private func searchButtonClicked(_ sender: Any?) {
-        DispatchQueue.main.async { [weak self] in self?.beginSearch() }
+    func handleCollapsedSearchClick(_ event: NSEvent) -> Bool {
+        guard !isSearchExpanded, event.window === window else { return false }
+        let field = searchItem.searchField
+        guard field.window != nil else { return false }
+        let fieldInWindow = field.convert(field.bounds, to: nil)
+        guard fieldInWindow.contains(event.locationInWindow) else { return false }
+        beginSearch()
+        return true
     }
 
     @objc func beginSearch(_ sender: Any? = nil) {
         setExpanded(true)
-        guard searchField.window === window else { return }
-        _ = window?.makeFirstResponder(searchField)
-        let editor = searchField.currentEditor() as? NSTextView
+        guard searchItem.searchField.window === window else { return }
+        searchItem.beginSearchInteraction()
+        _ = window?.makeFirstResponder(searchItem.searchField)
+        let editor = searchItem.searchField.currentEditor() as? NSTextView
         if editor?.hasMarkedText() != true {
-            searchField.selectText(nil)
+            searchItem.searchField.selectText(nil)
         }
     }
 
     @objc func endSearch(_ sender: Any? = nil) {
         guard !isEndingSearch else { return }
         isEndingSearch = true
-        searchField.stringValue = ""
+        searchItem.searchField.stringValue = ""
         publishQuery("")
-        _ = searchField.abortEditing()
-        window?.endEditing(for: searchField)
+        _ = searchItem.searchField.abortEditing()
+        searchItem.endSearchInteraction()
         setExpanded(false)
-        restoreCollapsedFocus()
         isEndingSearch = false
     }
 
@@ -160,14 +151,8 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         guard itemIdentifier == Self.searchItemIdentifier else { return nil }
-        if slotItem == nil {
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.view = slotView
-            slotItem = item
-        }
-        applyPresentation()
-        updateLabels()
-        return slotItem
+        configureSearchItem()
+        return searchItem
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -208,47 +193,48 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         return true
     }
 
+    private func configureSearchItem() {
+        updateSearchItemLabels()
+        searchItem.resignsFirstResponderWithCancel = true
+        searchItem.searchField.sendsSearchStringImmediately = true
+        searchItem.searchField.sendsWholeSearchString = false
+        searchItem.searchField.delegate = self
+        if (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true {
+            searchItem.searchField.stringValue = searchQuery
+        }
+    }
+
+    private func updateSearchItemLabels() {
+        let label = tr(.keyDashboardSearchPlaceholder)
+        searchItem.label = label
+        searchItem.paletteLabel = label
+        searchItem.toolTip = label
+        searchItem.searchField.placeholderString = label
+    }
+
     private func setExpanded(_ expanded: Bool) {
-        guard expanded != isSearchExpanded else { return }
+        guard expanded != isSearchExpanded else {
+            applyPresentation()
+            return
+        }
         isSearchExpanded = expanded
         applyPresentation()
         window?.recalculateKeyViewLoop()
     }
 
     private func applyPresentation() {
-        collapsedButton.sizeToFit()
-        let buttonSize = collapsedButton.fittingSize
+        let field = searchItem.searchField
+        if compactWidthConstraint == nil {
+            compactWidthConstraint = field.widthAnchor.constraint(
+                equalToConstant: Self.collapsedSearchFieldWidth
+            )
+        }
         if isSearchExpanded {
-            slotView.preferredSize = NSSize(
-                width: 220,
-                height: max(searchField.fittingSize.height, 22)
-            )
+            compactWidthConstraint?.isActive = false
         } else {
-            slotView.preferredSize = NSSize(
-                width: min(max(buttonSize.width, 24), 36),
-                height: min(max(buttonSize.height, 24), 36)
-            )
+            compactWidthConstraint?.isActive = true
         }
-        collapsedButton.isHidden = isSearchExpanded
-        searchField.isHidden = !isSearchExpanded
-        collapsedButton.refusesFirstResponder = isSearchExpanded
-        searchField.refusesFirstResponder = !isSearchExpanded
-        collapsedButton.setAccessibilityElement(!isSearchExpanded)
-        searchField.setAccessibilityElement(isSearchExpanded)
-        slotView.layoutContent(
-            expanded: isSearchExpanded,
-            buttonSize: buttonSize
-        )
-    }
-
-    private func restoreCollapsedFocus() {
-        guard let window else { return }
-        if collapsedButton.window === window, !collapsedButton.isHidden {
-            window.makeFirstResponder(collapsedButton)
-        } else if window.firstResponder === searchField
-            || (window.firstResponder as? NSTextView)?.delegate as AnyObject? === searchField {
-            window.makeFirstResponder(nil)
-        }
+        field.window?.layoutIfNeeded()
     }
 
     private func collapseAfterEditing(_ field: NSSearchField) {
@@ -256,53 +242,13 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
             guard let self, self.searchQuery.isEmpty,
                   field?.currentEditor() == nil else { return }
             self.setExpanded(false)
-            if let window = self.window, window.firstResponder === window {
-                self.restoreCollapsedFocus()
-            }
         }
-    }
-
-    private func updateLabels() {
-        let label = tr(.keyDashboardSearchPlaceholder)
-        let item = slotItem
-        item?.label = label
-        item?.paletteLabel = label
-        item?.toolTip = label
-        collapsedButton.setAccessibilityLabel(label)
-        collapsedButton.toolTip = label
-        searchField.placeholderString = label
-        searchField.setAccessibilityLabel(label)
     }
 
     private func publishQuery(_ raw: String) {
         guard raw != searchQuery else { return }
         searchQuery = raw
         onSearchQueryChanged?(searchQuery)
-    }
-}
-
-/// Auto Layout-free host that stays assigned to the single search toolbar item.
-private final class DashboardSearchSlotView: NSView {
-    var preferredSize = NSSize(width: 28, height: 28) {
-        didSet { invalidateIntrinsicContentSize() }
-    }
-
-    override var intrinsicContentSize: NSSize { preferredSize }
-
-    func layoutContent(expanded: Bool, buttonSize: NSSize) {
-        frame.size = preferredSize
-        for subview in subviews {
-            if subview is NSSearchField {
-                subview.frame = expanded ? bounds : .zero
-            } else {
-                subview.frame = NSRect(
-                    x: (bounds.width - buttonSize.width) / 2,
-                    y: (bounds.height - buttonSize.height) / 2,
-                    width: buttonSize.width,
-                    height: buttonSize.height
-                )
-            }
-        }
     }
 }
 
@@ -313,6 +259,14 @@ final class DashboardSearchWindow: NSWindow {
     /// Toolbar search lives outside that view, so a shell rebuild must keep
     /// the same field editor and any marked text.
     var preservesToolbarSearchEditing = false
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown,
+           searchController?.handleCollapsedSearchClick(event) == true {
+            return
+        }
+        super.sendEvent(event)
+    }
 
     override func endEditing(for object: Any?) {
         if preservesToolbarSearchEditing, searchController?.hostsSearchResponder(firstResponder) == true {

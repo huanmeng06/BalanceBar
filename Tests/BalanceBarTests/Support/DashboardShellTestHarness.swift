@@ -140,13 +140,19 @@ final class DashboardShellTestHarness {
     }
 }
 
-/// The search toolbar item keeps a stable host view; the circular button or
-/// `NSSearchField` is that host or its visible content.
+/// Public `NSSearchToolbarItem` surface. Collapsed, AppKit hides the field and
+/// shows its own button representation; expanded, the public `searchField` is visible.
 enum DashboardSearchToolbarProbe {
-    static func contentView(in item: NSToolbarItem?) -> NSView? {
-        guard let view = item?.view else { return nil }
-        if view is NSSearchField || view is NSButton { return view }
-        let controls = view.subviews.filter { $0 is NSSearchField || $0 is NSButton }
-        return controls.first { !$0.isHidden } ?? controls.first
+    static func searchItem(in item: NSToolbarItem?) -> NSSearchToolbarItem? {
+        item as? NSSearchToolbarItem
+    }
+
+    static func searchField(in item: NSToolbarItem?) -> NSSearchField? {
+        searchItem(in: item)?.searchField
+    }
+
+    static func isCollapsedButtonRepresentation(_ item: NSToolbarItem?) -> Bool {
+        guard let field = searchField(in: item) else { return false }
+        return field.isHidden || field.frame.width <= 40
     }
 }
