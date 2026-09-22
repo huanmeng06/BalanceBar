@@ -82,9 +82,13 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains("beginSearchInteraction"))
         XCTAssertTrue(source.contains("endSearchInteraction"))
         XCTAssertTrue(source.contains("preferredWidthForSearchField"))
-        XCTAssertTrue(source.contains("makeFirstResponder"))
-        XCTAssertTrue(source.contains("accessibilityDisplayShouldReduceMotion"))
+        XCTAssertTrue(source.contains("controlTextDidBeginEditing"))
         XCTAssertTrue(source.contains("widthAnchor.constraint"))
+        XCTAssertFalse(source.contains("handleCollapsedSearchClick"))
+        XCTAssertFalse(source.contains("sendEvent"))
+        XCTAssertFalse(source.contains("makeFirstResponder(searchItem.searchField)"))
+        XCTAssertFalse(source.contains("accessibilityDisplayShouldReduceMotion"))
+        XCTAssertFalse(source.contains("shouldFlushSearchLayout"))
         XCTAssertFalse(source.contains("NSAnimationContext"))
         XCTAssertFalse(source.contains("CAMediaTimingFunction"))
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
@@ -1371,14 +1375,17 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         )
         let owner = try XCTUnwrap(toolbar.delegate as? DashboardToolbarController)
         window.layoutIfNeeded()
+        XCTAssertEqual(
+            searchItem.preferredWidthForSearchField,
+            DashboardToolbarController.expandedSearchFieldWidth,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(searchItem.toolTip, tr(.keyDashboardSearchPlaceholder), file: file, line: line)
         if owner.isSearchExpanded {
             XCTAssertFalse(searchItem.searchField.isHidden, file: file, line: line)
-            XCTAssertEqual(
-                searchItem.preferredWidthForSearchField,
-                DashboardToolbarController.expandedSearchFieldWidth,
-                file: file,
-                line: line
-            )
+        }
+        if !DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(searchItem) {
             XCTAssertGreaterThanOrEqual(
                 searchItem.searchField.frame.width,
                 DashboardToolbarController.expandedSearchFieldWidth - 16,
@@ -1391,19 +1398,6 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 file: file,
                 line: line
             )
-        } else {
-            XCTAssertTrue(
-                DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(searchItem),
-                file: file,
-                line: line
-            )
-            XCTAssertLessThanOrEqual(
-                searchItem.searchField.frame.width,
-                40,
-                file: file,
-                line: line
-            )
-            XCTAssertEqual(searchItem.toolTip, tr(.keyDashboardSearchPlaceholder), file: file, line: line)
         }
     }
 

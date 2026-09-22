@@ -26,25 +26,8 @@ final class DashboardPageSearchTests: XCTestCase {
             window.displayIfNeeded()
             XCTAssertFalse(controller.isSearchExpanded)
             let slot = try XCTUnwrap(window.toolbar?.items.last as? NSSearchToolbarItem)
-            XCTAssertTrue(DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(slot))
-            XCTAssertLessThanOrEqual(slot.searchField.frame.width, 40)
             XCTAssertEqual(slot.toolTip, tr(.keyDashboardSearchPlaceholder))
-            let clickPoint = slot.searchField.convert(
-                NSPoint(x: slot.searchField.bounds.midX, y: slot.searchField.bounds.midY),
-                to: nil
-            )
-            let click = try XCTUnwrap(NSEvent.mouseEvent(
-                with: .leftMouseDown,
-                location: clickPoint,
-                modifierFlags: [],
-                timestamp: 0,
-                windowNumber: window.windowNumber,
-                context: nil,
-                eventNumber: 1,
-                clickCount: 1,
-                pressure: 1
-            ))
-            window.sendEvent(click)
+            controller.beginSearch()
             await drainMainQueue()
             XCTAssertTrue(controller.isSearchExpanded)
             XCTAssertTrue(window.toolbar?.items.last === slot)
@@ -70,9 +53,6 @@ final class DashboardPageSearchTests: XCTestCase {
             await drainMainQueue()
             XCTAssertEqual(controller.searchQuery, "")
             XCTAssertFalse(controller.isSearchExpanded)
-            XCTAssertTrue(
-                DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
-            )
             XCTAssertEqual(window.toolbar?.items.map(\.itemIdentifier), DashboardToolbarController.defaultItemIdentifiers)
         }
         XCTAssertEqual(queries, ["Language", "", "Language", ""])
@@ -102,9 +82,6 @@ final class DashboardPageSearchTests: XCTestCase {
         controller.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification, object: field))
         await drainMainQueue()
         XCTAssertFalse(controller.isSearchExpanded)
-        XCTAssertTrue(
-            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
-        )
     }
 
     func testReinstallPreservesToolbarAndActiveSearchField() throws {
@@ -216,9 +193,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(composition.section, .menuBar)
         XCTAssertEqual(composition.searchQueryForTesting, "")
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
-        XCTAssertTrue(
-            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
-        )
+        XCTAssertFalse(owner.isSearchExpanded)
     }
 
     func testTwoSessionsKeepIndependentSearchItemsAndQueries() throws {
@@ -245,9 +220,7 @@ final class DashboardPageSearchTests: XCTestCase {
         owners[1].endSearch()
         XCTAssertEqual(owners[0].searchQuery, "Language")
         XCTAssertTrue(windows[0].toolbar?.items.last === firstItem)
-        XCTAssertTrue(
-            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(windows[1].toolbar?.items.last)
-        )
+        XCTAssertFalse(owners[1].isSearchExpanded)
         for window in windows {
             XCTAssertEqual(window.toolbar?.items.map(\.itemIdentifier), DashboardToolbarController.defaultItemIdentifiers)
         }
@@ -483,9 +456,7 @@ final class DashboardPageSearchTests: XCTestCase {
             window.toolbar?.items.last?.itemIdentifier,
             DashboardToolbarController.searchItemIdentifier
         )
-        XCTAssertTrue(
-            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
-        )
+        XCTAssertTrue(window.toolbar?.items.last is NSSearchToolbarItem)
         XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
     }
 

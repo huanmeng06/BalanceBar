@@ -211,9 +211,6 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         window.cancelOperation(nil)
         XCTAssertEqual(controller.searchQuery, "")
         XCTAssertFalse(controller.isSearchExpanded)
-        XCTAssertTrue(
-            DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(window.toolbar?.items.last)
-        )
     }
 
     func testSidebarGroupRowsAreNotSelectableAndArrowsSkipThem() throws {
