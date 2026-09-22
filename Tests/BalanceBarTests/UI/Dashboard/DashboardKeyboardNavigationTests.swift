@@ -201,8 +201,8 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
             keyCode: 3
         ))
         XCTAssertTrue(window.performKeyEquivalent(with: event))
-        XCTAssertTrue(controller.isSearchExpanded)
         controller.setQuery("Language")
+        XCTAssertTrue(controller.isSearchActive)
         let slot = try XCTUnwrap(window.toolbar?.items.last)
         let field = try XCTUnwrap(DashboardSearchToolbarProbe.searchField(in: slot))
         if field.currentEditor() == nil {
@@ -210,7 +210,7 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         }
         window.cancelOperation(nil)
         XCTAssertEqual(controller.searchQuery, "")
-        XCTAssertFalse(controller.isSearchExpanded)
+        XCTAssertFalse(controller.isSearchActive)
     }
 
     func testSidebarGroupRowsAreNotSelectableAndArrowsSkipThem() throws {

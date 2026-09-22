@@ -41,7 +41,7 @@ final class DashboardPageSession {
     func installShell(on windowController: DashboardWindowController) {
         guard let window = windowController.window, !isTornDown else { return }
         self.window = window
-        let reuseSplit = toolbarController.isSearchExpanded
+        let reuseSplit = toolbarController.isSearchActive
             || toolbarController.hostsSearchResponder(window.firstResponder)
         sourceListController?.teardown()
         let sourceList = DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)
@@ -81,7 +81,7 @@ final class DashboardPageSession {
     func rebuild(on windowController: DashboardWindowController) {
         guard let window = windowController.window, !isTornDown else { return }
         let searchWindow = window as? DashboardSearchWindow
-        if toolbarController.isSearchExpanded
+        if toolbarController.isSearchActive
             || toolbarController.hostsSearchResponder(window.firstResponder) {
             searchWindow?.preservesToolbarSearchEditing = true
         }

@@ -83,7 +83,14 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains("endSearchInteraction"))
         XCTAssertTrue(source.contains("preferredWidthForSearchField"))
         XCTAssertTrue(source.contains("controlTextDidBeginEditing"))
-        XCTAssertTrue(source.contains("widthAnchor.constraint"))
+        XCTAssertTrue(source.contains("isSearchEditing"))
+        XCTAssertTrue(source.contains("cancelSearch"))
+        XCTAssertFalse(source.contains("widthAnchor.constraint"))
+        XCTAssertFalse(source.contains("collapsedSearchFieldWidth"))
+        XCTAssertFalse(source.contains("isSearchExpanded"))
+        XCTAssertFalse(source.contains("installSearchFieldWidthPreferences"))
+        XCTAssertFalse(source.contains("searchFieldMaxWidthConstraint"))
+        XCTAssertFalse(source.contains("collapseAfterEditing"))
         XCTAssertFalse(source.contains("handleCollapsedSearchClick"))
         XCTAssertFalse(source.contains("sendEvent"))
         XCTAssertFalse(source.contains("makeFirstResponder(searchItem.searchField)"))
@@ -1382,22 +1389,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             line: line
         )
         XCTAssertEqual(searchItem.toolTip, tr(.keyDashboardSearchPlaceholder), file: file, line: line)
-        if owner.isSearchExpanded {
+        if owner.isSearchActive {
             XCTAssertFalse(searchItem.searchField.isHidden, file: file, line: line)
-        }
-        if !DashboardSearchToolbarProbe.isCollapsedButtonRepresentation(searchItem) {
-            XCTAssertGreaterThanOrEqual(
-                searchItem.searchField.frame.width,
-                DashboardToolbarController.expandedSearchFieldWidth - 16,
-                file: file,
-                line: line
-            )
-            XCTAssertLessThanOrEqual(
-                searchItem.searchField.frame.width,
-                DashboardToolbarController.expandedSearchFieldWidth + 16,
-                file: file,
-                line: line
-            )
         }
     }
 

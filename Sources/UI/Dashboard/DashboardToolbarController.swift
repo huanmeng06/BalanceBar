@@ -4,11 +4,10 @@ import AppKit
 /// (same class NetNewsWire installs in `MainWindowController`).
 ///
 /// AppKit owns the item view (`view` is unavailable), compact/expanded
-/// representation, and keyboard focus. `beginSearchInteraction()` expands a
-/// compressed item to `preferredWidthForSearchField` and moves focus;
-/// `endSearchInteraction()` ends editing and restores the item size.
-/// A required maximum equal to `preferredWidthForSearchField` stays active
-/// for the session so the field does not grow to the historical max size.
+/// representation, keyboard focus, and transition. This controller only
+/// configures the public item, forwards Cmd+F / Esc to
+/// `beginSearchInteraction()` / `endSearchInteraction()`, and records
+/// editing plus the filter query from `NSSearchFieldDelegate`.
 final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
@@ -19,26 +18,24 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         .flexibleSpace,
         searchItemIdentifier
     ]
-    /// Width AppKit uses for this item's button representation when the
-    /// toolbar is space-constrained (macOS 26 SDK: 37 × 36).
-    static let collapsedSearchFieldWidth: CGFloat = 37
-    /// `NSSearchToolbarItem.preferredWidthForSearchField` defaults to 240, and
-    /// the item's historical maxSize width is 325. Without a matching width
-    /// constraint the field grows to that max. Use the public preferred-width
-    /// hook, trimmed slightly for the content pane.
+    /// `NSSearchToolbarItem.preferredWidthForSearchField` defaults to 240.
+    /// Trimmed slightly for the content pane; AppKit applies it when the
+    /// item receives keyboard focus.
     static let expandedSearchFieldWidth: CGFloat = 220
 
     let sessionIdentifier = NSToolbar.Identifier("BalanceBarDashboardToolbar.\(UUID().uuidString)")
     private(set) var searchQuery = ""
-    private(set) var isSearchExpanded = false
+    private(set) var isSearchEditing = false
     var onSearchQueryChanged: ((String) -> Void)?
 
+    var isSearchActive: Bool {
+        isSearchEditing || !searchQuery.isEmpty
+    }
+
     private let searchItem: NSSearchToolbarItem
-    private var searchFieldMaxWidthConstraint: NSLayoutConstraint?
     private weak var window: NSWindow?
     private weak var toolbar: NSToolbar?
     private var isEndingSearch = false
-    private var isSearchFieldEditing = false
 
     override init() {
         searchItem = NSSearchToolbarItem(itemIdentifier: Self.searchItemIdentifier)
@@ -52,7 +49,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         (window as? DashboardSearchWindow)?.searchController = self
         if let toolbar, window.toolbar === toolbar {
             updateSearchItemLabels()
-            installSearchFieldWidthPreferences()
             return
         }
         let toolbar = NSToolbar(identifier: sessionIdentifier)
@@ -65,26 +61,16 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         window.toolbarStyle = .unified
         _ = window.toolbar?.items
         window.layoutIfNeeded()
-        installSearchFieldWidthPreferences()
     }
 
     func setQuery(_ query: String) {
-        if query.isEmpty {
-            guard (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-            searchItem.searchField.stringValue = ""
-            publishQuery("")
-            if !isSearchFieldEditing {
-                searchItem.endSearchInteraction()
-                isSearchExpanded = false
-            }
+        guard (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true else {
             return
         }
-        let editor = searchItem.searchField.currentEditor() as? NSTextView
-        if editor?.hasMarkedText() != true, searchItem.searchField.stringValue != query {
+        if searchItem.searchField.stringValue != query {
             searchItem.searchField.stringValue = query
         }
         publishQuery(query)
-        isSearchExpanded = true
     }
 
     func detach() {
@@ -98,10 +84,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
             window?.toolbar = nil
         }
         (window as? DashboardSearchWindow)?.searchController = nil
-        searchFieldMaxWidthConstraint?.isActive = false
-        searchFieldMaxWidthConstraint = nil
-        isSearchFieldEditing = false
-        isSearchExpanded = false
+        isSearchEditing = false
         toolbar = nil
         window = nil
     }
@@ -118,23 +101,20 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     @objc func beginSearch(_ sender: Any? = nil) {
-        guard searchItem.searchField.window === window else { return }
-        searchItem.beginSearchInteraction()
-        if hostsSearchResponder(window?.firstResponder) {
-            isSearchFieldEditing = true
+        if toolbar?.isVisible == false {
+            toolbar?.isVisible = true
         }
-        isSearchExpanded = true
+        searchItem.beginSearchInteraction()
     }
 
-    @objc func endSearch(_ sender: Any? = nil) {
+    @objc func cancelSearch(_ sender: Any? = nil) {
         guard !isEndingSearch else { return }
         isEndingSearch = true
+        defer { isEndingSearch = false }
         searchItem.searchField.stringValue = ""
         publishQuery("")
-        isSearchFieldEditing = false
         searchItem.endSearchInteraction()
-        isSearchExpanded = false
-        isEndingSearch = false
+        isSearchEditing = false
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -156,8 +136,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) {
-        isSearchFieldEditing = true
-        isSearchExpanded = true
+        isSearchEditing = true
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -171,11 +150,8 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         if (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing == true {
             return
         }
-        isSearchFieldEditing = false
+        isSearchEditing = false
         publishQuery(field.stringValue)
-        if searchQuery.isEmpty {
-            collapseAfterEditing(field)
-        }
     }
 
     func searchFieldDidEndSearching(_ sender: NSSearchField) {
@@ -183,11 +159,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
               (sender.currentEditor() as? NSTextView)?.hasMarkedText() != true,
               (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing != true else { return }
         publishQuery(sender.stringValue)
-        if sender.stringValue.isEmpty {
-            DispatchQueue.main.async { [weak self] in self?.endSearch() }
-        } else {
-            collapseAfterEditing(sender)
-        }
     }
 
     func control(_ control: NSControl, textShouldEndEditing fieldEditor: NSText) -> Bool {
@@ -197,14 +168,14 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         guard commandSelector == #selector(NSResponder.cancelOperation(_:)),
               !textView.hasMarkedText() else { return false }
-        endSearch(nil)
+        cancelSearch(nil)
         return true
     }
 
     private func configureSearchItem() {
         updateSearchItemLabels()
-        searchItem.resignsFirstResponderWithCancel = true
         searchItem.preferredWidthForSearchField = Self.expandedSearchFieldWidth
+        searchItem.resignsFirstResponderWithCancel = true
         searchItem.searchField.sendsSearchStringImmediately = true
         searchItem.searchField.sendsWholeSearchString = false
         searchItem.searchField.delegate = self
@@ -219,32 +190,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         searchItem.paletteLabel = label
         searchItem.toolTip = label
         searchItem.searchField.placeholderString = label
-    }
-
-    /// A required maximum keeps the expanded width at
-    /// `preferredWidthForSearchField`. It stays active for the session.
-    private func installSearchFieldWidthPreferences() {
-        let field = searchItem.searchField
-        searchItem.preferredWidthForSearchField = Self.expandedSearchFieldWidth
-        if searchFieldMaxWidthConstraint == nil {
-            let maximum = field.widthAnchor.constraint(
-                lessThanOrEqualToConstant: Self.expandedSearchFieldWidth
-            )
-            maximum.isActive = true
-            searchFieldMaxWidthConstraint = maximum
-        } else {
-            searchFieldMaxWidthConstraint?.isActive = true
-        }
-    }
-
-    private func collapseAfterEditing(_ field: NSSearchField) {
-        DispatchQueue.main.async { [weak self, weak field] in
-            guard let self, self.searchQuery.isEmpty,
-                  field?.currentEditor() == nil else { return }
-            self.isSearchFieldEditing = false
-            self.searchItem.endSearchInteraction()
-            self.isSearchExpanded = false
-        }
     }
 
     private func publishQuery(_ raw: String) {
@@ -281,8 +226,9 @@ final class DashboardSearchWindow: NSWindow {
     override func cancelOperation(_ sender: Any?) {
         if let editor = firstResponder as? NSTextView, editor.hasMarkedText() {
             super.cancelOperation(sender)
-        } else if let searchController, searchController.isSearchExpanded {
-            searchController.endSearch(sender)
+        } else if let searchController,
+                  searchController.isSearchActive || searchController.hostsSearchResponder(firstResponder) {
+            searchController.cancelSearch(sender)
         } else {
             super.cancelOperation(sender)
         }
