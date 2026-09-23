@@ -165,6 +165,7 @@ enum DashboardPageSearch {
     static let rowIdentifier = NSUserInterfaceItemIdentifier("dashboard.settings.row")
     static let emptyStateIdentifier = NSUserInterfaceItemIdentifier("dashboard.search.emptyState")
     static let aboutContentIdentifier = NSUserInterfaceItemIdentifier("dashboard.about.content")
+    static let globalSearchGroupIdentifier = NSUserInterfaceItemIdentifier("dashboard.search.globalGroup")
     private static var searchableRowKey: UInt8 = 0
 
     enum MatchKind: Int, Comparable {
@@ -694,6 +695,7 @@ enum DashboardSettingsSearchCatalog {
 final class DashboardPageSearchFilter {
     private let hiddenBySearch = NSHashTable<NSView>.weakObjects()
     private let originalStackVisibilityPriority = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
+    private static var globalSearchCollapsedHeightKey: UInt8 = 0
 
     @discardableResult
     func apply(
@@ -724,6 +726,7 @@ final class DashboardPageSearchFilter {
         case .visibleCopy:
             matched = applyVisibleCopyFilter(query: needle, to: root)
         }
+        synchronizeGlobalSearchGroups(in: root)
         setEmptyStateHidden(matched, in: root)
         if !matched {
             hideAboutContentIfPresent(in: root)
@@ -735,6 +738,51 @@ final class DashboardPageSearchFilter {
         root.layoutSubtreeIfNeeded()
         refreshSearchSectionHeights(in: root)
         return matched
+    }
+
+    private func synchronizeGlobalSearchGroups(in root: NSView) {
+        for group in globalSearchGroups(in: root) {
+            let hasVisibleSection = containsVisibleSearchSection(in: group)
+            if hasVisibleSection {
+                _ = restoreSearchHiddenView(group)
+            } else {
+                hideForSearch(group)
+            }
+        }
+    }
+
+    private func globalSearchGroups(in view: NSView) -> [NSView] {
+        var result: [NSView] = []
+        var visited = Set<ObjectIdentifier>()
+        func visit(_ candidate: NSView) {
+            let identity = ObjectIdentifier(candidate)
+            guard visited.insert(identity).inserted else { return }
+            if candidate.identifier == DashboardPageSearch.globalSearchGroupIdentifier {
+                result.append(candidate)
+            }
+            for child in candidate.subviews {
+                visit(child)
+            }
+            if let stack = candidate as? NSStackView {
+                for arranged in stack.arrangedSubviews {
+                    visit(arranged)
+                }
+            }
+        }
+        visit(view)
+        return result
+    }
+
+    private func containsVisibleSearchSection(in view: NSView) -> Bool {
+        if let section = view as? SettingsSectionView {
+            return !DashboardSearchVisibility.isEffectivelyHidden(section)
+                && !DashboardSearchVisibility.isBusinessHidden(section)
+        }
+        var descendants = view.subviews
+        if let stack = view as? NSStackView {
+            descendants.append(contentsOf: stack.arrangedSubviews)
+        }
+        return descendants.contains { containsVisibleSearchSection(in: $0) }
     }
 
     private func refreshSearchSectionHeights(in root: NSView) {
@@ -1121,6 +1169,10 @@ final class DashboardPageSearchFilter {
     }
 
     private func collapseViewForSearch(_ view: NSView) {
+        if isGlobalSearchProjectionView(view) {
+            collapseGlobalSearchProjectionView(view)
+            return
+        }
         DashboardSearchVisibility.withSearchVisibilityMutation {
             if let stack = view.superview as? NSStackView, stack.arrangedSubviews.contains(view) {
                 if originalStackVisibilityPriority.object(forKey: view) == nil {
@@ -1137,10 +1189,66 @@ final class DashboardPageSearchFilter {
         DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
     }
 
+    private func isGlobalSearchProjectionView(_ view: NSView) -> Bool {
+        view.identifier == DashboardPageSearch.globalSearchGroupIdentifier
+            || view.superview?.identifier == DashboardPageSearch.globalSearchGroupIdentifier
+    }
+
+    private func collapseGlobalSearchProjectionView(_ view: NSView) {
+        let constraint: NSLayoutConstraint
+        if let existing = objc_getAssociatedObject(
+            view,
+            &Self.globalSearchCollapsedHeightKey
+        ) as? NSLayoutConstraint {
+            constraint = existing
+        } else {
+            constraint = view.heightAnchor.constraint(equalToConstant: 0)
+            constraint.priority = .required
+            objc_setAssociatedObject(
+                view,
+                &Self.globalSearchCollapsedHeightKey,
+                constraint,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+        }
+        DashboardSearchVisibility.withSearchVisibilityMutation {
+            view.isHidden = true
+        }
+        constraint.isActive = true
+        view.superview?.needsLayout = true
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
+    }
+
+    private func restoreGlobalSearchProjectionView(_ view: NSView) {
+        guard let constraint = objc_getAssociatedObject(
+            view,
+            &Self.globalSearchCollapsedHeightKey
+        ) as? NSLayoutConstraint else { return }
+        constraint.isActive = false
+        objc_setAssociatedObject(
+            view,
+            &Self.globalSearchCollapsedHeightKey,
+            nil,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        guard !DashboardSearchVisibility.isBusinessHidden(view) else { return }
+        DashboardSearchVisibility.withSearchVisibilityMutation {
+            view.isHidden = false
+        }
+        view.superview?.needsLayout = true
+    }
+
     @discardableResult
     private func restoreSearchHiddenView(_ view: NSView) -> NSStackView? {
         guard DashboardSearchVisibility.isSearchHidden(view) else { return nil }
         DashboardSearchVisibility.setSearchHidden(view, false)
+        if isGlobalSearchProjectionView(view) {
+            restoreGlobalSearchProjectionView(view)
+            hiddenBySearch.remove(view)
+            DashboardSearchVisibility.restoreBusinessHidden(view)
+            DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
+            return view.superview as? NSStackView
+        }
         var restoredStack: NSStackView?
         DashboardSearchVisibility.withSearchVisibilityMutation {
             if let stack = view.superview as? NSStackView,

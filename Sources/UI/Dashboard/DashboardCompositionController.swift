@@ -21,83 +21,58 @@ struct DashboardCompositionState {
     let setStatusLinks: ([StatusLink]) -> Void
 }
 
-/// Plain vertical host for cross-page search groups. Keeping groups out of an
-/// outer NSStackView prevents AppKit from detaching them while nested sections
-/// are collapsed by the search filter.
-private final class DashboardGlobalSearchResultsView: NSView {
-    private var lastGroup: NSView?
-    private var lastBottomConstraint: NSLayoutConstraint?
+/// Arranged result stacks preserve AppKit's visibility-priority collapse
+/// semantics for filtered sections and whole-page groups.
+private final class DashboardGlobalSearchResultsView: NSStackView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        orientation = .vertical
+        alignment = .leading
+        spacing = 12
+        distribution = .gravityAreas
+        detachesHiddenViews = false
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+    }
 
-    func addGroup(_ group: NSView, spacing: CGFloat) {
-        addSubview(group)
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func addGroup(_ group: NSView, spacing _: CGFloat) {
+        addArrangedSubview(group)
         group.translatesAutoresizingMaskIntoConstraints = false
-        var constraints = [
-            group.leadingAnchor.constraint(equalTo: leadingAnchor),
-            group.trailingAnchor.constraint(equalTo: trailingAnchor)
-        ]
-        if let lastGroup {
-            constraints.append(group.topAnchor.constraint(equalTo: lastGroup.bottomAnchor, constant: spacing))
-        } else {
-            constraints.append(group.topAnchor.constraint(equalTo: topAnchor))
-        }
-        lastBottomConstraint?.isActive = false
-        let bottomConstraint = group.bottomAnchor.constraint(equalTo: bottomAnchor)
-        constraints.append(bottomConstraint)
-        NSLayoutConstraint.activate(constraints)
-        lastGroup = group
-        lastBottomConstraint = bottomConstraint
+        group.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
     }
 }
 
-private final class DashboardGlobalSearchGroupView: NSView {
-    private var lastSectionHost: NSView?
-    private var lastBottomConstraint: NSLayoutConstraint?
+private final class DashboardGlobalSearchGroupView: NSStackView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        identifier = DashboardPageSearch.globalSearchGroupIdentifier
+        orientation = .vertical
+        alignment = .leading
+        spacing = 28
+        distribution = .gravityAreas
+        detachesHiddenViews = false
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func addPage(_ page: NSView) {
-        let host = NSView()
-        host.translatesAutoresizingMaskIntoConstraints = false
-        host.addSubview(page)
+        addArrangedSubview(page)
         page.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            page.topAnchor.constraint(equalTo: host.topAnchor),
-            page.bottomAnchor.constraint(equalTo: host.bottomAnchor)
-        ])
-        addHost(host, spacing: 0)
+        page.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
     }
 
-    func addSection(_ section: NSView, spacing: CGFloat) {
-        let host = NSView()
-        host.translatesAutoresizingMaskIntoConstraints = false
-        host.addSubview(section)
+    func addSection(_ section: NSView, spacing _: CGFloat) {
+        addArrangedSubview(section)
         section.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            section.leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            section.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            section.topAnchor.constraint(equalTo: host.topAnchor),
-            section.bottomAnchor.constraint(equalTo: host.bottomAnchor)
-        ])
-        addHost(host, spacing: spacing)
-    }
-
-    private func addHost(_ host: NSView, spacing: CGFloat) {
-        addSubview(host)
-        var constraints = [
-            host.leadingAnchor.constraint(equalTo: leadingAnchor),
-            host.trailingAnchor.constraint(equalTo: trailingAnchor)
-        ]
-        if let lastSectionHost {
-            constraints.append(host.topAnchor.constraint(equalTo: lastSectionHost.bottomAnchor, constant: spacing))
-        } else {
-            constraints.append(host.topAnchor.constraint(equalTo: topAnchor))
-        }
-        lastBottomConstraint?.isActive = false
-        let bottomConstraint = host.bottomAnchor.constraint(equalTo: bottomAnchor)
-        constraints.append(bottomConstraint)
-        NSLayoutConstraint.activate(constraints)
-        lastSectionHost = host
-        lastBottomConstraint = bottomConstraint
+        section.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
     }
 }
 
