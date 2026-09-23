@@ -436,7 +436,7 @@ final class DashboardWindowControllerTests: XCTestCase {
             encoding: .utf8
         )
         let start = try XCTUnwrap(
-            source.range(of: "private func replacePage(makePage: () -> NSViewController) {")
+            source.range(of: "private func replacePage(")
         )
         let end = try XCTUnwrap(source.range(of: "private func detachPageContainerFromParent()"))
         let replacePageSource = String(source[start.lowerBound..<end.lowerBound])
