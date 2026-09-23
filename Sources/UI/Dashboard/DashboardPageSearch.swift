@@ -181,10 +181,22 @@ enum DashboardPageSearch {
 
     struct Match: Equatable, Comparable {
         let kind: MatchKind
+        let relevance: Double
+
+        init(kind: MatchKind, relevance: Double = 0) {
+            self.kind = kind
+            self.relevance = relevance
+        }
 
         static func < (lhs: Match, rhs: Match) -> Bool {
-            lhs.kind < rhs.kind
+            if lhs.kind != rhs.kind { return lhs.kind < rhs.kind }
+            return lhs.relevance < rhs.relevance
         }
+    }
+
+    private struct WeightedText {
+        let value: String
+        let weight: Double
     }
 
     static func matches(_ text: String, query: String) -> Bool {
@@ -194,6 +206,7 @@ enum DashboardPageSearch {
     static func bestMatch(
         texts: [String],
         aliases: [String] = [],
+        supportingTexts: [String] = [],
         query: String
     ) -> Match? {
         let normalizedQuery = normalize(query)
@@ -201,44 +214,76 @@ enum DashboardPageSearch {
         let queryTokens = tokens(normalizedQuery)
         guard !queryTokens.isEmpty else { return nil }
 
-        let normalizedTexts = texts.map(normalize).filter { !$0.isEmpty }
-        let normalizedAliases = aliases.map(normalize).filter { !$0.isEmpty }
+        let primary = texts.map { WeightedText(value: normalize($0), weight: 1) }
+            .filter { !$0.value.isEmpty }
+        let aliasSources = aliases.map { WeightedText(value: normalize($0), weight: 0.88) }
+            .filter { !$0.value.isEmpty }
+        let supporting = supportingTexts.map { WeightedText(value: normalize($0), weight: 0.58) }
+            .filter { !$0.value.isEmpty }
+        let queryParts = queryTokens.map(normalize)
+
         if let direct = bestDirectMatch(
-            values: normalizedTexts,
+            values: primary,
             query: normalizedQuery,
-            queryTokens: queryTokens
+            queryTokens: queryParts,
+            kind: nil
         ) {
             return direct
         }
-        if let alias = bestDirectMatch(
-            values: normalizedAliases,
+        if let direct = bestDirectMatch(
+            values: aliasSources,
             query: normalizedQuery,
-            queryTokens: queryTokens
+            queryTokens: queryParts,
+            kind: .alias
         ) {
-            return Match(kind: .alias)
+            return direct
         }
-        if queryTokens.count > 1,
-           queryTokens.allSatisfy({ token in
-               (normalizedTexts + normalizedAliases)
-                   .joined(separator: " ")
-                   .localizedStandardContains(token)
+        if let direct = bestDirectMatch(
+            values: supporting,
+            query: normalizedQuery,
+            queryTokens: queryParts,
+            kind: nil
+        ) {
+            return direct
+        }
+        let allDirectSources = primary + aliasSources + supporting
+        if queryParts.count > 1,
+           queryParts.allSatisfy({ token in
+               allDirectSources.contains { $0.value.localizedStandardContains(token) }
            }) {
-            return Match(kind: .keywords)
+            return Match(
+                kind: .keywords,
+                relevance: queryParts.reduce(0) { partial, token in
+                    partial + (allDirectSources
+                        .filter { $0.value.localizedStandardContains(token) }
+                        .map(\.weight).max() ?? 0)
+                } / Double(queryParts.count)
+            )
         }
         guard queryTokens.allSatisfy({ token in
             token.unicodeScalars.allSatisfy { $0.isASCII && $0.properties.isAlphabetic }
         }) else {
             return nil
         }
-        let words = (normalizedTexts + normalizedAliases)
-            .flatMap { fuzzyWords(in: $0) }
-        guard !words.isEmpty,
-              queryTokens.allSatisfy({ token in
-                  words.contains { fuzzyDistance(token, $0) <= fuzzyDistanceLimit(for: token) }
-              }) else {
+        let fuzzyScores = queryParts.map { token in
+            allDirectSources.compactMap { source -> Double? in
+                let editScore = fuzzyWords(in: source.value).compactMap { word -> Double? in
+                    let distance = fuzzyDistance(token, word)
+                    guard distance <= fuzzyDistanceLimit(for: token) else { return nil }
+                    let denominator = Double(max(token.count, word.count))
+                    return denominator == 0 ? 0 : 1 - Double(distance) / denominator
+                }.max() ?? 0
+                let sequenceScore = contiguousChunkSimilarity(token, in: source.value)
+                let boundaryBonus = source.value.localizedStandardContains(token) ? 0.08 : 0
+                return max(editScore, sequenceScore) > 0
+                    ? min(1, max(editScore, sequenceScore) + boundaryBonus) * source.weight
+                    : nil
+            }.max() ?? 0
+        }
+        guard fuzzyScores.allSatisfy({ $0 >= 0.55 }) else {
             return nil
         }
-        return Match(kind: .fuzzy)
+        return Match(kind: .fuzzy, relevance: fuzzyScores.reduce(0, +) / Double(fuzzyScores.count))
     }
 
     static func normalize(_ text: String) -> String {
@@ -257,24 +302,83 @@ enum DashboardPageSearch {
     }
 
     private static func bestDirectMatch(
-        values: [String],
+        values: [WeightedText],
         query: String,
-        queryTokens: [String]
+        queryTokens: [String],
+        kind: MatchKind?
     ) -> Match? {
         guard !values.isEmpty else { return nil }
-        if values.contains(where: { $0 == query }) {
-            return Match(kind: .exact)
+        if let exact = values.filter({ $0.value == query }).max(by: { $0.weight < $1.weight }) {
+            return Match(kind: kind ?? .exact, relevance: exact.weight * 1.25)
         }
-        if values.contains(where: { $0.localizedStandardContains(query) }) {
-            return Match(kind: .contains)
-        }
-        if queryTokens.count > 1,
-           queryTokens.allSatisfy({ token in
-               values.joined(separator: " ").localizedStandardContains(token)
-           }) {
-            return Match(kind: .keywords)
+        let compactQuery = query.filter { !$0.isWhitespace }
+        if let contains = values.filter({ source in
+            source.value.localizedStandardContains(query)
+                || source.value.filter { !$0.isWhitespace }.localizedStandardContains(compactQuery)
+        }).map({ source in
+            let compactValue = source.value.filter { !$0.isWhitespace }
+            return source.weight * (
+                1
+                    + directPositionBonus(compactQuery, in: compactValue)
+                    + min(0.35, contiguousChunkSimilarity(compactQuery, in: compactValue))
+            )
+        }).max() {
+            return Match(kind: kind ?? .contains, relevance: contains)
         }
         return nil
+    }
+
+    private static func directPositionBonus(_ query: String, in source: String) -> Double {
+        guard let range = source.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) else {
+            return 0
+        }
+        let offset = source.distance(from: source.startIndex, to: range.lowerBound)
+        let atWordBoundary = range.lowerBound == source.startIndex
+            || !source[source.index(before: range.lowerBound)].isLetter
+        return (atWordBoundary ? 0.12 : 0) + (offset == 0 ? 0.12 : 0)
+    }
+
+    /// PCL2's matcher scores ordered runs of consecutive characters and
+    /// rewards longer runs. This small, bounded variant complements edit
+    /// distance for compact or partially typed words without fuzzy-matching
+    /// one- and two-character inputs.
+    private static func contiguousChunkSimilarity(_ query: String, in source: String) -> Double {
+        let needle = Array(query.filter { !$0.isWhitespace })
+        var remaining = Array(source.filter { !$0.isWhitespace })
+        guard needle.count >= 3, !remaining.isEmpty else { return 0 }
+        let sourceLength = remaining.count
+        var queryIndex = 0
+        var total = 0.0
+
+        while queryIndex < needle.count {
+            var bestLength = 0
+            var bestStart = 0
+            for start in remaining.indices {
+                var length = 0
+                while queryIndex + length < needle.count,
+                      start + length < remaining.count,
+                      needle[queryIndex + length] == remaining[start + length] {
+                    length += 1
+                }
+                if length > bestLength {
+                    bestLength = length
+                    bestStart = start
+                }
+            }
+            guard bestLength > 0 else {
+                queryIndex += 1
+                continue
+            }
+            let runWeight = pow(1.4, Double(3 + bestLength)) - 3.6
+            let positionBonus = 1 + 0.3 * Double(max(0, 3 - abs(queryIndex - bestStart)))
+            total += runWeight * positionBonus
+            remaining.removeSubrange(bestStart..<(bestStart + bestLength))
+            queryIndex += bestLength
+        }
+        let shortQueryFactor = needle.count <= 2 ? Double(3 - needle.count) : 1
+        return (total / Double(needle.count))
+            * (3 / sqrt(Double(sourceLength + 15)))
+            * shortQueryFactor
     }
 
     private static func fuzzyWords(in text: String) -> [String] {
@@ -371,6 +475,41 @@ enum DashboardSettingsSearchCatalog {
         )
     ]
 
+    private static let localizedSearchCopy: [DashboardSection: [String]] = {
+        let bundles = Bundle.main.localizations.compactMap { localization -> Bundle? in
+            guard let path = Bundle.main.path(forResource: localization, ofType: "lproj") else {
+                return nil
+            }
+            return Bundle(path: path)
+        }
+        let interpolationPattern = try? NSRegularExpression(
+            pattern: "%([0-9]+\\$)?[-+0-9.#]*[a-zA-Z@]"
+        )
+        return Dictionary(uniqueKeysWithValues: DashboardSection.allCases.map { section in
+            let prefix = localizationPrefix(for: section)
+            var values: [String] = []
+            for key in LocalizationKey.allCases where key.rawValue.hasPrefix(prefix) {
+                for bundle in bundles {
+                    let localized = bundle.localizedString(
+                        forKey: key.rawValue,
+                        value: "",
+                        table: "Localizable"
+                    )
+                    guard !localized.isEmpty else { continue }
+                    let range = NSRange(localized.startIndex..<localized.endIndex, in: localized)
+                    let copy = interpolationPattern?.stringByReplacingMatches(
+                        in: localized,
+                        range: range,
+                        withTemplate: " "
+                    ) ?? localized
+                    let trimmed = copy.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty { values.append(trimmed) }
+                }
+            }
+            return (section, Array(Set(values)))
+        })
+    }()
+
     static func aliases(for title: String) -> [String] {
         definition(for: title)?.aliases ?? []
     }
@@ -396,7 +535,23 @@ enum DashboardSettingsSearchCatalog {
         return values
     }
 
+    private static func localizationPrefix(for section: DashboardSection) -> String {
+        switch section {
+        case .general: return "dashboard.general.and.refresh.pages."
+        case .menuBar: return "dashboard.menu.bar.page."
+        case .menu: return "dashboard.menu.page."
+        case .advanced: return "dashboard.advanced.page."
+        case .about: return "dashboard.about.page."
+        }
+    }
+
     static func matchingSections(query: String) -> [DashboardSection] {
+        rankedSections(query: query).map(\.section)
+    }
+
+    static func rankedSections(
+        query: String
+    ) -> [(section: DashboardSection, match: DashboardPageSearch.Match)] {
         var scored: [(section: DashboardSection, match: DashboardPageSearch.Match)] = []
         for section in DashboardSection.allCases {
             if let match = match(for: section, query: query) {
@@ -408,22 +563,16 @@ enum DashboardSettingsSearchCatalog {
                 if lhs.match != rhs.match { return lhs.match > rhs.match }
                 return lhs.section.rawValue < rhs.section.rawValue
             }
-            .map(\.section)
     }
 
     static func match(for section: DashboardSection, query: String) -> DashboardPageSearch.Match? {
-        var best: DashboardPageSearch.Match?
-        for title in titles(for: section) {
-            let candidate = DashboardPageSearch.bestMatch(
-                texts: [title] + canonicalValues(for: title),
-                aliases: aliases(for: title),
-                query: query
-            )
-            if let candidate, best == nil || candidate > best! {
-                best = candidate
-            }
-        }
-        return best
+        let titles = [section.title] + keys(for: section).map { tr($0) }
+        return DashboardPageSearch.bestMatch(
+            texts: titles + titles.flatMap(canonicalValues(for:)),
+            aliases: titles.flatMap(aliases(for:)),
+            supportingTexts: localizedSearchCopy[section, default: []] + extraTitles(for: section),
+            query: query
+        )
     }
 
     static func firstMatchingSection(query: String) -> DashboardSection? {
@@ -776,16 +925,18 @@ final class DashboardPageSearchFilter {
         sectionHeading: String?
     ) -> DashboardPageSearch.Match? {
         let title = rowTitle(of: row)
-        var values = [title] + DashboardSettingsSearchCatalog.canonicalValues(for: title)
+        let values = [title] + DashboardSettingsSearchCatalog.canonicalValues(for: title)
+        var supportingValues: [String] = []
         if let sectionHeading, !sectionHeading.isEmpty {
-            values.append(sectionHeading)
+            supportingValues.append(sectionHeading)
         }
         if includeVisibleCopy {
-            values.append(contentsOf: visibleCopy(in: row))
+            supportingValues.append(contentsOf: visibleCopy(in: row))
         }
         return DashboardPageSearch.bestMatch(
             texts: values,
             aliases: DashboardSettingsSearchCatalog.aliases(for: title),
+            supportingTexts: supportingValues,
             query: query
         )
     }

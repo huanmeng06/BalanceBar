@@ -287,6 +287,7 @@ final class SettingsRowView: NSView {
     private var wrappingCommitWorkItem: DispatchWorkItem?
     private var isPerformingLayout = false
     private var accessoryNaturalWidthConstraint: NSLayoutConstraint?
+    private var searchNaturalHeightConstraint: NSLayoutConstraint?
     private var labelsMinimumHeightConstraint: NSLayoutConstraint?
 
     init(
@@ -329,6 +330,19 @@ final class SettingsRowView: NSView {
         }
     }
 
+    private var hasSearchHiddenSiblingInOwningCard: Bool {
+        var ancestor = superview
+        while let view = ancestor {
+            if let card = view as? SettingsSectionCardView {
+                return card.arrangedSubviews.contains { sibling in
+                    sibling !== self && DashboardSearchVisibility.isSearchHidden(sibling)
+                }
+            }
+            ancestor = view.superview
+        }
+        return false
+    }
+
     static func enclosing(_ view: NSView) -> SettingsRowView? {
         var current: NSView? = view
         while let candidate = current {
@@ -352,8 +366,29 @@ final class SettingsRowView: NSView {
         contentStack.needsLayout = true
         contentStack.layoutSubtreeIfNeeded()
         recordSolvedWrappingWidthIfNeeded()
+        updateSearchNaturalHeightConstraint()
         isPerformingLayout = false
         scheduleWrappingHeightCommitIfNeeded()
+    }
+
+    private func updateSearchNaturalHeightConstraint() {
+        guard hasSearchHiddenSiblingInOwningCard else {
+            searchNaturalHeightConstraint?.isActive = false
+            return
+        }
+
+        let naturalHeight = hostedCardHeight()
+        if let searchNaturalHeightConstraint {
+            if abs(searchNaturalHeightConstraint.constant - naturalHeight) > 0.5 {
+                searchNaturalHeightConstraint.constant = naturalHeight
+            }
+            searchNaturalHeightConstraint.isActive = true
+            return
+        }
+
+        let constraint = heightAnchor.constraint(equalToConstant: naturalHeight)
+        constraint.isActive = true
+        searchNaturalHeightConstraint = constraint
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {

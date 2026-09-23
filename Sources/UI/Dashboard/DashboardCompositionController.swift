@@ -502,6 +502,10 @@ final class DashboardCompositionController {
             applyMountedPageSearch()
             return
         }
+        if selectedProviderID != nil || section == .about {
+            applyMountedPageSearch()
+            return
+        }
         let currentMatch = pageSearchFilter.pageMatch(
             query: needle,
             in: pageSession.currentHostedPageContent(),
@@ -509,31 +513,25 @@ final class DashboardCompositionController {
             mode: currentSearchMode()
         )
         let originSection = section
-        let originProviderID = selectedProviderID
-        let candidates = DashboardSettingsSearchCatalog.matchingSections(query: needle)
-            .filter { originProviderID != nil || $0 != originSection }
-        let strongestCatalogMatch = candidates.compactMap {
-            DashboardSettingsSearchCatalog.match(for: $0, query: needle)
-        }.max()
-        if let currentMatch,
-           strongestCatalogMatch == nil || currentMatch >= strongestCatalogMatch! {
-            applyMountedPageSearch()
-            return
+        var rankedCandidates = DashboardSettingsSearchCatalog.rankedSections(query: needle)
+        if rankedCandidates.isEmpty, let currentMatch {
+            rankedCandidates = [(originSection, currentMatch)]
         }
 
-        for destination in candidates {
+        for (destination, _) in rankedCandidates {
+            if destination == originSection {
+                guard currentMatch != nil else { continue }
+                applyMountedPageSearch()
+                return
+            }
             pageSession.showSection(destination)
             if currentPageContainsSearchMatch(needle) {
                 return
             }
         }
 
-        if selectedProviderID != originProviderID || section != originSection {
-            if let originProviderID {
-                pageSession.showProvider(originProviderID)
-            } else {
-                pageSession.showSection(originSection)
-            }
+        if section != originSection {
+            pageSession.showSection(originSection)
         }
         applyMountedPageSearch()
     }

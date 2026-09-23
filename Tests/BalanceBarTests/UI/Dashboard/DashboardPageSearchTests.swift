@@ -324,6 +324,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(DashboardPageSearch.matches("Language", query: "  LANGUAGE  "))
         XCTAssertTrue(DashboardPageSearch.matches("Language", query: "Ｌａｎｇｕａｇｅ"))
         XCTAssertTrue(DashboardPageSearch.matches("Menu Bar Font Size", query: "font menu"))
+        XCTAssertTrue(DashboardPageSearch.matches("Menu Bar Font Size", query: "menubarfont"))
         XCTAssertTrue(
             DashboardPageSearch.bestMatch(
                 texts: ["Launch at Login"],
@@ -367,8 +368,10 @@ final class DashboardPageSearchTests: XCTestCase {
     }
 
     func testQuotaSearchFindsDigitsInDescriptionAndUnselectedChoices() {
+        let fiveHourQuota = tr(.keyDashboardMenuBarPageFiveHourQuota)
+        let sevenDayQuota = tr(.keyDashboardMenuBarPageSevenDayQuota)
         let options = NSPopUpButton()
-        options.addItems(withTitles: ["5 小时额度", "7 日额度"])
+        options.addItems(withTitles: [fiveHourQuota, sevenDayQuota])
         let quota = SettingsRowView(
             title: "优先显示额度",
             detail: "选择菜单栏显示的额度",
@@ -379,7 +382,9 @@ final class DashboardPageSearchTests: XCTestCase {
         let root = DashboardSettingsComponents.makeSettingsPageContent([section])
         let filter = DashboardPageSearchFilter()
 
-        for query in ["5", "5 小时额度", "7", "7 日额度"] {
+        XCTAssertTrue(DashboardSettingsSearchCatalog.matchingSections(query: "5").contains(.menuBar))
+        XCTAssertTrue(DashboardSettingsSearchCatalog.matchingSections(query: "7").contains(.menuBar))
+        for query in [fiveHourQuota, sevenDayQuota] {
             XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: query), .menuBar)
             XCTAssertTrue(filter.apply(query: query, to: root, pageTitle: "菜单栏", mode: .titles))
             XCTAssertFalse(isCollapsedForSearch(quota), query)
@@ -393,6 +398,107 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(filter.apply(query: "", to: root, pageTitle: "菜单栏", mode: .titles))
         XCTAssertTrue(quota.isHidden)
         XCTAssertFalse(other.isHidden)
+    }
+
+    func testSettingsSearchResultsDoNotDependOnStartingSection() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-global-search.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+
+        for query in ["5", "7", "font menu", "langauge", "a"] {
+            composition.showSection(.general)
+            composition.applySearchQueryForTesting(query)
+            window.layoutIfNeeded()
+            let generalStartSection = composition.section
+            let generalStartRows = visibleSearchableRowTitles(
+                in: composition.currentHostedPageContentForTesting()
+            )
+
+            composition.applySearchQueryForTesting("")
+            composition.showSection(.menuBar)
+            composition.applySearchQueryForTesting(query)
+            window.layoutIfNeeded()
+            XCTAssertEqual(composition.section, generalStartSection, "query: \(query)")
+            XCTAssertEqual(
+                visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting()),
+                generalStartRows,
+                "query: \(query)"
+            )
+        }
+    }
+
+    func testSearchDoesNotExpandRefreshIntervalPopupsOrTheirRow() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-refresh-layout.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 705, height: 509))
+
+        func settleLayout() {
+            for _ in 0..<3 {
+                window.layoutIfNeeded()
+                composition.currentHostedPageContentForTesting().layoutSubtreeIfNeeded()
+                SettingsRowView.flushPendingWrappingHeightCommits(
+                    in: composition.currentHostedPageContentForTesting()
+                )
+            }
+        }
+        settleLayout()
+
+        let root = composition.currentHostedPageContentForTesting()
+        let row = try XCTUnwrap(settingsRow(
+            titled: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
+            in: root
+        ))
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(row))
+        let active = try XCTUnwrap(firstDescendant(of: row) {
+            $0.identifier?.rawValue == "codexUsageRefreshInterval"
+        } as? NSPopUpButton)
+        let trailing = try XCTUnwrap(firstDescendant(of: row) {
+            $0.identifier?.rawValue == "postCodexRefreshDuration"
+        } as? NSPopUpButton)
+        let originalPopupSizes = [active.frame.size, trailing.frame.size]
+        let originalRowHeight = row.frame.height
+        let originalCardHeight = section.cardView.frame.height
+        let originalRowWidth = row.bounds.width
+        let originalContentOrientation = row.contentStack.orientation
+        let originalDetailWidth = row.detailLabel.preferredMaxLayoutWidth
+        let originalDetailHeight = row.detailLabel.frame.height
+
+        XCTAssertLessThan(active.frame.width, 180)
+        XCTAssertLessThan(trailing.frame.width, 180)
+        XCTAssertLessThan(originalRowHeight, 220)
+
+        composition.applySearchQueryForTesting("5")
+        settleLayout()
+        let adaptiveState = row.accessoryView as? DashboardAdaptiveControlsStackView
+        let resultRow = settingsRow(
+            titled: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
+            in: composition.currentHostedPageContentForTesting()
+        )
+
+        XCTAssertFalse(isCollapsedForSearch(row))
+        XCTAssertEqual(active.frame.size.width, originalPopupSizes[0].width, accuracy: 1)
+        XCTAssertEqual(active.frame.size.height, originalPopupSizes[0].height, accuracy: 1)
+        XCTAssertEqual(trailing.frame.size.width, originalPopupSizes[1].width, accuracy: 1)
+        XCTAssertEqual(trailing.frame.size.height, originalPopupSizes[1].height, accuracy: 1)
+        XCTAssertEqual(
+            row.frame.height,
+            originalRowHeight,
+            accuracy: 2,
+            "section=\(composition.section), samePageRow=\(String(describing: resultRow?.frame)), row width \(originalRowWidth)->\(row.bounds.width), content \(row.contentStack.frame), orientation \(originalContentOrientation.rawValue)->\(row.contentStack.orientation.rawValue), intrinsic=\(row.intrinsicContentSize.height), detail width \(originalDetailWidth)->\(row.detailLabel.preferredMaxLayoutWidth), detail height \(originalDetailHeight)->\(row.detailLabel.frame.height), labels \(row.labelsStack.frame), accessory \(String(describing: row.accessoryView?.frame)), adaptiveVertical=\(String(describing: adaptiveState?.stacksControlsVertically))"
+        )
+        XCTAssertLessThan(section.cardView.frame.height, originalCardHeight - 40)
     }
 
     func testToolbarSearchFiltersTheCurrentPageAndKeepsTheQueryOnPageChange() throws {
@@ -1451,6 +1557,22 @@ private func searchableRows(in root: NSView) -> [NSView] {
         rows.append(contentsOf: searchableRows(in: child))
     }
     return rows
+}
+
+private func visibleSearchableRowTitles(in root: NSView) -> [String] {
+    func visibleRows(in view: NSView) -> [String] {
+        guard view.identifier != DashboardPageSearch.emptyStateIdentifier,
+              !isCollapsedForSearch(view) else { return [] }
+        var titles: [String] = []
+        if let row = view as? SettingsRowView {
+            titles.append(row.titleLabel.stringValue)
+        }
+        for child in view.subviews {
+            titles.append(contentsOf: visibleRows(in: child))
+        }
+        return titles
+    }
+    return visibleRows(in: root).sorted()
 }
 
 private func assertSectionSeparatorsAreValid(_ section: SettingsSectionView) {
