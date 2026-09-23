@@ -697,6 +697,7 @@ final class DashboardPageSearchFilter {
     private let originalStackVisibilityPriority = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
     private let originalStackParent = NSMapTable<NSView, NSStackView>.strongToWeakObjects()
     private let originalStackIndex = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
+    private let originalStackWidthConstraint = NSMapTable<NSView, NSLayoutConstraint>.strongToStrongObjects()
 
     @discardableResult
     func apply(
@@ -1176,6 +1177,13 @@ final class DashboardPageSearchFilter {
                 if let index = stack.arrangedSubviews.firstIndex(where: { $0 === view }) {
                     originalStackIndex.setObject(NSNumber(value: index), forKey: view)
                 }
+                if let widthConstraint = fullWidthConstraint(for: view, in: stack) {
+                    originalStackWidthConstraint.setObject(widthConstraint, forKey: view)
+                } else if shouldPreserveFullWidth(for: view, in: stack) {
+                    let widthConstraint = view.widthAnchor.constraint(equalTo: stack.widthAnchor)
+                    widthConstraint.isActive = true
+                    originalStackWidthConstraint.setObject(widthConstraint, forKey: view)
+                }
                 if originalStackVisibilityPriority.object(forKey: view) == nil {
                     originalStackVisibilityPriority.setObject(
                         NSNumber(value: stack.visibilityPriority(for: view).rawValue),
@@ -1208,6 +1216,7 @@ final class DashboardPageSearchFilter {
             }()
             if let stack,
                let stored = originalStackVisibilityPriority.object(forKey: view) {
+                originalStackWidthConstraint.object(forKey: view)?.isActive = true
                 stack.setVisibilityPriority(
                     NSStackView.VisibilityPriority(rawValue: stored.floatValue),
                     for: view
@@ -1218,6 +1227,7 @@ final class DashboardPageSearchFilter {
         originalStackVisibilityPriority.removeObject(forKey: view)
         originalStackParent.removeObject(forKey: view)
         originalStackIndex.removeObject(forKey: view)
+        originalStackWidthConstraint.removeObject(forKey: view)
         hiddenBySearch.remove(view)
         DashboardSearchVisibility.restoreBusinessHidden(view)
         DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
@@ -1235,6 +1245,7 @@ final class DashboardPageSearchFilter {
         originalStackVisibilityPriority.removeAllObjects()
         originalStackParent.removeAllObjects()
         originalStackIndex.removeAllObjects()
+        originalStackWidthConstraint.removeAllObjects()
         for stack in stacks.allObjects {
             syncSeparatorsAfterRestore(in: stack)
         }
@@ -1257,6 +1268,30 @@ final class DashboardPageSearchFilter {
             }
             DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
         }
+    }
+
+    private func fullWidthConstraint(for view: NSView, in stack: NSStackView) -> NSLayoutConstraint? {
+        (view.constraints + stack.constraints).first { constraint in
+            guard constraint.relation == .equal,
+                  constraint.firstAttribute == .width,
+                  constraint.secondAttribute == .width,
+                  abs(constraint.multiplier - 1) < 0.001,
+                  abs(constraint.constant) < 0.001 else {
+                return false
+            }
+            let first = constraint.firstItem as AnyObject?
+            let second = constraint.secondItem as AnyObject?
+            return (first === view && second === stack)
+                || (first === stack && second === view)
+        }
+    }
+
+    private func shouldPreserveFullWidth(for view: NSView, in stack: NSStackView) -> Bool {
+        view is SettingsSectionView
+            || view.identifier == DashboardPageSearch.sectionIdentifier
+            || view.identifier == DashboardPageSearch.globalSearchGroupIdentifier
+            || stack.identifier == DashboardPageSearch.globalSearchGroupIdentifier
+            || stack is SettingsSectionCardView
     }
 
     private func setEmptyStateHidden(_ hidden: Bool, in root: NSView) {

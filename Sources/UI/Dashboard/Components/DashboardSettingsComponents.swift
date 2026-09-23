@@ -61,6 +61,7 @@ enum DashboardSettingsLayoutMetrics {
 }
 
 enum DashboardSettingsComponents {
+    static let settingsSectionSpacing: CGFloat = 28
     static func invalidateHostedSettingsRowHeight(for view: NSView) {
         view.invalidateIntrinsicContentSize()
         view.needsLayout = true
@@ -301,7 +302,7 @@ enum DashboardSettingsComponents {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 28
+        stack.spacing = settingsSectionSpacing
         stack.distribution = .gravityAreas
         stack.translatesAutoresizingMaskIntoConstraints = false
         // Horizontal width belongs to the scroll document, not to whichever

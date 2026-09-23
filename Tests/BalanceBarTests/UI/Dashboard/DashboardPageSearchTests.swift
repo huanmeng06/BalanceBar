@@ -38,8 +38,17 @@ final class DashboardPageSearchTests: XCTestCase {
             window.layoutIfNeeded()
             window.displayIfNeeded()
             XCTAssertEqual(slot.preferredWidthForSearchField, DashboardToolbarController.expandedSearchFieldWidth)
+            XCTAssertFalse(field.sendsSearchStringImmediately)
+            XCTAssertTrue(field.sendsWholeSearchString)
             field.stringValue = "Language"
             controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+            XCTAssertEqual(controller.draftQuery, "Language")
+            XCTAssertEqual(controller.searchQuery, "")
+            _ = NSApp.sendAction(
+                try XCTUnwrap(field.action),
+                to: field.target,
+                from: field
+            )
             XCTAssertEqual(controller.searchQuery, "Language")
             controller.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification, object: field))
             await drainMainQueue()
@@ -59,7 +68,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(queries, ["Language", "", "Language", ""])
     }
 
-    func testDeletingLastCharacterStaysExpandedUntilFocusLeaves() async throws {
+    func testDeletingLastCharacterKeepsCommittedQueryUntilCancel() async throws {
         let controller = DashboardToolbarController()
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 880, height: 600),
@@ -82,10 +91,13 @@ final class DashboardPageSearchTests: XCTestCase {
         controller.setQuery("a")
         field.stringValue = ""
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
-        XCTAssertEqual(controller.searchQuery, "")
+        XCTAssertEqual(controller.draftQuery, "")
+        XCTAssertEqual(controller.searchQuery, "a")
         XCTAssertTrue(controller.isSearchActive)
         controller.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification, object: field))
         await drainMainQueue()
+        XCTAssertTrue(controller.isSearchActive)
+        controller.cancelSearch()
         XCTAssertFalse(controller.isSearchActive)
     }
 
@@ -162,6 +174,8 @@ final class DashboardPageSearchTests: XCTestCase {
         field.editor.unmarkText()
         field.stringValue = "拼"
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        XCTAssertEqual(queries, [])
+        controller.setQuery("拼")
         XCTAssertEqual(queries, ["拼"])
     }
 
@@ -449,7 +463,7 @@ final class DashboardPageSearchTests: XCTestCase {
             group.identifier = DashboardPageSearch.globalSearchGroupIdentifier
             group.orientation = .vertical
             group.alignment = .leading
-            group.spacing = 28
+            group.spacing = DashboardSettingsComponents.settingsSectionSpacing
             group.distribution = .gravityAreas
             group.detachesHiddenViews = false
             group.translatesAutoresizingMaskIntoConstraints = false
@@ -470,7 +484,7 @@ final class DashboardPageSearchTests: XCTestCase {
         let root = NSStackView(views: [matchingGroup, staleGroup])
         root.orientation = .vertical
         root.alignment = .leading
-        root.spacing = 12
+        root.spacing = DashboardSettingsComponents.settingsSectionSpacing
         root.distribution = .gravityAreas
         root.detachesHiddenViews = false
         root.translatesAutoresizingMaskIntoConstraints = false
@@ -573,6 +587,104 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(typedSnapshot.1.count, directSnapshot.1.count)
         for (typedHeight, directHeight) in zip(typedSnapshot.1, directSnapshot.1) {
             XCTAssertEqual(typedHeight, directHeight, accuracy: 1.0)
+        }
+    }
+
+    func testGlobalSearchRestoresSectionWidthsAfterQueryBroadens() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-search-width.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1_000, height: 700))
+
+        func visibleSectionWidths(in root: NSView) -> [(String, CGFloat, CGFloat)] {
+            var result: [(String, CGFloat, CGFloat)] = []
+            var visited = Set<ObjectIdentifier>()
+            func walk(_ view: NSView) {
+                guard visited.insert(ObjectIdentifier(view)).inserted else { return }
+                if let section = view as? SettingsSectionView,
+                   !DashboardSearchVisibility.isSearchHidden(section),
+                   !DashboardSearchVisibility.isBusinessHidden(section),
+                   let stack = section.superview as? NSStackView {
+                    result.append((section.headingLabel.stringValue, section.frame.width, stack.frame.width))
+                }
+                for child in view.subviews {
+                    walk(child)
+                }
+                if let stack = view as? NSStackView {
+                    for child in stack.arrangedSubviews {
+                        walk(child)
+                    }
+                }
+            }
+            walk(root)
+            return result
+        }
+
+        func settle() -> [(String, CGFloat, CGFloat)] {
+            window.layoutIfNeeded()
+            let root = composition.currentHostedPageContentForTesting()
+            root.layoutSubtreeIfNeeded()
+            window.layoutIfNeeded()
+            return visibleSectionWidths(in: root)
+        }
+
+        composition.applySearchQueryForTesting("t")
+        let initial = settle()
+        XCTAssertFalse(initial.isEmpty)
+
+        composition.applySearchQueryForTesting("ti")
+        _ = settle()
+        composition.applySearchQueryForTesting("t")
+        let restored = settle()
+
+        XCTAssertEqual(restored.count, initial.count)
+        for (title, width, ownerWidth) in restored {
+            XCTAssertGreaterThan(width, 300, "restored section \(title) became a narrow column")
+            XCTAssertEqual(width, ownerWidth, accuracy: 1.0, "section \(title) lost its full-width constraint")
+        }
+    }
+
+    func testGlobalSearchUsesSharedSectionSpacingAcrossGroups() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-search-spacing.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1_000, height: 700))
+        composition.applySearchQueryForTesting("5")
+        window.layoutIfNeeded()
+
+        let root = try XCTUnwrap(composition.currentHostedPageContentForTesting() as? NSStackView)
+        XCTAssertEqual(root.spacing, DashboardSettingsComponents.settingsSectionSpacing)
+        var groups: [NSStackView] = []
+        var visited = Set<ObjectIdentifier>()
+        func collect(_ view: NSView) {
+            guard visited.insert(ObjectIdentifier(view)).inserted else { return }
+            if view.identifier == DashboardPageSearch.globalSearchGroupIdentifier,
+               let group = view as? NSStackView {
+                groups.append(group)
+            }
+            for child in view.subviews {
+                collect(child)
+            }
+            if let stack = view as? NSStackView {
+                for child in stack.arrangedSubviews {
+                    collect(child)
+                }
+            }
+        }
+        collect(root)
+        XCTAssertGreaterThanOrEqual(groups.count, 2)
+        for group in groups {
+            XCTAssertEqual(group.spacing, DashboardSettingsComponents.settingsSectionSpacing)
         }
     }
 

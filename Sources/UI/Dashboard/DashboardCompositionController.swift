@@ -28,7 +28,7 @@ private final class DashboardGlobalSearchResultsView: NSStackView {
         super.init(frame: frameRect)
         orientation = .vertical
         alignment = .leading
-        spacing = 12
+        spacing = DashboardSettingsComponents.settingsSectionSpacing
         distribution = .gravityAreas
         detachesHiddenViews = false
         translatesAutoresizingMaskIntoConstraints = false
@@ -52,7 +52,7 @@ private final class DashboardGlobalSearchGroupView: NSStackView {
         identifier = DashboardPageSearch.globalSearchGroupIdentifier
         orientation = .vertical
         alignment = .leading
-        spacing = 28
+        spacing = DashboardSettingsComponents.settingsSectionSpacing
         distribution = .gravityAreas
         detachesHiddenViews = false
         translatesAutoresizingMaskIntoConstraints = false
@@ -691,10 +691,10 @@ final class DashboardCompositionController {
                 for section in sourceStack?.arrangedSubviews ?? [] {
                     sourceStack?.removeView(section)
                     section.removeFromSuperview()
-                    group.addSection(section, spacing: 28)
+                    group.addSection(section, spacing: DashboardSettingsComponents.settingsSectionSpacing)
                 }
             }
-            resultStack.addGroup(group, spacing: 12)
+            resultStack.addGroup(group, spacing: DashboardSettingsComponents.settingsSectionSpacing)
             globalSettingsSearchSections.insert(settingsSection)
         }
         resultStack.needsLayout = true

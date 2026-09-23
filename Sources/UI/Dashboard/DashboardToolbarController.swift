@@ -6,8 +6,8 @@ import AppKit
 /// AppKit owns the item view (`view` is unavailable), compact/expanded
 /// representation, keyboard focus, and transition. This controller only
 /// configures the public item, forwards Cmd+F / Esc to
-/// `beginSearchInteraction()` / `endSearchInteraction()`, and records
-/// editing plus the filter query from `NSSearchFieldDelegate`.
+/// `beginSearchInteraction()` / `endSearchInteraction()`, keeps draft text
+/// separate from the committed query, and submits through Return/search.
 final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
@@ -25,11 +25,12 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
 
     let sessionIdentifier = NSToolbar.Identifier("BalanceBarDashboardToolbar.\(UUID().uuidString)")
     private(set) var searchQuery = ""
+    private(set) var draftQuery = ""
     private(set) var isSearchEditing = false
     var onSearchQueryChanged: ((String) -> Void)?
 
     var isSearchActive: Bool {
-        isSearchEditing || !searchQuery.isEmpty
+        isSearchEditing || !draftQuery.isEmpty || !searchQuery.isEmpty
     }
 
     private let searchItem: NSSearchToolbarItem
@@ -67,10 +68,11 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         guard (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true else {
             return
         }
+        draftQuery = query
         if searchItem.searchField.stringValue != query {
             searchItem.searchField.stringValue = query
         }
-        publishQuery(query)
+        commitQuery(query)
     }
 
     func detach() {
@@ -111,8 +113,9 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         guard !isEndingSearch else { return }
         isEndingSearch = true
         defer { isEndingSearch = false }
+        draftQuery = ""
         searchItem.searchField.stringValue = ""
-        publishQuery("")
+        commitQuery("")
         searchItem.endSearchInteraction()
     }
 
@@ -136,12 +139,15 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
 
     func controlTextDidBeginEditing(_ obj: Notification) {
         isSearchEditing = true
+        if let field = obj.object as? NSSearchField {
+            draftQuery = field.stringValue
+        }
     }
 
     func controlTextDidChange(_ obj: Notification) {
         guard let field = obj.object as? NSSearchField,
               (field.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-        publishQuery(field.stringValue)
+        draftQuery = field.stringValue
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
@@ -150,14 +156,15 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         }
         isSearchEditing = false
         guard !isEndingSearch, let field = obj.object as? NSSearchField else { return }
-        publishQuery(field.stringValue)
+        draftQuery = field.stringValue
     }
 
     func searchFieldDidEndSearching(_ sender: NSSearchField) {
         guard !isEndingSearch,
               (sender.currentEditor() as? NSTextView)?.hasMarkedText() != true,
               (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing != true else { return }
-        publishQuery(sender.stringValue)
+        draftQuery = sender.stringValue
+        commitQuery(draftQuery)
     }
 
     func control(_ control: NSControl, textShouldEndEditing fieldEditor: NSText) -> Bool {
@@ -171,15 +178,23 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         return true
     }
 
+    @objc private func submitSearch(_ sender: NSSearchField) {
+        guard (sender.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
+        draftQuery = sender.stringValue
+        commitQuery(draftQuery)
+    }
+
     private func configureSearchItem() {
         updateSearchItemLabels()
         searchItem.preferredWidthForSearchField = Self.expandedSearchFieldWidth
         searchItem.resignsFirstResponderWithCancel = true
-        searchItem.searchField.sendsSearchStringImmediately = true
-        searchItem.searchField.sendsWholeSearchString = false
+        searchItem.searchField.sendsSearchStringImmediately = false
+        searchItem.searchField.sendsWholeSearchString = true
+        searchItem.searchField.target = self
+        searchItem.searchField.action = #selector(submitSearch(_:))
         searchItem.searchField.delegate = self
         if (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true {
-            searchItem.searchField.stringValue = searchQuery
+            searchItem.searchField.stringValue = draftQuery
         }
     }
 
@@ -191,7 +206,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         searchItem.searchField.placeholderString = label
     }
 
-    private func publishQuery(_ raw: String) {
+    private func commitQuery(_ raw: String) {
         guard raw != searchQuery else { return }
         searchQuery = raw
         onSearchQueryChanged?(searchQuery)
