@@ -513,6 +513,9 @@ enum DashboardSettingsSearchCatalog {
         switch section {
         case .menuBar:
             return [
+                tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
+                tr(.keyDashboardMenuBarPageFiveHourQuota),
+                tr(.keyDashboardMenuBarPageSevenDayQuota),
                 tr(
                     .keyDashboardMenuBarPageAutoSwitchLunaReserve,
                     arguments: [tr(.keyLunaReserveTitle)]
@@ -611,7 +614,7 @@ final class DashboardPageSearchFilter {
                     keepBest(DashboardPageSearch.bestMatch(texts: [heading], query: needle))
                 }
                 for row in rows(in: section) {
-                    keepBest(rowMatch(row, query: needle, includeVisibleCopy: false, sectionHeading: sectionHeading(section)))
+                    keepBest(rowMatch(row, query: needle, includeVisibleCopy: true, sectionHeading: sectionHeading(section)))
                 }
             }
         case .visibleCopy:
@@ -638,7 +641,7 @@ final class DashboardPageSearchFilter {
         }
         var anyMatch = false
         for section in sections {
-            let result = applySectionFilter(section, query: query)
+            let result = applySectionFilter(section, query: query, includeVisibleCopy: true)
             if result.countsAsHit {
                 anyMatch = true
             } else if result.hideSectionForSearch {
@@ -731,7 +734,7 @@ final class DashboardPageSearchFilter {
             rowMatches(
                 $0,
                 query: query,
-                includeVisibleCopy: false,
+                includeVisibleCopy: true,
                 sectionHeading: sectionHeading(section)
             )
         }
@@ -778,7 +781,7 @@ final class DashboardPageSearchFilter {
             values.append(sectionHeading)
         }
         if includeVisibleCopy {
-            values.append(contentsOf: searchableCopy(in: row))
+            values.append(contentsOf: visibleCopy(in: row))
         }
         return DashboardPageSearch.bestMatch(
             texts: values,
@@ -872,32 +875,6 @@ final class DashboardPageSearchFilter {
         return nil
     }
 
-    private func searchableCopy(in view: NSView) -> [String] {
-        if view.identifier == DashboardPageSearch.emptyStateIdentifier {
-            return []
-        }
-        var values: [String] = []
-        if let field = view as? NSTextField {
-            let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty {
-                values.append(text)
-            }
-        }
-        if let button = view as? NSButton {
-            let title = button.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !title.isEmpty {
-                values.append(title)
-            }
-            if let label = button.accessibilityLabel(), !label.isEmpty {
-                values.append(label)
-            }
-        }
-        for child in view.subviews {
-            values.append(contentsOf: searchableCopy(in: child))
-        }
-        return values
-    }
-
     private func visibleCopy(in view: NSView, skipping skip: [NSView] = []) -> [String] {
         if skip.contains(where: { view === $0 || view.isDescendant(of: $0) }) {
             return []
@@ -926,6 +903,9 @@ final class DashboardPageSearchFilter {
             if let label = button.accessibilityLabel(), !label.isEmpty {
                 values.append(label)
             }
+        }
+        if let popup = view as? NSPopUpButton {
+            values.append(contentsOf: popup.itemTitles)
         }
         for child in view.subviews {
             values.append(contentsOf: visibleCopy(in: child, skipping: skip))

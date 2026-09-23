@@ -366,6 +366,35 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(second.isHidden)
     }
 
+    func testQuotaSearchFindsDigitsInDescriptionAndUnselectedChoices() {
+        let options = NSPopUpButton()
+        options.addItems(withTitles: ["5 小时额度", "7 日额度"])
+        let quota = SettingsRowView(
+            title: "优先显示额度",
+            detail: "选择菜单栏显示的额度",
+            accessoryView: options
+        )
+        let other = SettingsRowView(title: "菜单栏字号")
+        let section = SettingsSectionView(title: "额度与重置", contentViews: [quota, other])
+        let root = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+
+        for query in ["5", "5 小时额度", "7", "7 日额度"] {
+            XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: query), .menuBar)
+            XCTAssertTrue(filter.apply(query: query, to: root, pageTitle: "菜单栏", mode: .titles))
+            XCTAssertFalse(isCollapsedForSearch(quota), query)
+            XCTAssertTrue(isCollapsedForSearch(other), query)
+        }
+        quota.isHidden = true
+        XCTAssertFalse(filter.pageContainsMatch(
+            query: "5", in: root, pageTitle: "菜单栏", mode: .titles
+        ))
+        XCTAssertFalse(filter.apply(query: "5", to: root, pageTitle: "菜单栏", mode: .titles))
+        XCTAssertTrue(filter.apply(query: "", to: root, pageTitle: "菜单栏", mode: .titles))
+        XCTAssertTrue(quota.isHidden)
+        XCTAssertFalse(other.isHidden)
+    }
+
     func testToolbarSearchFiltersTheCurrentPageAndKeepsTheQueryOnPageChange() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
