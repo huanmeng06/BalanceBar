@@ -502,15 +502,25 @@ final class DashboardCompositionController {
             applyMountedPageSearch()
             return
         }
-        if currentPageContainsSearchMatch(needle) {
-            applyMountedPageSearch()
-            return
-        }
-
+        let currentMatch = pageSearchFilter.pageMatch(
+            query: needle,
+            in: pageSession.currentHostedPageContent(),
+            pageTitle: currentSearchPageTitle(),
+            mode: currentSearchMode()
+        )
         let originSection = section
         let originProviderID = selectedProviderID
         let candidates = DashboardSettingsSearchCatalog.matchingSections(query: needle)
             .filter { originProviderID != nil || $0 != originSection }
+        let strongestCatalogMatch = candidates.compactMap {
+            DashboardSettingsSearchCatalog.match(for: $0, query: needle)
+        }.max()
+        if let currentMatch,
+           strongestCatalogMatch == nil || currentMatch >= strongestCatalogMatch! {
+            applyMountedPageSearch()
+            return
+        }
+
         for destination in candidates {
             pageSession.showSection(destination)
             if currentPageContainsSearchMatch(needle) {

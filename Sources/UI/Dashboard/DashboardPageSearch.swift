@@ -167,10 +167,151 @@ enum DashboardPageSearch {
     static let aboutContentIdentifier = NSUserInterfaceItemIdentifier("dashboard.about.content")
     private static var searchableRowKey: UInt8 = 0
 
+    enum MatchKind: Int, Comparable {
+        case fuzzy = 1
+        case alias = 2
+        case keywords = 3
+        case contains = 4
+        case exact = 5
+
+        static func < (lhs: MatchKind, rhs: MatchKind) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
+    }
+
+    struct Match: Equatable, Comparable {
+        let kind: MatchKind
+
+        static func < (lhs: Match, rhs: Match) -> Bool {
+            lhs.kind < rhs.kind
+        }
+    }
+
     static func matches(_ text: String, query: String) -> Bool {
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return false }
-        return text.localizedStandardContains(needle)
+        bestMatch(texts: [text], query: query) != nil
+    }
+
+    static func bestMatch(
+        texts: [String],
+        aliases: [String] = [],
+        query: String
+    ) -> Match? {
+        let normalizedQuery = normalize(query)
+        guard !normalizedQuery.isEmpty else { return nil }
+        let queryTokens = tokens(normalizedQuery)
+        guard !queryTokens.isEmpty else { return nil }
+
+        let normalizedTexts = texts.map(normalize).filter { !$0.isEmpty }
+        let normalizedAliases = aliases.map(normalize).filter { !$0.isEmpty }
+        if let direct = bestDirectMatch(
+            values: normalizedTexts,
+            query: normalizedQuery,
+            queryTokens: queryTokens
+        ) {
+            return direct
+        }
+        if let alias = bestDirectMatch(
+            values: normalizedAliases,
+            query: normalizedQuery,
+            queryTokens: queryTokens
+        ) {
+            return Match(kind: .alias)
+        }
+        if queryTokens.count > 1,
+           queryTokens.allSatisfy({ token in
+               (normalizedTexts + normalizedAliases)
+                   .joined(separator: " ")
+                   .localizedStandardContains(token)
+           }) {
+            return Match(kind: .keywords)
+        }
+        guard queryTokens.allSatisfy({ token in
+            token.unicodeScalars.allSatisfy { $0.isASCII && $0.properties.isAlphabetic }
+        }) else {
+            return nil
+        }
+        let words = (normalizedTexts + normalizedAliases)
+            .flatMap { fuzzyWords(in: $0) }
+        guard !words.isEmpty,
+              queryTokens.allSatisfy({ token in
+                  words.contains { fuzzyDistance(token, $0) <= fuzzyDistanceLimit(for: token) }
+              }) else {
+            return nil
+        }
+        return Match(kind: .fuzzy)
+    }
+
+    static func normalize(_ text: String) -> String {
+        let widthFolded = text.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? text
+        let folded = widthFolded.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        )
+        return folded
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+    }
+
+    private static func tokens(_ text: String) -> [String] {
+        text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+    }
+
+    private static func bestDirectMatch(
+        values: [String],
+        query: String,
+        queryTokens: [String]
+    ) -> Match? {
+        guard !values.isEmpty else { return nil }
+        if values.contains(where: { $0 == query }) {
+            return Match(kind: .exact)
+        }
+        if values.contains(where: { $0.localizedStandardContains(query) }) {
+            return Match(kind: .contains)
+        }
+        if queryTokens.count > 1,
+           queryTokens.allSatisfy({ token in
+               values.joined(separator: " ").localizedStandardContains(token)
+           }) {
+            return Match(kind: .keywords)
+        }
+        return nil
+    }
+
+    private static func fuzzyWords(in text: String) -> [String] {
+        text.split { (character: Character) in
+            !(character.isLetter || character.isNumber)
+        }.map(String.init).filter { $0.count >= 4 }
+    }
+
+    private static func fuzzyDistanceLimit(for token: String) -> Int {
+        token.count >= 7 ? 2 : 1
+    }
+
+    /// Damerau-Levenshtein distance with one adjacent transposition. The
+    /// minimum four-character token guard keeps short/random queries from
+    /// turning into broad page matches.
+    private static func fuzzyDistance(_ lhs: String, _ rhs: String) -> Int {
+        let left = Array(lhs)
+        let right = Array(rhs)
+        var matrix = Array(repeating: Array(repeating: 0, count: right.count + 1), count: left.count + 1)
+        for index in 0...left.count { matrix[index][0] = index }
+        for index in 0...right.count { matrix[0][index] = index }
+        guard !left.isEmpty, !right.isEmpty else { return max(left.count, right.count) }
+        for i in 1...left.count {
+            for j in 1...right.count {
+                let substitution = left[i - 1] == right[j - 1] ? 0 : 1
+                matrix[i][j] = min(
+                    matrix[i - 1][j] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j - 1] + substitution
+                )
+                if i > 1, j > 1,
+                   left[i - 1] == right[j - 2], left[i - 2] == right[j - 1] {
+                    matrix[i][j] = min(matrix[i][j], matrix[i - 2][j - 2] + 1)
+                }
+            }
+        }
+        return matrix[left.count][right.count]
     }
 
     /// Marks a row as searchable without requiring `identifier` to stay
@@ -198,6 +339,56 @@ enum DashboardPageSearchMode {
 }
 
 enum DashboardSettingsSearchCatalog {
+    private struct AliasDefinition {
+        let canonical: [String]
+        let aliases: [String]
+    }
+
+    private static let aliasDefinitions: [AliasDefinition] = [
+        AliasDefinition(
+            canonical: [
+                tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
+                "Launch at Login",
+                "登录时自动启动"
+            ],
+            aliases: ["开机启动", "开机自启", "autostart", "startup"]
+        ),
+        AliasDefinition(
+            canonical: [
+                tr(.keyDashboardGeneralAndRefreshPagesLanguage),
+                "Language",
+                "语言"
+            ],
+            aliases: ["lang"]
+        ),
+        AliasDefinition(
+            canonical: [
+                tr(.keyDashboardMenuBarPageMenuBarFontSize),
+                "Menu Bar Font Size",
+                "菜单栏字号"
+            ],
+            aliases: ["menu font", "font size", "菜单栏字体", "字号"]
+        )
+    ]
+
+    static func aliases(for title: String) -> [String] {
+        definition(for: title)?.aliases ?? []
+    }
+
+    /// Returns all localized and stable English names for a setting identity.
+    /// The current UI title alone is insufficient when a user searches in a
+    /// different language from the one used by the setting's canonical name.
+    static func canonicalValues(for title: String) -> [String] {
+        definition(for: title)?.canonical ?? []
+    }
+
+    private static func definition(for title: String) -> AliasDefinition? {
+        let normalizedTitle = DashboardPageSearch.normalize(title)
+        return aliasDefinitions.first {
+            $0.canonical.contains { DashboardPageSearch.normalize($0) == normalizedTitle }
+        }
+    }
+
     static func titles(for section: DashboardSection) -> [String] {
         var values = [section.title]
         values.append(contentsOf: keys(for: section).map { tr($0) })
@@ -206,9 +397,33 @@ enum DashboardSettingsSearchCatalog {
     }
 
     static func matchingSections(query: String) -> [DashboardSection] {
-        DashboardSection.allCases.filter { section in
-            titles(for: section).contains { DashboardPageSearch.matches($0, query: query) }
+        var scored: [(section: DashboardSection, match: DashboardPageSearch.Match)] = []
+        for section in DashboardSection.allCases {
+            if let match = match(for: section, query: query) {
+                scored.append((section: section, match: match))
+            }
         }
+        return scored
+            .sorted { lhs, rhs in
+                if lhs.match != rhs.match { return lhs.match > rhs.match }
+                return lhs.section.rawValue < rhs.section.rawValue
+            }
+            .map(\.section)
+    }
+
+    static func match(for section: DashboardSection, query: String) -> DashboardPageSearch.Match? {
+        var best: DashboardPageSearch.Match?
+        for title in titles(for: section) {
+            let candidate = DashboardPageSearch.bestMatch(
+                texts: [title] + canonicalValues(for: title),
+                aliases: aliases(for: title),
+                query: query
+            )
+            if let candidate, best == nil || candidate > best! {
+                best = candidate
+            }
+        }
+        return best
     }
 
     static func firstMatchingSection(query: String) -> DashboardSection? {
@@ -373,17 +588,47 @@ final class DashboardPageSearchFilter {
         pageTitle: String,
         mode: DashboardPageSearchMode
     ) -> Bool {
+        pageMatch(query: query, in: root, pageTitle: pageTitle, mode: mode) != nil
+    }
+
+    func pageMatch(
+        query: String,
+        in root: NSView,
+        pageTitle: String,
+        mode: DashboardPageSearchMode
+    ) -> DashboardPageSearch.Match? {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return true }
-        if DashboardPageSearch.matches(pageTitle, query: needle) {
-            return true
+        guard !needle.isEmpty else { return nil }
+        var best = DashboardPageSearch.bestMatch(texts: [pageTitle], query: needle)
+        func keepBest(_ candidate: DashboardPageSearch.Match?) {
+            guard let candidate else { return }
+            if best == nil || candidate > best! { best = candidate }
         }
         switch mode {
         case .titles:
-            return collectSections(in: root).contains { sectionMatches($0, query: needle) }
+            for section in collectSections(in: root) {
+                if let heading = sectionHeading(section) {
+                    keepBest(DashboardPageSearch.bestMatch(texts: [heading], query: needle))
+                }
+                for row in rows(in: section) {
+                    keepBest(rowMatch(row, query: needle, includeVisibleCopy: false, sectionHeading: sectionHeading(section)))
+                }
+            }
         case .visibleCopy:
-            return visibleCopy(in: root).contains { DashboardPageSearch.matches($0, query: needle) }
+            let sections = collectSections(in: root)
+            for section in sections {
+                if let heading = sectionHeading(section) {
+                    keepBest(DashboardPageSearch.bestMatch(texts: [heading], query: needle))
+                }
+                for row in rows(in: section) {
+                    keepBest(rowMatch(row, query: needle, includeVisibleCopy: true, sectionHeading: sectionHeading(section)))
+                }
+            }
+            for copy in visibleCopy(in: root, skipping: sections) {
+                keepBest(DashboardPageSearch.bestMatch(texts: [copy], query: needle))
+            }
         }
+        return best
     }
 
     private func applyTitleFilter(query: String, to root: NSView) -> Bool {
@@ -439,7 +684,7 @@ final class DashboardPageSearchFilter {
         query: String,
         includeVisibleCopy: Bool = false
     ) -> SectionFilterResult {
-        if sectionHeading(section).map({ DashboardPageSearch.matches($0, query: query) }) == true {
+        if sectionHeading(section).map({ DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil }) == true {
             return SectionFilterResult(
                 countsAsHit: !DashboardSearchVisibility.isBusinessHidden(section),
                 hideSectionForSearch: false
@@ -456,8 +701,14 @@ final class DashboardPageSearchFilter {
             )
         }
         var visibleRowCount = 0
+        let heading = sectionHeading(section)
         for view in stack.arrangedSubviews where !(view is NSBox) {
-            if rowContentMatches(view, query: query, includeVisibleCopy: includeVisibleCopy) {
+            if rowContentMatches(
+                view,
+                query: query,
+                includeVisibleCopy: includeVisibleCopy,
+                sectionHeading: heading
+            ) {
                 if !DashboardSearchVisibility.isBusinessHidden(view) {
                     visibleRowCount += 1
                 }
@@ -473,31 +724,81 @@ final class DashboardPageSearchFilter {
     }
 
     private func sectionMatches(_ section: NSView, query: String) -> Bool {
-        if sectionHeading(section).map({ DashboardPageSearch.matches($0, query: query) }) == true {
+        if sectionHeading(section).map({ DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil }) == true {
             return true
         }
-        return rows(in: section).contains { rowMatches($0, query: query, includeVisibleCopy: false) }
+        return rows(in: section).contains {
+            rowMatches(
+                $0,
+                query: query,
+                includeVisibleCopy: false,
+                sectionHeading: sectionHeading(section)
+            )
+        }
     }
 
     private func rowMatches(
         _ row: NSView,
         query: String,
-        includeVisibleCopy: Bool
+        includeVisibleCopy: Bool,
+        sectionHeading: String?
     ) -> Bool {
-        guard !DashboardSearchVisibility.isBusinessHidden(row) else { return false }
-        return rowContentMatches(row, query: query, includeVisibleCopy: includeVisibleCopy)
+        rowMatch(
+            row,
+            query: query,
+            includeVisibleCopy: includeVisibleCopy,
+            sectionHeading: sectionHeading
+        ) != nil
+    }
+
+    private func rowMatch(
+        _ row: NSView,
+        query: String,
+        includeVisibleCopy: Bool,
+        sectionHeading: String?
+    ) -> DashboardPageSearch.Match? {
+        guard !DashboardSearchVisibility.isBusinessHidden(row) else { return nil }
+        return rowSearchMatch(
+            row,
+            query: query,
+            includeVisibleCopy: includeVisibleCopy,
+            sectionHeading: sectionHeading
+        )
+    }
+
+    private func rowSearchMatch(
+        _ row: NSView,
+        query: String,
+        includeVisibleCopy: Bool,
+        sectionHeading: String?
+    ) -> DashboardPageSearch.Match? {
+        let title = rowTitle(of: row)
+        var values = [title] + DashboardSettingsSearchCatalog.canonicalValues(for: title)
+        if let sectionHeading, !sectionHeading.isEmpty {
+            values.append(sectionHeading)
+        }
+        if includeVisibleCopy {
+            values.append(contentsOf: searchableCopy(in: row))
+        }
+        return DashboardPageSearch.bestMatch(
+            texts: values,
+            aliases: DashboardSettingsSearchCatalog.aliases(for: title),
+            query: query
+        )
     }
 
     private func rowContentMatches(
         _ row: NSView,
         query: String,
-        includeVisibleCopy: Bool
+        includeVisibleCopy: Bool,
+        sectionHeading: String?
     ) -> Bool {
-        if DashboardPageSearch.matches(rowTitle(of: row), query: query) {
-            return true
-        }
-        guard includeVisibleCopy else { return false }
-        return searchableCopy(in: row).contains { DashboardPageSearch.matches($0, query: query) }
+        rowSearchMatch(
+            row,
+            query: query,
+            includeVisibleCopy: includeVisibleCopy,
+            sectionHeading: sectionHeading
+        ) != nil
     }
 
     private func collectSections(in view: NSView) -> [NSView] {

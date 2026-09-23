@@ -320,6 +320,52 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertNil(DashboardSettingsSearchCatalog.firstMatchingSection(query: "zzznomatch"))
     }
 
+    func testSearchMatcherNormalizesKeywordsAliasesAndLimitedTypos() {
+        XCTAssertTrue(DashboardPageSearch.matches("Language", query: "  LANGUAGE  "))
+        XCTAssertTrue(DashboardPageSearch.matches("Language", query: "Ｌａｎｇｕａｇｅ"))
+        XCTAssertTrue(DashboardPageSearch.matches("Menu Bar Font Size", query: "font menu"))
+        XCTAssertTrue(
+            DashboardPageSearch.bestMatch(
+                texts: ["Launch at Login"],
+                aliases: DashboardSettingsSearchCatalog.aliases(for: "Launch at Login"),
+                query: "开机启动"
+            )?.kind == .alias
+        )
+        XCTAssertTrue(DashboardPageSearch.matches("Language", query: "langauge"))
+        XCTAssertTrue(
+            DashboardPageSearch.bestMatch(
+                texts: ["语言"] + DashboardSettingsSearchCatalog.canonicalValues(for: "语言"),
+                aliases: DashboardSettingsSearchCatalog.aliases(for: "语言"),
+                query: "langauge"
+            ) != nil
+        )
+        XCTAssertEqual(
+            DashboardSettingsSearchCatalog.firstMatchingSection(query: "langauge"),
+            .general
+        )
+        XCTAssertFalse(DashboardPageSearch.matches("Language", query: "zzznomatch"))
+        XCTAssertFalse(DashboardPageSearch.matches("Language", query: "xyz"))
+    }
+
+    func testSearchMatcherDoesNotCombineKeywordsAcrossRows() {
+        let first = SettingsRowView(title: "Menu")
+        let second = SettingsRowView(title: "Font Size")
+        let section = SettingsSectionView(title: "Settings", contentViews: [first, second])
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertFalse(
+            filter.apply(
+                query: "font menu",
+                to: stack,
+                pageTitle: "Settings",
+                mode: .titles
+            )
+        )
+        XCTAssertTrue(first.isHidden)
+        XCTAssertTrue(second.isHidden)
+    }
+
     func testToolbarSearchFiltersTheCurrentPageAndKeepsTheQueryOnPageChange() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
