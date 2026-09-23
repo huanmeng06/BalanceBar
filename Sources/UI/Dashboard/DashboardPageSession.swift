@@ -115,6 +115,22 @@ final class DashboardPageSession {
         }
     }
 
+    func showSearchResults(makeContent: () -> NSView, preservingCurrentPage: Bool = false) {
+        guard !isTornDown else { return }
+        selectedProviderID = nil
+        replacePage(prepareForPageReplacement: !preservingCurrentPage) {
+            DashboardScrollablePageViewController(wrapping: makeContent())
+        }
+    }
+
+    func showHostedSettingsContent(_ content: NSView) {
+        guard !isTornDown else { return }
+        selectedProviderID = nil
+        replacePage(prepareForPageReplacement: false) {
+            DashboardScrollablePageViewController(wrapping: content)
+        }
+    }
+
     func showProvider(_ providerID: String) {
         guard !isTornDown,
               let choice = actions.providerChoices().first(where: { $0.id == providerID })
@@ -162,10 +178,15 @@ final class DashboardPageSession {
         window = nil
     }
 
-    private func replacePage(makePage: () -> NSViewController) {
-        DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
-        DashboardKeyViewLoop.prepareForPageReplacement(window)
-        actions.prepareForPageReplacement()
+    private func replacePage(
+        prepareForPageReplacement: Bool = true,
+        makePage: () -> NSViewController
+    ) {
+        if prepareForPageReplacement {
+            DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
+            DashboardKeyViewLoop.prepareForPageReplacement(window)
+            actions.prepareForPageReplacement()
+        }
         let page = makePage()
         pageContainer.replacePage(page)
         accessoryHost.apply(page: page)

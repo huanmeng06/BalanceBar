@@ -21,6 +21,86 @@ struct DashboardCompositionState {
     let setStatusLinks: ([StatusLink]) -> Void
 }
 
+/// Plain vertical host for cross-page search groups. Keeping groups out of an
+/// outer NSStackView prevents AppKit from detaching them while nested sections
+/// are collapsed by the search filter.
+private final class DashboardGlobalSearchResultsView: NSView {
+    private var lastGroup: NSView?
+    private var lastBottomConstraint: NSLayoutConstraint?
+
+    func addGroup(_ group: NSView, spacing: CGFloat) {
+        addSubview(group)
+        group.translatesAutoresizingMaskIntoConstraints = false
+        var constraints = [
+            group.leadingAnchor.constraint(equalTo: leadingAnchor),
+            group.trailingAnchor.constraint(equalTo: trailingAnchor)
+        ]
+        if let lastGroup {
+            constraints.append(group.topAnchor.constraint(equalTo: lastGroup.bottomAnchor, constant: spacing))
+        } else {
+            constraints.append(group.topAnchor.constraint(equalTo: topAnchor))
+        }
+        lastBottomConstraint?.isActive = false
+        let bottomConstraint = group.bottomAnchor.constraint(equalTo: bottomAnchor)
+        constraints.append(bottomConstraint)
+        NSLayoutConstraint.activate(constraints)
+        lastGroup = group
+        lastBottomConstraint = bottomConstraint
+    }
+}
+
+private final class DashboardGlobalSearchGroupView: NSView {
+    private var lastSectionHost: NSView?
+    private var lastBottomConstraint: NSLayoutConstraint?
+
+    func addPage(_ page: NSView) {
+        let host = NSView()
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(page)
+        page.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            page.topAnchor.constraint(equalTo: host.topAnchor),
+            page.bottomAnchor.constraint(equalTo: host.bottomAnchor)
+        ])
+        addHost(host, spacing: 0)
+    }
+
+    func addSection(_ section: NSView, spacing: CGFloat) {
+        let host = NSView()
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(section)
+        section.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            section.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            section.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            section.topAnchor.constraint(equalTo: host.topAnchor),
+            section.bottomAnchor.constraint(equalTo: host.bottomAnchor)
+        ])
+        addHost(host, spacing: spacing)
+    }
+
+    private func addHost(_ host: NSView, spacing: CGFloat) {
+        addSubview(host)
+        var constraints = [
+            host.leadingAnchor.constraint(equalTo: leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: trailingAnchor)
+        ]
+        if let lastSectionHost {
+            constraints.append(host.topAnchor.constraint(equalTo: lastSectionHost.bottomAnchor, constant: spacing))
+        } else {
+            constraints.append(host.topAnchor.constraint(equalTo: topAnchor))
+        }
+        lastBottomConstraint?.isActive = false
+        let bottomConstraint = host.bottomAnchor.constraint(equalTo: bottomAnchor)
+        constraints.append(bottomConstraint)
+        NSLayoutConstraint.activate(constraints)
+        lastSectionHost = host
+        lastBottomConstraint = bottomConstraint
+    }
+}
+
 struct DashboardCompositionActions {
     let onManualRefresh: () -> Void
     let onSwitchProvider: (String) -> Void
@@ -77,6 +157,11 @@ final class DashboardCompositionController {
     private var menuBarPreviewAnimationIconImage: NSImage?
     private var menuBarPreviewAnimationSpriteImage: NSImage?
     private var menuBarAnimationFallbackActive = false
+    private var isGlobalSettingsSearchActive = false
+    private weak var globalSettingsSearchContent: NSView?
+    private var globalSearchOriginContent: NSView?
+    private var globalSettingsSearchSections: Set<DashboardSection> = []
+    private var isBuildingGlobalSearchPage = false
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
             onRefresh: actions.onManualRefresh,
@@ -217,6 +302,10 @@ final class DashboardCompositionController {
     func showSection(_ section: DashboardSection) { pageSession.showSection(section) }
     func showProvider(_ providerID: String) { pageSession.showProvider(providerID) }
     func teardown() {
+        isGlobalSettingsSearchActive = false
+        globalSettingsSearchContent = nil
+        globalSearchOriginContent = nil
+        globalSettingsSearchSections.removeAll()
         dashboardProviderPages.teardown()
         dashboardPreferencePages.teardown()
         pageSession.teardown()
@@ -239,7 +328,7 @@ final class DashboardCompositionController {
     }
 
     func refreshMenuBarPage(snapshot: Snapshot) {
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.refreshMenuBar(
             snapshot: snapshot,
             menuBarSnapshot: state.menuBarSnapshot,
@@ -256,7 +345,7 @@ final class DashboardCompositionController {
     }
 
     func refreshMenuPage() {
-        guard window?.isVisible == true, section == .menu else { return }
+        guard canUpdateSettingsPage(.menu) else { return }
         dashboardPreferencePages.refreshMenu()
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
@@ -272,7 +361,7 @@ final class DashboardCompositionController {
         if let image {
             menuBarPreviewAnimationIconImage = image
         }
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.updateMenuBarPreviewIcon(image)
     }
 
@@ -285,7 +374,7 @@ final class DashboardCompositionController {
             menuBarPreviewAnimationIconImage = iconImage
         }
         menuBarPreviewAnimationSpriteImage = nil
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.updateMenuBarPreviewAnimation(
             kind: menuBarPreviewAnimationKind,
             iconImage: iconImage ?? menuBarPreviewAnimationIconImage,
@@ -343,7 +432,7 @@ final class DashboardCompositionController {
         } else {
             menuBarPreviewAnimationSpriteImage = nil
         }
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.updateMenuBarPreviewAnimation(
             kind: menuBarPreviewAnimationKind,
             iconImage: iconImage ?? menuBarPreviewAnimationIconImage,
@@ -359,7 +448,7 @@ final class DashboardCompositionController {
 
     func updateMenuBarAnimationFallback(active: Bool) {
         menuBarAnimationFallbackActive = active
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.updateMenuBarAnimationFallback(active: active)
     }
 
@@ -367,7 +456,7 @@ final class DashboardCompositionController {
         _ widthAdjustment: Double,
         horizontalPadding: CGFloat
     ) {
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.refreshMenuBarWidthAdjustment(
             widthAdjustment,
             horizontalPadding: horizontalPadding
@@ -393,22 +482,22 @@ final class DashboardCompositionController {
     }
 
     func refreshLaunchAtLogin() {
-        guard window?.isVisible == true, section == .general else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchAtLogin()
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
-        guard window?.isVisible == true, section == .general else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchAtLogin(state)
     }
 
     func refreshLaunchWithChatGPT() {
-        guard window?.isVisible == true, section == .general else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchWithChatGPT()
     }
 
     func refreshLaunchWithChatGPT(_ state: LaunchWithChatGPTState) {
-        guard window?.isVisible == true, section == .general else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchWithChatGPT(state)
     }
 
@@ -499,45 +588,54 @@ final class DashboardCompositionController {
     private func handleDashboardSearch(_ query: String) {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if needle.isEmpty {
+            if isGlobalSettingsSearchActive {
+                clearGlobalSettingsSearch()
+                return
+            }
             applyMountedPageSearch()
             return
         }
         if selectedProviderID != nil || section == .about {
+            isGlobalSettingsSearchActive = false
+            globalSettingsSearchContent = nil
+            globalSearchOriginContent = nil
+            globalSettingsSearchSections.removeAll()
             applyMountedPageSearch()
             return
         }
-        let currentMatch = pageSearchFilter.pageMatch(
-            query: needle,
-            in: pageSession.currentHostedPageContent(),
-            pageTitle: currentSearchPageTitle(),
-            mode: currentSearchMode()
-        )
-        let originSection = section
-        var rankedCandidates = DashboardSettingsSearchCatalog.rankedSections(query: needle)
-        if rankedCandidates.isEmpty, let currentMatch {
-            rankedCandidates = [(originSection, currentMatch)]
-        }
-
-        for (destination, _) in rankedCandidates {
-            if destination == originSection {
-                guard currentMatch != nil else { continue }
-                applyMountedPageSearch()
-                return
-            }
-            pageSession.showSection(destination)
-            if currentPageContainsSearchMatch(needle) {
-                return
-            }
-        }
-
-        if section != originSection {
-            pageSession.showSection(originSection)
+        if !isGlobalSettingsSearchActive {
+            isGlobalSettingsSearchActive = true
+            showGlobalSettingsSearchPage()
+            return
         }
         applyMountedPageSearch()
     }
 
     private func applyMountedPageSearch() {
         let query = pageSession.toolbarController.searchQuery
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if needle.isEmpty, isGlobalSettingsSearchActive {
+            clearGlobalSettingsSearch()
+            return
+        }
+        if selectedProviderID != nil || section == .about {
+            isGlobalSettingsSearchActive = false
+            globalSettingsSearchContent = nil
+            globalSearchOriginContent = nil
+            globalSettingsSearchSections.removeAll()
+        } else if !needle.isEmpty, !isGlobalSettingsSearchActive {
+            isGlobalSettingsSearchActive = true
+            showGlobalSettingsSearchPage()
+            return
+        } else if !needle.isEmpty, isGlobalSettingsSearchActive,
+                  pageSession.currentHostedPageContent() !== globalSettingsSearchContent {
+            guard !isBuildingGlobalSearchPage else { return }
+            showGlobalSettingsSearchPage()
+            return
+        }
+        if !needle.isEmpty, isGlobalSettingsSearchActive {
+            addGlobalSettingsSearchPages(matching: needle)
+        }
         _ = pageSearchFilter.apply(
             query: query,
             to: pageSession.currentHostedPageContent(),
@@ -550,16 +648,85 @@ final class DashboardCompositionController {
         pageSession.restoreCurrentPageScrollToTop()
     }
 
-    private func currentPageContainsSearchMatch(_ query: String) -> Bool {
-        pageSearchFilter.pageContainsMatch(
-            query: query,
-            in: pageSession.currentHostedPageContent(),
-            pageTitle: currentSearchPageTitle(),
-            mode: currentSearchMode()
-        )
+    private func showGlobalSettingsSearchPage() {
+        guard !isBuildingGlobalSearchPage else { return }
+        isBuildingGlobalSearchPage = true
+        defer { isBuildingGlobalSearchPage = false }
+        if pageSession.currentHostedPageContent() !== globalSettingsSearchContent {
+            globalSearchOriginContent = pageSession.currentHostedPageContent()
+        }
+        globalSettingsSearchContent = nil
+        globalSettingsSearchSections.removeAll()
+        pageSession.showSearchResults(makeContent: { [weak self] in
+            guard let self else {
+                return DashboardSettingsComponents.makeSettingsPageContent([])
+            }
+            let content = self.makeGlobalSettingsSearchContent()
+            self.globalSettingsSearchContent = content
+            return content
+        }, preservingCurrentPage: true)
+    }
+
+    private func clearGlobalSettingsSearch() {
+        let origin = globalSearchOriginContent
+        if let current = globalSettingsSearchContent {
+            _ = pageSearchFilter.apply(
+                query: "",
+                to: current,
+                pageTitle: "",
+                mode: .titles
+            )
+        }
+        isGlobalSettingsSearchActive = false
+        globalSettingsSearchContent = nil
+        globalSettingsSearchSections.removeAll()
+        globalSearchOriginContent = nil
+        if let origin {
+            pageSession.showHostedSettingsContent(origin)
+        } else {
+            pageSession.showSection(section)
+        }
+    }
+
+    private func makeGlobalSettingsSearchContent() -> NSView {
+        let content = DashboardGlobalSearchResultsView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        return content
+    }
+
+    private func addGlobalSettingsSearchPages(matching query: String) {
+        guard let searchContent = globalSettingsSearchContent,
+              let resultStack = searchContent as? DashboardGlobalSearchResultsView else { return }
+        let missingSections = DashboardSettingsSearchCatalog.rankedSections(query: query)
+            .map(\.section)
+            .filter { $0 != .about && !globalSettingsSearchSections.contains($0) }
+        guard !missingSections.isEmpty else { return }
+
+        for settingsSection in missingSections {
+            let group = DashboardGlobalSearchGroupView()
+            group.translatesAutoresizingMaskIntoConstraints = false
+            if settingsSection == section, let origin = globalSearchOriginContent {
+                group.addPage(origin)
+            } else {
+                let page = makeSectionPage(for: settingsSection)
+                let sourceStack: NSStackView? = {
+                    if let stack = page as? NSStackView { return stack }
+                    return page.subviews.compactMap { $0 as? NSStackView }.first
+                }()
+                for section in sourceStack?.arrangedSubviews ?? [] {
+                    sourceStack?.removeView(section)
+                    section.removeFromSuperview()
+                    group.addSection(section, spacing: 28)
+                }
+            }
+            resultStack.addGroup(group, spacing: 12)
+            globalSettingsSearchSections.insert(settingsSection)
+        }
+        resultStack.needsLayout = true
     }
 
     private func currentSearchPageTitle() -> String {
+        if isGlobalSettingsSearchActive { return "" }
         if let selectedProviderID,
            let name = state.providerChoices().first(where: { $0.id == selectedProviderID })?.name {
             return name
@@ -569,6 +736,10 @@ final class DashboardCompositionController {
 
     private func currentSearchMode() -> DashboardPageSearchMode {
         selectedProviderID != nil || section == .about ? .visibleCopy : .titles
+    }
+
+    private func canUpdateSettingsPage(_ target: DashboardSection) -> Bool {
+        window?.isVisible == true && (section == target || isGlobalSettingsSearchActive)
     }
 
     private func prepareForPageReplacement() {
@@ -664,7 +835,7 @@ final class DashboardCompositionController {
     }
 
     private func addStatusLink(at index: Int) {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         var links = state.statusLinks()
         guard links.indices.contains(index) || index == links.endIndex else { return }
         links.insert(StatusLink(title: "", url: ""), at: index)
@@ -681,7 +852,7 @@ final class DashboardCompositionController {
     }
 
     private func removeStatusLink(at index: Int) {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         var links = state.statusLinks()
         guard index >= 0, index < links.count else { return }
         links.remove(at: index)
@@ -692,7 +863,7 @@ final class DashboardCompositionController {
     }
 
     private func moveStatusLink(from: Int, to: Int) {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         var links = state.statusLinks()
         guard links.indices.contains(from), links.indices.contains(to), from != to else { return }
         let movedLink = links.remove(at: from)
@@ -710,7 +881,7 @@ final class DashboardCompositionController {
     }
 
     private func duplicateStatusLink(at index: Int) {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         var links = state.statusLinks()
         guard links.indices.contains(index) else { return }
         links.insert(links[index], at: index + 1)
@@ -727,7 +898,7 @@ final class DashboardCompositionController {
     }
 
     private func resetStatusLinks() {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         let links = state.defaultStatusLinks()
         state.setStatusLinks(links)
         SwitchLog.write("status links restored to defaults; count=\(links.count)", category: "configuration")

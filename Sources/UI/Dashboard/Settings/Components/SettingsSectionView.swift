@@ -20,8 +20,12 @@ final class SettingsSectionView: NSView {
     let contentStack = NSStackView()
     private(set) var contentViews: [NSView]
     private(set) var separators: [NSView] = []
+    private var searchNaturalHeightConstraint: NSLayoutConstraint?
 
     var rowsStack: NSStackView { cardView }
+    var hasSearchNaturalHeightConstraintForTesting: Bool {
+        searchNaturalHeightConstraint?.isActive == true
+    }
 
     init(
         title: String,
@@ -140,6 +144,69 @@ final class SettingsSectionView: NSView {
         let stackHeight = contentStack.intrinsicContentSize.height
         let height = stackHeight > 0 ? stackHeight : contentStack.fittingSize.height
         return NSSize(width: NSView.noIntrinsicMetric, height: height)
+    }
+
+    override func layout() {
+        super.layout()
+        updateSearchNaturalHeightConstraintForCurrentVisibility()
+    }
+
+    func updateSearchNaturalHeightConstraintForCurrentVisibility() {
+        guard !DashboardSearchVisibility.isSearchHidden(self),
+              !DashboardSearchVisibility.isBusinessHidden(self)
+        else {
+            searchNaturalHeightConstraint?.isActive = false
+            return
+        }
+        let hasSearchHiddenSibling: Bool
+        if let stack = superview as? NSStackView,
+           stack.arrangedSubviews.contains(where: { $0 === self }) {
+            hasSearchHiddenSibling = stack.arrangedSubviews.contains { sibling in
+                sibling !== self && DashboardSearchVisibility.isSearchHidden(sibling)
+            }
+        } else {
+            hasSearchHiddenSibling = searchHiddenSiblingInAncestorContainer()
+        }
+
+        guard hasSearchHiddenSibling else {
+            searchNaturalHeightConstraint?.isActive = false
+            return
+        }
+
+        let naturalHeight = intrinsicContentSize.height
+        if let searchNaturalHeightConstraint {
+            if abs(searchNaturalHeightConstraint.constant - naturalHeight) > 0.5 {
+                searchNaturalHeightConstraint.constant = naturalHeight
+            }
+            searchNaturalHeightConstraint.isActive = true
+            return
+        }
+
+        let constraint = heightAnchor.constraint(equalToConstant: naturalHeight)
+        constraint.isActive = true
+        searchNaturalHeightConstraint = constraint
+    }
+
+    private func searchHiddenSiblingInAncestorContainer() -> Bool {
+        var child: NSView = self
+        var ancestor = superview
+        while let container = ancestor {
+            if container.subviews.contains(where: { sibling in
+                sibling !== child && containsSearchHiddenSection(in: sibling)
+            }) {
+                return true
+            }
+            child = container
+            ancestor = container.superview
+        }
+        return false
+    }
+
+    private func containsSearchHiddenSection(in view: NSView) -> Bool {
+        if let section = view as? SettingsSectionView {
+            return section !== self && DashboardSearchVisibility.isSearchHidden(section)
+        }
+        return view.subviews.contains { containsSearchHiddenSection(in: $0) }
     }
 }
 

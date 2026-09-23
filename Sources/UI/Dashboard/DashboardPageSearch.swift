@@ -707,11 +707,13 @@ final class DashboardPageSearchFilter {
         if needle.isEmpty {
             setEmptyStateHidden(true, in: root)
             restoreAboutContent(in: root)
+            refreshSearchSectionHeights(in: root)
             return true
         }
         if DashboardPageSearch.matches(pageTitle, query: needle) {
             setEmptyStateHidden(true, in: root)
             restoreAboutContent(in: root)
+            refreshSearchSectionHeights(in: root)
             return true
         }
 
@@ -731,7 +733,17 @@ final class DashboardPageSearchFilter {
         }
         root.needsLayout = true
         root.layoutSubtreeIfNeeded()
+        refreshSearchSectionHeights(in: root)
         return matched
+    }
+
+    private func refreshSearchSectionHeights(in root: NSView) {
+        for section in collectSections(in: root) {
+            (section as? SettingsSectionView)?
+                .updateSearchNaturalHeightConstraintForCurrentVisibility()
+        }
+        root.needsLayout = true
+        root.layoutSubtreeIfNeeded()
     }
 
     func pageContainsMatch(

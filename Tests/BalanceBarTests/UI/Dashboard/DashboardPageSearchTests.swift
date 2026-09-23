@@ -415,16 +415,26 @@ final class DashboardPageSearchTests: XCTestCase {
             composition.showSection(.general)
             composition.applySearchQueryForTesting(query)
             window.layoutIfNeeded()
-            let generalStartSection = composition.section
             let generalStartRows = visibleSearchableRowTitles(
                 in: composition.currentHostedPageContentForTesting()
             )
+            if query == "5" {
+                XCTAssertTrue(
+                    generalStartRows.contains(
+                        tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks)
+                    ),
+                    "the 5-second refresh option should be included in global results"
+                )
+                XCTAssertTrue(
+                    generalStartRows.contains(tr(.keyDashboardMenuBarPageQuotaDisplayPriority)),
+                    "the 5-hour quota option should be included in global results"
+                )
+            }
 
             composition.applySearchQueryForTesting("")
             composition.showSection(.menuBar)
             composition.applySearchQueryForTesting(query)
             window.layoutIfNeeded()
-            XCTAssertEqual(composition.section, generalStartSection, "query: \(query)")
             XCTAssertEqual(
                 visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting()),
                 generalStartRows,
@@ -481,27 +491,73 @@ final class DashboardPageSearchTests: XCTestCase {
 
         composition.applySearchQueryForTesting("5")
         settleLayout()
-        let adaptiveState = row.accessoryView as? DashboardAdaptiveControlsStackView
-        let resultRow = settingsRow(
+        let resultRoot = composition.currentHostedPageContentForTesting()
+        let resultRow = try XCTUnwrap(settingsRow(
             titled: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
-            in: composition.currentHostedPageContentForTesting()
-        )
+            in: resultRoot
+        ))
+        let resultSection = try XCTUnwrap(SettingsSectionView.enclosing(resultRow))
+        let resultActive = try XCTUnwrap(firstDescendant(of: resultRow) {
+            $0.identifier?.rawValue == "codexUsageRefreshInterval"
+        } as? NSPopUpButton)
+        let resultTrailing = try XCTUnwrap(firstDescendant(of: resultRow) {
+            $0.identifier?.rawValue == "postCodexRefreshDuration"
+        } as? NSPopUpButton)
+        let adaptiveState = resultRow.accessoryView as? DashboardAdaptiveControlsStackView
 
-        XCTAssertFalse(isCollapsedForSearch(row))
-        XCTAssertEqual(active.frame.size.width, originalPopupSizes[0].width, accuracy: 1)
-        XCTAssertEqual(active.frame.size.height, originalPopupSizes[0].height, accuracy: 1)
-        XCTAssertEqual(trailing.frame.size.width, originalPopupSizes[1].width, accuracy: 1)
-        XCTAssertEqual(trailing.frame.size.height, originalPopupSizes[1].height, accuracy: 1)
+        XCTAssertFalse(isCollapsedForSearch(resultRow))
+        XCTAssertEqual(resultActive.frame.size.width, originalPopupSizes[0].width, accuracy: 1)
+        XCTAssertEqual(resultActive.frame.size.height, originalPopupSizes[0].height, accuracy: 1)
+        XCTAssertEqual(resultTrailing.frame.size.width, originalPopupSizes[1].width, accuracy: 1)
+        XCTAssertEqual(resultTrailing.frame.size.height, originalPopupSizes[1].height, accuracy: 1)
         XCTAssertEqual(
-            row.frame.height,
+            resultRow.frame.height,
             originalRowHeight,
             accuracy: 2,
-            "section=\(composition.section), samePageRow=\(String(describing: resultRow?.frame)), row width \(originalRowWidth)->\(row.bounds.width), content \(row.contentStack.frame), orientation \(originalContentOrientation.rawValue)->\(row.contentStack.orientation.rawValue), intrinsic=\(row.intrinsicContentSize.height), detail width \(originalDetailWidth)->\(row.detailLabel.preferredMaxLayoutWidth), detail height \(originalDetailHeight)->\(row.detailLabel.frame.height), labels \(row.labelsStack.frame), accessory \(String(describing: row.accessoryView?.frame)), adaptiveVertical=\(String(describing: adaptiveState?.stacksControlsVertically))"
+            "section=\(composition.section), row width \(originalRowWidth)->\(resultRow.bounds.width), content \(resultRow.contentStack.frame), orientation \(originalContentOrientation.rawValue)->\(resultRow.contentStack.orientation.rawValue), intrinsic=\(resultRow.intrinsicContentSize.height), detail width \(originalDetailWidth)->\(resultRow.detailLabel.preferredMaxLayoutWidth), detail height \(originalDetailHeight)->\(resultRow.detailLabel.frame.height), labels \(resultRow.labelsStack.frame), accessory \(String(describing: resultRow.accessoryView?.frame)), adaptiveVertical=\(String(describing: adaptiveState?.stacksControlsVertically))"
         )
-        XCTAssertLessThan(section.cardView.frame.height, originalCardHeight - 40)
+        XCTAssertLessThan(resultSection.cardView.frame.height, originalCardHeight - 40)
+        XCTAssertLessThanOrEqual(sectionHeadingToCardGap(in: resultSection), 16)
     }
 
-    func testToolbarSearchFiltersTheCurrentPageAndKeepsTheQueryOnPageChange() throws {
+    func testSearchKeepsApplicationHeadingCloseToItsResultCard() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-heading-gap.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 855, height: 457))
+
+        composition.applySearchQueryForTesting(tr(.keyDashboardGeneralAndRefreshPagesLanguage))
+        window.layoutIfNeeded()
+        let root = composition.currentHostedPageContentForTesting()
+        root.layoutSubtreeIfNeeded()
+        let row = try XCTUnwrap(settingsRow(
+            titled: tr(.keyDashboardGeneralAndRefreshPagesLanguage),
+            in: root
+        ))
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(row))
+
+        XCTAssertLessThanOrEqual(
+            sectionHeadingToCardGap(in: section),
+            SettingsSectionView.headingToCardSpacing + 1,
+            "search should keep the section heading and its result card together; section=\(section.frame), intrinsic=\(section.intrinsicContentSize), stack=\(section.contentStack.frame), heading=\(section.headingLabel.frame), card=\(section.cardView.frame), cardIntrinsic=\(section.cardView.intrinsicContentSize)"
+        )
+        XCTAssertTrue(
+            section.hasSearchNaturalHeightConstraintForTesting,
+            "parent=\(String(describing: section.superview)), hidden siblings=\(String(describing: (section.superview as? NSStackView)?.arrangedSubviews.filter { $0 !== section }.map(DashboardSearchVisibility.isSearchHidden)))"
+        )
+        XCTAssertLessThanOrEqual(
+            section.frame.height,
+            section.intrinsicContentSize.height + 1,
+            "a filtered section should stay at its natural height; section=\(section.frame), intrinsic=\(section.intrinsicContentSize), stack=\(section.contentStack.frame), heading=\(section.headingLabel.frame), card=\(section.cardView.frame), gap=\(sectionHeadingToCardGap(in: section))"
+        )
+    }
+
+    func testToolbarSearchKeepsGlobalResultsAndQueryOnPageChange() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
                 databaseURL: URL(fileURLWithPath: "/nonexistent/issue-436-search-filter.db")
@@ -552,7 +608,11 @@ final class DashboardPageSearchTests: XCTestCase {
             composition.searchQueryForTesting,
             tr(.keyDashboardGeneralAndRefreshPagesLanguage)
         )
-        XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
+        XCTAssertEqual(
+            visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting()),
+            [tr(.keyDashboardGeneralAndRefreshPagesLanguage)]
+        )
+        XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
 
         composition.showSection(.general)
         window.layoutIfNeeded()
@@ -566,7 +626,7 @@ final class DashboardPageSearchTests: XCTestCase {
         )
     }
 
-    func testSearchJumpsToAnotherSectionThenClearsBackToTheOriginalPage() throws {
+    func testSearchShowsCrossSectionResultsThenClearsToTheStartingPage() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
                 databaseURL: URL(fileURLWithPath: "/nonexistent/issue-436-search-jump.db")
@@ -579,7 +639,7 @@ final class DashboardPageSearchTests: XCTestCase {
 
         composition.applySearchQueryForTesting(tr(.keyDashboardMenuBarPagePreview))
         window.layoutIfNeeded()
-        XCTAssertEqual(composition.section, .menuBar)
+        XCTAssertEqual(composition.section, .general)
         XCTAssertFalse(
             try XCTUnwrap(
                 firstSection(
@@ -591,7 +651,7 @@ final class DashboardPageSearchTests: XCTestCase {
 
         composition.applySearchQueryForTesting("")
         window.layoutIfNeeded()
-        XCTAssertEqual(composition.section, .menuBar)
+        XCTAssertEqual(composition.section, .general)
         XCTAssertEqual(composition.searchQueryForTesting, "")
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
     }
@@ -928,18 +988,28 @@ final class DashboardPageSearchTests: XCTestCase {
         let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
         window.layoutIfNeeded()
 
-        let rightClick = try XCTUnwrap(
-            firstDescendant(of: composition.currentHostedPageContentForTesting()) { view in
-                (view as? NSPopUpButton)?.identifier?.rawValue
-                    == DashboardMenuBarPage.rightClickActionIdentifier
-            } as? NSPopUpButton
-        )
         let reverseTitle = tr(.keyDashboardMenuBarPageReverseMouseButtons)
-        let reverseRow = try XCTUnwrap(
-            row(containingTitle: reverseTitle, in: composition.currentHostedPageContentForTesting())
-        )
+
+        func currentRightClickControl() throws -> NSPopUpButton {
+            try XCTUnwrap(
+                firstDescendant(of: composition.currentHostedPageContentForTesting()) { view in
+                    (view as? NSPopUpButton)?.identifier?.rawValue
+                        == DashboardMenuBarPage.rightClickActionIdentifier
+                } as? NSPopUpButton
+            )
+        }
+
+        func currentReverseRow() throws -> NSView {
+            try XCTUnwrap(
+                row(
+                    containingTitle: reverseTitle,
+                    in: composition.currentHostedPageContentForTesting()
+                )
+            )
+        }
 
         func select(_ action: MenuBarRightClickAction) throws {
+            let rightClick = try currentRightClickControl()
             let index = try XCTUnwrap(
                 rightClick.itemArray.firstIndex {
                     ($0.representedObject as? String) == action.rawValue
@@ -955,30 +1025,35 @@ final class DashboardPageSearchTests: XCTestCase {
         }
 
         try select(.openMainWindow)
-        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertFalse(try currentReverseRow().isHidden)
 
         composition.applySearchQueryForTesting(reverseTitle)
         window.layoutIfNeeded()
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertTrue(
+            visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
+                .contains(reverseTitle),
+            "global result rows=\(visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting()))"
+        )
+        XCTAssertFalse(try currentReverseRow().isHidden)
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
 
         try select(.matchLeftClick)
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertTrue(try currentReverseRow().isHidden)
         XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
 
         composition.applySearchQueryForTesting("")
         window.layoutIfNeeded()
-        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertTrue(try currentReverseRow().isHidden)
 
         try select(.openMainWindow)
-        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertFalse(try currentReverseRow().isHidden)
 
         composition.applySearchQueryForTesting(reverseTitle)
         window.layoutIfNeeded()
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertFalse(try currentReverseRow().isHidden)
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
     }
 
@@ -1246,8 +1321,11 @@ final class DashboardPageSearchTests: XCTestCase {
         window.layoutIfNeeded()
         XCTAssertEqual(composition.section, .general)
         XCTAssertFalse(
-            try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden
+            visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
+                .contains(tr(.keyDashboardMenuBarPageReverseMouseButtons)),
+            "business-hidden settings must remain excluded from global results"
         )
+        XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
 
         composition.applySearchQueryForTesting("")
         window.layoutIfNeeded()
@@ -1573,6 +1651,18 @@ private func visibleSearchableRowTitles(in root: NSView) -> [String] {
         return titles
     }
     return visibleRows(in: root).sorted()
+}
+
+private func sectionHeadingToCardGap(in section: SettingsSectionView) -> CGFloat {
+    let heading = section.headingLabel.convert(section.headingLabel.bounds, to: section)
+    let card = section.cardView.convert(section.cardView.bounds, to: section)
+    if heading.minY >= card.maxY {
+        return heading.minY - card.maxY
+    }
+    if card.minY >= heading.maxY {
+        return card.minY - heading.maxY
+    }
+    return 0
 }
 
 private func assertSectionSeparatorsAreValid(_ section: SettingsSectionView) {
