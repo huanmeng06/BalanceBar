@@ -58,6 +58,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         (window as? DashboardSearchWindow)?.searchController = self
         if let toolbar, window.toolbar === toolbar {
             updateSearchItemLabels()
+            updateRefreshItemLabels()
             return
         }
         let toolbar = NSToolbar(identifier: sessionIdentifier)
@@ -209,6 +210,12 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     private func configureRefreshItem() {
+        updateRefreshItemLabels()
+        refreshItem.target = self
+        refreshItem.action = #selector(manualRefresh(_:))
+    }
+
+    private func updateRefreshItemLabels() {
         let label = tr(.keyDashboardGeneralAndRefreshPagesRefreshNow)
         refreshItem.label = label
         refreshItem.paletteLabel = label
@@ -217,8 +224,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
             systemSymbolName: "arrow.clockwise",
             accessibilityDescription: label
         )
-        refreshItem.target = self
-        refreshItem.action = #selector(manualRefresh(_:))
     }
 
     private func publishQuery(_ raw: String) {

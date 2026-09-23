@@ -42,6 +42,55 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(refreshCount, 2)
     }
 
+    func testCompositionRefreshActionAndLabelsUpdateWhenToolbarIsReused() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        var refreshCount = 0
+        let appDelegate = AppDelegate(repository: CCSwitchRepository(
+            databaseURL: URL(fileURLWithPath: "/nonexistent/issue-459-refresh-localization.db")
+        ))
+        appDelegate.manualRefreshActionForTesting = { refreshCount += 1 }
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        let toolbar = try XCTUnwrap(window.toolbar)
+        let englishItem = try XCTUnwrap(toolbar.items.first {
+            $0.itemIdentifier == DashboardToolbarController.refreshItemIdentifier
+        })
+        let englishLabel = tr(.keyDashboardGeneralAndRefreshPagesRefreshNow, language: .english)
+        XCTAssertEqual(englishItem.label, englishLabel)
+        XCTAssertEqual(englishItem.toolTip, englishLabel)
+        XCTAssertEqual(englishItem.image?.accessibilityDescription, englishLabel)
+
+        let chineseLabel = tr(
+            .keyDashboardGeneralAndRefreshPagesRefreshNow,
+            language: .simplifiedChinese
+        )
+        AppLanguage.selected = .simplifiedChinese
+        composition.rebuild()
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let rebuiltItem = try XCTUnwrap(toolbar.items.first {
+            $0.itemIdentifier == DashboardToolbarController.refreshItemIdentifier
+        })
+        XCTAssertTrue(rebuiltItem === englishItem)
+        XCTAssertEqual(rebuiltItem.label, chineseLabel)
+        XCTAssertEqual(rebuiltItem.paletteLabel, chineseLabel)
+        XCTAssertEqual(rebuiltItem.toolTip, chineseLabel)
+        XCTAssertEqual(rebuiltItem.image?.accessibilityDescription, chineseLabel)
+
+        XCTAssertTrue(NSApp.sendAction(
+            try XCTUnwrap(rebuiltItem.action),
+            to: rebuiltItem.target,
+            from: rebuiltItem
+        ))
+        XCTAssertEqual(refreshCount, 1)
+    }
+
     func testSearchSlotTransitionsAndCancelPublishesEmptyExactlyOnce() async throws {
         let controller = DashboardToolbarController()
         let window = DashboardSearchWindow(
