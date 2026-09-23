@@ -209,6 +209,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
+            onManualRefreshWithCompletion: { [weak self] completion in
+                guard let self else {
+                    completion(false)
+                    return
+                }
+                self.performManualRefresh(source: "dashboard", completion: completion)
+            },
             onSwitchProvider: { [weak self] providerID in self?.switchProvider(providerID) },
             onOpenProvider: { [weak self] providerID in self?.showDashboardProvider(providerID) },
             onSelectProvider: { [weak self] providerID in self?.showDashboardProvider(providerID) },
@@ -811,13 +818,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         performManualRefresh(source: "dashboard")
     }
 
-    private func performManualRefresh(source: String) {
+    private func performManualRefresh(
+        source: String,
+        completion: ((Bool) -> Void)? = nil
+    ) {
         SwitchLog.write(
             "manual refresh requested; source=\(source); client=\(activeClient.rawValue)",
             category: "refresh"
         )
         refreshStatusItemMenuInput()
-        refresh(reason: .manual)
+        refresh(reason: .manual, completion: completion)
         providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
     }
 
@@ -1712,10 +1722,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
-    private func refresh(reason: BalanceRefreshReason) {
+    private func refresh(
+        reason: BalanceRefreshReason,
+        completion: ((Bool) -> Void)? = nil
+    ) {
         let client = activeClient
         providerRefreshCoordinator.performAsync { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                completion?(false)
+                return
+            }
             let current = self.ccSwitchRepository.loadCurrent(appType: client.appType)
             guard let current else {
                 SwitchLog.write(
@@ -1724,6 +1740,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     category: "provider"
                 )
                 self.render(.error(tr(.keyAppTheCurrentCcSwitchValueProviderWasNotFound, arguments: [String(describing: client.displayName)])))
+                completion?(false)
                 return
             }
 
@@ -1739,7 +1756,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 current: current,
                 client: client,
                 forceBalance: reason.forcesStandardProviderBalance,
-                switched: switched
+                switched: switched,
+                completion: completion
             )
         }
     }

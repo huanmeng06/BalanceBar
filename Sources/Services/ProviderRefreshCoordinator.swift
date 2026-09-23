@@ -305,14 +305,20 @@ final class ProviderRefreshCoordinator {
         current: CCSwitchProvider,
         client: AssistantClient,
         forceBalance: Bool,
-        switched: Bool
+        switched: Bool,
+        completion: ((Bool) -> Void)? = nil
     ) {
         performOnQueue { [weak self] in
-            self?.refreshStandardProviderOnQueue(
+            guard let self else {
+                completion?(false)
+                return
+            }
+            self.refreshStandardProviderOnQueue(
                 current: current,
                 client: client,
                 forceBalance: forceBalance,
-                switched: switched
+                switched: switched,
+                completion: completion
             )
         }
     }
@@ -321,11 +327,13 @@ final class ProviderRefreshCoordinator {
         current: CCSwitchProvider,
         client: AssistantClient,
         forceBalance: Bool,
-        switched: Bool
+        switched: Bool,
+        completion: ((Bool) -> Void)?
     ) {
         guard let query = current.query else {
             guard current.isOfficial, client == .codex else {
                 if current.isOfficial {
+                    completion?(false)
                     return
                 }
                 let failure = current.queryFailure ?? .unknown
@@ -336,28 +344,41 @@ final class ProviderRefreshCoordinator {
                     providerID: current.id,
                     providerName: current.name,
                     reason: reason,
-                    client: client
+                    client: client,
+                    completion: completion
                 )
                 return
             }
             let currentDate = now()
             let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= 60 } ?? true
-            guard forceBalance || switched || due else { return }
+            guard forceBalance || switched || due else {
+                completion?(false)
+                return
+            }
             lastOfficialFetch = currentDate
-            fetchOfficialQuota(providerID: current.id, providerName: current.name, client: client)
+            fetchOfficialQuota(
+                providerID: current.id,
+                providerName: current.name,
+                client: client,
+                completion: completion
+            )
             return
         }
 
         let interval = TimeInterval(max(query.intervalMinutes, 1) * 60)
         let currentDate = now()
         let due = lastBalanceFetch.map { currentDate.timeIntervalSince($0) >= interval } ?? true
-        guard forceBalance || switched || due else { return }
+        guard forceBalance || switched || due else {
+            completion?(false)
+            return
+        }
         lastBalanceFetch = currentDate
         fetchBalance(
             providerID: current.id,
             providerName: current.name,
             query: query,
-            client: client
+            client: client,
+            completion: completion
         )
     }
 
@@ -452,14 +473,18 @@ final class ProviderRefreshCoordinator {
         providerID: String,
         providerName: String,
         query: BalanceQuery,
-        client: AssistantClient
+        client: AssistantClient,
+        completion: ((Bool) -> Void)? = nil
     ) {
         guard balanceAPIClient.fetchBalance(
             query: query,
             client: client,
             providerID: providerID,
             completion: { [weak self] result in
-            guard let self else { return }
+            guard let self else {
+                completion?(false)
+                return
+            }
             switch result {
             case .success(let response):
                 let identity = ProviderBalanceProgressIdentity(
@@ -478,7 +503,8 @@ final class ProviderRefreshCoordinator {
                             providerID: providerID,
                             providerName: providerName,
                             reason: error.userVisibleReason(language: AppLanguage.resolved),
-                            client: client
+                            client: client,
+                            completion: completion
                         )
                     }
                     return
@@ -497,18 +523,19 @@ final class ProviderRefreshCoordinator {
                         progressPercentage: progressPercentage
                     ),
                     providerID: providerID,
-                    client: client
+                    client: client,
+                    completion: completion
                 )
             case .failure(.nonHTTPS):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), client: client, completion: completion)
             case .failure(.transport(let error)):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client, completion: completion)
             case .failure(.httpStatus):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError), client: client, completion: completion)
             case .failure(.unsupportedFormat):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), client: client, completion: completion)
             case .failure(.invalidJSON):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed), client: client, completion: completion)
             }
             }
         ) else {
@@ -516,18 +543,27 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient) {
+    private func fetchOfficialQuota(
+        providerID: String,
+        providerName: String,
+        client: AssistantClient,
+        completion: ((Bool) -> Void)? = nil
+    ) {
         if let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
             ?? DevelopmentBankedResetDemo.snapshot(providerName: providerName) {
             renderForCurrentProvider(
                 demoSnapshot,
                 providerID: providerID,
-                client: client
+                client: client,
+                completion: completion
             )
             return
         }
         officialQuotaClient.fetchQuota(client: client, providerID: providerID) { [weak self] result in
-            guard let self else { return }
+            guard let self else {
+                completion?(false)
+                return
+            }
             switch result {
             case .success(let response):
                 self.updateQuickSwitchSummary(
@@ -548,7 +584,8 @@ final class ProviderRefreshCoordinator {
                             resetForecast: bankedReset == nil ? .unavailable : forecast
                         ),
                         providerID: providerID,
-                        client: client
+                        client: client,
+                        completion: completion
                     )
                 }
                 let finishOfficial: (CodexBankedReset?) -> Void = { bankedReset in
@@ -577,21 +614,24 @@ final class ProviderRefreshCoordinator {
                     providerID: providerID,
                     providerName: providerName,
                     reason: tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [String(describing: client.displayName)]),
-                    client: client
+                    client: client,
+                    completion: completion
                 )
             case .failure(.transport(let error)):
                 self.renderOfficialError(
                     providerID: providerID,
                     providerName: providerName,
                     reason: tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [String(describing: client.displayName), String(describing: error.localizedDescription)]),
-                    client: client
+                    client: client,
+                    completion: completion
                 )
             case .failure:
                 self.renderOfficialError(
                     providerID: providerID,
                     providerName: providerName,
                     reason: tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [String(describing: client.displayName)]),
-                    client: client
+                    client: client,
+                    completion: completion
                 )
             }
         }
@@ -601,12 +641,14 @@ final class ProviderRefreshCoordinator {
         providerID: String,
         providerName: String,
         reason: String,
-        client: AssistantClient
+        client: AssistantClient,
+        completion: ((Bool) -> Void)? = nil
     ) {
         renderForCurrentProvider(
             .providerError(providerName, reason: reason, cachedBalance: nil),
             providerID: providerID,
-            client: client
+            client: client,
+            completion: completion
         )
     }
 
@@ -659,9 +701,21 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    private func renderForCurrentProvider(_ next: Snapshot, providerID: String, client: AssistantClient) {
+    private func renderForCurrentProvider(
+        _ next: Snapshot,
+        providerID: String,
+        client: AssistantClient,
+        completion: ((Bool) -> Void)? = nil
+    ) {
         queue.async { [weak self] in
-            guard let self, self.repository.loadCurrent(appType: client.appType)?.id == providerID else { return }
+            guard let self else {
+                completion?(false)
+                return
+            }
+            guard self.repository.loadCurrent(appType: client.appType)?.id == providerID else {
+                completion?(false)
+                return
+            }
             if next.kind == .balance {
                 self.providerBalanceSnapshots.store(next, clientID: client.rawValue, providerID: providerID)
             }
@@ -669,16 +723,36 @@ final class ProviderRefreshCoordinator {
                 if next.kind == .official || next.kind == .balance {
                     self.actions.storeClientSnapshot(client, providerID, next)
                 }
-                guard self.actions.isActiveClient(client) else { return }
-                guard self.actions.currentProvider(client)?.id == providerID else { return }
+                guard self.actions.isActiveClient(client) else {
+                    completion?(false)
+                    return
+                }
+                guard self.actions.currentProvider(client)?.id == providerID else {
+                    completion?(false)
+                    return
+                }
                 self.actions.render(next)
+                completion?(next.kind == .official || next.kind == .balance)
             }
         }
     }
 
-    private func renderBalanceError(providerID: String, providerName: String, reason: String, client: AssistantClient) {
+    private func renderBalanceError(
+        providerID: String,
+        providerName: String,
+        reason: String,
+        client: AssistantClient,
+        completion: ((Bool) -> Void)? = nil
+    ) {
         queue.async { [weak self] in
-            guard let self, self.repository.loadCurrent(appType: client.appType)?.id == providerID else { return }
+            guard let self else {
+                completion?(false)
+                return
+            }
+            guard self.repository.loadCurrent(appType: client.appType)?.id == providerID else {
+                completion?(false)
+                return
+            }
             let next = self.providerBalanceSnapshots.errorSnapshot(
                 clientID: client.rawValue,
                 providerID: providerID,
@@ -686,9 +760,16 @@ final class ProviderRefreshCoordinator {
                 reason: reason
             )
             DispatchQueue.main.async {
-                guard self.actions.isActiveClient(client) else { return }
-                guard self.actions.currentProvider(client)?.id == providerID else { return }
+                guard self.actions.isActiveClient(client) else {
+                    completion?(false)
+                    return
+                }
+                guard self.actions.currentProvider(client)?.id == providerID else {
+                    completion?(false)
+                    return
+                }
                 self.actions.render(next)
+                completion?(false)
             }
         }
     }

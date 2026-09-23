@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// The sole native toolbar owner. Search is a public `NSSearchToolbarItem`
 /// (same class NetNewsWire installs in `MainWindowController`).
@@ -30,6 +31,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     private(set) var isSearchEditing = false
     var onSearchQueryChanged: ((String) -> Void)?
     var onManualRefresh: (() -> Void)?
+    var onManualRefreshWithCompletion: ((@escaping (Bool) -> Void) -> Void)?
 
     var isSearchActive: Bool {
         isSearchEditing || !searchQuery.isEmpty
@@ -37,11 +39,12 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
 
     private let searchItem: NSSearchToolbarItem
     private lazy var refreshItem: NSToolbarItem = {
-        let item = NSToolbarItem(itemIdentifier: Self.refreshItemIdentifier)
-        item.target = self
-        item.action = #selector(manualRefresh(_:))
-        return item
+        NSToolbarItem(itemIdentifier: Self.refreshItemIdentifier)
     }()
+    private let refreshFeedbackStyle = DashboardRefreshFeedbackStyle.resolved(
+        from: ProcessInfo.processInfo.arguments
+    )
+    private var refreshHostingView: NSHostingView<DashboardRefreshToolbarButton>?
     private weak var window: NSWindow?
     private weak var toolbar: NSToolbar?
     private var isEndingSearch = false
@@ -147,8 +150,13 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         return searchItem
     }
 
-    @objc func manualRefresh(_ sender: Any?) {
-        onManualRefresh?()
+    func manualRefreshWithCompletion(_ completion: @escaping (Bool) -> Void) {
+        if let onManualRefreshWithCompletion {
+            onManualRefreshWithCompletion(completion)
+        } else {
+            onManualRefresh?()
+            completion(false)
+        }
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) {
@@ -217,14 +225,113 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
             systemSymbolName: "arrow.clockwise",
             accessibilityDescription: label
         )
-        refreshItem.target = self
-        refreshItem.action = #selector(manualRefresh(_:))
+        let rootView = DashboardRefreshToolbarButton(
+            label: label,
+            feedbackStyle: refreshFeedbackStyle,
+            onRefresh: { [weak self] completion in
+                self?.manualRefreshWithCompletion(completion)
+            }
+        )
+        if let refreshHostingView {
+            refreshHostingView.rootView = rootView
+        } else {
+            let hostingView = NSHostingView(rootView: rootView)
+            hostingView.frame = NSRect(x: 0, y: 0, width: 28, height: 28)
+            refreshHostingView = hostingView
+        }
+        refreshItem.view = refreshHostingView
     }
 
     private func publishQuery(_ raw: String) {
         guard raw != searchQuery else { return }
         searchQuery = raw
         onSearchQueryChanged?(searchQuery)
+    }
+}
+
+enum DashboardRefreshFeedbackStyle: String, Equatable {
+    case checkAfterSuccess = "check"
+    case rotatingArrow = "rotate"
+
+    static func resolved(from arguments: [String]) -> Self {
+        let prefix = "--dashboard-refresh-feedback="
+        guard let value = arguments.first(where: { $0.hasPrefix(prefix) })?
+            .dropFirst(prefix.count),
+              let style = Self(rawValue: String(value)) else {
+            return .rotatingArrow
+        }
+        return style
+    }
+}
+
+struct DashboardRefreshToolbarButton: View {
+    let label: String
+    let feedbackStyle: DashboardRefreshFeedbackStyle
+    let onRefresh: (@escaping (Bool) -> Void) -> Void
+
+    @State private var refreshTrigger = 0
+    @State private var showsSuccess = false
+    @State private var successSequence = 0
+
+    var body: some View {
+        Button(action: activate) {
+            symbol
+                .font(.system(size: 14, weight: .regular))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(label)
+        .accessibilityLabel(Text(label))
+    }
+
+    @ViewBuilder
+    private var symbol: some View {
+        switch feedbackStyle {
+        case .checkAfterSuccess:
+            Image(systemName: showsSuccess ? "checkmark" : "arrow.clockwise")
+                .contentTransition(.symbolEffect(.replace))
+        case .rotatingArrow:
+            if #available(macOS 15.0, *) {
+                Image(systemName: "arrow.clockwise")
+                    .symbolEffect(
+                        .rotate.clockwise.wholeSymbol,
+                        options: .nonRepeating,
+                        value: refreshTrigger
+                    )
+            } else {
+                Image(systemName: "arrow.clockwise")
+            }
+        }
+    }
+
+    func activate() {
+        switch feedbackStyle {
+        case .rotatingArrow:
+            refreshTrigger &+= 1
+            onRefresh { _ in }
+        case .checkAfterSuccess:
+            successSequence &+= 1
+            let requestSequence = successSequence
+            withAnimation {
+                showsSuccess = false
+            }
+            onRefresh { succeeded in
+                guard succeeded else { return }
+                DispatchQueue.main.async {
+                    guard requestSequence == successSequence else { return }
+                    withAnimation {
+                        showsSuccess = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                        guard requestSequence == successSequence else { return }
+                        withAnimation {
+                            showsSuccess = false
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

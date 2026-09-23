@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import BalanceBar
 
@@ -1382,7 +1383,12 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertEqual(refreshItem.label, refreshLabel, file: file, line: line)
         XCTAssertEqual(refreshItem.toolTip, refreshLabel, file: file, line: line)
         XCTAssertEqual(refreshItem.image?.accessibilityDescription, refreshLabel, file: file, line: line)
-        XCTAssertEqual(refreshItem.action, #selector(DashboardToolbarController.manualRefresh(_:)), file: file, line: line)
+        XCTAssertTrue(
+            refreshItem.view is NSHostingView<DashboardRefreshToolbarButton>,
+            "Toolbar refresh action must remain a native SwiftUI button view",
+            file: file,
+            line: line
+        )
         let searchItem = try XCTUnwrap(
             toolbar.items.last as? NSSearchToolbarItem,
             file: file,
