@@ -10,6 +10,7 @@ struct DashboardWindowControllerActions {
     let didShowPage: () -> Void
     let didClose: () -> Void
     let didResize: () -> Void
+    var onManualRefresh: () -> Void = {}
 }
 
 /// Composition-owned page, source-list, toolbar, and accessory session.
@@ -36,6 +37,7 @@ final class DashboardPageSession {
 
     init(actions: DashboardWindowControllerActions) {
         self.actions = actions
+        toolbarController.onManualRefresh = actions.onManualRefresh
     }
 
     func installShell(on windowController: DashboardWindowController) {

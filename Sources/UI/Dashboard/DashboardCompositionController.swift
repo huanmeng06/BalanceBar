@@ -153,7 +153,8 @@ final class DashboardCompositionController {
             },
             didResize: { [weak self] in
                 self?.actions.onDidResize()
-            }
+            },
+            onManualRefresh: actions.onManualRefresh
         )
     )
     private lazy var windowController: DashboardWindowController = {
