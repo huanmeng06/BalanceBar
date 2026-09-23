@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 import XCTest
 @testable import BalanceBar
 
@@ -16,11 +15,7 @@ final class DashboardPageSearchTests: XCTestCase {
                 didShowPage: {},
                 didClose: {},
                 didResize: {},
-                onManualRefresh: { refreshCount += 1 },
-                onManualRefreshWithCompletion: { completion in
-                    refreshCount += 1
-                    completion(true)
-                }
+                onManualRefresh: { refreshCount += 1 }
             )
         )
         defer { harness.teardown() }
@@ -33,10 +28,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(firstItem.label, tr(.keyDashboardGeneralAndRefreshPagesRefreshNow))
         XCTAssertEqual(firstItem.toolTip, tr(.keyDashboardGeneralAndRefreshPagesRefreshNow))
         XCTAssertNotNil(firstItem.image)
-        let firstButton = try XCTUnwrap(
-            firstItem.view as? NSHostingView<DashboardRefreshToolbarButton>
-        )
-        firstButton.rootView.activate()
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(firstItem.action), to: firstItem.target, from: firstItem))
         XCTAssertEqual(refreshCount, 1)
 
         harness.rebuild()
@@ -46,41 +38,8 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(refreshItems.count, 1)
         let rebuiltItem = try XCTUnwrap(refreshItems.first)
         XCTAssertTrue(rebuiltItem === firstItem)
-        let rebuiltButton = try XCTUnwrap(
-            rebuiltItem.view as? NSHostingView<DashboardRefreshToolbarButton>
-        )
-        rebuiltButton.rootView.activate()
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(rebuiltItem.action), to: rebuiltItem.target, from: rebuiltItem))
         XCTAssertEqual(refreshCount, 2)
-    }
-
-    func testManualRefreshCompletionIsForwardedOnce() {
-        let controller = DashboardToolbarController()
-        var actionCount = 0
-        var result: Bool?
-        controller.onManualRefreshWithCompletion = { completion in
-            actionCount += 1
-            completion(true)
-        }
-
-        controller.manualRefreshWithCompletion { result = $0 }
-
-        XCTAssertEqual(actionCount, 1)
-        XCTAssertEqual(result, true)
-    }
-
-    func testToolbarRefreshFeedbackModeCanBeSelectedForComparison() {
-        XCTAssertEqual(
-            DashboardRefreshFeedbackStyle.resolved(from: ["BalanceBar", "--dashboard-refresh-feedback=check"]),
-            .checkAfterSuccess
-        )
-        XCTAssertEqual(
-            DashboardRefreshFeedbackStyle.resolved(from: ["BalanceBar", "--dashboard-refresh-feedback=rotate"]),
-            .rotatingArrow
-        )
-        XCTAssertEqual(
-            DashboardRefreshFeedbackStyle.resolved(from: ["BalanceBar", "--dashboard-refresh-feedback=unknown"]),
-            .rotatingArrow
-        )
     }
 
     func testSearchSlotTransitionsAndCancelPublishesEmptyExactlyOnce() async throws {

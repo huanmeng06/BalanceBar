@@ -23,7 +23,6 @@ struct DashboardCompositionState {
 
 struct DashboardCompositionActions {
     let onManualRefresh: () -> Void
-    var onManualRefreshWithCompletion: ((@escaping (Bool) -> Void) -> Void)? = nil
     let onSwitchProvider: (String) -> Void
     let onOpenProvider: (String) -> Void
     let onSelectProvider: (String) -> Void
@@ -155,8 +154,7 @@ final class DashboardCompositionController {
             didResize: { [weak self] in
                 self?.actions.onDidResize()
             },
-            onManualRefresh: actions.onManualRefresh,
-            onManualRefreshWithCompletion: actions.onManualRefreshWithCompletion
+            onManualRefresh: actions.onManualRefresh
         )
     )
     private lazy var windowController: DashboardWindowController = {

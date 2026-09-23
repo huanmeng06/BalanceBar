@@ -11,7 +11,6 @@ struct DashboardWindowControllerActions {
     let didClose: () -> Void
     let didResize: () -> Void
     var onManualRefresh: () -> Void = {}
-    var onManualRefreshWithCompletion: ((@escaping (Bool) -> Void) -> Void)? = nil
 }
 
 /// Composition-owned page, source-list, toolbar, and accessory session.
@@ -39,11 +38,6 @@ final class DashboardPageSession {
     init(actions: DashboardWindowControllerActions) {
         self.actions = actions
         toolbarController.onManualRefresh = actions.onManualRefresh
-        toolbarController.onManualRefreshWithCompletion = actions.onManualRefreshWithCompletion
-            ?? { [onManualRefresh = actions.onManualRefresh] completion in
-                onManualRefresh()
-                completion(false)
-            }
     }
 
     func installShell(on windowController: DashboardWindowController) {

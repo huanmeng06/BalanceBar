@@ -57,7 +57,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let activeClient = ActiveClientBox(.codex)
         let claudeStored = expectation(description: "inactive Claude snapshot cached")
         let codexRendered = expectation(description: "active Codex snapshot rendered")
-        let refreshCompleted = expectation(description: "manual refresh completed successfully")
         let actions = ProviderRefreshActions(
             currentProvider: { [repository] client in
                 repository?.loadCurrent(appType: client.appType)
@@ -92,16 +91,12 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             current: codexCurrent,
             client: .codex,
             forceBalance: true,
-            switched: false,
-            completion: { succeeded in
-                XCTAssertTrue(succeeded)
-                refreshCompleted.fulfill()
-            }
+            switched: false
         )
         coordinator.prefetchCurrentBalance(for: .claude)
 
         XCTAssertEqual(claudeStarted.wait(timeout: .now() + 2), .success)
-        wait(for: [codexRendered, refreshCompleted], timeout: 2)
+        wait(for: [codexRendered], timeout: 2)
         XCTAssertEqual(recorder.rendered.map(\.provider), ["Codex Custom"])
 
         releaseClaude.signal()
@@ -127,7 +122,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
 
         let recorder = PublicationRecorder()
         let callbackCompleted = expectation(description: "late callback completed")
-        let refreshCompleted = expectation(description: "late refresh reports stale failure")
         let actions = ProviderRefreshActions(
             currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
             isActiveClient: { _ in true },
@@ -150,17 +144,13 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             current: codexCurrent,
             client: .codex,
             forceBalance: true,
-            switched: false,
-            completion: { succeeded in
-                XCTAssertFalse(succeeded)
-                refreshCompleted.fulfill()
-            }
+            switched: false
         )
         XCTAssertEqual(requestStarted.wait(timeout: .now() + 2), .success)
         try setCurrentProvider("codex-replacement")
         releaseRequest.signal()
 
-        wait(for: [callbackCompleted, refreshCompleted], timeout: 2)
+        wait(for: [callbackCompleted], timeout: 2)
         XCTAssertTrue(recorder.rendered.isEmpty)
         XCTAssertTrue(recorder.stored.isEmpty)
     }
