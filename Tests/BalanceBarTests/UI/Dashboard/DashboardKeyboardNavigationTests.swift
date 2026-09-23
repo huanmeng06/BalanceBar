@@ -157,8 +157,10 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         window.layoutIfNeeded()
         window.displayIfNeeded()
 
+        let owner = try XCTUnwrap(window.toolbar?.delegate as? DashboardToolbarController)
+        owner.beginSearch()
         let searchField = try XCTUnwrap(
-            window.toolbar?.items.compactMap { ($0 as? NSSearchToolbarItem)?.searchField }.first
+            DashboardSearchToolbarProbe.searchField(in: window.toolbar?.items.last)
         )
         if window.makeFirstResponder(searchField) {
             composition.applySearchQueryForTesting(tr(.keyDashboardGeneralAndRefreshPagesLanguage))
@@ -170,6 +172,49 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
                 "typing a query must not resign the toolbar search field"
             )
         }
+    }
+
+    func testCommandFExpandsTheSingleSearchSlotAndEscapeClosesIt() async throws {
+        let controller = DashboardToolbarController()
+        let window = DashboardSearchWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer {
+            controller.detach()
+            window.close()
+        }
+        ApplicationWindowPresentation.presentInBackground(window)
+        controller.install(on: window)
+        let event = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .command,
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: "f",
+            charactersIgnoringModifiers: "f",
+            isARepeat: false,
+            keyCode: 3
+        ))
+        XCTAssertTrue(window.performKeyEquivalent(with: event))
+        await drainMainQueue()
+        let slot = try XCTUnwrap(window.toolbar?.items.last)
+        let field = try XCTUnwrap(DashboardSearchToolbarProbe.searchField(in: slot))
+        XCTAssertTrue(
+            controller.hostsSearchResponder(window.firstResponder),
+            "Cmd+F must let beginSearchInteraction move keyboard focus"
+        )
+        XCTAssertNotNil(field.currentEditor())
+        controller.setQuery("Language")
+        XCTAssertTrue(controller.isSearchActive)
+        window.cancelOperation(nil)
+        await drainMainQueue()
+        XCTAssertEqual(controller.searchQuery, "")
+        XCTAssertFalse(controller.isSearchActive)
     }
 
     func testSidebarGroupRowsAreNotSelectableAndArrowsSkipThem() throws {
@@ -377,5 +422,14 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
             }
         }
         return nil
+    }
+}
+
+@MainActor
+private func drainMainQueue() async {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.main.async {
+            continuation.resume()
+        }
     }
 }

@@ -117,6 +117,12 @@ final class DashboardSplitViewController: NSSplitViewController {
         addSplitViewItem(contentItem)
     }
 
+    /// Keep the live content controller in the window. Replacing
+    /// `contentViewController` ends toolbar field editing and commits IME.
+    func replaceSidebar(with sidebarView: NSView) {
+        (sidebarController as? DashboardSidebarViewController)?.replaceHostedView(sidebarView)
+    }
+
     /// Native AppKit may overlay the sidebar on the adjacent content item and
     /// then adjust that item's `safeAreaInsets`. The flag belongs on the
     /// content item, not the sidebar item or AccessoryHost. `#available` stays
@@ -225,4 +231,22 @@ private final class DashboardSidebarViewController: NSViewController {
     init(view: NSView) { hostedView = view; super.init(nibName: nil, bundle: nil) }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
     override func loadView() { view = hostedView }
+
+    func replaceHostedView(_ newView: NSView) {
+        let topInset = newView.constraints.first {
+            $0.firstAttribute == .top && $0.secondAttribute == .top
+        }?.constant ?? 0
+        view.subviews.forEach { $0.removeFromSuperview() }
+        for subview in newView.subviews {
+            subview.removeFromSuperview()
+            subview.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(subview)
+            NSLayoutConstraint.activate([
+                subview.topAnchor.constraint(equalTo: view.topAnchor, constant: topInset),
+                subview.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                subview.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                subview.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            ])
+        }
+    }
 }

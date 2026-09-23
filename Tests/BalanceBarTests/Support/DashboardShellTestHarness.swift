@@ -139,3 +139,20 @@ final class DashboardShellTestHarness {
         pageSession.scrollablePage
     }
 }
+
+/// Public `NSSearchToolbarItem` surface. Collapsed, AppKit hides the field and
+/// shows its own button representation; expanded, the public `searchField` is visible.
+enum DashboardSearchToolbarProbe {
+    static func searchItem(in item: NSToolbarItem?) -> NSSearchToolbarItem? {
+        item as? NSSearchToolbarItem
+    }
+
+    static func searchField(in item: NSToolbarItem?) -> NSSearchField? {
+        searchItem(in: item)?.searchField
+    }
+
+    static func isCollapsedButtonRepresentation(_ item: NSToolbarItem?) -> Bool {
+        guard let field = searchField(in: item) else { return false }
+        return field.isHidden || field.frame.width <= 40
+    }
+}

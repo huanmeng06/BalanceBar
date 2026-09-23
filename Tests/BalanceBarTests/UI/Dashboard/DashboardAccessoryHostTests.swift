@@ -674,7 +674,9 @@ final class DashboardAccessoryHostTests: XCTestCase {
         window.layoutIfNeeded()
         try assertNoMountedAccessory(in: controller)
         XCTAssertTrue(window.contentViewController is DashboardSplitViewController)
-        XCTAssertEqual(window.toolbar?.identifier, DashboardToolbarController.identifier)
+        XCTAssertTrue(
+            "\(window.toolbar?.identifier ?? NSToolbar.Identifier(""))".hasPrefix("\(DashboardToolbarController.identifier)")
+        )
 
         controller.showSection(.menuBar)
         window.layoutIfNeeded()

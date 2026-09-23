@@ -79,6 +79,26 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains(".toggleSidebar"))
         XCTAssertTrue(source.contains(".sidebarTrackingSeparator"))
         XCTAssertTrue(source.contains("NSSearchToolbarItem"))
+        XCTAssertTrue(source.contains("beginSearchInteraction"))
+        XCTAssertTrue(source.contains("endSearchInteraction"))
+        XCTAssertTrue(source.contains("preferredWidthForSearchField"))
+        XCTAssertTrue(source.contains("controlTextDidBeginEditing"))
+        XCTAssertTrue(source.contains("isSearchEditing"))
+        XCTAssertTrue(source.contains("cancelSearch"))
+        XCTAssertFalse(source.contains("endSearchInteraction()\n        isSearchEditing = false"))
+        XCTAssertFalse(source.contains("widthAnchor.constraint"))
+        XCTAssertFalse(source.contains("collapsedSearchFieldWidth"))
+        XCTAssertFalse(source.contains("isSearchExpanded"))
+        XCTAssertFalse(source.contains("installSearchFieldWidthPreferences"))
+        XCTAssertFalse(source.contains("searchFieldMaxWidthConstraint"))
+        XCTAssertFalse(source.contains("collapseAfterEditing"))
+        XCTAssertFalse(source.contains("handleCollapsedSearchClick"))
+        XCTAssertFalse(source.contains("sendEvent"))
+        XCTAssertFalse(source.contains("makeFirstResponder(searchItem.searchField)"))
+        XCTAssertFalse(source.contains("accessibilityDisplayShouldReduceMotion"))
+        XCTAssertFalse(source.contains("shouldFlushSearchLayout"))
+        XCTAssertFalse(source.contains("NSAnimationContext"))
+        XCTAssertFalse(source.contains("CAMediaTimingFunction"))
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
         XCTAssertTrue(source.contains("autosavesConfiguration = false"))
         XCTAssertFalse(source.contains("toolbarNavigationalItemIdentifiers"))
@@ -86,13 +106,13 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(source.contains("item.isHidden"))
         XCTAssertFalse(source.contains("sidebarCollapseObservation"))
         XCTAssertFalse(source.contains("toolbarWillAddItem"))
-        XCTAssertFalse(source.contains("#selector("))
+        XCTAssertFalse(source.contains("bezelStyle = .circular"))
+        XCTAssertFalse(source.contains("DashboardSearchSlotView"))
         XCTAssertFalse(source.contains("setValue("))
         XCTAssertFalse(source.contains("forKey:"))
         XCTAssertFalse(source.contains("NSClassFromString"))
         XCTAssertFalse(source.contains("NSGlassEffectView"))
         XCTAssertFalse(source.contains("NSView("))
-        XCTAssertFalse(source.contains("NSSearchField("))
         XCTAssertFalse(source.contains("NSTitlebarAccessoryViewController"))
         XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
         XCTAssertFalse(source.contains("NSScrollPocket"))
@@ -1284,7 +1304,12 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
     ) throws {
         let toolbar = try XCTUnwrap(window.toolbar, file: file, line: line)
         XCTAssertFalse(toolbar.items.isEmpty, "Dashboard toolbar must not be an empty unified placeholder", file: file, line: line)
-        XCTAssertEqual(toolbar.identifier, DashboardToolbarController.identifier, file: file, line: line)
+        XCTAssertEqual(toolbar.identifier, (toolbar.delegate as? DashboardToolbarController)?.sessionIdentifier, file: file, line: line)
+        XCTAssertTrue(
+            "\(toolbar.identifier)".hasPrefix("\(DashboardToolbarController.identifier)"),
+            file: file,
+            line: line
+        )
         XCTAssertEqual(toolbar.displayMode, .iconOnly, file: file, line: line)
         XCTAssertFalse(toolbar.allowsUserCustomization, file: file, line: line)
         XCTAssertFalse(toolbar.autosavesConfiguration, file: file, line: line)
@@ -1345,19 +1370,29 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
-        let searchItem = toolbar.items.last
+        let searchItem = try XCTUnwrap(
+            toolbar.items.last as? NSSearchToolbarItem,
+            file: file,
+            line: line
+        )
         XCTAssertEqual(
-            searchItem?.itemIdentifier,
+            searchItem.itemIdentifier,
             DashboardToolbarController.searchItemIdentifier,
             file: file,
             line: line
         )
-        XCTAssertTrue(
-            searchItem is NSSearchToolbarItem,
-            "Content-pane search must be NSSearchToolbarItem, not a hand-rolled NSSearchField",
+        let owner = try XCTUnwrap(toolbar.delegate as? DashboardToolbarController)
+        window.layoutIfNeeded()
+        XCTAssertEqual(
+            searchItem.preferredWidthForSearchField,
+            DashboardToolbarController.expandedSearchFieldWidth,
             file: file,
             line: line
         )
+        XCTAssertEqual(searchItem.toolTip, tr(.keyDashboardSearchPlaceholder), file: file, line: line)
+        if owner.isSearchActive {
+            XCTAssertFalse(searchItem.searchField.isHidden, file: file, line: line)
+        }
     }
 
     private func sidebarWidth(in window: NSWindow) -> CGFloat? {

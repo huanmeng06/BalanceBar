@@ -1,8 +1,13 @@
 import AppKit
 
-/// Window-level NSToolbar owner for the Dashboard shell.
-/// Sidebar system items stay before the tracking separator; the content-pane
-/// search item is a public NSSearchToolbarItem after it.
+/// The sole native toolbar owner. Search is a public `NSSearchToolbarItem`
+/// (same class NetNewsWire installs in `MainWindowController`).
+///
+/// AppKit owns the item view (`view` is unavailable), compact/expanded
+/// representation, keyboard focus, and transition. This controller only
+/// configures the public item, forwards Cmd+F / Esc to
+/// `beginSearchInteraction()` / `endSearchInteraction()`, and records
+/// editing plus the filter query from `NSSearchFieldDelegate`.
 final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
@@ -13,30 +18,102 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         .flexibleSpace,
         searchItemIdentifier
     ]
+    /// `NSSearchToolbarItem.preferredWidthForSearchField` defaults to 240.
+    /// Trimmed slightly for the content pane; AppKit applies it when the
+    /// item receives keyboard focus.
+    static let expandedSearchFieldWidth: CGFloat = 220
 
+    let sessionIdentifier = NSToolbar.Identifier("BalanceBarDashboardToolbar.\(UUID().uuidString)")
     private(set) var searchQuery = ""
+    private(set) var isSearchEditing = false
     var onSearchQueryChanged: ((String) -> Void)?
-    private var searchItem: NSSearchToolbarItem?
+
+    var isSearchActive: Bool {
+        isSearchEditing || !searchQuery.isEmpty
+    }
+
+    private let searchItem: NSSearchToolbarItem
+    private weak var window: NSWindow?
+    private weak var toolbar: NSToolbar?
+    private var isEndingSearch = false
+
+    override init() {
+        searchItem = NSSearchToolbarItem(itemIdentifier: Self.searchItemIdentifier)
+        super.init()
+        configureSearchItem()
+    }
 
     func install(on window: NSWindow) {
-        let toolbar = NSToolbar(identifier: Self.identifier)
+        window.isReleasedWhenClosed = false
+        self.window = window
+        (window as? DashboardSearchWindow)?.searchController = self
+        if let toolbar, window.toolbar === toolbar {
+            updateSearchItemLabels()
+            return
+        }
+        let toolbar = NSToolbar(identifier: sessionIdentifier)
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
         toolbar.autosavesConfiguration = false
+        self.toolbar = toolbar
         window.toolbar = toolbar
         window.toolbarStyle = .unified
-        restoreSearchFieldText()
+        _ = window.toolbar?.items
+        window.layoutIfNeeded()
     }
 
     func setQuery(_ query: String) {
-        guard query != searchQuery else {
-            restoreSearchFieldText()
+        guard (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true else {
             return
         }
-        searchQuery = query
-        restoreSearchFieldText()
-        onSearchQueryChanged?(searchQuery)
+        if searchItem.searchField.stringValue != query {
+            searchItem.searchField.stringValue = query
+        }
+        publishQuery(query)
+    }
+
+    func detach() {
+        searchItem.searchField.delegate = nil
+        if let window {
+            _ = searchItem.searchField.abortEditing()
+            window.endEditing(for: searchItem.searchField)
+            window.makeFirstResponder(nil)
+        }
+        if window?.toolbar === toolbar {
+            window?.toolbar = nil
+        }
+        (window as? DashboardSearchWindow)?.searchController = nil
+        isSearchEditing = false
+        toolbar = nil
+        window = nil
+    }
+
+    func hostsSearchResponder(_ responder: NSResponder?) -> Bool {
+        guard let responder else { return false }
+        if responder === searchItem.searchField { return true }
+        if let textView = responder as? NSTextView,
+           textView.isFieldEditor,
+           textView.delegate as AnyObject? === searchItem.searchField {
+            return true
+        }
+        return false
+    }
+
+    @objc func beginSearch(_ sender: Any? = nil) {
+        if toolbar?.isVisible == false {
+            toolbar?.isVisible = true
+        }
+        searchItem.beginSearchInteraction()
+    }
+
+    @objc func cancelSearch(_ sender: Any? = nil) {
+        guard !isEndingSearch else { return }
+        isEndingSearch = true
+        defer { isEndingSearch = false }
+        searchItem.searchField.stringValue = ""
+        publishQuery("")
+        searchItem.endSearchInteraction()
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -52,45 +129,118 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
-        guard itemIdentifier == Self.searchItemIdentifier else {
-            return nil
-        }
-        let item = searchItem ?? NSSearchToolbarItem(itemIdentifier: itemIdentifier)
-        configureSearchItem(item)
-        searchItem = item
-        return item
+        guard itemIdentifier == Self.searchItemIdentifier else { return nil }
+        configureSearchItem()
+        return searchItem
+    }
+
+    func controlTextDidBeginEditing(_ obj: Notification) {
+        isSearchEditing = true
     }
 
     func controlTextDidChange(_ obj: Notification) {
-        guard let field = obj.object as? NSSearchField else { return }
+        guard let field = obj.object as? NSSearchField,
+              (field.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
+        publishQuery(field.stringValue)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        if (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing == true {
+            return
+        }
+        isSearchEditing = false
+        guard !isEndingSearch, let field = obj.object as? NSSearchField else { return }
         publishQuery(field.stringValue)
     }
 
     func searchFieldDidEndSearching(_ sender: NSSearchField) {
+        guard !isEndingSearch,
+              (sender.currentEditor() as? NSTextView)?.hasMarkedText() != true,
+              (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing != true else { return }
         publishQuery(sender.stringValue)
     }
 
-    private func configureSearchItem(_ item: NSSearchToolbarItem) {
-        let placeholder = tr(.keyDashboardSearchPlaceholder)
-        item.label = placeholder
-        item.paletteLabel = placeholder
-        item.toolTip = placeholder
-        item.resignsFirstResponderWithCancel = true
-        item.searchField.placeholderString = placeholder
-        item.searchField.sendsSearchStringImmediately = true
-        item.searchField.sendsWholeSearchString = false
-        item.searchField.delegate = self
-        item.searchField.stringValue = searchQuery
+    func control(_ control: NSControl, textShouldEndEditing fieldEditor: NSText) -> Bool {
+        (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing != true
     }
 
-    private func restoreSearchFieldText() {
-        searchItem?.searchField.stringValue = searchQuery
-        searchItem?.searchField.placeholderString = tr(.keyDashboardSearchPlaceholder)
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.cancelOperation(_:)),
+              !textView.hasMarkedText() else { return false }
+        cancelSearch(nil)
+        return true
+    }
+
+    private func configureSearchItem() {
+        updateSearchItemLabels()
+        searchItem.preferredWidthForSearchField = Self.expandedSearchFieldWidth
+        searchItem.resignsFirstResponderWithCancel = true
+        searchItem.searchField.sendsSearchStringImmediately = true
+        searchItem.searchField.sendsWholeSearchString = false
+        searchItem.searchField.delegate = self
+        if (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true {
+            searchItem.searchField.stringValue = searchQuery
+        }
+    }
+
+    private func updateSearchItemLabels() {
+        let label = tr(.keyDashboardSearchPlaceholder)
+        searchItem.label = label
+        searchItem.paletteLabel = label
+        searchItem.toolTip = label
+        searchItem.searchField.placeholderString = label
     }
 
     private func publishQuery(_ raw: String) {
         guard raw != searchQuery else { return }
         searchQuery = raw
         onSearchQueryChanged?(searchQuery)
+    }
+}
+
+/// Window-scoped shortcut without a global event monitor or menu dependency.
+final class DashboardSearchWindow: NSWindow {
+    weak var searchController: DashboardToolbarController?
+    /// AppKit ends window editing when replacing `contentViewController`.
+    /// Toolbar search lives outside that view, so a shell rebuild must keep
+    /// the same field editor and any marked text.
+    var preservesToolbarSearchEditing = false
+
+    override func endEditing(for object: Any?) {
+        if preservesToolbarSearchEditing, searchController?.hostsSearchResponder(firstResponder) == true {
+            return
+        }
+        super.endEditing(for: object)
+    }
+
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        if preservesToolbarSearchEditing,
+           searchController?.hostsSearchResponder(firstResponder) == true,
+           searchController?.hostsSearchResponder(responder) != true {
+            return true
+        }
+        return super.makeFirstResponder(responder)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if let editor = firstResponder as? NSTextView, editor.hasMarkedText() {
+            super.cancelOperation(sender)
+        } else if let searchController,
+                  searchController.isSearchActive || searchController.hostsSearchResponder(firstResponder) {
+            searchController.cancelSearch(sender)
+        } else {
+            super.cancelOperation(sender)
+        }
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.type == .keyDown,
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad]) == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "f",
+           let searchController {
+            searchController.beginSearch(nil)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
