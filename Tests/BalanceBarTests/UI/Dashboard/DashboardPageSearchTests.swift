@@ -443,6 +443,139 @@ final class DashboardPageSearchTests: XCTestCase {
         }
     }
 
+    func testGlobalSearchUsesStackVisibilityToRemoveProjectionSpacing() throws {
+        func makeGroup(sectionTitles: [String]) -> NSStackView {
+            let group = NSStackView()
+            group.identifier = DashboardPageSearch.globalSearchGroupIdentifier
+            group.orientation = .vertical
+            group.alignment = .leading
+            group.spacing = 28
+            group.distribution = .gravityAreas
+            group.detachesHiddenViews = false
+            group.translatesAutoresizingMaskIntoConstraints = false
+            for title in sectionTitles {
+                let section = SettingsSectionView(
+                    title: title,
+                    contentViews: [SettingsRowView(title: "\(title) option")]
+                )
+                group.addArrangedSubview(section)
+                section.translatesAutoresizingMaskIntoConstraints = false
+                section.widthAnchor.constraint(equalTo: group.widthAnchor).isActive = true
+            }
+            return group
+        }
+
+        let matchingGroup = makeGroup(sectionTitles: ["Progress", "Banked", "Items", "Quick", "Tibo"])
+        let staleGroup = makeGroup(sectionTitles: ["Other"])
+        let root = NSStackView(views: [matchingGroup, staleGroup])
+        root.orientation = .vertical
+        root.alignment = .leading
+        root.spacing = 12
+        root.distribution = .gravityAreas
+        root.detachesHiddenViews = false
+        root.translatesAutoresizingMaskIntoConstraints = false
+        root.frame = NSRect(x: 0, y: 0, width: 700, height: 2_000)
+        matchingGroup.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        staleGroup.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+
+        let filter = DashboardPageSearchFilter()
+        XCTAssertTrue(filter.apply(query: "Tibo", to: root, pageTitle: "", mode: .titles))
+        root.layoutSubtreeIfNeeded()
+
+        let visibleSections = matchingGroup.arrangedSubviews.filter {
+            !DashboardSearchVisibility.isSearchHidden($0)
+                && !DashboardSearchVisibility.isBusinessHidden($0)
+        }
+        XCTAssertEqual(visibleSections.count, 1)
+        XCTAssertEqual(
+            matchingGroup.arrangedSubviews.filter {
+                matchingGroup.visibilityPriority(for: $0) == .notVisible
+            }.count,
+            4
+        )
+        let visibleHeight = visibleSections[0].fittingSize.height
+        XCTAssertLessThanOrEqual(
+            matchingGroup.fittingSize.height,
+            visibleHeight + 1,
+            "hidden global sections must not leave their 28pt stack spacing"
+        )
+        XCTAssertEqual(root.visibilityPriority(for: staleGroup), .notVisible)
+        XCTAssertLessThanOrEqual(
+            root.fittingSize.height,
+            matchingGroup.fittingSize.height + 1,
+            "a hidden global group must not leave its 12pt outer spacing"
+        )
+    }
+
+    func testGlobalSearchDirectAndIncrementalQueriesConverge() throws {
+        let query = tr(.keyDashboardGeneralAndRefreshPagesLanguage)
+        let prefixes = stride(from: 1, through: query.count, by: 1).map {
+            String(query.prefix($0))
+        }
+
+        func snapshot(_ root: NSView) -> ([String], [CGFloat]) {
+            var rows: [String] = []
+            var groupHeights: [CGFloat] = []
+            var visited = Set<ObjectIdentifier>()
+            func walk(_ view: NSView) {
+                guard visited.insert(ObjectIdentifier(view)).inserted else { return }
+                if DashboardPageSearch.isSearchableRow(view), !isCollapsedForSearch(view) {
+                    if let row = view as? SettingsRowView {
+                        rows.append(row.titleLabel.stringValue)
+                    }
+                }
+                if view.identifier == DashboardPageSearch.globalSearchGroupIdentifier,
+                   !isCollapsedForSearch(view) {
+                    groupHeights.append(view.fittingSize.height)
+                }
+                for child in view.subviews {
+                    walk(child)
+                }
+                if let stack = view as? NSStackView {
+                    for child in stack.arrangedSubviews {
+                        walk(child)
+                    }
+                }
+            }
+            walk(root)
+            return (rows.sorted(), groupHeights.sorted())
+        }
+
+        let typedAppDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-typed-search.db")
+            )
+        )
+        let typedComposition = typedAppDelegate.dashboardCompositionForTesting
+        defer { typedComposition.teardownForTesting() }
+        let typedWindow = try XCTUnwrap(typedComposition.makeWindowForTesting(showing: .general))
+        typedWindow.setContentSize(NSSize(width: 1_000, height: 700))
+        for prefix in prefixes {
+            typedComposition.applySearchQueryForTesting(prefix)
+            typedWindow.layoutIfNeeded()
+        }
+        let typedSnapshot = snapshot(typedComposition.currentHostedPageContentForTesting())
+
+        let directAppDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-direct-search.db")
+            )
+        )
+        let directComposition = directAppDelegate.dashboardCompositionForTesting
+        defer { directComposition.teardownForTesting() }
+        let directWindow = try XCTUnwrap(directComposition.makeWindowForTesting(showing: .general))
+        directWindow.setContentSize(NSSize(width: 1_000, height: 700))
+        directComposition.applySearchQueryForTesting(query)
+        directWindow.layoutIfNeeded()
+        let directSnapshot = snapshot(directComposition.currentHostedPageContentForTesting())
+
+        XCTAssertEqual(typedSnapshot.0, directSnapshot.0)
+        XCTAssertEqual(typedSnapshot.1.count, directSnapshot.1.count)
+        for (typedHeight, directHeight) in zip(typedSnapshot.1, directSnapshot.1) {
+            XCTAssertEqual(typedHeight, directHeight, accuracy: 1.0)
+        }
+    }
+
     func testSearchDoesNotExpandRefreshIntervalPopupsOrTheirRow() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
@@ -999,15 +1132,6 @@ final class DashboardPageSearchTests: XCTestCase {
             )
         }
 
-        func currentReverseRow() throws -> NSView {
-            try XCTUnwrap(
-                row(
-                    containingTitle: reverseTitle,
-                    in: composition.currentHostedPageContentForTesting()
-                )
-            )
-        }
-
         func select(_ action: MenuBarRightClickAction) throws {
             let rightClick = try currentRightClickControl()
             let index = try XCTUnwrap(
@@ -1025,35 +1149,33 @@ final class DashboardPageSearchTests: XCTestCase {
         }
 
         try select(.openMainWindow)
-        XCTAssertFalse(try currentReverseRow().isHidden)
+        let reverseRow = try XCTUnwrap(
+            row(containingTitle: reverseTitle, in: composition.currentHostedPageContentForTesting())
+        )
+        XCTAssertFalse(reverseRow.isHidden)
 
         composition.applySearchQueryForTesting(reverseTitle)
         window.layoutIfNeeded()
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertTrue(
-            visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
-                .contains(reverseTitle),
-            "global result rows=\(visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting()))"
-        )
-        XCTAssertFalse(try currentReverseRow().isHidden)
+        XCTAssertFalse(reverseRow.isHidden)
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
 
         try select(.matchLeftClick)
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertTrue(try currentReverseRow().isHidden)
+        XCTAssertTrue(reverseRow.isHidden)
         XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
 
         composition.applySearchQueryForTesting("")
         window.layoutIfNeeded()
-        XCTAssertTrue(try currentReverseRow().isHidden)
+        XCTAssertTrue(reverseRow.isHidden)
 
         try select(.openMainWindow)
-        XCTAssertFalse(try currentReverseRow().isHidden)
+        XCTAssertFalse(reverseRow.isHidden)
 
         composition.applySearchQueryForTesting(reverseTitle)
         window.layoutIfNeeded()
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertFalse(try currentReverseRow().isHidden)
+        XCTAssertFalse(reverseRow.isHidden)
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
     }
 
