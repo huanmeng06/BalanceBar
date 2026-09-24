@@ -386,6 +386,83 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(emptyState(in: stack)?.isHidden != false)
     }
 
+    func testSettingsSearchIncludesSubtitlesOptionsAndOnlyLanguageIsCrossLanguage() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let languagePopup = NSPopUpButton()
+        languagePopup.identifier = NSUserInterfaceItemIdentifier(AppLanguage.preferenceKey)
+        languagePopup.addItems(withTitles: ["跟随系统", "简体中文", "English"])
+        let languageRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesLanguage),
+            detail: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
+            accessoryView: languagePopup
+        )
+
+        let displayModePopup = NSPopUpButton()
+        displayModePopup.addItems(withTitles: [
+            tr(.keyDashboardMenuBarPageIconDisplayModeAlwaysVisible),
+            tr(.keyDashboardMenuBarPageIconDisplayModeOnlyWhileRunning)
+        ])
+        let displayModeRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageIconDisplayMode),
+            detail: tr(.keyDashboardMenuBarPageIconDisplayModeDescription),
+            accessoryView: displayModePopup
+        )
+        let launchRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
+            detail: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription)
+        )
+        let root = DashboardSettingsComponents.makeSettingsPageContent([
+            SettingsSectionView(title: "应用", contentViews: [languageRow, displayModeRow, launchRow])
+        ])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertTrue(
+            filter.apply(
+                query: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
+                to: root,
+                pageTitle: "设置",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(isCollapsedForSearch(languageRow))
+        XCTAssertTrue(isCollapsedForSearch(displayModeRow))
+
+        XCTAssertTrue(
+            filter.apply(
+                query: tr(.keyDashboardMenuBarPageIconDisplayModeAlwaysVisible),
+                to: root,
+                pageTitle: "设置",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(isCollapsedForSearch(displayModeRow))
+
+        XCTAssertTrue(filter.apply(query: "language", to: root, pageTitle: "设置", mode: .titles))
+        XCTAssertTrue(filter.apply(query: "言語", to: root, pageTitle: "设置", mode: .titles))
+        XCTAssertTrue(isCollapsedForSearch(launchRow))
+
+        XCTAssertTrue(
+            filter.apply(
+                query: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
+                to: root,
+                pageTitle: "设置",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(isCollapsedForSearch(launchRow))
+        XCTAssertFalse(
+            DashboardSettingsSearchCatalog.matchingSections(query: "Launch at Login")
+                .contains(.general)
+        )
+        XCTAssertEqual(
+            DashboardSettingsSearchCatalog.firstMatchingSection(query: "言語"),
+            .general
+        )
+    }
+
     func testCatalogJumpsToTheSectionThatOwnsTheTitle() {
         XCTAssertEqual(
             DashboardSettingsSearchCatalog.firstMatchingSection(
@@ -510,8 +587,8 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(DashboardSettingsSearchCatalog.matchingSections(query: "7").contains(.menuBar))
         for query in [fiveHourQuota, sevenDayQuota] {
             XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: query), .menuBar)
-            XCTAssertFalse(filter.apply(query: query, to: root, pageTitle: "菜单栏", mode: .titles))
-            XCTAssertTrue(isCollapsedForSearch(quota), query)
+            XCTAssertTrue(filter.apply(query: query, to: root, pageTitle: "菜单栏", mode: .titles))
+            XCTAssertFalse(isCollapsedForSearch(quota), query)
             XCTAssertTrue(isCollapsedForSearch(other), query)
         }
         quota.isHidden = true

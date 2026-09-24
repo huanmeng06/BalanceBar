@@ -266,7 +266,8 @@ enum DashboardPageSearch {
 }
 
 enum DashboardPageSearchMode: Sendable {
-    /// Settings pages: section headings and row titles.
+    /// Settings pages: section headings, row titles, subtitles and the
+    /// current-language contents of row controls.
     case titles
     /// Provider detail and About: currently visible copy.
     case visibleCopy
@@ -289,11 +290,88 @@ struct DashboardSearchMatchResult: Sendable {
 }
 
 enum DashboardSettingsSearchCatalog {
+    private static let languageKey = LocalizationKey.keyDashboardGeneralAndRefreshPagesLanguage
+    private static let keysRequiringArguments: Set<String> = [
+        "dashboard.about.page.version_value",
+        "dashboard.general.and.refresh.pages.current_provider_value",
+        "dashboard.general.and.refresh.pages.downloading_value",
+        "dashboard.general.and.refresh.pages.installing_value",
+        "dashboard.general.and.refresh.pages.new_version_available_value_value",
+        "dashboard.general.and.refresh.pages.update_check_failed_try_again_reason",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_forbidden_value",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_not_found_value",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_server_error_value",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_status_value",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_too_many_requests_value",
+        "dashboard.menu.bar.page.adjusts_the_gap_between_balancebar_and_other_items_widthvalue",
+        "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate",
+        "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range",
+        "dashboard.menu.bar.page.auto_switch_luna_reserve",
+        "dashboard.menu.bar.page.auto_switch_luna_reserve_description",
+        "dashboard.menu.bar.page.fine_tune_the_amount_s_vertical_position_yaxisvalue",
+        "dashboard.menu.bar.page.fine_tune_the_icon_s_vertical_position_yaxisvalue",
+        "dashboard.menu.bar.page.luna_reserve_reset_time",
+        "dashboard.menu.bar.page.luna_reserve_reset_time_description",
+        "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve",
+        "dashboard.menu.page.hide_exhausted_quota_description",
+        "dashboard.menu.page.luna_reserve_display_mode",
+        "dashboard.menu.page.luna_reserve_display_mode_description"
+    ]
+    private static var cachedCatalogLanguageKey: String?
+    private static var cachedTitlesBySection: [DashboardSection: [String]] = [:]
+
+    /// The language row is the one intentional cross-language entry point.
+    /// Every other catalog value comes from the currently selected UI locale.
+    static func languageSearchTitles() -> [String] {
+        AppLanguage.allCases
+            .filter { $0 != .system }
+            .map { tr(languageKey, language: $0) }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
     static func titles(for section: DashboardSection) -> [String] {
+        let languageKey = "\(AppLanguage.selected.rawValue)|\(AppLanguage.resolved.rawValue)"
+        if cachedCatalogLanguageKey != languageKey {
+            cachedCatalogLanguageKey = languageKey
+            cachedTitlesBySection = Dictionary(uniqueKeysWithValues: DashboardSection.allCases.map {
+                ($0, buildTitles(for: $0))
+            })
+        }
+        return cachedTitlesBySection[section] ?? []
+    }
+
+    private static func buildTitles(for section: DashboardSection) -> [String] {
         var values = [section.title]
         values.append(contentsOf: keys(for: section).map { tr($0) })
         values.append(contentsOf: extraTitles(for: section))
+        values.append(contentsOf: localizedSettingsCopy(for: section))
+        if section == .general {
+            values.append(contentsOf: languageSearchTitles())
+        }
         return values
+    }
+
+    private static func localizedSettingsCopy(for section: DashboardSection) -> [String] {
+        let prefixes: [String]
+        switch section {
+        case .general:
+            prefixes = ["dashboard.general.and.refresh.pages."]
+        case .menuBar:
+            prefixes = ["dashboard.menu.bar.page."]
+        case .menu:
+            prefixes = ["dashboard.menu.page."]
+        case .advanced:
+            prefixes = ["dashboard.advanced.page.", "dashboard.logs.page."]
+        case .about:
+            prefixes = ["dashboard.about.page."]
+        }
+        return LocalizationKey.allCases
+            .filter { key in
+                prefixes.contains { prefix in key.rawValue.hasPrefix(prefix) }
+                    && !keysRequiringArguments.contains(key.rawValue)
+            }
+            .map { tr($0) }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     static func matchingSections(query: String) -> [DashboardSection] {
@@ -539,19 +617,7 @@ final class DashboardPageSearchFilter {
         mode: DashboardPageSearchMode
     ) -> [DashboardSearchDocument] {
         let documents = index(for: root).documents
-        guard case .visibleCopy = mode else {
-            return documents.map { document in
-                guard document.sectionID != nil else { return document }
-                return DashboardSearchDocument(
-                    id: document.id,
-                    sectionID: document.sectionID,
-                    texts: document.texts,
-                    supportingTexts: [],
-                    businessVisible: document.businessVisible,
-                    order: document.order
-                )
-            }
-        }
+        guard case .visibleCopy = mode else { return documents }
         return documents
     }
 
@@ -914,6 +980,14 @@ final class DashboardPageSearchFilter {
         if includeVisibleCopy {
             supportingValues.append(contentsOf: activeSearchIndex?.visibleCopyByView[ObjectIdentifier(row)]
                 ?? visibleCopy(in: row))
+        } else {
+            // Settings search includes the row's current-language subtitle
+            // and control contents, while avoiding any alternate-language
+            // corpus except for the dedicated language row.
+            supportingValues.append(contentsOf: visibleCopy(in: row))
+        }
+        if isLanguagePreferenceRow(row) {
+            supportingValues.append(contentsOf: DashboardSettingsSearchCatalog.languageSearchTitles())
         }
         return DashboardPageSearch.bestMatch(
             texts: [title],
@@ -925,6 +999,15 @@ final class DashboardPageSearchFilter {
     private func containsStatusLinksEditor(in view: NSView) -> Bool {
         if view is StatusLinksEditorHostingView { return true }
         return view.subviews.contains { containsStatusLinksEditor(in: $0) }
+    }
+
+    private func isLanguagePreferenceRow(_ row: NSView) -> Bool {
+        let preferenceIdentifier = NSUserInterfaceItemIdentifier(AppLanguage.preferenceKey)
+        func containsPreferenceControl(_ view: NSView) -> Bool {
+            if view.identifier == preferenceIdentifier { return true }
+            return view.subviews.contains(where: containsPreferenceControl)
+        }
+        return containsPreferenceControl(row)
     }
 
     private func rowContentMatches(
@@ -1000,12 +1083,16 @@ final class DashboardPageSearchFilter {
                 let rowID = searchDocumentID(for: row, prefix: "row")
                 documentIDByView[ObjectIdentifier(row)] = rowID
                 let title = rowTitle(of: row)
+                var supportingTexts = ([sectionHeading(section)].compactMap { $0 } + copy)
+                if isLanguagePreferenceRow(row) {
+                    supportingTexts.append(contentsOf: DashboardSettingsSearchCatalog.languageSearchTitles())
+                }
                 documents.append(
                     DashboardSearchDocument(
                         id: rowID,
                         sectionID: sectionID,
                         texts: [title],
-                        supportingTexts: ([sectionHeading(section)].compactMap { $0 } + copy),
+                        supportingTexts: supportingTexts,
                         businessVisible: !DashboardSearchVisibility.isBusinessHidden(row),
                         order: documentOrder
                     )
