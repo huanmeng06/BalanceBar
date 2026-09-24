@@ -383,7 +383,10 @@ final class SettingsRowView: NSView {
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: hostedCardHeight())
+        guard isInsideGlobalSearchProjection else {
+            return super.intrinsicContentSize
+        }
+        return NSSize(width: NSView.noIntrinsicMetric, height: hostedCardHeight())
     }
 
     private func updateSearchNaturalHeightConstraint() {
