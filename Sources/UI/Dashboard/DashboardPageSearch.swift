@@ -707,7 +707,7 @@ final class DashboardPageSearchFilter {
                     keepBest(DashboardPageSearch.bestMatch(texts: [heading], query: needle))
                 }
                 for row in rows(in: section) {
-                    keepBest(rowMatch(row, query: needle, includeVisibleCopy: true, sectionHeading: sectionHeading(section)))
+                    keepBest(rowMatch(row, query: needle, includeVisibleCopy: false, sectionHeading: sectionHeading(section)))
                 }
             }
         case .visibleCopy:

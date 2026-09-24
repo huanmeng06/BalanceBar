@@ -23,9 +23,12 @@ final class DashboardPageSession {
     var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current
 
     private(set) var section: DashboardSection = .general
+    private(set) var mountedSection: DashboardSection = .general
     private(set) var selectedProviderID: String?
     private(set) var sourceListController: DashboardSourceListController?
     var shouldPreserveSectionSelection: ((DashboardSection) -> Bool)?
+    var onPreservedSectionSelection: ((DashboardSection) -> Void)?
+    var preparePageForDisplay: (() -> Void)?
     private var showsUpdateAvailableBadge = false
     private var isTornDown = false
     private weak var window: NSWindow?
@@ -108,6 +111,7 @@ final class DashboardPageSession {
     func showSection(_ section: DashboardSection) {
         guard !isTornDown else { return }
         self.section = section
+        mountedSection = section
         selectedProviderID = nil
         window?.title = section.title
         sourceListController?.applySelection(section)
@@ -123,6 +127,7 @@ final class DashboardPageSession {
             selectedProviderID = nil
             window?.title = section.title
             sourceListController?.applySelection(section)
+            onPreservedSectionSelection?(section)
             return
         }
         showSection(section)
@@ -149,6 +154,7 @@ final class DashboardPageSession {
               let choice = actions.providerChoices().first(where: { $0.id == providerID })
         else { return }
         selectedProviderID = providerID
+        mountedSection = section
         window?.title = choice.name
         sourceListController?.applySelection(nil)
         replacePage {
@@ -207,6 +213,7 @@ final class DashboardPageSession {
         // descendants are materialized before callers inspect the page
         // (notably on Xcode 16.4 CI).
         contentHost.layoutSubtreeIfNeeded()
+        preparePageForDisplay?()
         window?.displayIfNeeded()
         actions.didShowPage()
         DashboardKeyViewLoop.invalidate(window)

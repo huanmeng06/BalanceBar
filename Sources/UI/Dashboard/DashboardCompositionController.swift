@@ -205,7 +205,6 @@ final class DashboardCompositionController {
     )
     private let pageSearchFilter = DashboardPageSearchFilter()
     private var pendingDashboardSearchWorkItem: DispatchWorkItem?
-    private var pendingGlobalSearchMaterialization: DispatchWorkItem?
     private var pendingSearchMatchWorkItem: DispatchWorkItem?
     private var dashboardSearchGeneration: UInt64 = 0
     private var searchDataRevision: UInt64 = 0
@@ -605,7 +604,6 @@ final class DashboardCompositionController {
         defer { synchronousSearchForTesting = false }
         pageSession.toolbarController.setQuery(query)
         pendingDashboardSearchWorkItem?.cancel()
-        pendingGlobalSearchMaterialization?.cancel()
         dashboardSearchGeneration &+= 1
         handleDashboardSearch(query)
     }
@@ -619,9 +617,34 @@ final class DashboardCompositionController {
             guard let self else { return false }
             let query = self.pageSession.toolbarController.searchQuery
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            return self.isGlobalSettingsSearchActive
-                && !query.isEmpty
+            return !query.isEmpty
                 && target != .about
+                && (self.isGlobalSettingsSearchActive
+                    || self.pageSession.mountedSection == .about)
+        }
+        pageSession.onPreservedSectionSelection = { [weak self] target in
+            guard let self,
+                  self.pageSession.mountedSection == .about,
+                  target != .about else { return }
+            let query = self.pageSession.toolbarController.searchQuery
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else { return }
+            // About remains mounted while the logical selection changes. Move
+            // directly into the Settings search root so no unfiltered target
+            // page is displayed between the two presentations.
+            self.applyMountedPageSearch(queryOverride: query)
+        }
+        pageSession.preparePageForDisplay = { [weak self] in
+            guard let self,
+                  !self.isBuildingGlobalSearchPage,
+                  self.pageSession.section == .about else { return }
+            let query = self.pageSession.toolbarController.searchQuery
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else { return }
+            // A Settings -> About navigation replaces the root. Apply the
+            // visible-copy projection before display so the first frame is
+            // already filtered.
+            self.applyMountedPageSearch(queryOverride: query, synchronously: true)
         }
         pageSession.toolbarController.onSearchQueryChanged = { [weak self] query in
             self?.scheduleDashboardSearch(query)
@@ -630,7 +653,6 @@ final class DashboardCompositionController {
 
     private func scheduleDashboardSearch(_ query: String) {
         pendingDashboardSearchWorkItem?.cancel()
-        pendingGlobalSearchMaterialization?.cancel()
         dashboardSearchGeneration &+= 1
         let generation = dashboardSearchGeneration
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -642,15 +664,13 @@ final class DashboardCompositionController {
             self.handleDashboardSearch(query)
         }
         pendingDashboardSearchWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(45), execute: work)
+        DispatchQueue.main.async(execute: work)
     }
 
     private func invalidateSearchData() {
         searchDataRevision &+= 1
         pendingSearchMatchWorkItem?.cancel()
         pendingSearchMatchWorkItem = nil
-        pendingGlobalSearchMaterialization?.cancel()
-        pendingGlobalSearchMaterialization = nil
         pageSearchFilter.prepareForDataRefresh()
         lastAppliedSearchQuery = nil
         lastAppliedSearchRoot = nil
@@ -661,6 +681,10 @@ final class DashboardCompositionController {
         if needle.isEmpty {
             if isGlobalSettingsSearchActive {
                 clearGlobalSettingsSearch()
+                return
+            }
+            if pageSession.mountedSection != section {
+                pageSession.showSection(section)
                 return
             }
             applyMountedPageSearch()
@@ -684,7 +708,10 @@ final class DashboardCompositionController {
         applyMountedPageSearch(queryOverride: query)
     }
 
-    private func applyMountedPageSearch(queryOverride: String? = nil) {
+    private func applyMountedPageSearch(
+        queryOverride: String? = nil,
+        synchronously: Bool = false
+    ) {
         let query = queryOverride ?? pageSession.toolbarController.searchQuery
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if needle.isEmpty, isGlobalSettingsSearchActive {
@@ -721,7 +748,8 @@ final class DashboardCompositionController {
             query: query,
             root: root,
             pageTitle: currentSearchPageTitle(),
-            mode: currentSearchMode()
+            mode: currentSearchMode(),
+            synchronously: synchronously
         )
         DashboardKeyViewLoop.resignUnreachableFirstResponder(window)
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
@@ -731,7 +759,8 @@ final class DashboardCompositionController {
         query: String,
         root: NSView,
         pageTitle: String,
-        mode: DashboardPageSearchMode
+        mode: DashboardPageSearchMode,
+        synchronously: Bool = false
     ) {
         pendingSearchMatchWorkItem?.cancel()
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -751,7 +780,7 @@ final class DashboardCompositionController {
         let queryGeneration = dashboardSearchGeneration
         let rootID = ObjectIdentifier(root)
 
-        if synchronousSearchForTesting || AutomatedTestHost.isRunning {
+        if synchronously || synchronousSearchForTesting || AutomatedTestHost.isRunning {
             let matches = DashboardPageSearch.matchDocuments(documents, query: query)
             _ = pageSearchFilter.apply(
                 query: query,
@@ -806,9 +835,16 @@ final class DashboardCompositionController {
         guard !isBuildingGlobalSearchPage else { return }
         isBuildingGlobalSearchPage = true
         defer { isBuildingGlobalSearchPage = false }
-        if pageSession.currentHostedPageContent() !== globalSettingsSearchContent {
+        if pageSession.currentHostedPageContent() !== globalSettingsSearchContent,
+           pageSession.mountedSection != .about {
             globalSearchOriginContent = pageSession.currentHostedPageContent()
             globalSearchOriginSection = section
+        } else if pageSession.mountedSection == .about {
+            // About content is not a settings origin page. If a non-empty
+            // query crosses into Settings, clearing it must build the newly
+            // selected logical section instead of restoring About.
+            globalSearchOriginContent = nil
+            globalSearchOriginSection = nil
         }
         pageSearchFilter.resetSearchState()
         lastAppliedSearchQuery = nil
@@ -880,54 +916,18 @@ final class DashboardCompositionController {
         // Materialize only catalog/runtime candidates for this query. Every
         // candidate uses the same real-row projection so changing query
         // length never changes the representation of an existing result.
-        let allSettingsSections = DashboardSection.allCases.filter { $0 != .about }
         let ranked = DashboardSettingsSearchCatalog.rankedSections(query: query)
-        let singleCharacterQuery = isSingleCharacterAlphabeticQuery(query)
-        var candidateSections = ranked.map(\.section)
-        if singleCharacterQuery {
-            // Keep one-character search complete; production materializes
-            // these sections one at a time on the main-loop batch path.
-            candidateSections = allSettingsSections
-        } else if !candidateSections.contains(section) {
+        let orderedSettingsSections = DashboardSection.allCases.filter { $0 != .about }
+        var candidateSections = ranked.map(\.section).filter { $0 != .about }
+        if !candidateSections.contains(section) {
             candidateSections.append(section)
         }
-        let candidateSet = Set(candidateSections)
-        var structureChanged = false
-        if singleCharacterQuery {
-            let staleSections = globalSearchGroupsBySection.keys.filter {
-                !candidateSet.contains($0)
-            }
-            if !staleSections.isEmpty {
-                pageSearchFilter.resetSearchState()
-                for staleSection in staleSections {
-                    if let group = globalSearchGroupsBySection.removeValue(forKey: staleSection) {
-                        resultStack.removeArrangedSubview(group)
-                        group.removeFromSuperview()
-                    }
-                    globalSettingsSearchSections.remove(staleSection)
-                }
-                structureChanged = true
-            }
+        let missingSections = candidateSections.filter {
+            !globalSettingsSearchSections.contains($0)
         }
-        let missingSections = allSettingsSections.filter {
-            candidateSet.contains($0) && !globalSettingsSearchSections.contains($0)
-        }
-        guard !missingSections.isEmpty || structureChanged else { return }
+        guard !missingSections.isEmpty else { return }
 
-        let sectionsToMaterialize: ArraySlice<DashboardSection>
-        if singleCharacterQuery,
-           !AutomatedTestHost.isRunning,
-           !synchronousSearchForTesting {
-            sectionsToMaterialize = missingSections.prefix(1)
-            scheduleRemainingGlobalSearchMaterialization(
-                query: query,
-                remaining: missingSections.dropFirst()
-            )
-        } else {
-            sectionsToMaterialize = missingSections[...]
-        }
-
-        for settingsSection in sectionsToMaterialize {
+        for settingsSection in missingSections {
             let group = DashboardGlobalSearchGroupView()
             group.settingsSection = settingsSection
             group.translatesAutoresizingMaskIntoConstraints = false
@@ -937,43 +937,19 @@ final class DashboardCompositionController {
             globalSearchGroupsBySection[settingsSection] = group
             DashboardPageSearchDiagnostics.globalSearchPagesMaterializedCount += 1
         }
-        if structureChanged || !missingSections.isEmpty {
-            pageSearchFilter.markSearchStructureChanged()
-        }
+        pageSearchFilter.markSearchStructureChanged()
 
         let orderedGroups = resultStack.arrangedSubviews
             .compactMap { $0 as? DashboardGlobalSearchGroupView }
             .sorted { lhs, rhs in
-                let lhsIndex = allSettingsSections.firstIndex(of: lhs.settingsSection) ?? .max
-                let rhsIndex = allSettingsSections.firstIndex(of: rhs.settingsSection) ?? .max
+                let lhsIndex = orderedSettingsSections.firstIndex(of: lhs.settingsSection) ?? .max
+                let rhsIndex = orderedSettingsSections.firstIndex(of: rhs.settingsSection) ?? .max
                 return lhsIndex < rhsIndex
             }
         resultStack.setViews(orderedGroups, in: .top)
         resultStack.needsLayout = true
     }
 
-    private func scheduleRemainingGlobalSearchMaterialization(
-        query: String,
-        remaining: ArraySlice<DashboardSection>
-    ) {
-        pendingGlobalSearchMaterialization?.cancel()
-        guard !remaining.isEmpty else {
-            pendingGlobalSearchMaterialization = nil
-            return
-        }
-        let generation = dashboardSearchGeneration
-        let work = DispatchWorkItem { [weak self] in
-            guard let self,
-                  self.dashboardSearchGeneration == generation,
-                  self.pageSession.toolbarController.searchQuery == query else {
-                return
-            }
-            self.pendingGlobalSearchMaterialization = nil
-            self.applyMountedPageSearch(queryOverride: query)
-        }
-        pendingGlobalSearchMaterialization = work
-        DispatchQueue.main.async(execute: work)
-    }
 
     private func populateGlobalSearchGroup(
         _ group: DashboardGlobalSearchGroupView,
@@ -993,12 +969,6 @@ final class DashboardCompositionController {
             sourceSection.removeFromSuperview()
             group.addSection(sourceSection, spacing: DashboardSettingsComponents.settingsSectionSpacing)
         }
-    }
-
-    private func isSingleCharacterAlphabeticQuery(_ query: String) -> Bool {
-        let normalized = DashboardPageSearch.normalize(query)
-        guard normalized.unicodeScalars.count == 1 else { return false }
-        return normalized.rangeOfCharacter(from: .letters) != nil
     }
 
     private func currentSearchPageTitle() -> String {

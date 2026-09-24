@@ -462,11 +462,38 @@ final class DashboardPageSearchTests: XCTestCase {
             tr(.keyDashboardMenuPageStatusLinks)
         ] {
             let generalStartRows = try rows(startingAt: .general, query: query)
-
-            let menuBarStartRows = try rows(startingAt: .menuBar, query: query)
-            XCTAssertFalse(generalStartRows.isEmpty, "query: \(query)")
-            XCTAssertFalse(menuBarStartRows.isEmpty, "query: \(query)")
+            for startingSection in [.menuBar, .menu, .advanced] as [DashboardSection] {
+                let startRows = try rows(startingAt: startingSection, query: query)
+                XCTAssertEqual(startRows, generalStartRows, "query: \(query), section: \(startingSection)")
+            }
         }
+    }
+
+    func testAboutToSettingsWithActiveQueryEntersGlobalSearchWithoutRestoringAbout() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-about-navigation.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .about))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+
+        composition.applySearchQueryForTesting(
+            tr(.keyDashboardGeneralAndRefreshPagesLanguage)
+        )
+        let aboutRoot = composition.currentHostedPageContentForTesting()
+
+        composition.showSection(.general)
+
+        XCTAssertEqual(composition.section, .general)
+        XCTAssertFalse(composition.currentHostedPageContentForTesting() === aboutRoot)
+        XCTAssertFalse(visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting()).isEmpty)
+
+        composition.applySearchQueryForTesting("")
+        XCTAssertEqual(composition.section, .general)
+        XCTAssertFalse(composition.currentHostedPageContentForTesting() === aboutRoot)
     }
 
     func testGlobalSearchSingleCharacterMaterializesCompleteCatalogCandidates() throws {
@@ -1085,10 +1112,19 @@ final class DashboardPageSearchTests: XCTestCase {
             materializedBeforeSelection
         )
 
+        composition.showSection(.about)
+        let aboutSearchRoot = composition.currentHostedPageContentForTesting()
+        XCTAssertFalse(aboutSearchRoot === searchRoot)
+        XCTAssertEqual(composition.section, .about)
+
+        composition.showSection(.general)
+        XCTAssertFalse(composition.currentHostedPageContentForTesting() === aboutSearchRoot)
+        XCTAssertEqual(composition.section, .general)
+
         composition.applySearchQueryForTesting("")
 
         XCTAssertFalse(composition.currentHostedPageContentForTesting() === searchRoot)
-        XCTAssertEqual(composition.section, .menuBar)
+        XCTAssertEqual(composition.section, .general)
     }
 
     func testSearchShowsCrossSectionResultsThenClearsToTheStartingPage() throws {
