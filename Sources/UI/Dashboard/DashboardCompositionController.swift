@@ -83,6 +83,10 @@ private final class DashboardGlobalSearchGroupView: NSStackView {
     }
 }
 
+private final class DashboardSearchCancellationState {
+    var workItem: DispatchWorkItem?
+}
+
 struct DashboardCompositionActions {
     let onManualRefresh: () -> Void
     let onSwitchProvider: (String) -> Void
@@ -201,11 +205,13 @@ final class DashboardCompositionController {
     )
     private let pageSearchFilter = DashboardPageSearchFilter()
     private var pendingDashboardSearchWorkItem: DispatchWorkItem?
+    private var pendingSearchMatchWorkItem: DispatchWorkItem?
     private var dashboardSearchGeneration: UInt64 = 0
     private var searchDataRevision: UInt64 = 0
     private var lastAppliedSearchQuery: String?
     private var lastAppliedSearchRevision: UInt64 = 0
     private weak var lastAppliedSearchRoot: NSView?
+    private var synchronousSearchForTesting = false
     private lazy var pageSession = DashboardPageSession(
         actions: DashboardWindowControllerActions(
             makeSectionPage: { [weak self] section in
@@ -593,6 +599,8 @@ final class DashboardCompositionController {
     var searchQueryForTesting: String { pageSession.toolbarController.searchQuery }
 
     func applySearchQueryForTesting(_ query: String) {
+        synchronousSearchForTesting = true
+        defer { synchronousSearchForTesting = false }
         pageSession.toolbarController.setQuery(query)
         pendingDashboardSearchWorkItem?.cancel()
         dashboardSearchGeneration &+= 1
@@ -627,6 +635,8 @@ final class DashboardCompositionController {
 
     private func invalidateSearchData() {
         searchDataRevision &+= 1
+        pendingSearchMatchWorkItem?.cancel()
+        pendingSearchMatchWorkItem = nil
         pageSearchFilter.prepareForDataRefresh()
         lastAppliedSearchQuery = nil
         lastAppliedSearchRoot = nil
@@ -691,17 +701,77 @@ final class DashboardCompositionController {
            lastAppliedSearchRoot === root {
             return
         }
-        _ = pageSearchFilter.apply(
+        submitSearch(
             query: query,
-            to: root,
+            root: root,
             pageTitle: currentSearchPageTitle(),
             mode: currentSearchMode()
         )
-        lastAppliedSearchQuery = query
-        lastAppliedSearchRevision = searchDataRevision
-        lastAppliedSearchRoot = root
         DashboardKeyViewLoop.resignUnreachableFirstResponder(window)
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
+    }
+
+    private func submitSearch(
+        query: String,
+        root: NSView,
+        pageTitle: String,
+        mode: DashboardPageSearchMode
+    ) {
+        pendingSearchMatchWorkItem?.cancel()
+        let documents = pageSearchFilter.searchDocuments(for: root)
+        let queryRevision = searchDataRevision
+        let queryGeneration = dashboardSearchGeneration
+        let rootID = ObjectIdentifier(root)
+
+        if synchronousSearchForTesting || AutomatedTestHost.isRunning {
+            let matches = DashboardPageSearch.matchDocuments(documents, query: query)
+            _ = pageSearchFilter.apply(
+                query: query,
+                to: root,
+                pageTitle: pageTitle,
+                mode: mode,
+                matchedDocumentIDs: Set(matches.map(\.documentID))
+            )
+            lastAppliedSearchQuery = query
+            lastAppliedSearchRevision = queryRevision
+            lastAppliedSearchRoot = root
+            return
+        }
+
+        let cancellationState = DashboardSearchCancellationState()
+        let workItem = DispatchWorkItem { [weak self] in
+            let matches = DashboardPageSearch.matchDocuments(
+                documents,
+                query: query,
+                isCancelled: { cancellationState.workItem?.isCancelled == true }
+            )
+            guard cancellationState.workItem?.isCancelled != true else { return }
+            let matchedDocumentIDs = Set(matches.map(\.documentID))
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      cancellationState.workItem?.isCancelled != true,
+                      self.dashboardSearchGeneration == queryGeneration,
+                      self.searchDataRevision == queryRevision,
+                      self.pageSession.toolbarController.searchQuery == query else {
+                    return
+                }
+                let currentRoot = self.pageSession.currentHostedPageContent()
+                guard ObjectIdentifier(currentRoot) == rootID else { return }
+                _ = self.pageSearchFilter.apply(
+                    query: query,
+                    to: currentRoot,
+                    pageTitle: pageTitle,
+                    mode: mode,
+                    matchedDocumentIDs: matchedDocumentIDs
+                )
+                self.lastAppliedSearchQuery = query
+                self.lastAppliedSearchRevision = queryRevision
+                self.lastAppliedSearchRoot = currentRoot
+            }
+        }
+        cancellationState.workItem = workItem
+        pendingSearchMatchWorkItem = workItem
+        DispatchQueue.global(qos: .userInitiated).async(execute: workItem)
     }
 
     private func showGlobalSettingsSearchPage(initialQuery: String? = nil) {
@@ -734,15 +804,12 @@ final class DashboardCompositionController {
         if !initialQuery.isEmpty {
             addGlobalSettingsSearchPages(matching: initialQuery)
             let root = pageSession.currentHostedPageContent()
-            _ = pageSearchFilter.apply(
+            submitSearch(
                 query: initialQuery,
-                to: root,
+                root: root,
                 pageTitle: "",
                 mode: .titles
             )
-            lastAppliedSearchQuery = initialQuery
-            lastAppliedSearchRevision = searchDataRevision
-            lastAppliedSearchRoot = root
         }
     }
 

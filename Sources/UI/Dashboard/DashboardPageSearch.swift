@@ -170,7 +170,7 @@ enum DashboardPageSearch {
     private static let normalizedTextCache = NSCache<NSString, NSString>()
     private static let fuzzyWordsCache = NSCache<NSString, NSArray>()
 
-    enum MatchKind: Int, Comparable {
+    enum MatchKind: Int, Comparable, Sendable {
         case fuzzy = 1
         case alias = 2
         case keywords = 3
@@ -182,7 +182,7 @@ enum DashboardPageSearch {
         }
     }
 
-    struct Match: Equatable, Comparable {
+    struct Match: Equatable, Comparable, Sendable {
         let kind: MatchKind
         let relevance: Double
 
@@ -463,13 +463,58 @@ enum DashboardPageSearch {
         }
         return view.identifier == rowIdentifier
     }
+
+    static func matchDocuments(
+        _ documents: [DashboardSearchDocument],
+        query: String,
+        isCancelled: @Sendable () -> Bool = { false }
+    ) -> [DashboardSearchMatchResult] {
+        var matches: [DashboardSearchMatchResult] = []
+        matches.reserveCapacity(documents.count / 4)
+        for document in documents {
+            if isCancelled() { return [] }
+            guard document.businessVisible,
+                  let match = bestMatch(
+                    texts: document.texts,
+                    aliases: document.aliases,
+                    supportingTexts: document.supportingTexts,
+                    query: query
+                  ) else {
+                continue
+            }
+            matches.append(
+                DashboardSearchMatchResult(documentID: document.id, match: match)
+            )
+        }
+        return matches.sorted {
+            if $0.match != $1.match { return $0.match > $1.match }
+            return $0.documentID < $1.documentID
+        }
+    }
 }
 
-enum DashboardPageSearchMode {
+enum DashboardPageSearchMode: Sendable {
     /// Settings pages: section headings and row titles.
     case titles
     /// Provider detail and About: currently visible copy.
     case visibleCopy
+}
+
+/// Immutable search input prepared on the main thread and consumed by the
+/// background matcher. It intentionally contains no AppKit objects.
+struct DashboardSearchDocument: Sendable {
+    let id: String
+    let sectionID: String?
+    let texts: [String]
+    let aliases: [String]
+    let supportingTexts: [String]
+    let businessVisible: Bool
+    let order: Int
+}
+
+struct DashboardSearchMatchResult: Sendable {
+    let documentID: String
+    let match: DashboardPageSearch.Match
 }
 
 enum DashboardSettingsSearchCatalog {
@@ -842,6 +887,9 @@ final class DashboardPageSearchFilter {
         let sections: [NSView]
         let rowsBySection: [ObjectIdentifier: [NSView]]
         let globalSearchGroups: [NSView]
+        let documents: [DashboardSearchDocument]
+        let documentIDByView: [ObjectIdentifier: String]
+        let topLevelDocumentIDs: [String]
         let visibleCopyByView: [ObjectIdentifier: [String]]
         let topLevelVisibleCopy: [String]
 
@@ -850,6 +898,9 @@ final class DashboardPageSearchFilter {
             sections: [NSView],
             rowsBySection: [ObjectIdentifier: [NSView]],
             globalSearchGroups: [NSView],
+            documents: [DashboardSearchDocument],
+            documentIDByView: [ObjectIdentifier: String],
+            topLevelDocumentIDs: [String],
             visibleCopyByView: [ObjectIdentifier: [String]],
             topLevelVisibleCopy: [String]
         ) {
@@ -857,6 +908,9 @@ final class DashboardPageSearchFilter {
             self.sections = sections
             self.rowsBySection = rowsBySection
             self.globalSearchGroups = globalSearchGroups
+            self.documents = documents
+            self.documentIDByView = documentIDByView
+            self.topLevelDocumentIDs = topLevelDocumentIDs
             self.visibleCopyByView = visibleCopyByView
             self.topLevelVisibleCopy = topLevelVisibleCopy
         }
@@ -864,6 +918,7 @@ final class DashboardPageSearchFilter {
 
     private let searchIndexes = NSMapTable<NSView, SearchIndex>.strongToStrongObjects()
     private var activeSearchIndex: SearchIndex?
+    private var activeDocumentMatches: Set<String>?
     private var needsInitialProjectionLayout = true
     private let hiddenBySearch = NSHashTable<NSView>.weakObjects()
     private let originalStackVisibilityPriority = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
@@ -874,11 +929,13 @@ final class DashboardPageSearchFilter {
     func invalidateSearchIndex() {
         searchIndexes.removeAllObjects()
         activeSearchIndex = nil
+        activeDocumentMatches = nil
     }
 
     func resetSearchState() {
         restoreSearchHiddens()
         invalidateSearchIndex()
+        activeDocumentMatches = nil
     }
 
     func requestVisibilityReset() {
@@ -896,12 +953,17 @@ final class DashboardPageSearchFilter {
         needsInitialProjectionLayout = true
     }
 
+    func searchDocuments(for root: NSView) -> [DashboardSearchDocument] {
+        index(for: root).documents
+    }
+
     @discardableResult
     func apply(
         query: String,
         to root: NSView,
         pageTitle: String,
-        mode: DashboardPageSearchMode
+        mode: DashboardPageSearchMode,
+        matchedDocumentIDs: Set<String>? = nil
     ) -> Bool {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let pageTitleMatches = !needle.isEmpty
@@ -911,7 +973,11 @@ final class DashboardPageSearchFilter {
         }
         let searchIndex = index(for: root)
         activeSearchIndex = searchIndex
-        defer { activeSearchIndex = nil }
+        activeDocumentMatches = matchedDocumentIDs
+        defer {
+            activeSearchIndex = nil
+            activeDocumentMatches = nil
+        }
         // Search-hidden rows remain in the index even when NSStackView has
         // detached them. Filtering can therefore restore or collapse only
         // the result-set delta instead of rebuilding the whole projection.
@@ -1084,8 +1150,16 @@ final class DashboardPageSearchFilter {
     private func applyVisibleCopyFilter(query: String, to root: NSView) -> Bool {
         let sections = collectSections(in: root)
         if sections.isEmpty {
-            let matched = (activeSearchIndex?.topLevelVisibleCopy ?? visibleCopy(in: root)).contains {
-                DashboardPageSearch.matches($0, query: query)
+            let matched: Bool
+            if let activeDocumentMatches,
+               let index = activeSearchIndex {
+                matched = index.topLevelDocumentIDs.contains {
+                    activeDocumentMatches.contains($0)
+                }
+            } else {
+                matched = (activeSearchIndex?.topLevelVisibleCopy ?? visibleCopy(in: root)).contains {
+                    DashboardPageSearch.matches($0, query: query)
+                }
             }
             if !matched {
                 hideAboutContentIfPresent(in: root)
@@ -1107,8 +1181,16 @@ final class DashboardPageSearchFilter {
         if !statusLinks.isEmpty, containsStatusLinksEditor(in: root) {
             topLevelCopy.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
         }
-        let unmatchedTopLevel = topLevelCopy.contains {
-            DashboardPageSearch.matches($0, query: query)
+        let unmatchedTopLevel: Bool
+        if let activeDocumentMatches,
+           let index = activeSearchIndex {
+            unmatchedTopLevel = index.topLevelDocumentIDs.contains {
+                activeDocumentMatches.contains($0)
+            }
+        } else {
+            unmatchedTopLevel = topLevelCopy.contains {
+                DashboardPageSearch.matches($0, query: query)
+            }
         }
         return anyMatch || unmatchedTopLevel
     }
@@ -1123,7 +1205,16 @@ final class DashboardPageSearchFilter {
         query: String,
         includeVisibleCopy: Bool = false
     ) -> SectionFilterResult {
-        if sectionHeading(section).map({ DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil }) == true {
+        let headingMatches: Bool
+        if let activeDocumentMatches,
+           let sectionID = activeSearchIndex?.documentIDByView[ObjectIdentifier(section)] {
+            headingMatches = activeDocumentMatches.contains(sectionID)
+        } else {
+            headingMatches = sectionHeading(section).map {
+                DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil
+            } == true
+        }
+        if headingMatches {
             _ = restoreSearchHiddenView(section)
             for row in rows(in: section) {
                 _ = restoreSearchHiddenView(row)
@@ -1252,7 +1343,11 @@ final class DashboardPageSearchFilter {
         includeVisibleCopy: Bool,
         sectionHeading: String?
     ) -> Bool {
-        rowSearchMatch(
+        if let activeDocumentMatches,
+           let documentID = activeSearchIndex?.documentIDByView[ObjectIdentifier(row)] {
+            return activeDocumentMatches.contains(documentID)
+        }
+        return rowSearchMatch(
             row,
             query: query,
             includeVisibleCopy: includeVisibleCopy,
@@ -1287,26 +1382,85 @@ final class DashboardPageSearchFilter {
         let sections = collectSectionsUncached(in: root)
         DashboardPageSearchDiagnostics.searchIndexBuildCount += 1
         var rowsBySection: [ObjectIdentifier: [NSView]] = [:]
+        var documents: [DashboardSearchDocument] = []
+        var documentIDByView: [ObjectIdentifier: String] = [:]
         var visibleCopyByView: [ObjectIdentifier: [String]] = [:]
+        var documentOrder = 0
         for section in sections {
             let rows = rowsUncached(in: section)
             rowsBySection[ObjectIdentifier(section)] = rows
+            let sectionID = searchDocumentID(for: section, prefix: "section")
+            documentIDByView[ObjectIdentifier(section)] = sectionID
+            if let heading = sectionHeading(section), !heading.isEmpty {
+                documents.append(
+                    DashboardSearchDocument(
+                        id: sectionID,
+                        sectionID: nil,
+                        texts: [heading],
+                        aliases: [],
+                        supportingTexts: [],
+                        businessVisible: !DashboardSearchVisibility.isBusinessHidden(section),
+                        order: documentOrder
+                    )
+                )
+                documentOrder += 1
+            }
             for row in rows {
-                visibleCopyByView[ObjectIdentifier(row)] = visibleCopy(in: row)
+                let copy = visibleCopy(in: row)
+                visibleCopyByView[ObjectIdentifier(row)] = copy
+                let rowID = searchDocumentID(for: row, prefix: "row")
+                documentIDByView[ObjectIdentifier(row)] = rowID
+                let title = rowTitle(of: row)
+                documents.append(
+                    DashboardSearchDocument(
+                        id: rowID,
+                        sectionID: sectionID,
+                        texts: [title] + DashboardSettingsSearchCatalog.canonicalValues(for: title),
+                        aliases: DashboardSettingsSearchCatalog.aliases(for: title),
+                        supportingTexts: ([sectionHeading(section)].compactMap { $0 } + copy),
+                        businessVisible: !DashboardSearchVisibility.isBusinessHidden(row),
+                        order: documentOrder
+                    )
+                )
+                documentOrder += 1
             }
         }
         let globalSearchGroups = globalSearchGroupsUncached(in: root)
         let topLevelVisibleCopy = visibleCopy(in: root, skipping: sections)
+        var topLevelDocumentIDs: [String] = []
+        for copy in topLevelVisibleCopy {
+            let id = "copy-\(documentOrder)"
+            topLevelDocumentIDs.append(id)
+            documents.append(
+                DashboardSearchDocument(
+                    id: id,
+                    sectionID: nil,
+                    texts: [copy],
+                    aliases: [],
+                    supportingTexts: [],
+                    businessVisible: true,
+                    order: documentOrder
+                )
+            )
+            documentOrder += 1
+        }
         let index = SearchIndex(
             root: root,
             sections: sections,
             rowsBySection: rowsBySection,
             globalSearchGroups: globalSearchGroups,
+            documents: documents,
+            documentIDByView: documentIDByView,
+            topLevelDocumentIDs: topLevelDocumentIDs,
             visibleCopyByView: visibleCopyByView,
             topLevelVisibleCopy: topLevelVisibleCopy
         )
         searchIndexes.setObject(index, forKey: root)
         return index
+    }
+
+    private func searchDocumentID(for view: NSView, prefix: String) -> String {
+        "\(prefix)-\(ObjectIdentifier(view).hashValue)"
     }
 
     private func rows(in section: NSView) -> [NSView] {

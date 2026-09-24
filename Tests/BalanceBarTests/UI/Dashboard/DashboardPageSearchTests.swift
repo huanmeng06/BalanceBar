@@ -361,6 +361,42 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(DashboardPageSearch.matches("Language", query: "xyz"))
     }
 
+    func testSearchDocumentsMatchOffViewDataAndHonorCancellation() {
+        let documents = [
+            DashboardSearchDocument(
+                id: "language",
+                sectionID: "general",
+                texts: ["Language"],
+                aliases: ["lang"],
+                supportingTexts: ["语言"],
+                businessVisible: true,
+                order: 0
+            ),
+            DashboardSearchDocument(
+                id: "hidden",
+                sectionID: "general",
+                texts: ["Language"],
+                aliases: [],
+                supportingTexts: [],
+                businessVisible: false,
+                order: 1
+            )
+        ]
+
+        XCTAssertEqual(
+            DashboardPageSearch.matchDocuments(documents, query: "langauge")
+                .map(\.documentID),
+            ["language"]
+        )
+        XCTAssertTrue(
+            DashboardPageSearch.matchDocuments(
+                documents,
+                query: "language",
+                isCancelled: { true }
+            ).isEmpty
+        )
+    }
+
     func testFreshDynamicStatusLinkQuerySelectsMenuSection() {
         let links = [StatusLink(title: "Tibo 的动态", url: "https://example.com/tibo")]
         let sections = DashboardSettingsSearchCatalog.rankedSections(
