@@ -350,7 +350,6 @@ final class DashboardPageSearchTests: XCTestCase {
                 id: "language",
                 sectionID: "general",
                 texts: ["Language"],
-                aliases: ["lang"],
                 supportingTexts: ["语言"],
                 businessVisible: true,
                 order: 0
@@ -359,7 +358,6 @@ final class DashboardPageSearchTests: XCTestCase {
                 id: "hidden",
                 sectionID: "general",
                 texts: ["Language"],
-                aliases: [],
                 supportingTexts: [],
                 businessVisible: false,
                 order: 1
@@ -381,11 +379,8 @@ final class DashboardPageSearchTests: XCTestCase {
     }
 
     func testFreshDynamicStatusLinkQuerySelectsMenuSection() {
-        let links = [StatusLink(title: "Tibo 的动态", url: "https://example.com/tibo")]
-        let sections = DashboardSettingsSearchCatalog.rankedSections(
-            query: "tibo",
-            statusLinks: links
-        ).map(\.section)
+        let sections = DashboardSettingsSearchCatalog.rankedSections(query: "tibo")
+            .map(\.section)
 
         XCTAssertFalse(sections.contains(.menu))
     }
@@ -490,11 +485,7 @@ final class DashboardPageSearchTests: XCTestCase {
             composition.applySearchQueryForTesting(query)
 
             let expectedSections = Set(
-                DashboardSettingsSearchCatalog.rankedSections(
-                    query: query,
-                    includeSupportingTexts: false,
-                    singleCharacterWordBoundaryOnly: true
-                )
+                DashboardSettingsSearchCatalog.rankedSections(query: query)
                     .map(\.section)
                     .filter { $0 != .about }
             ).union([.general])

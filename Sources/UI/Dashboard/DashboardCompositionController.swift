@@ -746,7 +746,7 @@ final class DashboardCompositionController {
             lastAppliedSearchRoot = root
             return
         }
-        let documents = pageSearchFilter.searchDocuments(for: root)
+        let documents = pageSearchFilter.searchDocuments(for: root, mode: mode)
         let queryRevision = searchDataRevision
         let queryGeneration = dashboardSearchGeneration
         let rootID = ObjectIdentifier(root)
@@ -881,17 +881,7 @@ final class DashboardCompositionController {
         // candidate uses the same real-row projection so changing query
         // length never changes the representation of an existing result.
         let allSettingsSections = DashboardSection.allCases.filter { $0 != .about }
-        let runtimeTexts: [DashboardSection: [String]] = [
-            .general: [state.currentProviderName()],
-            .menu: state.statusLinks().flatMap { [$0.title, $0.url] }
-        ]
-        let ranked = DashboardSettingsSearchCatalog.rankedSections(
-            query: query,
-            statusLinks: state.statusLinks(),
-            runtimeTexts: runtimeTexts,
-            includeSupportingTexts: !isSingleCharacterAlphabeticQuery(query),
-            singleCharacterWordBoundaryOnly: isSingleCharacterAlphabeticQuery(query)
-        )
+        let ranked = DashboardSettingsSearchCatalog.rankedSections(query: query)
         let singleCharacterQuery = isSingleCharacterAlphabeticQuery(query)
         var candidateSections = ranked.map(\.section)
         if singleCharacterQuery {
@@ -989,7 +979,7 @@ final class DashboardCompositionController {
         _ group: DashboardGlobalSearchGroupView,
         for settingsSection: DashboardSection
     ) {
-        if settingsSection == section, let origin = globalSearchOriginContent {
+        if settingsSection == globalSearchOriginSection, let origin = globalSearchOriginContent {
             group.addPage(origin)
             return
         }

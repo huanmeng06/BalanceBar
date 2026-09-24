@@ -168,18 +168,9 @@ enum DashboardPageSearch {
     static let globalSearchGroupIdentifier = NSUserInterfaceItemIdentifier("dashboard.search.globalGroup")
     private static var searchableRowKey: UInt8 = 0
     private static let normalizedTextCache = NSCache<NSString, NSString>()
-    private static let fuzzyWordsCache = NSCache<NSString, NSArray>()
 
-    enum MatchKind: Int, Comparable, Sendable {
-        case fuzzy = 1
-        case alias = 2
-        case keywords = 3
-        case contains = 4
-        case exact = 5
-
-        static func < (lhs: MatchKind, rhs: MatchKind) -> Bool {
-            lhs.rawValue < rhs.rawValue
-        }
+    enum MatchKind: Sendable {
+        case contains
     }
 
     struct Match: Equatable, Comparable, Sendable {
@@ -192,14 +183,8 @@ enum DashboardPageSearch {
         }
 
         static func < (lhs: Match, rhs: Match) -> Bool {
-            if lhs.kind != rhs.kind { return lhs.kind < rhs.kind }
             return lhs.relevance < rhs.relevance
         }
-    }
-
-    private struct WeightedText {
-        let value: String
-        let weight: Double
     }
 
     static func matches(_ text: String, query: String) -> Bool {
@@ -208,7 +193,6 @@ enum DashboardPageSearch {
 
     static func bestMatch(
         texts: [String],
-        aliases: [String] = [],
         supportingTexts: [String] = [],
         query: String
     ) -> Match? {
@@ -235,139 +219,6 @@ enum DashboardPageSearch {
             .joined(separator: " ")
         normalizedTextCache.setObject(normalized as NSString, forKey: text as NSString)
         return normalized
-    }
-
-    private static func tokens(_ text: String) -> [String] {
-        text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-    }
-
-    private static func bestDirectMatch(
-        values: [WeightedText],
-        query: String,
-        queryTokens: [String],
-        kind: MatchKind?
-    ) -> Match? {
-        guard !values.isEmpty else { return nil }
-        if let exact = values.filter({ $0.value == query }).max(by: { $0.weight < $1.weight }) {
-            return Match(kind: kind ?? .exact, relevance: exact.weight * 1.25)
-        }
-        let compactQuery = query.filter { !$0.isWhitespace }
-        if let contains = values.filter({ source in
-            source.value.localizedStandardContains(query)
-                || source.value.filter { !$0.isWhitespace }.localizedStandardContains(compactQuery)
-        }).map({ source in
-            let compactValue = source.value.filter { !$0.isWhitespace }
-            let sequenceBonus = compactQuery.count >= 3
-                ? min(0.35, contiguousChunkSimilarity(compactQuery, in: compactValue))
-                : 0
-            return source.weight * (
-                1
-                    + directPositionBonus(compactQuery, in: compactValue)
-                    + sequenceBonus
-            )
-        }).max() {
-            return Match(kind: kind ?? .contains, relevance: contains)
-        }
-        return nil
-    }
-
-    private static func directPositionBonus(_ query: String, in source: String) -> Double {
-        guard let range = source.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) else {
-            return 0
-        }
-        let offset = source.distance(from: source.startIndex, to: range.lowerBound)
-        let atWordBoundary = range.lowerBound == source.startIndex
-            || !source[source.index(before: range.lowerBound)].isLetter
-        return (atWordBoundary ? 0.12 : 0) + (offset == 0 ? 0.12 : 0)
-    }
-
-    /// PCL2's matcher scores ordered runs of consecutive characters and
-    /// rewards longer runs. This small, bounded variant complements edit
-    /// distance for compact or partially typed words without fuzzy-matching
-    /// one- and two-character inputs.
-    private static func contiguousChunkSimilarity(_ query: String, in source: String) -> Double {
-        let needle = Array(query.filter { !$0.isWhitespace })
-        var remaining = Array(source.filter { !$0.isWhitespace })
-        guard needle.count >= 3, !remaining.isEmpty else { return 0 }
-        let sourceLength = remaining.count
-        var queryIndex = 0
-        var total = 0.0
-
-        while queryIndex < needle.count {
-            var bestLength = 0
-            var bestStart = 0
-            for start in remaining.indices {
-                var length = 0
-                while queryIndex + length < needle.count,
-                      start + length < remaining.count,
-                      needle[queryIndex + length] == remaining[start + length] {
-                    length += 1
-                }
-                if length > bestLength {
-                    bestLength = length
-                    bestStart = start
-                }
-            }
-            guard bestLength > 0 else {
-                queryIndex += 1
-                continue
-            }
-            let runWeight = pow(1.4, Double(3 + bestLength)) - 3.6
-            let positionBonus = 1 + 0.3 * Double(max(0, 3 - abs(queryIndex - bestStart)))
-            total += runWeight * positionBonus
-            remaining.removeSubrange(bestStart..<(bestStart + bestLength))
-            queryIndex += bestLength
-        }
-        let shortQueryFactor = needle.count <= 2 ? Double(3 - needle.count) : 1
-        return (total / Double(needle.count))
-            * (3 / sqrt(Double(sourceLength + 15)))
-            * shortQueryFactor
-    }
-
-    private static func fuzzyWords(in text: String) -> [String] {
-        if let cached = fuzzyWordsCache.object(forKey: text as NSString) {
-            return cached.compactMap { $0 as? String }
-        }
-        let words = text.split { (character: Character) in
-            !(character.isLetter || character.isNumber)
-        }.map(String.init).filter { $0.count >= 4 }
-        fuzzyWordsCache.setObject(words as NSArray, forKey: text as NSString)
-        return words
-    }
-
-    private static func fuzzyDistanceLimit(for token: String) -> Int {
-        token.count >= 7 ? 2 : 1
-    }
-
-    /// Damerau-Levenshtein distance with one adjacent transposition. The
-    /// minimum four-character token guard keeps short/random queries from
-    /// turning into broad page matches.
-    private static func fuzzyDistance(_ lhs: String, _ rhs: String, maximum: Int) -> Int {
-        let left = Array(lhs)
-        let right = Array(rhs)
-        guard abs(left.count - right.count) <= maximum else { return maximum + 1 }
-        var matrix = Array(repeating: Array(repeating: 0, count: right.count + 1), count: left.count + 1)
-        for index in 0...left.count { matrix[index][0] = index }
-        for index in 0...right.count { matrix[0][index] = index }
-        guard !left.isEmpty, !right.isEmpty else { return max(left.count, right.count) }
-        for i in 1...left.count {
-            var rowMinimum = Int.max
-            for j in 1...right.count {
-                let substitution = left[i - 1] == right[j - 1] ? 0 : 1
-                matrix[i][j] = min(
-                    matrix[i - 1][j] + 1,
-                    matrix[i][j - 1] + 1,
-                    matrix[i - 1][j - 1] + substitution
-                )
-                if i > 1, j > 1,
-                   left[i - 1] == right[j - 2], left[i - 2] == right[j - 1] {
-                    matrix[i][j] = min(matrix[i][j], matrix[i - 2][j - 2] + 1)
-                }
-                rowMinimum = min(rowMinimum, matrix[i][j])
-            }
-            if rowMinimum > maximum { return maximum + 1 }
-        }
-        return matrix[left.count][right.count]
     }
 
     /// Marks a row as searchable without requiring `identifier` to stay
@@ -398,7 +249,6 @@ enum DashboardPageSearch {
             guard document.businessVisible,
                   let match = bestMatch(
                     texts: document.texts,
-                    aliases: document.aliases,
                     supportingTexts: document.supportingTexts,
                     query: query
                   ) else {
@@ -428,7 +278,6 @@ struct DashboardSearchDocument: Sendable {
     let id: String
     let sectionID: String?
     let texts: [String]
-    let aliases: [String]
     let supportingTexts: [String]
     let businessVisible: Bool
     let order: Int
@@ -440,91 +289,6 @@ struct DashboardSearchMatchResult: Sendable {
 }
 
 enum DashboardSettingsSearchCatalog {
-    private struct AliasDefinition {
-        let canonical: [String]
-        let aliases: [String]
-    }
-
-    private static let aliasDefinitions: [AliasDefinition] = [
-        AliasDefinition(
-            canonical: [
-                tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
-                "Launch at Login",
-                "登录时自动启动"
-            ],
-            aliases: ["开机启动", "开机自启", "autostart", "startup"]
-        ),
-        AliasDefinition(
-            canonical: [
-                tr(.keyDashboardGeneralAndRefreshPagesLanguage),
-                "Language",
-                "语言"
-            ],
-            aliases: ["lang"]
-        ),
-        AliasDefinition(
-            canonical: [
-                tr(.keyDashboardMenuBarPageMenuBarFontSize),
-                "Menu Bar Font Size",
-                "菜单栏字号"
-            ],
-            aliases: ["menu font", "font size", "菜单栏字体", "字号"]
-        )
-    ]
-
-    private static let localizedSearchCopy: [DashboardSection: [String]] = {
-        let bundles = Bundle.main.localizations.compactMap { localization -> Bundle? in
-            guard let path = Bundle.main.path(forResource: localization, ofType: "lproj") else {
-                return nil
-            }
-            return Bundle(path: path)
-        }
-        let interpolationPattern = try? NSRegularExpression(
-            pattern: "%([0-9]+\\$)?[-+0-9.#]*[a-zA-Z@]"
-        )
-        return Dictionary(uniqueKeysWithValues: DashboardSection.allCases.map { section in
-            let prefix = localizationPrefix(for: section)
-            var values: [String] = []
-            for key in LocalizationKey.allCases where key.rawValue.hasPrefix(prefix) {
-                for bundle in bundles {
-                    let localized = bundle.localizedString(
-                        forKey: key.rawValue,
-                        value: "",
-                        table: "Localizable"
-                    )
-                    guard !localized.isEmpty else { continue }
-                    let range = NSRange(localized.startIndex..<localized.endIndex, in: localized)
-                    let copy = interpolationPattern?.stringByReplacingMatches(
-                        in: localized,
-                        range: range,
-                        withTemplate: " "
-                    ) ?? localized
-                    let trimmed = copy.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty { values.append(trimmed) }
-                }
-            }
-            return (section, Array(Set(values)))
-        })
-    }()
-
-    static func aliases(for title: String) -> [String] {
-        definition(for: title)?.aliases ?? []
-    }
-
-    /// Returns all localized and stable English names for a setting identity.
-    /// The current UI title alone is insufficient when a user searches in a
-    /// different language from the one used by the setting's canonical name.
-    static func canonicalValues(for title: String) -> [String] {
-        definition(for: title)?.canonical ?? []
-    }
-
-    private static func definition(for title: String) -> AliasDefinition? {
-        let normalizedTitle = DashboardPageSearch.normalize(title)
-        return aliasDefinitions.first {
-            $0.canonical.contains { DashboardPageSearch.normalize($0) == normalizedTitle }
-        }
-    }
-
     static func titles(for section: DashboardSection) -> [String] {
         var values = [section.title]
         values.append(contentsOf: keys(for: section).map { tr($0) })
@@ -532,26 +296,12 @@ enum DashboardSettingsSearchCatalog {
         return values
     }
 
-    private static func localizationPrefix(for section: DashboardSection) -> String {
-        switch section {
-        case .general: return "dashboard.general.and.refresh.pages."
-        case .menuBar: return "dashboard.menu.bar.page."
-        case .menu: return "dashboard.menu.page."
-        case .advanced: return "dashboard.advanced.page."
-        case .about: return "dashboard.about.page."
-        }
-    }
-
     static func matchingSections(query: String) -> [DashboardSection] {
         rankedSections(query: query).map(\.section)
     }
 
     static func rankedSections(
-        query: String,
-        statusLinks: [StatusLink] = [],
-        runtimeTexts: [DashboardSection: [String]] = [:],
-        includeSupportingTexts: Bool = true,
-        singleCharacterWordBoundaryOnly: Bool = false
+        query: String
     ) -> [(section: DashboardSection, match: DashboardPageSearch.Match)] {
         var scored: [(section: DashboardSection, match: DashboardPageSearch.Match)] = []
         for section in DashboardSection.allCases {
@@ -572,29 +322,12 @@ enum DashboardSettingsSearchCatalog {
 
     static func match(
         for section: DashboardSection,
-        query: String,
-        includeSupportingTexts: Bool = true,
-        singleCharacterWordBoundaryOnly: Bool = false
+        query: String
     ) -> DashboardPageSearch.Match? {
         return DashboardPageSearch.bestMatch(
             texts: titles(for: section),
             query: query
         )
-    }
-
-    private static func containsSingleCharacterWordBoundary(
-        _ text: String,
-        query: String
-    ) -> Bool {
-        let normalizedText = DashboardPageSearch.normalize(text)
-        let normalizedQuery = DashboardPageSearch.normalize(query)
-        guard normalizedQuery.count == 1,
-              let queryCharacter = normalizedQuery.first else {
-            return false
-        }
-        return normalizedText.split(whereSeparator: { $0.isWhitespace }).contains {
-            $0.first == queryCharacter
-        }
     }
 
     static func firstMatchingSection(query: String) -> DashboardSection? {
@@ -801,8 +534,25 @@ final class DashboardPageSearchFilter {
         needsInitialProjectionLayout = true
     }
 
-    func searchDocuments(for root: NSView) -> [DashboardSearchDocument] {
-        index(for: root).documents
+    func searchDocuments(
+        for root: NSView,
+        mode: DashboardPageSearchMode
+    ) -> [DashboardSearchDocument] {
+        let documents = index(for: root).documents
+        guard case .visibleCopy = mode else {
+            return documents.map { document in
+                guard document.sectionID != nil else { return document }
+                return DashboardSearchDocument(
+                    id: document.id,
+                    sectionID: document.sectionID,
+                    texts: document.texts,
+                    supportingTexts: [],
+                    businessVisible: document.businessVisible,
+                    order: document.order
+                )
+            }
+        }
+        return documents
     }
 
     @discardableResult
@@ -1237,7 +987,6 @@ final class DashboardPageSearchFilter {
                         id: sectionID,
                         sectionID: nil,
                         texts: [heading],
-                        aliases: [],
                         supportingTexts: [],
                         businessVisible: !DashboardSearchVisibility.isBusinessHidden(section),
                         order: documentOrder
@@ -1256,7 +1005,6 @@ final class DashboardPageSearchFilter {
                         id: rowID,
                         sectionID: sectionID,
                         texts: [title],
-                        aliases: [],
                         supportingTexts: ([sectionHeading(section)].compactMap { $0 } + copy),
                         businessVisible: !DashboardSearchVisibility.isBusinessHidden(row),
                         order: documentOrder
@@ -1276,7 +1024,6 @@ final class DashboardPageSearchFilter {
                     id: id,
                     sectionID: nil,
                     texts: [copy],
-                    aliases: [],
                     supportingTexts: [],
                     businessVisible: true,
                     order: documentOrder
