@@ -43,7 +43,7 @@ final class DashboardPageSearchTests: XCTestCase {
             field.stringValue = "Language"
             controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
             XCTAssertEqual(controller.draftQuery, "Language")
-            XCTAssertEqual(controller.searchQuery, "")
+            XCTAssertEqual(controller.searchQuery, "Language")
             _ = NSApp.sendAction(
                 try XCTUnwrap(field.action),
                 to: field.target,
@@ -68,7 +68,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(queries, ["Language", "", "Language", ""])
     }
 
-    func testDeletingLastCharacterKeepsCommittedQueryUntilCancel() async throws {
+    func testDeletingLastCharacterClearsCurrentQueryBeforeCancel() async throws {
         let controller = DashboardToolbarController()
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 880, height: 600),
@@ -92,11 +92,11 @@ final class DashboardPageSearchTests: XCTestCase {
         field.stringValue = ""
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
         XCTAssertEqual(controller.draftQuery, "")
-        XCTAssertEqual(controller.searchQuery, "a")
+        XCTAssertEqual(controller.searchQuery, "")
         XCTAssertTrue(controller.isSearchActive)
         controller.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification, object: field))
         await drainMainQueue()
-        XCTAssertTrue(controller.isSearchActive)
+        XCTAssertFalse(controller.isSearchActive)
         controller.cancelSearch()
         XCTAssertFalse(controller.isSearchActive)
     }
@@ -174,9 +174,8 @@ final class DashboardPageSearchTests: XCTestCase {
         field.editor.unmarkText()
         field.stringValue = "拼"
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
-        XCTAssertEqual(queries, [])
-        controller.setQuery("拼")
         XCTAssertEqual(queries, ["拼"])
+        XCTAssertEqual(controller.searchQuery, "拼")
     }
 
     func testShellRebuildPreservesEditingAndCancelRestoresCurrentPage() throws {
@@ -565,7 +564,7 @@ final class DashboardPageSearchTests: XCTestCase {
                 }
             }
             walk(root)
-            return (rows.sorted(), groupHeights.sorted())
+            return (rows, groupHeights)
         }
 
         let typedAppDelegate = AppDelegate(
@@ -804,9 +803,9 @@ final class DashboardPageSearchTests: XCTestCase {
             SettingsSectionView.headingToCardSpacing + 1,
             "search should keep the section heading and its result card together; section=\(section.frame), intrinsic=\(section.intrinsicContentSize), stack=\(section.contentStack.frame), heading=\(section.headingLabel.frame), card=\(section.cardView.frame), cardIntrinsic=\(section.cardView.intrinsicContentSize)"
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             section.hasSearchNaturalHeightConstraintForTesting,
-            "parent=\(String(describing: section.superview)), hidden siblings=\(String(describing: (section.superview as? NSStackView)?.arrangedSubviews.filter { $0 !== section }.map(DashboardSearchVisibility.isSearchHidden)))"
+            "global search sections use intrinsic height without a required exact-height lock"
         )
         XCTAssertLessThanOrEqual(
             section.frame.height,

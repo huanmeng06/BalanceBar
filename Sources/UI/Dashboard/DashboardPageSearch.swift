@@ -167,6 +167,8 @@ enum DashboardPageSearch {
     static let aboutContentIdentifier = NSUserInterfaceItemIdentifier("dashboard.about.content")
     static let globalSearchGroupIdentifier = NSUserInterfaceItemIdentifier("dashboard.search.globalGroup")
     private static var searchableRowKey: UInt8 = 0
+    private static let normalizedTextCache = NSCache<NSString, NSString>()
+    private static let fuzzyWordsCache = NSCache<NSString, NSArray>()
 
     enum MatchKind: Int, Comparable {
         case fuzzy = 1
@@ -288,14 +290,19 @@ enum DashboardPageSearch {
     }
 
     static func normalize(_ text: String) -> String {
+        if let cached = normalizedTextCache.object(forKey: text as NSString) {
+            return cached as String
+        }
         let widthFolded = text.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? text
         let folded = widthFolded.folding(
             options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
             locale: .current
         )
-        return folded
+        let normalized = folded
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: " ")
+        normalizedTextCache.setObject(normalized as NSString, forKey: text as NSString)
+        return normalized
     }
 
     private static func tokens(_ text: String) -> [String] {
@@ -383,9 +390,14 @@ enum DashboardPageSearch {
     }
 
     private static func fuzzyWords(in text: String) -> [String] {
-        text.split { (character: Character) in
+        if let cached = fuzzyWordsCache.object(forKey: text as NSString) {
+            return cached.compactMap { $0 as? String }
+        }
+        let words = text.split { (character: Character) in
             !(character.isLetter || character.isNumber)
         }.map(String.init).filter { $0.count >= 4 }
+        fuzzyWordsCache.setObject(words as NSArray, forKey: text as NSString)
+        return words
     }
 
     private static func fuzzyDistanceLimit(for token: String) -> Int {
@@ -706,11 +718,37 @@ enum DashboardSettingsSearchCatalog {
 
 final class DashboardPageSearchFilter {
     var statusLinks: [StatusLink] = []
+    private final class SearchIndex {
+        weak var root: NSView?
+        let sections: [NSView]
+        let visibleCopyByView: [ObjectIdentifier: [String]]
+        let topLevelVisibleCopy: [String]
+
+        init(
+            root: NSView,
+            sections: [NSView],
+            visibleCopyByView: [ObjectIdentifier: [String]],
+            topLevelVisibleCopy: [String]
+        ) {
+            self.root = root
+            self.sections = sections
+            self.visibleCopyByView = visibleCopyByView
+            self.topLevelVisibleCopy = topLevelVisibleCopy
+        }
+    }
+
+    private let searchIndexes = NSMapTable<NSView, SearchIndex>.strongToStrongObjects()
+    private var activeSearchIndex: SearchIndex?
     private let hiddenBySearch = NSHashTable<NSView>.weakObjects()
     private let originalStackVisibilityPriority = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
     private let originalStackParent = NSMapTable<NSView, NSStackView>.strongToWeakObjects()
     private let originalStackIndex = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
     private let originalStackWidthConstraint = NSMapTable<NSView, NSLayoutConstraint>.strongToStrongObjects()
+
+    func invalidateSearchIndex() {
+        searchIndexes.removeAllObjects()
+        activeSearchIndex = nil
+    }
 
     @discardableResult
     func apply(
@@ -719,8 +757,13 @@ final class DashboardPageSearchFilter {
         pageTitle: String,
         mode: DashboardPageSearchMode
     ) -> Bool {
-        restoreSearchHiddens()
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if needle.isEmpty {
+            restoreSearchHiddens()
+        }
+        let searchIndex = index(for: root)
+        activeSearchIndex = searchIndex
+        defer { activeSearchIndex = nil }
         if needle.isEmpty {
             setEmptyStateHidden(true, in: root)
             restoreAboutContent(in: root)
@@ -728,6 +771,7 @@ final class DashboardPageSearchFilter {
             return true
         }
         if DashboardPageSearch.matches(pageTitle, query: needle) {
+            restoreSearchHiddens()
             setEmptyStateHidden(true, in: root)
             restoreAboutContent(in: root)
             refreshSearchSectionHeights(in: root)
@@ -823,6 +867,9 @@ final class DashboardPageSearchFilter {
         pageTitle: String,
         mode: DashboardPageSearchMode
     ) -> DashboardPageSearch.Match? {
+        let searchIndex = index(for: root)
+        activeSearchIndex = searchIndex
+        defer { activeSearchIndex = nil }
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return nil }
         var best = DashboardPageSearch.bestMatch(texts: [pageTitle], query: needle)
@@ -864,6 +911,7 @@ final class DashboardPageSearchFilter {
         }
         var anyMatch = false
         for section in sections {
+            _ = restoreSearchHiddenView(section)
             let result = applySectionFilter(section, query: query, includeVisibleCopy: true)
             if result.countsAsHit {
                 anyMatch = true
@@ -877,7 +925,7 @@ final class DashboardPageSearchFilter {
     private func applyVisibleCopyFilter(query: String, to root: NSView) -> Bool {
         let sections = collectSections(in: root)
         if sections.isEmpty {
-            let matched = visibleCopy(in: root).contains {
+            let matched = (activeSearchIndex?.topLevelVisibleCopy ?? visibleCopy(in: root)).contains {
                 DashboardPageSearch.matches($0, query: query)
             }
             if !matched {
@@ -887,6 +935,7 @@ final class DashboardPageSearchFilter {
         }
         var anyMatch = false
         for section in sections {
+            _ = restoreSearchHiddenView(section)
             let result = applySectionFilter(section, query: query, includeVisibleCopy: true)
             if result.countsAsHit {
                 anyMatch = true
@@ -894,7 +943,12 @@ final class DashboardPageSearchFilter {
                 hideForSearch(section)
             }
         }
-        let unmatchedTopLevel = visibleCopy(in: root, skipping: sections).contains {
+        var topLevelCopy = activeSearchIndex?.topLevelVisibleCopy
+            ?? visibleCopy(in: root, skipping: sections)
+        if !statusLinks.isEmpty, containsStatusLinksEditor(in: root) {
+            topLevelCopy.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
+        }
+        let unmatchedTopLevel = topLevelCopy.contains {
             DashboardPageSearch.matches($0, query: query)
         }
         return anyMatch || unmatchedTopLevel
@@ -911,6 +965,10 @@ final class DashboardPageSearchFilter {
         includeVisibleCopy: Bool = false
     ) -> SectionFilterResult {
         if sectionHeading(section).map({ DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil }) == true {
+            _ = restoreSearchHiddenView(section)
+            for row in rows(in: section) {
+                _ = restoreSearchHiddenView(row)
+            }
             return SectionFilterResult(
                 countsAsHit: !DashboardSearchVisibility.isBusinessHidden(section),
                 hideSectionForSearch: false
@@ -939,6 +997,7 @@ final class DashboardPageSearchFilter {
                 includeVisibleCopy: includeVisibleCopy,
                 sectionHeading: heading
             ) {
+                _ = restoreSearchHiddenView(view)
                 if !DashboardSearchVisibility.isBusinessHidden(view) {
                     visibleRowCount += 1
                 }
@@ -1009,7 +1068,8 @@ final class DashboardPageSearchFilter {
             supportingValues.append(sectionHeading)
         }
         if includeVisibleCopy {
-            supportingValues.append(contentsOf: visibleCopy(in: row))
+            supportingValues.append(contentsOf: activeSearchIndex?.visibleCopyByView[ObjectIdentifier(row)]
+                ?? visibleCopy(in: row))
             if containsStatusLinksEditor(in: row) {
                 supportingValues.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
             }
@@ -1042,6 +1102,13 @@ final class DashboardPageSearchFilter {
     }
 
     private func collectSections(in view: NSView) -> [NSView] {
+        if let activeSearchIndex, activeSearchIndex.root === view {
+            return activeSearchIndex.sections
+        }
+        return collectSectionsUncached(in: view)
+    }
+
+    private func collectSectionsUncached(in view: NSView) -> [NSView] {
         if view.identifier == DashboardPageSearch.emptyStateIdentifier {
             return []
         }
@@ -1051,7 +1118,29 @@ final class DashboardPageSearchFilter {
         if DashboardSearchVisibility.isBusinessHidden(view) {
             return []
         }
-        return view.subviews.flatMap { collectSections(in: $0) }
+        return view.subviews.flatMap { collectSectionsUncached(in: $0) }
+    }
+
+    private func index(for root: NSView) -> SearchIndex {
+        if let existing = searchIndexes.object(forKey: root), existing.root === root {
+            return existing
+        }
+        let sections = collectSectionsUncached(in: root)
+        var visibleCopyByView: [ObjectIdentifier: [String]] = [:]
+        for section in sections {
+            for row in rows(in: section) {
+                visibleCopyByView[ObjectIdentifier(row)] = visibleCopy(in: row)
+            }
+        }
+        let topLevelVisibleCopy = visibleCopy(in: root, skipping: sections)
+        let index = SearchIndex(
+            root: root,
+            sections: sections,
+            visibleCopyByView: visibleCopyByView,
+            topLevelVisibleCopy: topLevelVisibleCopy
+        )
+        searchIndexes.setObject(index, forKey: root)
+        return index
     }
 
     private func rows(in section: NSView) -> [NSView] {

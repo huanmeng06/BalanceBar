@@ -152,6 +152,14 @@ final class SettingsSectionView: NSView {
     }
 
     func updateSearchNaturalHeightConstraintForCurrentVisibility() {
+        // Global search stacks already collapse hidden arranged sections with
+        // NSStackView's native visibility semantics. Locking the section to a
+        // transient intrinsic height here creates a required constraint that
+        // can capture the pre-wrapping size for one layout pass.
+        if isInsideGlobalSearchProjection {
+            searchNaturalHeightConstraint?.isActive = false
+            return
+        }
         guard !DashboardSearchVisibility.isSearchHidden(self),
               !DashboardSearchVisibility.isBusinessHidden(self)
         else {
@@ -185,6 +193,17 @@ final class SettingsSectionView: NSView {
         let constraint = heightAnchor.constraint(equalToConstant: naturalHeight)
         constraint.isActive = true
         searchNaturalHeightConstraint = constraint
+    }
+
+    private var isInsideGlobalSearchProjection: Bool {
+        var ancestor = superview
+        while let view = ancestor {
+            if view.identifier == DashboardPageSearch.globalSearchGroupIdentifier {
+                return true
+            }
+            ancestor = view.superview
+        }
+        return false
     }
 
     private func searchHiddenSiblingInAncestorContainer() -> Bool {

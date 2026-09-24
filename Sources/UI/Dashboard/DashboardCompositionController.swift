@@ -50,6 +50,7 @@ private final class DashboardGlobalSearchResultsView: NSStackView {
 }
 
 private final class DashboardGlobalSearchGroupView: NSStackView {
+    var settingsSection: DashboardSection = .general
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         identifier = DashboardPageSearch.globalSearchGroupIdentifier
@@ -212,6 +213,9 @@ final class DashboardCompositionController {
             providerChoices: { [weak self] in self?.state.providerChoices() ?? [] },
             prepareForPageReplacement: { [weak self] in self?.prepareForPageReplacement() },
             didShowPage: { [weak self] in
+                // Page replacement invokes this callback synchronously. The
+                // toolbar's searchQuery is the live accepted editor value, so
+                // the search page cannot be cleared by an older submission.
                 self?.applyMountedPageSearch()
                 self?.actions.onDidShowPage()
             },
@@ -280,10 +284,14 @@ final class DashboardCompositionController {
         refreshLaunchAtLogin()
         refreshLaunchWithChatGPT()
     }
-    func rebuild() { pageSession.rebuild(on: windowController) }
+    func rebuild() {
+        pageSearchFilter.invalidateSearchIndex()
+        pageSession.rebuild(on: windowController)
+    }
     func showSection(_ section: DashboardSection) { pageSession.showSection(section) }
     func showProvider(_ providerID: String) { pageSession.showProvider(providerID) }
     func teardown() {
+        pageSearchFilter.invalidateSearchIndex()
         isGlobalSettingsSearchActive = false
         globalSettingsSearchContent = nil
         globalSearchOriginContent = nil
@@ -295,6 +303,7 @@ final class DashboardCompositionController {
     }
 
     func refreshMountedPage(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
+        pageSearchFilter.invalidateSearchIndex()
         _ = dashboardProviderPages.refreshMountedPage(
             input: makeProviderPageInput(
                 snapshot: snapshot,
@@ -311,6 +320,7 @@ final class DashboardCompositionController {
 
     func refreshMenuBarPage(snapshot: Snapshot) {
         guard canUpdateSettingsPage(.menuBar) else { return }
+        pageSearchFilter.invalidateSearchIndex()
         dashboardPreferencePages.refreshMenuBar(
             snapshot: snapshot,
             menuBarSnapshot: state.menuBarSnapshot,
@@ -328,6 +338,7 @@ final class DashboardCompositionController {
 
     func refreshMenuPage() {
         guard canUpdateSettingsPage(.menu) else { return }
+        pageSearchFilter.invalidateSearchIndex()
         dashboardPreferencePages.refreshMenu()
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
@@ -555,6 +566,9 @@ final class DashboardCompositionController {
 
     func applySearchQueryForTesting(_ query: String) {
         pageSession.toolbarController.setQuery(query)
+        pendingDashboardSearchWorkItem?.cancel()
+        dashboardSearchGeneration &+= 1
+        handleDashboardSearch(query)
     }
 
     func currentHostedPageContentForTesting() -> NSView {
@@ -563,25 +577,24 @@ final class DashboardCompositionController {
 
     private func bindDashboardSearch() {
         pageSession.toolbarController.onSearchQueryChanged = { [weak self] query in
-            self?.pendingDashboardSearchWorkItem?.cancel()
-            self?.handleDashboardSearch(query)
+            self?.scheduleDashboardSearch(query)
         }
-        pageSession.toolbarController.onSearchDraftChanged = { [weak self] query in
-            guard let self else { return }
-            self.pendingDashboardSearchWorkItem?.cancel()
-            self.dashboardSearchGeneration &+= 1
-            let generation = self.dashboardSearchGeneration
-            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                self.handleDashboardSearch(query)
-                return
-            }
-            let work = DispatchWorkItem { [weak self] in
-                guard let self, self.dashboardSearchGeneration == generation else { return }
-                self.handleDashboardSearch(query)
-            }
-            self.pendingDashboardSearchWorkItem = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(45), execute: work)
+    }
+
+    private func scheduleDashboardSearch(_ query: String) {
+        pendingDashboardSearchWorkItem?.cancel()
+        dashboardSearchGeneration &+= 1
+        let generation = dashboardSearchGeneration
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            handleDashboardSearch(query)
+            return
         }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.dashboardSearchGeneration == generation else { return }
+            self.handleDashboardSearch(query)
+        }
+        pendingDashboardSearchWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(45), execute: work)
     }
 
     private func handleDashboardSearch(_ query: String) {
@@ -712,17 +725,24 @@ final class DashboardCompositionController {
     private func addGlobalSettingsSearchPages(matching query: String) {
         guard let searchContent = globalSettingsSearchContent,
               let resultStack = searchContent as? DashboardGlobalSearchResultsView else { return }
-        let missingSections = DashboardSettingsSearchCatalog.rankedSections(
-            query: query,
-            statusLinks: state.statusLinks()
-        )
-            .map(\.section)
-            .filter { $0 != .about && !globalSettingsSearchSections.contains($0) }
-            .sorted { $0.rawValue < $1.rawValue }
+        // Materialize the complete settings surface once per search session.
+        // Candidate discovery and row filtering now use the same mounted view
+        // corpus, including runtime provider names, status links and control
+        // choices that are unavailable to the static localization catalog.
+        let allSettingsSections = DashboardSection.allCases.filter { $0 != .about }
+        let missingSections: [DashboardSection]
+        if globalSettingsSearchSections.isEmpty {
+            missingSections = allSettingsSections
+        } else {
+            missingSections = allSettingsSections.filter {
+                !globalSettingsSearchSections.contains($0)
+            }
+        }
         guard !missingSections.isEmpty else { return }
 
         for settingsSection in missingSections {
             let group = DashboardGlobalSearchGroupView()
+            group.settingsSection = settingsSection
             group.translatesAutoresizingMaskIntoConstraints = false
             if settingsSection == section, let origin = globalSearchOriginContent {
                 group.addPage(origin)
@@ -741,6 +761,14 @@ final class DashboardCompositionController {
             resultStack.addGroup(group, spacing: DashboardSettingsComponents.settingsSectionSpacing)
             globalSettingsSearchSections.insert(settingsSection)
         }
+        let orderedGroups = resultStack.arrangedSubviews
+            .compactMap { $0 as? DashboardGlobalSearchGroupView }
+            .sorted { lhs, rhs in
+                let lhsIndex = allSettingsSections.firstIndex(of: lhs.settingsSection) ?? .max
+                let rhsIndex = allSettingsSections.firstIndex(of: rhs.settingsSection) ?? .max
+                return lhsIndex < rhsIndex
+            }
+        resultStack.setViews(orderedGroups, in: .top)
         resultStack.needsLayout = true
     }
 
@@ -846,6 +874,7 @@ final class DashboardCompositionController {
         case .url: links[index].url = value
         }
         state.setStatusLinks(links)
+        pageSearchFilter.invalidateSearchIndex()
         SwitchLog.write(
             "status link edited; index=\(index); field=\(field == .title ? "title" : "url"); length=\(value.count)",
             category: "configuration"
@@ -859,6 +888,7 @@ final class DashboardCompositionController {
         guard links.indices.contains(index) || index == links.endIndex else { return }
         links.insert(StatusLink(title: "", url: ""), at: index)
         state.setStatusLinks(links)
+        pageSearchFilter.invalidateSearchIndex()
         SwitchLog.write("status link added; count=\(links.count)", category: "configuration")
         dashboardPreferencePages.updateMenuStatusLinks(
             links,
@@ -876,6 +906,7 @@ final class DashboardCompositionController {
         guard index >= 0, index < links.count else { return }
         links.remove(at: index)
         state.setStatusLinks(links)
+        pageSearchFilter.invalidateSearchIndex()
         SwitchLog.write("status link removed; index=\(index); count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
         dashboardPreferencePages.updateMenuStatusLinks(links, mutation: .remove(index))
@@ -888,6 +919,7 @@ final class DashboardCompositionController {
         let movedLink = links.remove(at: from)
         links.insert(movedLink, at: to)
         state.setStatusLinks(links)
+        pageSearchFilter.invalidateSearchIndex()
         SwitchLog.write(
             "status link moved; from=\(from); to=\(to)",
             category: "configuration"
@@ -905,6 +937,7 @@ final class DashboardCompositionController {
         guard links.indices.contains(index) else { return }
         links.insert(links[index], at: index + 1)
         state.setStatusLinks(links)
+        pageSearchFilter.invalidateSearchIndex()
         SwitchLog.write(
             "status link duplicated; index=\(index); count=\(links.count)",
             category: "configuration"
@@ -920,6 +953,7 @@ final class DashboardCompositionController {
         guard section == .menu || isGlobalSettingsSearchActive else { return }
         let links = state.defaultStatusLinks()
         state.setStatusLinks(links)
+        pageSearchFilter.invalidateSearchIndex()
         SwitchLog.write("status links restored to defaults; count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
         dashboardPreferencePages.updateMenuStatusLinks(links)

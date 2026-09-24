@@ -28,9 +28,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     private(set) var draftQuery = ""
     private(set) var isSearchEditing = false
     var onSearchQueryChanged: ((String) -> Void)?
-    /// Receives editor text before Return. The owner may coalesce this for
-    /// live filtering while `searchQuery` remains the last submitted value.
-    var onSearchDraftChanged: ((String) -> Void)?
 
     var isSearchActive: Bool {
         isSearchEditing || !draftQuery.isEmpty || !searchQuery.isEmpty
@@ -151,7 +148,10 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         guard let field = obj.object as? NSSearchField,
               (field.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
         draftQuery = field.stringValue
-        onSearchDraftChanged?(draftQuery)
+        // The accepted query is updated with every non-marked editor change.
+        // The composition layer may coalesce the expensive projection, but
+        // every owner observes one current query value during page changes.
+        commitQuery(draftQuery)
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
