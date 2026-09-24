@@ -202,6 +202,10 @@ final class DashboardCompositionController {
     private let pageSearchFilter = DashboardPageSearchFilter()
     private var pendingDashboardSearchWorkItem: DispatchWorkItem?
     private var dashboardSearchGeneration: UInt64 = 0
+    private var searchDataRevision: UInt64 = 0
+    private var lastAppliedSearchQuery: String?
+    private var lastAppliedSearchRevision: UInt64 = 0
+    private weak var lastAppliedSearchRoot: NSView?
     private lazy var pageSession = DashboardPageSession(
         actions: DashboardWindowControllerActions(
             makeSectionPage: { [weak self] section in
@@ -218,7 +222,9 @@ final class DashboardCompositionController {
                 // Page replacement invokes this callback synchronously. The
                 // toolbar's searchQuery is the live accepted editor value, so
                 // the search page cannot be cleared by an older submission.
-                self?.applyMountedPageSearch()
+                if self?.isBuildingGlobalSearchPage != true {
+                    self?.applyMountedPageSearch()
+                }
                 self?.actions.onDidShowPage()
             },
             didClose: { [weak self] in
@@ -287,13 +293,13 @@ final class DashboardCompositionController {
         refreshLaunchWithChatGPT()
     }
     func rebuild() {
-        pageSearchFilter.invalidateSearchIndex()
+        invalidateSearchData()
         pageSession.rebuild(on: windowController)
     }
     func showSection(_ section: DashboardSection) { pageSession.showSection(section) }
     func showProvider(_ providerID: String) { pageSession.showProvider(providerID) }
     func teardown() {
-        pageSearchFilter.invalidateSearchIndex()
+        invalidateSearchData()
         isGlobalSettingsSearchActive = false
         globalSettingsSearchContent = nil
         globalSearchOriginContent = nil
@@ -306,7 +312,7 @@ final class DashboardCompositionController {
     }
 
     func refreshMountedPage(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
-        pageSearchFilter.requestVisibilityReset()
+        invalidateSearchData()
         _ = dashboardProviderPages.refreshMountedPage(
             input: makeProviderPageInput(
                 snapshot: snapshot,
@@ -315,15 +321,33 @@ final class DashboardCompositionController {
                 revision: revision
             )
         )
-        refreshMenuBarPage(snapshot: snapshot)
+        refreshMenuBarPage(
+            snapshot: snapshot,
+            invalidateSearchData: false,
+            reapplySearch: false
+        )
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
         }
     }
 
     func refreshMenuBarPage(snapshot: Snapshot) {
+        refreshMenuBarPage(
+            snapshot: snapshot,
+            invalidateSearchData: true,
+            reapplySearch: true
+        )
+    }
+
+    private func refreshMenuBarPage(
+        snapshot: Snapshot,
+        invalidateSearchData: Bool,
+        reapplySearch: Bool
+    ) {
         guard canUpdateSettingsPage(.menuBar) else { return }
-        pageSearchFilter.requestVisibilityReset()
+        if invalidateSearchData {
+            self.invalidateSearchData()
+        }
         dashboardPreferencePages.refreshMenuBar(
             snapshot: snapshot,
             menuBarSnapshot: state.menuBarSnapshot,
@@ -334,14 +358,15 @@ final class DashboardCompositionController {
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive
         )
-        if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if reapplySearch,
+           !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
         }
     }
 
     func refreshMenuPage() {
         guard canUpdateSettingsPage(.menu) else { return }
-        pageSearchFilter.requestVisibilityReset()
+        invalidateSearchData()
         dashboardPreferencePages.refreshMenu()
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
@@ -600,6 +625,13 @@ final class DashboardCompositionController {
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(45), execute: work)
     }
 
+    private func invalidateSearchData() {
+        searchDataRevision &+= 1
+        pageSearchFilter.prepareForDataRefresh()
+        lastAppliedSearchQuery = nil
+        lastAppliedSearchRoot = nil
+    }
+
     private func handleDashboardSearch(_ query: String) {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if needle.isEmpty {
@@ -653,12 +685,21 @@ final class DashboardCompositionController {
         if !needle.isEmpty, isGlobalSettingsSearchActive {
             addGlobalSettingsSearchPages(matching: needle)
         }
+        let root = pageSession.currentHostedPageContent()
+        if lastAppliedSearchQuery == query,
+           lastAppliedSearchRevision == searchDataRevision,
+           lastAppliedSearchRoot === root {
+            return
+        }
         _ = pageSearchFilter.apply(
             query: query,
-            to: pageSession.currentHostedPageContent(),
+            to: root,
             pageTitle: currentSearchPageTitle(),
             mode: currentSearchMode()
         )
+        lastAppliedSearchQuery = query
+        lastAppliedSearchRevision = searchDataRevision
+        lastAppliedSearchRoot = root
         DashboardKeyViewLoop.resignUnreachableFirstResponder(window)
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
     }
@@ -671,6 +712,8 @@ final class DashboardCompositionController {
             globalSearchOriginContent = pageSession.currentHostedPageContent()
         }
         pageSearchFilter.resetSearchState()
+        lastAppliedSearchQuery = nil
+        lastAppliedSearchRoot = nil
         globalSettingsSearchContent = nil
         globalSettingsSearchSections.removeAll()
         globalSearchGroupsBySection.removeAll()
@@ -690,12 +733,16 @@ final class DashboardCompositionController {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !initialQuery.isEmpty {
             addGlobalSettingsSearchPages(matching: initialQuery)
+            let root = pageSession.currentHostedPageContent()
             _ = pageSearchFilter.apply(
                 query: initialQuery,
-                to: pageSession.currentHostedPageContent(),
+                to: root,
                 pageTitle: "",
                 mode: .titles
             )
+            lastAppliedSearchQuery = initialQuery
+            lastAppliedSearchRevision = searchDataRevision
+            lastAppliedSearchRoot = root
         }
     }
 
@@ -714,6 +761,8 @@ final class DashboardCompositionController {
         globalSettingsSearchSections.removeAll()
         globalSearchGroupsBySection.removeAll()
         globalSearchOriginContent = nil
+        lastAppliedSearchQuery = nil
+        lastAppliedSearchRoot = nil
         if let origin {
             pageSession.showHostedSettingsContent(origin)
         } else {
@@ -981,7 +1030,7 @@ final class DashboardCompositionController {
         case .url: links[index].url = value
         }
         state.setStatusLinks(links)
-        pageSearchFilter.invalidateSearchIndex()
+        invalidateSearchData()
         SwitchLog.write(
             "status link edited; index=\(index); field=\(field == .title ? "title" : "url"); length=\(value.count)",
             category: "configuration"
@@ -995,7 +1044,7 @@ final class DashboardCompositionController {
         guard links.indices.contains(index) || index == links.endIndex else { return }
         links.insert(StatusLink(title: "", url: ""), at: index)
         state.setStatusLinks(links)
-        pageSearchFilter.invalidateSearchIndex()
+        invalidateSearchData()
         SwitchLog.write("status link added; count=\(links.count)", category: "configuration")
         dashboardPreferencePages.updateMenuStatusLinks(
             links,
@@ -1013,7 +1062,7 @@ final class DashboardCompositionController {
         guard index >= 0, index < links.count else { return }
         links.remove(at: index)
         state.setStatusLinks(links)
-        pageSearchFilter.invalidateSearchIndex()
+        invalidateSearchData()
         SwitchLog.write("status link removed; index=\(index); count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
         dashboardPreferencePages.updateMenuStatusLinks(links, mutation: .remove(index))
@@ -1026,7 +1075,7 @@ final class DashboardCompositionController {
         let movedLink = links.remove(at: from)
         links.insert(movedLink, at: to)
         state.setStatusLinks(links)
-        pageSearchFilter.invalidateSearchIndex()
+        invalidateSearchData()
         SwitchLog.write(
             "status link moved; from=\(from); to=\(to)",
             category: "configuration"
@@ -1044,7 +1093,7 @@ final class DashboardCompositionController {
         guard links.indices.contains(index) else { return }
         links.insert(links[index], at: index + 1)
         state.setStatusLinks(links)
-        pageSearchFilter.invalidateSearchIndex()
+        invalidateSearchData()
         SwitchLog.write(
             "status link duplicated; index=\(index); count=\(links.count)",
             category: "configuration"
@@ -1060,7 +1109,7 @@ final class DashboardCompositionController {
         guard section == .menu || isGlobalSettingsSearchActive else { return }
         let links = state.defaultStatusLinks()
         state.setStatusLinks(links)
-        pageSearchFilter.invalidateSearchIndex()
+        invalidateSearchData()
         SwitchLog.write("status links restored to defaults; count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
         dashboardPreferencePages.updateMenuStatusLinks(links)

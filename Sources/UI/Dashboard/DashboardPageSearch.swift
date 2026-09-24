@@ -224,6 +224,8 @@ enum DashboardPageSearch {
         let supporting = supportingTexts.map { WeightedText(value: normalize($0), weight: 0.58) }
             .filter { !$0.value.isEmpty }
         let queryParts = queryTokens.map(normalize)
+        let canUseSequenceFuzzy = queryParts.allSatisfy { $0.count >= 3 }
+        let canUseEditDistance = queryParts.allSatisfy { $0.count >= 4 }
 
         if let direct = bestDirectMatch(
             values: primary,
@@ -263,19 +265,27 @@ enum DashboardPageSearch {
                 } / Double(queryParts.count)
             )
         }
-        guard queryTokens.allSatisfy({ token in
+        guard canUseSequenceFuzzy,
+              queryTokens.allSatisfy({ token in
             token.unicodeScalars.allSatisfy { $0.isASCII && $0.properties.isAlphabetic }
-        }) else {
+              }) else {
             return nil
         }
         let fuzzyScores = queryParts.map { token in
             allDirectSources.compactMap { source -> Double? in
-                let editScore = fuzzyWords(in: source.value).compactMap { word -> Double? in
-                    let distance = fuzzyDistance(token, word)
-                    guard distance <= fuzzyDistanceLimit(for: token) else { return nil }
-                    let denominator = Double(max(token.count, word.count))
-                    return denominator == 0 ? 0 : 1 - Double(distance) / denominator
-                }.max() ?? 0
+                let editScore: Double
+                if canUseEditDistance {
+                    editScore = fuzzyWords(in: source.value).compactMap { word -> Double? in
+                        let limit = fuzzyDistanceLimit(for: token)
+                        guard abs(token.count - word.count) <= limit else { return nil }
+                        let distance = fuzzyDistance(token, word, maximum: limit)
+                        guard distance <= limit else { return nil }
+                        let denominator = Double(max(token.count, word.count))
+                        return denominator == 0 ? 0 : 1 - Double(distance) / denominator
+                    }.max() ?? 0
+                } else {
+                    editScore = 0
+                }
                 let sequenceScore = contiguousChunkSimilarity(token, in: source.value)
                 let boundaryBonus = source.value.localizedStandardContains(token) ? 0.08 : 0
                 return max(editScore, sequenceScore) > 0
@@ -325,10 +335,13 @@ enum DashboardPageSearch {
                 || source.value.filter { !$0.isWhitespace }.localizedStandardContains(compactQuery)
         }).map({ source in
             let compactValue = source.value.filter { !$0.isWhitespace }
+            let sequenceBonus = compactQuery.count >= 3
+                ? min(0.35, contiguousChunkSimilarity(compactQuery, in: compactValue))
+                : 0
             return source.weight * (
                 1
                     + directPositionBonus(compactQuery, in: compactValue)
-                    + min(0.35, contiguousChunkSimilarity(compactQuery, in: compactValue))
+                    + sequenceBonus
             )
         }).max() {
             return Match(kind: kind ?? .contains, relevance: contains)
@@ -407,14 +420,16 @@ enum DashboardPageSearch {
     /// Damerau-Levenshtein distance with one adjacent transposition. The
     /// minimum four-character token guard keeps short/random queries from
     /// turning into broad page matches.
-    private static func fuzzyDistance(_ lhs: String, _ rhs: String) -> Int {
+    private static func fuzzyDistance(_ lhs: String, _ rhs: String, maximum: Int) -> Int {
         let left = Array(lhs)
         let right = Array(rhs)
+        guard abs(left.count - right.count) <= maximum else { return maximum + 1 }
         var matrix = Array(repeating: Array(repeating: 0, count: right.count + 1), count: left.count + 1)
         for index in 0...left.count { matrix[index][0] = index }
         for index in 0...right.count { matrix[0][index] = index }
         guard !left.isEmpty, !right.isEmpty else { return max(left.count, right.count) }
         for i in 1...left.count {
+            var rowMinimum = Int.max
             for j in 1...right.count {
                 let substitution = left[i - 1] == right[j - 1] ? 0 : 1
                 matrix[i][j] = min(
@@ -426,7 +441,9 @@ enum DashboardPageSearch {
                    left[i - 1] == right[j - 2], left[i - 2] == right[j - 1] {
                     matrix[i][j] = min(matrix[i][j], matrix[i - 2][j - 2] + 1)
                 }
+                rowMinimum = min(rowMinimum, matrix[i][j])
             }
+            if rowMinimum > maximum { return maximum + 1 }
         }
         return matrix[left.count][right.count]
     }
@@ -865,6 +882,10 @@ final class DashboardPageSearchFilter {
     }
 
     func requestVisibilityReset() {
+        invalidateSearchIndex()
+    }
+
+    func prepareForDataRefresh() {
         restoreSearchHiddens()
         invalidateSearchIndex()
     }
