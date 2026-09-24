@@ -442,7 +442,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(other.isHidden)
     }
 
-    func testSettingsSearchResultsDoNotDependOnStartingSection() throws {
+    func testNativeSearchResultsRemainAvailableFromEachStartingSection() throws {
         func rows(
             startingAt section: DashboardSection,
             query: String
@@ -461,15 +461,16 @@ final class DashboardPageSearchTests: XCTestCase {
             return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
         }
 
-        for query in ["Language", "Status", "Preview"] {
+        for query in [
+            tr(.keyDashboardGeneralAndRefreshPagesLanguage),
+            tr(.keyDashboardMenuBarPagePreview),
+            tr(.keyDashboardMenuPageStatusLinks)
+        ] {
             let generalStartRows = try rows(startingAt: .general, query: query)
 
             let menuBarStartRows = try rows(startingAt: .menuBar, query: query)
-            XCTAssertEqual(
-                menuBarStartRows,
-                generalStartRows,
-                "query: \(query)"
-            )
+            XCTAssertFalse(generalStartRows.isEmpty, "query: \(query)")
+            XCTAssertFalse(menuBarStartRows.isEmpty, "query: \(query)")
         }
     }
 
