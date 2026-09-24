@@ -379,7 +379,15 @@ final class SettingsRowView: NSView {
         recordSolvedWrappingWidthIfNeeded()
         updateSearchNaturalHeightConstraint()
         isPerformingLayout = false
-        scheduleWrappingHeightCommitIfNeeded()
+        if isInsideGlobalSearchProjection {
+            // Search projection fitting must settle in the same display pass;
+            // a deferred width commit can leave direct and incremental
+            // queries with different transient card heights.
+            wrappingCommitWorkItem?.cancel()
+            performScheduledWrappingHeightCommit()
+        } else {
+            scheduleWrappingHeightCommitIfNeeded()
+        }
     }
 
     private func updateSearchNaturalHeightConstraint() {

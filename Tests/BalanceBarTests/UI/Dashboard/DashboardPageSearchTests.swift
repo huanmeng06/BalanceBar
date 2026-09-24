@@ -598,7 +598,12 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(typedSnapshot.0, directSnapshot.0)
         XCTAssertEqual(typedSnapshot.1.count, directSnapshot.1.count)
         for (typedHeight, directHeight) in zip(typedSnapshot.1, directSnapshot.1) {
-            XCTAssertEqual(typedHeight, directHeight, accuracy: 1.0)
+            XCTAssertEqual(
+                typedHeight,
+                directHeight,
+                accuracy: 1.0,
+                "typed heights=\(typedSnapshot.1), direct heights=\(directSnapshot.1)"
+            )
         }
     }
 
