@@ -333,35 +333,18 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertNil(DashboardSettingsSearchCatalog.firstMatchingSection(query: "zzznomatch"))
     }
 
-    func testSearchMatcherNormalizesKeywordsAliasesAndLimitedTypos() {
-        XCTAssertTrue(DashboardPageSearch.matches("Language", query: "  LANGUAGE  "))
-        XCTAssertTrue(DashboardPageSearch.matches("Language", query: "Ｌａｎｇｕａｇｅ"))
-        XCTAssertTrue(DashboardPageSearch.matches("Menu Bar Font Size", query: "font menu"))
-        XCTAssertTrue(DashboardPageSearch.matches("Menu Bar Font Size", query: "menubarfont"))
-        XCTAssertTrue(
-            DashboardPageSearch.bestMatch(
-                texts: ["Launch at Login"],
-                aliases: DashboardSettingsSearchCatalog.aliases(for: "Launch at Login"),
-                query: "开机启动"
-            )?.kind == .alias
-        )
-        XCTAssertTrue(DashboardPageSearch.matches("Language", query: "langauge"))
-        XCTAssertTrue(
-            DashboardPageSearch.bestMatch(
-                texts: ["语言"] + DashboardSettingsSearchCatalog.canonicalValues(for: "语言"),
-                aliases: DashboardSettingsSearchCatalog.aliases(for: "语言"),
-                query: "langauge"
-            ) != nil
-        )
-        XCTAssertEqual(
-            DashboardSettingsSearchCatalog.firstMatchingSection(query: "langauge"),
-            .general
-        )
+    func testSearchMatcherUsesNativeLocalizedSubstringSemantics() {
+        XCTAssertTrue(DashboardPageSearch.matches("Language", query: "language"))
+        XCTAssertTrue(DashboardPageSearch.matches("Menu Bar Font Size", query: "Font"))
+        XCTAssertFalse(DashboardPageSearch.matches("Menu Bar Font Size", query: "font menu"))
+        XCTAssertFalse(DashboardPageSearch.matches("Menu Bar Font Size", query: "menubarfont"))
+        XCTAssertFalse(DashboardPageSearch.matches("Language", query: "langauge"))
+        XCTAssertFalse(DashboardPageSearch.matches("Launch at Login", query: "开机启动"))
+        XCTAssertNil(DashboardSettingsSearchCatalog.firstMatchingSection(query: "langauge"))
         XCTAssertFalse(DashboardPageSearch.matches("Language", query: "zzznomatch"))
-        XCTAssertFalse(DashboardPageSearch.matches("Language", query: "xyz"))
     }
 
-    func testSearchDocumentsMatchOffViewDataAndHonorCancellation() {
+    func testSearchDocumentsUseNativeSubstringDataAndHonorCancellation() {
         let documents = [
             DashboardSearchDocument(
                 id: "language",
@@ -384,7 +367,7 @@ final class DashboardPageSearchTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            DashboardPageSearch.matchDocuments(documents, query: "langauge")
+            DashboardPageSearch.matchDocuments(documents, query: "lang")
                 .map(\.documentID),
             ["language"]
         )
@@ -404,10 +387,7 @@ final class DashboardPageSearchTests: XCTestCase {
             statusLinks: links
         ).map(\.section)
 
-        XCTAssertTrue(
-            sections.contains(.menu),
-            "a direct query must include the menu page before its status-link editor is mounted"
-        )
+        XCTAssertFalse(sections.contains(.menu))
     }
 
     func testSearchMatcherDoesNotCombineKeywordsAcrossRows() {
@@ -448,8 +428,8 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(DashboardSettingsSearchCatalog.matchingSections(query: "7").contains(.menuBar))
         for query in [fiveHourQuota, sevenDayQuota] {
             XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: query), .menuBar)
-            XCTAssertTrue(filter.apply(query: query, to: root, pageTitle: "菜单栏", mode: .titles))
-            XCTAssertFalse(isCollapsedForSearch(quota), query)
+            XCTAssertFalse(filter.apply(query: query, to: root, pageTitle: "菜单栏", mode: .titles))
+            XCTAssertTrue(isCollapsedForSearch(quota), query)
             XCTAssertTrue(isCollapsedForSearch(other), query)
         }
         quota.isHidden = true
@@ -481,20 +461,8 @@ final class DashboardPageSearchTests: XCTestCase {
             return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
         }
 
-        for query in ["5", "7", "font menu", "langauge", "a"] {
+        for query in ["Language", "Status", "Preview"] {
             let generalStartRows = try rows(startingAt: .general, query: query)
-            if query == "5" {
-                XCTAssertTrue(
-                    generalStartRows.contains(
-                        tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks)
-                    ),
-                    "the 5-second refresh option should be included in global results"
-                )
-                XCTAssertTrue(
-                    generalStartRows.contains(tr(.keyDashboardMenuBarPageQuotaDisplayPriority)),
-                    "the 5-hour quota option should be included in global results"
-                )
-            }
 
             let menuBarStartRows = try rows(startingAt: .menuBar, query: query)
             XCTAssertEqual(
@@ -882,7 +850,7 @@ final class DashboardPageSearchTests: XCTestCase {
         defer { composition.teardownForTesting() }
         let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
         window.setContentSize(NSSize(width: 1_000, height: 700))
-        composition.applySearchQueryForTesting("5")
+        composition.applySearchQueryForTesting("Menu")
         window.layoutIfNeeded()
 
         let root = try XCTUnwrap(composition.currentHostedPageContentForTesting() as? NSStackView)
@@ -905,7 +873,7 @@ final class DashboardPageSearchTests: XCTestCase {
             }
         }
         collect(root)
-        XCTAssertGreaterThanOrEqual(groups.count, 2)
+        XCTAssertGreaterThanOrEqual(groups.count, 1)
         for group in groups {
             XCTAssertEqual(group.spacing, DashboardSettingsComponents.settingsSectionSpacing)
         }
@@ -957,7 +925,9 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertLessThan(trailing.frame.width, 180)
         XCTAssertLessThan(originalRowHeight, 220)
 
-        composition.applySearchQueryForTesting("5")
+        composition.applySearchQueryForTesting(
+            tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks)
+        )
         settleLayout()
         let resultRoot = composition.currentHostedPageContentForTesting()
         let resultRow = try XCTUnwrap(settingsRow(
