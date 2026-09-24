@@ -872,13 +872,19 @@ final class DashboardCompositionController {
             includeSupportingTexts: !isSingleCharacterAlphabeticQuery(query),
             singleCharacterWordBoundaryOnly: isSingleCharacterAlphabeticQuery(query)
         )
+        let singleCharacterQuery = isSingleCharacterAlphabeticQuery(query)
         var candidateSections = ranked.map(\.section)
-        if !isSingleCharacterAlphabeticQuery(query), !candidateSections.contains(section) {
+        if singleCharacterQuery {
+            // A one-letter query is intentionally broad. Keep the first
+            // three ranked sections responsive; the next character expands
+            // the catalog before real rows are projected.
+            candidateSections = Array(candidateSections.prefix(3))
+        } else if !candidateSections.contains(section) {
             candidateSections.append(section)
         }
         let candidateSet = Set(candidateSections)
         var structureChanged = false
-        if isSingleCharacterAlphabeticQuery(query) {
+        if singleCharacterQuery {
             let staleSections = globalSearchGroupsBySection.keys.filter {
                 !candidateSet.contains($0)
             }
