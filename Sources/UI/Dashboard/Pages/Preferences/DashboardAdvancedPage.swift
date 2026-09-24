@@ -8,13 +8,13 @@ final class DashboardAdvancedPage {
 
     struct Input {
         let relay: DashboardPreferencePageRelay
-        let logViewer: NSView
+        let logViewer: NSView?
 
         let includeLogViewer: Bool
 
         init(
             relay: DashboardPreferencePageRelay,
-            logViewer: NSView,
+            logViewer: NSView?,
             includeLogViewer: Bool = true
         ) {
             self.relay = relay
@@ -48,8 +48,8 @@ final class DashboardAdvancedPage {
             accessoryView: logButtons
         )
         var contentViews: [NSView] = [debugLogRow]
-        if input.includeLogViewer {
-            contentViews.append(Self.makePinnedLogViewer(input.logViewer))
+        if input.includeLogViewer, let logViewer = input.logViewer {
+            contentViews.append(Self.makePinnedLogViewer(logViewer))
         }
         let logs = SettingsSectionView(
             title: tr(.keyDashboardAdvancedPageDiagnostics),

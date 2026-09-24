@@ -649,7 +649,6 @@ final class DashboardCompositionController {
         if !needle.isEmpty, isGlobalSettingsSearchActive {
             addGlobalSettingsSearchPages(matching: needle)
         }
-        pageSearchFilter.invalidateSearchIndex()
         _ = pageSearchFilter.apply(
             query: query,
             to: pageSession.currentHostedPageContent(),
@@ -657,9 +656,7 @@ final class DashboardCompositionController {
             mode: currentSearchMode()
         )
         DashboardKeyViewLoop.resignUnreachableFirstResponder(window)
-        DashboardKeyViewLoop.invalidate(window)
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
-        pageSession.restoreCurrentPageScrollToTop()
     }
 
     private func showGlobalSettingsSearchPage(initialQuery: String? = nil) {
@@ -738,29 +735,21 @@ final class DashboardCompositionController {
         let ranked = DashboardSettingsSearchCatalog.rankedSections(
             query: query,
             statusLinks: state.statusLinks(),
-            runtimeTexts: runtimeTexts
+            runtimeTexts: runtimeTexts,
+            includeSupportingTexts: !isSingleCharacterAlphabeticQuery(query)
         )
         var candidateSections = ranked.map(\.section)
-        // A one-character query is intentionally broad: the visible copy and
-        // control labels can contain runtime text that the lightweight
-        // catalog cannot enumerate without building views. Keep this broad
-        // case correct while longer queries stay candidate-driven.
-        if DashboardPageSearch.normalize(query).count == 1 {
-            candidateSections = allSettingsSections
-        }
         if !candidateSections.contains(section) {
             candidateSections.append(section)
         }
         let candidateSet = Set(candidateSections)
-        let mountedSections = Set(
-            resultStack.arrangedSubviews.compactMap { ($0 as? DashboardGlobalSearchGroupView)?.settingsSection }
-        )
         let missingSections = allSettingsSections.filter {
-            candidateSet.contains($0) && !mountedSections.contains($0)
+            candidateSet.contains($0) && !globalSettingsSearchSections.contains($0)
         }
         guard !missingSections.isEmpty else { return }
 
         for settingsSection in missingSections {
+            DashboardPageSearchDiagnostics.globalSearchSectionsMaterializedCount += 1
             let group = DashboardGlobalSearchGroupView()
             group.settingsSection = settingsSection
             group.translatesAutoresizingMaskIntoConstraints = false
@@ -793,6 +782,12 @@ final class DashboardCompositionController {
             }
         resultStack.setViews(orderedGroups, in: .top)
         resultStack.needsLayout = true
+    }
+
+    private func isSingleCharacterAlphabeticQuery(_ query: String) -> Bool {
+        let normalized = DashboardPageSearch.normalize(query)
+        guard normalized.unicodeScalars.count == 1 else { return false }
+        return normalized.rangeOfCharacter(from: .letters) != nil
     }
 
     private func currentSearchPageTitle() -> String {

@@ -469,6 +469,85 @@ final class DashboardPageSearchTests: XCTestCase {
         }
     }
 
+    func testGlobalSearchSingleCharacterDoesNotMaterializeEverySettingsPage() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-search-materialization.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+
+        for query in ["t", "a"] {
+            DashboardPageSearchDiagnostics.reset()
+            composition.applySearchQueryForTesting(query)
+
+            XCTAssertLessThan(
+                DashboardPageSearchDiagnostics.globalSearchSectionsMaterializedCount,
+                DashboardSection.allCases.filter { $0 != .about }.count,
+                "a one-character query must use the lightweight catalog instead of materializing every settings page (query: \(query))"
+            )
+            composition.applySearchQueryForTesting("")
+        }
+    }
+
+    func testSteadyStateGlobalSearchReusesIndexAndDoesNotSynchronouslyLayout() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-search-steady-state.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+
+        DashboardPageSearchDiagnostics.reset()
+        composition.applySearchQueryForTesting("font")
+        let indexBuildsAfterFirstQuery = DashboardPageSearchDiagnostics.searchIndexBuildCount
+        let layoutsAfterFirstQuery = DashboardPageSearchDiagnostics.synchronousLayoutCount
+        XCTAssertGreaterThan(indexBuildsAfterFirstQuery, 0)
+        XCTAssertGreaterThan(layoutsAfterFirstQuery, 0)
+
+        composition.applySearchQueryForTesting("font menu")
+
+        XCTAssertEqual(
+            DashboardPageSearchDiagnostics.searchIndexBuildCount,
+            indexBuildsAfterFirstQuery,
+            "steady-state query changes must reuse the mounted search index"
+        )
+        XCTAssertEqual(
+            DashboardPageSearchDiagnostics.synchronousLayoutCount,
+            layoutsAfterFirstQuery,
+            "steady-state query changes must leave layout to the normal display cycle"
+        )
+    }
+
+    func testGlobalSearchAdvancedProjectionDoesNotCreateLogViewer() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-search-advanced.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+
+        composition.applySearchQueryForTesting("diagnostics")
+
+        func containsLogViewerHost(_ view: NSView) -> Bool {
+            if view.identifier == DashboardAdvancedPage.logViewerHostIdentifier { return true }
+            return view.subviews.contains(where: containsLogViewerHost)
+        }
+        XCTAssertFalse(
+            containsLogViewerHost(composition.currentHostedPageContentForTesting()),
+            "search projections must not create the Advanced page's NSText log viewer"
+        )
+    }
+
     func testGlobalSearchUsesStackVisibilityToRemoveProjectionSpacing() throws {
         func makeGroup(sectionTitles: [String]) -> NSStackView {
             let group = NSStackView()

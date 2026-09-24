@@ -145,7 +145,7 @@ final class DashboardPreferencePages {
         case .advanced:
             return advancedPage.make(.init(
                 relay: relay,
-                logViewer: logsPage.makeViewer(),
+                logViewer: forSearch ? nil : logsPage.makeViewer(),
                 includeLogViewer: !forSearch
             ))
         case .about:
