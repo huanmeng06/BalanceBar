@@ -716,39 +716,6 @@ enum DashboardSettingsSearchCatalog {
         }
     }
 
-    /// Returns a small row-title corpus for the single-character projection.
-    /// It lets that hot path show useful matches without constructing the
-    /// real settings controls; a longer query upgrades the group in place.
-    static func lightweightTitles(
-        for section: DashboardSection,
-        query: String,
-        wordBoundaryOnly: Bool = false
-    ) -> [String] {
-        let titles = keys(for: section).map { tr($0) }
-        guard !titles.isEmpty else { return [] }
-        if wordBoundaryOnly {
-            if containsSingleCharacterWordBoundary(section.title, query: query) {
-                return titles
-            }
-            return titles.filter {
-                containsSingleCharacterWordBoundary($0, query: query)
-                    || aliases(for: $0).contains {
-                        containsSingleCharacterWordBoundary($0, query: query)
-                    }
-            }
-        }
-        if DashboardPageSearch.bestMatch(texts: [section.title], query: query) != nil {
-            return titles
-        }
-        return titles.filter {
-            DashboardPageSearch.bestMatch(
-                texts: [$0] + canonicalValues(for: $0),
-                aliases: aliases(for: $0),
-                query: query
-            ) != nil
-        }
-    }
-
     static func firstMatchingSection(query: String) -> DashboardSection? {
         matchingSections(query: query).first
     }
@@ -871,12 +838,12 @@ enum DashboardSettingsSearchCatalog {
 enum DashboardPageSearchDiagnostics {
     static var searchIndexBuildCount = 0
     static var synchronousLayoutCount = 0
-    static var globalSearchHeavyPagesMaterializedCount = 0
+    static var globalSearchPagesMaterializedCount = 0
 
     static func reset() {
         searchIndexBuildCount = 0
         synchronousLayoutCount = 0
-        globalSearchHeavyPagesMaterializedCount = 0
+        globalSearchPagesMaterializedCount = 0
     }
 }
 

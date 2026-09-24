@@ -51,7 +51,6 @@ private final class DashboardGlobalSearchResultsView: NSStackView {
 
 private final class DashboardGlobalSearchGroupView: NSStackView {
     var settingsSection: DashboardSection = .general
-    var isLightweightProjection = false
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         identifier = DashboardPageSearch.globalSearchGroupIdentifier
@@ -846,9 +845,9 @@ final class DashboardCompositionController {
     private func addGlobalSettingsSearchPages(matching query: String) {
         guard let searchContent = globalSettingsSearchContent,
               let resultStack = searchContent as? DashboardGlobalSearchResultsView else { return }
-        // Materialize only catalog/runtime candidates for this query. The
-        // lightweight catalog carries the searchable text; real controls are
-        // built only for sections that can contribute a result.
+        // Materialize only catalog/runtime candidates for this query. Every
+        // candidate uses the same real-row projection so changing query
+        // length never changes the representation of an existing result.
         let allSettingsSections = DashboardSection.allCases.filter { $0 != .about }
         let runtimeTexts: [DashboardSection: [String]] = [
             .general: [state.currentProviderName()],
@@ -861,18 +860,13 @@ final class DashboardCompositionController {
             includeSupportingTexts: !isSingleCharacterAlphabeticQuery(query),
             singleCharacterWordBoundaryOnly: isSingleCharacterAlphabeticQuery(query)
         )
-        let lightweightProjection = isSingleCharacterAlphabeticQuery(query)
         var candidateSections = ranked.map(\.section)
-        if !lightweightProjection, !candidateSections.contains(section) {
+        if !isSingleCharacterAlphabeticQuery(query), !candidateSections.contains(section) {
             candidateSections.append(section)
         }
         let candidateSet = Set(candidateSections)
-        let missingSections = allSettingsSections.filter {
-            candidateSet.contains($0) && !globalSettingsSearchSections.contains($0)
-        }
-        var projectionStructureChanged = false
-
-        if lightweightProjection {
+        var structureChanged = false
+        if isSingleCharacterAlphabeticQuery(query) {
             let staleSections = globalSearchGroupsBySection.keys.filter {
                 !candidateSet.contains($0)
             }
@@ -885,53 +879,26 @@ final class DashboardCompositionController {
                     }
                     globalSettingsSearchSections.remove(staleSection)
                 }
-                projectionStructureChanged = true
+                structureChanged = true
             }
         }
-
-        for group in globalSearchGroupsBySection.values
-            where group.isLightweightProjection != lightweightProjection {
-            clearGlobalSearchGroup(group)
-            populateGlobalSearchGroup(
-                group,
-                for: group.settingsSection,
-                query: query,
-                lightweight: lightweightProjection
-            )
-            if !lightweightProjection {
-                DashboardPageSearchDiagnostics.globalSearchHeavyPagesMaterializedCount += 1
-            }
-            projectionStructureChanged = true
+        let missingSections = allSettingsSections.filter {
+            candidateSet.contains($0) && !globalSettingsSearchSections.contains($0)
         }
+        guard !missingSections.isEmpty || structureChanged else { return }
 
-        if !missingSections.isEmpty {
-            for settingsSection in missingSections {
-                let group = DashboardGlobalSearchGroupView()
-                group.settingsSection = settingsSection
-                group.translatesAutoresizingMaskIntoConstraints = false
-                populateGlobalSearchGroup(
-                    group,
-                    for: settingsSection,
-                    query: query,
-                    lightweight: lightweightProjection
-                )
-                resultStack.addGroup(group, spacing: DashboardSettingsComponents.settingsSectionSpacing)
-                globalSettingsSearchSections.insert(settingsSection)
-                globalSearchGroupsBySection[settingsSection] = group
-                if !lightweightProjection {
-                    DashboardPageSearchDiagnostics.globalSearchHeavyPagesMaterializedCount += 1
-                }
-            }
-            projectionStructureChanged = true
+        for settingsSection in missingSections {
+            let group = DashboardGlobalSearchGroupView()
+            group.settingsSection = settingsSection
+            group.translatesAutoresizingMaskIntoConstraints = false
+            populateGlobalSearchGroup(group, for: settingsSection)
+            resultStack.addGroup(group, spacing: DashboardSettingsComponents.settingsSectionSpacing)
+            globalSettingsSearchSections.insert(settingsSection)
+            globalSearchGroupsBySection[settingsSection] = group
+            DashboardPageSearchDiagnostics.globalSearchPagesMaterializedCount += 1
         }
-
-        if projectionStructureChanged {
+        if structureChanged || !missingSections.isEmpty {
             pageSearchFilter.markSearchStructureChanged()
-        }
-
-        if missingSections.isEmpty, !projectionStructureChanged {
-            resultStack.needsLayout = true
-            return
         }
 
         let orderedGroups = resultStack.arrangedSubviews
@@ -947,24 +914,8 @@ final class DashboardCompositionController {
 
     private func populateGlobalSearchGroup(
         _ group: DashboardGlobalSearchGroupView,
-        for settingsSection: DashboardSection,
-        query: String,
-        lightweight: Bool
+        for settingsSection: DashboardSection
     ) {
-        group.isLightweightProjection = lightweight
-        if lightweight {
-            let rows = DashboardSettingsSearchCatalog.lightweightTitles(
-                for: settingsSection,
-                query: query,
-                wordBoundaryOnly: lightweight
-            ).map { SettingsRowView(title: $0) }
-            guard !rows.isEmpty else { return }
-            group.addSection(
-                SettingsSectionView(title: settingsSection.title, contentViews: rows),
-                spacing: DashboardSettingsComponents.settingsSectionSpacing
-            )
-            return
-        }
         if settingsSection == section, let origin = globalSearchOriginContent {
             group.addPage(origin)
             return
@@ -978,13 +929,6 @@ final class DashboardCompositionController {
             sourceStack?.removeView(sourceSection)
             sourceSection.removeFromSuperview()
             group.addSection(sourceSection, spacing: DashboardSettingsComponents.settingsSectionSpacing)
-        }
-    }
-
-    private func clearGlobalSearchGroup(_ group: DashboardGlobalSearchGroupView) {
-        for arranged in group.arrangedSubviews {
-            group.removeView(arranged)
-            arranged.removeFromSuperview()
         }
     }
 

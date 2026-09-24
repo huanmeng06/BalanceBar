@@ -521,17 +521,12 @@ final class DashboardPageSearchTests: XCTestCase {
             composition.applySearchQueryForTesting(query)
 
             XCTAssertLessThan(
-                DashboardPageSearchDiagnostics.globalSearchHeavyPagesMaterializedCount,
+                DashboardPageSearchDiagnostics.globalSearchPagesMaterializedCount,
                 DashboardSection.allCases.filter { $0 != .about }.count,
-                "a one-character query must use the lightweight projection instead of materializing every settings page (query: \(query))"
+                "a one-character query must use the candidate catalog instead of materializing every settings page (query: \(query))"
             )
             if query == "t" {
                 composition.applySearchQueryForTesting("ti")
-                XCTAssertGreaterThan(
-                    DashboardPageSearchDiagnostics.globalSearchHeavyPagesMaterializedCount,
-                    0,
-                    "a longer query should upgrade matching lightweight groups to real settings rows"
-                )
             }
             composition.applySearchQueryForTesting("")
         }
