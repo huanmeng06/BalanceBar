@@ -533,21 +533,61 @@ final class DashboardPageSearchTests: XCTestCase {
         )
     }
 
+    func testGlobalSearchInvalidatesOwnerChainWhenRowsCollapse() throws {
+        let rows = [
+            SettingsRowView(title: "First"),
+            SettingsRowView(title: "Second"),
+            SettingsRowView(title: "Third")
+        ]
+        let section = SettingsSectionView(title: "Startup", contentViews: rows)
+        let group = NSStackView(views: [section])
+        group.identifier = DashboardPageSearch.globalSearchGroupIdentifier
+        group.orientation = .vertical
+        group.alignment = .leading
+        group.distribution = .gravityAreas
+        group.detachesHiddenViews = true
+        group.frame = NSRect(x: 0, y: 0, width: 700, height: 900)
+        section.widthAnchor.constraint(equalTo: group.widthAnchor).isActive = true
+
+        let filter = DashboardPageSearchFilter()
+        XCTAssertTrue(filter.apply(query: "Third", to: group, pageTitle: "", mode: .titles))
+        group.layoutSubtreeIfNeeded()
+
+        XCTAssertFalse(rows[2].isHidden)
+        XCTAssertTrue(rows[0].isHidden)
+        XCTAssertTrue(rows[1].isHidden)
+        XCTAssertLessThanOrEqual(
+            section.cardView.frame.height,
+            rows[2].frame.height + 2,
+            "collapsing rows must invalidate card, section and global owner intrinsic sizes"
+        )
+        XCTAssertLessThanOrEqual(rows[2].frame.height, 100)
+    }
+
     func testGlobalSearchDirectAndIncrementalQueriesConverge() throws {
+        let previousLanguage = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = previousLanguage }
         let query = tr(.keyDashboardGeneralAndRefreshPagesLanguage)
         let prefixes = stride(from: 1, through: query.count, by: 1).map {
             String(query.prefix($0))
         }
 
-        func snapshot(_ root: NSView) -> ([String], [CGFloat]) {
+        func snapshot(_ root: NSView) -> ([String], [CGFloat], [String], [CGFloat]) {
             var rows: [String] = []
             var groupHeights: [CGFloat] = []
+            var rowFrames: [String] = []
+            var rowHeights: [CGFloat] = []
             var visited = Set<ObjectIdentifier>()
             func walk(_ view: NSView) {
                 guard visited.insert(ObjectIdentifier(view)).inserted else { return }
                 if DashboardPageSearch.isSearchableRow(view), !isCollapsedForSearch(view) {
                     if let row = view as? SettingsRowView {
                         rows.append(row.titleLabel.stringValue)
+                        rowHeights.append(row.frame.height)
+                        rowFrames.append(
+                            "\(row.titleLabel.stringValue)=row:\(NSStringFromRect(row.frame)) content:\(NSStringFromRect(row.contentStack.frame)) labels:\(NSStringFromRect(row.labelsStack.frame)) title:\(NSStringFromRect(row.titleLabel.frame)) detail:\(NSStringFromRect(row.detailLabel.frame))"
+                        )
                     }
                 }
                 if view.identifier == DashboardPageSearch.globalSearchGroupIdentifier,
@@ -564,7 +604,7 @@ final class DashboardPageSearchTests: XCTestCase {
                 }
             }
             walk(root)
-            return (rows, groupHeights)
+            return (rows, groupHeights, rowFrames, rowHeights)
         }
 
         let typedAppDelegate = AppDelegate(
@@ -597,12 +637,17 @@ final class DashboardPageSearchTests: XCTestCase {
 
         XCTAssertEqual(typedSnapshot.0, directSnapshot.0)
         XCTAssertEqual(typedSnapshot.1.count, directSnapshot.1.count)
+        XCTAssertEqual(typedSnapshot.3.count, directSnapshot.3.count)
+        for (typedHeight, directHeight) in zip(typedSnapshot.3, directSnapshot.3) {
+            XCTAssertEqual(typedHeight, directHeight, accuracy: 1.0)
+        }
+        XCTAssertTrue(typedSnapshot.3.allSatisfy { $0 <= 100 })
         for (typedHeight, directHeight) in zip(typedSnapshot.1, directSnapshot.1) {
             XCTAssertEqual(
                 typedHeight,
                 directHeight,
                 accuracy: 1.0,
-                "typed heights=\(typedSnapshot.1), direct heights=\(directSnapshot.1)"
+                "typed heights=\(typedSnapshot.1), direct heights=\(directSnapshot.1), typed rows=\(typedSnapshot.2), direct rows=\(directSnapshot.2)"
             )
         }
     }

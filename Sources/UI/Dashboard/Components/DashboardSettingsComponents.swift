@@ -63,10 +63,12 @@ enum DashboardSettingsLayoutMetrics {
 enum DashboardSettingsComponents {
     static let settingsSectionSpacing: CGFloat = 28
     static func invalidateHostedSettingsRowHeight(for view: NSView) {
-        view.invalidateIntrinsicContentSize()
-        view.needsLayout = true
-        view.superview?.invalidateIntrinsicContentSize()
-        view.superview?.needsLayout = true
+        var current: NSView? = view
+        while let candidate = current {
+            candidate.invalidateIntrinsicContentSize()
+            candidate.needsLayout = true
+            current = candidate.superview
+        }
     }
     static let settingsSeparatorHeight: CGFloat = 1
     static let standardRowHeight: CGFloat = 62

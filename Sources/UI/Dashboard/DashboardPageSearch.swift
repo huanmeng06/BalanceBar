@@ -1284,8 +1284,10 @@ final class DashboardPageSearchFilter {
     }
 
     private func collapseViewForSearch(_ view: NSView) {
+        var ownerStack: NSStackView?
         DashboardSearchVisibility.withSearchVisibilityMutation {
             if let stack = view.superview as? NSStackView, stack.arrangedSubviews.contains(view) {
+                ownerStack = stack
                 originalStackParent.setObject(stack, forKey: view)
                 if let index = stack.arrangedSubviews.firstIndex(where: { $0 === view }) {
                     originalStackIndex.setObject(NSNumber(value: index), forKey: view)
@@ -1308,7 +1310,7 @@ final class DashboardPageSearchFilter {
                 view.isHidden = true
             }
         }
-        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: ownerStack ?? view)
     }
 
     @discardableResult
@@ -1343,7 +1345,7 @@ final class DashboardPageSearchFilter {
         originalStackWidthConstraint.removeObject(forKey: view)
         hiddenBySearch.remove(view)
         DashboardSearchVisibility.restoreBusinessHidden(view)
-        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: restoredStack ?? view)
         return restoredStack
     }
 
