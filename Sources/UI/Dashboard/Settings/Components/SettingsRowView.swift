@@ -382,13 +382,6 @@ final class SettingsRowView: NSView {
         scheduleWrappingHeightCommitIfNeeded()
     }
 
-    override var intrinsicContentSize: NSSize {
-        guard isInsideGlobalSearchProjection else {
-            return super.intrinsicContentSize
-        }
-        return NSSize(width: NSView.noIntrinsicMetric, height: hostedCardHeight())
-    }
-
     private func updateSearchNaturalHeightConstraint() {
         // Global result stacks now collapse hidden arranged views natively.
         // An exact row height here fights that stack fitting pass and can

@@ -564,6 +564,40 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertLessThanOrEqual(rows[2].frame.height, 100)
     }
 
+    func testGlobalSearchResizeWhileHiddenKeepsFirstRestoreHeight() async throws {
+        let target = SettingsRowView(title: "Target")
+        let other = SettingsRowView(title: "Other")
+        let section = SettingsSectionView(title: "Resize", contentViews: [target, other])
+        let group = NSStackView(views: [section])
+        group.identifier = DashboardPageSearch.globalSearchGroupIdentifier
+        group.orientation = .vertical
+        group.alignment = .leading
+        group.distribution = .gravityAreas
+        group.detachesHiddenViews = true
+        group.frame = NSRect(x: 0, y: 0, width: 1_000, height: 900)
+        section.widthAnchor.constraint(equalTo: group.widthAnchor).isActive = true
+
+        let filter = DashboardPageSearchFilter()
+        XCTAssertTrue(filter.apply(query: "Other", to: group, pageTitle: "", mode: .titles))
+        group.layoutSubtreeIfNeeded()
+
+        group.setFrameSize(NSSize(width: 420, height: group.frame.height))
+        group.needsLayout = true
+        group.layoutSubtreeIfNeeded()
+
+        XCTAssertTrue(filter.apply(query: "Target", to: group, pageTitle: "", mode: .titles))
+        let firstRowHeight = target.frame.height
+        let firstCardHeight = section.cardView.frame.height
+
+        await drainMainQueue()
+        group.needsLayout = true
+        group.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(target.frame.height, firstRowHeight, accuracy: 1)
+        XCTAssertEqual(section.cardView.frame.height, firstCardHeight, accuracy: 1)
+        XCTAssertLessThanOrEqual(target.frame.height, 100)
+    }
+
     func testGlobalSearchDirectAndIncrementalQueriesConverge() throws {
         let previousLanguage = AppLanguage.selected
         AppLanguage.selected = .english
