@@ -11,11 +11,13 @@ import AppKit
 final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
+    static let refreshItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardRefresh")
     static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
         .flexibleSpace,
         .toggleSidebar,
         .sidebarTrackingSeparator,
         .flexibleSpace,
+        refreshItemIdentifier,
         searchItemIdentifier
     ]
     /// `NSSearchToolbarItem.preferredWidthForSearchField` defaults to 240.
@@ -28,12 +30,19 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     private(set) var draftQuery = ""
     private(set) var isSearchEditing = false
     var onSearchQueryChanged: ((String) -> Void)?
+    var onManualRefresh: (() -> Void)?
 
     var isSearchActive: Bool {
         isSearchEditing || !draftQuery.isEmpty || !searchQuery.isEmpty
     }
 
     private let searchItem: NSSearchToolbarItem
+    private lazy var refreshItem: NSToolbarItem = {
+        let item = NSToolbarItem(itemIdentifier: Self.refreshItemIdentifier)
+        item.target = self
+        item.action = #selector(manualRefresh(_:))
+        return item
+    }()
     private weak var window: NSWindow?
     private weak var toolbar: NSToolbar?
     private var isEndingSearch = false
@@ -50,6 +59,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         (window as? DashboardSearchWindow)?.searchController = self
         if let toolbar, window.toolbar === toolbar {
             updateSearchItemLabels()
+            updateRefreshItemLabels()
             return
         }
         let toolbar = NSToolbar(identifier: sessionIdentifier)
@@ -132,9 +142,17 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
+        if itemIdentifier == Self.refreshItemIdentifier {
+            configureRefreshItem()
+            return refreshItem
+        }
         guard itemIdentifier == Self.searchItemIdentifier else { return nil }
         configureSearchItem()
         return searchItem
+    }
+
+    @objc func manualRefresh(_ sender: Any?) {
+        onManualRefresh?()
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) {
@@ -208,6 +226,23 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         searchItem.paletteLabel = label
         searchItem.toolTip = label
         searchItem.searchField.placeholderString = label
+    }
+
+    private func configureRefreshItem() {
+        updateRefreshItemLabels()
+        refreshItem.target = self
+        refreshItem.action = #selector(manualRefresh(_:))
+    }
+
+    private func updateRefreshItemLabels() {
+        let label = tr(.keyDashboardGeneralAndRefreshPagesRefreshNow)
+        refreshItem.label = label
+        refreshItem.paletteLabel = label
+        refreshItem.toolTip = label
+        refreshItem.image = NSImage(
+            systemSymbolName: "arrow.clockwise",
+            accessibilityDescription: label
+        )
     }
 
     private func commitQuery(_ raw: String) {

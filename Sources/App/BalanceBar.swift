@@ -812,6 +812,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func performManualRefresh(source: String) {
+        if let manualRefreshActionForTesting {
+            manualRefreshActionForTesting()
+            return
+        }
         SwitchLog.write(
             "manual refresh requested; source=\(source); client=\(activeClient.rawValue)",
             category: "refresh"
@@ -1352,6 +1356,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     var dashboardCompositionForTesting: DashboardCompositionController { dashboardComposition }
+    var manualRefreshActionForTesting: (() -> Void)?
 
     var backgroundUpdateTimerForTesting: Timer? { updateCheckTimer }
 

@@ -1321,6 +1321,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
                 .flexibleSpace,
+                DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
             ],
             file: file,
@@ -1341,6 +1342,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
                 .flexibleSpace,
+                DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
             ],
             "System flexible spaces should preserve the sidebar layout and push content-pane search to the trailing edge",
@@ -1351,6 +1353,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             $0 != .flexibleSpace
                 && $0 != .toggleSidebar
                 && $0 != .sidebarTrackingSeparator
+                && $0 != DashboardToolbarController.refreshItemIdentifier
                 && $0 != DashboardToolbarController.searchItemIdentifier
         }
         XCTAssertTrue(
@@ -1370,6 +1373,16 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
+        let refreshItems = toolbar.items.filter {
+            $0.itemIdentifier == DashboardToolbarController.refreshItemIdentifier
+        }
+        XCTAssertEqual(refreshItems.count, 1, file: file, line: line)
+        let refreshItem = try XCTUnwrap(refreshItems.first, file: file, line: line)
+        let refreshLabel = tr(.keyDashboardGeneralAndRefreshPagesRefreshNow)
+        XCTAssertEqual(refreshItem.label, refreshLabel, file: file, line: line)
+        XCTAssertEqual(refreshItem.toolTip, refreshLabel, file: file, line: line)
+        XCTAssertEqual(refreshItem.image?.accessibilityDescription, refreshLabel, file: file, line: line)
+        XCTAssertEqual(refreshItem.action, #selector(DashboardToolbarController.manualRefresh(_:)), file: file, line: line)
         let searchItem = try XCTUnwrap(
             toolbar.items.last as? NSSearchToolbarItem,
             file: file,
