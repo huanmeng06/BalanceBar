@@ -51,6 +51,7 @@ private final class DashboardGlobalSearchResultsView: NSStackView {
 
 private final class DashboardGlobalSearchGroupView: NSStackView {
     var settingsSection: DashboardSection = .general
+    var isLightweightProjection = false
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         identifier = DashboardPageSearch.globalSearchGroupIdentifier
@@ -142,6 +143,7 @@ final class DashboardCompositionController {
     private weak var globalSettingsSearchContent: NSView?
     private var globalSearchOriginContent: NSView?
     private var globalSettingsSearchSections: Set<DashboardSection> = []
+    private var globalSearchGroupsBySection: [DashboardSection: DashboardGlobalSearchGroupView] = [:]
     private var isBuildingGlobalSearchPage = false
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
@@ -296,6 +298,7 @@ final class DashboardCompositionController {
         globalSettingsSearchContent = nil
         globalSearchOriginContent = nil
         globalSettingsSearchSections.removeAll()
+        globalSearchGroupsBySection.removeAll()
         dashboardProviderPages.teardown()
         dashboardPreferencePages.teardown()
         pageSession.teardown()
@@ -612,6 +615,7 @@ final class DashboardCompositionController {
             globalSettingsSearchContent = nil
             globalSearchOriginContent = nil
             globalSettingsSearchSections.removeAll()
+            globalSearchGroupsBySection.removeAll()
             applyMountedPageSearch(queryOverride: query)
             return
         }
@@ -669,6 +673,7 @@ final class DashboardCompositionController {
         pageSearchFilter.resetSearchState()
         globalSettingsSearchContent = nil
         globalSettingsSearchSections.removeAll()
+        globalSearchGroupsBySection.removeAll()
         pageSearchFilter.statusLinks = state.statusLinks()
         pageSession.showSearchResults(makeContent: { [weak self] in
             guard let self else {
@@ -707,6 +712,7 @@ final class DashboardCompositionController {
         isGlobalSettingsSearchActive = false
         globalSettingsSearchContent = nil
         globalSettingsSearchSections.removeAll()
+        globalSearchGroupsBySection.removeAll()
         globalSearchOriginContent = nil
         if let origin {
             pageSession.showHostedSettingsContent(origin)
@@ -736,43 +742,82 @@ final class DashboardCompositionController {
             query: query,
             statusLinks: state.statusLinks(),
             runtimeTexts: runtimeTexts,
-            includeSupportingTexts: !isSingleCharacterAlphabeticQuery(query)
+            includeSupportingTexts: !isSingleCharacterAlphabeticQuery(query),
+            singleCharacterWordBoundaryOnly: isSingleCharacterAlphabeticQuery(query)
         )
+        let lightweightProjection = isSingleCharacterAlphabeticQuery(query)
         var candidateSections = ranked.map(\.section)
-        if !candidateSections.contains(section) {
+        if !lightweightProjection, !candidateSections.contains(section) {
             candidateSections.append(section)
         }
         let candidateSet = Set(candidateSections)
         let missingSections = allSettingsSections.filter {
             candidateSet.contains($0) && !globalSettingsSearchSections.contains($0)
         }
-        guard !missingSections.isEmpty else { return }
+        var projectionStructureChanged = false
 
-        for settingsSection in missingSections {
-            DashboardPageSearchDiagnostics.globalSearchSectionsMaterializedCount += 1
-            let group = DashboardGlobalSearchGroupView()
-            group.settingsSection = settingsSection
-            group.translatesAutoresizingMaskIntoConstraints = false
-            if settingsSection == section, let origin = globalSearchOriginContent {
-                group.addPage(origin)
-            } else {
-                let page = makeSectionPage(for: settingsSection, forSearch: true)
-                let sourceStack: NSStackView? = {
-                    if let stack = page as? NSStackView { return stack }
-                    return page.subviews.compactMap { $0 as? NSStackView }.first
-                }()
-                for section in sourceStack?.arrangedSubviews ?? [] {
-                    sourceStack?.removeView(section)
-                    section.removeFromSuperview()
-                    group.addSection(section, spacing: DashboardSettingsComponents.settingsSectionSpacing)
+        if lightweightProjection {
+            let staleSections = globalSearchGroupsBySection.keys.filter {
+                !candidateSet.contains($0)
+            }
+            if !staleSections.isEmpty {
+                pageSearchFilter.resetSearchState()
+                for staleSection in staleSections {
+                    if let group = globalSearchGroupsBySection.removeValue(forKey: staleSection) {
+                        resultStack.removeArrangedSubview(group)
+                        group.removeFromSuperview()
+                    }
+                    globalSettingsSearchSections.remove(staleSection)
+                }
+                projectionStructureChanged = true
+            }
+        }
+
+        for group in globalSearchGroupsBySection.values
+            where group.isLightweightProjection != lightweightProjection {
+            clearGlobalSearchGroup(group)
+            populateGlobalSearchGroup(
+                group,
+                for: group.settingsSection,
+                query: query,
+                lightweight: lightweightProjection
+            )
+            if !lightweightProjection {
+                DashboardPageSearchDiagnostics.globalSearchHeavyPagesMaterializedCount += 1
+            }
+            projectionStructureChanged = true
+        }
+
+        if !missingSections.isEmpty {
+            for settingsSection in missingSections {
+                let group = DashboardGlobalSearchGroupView()
+                group.settingsSection = settingsSection
+                group.translatesAutoresizingMaskIntoConstraints = false
+                populateGlobalSearchGroup(
+                    group,
+                    for: settingsSection,
+                    query: query,
+                    lightweight: lightweightProjection
+                )
+                resultStack.addGroup(group, spacing: DashboardSettingsComponents.settingsSectionSpacing)
+                globalSettingsSearchSections.insert(settingsSection)
+                globalSearchGroupsBySection[settingsSection] = group
+                if !lightweightProjection {
+                    DashboardPageSearchDiagnostics.globalSearchHeavyPagesMaterializedCount += 1
                 }
             }
-            resultStack.addGroup(group, spacing: DashboardSettingsComponents.settingsSectionSpacing)
-            globalSettingsSearchSections.insert(settingsSection)
+            projectionStructureChanged = true
         }
-        if !missingSections.isEmpty {
+
+        if projectionStructureChanged {
             pageSearchFilter.markSearchStructureChanged()
         }
+
+        if missingSections.isEmpty, !projectionStructureChanged {
+            resultStack.needsLayout = true
+            return
+        }
+
         let orderedGroups = resultStack.arrangedSubviews
             .compactMap { $0 as? DashboardGlobalSearchGroupView }
             .sorted { lhs, rhs in
@@ -782,6 +827,49 @@ final class DashboardCompositionController {
             }
         resultStack.setViews(orderedGroups, in: .top)
         resultStack.needsLayout = true
+    }
+
+    private func populateGlobalSearchGroup(
+        _ group: DashboardGlobalSearchGroupView,
+        for settingsSection: DashboardSection,
+        query: String,
+        lightweight: Bool
+    ) {
+        group.isLightweightProjection = lightweight
+        if lightweight {
+            let rows = DashboardSettingsSearchCatalog.lightweightTitles(
+                for: settingsSection,
+                query: query,
+                wordBoundaryOnly: lightweight
+            ).map { SettingsRowView(title: $0) }
+            guard !rows.isEmpty else { return }
+            group.addSection(
+                SettingsSectionView(title: settingsSection.title, contentViews: rows),
+                spacing: DashboardSettingsComponents.settingsSectionSpacing
+            )
+            return
+        }
+        if settingsSection == section, let origin = globalSearchOriginContent {
+            group.addPage(origin)
+            return
+        }
+        let page = makeSectionPage(for: settingsSection, forSearch: true)
+        let sourceStack: NSStackView? = {
+            if let stack = page as? NSStackView { return stack }
+            return page.subviews.compactMap { $0 as? NSStackView }.first
+        }()
+        for sourceSection in sourceStack?.arrangedSubviews ?? [] {
+            sourceStack?.removeView(sourceSection)
+            sourceSection.removeFromSuperview()
+            group.addSection(sourceSection, spacing: DashboardSettingsComponents.settingsSectionSpacing)
+        }
+    }
+
+    private func clearGlobalSearchGroup(_ group: DashboardGlobalSearchGroupView) {
+        for arranged in group.arrangedSubviews {
+            group.removeView(arranged)
+            arranged.removeFromSuperview()
+        }
     }
 
     private func isSingleCharacterAlphabeticQuery(_ query: String) -> Bool {

@@ -566,14 +566,16 @@ enum DashboardSettingsSearchCatalog {
         query: String,
         statusLinks: [StatusLink] = [],
         runtimeTexts: [DashboardSection: [String]] = [:],
-        includeSupportingTexts: Bool = true
+        includeSupportingTexts: Bool = true,
+        singleCharacterWordBoundaryOnly: Bool = false
     ) -> [(section: DashboardSection, match: DashboardPageSearch.Match)] {
         var scored: [(section: DashboardSection, match: DashboardPageSearch.Match)] = []
         for section in DashboardSection.allCases {
             var match = match(
                 for: section,
                 query: query,
-                includeSupportingTexts: includeSupportingTexts
+                includeSupportingTexts: includeSupportingTexts,
+                singleCharacterWordBoundaryOnly: singleCharacterWordBoundaryOnly
             )
             if section == .menu {
                 for link in statusLinks {
@@ -606,9 +608,27 @@ enum DashboardSettingsSearchCatalog {
     static func match(
         for section: DashboardSection,
         query: String,
-        includeSupportingTexts: Bool = true
+        includeSupportingTexts: Bool = true,
+        singleCharacterWordBoundaryOnly: Bool = false
     ) -> DashboardPageSearch.Match? {
         let titles = [section.title] + keys(for: section).map { tr($0) }
+        if singleCharacterWordBoundaryOnly {
+            let primary = titles + titles.flatMap(canonicalValues(for:))
+            let boundaryPrimary = primary.filter {
+                containsSingleCharacterWordBoundary($0, query: query)
+            }
+            let boundaryAliases = titles.flatMap(aliases(for:)).filter {
+                containsSingleCharacterWordBoundary($0, query: query)
+            }
+            guard !boundaryPrimary.isEmpty || !boundaryAliases.isEmpty else {
+                return nil
+            }
+            return DashboardPageSearch.bestMatch(
+                texts: boundaryPrimary,
+                aliases: boundaryAliases,
+                query: query
+            )
+        }
         return DashboardPageSearch.bestMatch(
             texts: titles + titles.flatMap(canonicalValues(for:)),
             aliases: titles.flatMap(aliases(for:)),
@@ -617,6 +637,54 @@ enum DashboardSettingsSearchCatalog {
                 : [],
             query: query
         )
+    }
+
+    private static func containsSingleCharacterWordBoundary(
+        _ text: String,
+        query: String
+    ) -> Bool {
+        let normalizedText = DashboardPageSearch.normalize(text)
+        let normalizedQuery = DashboardPageSearch.normalize(query)
+        guard normalizedQuery.count == 1,
+              let queryCharacter = normalizedQuery.first else {
+            return false
+        }
+        return normalizedText.split(whereSeparator: { $0.isWhitespace }).contains {
+            $0.first == queryCharacter
+        }
+    }
+
+    /// Returns a small row-title corpus for the single-character projection.
+    /// It lets that hot path show useful matches without constructing the
+    /// real settings controls; a longer query upgrades the group in place.
+    static func lightweightTitles(
+        for section: DashboardSection,
+        query: String,
+        wordBoundaryOnly: Bool = false
+    ) -> [String] {
+        let titles = keys(for: section).map { tr($0) }
+        guard !titles.isEmpty else { return [] }
+        if wordBoundaryOnly {
+            if containsSingleCharacterWordBoundary(section.title, query: query) {
+                return titles
+            }
+            return titles.filter {
+                containsSingleCharacterWordBoundary($0, query: query)
+                    || aliases(for: $0).contains {
+                        containsSingleCharacterWordBoundary($0, query: query)
+                    }
+            }
+        }
+        if DashboardPageSearch.bestMatch(texts: [section.title], query: query) != nil {
+            return titles
+        }
+        return titles.filter {
+            DashboardPageSearch.bestMatch(
+                texts: [$0] + canonicalValues(for: $0),
+                aliases: aliases(for: $0),
+                query: query
+            ) != nil
+        }
     }
 
     static func firstMatchingSection(query: String) -> DashboardSection? {
@@ -741,12 +809,12 @@ enum DashboardSettingsSearchCatalog {
 enum DashboardPageSearchDiagnostics {
     static var searchIndexBuildCount = 0
     static var synchronousLayoutCount = 0
-    static var globalSearchSectionsMaterializedCount = 0
+    static var globalSearchHeavyPagesMaterializedCount = 0
 
     static func reset() {
         searchIndexBuildCount = 0
         synchronousLayoutCount = 0
-        globalSearchSectionsMaterializedCount = 0
+        globalSearchHeavyPagesMaterializedCount = 0
     }
 }
 
