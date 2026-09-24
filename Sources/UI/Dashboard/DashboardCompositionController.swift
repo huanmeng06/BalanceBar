@@ -303,7 +303,7 @@ final class DashboardCompositionController {
     }
 
     func refreshMountedPage(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
-        pageSearchFilter.invalidateSearchIndex()
+        pageSearchFilter.requestVisibilityReset()
         _ = dashboardProviderPages.refreshMountedPage(
             input: makeProviderPageInput(
                 snapshot: snapshot,
@@ -320,7 +320,7 @@ final class DashboardCompositionController {
 
     func refreshMenuBarPage(snapshot: Snapshot) {
         guard canUpdateSettingsPage(.menuBar) else { return }
-        pageSearchFilter.invalidateSearchIndex()
+        pageSearchFilter.requestVisibilityReset()
         dashboardPreferencePages.refreshMenuBar(
             snapshot: snapshot,
             menuBarSnapshot: state.menuBarSnapshot,
@@ -338,7 +338,7 @@ final class DashboardCompositionController {
 
     func refreshMenuPage() {
         guard canUpdateSettingsPage(.menu) else { return }
-        pageSearchFilter.invalidateSearchIndex()
+        pageSearchFilter.requestVisibilityReset()
         dashboardPreferencePages.refreshMenu()
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
@@ -649,6 +649,7 @@ final class DashboardCompositionController {
         if !needle.isEmpty, isGlobalSettingsSearchActive {
             addGlobalSettingsSearchPages(matching: needle)
         }
+        pageSearchFilter.invalidateSearchIndex()
         _ = pageSearchFilter.apply(
             query: query,
             to: pageSession.currentHostedPageContent(),
@@ -668,6 +669,7 @@ final class DashboardCompositionController {
         if pageSession.currentHostedPageContent() !== globalSettingsSearchContent {
             globalSearchOriginContent = pageSession.currentHostedPageContent()
         }
+        pageSearchFilter.resetSearchState()
         globalSettingsSearchContent = nil
         globalSettingsSearchSections.removeAll()
         pageSearchFilter.statusLinks = state.statusLinks()
@@ -725,18 +727,36 @@ final class DashboardCompositionController {
     private func addGlobalSettingsSearchPages(matching query: String) {
         guard let searchContent = globalSettingsSearchContent,
               let resultStack = searchContent as? DashboardGlobalSearchResultsView else { return }
-        // Materialize the complete settings surface once per search session.
-        // Candidate discovery and row filtering now use the same mounted view
-        // corpus, including runtime provider names, status links and control
-        // choices that are unavailable to the static localization catalog.
+        // Materialize only catalog/runtime candidates for this query. The
+        // lightweight catalog carries the searchable text; real controls are
+        // built only for sections that can contribute a result.
         let allSettingsSections = DashboardSection.allCases.filter { $0 != .about }
-        let missingSections: [DashboardSection]
-        if globalSettingsSearchSections.isEmpty {
-            missingSections = allSettingsSections
-        } else {
-            missingSections = allSettingsSections.filter {
-                !globalSettingsSearchSections.contains($0)
-            }
+        let runtimeTexts: [DashboardSection: [String]] = [
+            .general: [state.currentProviderName()],
+            .menu: state.statusLinks().flatMap { [$0.title, $0.url] }
+        ]
+        let ranked = DashboardSettingsSearchCatalog.rankedSections(
+            query: query,
+            statusLinks: state.statusLinks(),
+            runtimeTexts: runtimeTexts
+        )
+        var candidateSections = ranked.map(\.section)
+        // A one-character query is intentionally broad: the visible copy and
+        // control labels can contain runtime text that the lightweight
+        // catalog cannot enumerate without building views. Keep this broad
+        // case correct while longer queries stay candidate-driven.
+        if DashboardPageSearch.normalize(query).count == 1 {
+            candidateSections = allSettingsSections
+        }
+        if !candidateSections.contains(section) {
+            candidateSections.append(section)
+        }
+        let candidateSet = Set(candidateSections)
+        let mountedSections = Set(
+            resultStack.arrangedSubviews.compactMap { ($0 as? DashboardGlobalSearchGroupView)?.settingsSection }
+        )
+        let missingSections = allSettingsSections.filter {
+            candidateSet.contains($0) && !mountedSections.contains($0)
         }
         guard !missingSections.isEmpty else { return }
 
@@ -747,7 +767,7 @@ final class DashboardCompositionController {
             if settingsSection == section, let origin = globalSearchOriginContent {
                 group.addPage(origin)
             } else {
-                let page = makeSectionPage(for: settingsSection)
+                let page = makeSectionPage(for: settingsSection, forSearch: true)
                 let sourceStack: NSStackView? = {
                     if let stack = page as? NSStackView { return stack }
                     return page.subviews.compactMap { $0 as? NSStackView }.first
@@ -760,6 +780,9 @@ final class DashboardCompositionController {
             }
             resultStack.addGroup(group, spacing: DashboardSettingsComponents.settingsSectionSpacing)
             globalSettingsSearchSections.insert(settingsSection)
+        }
+        if !missingSections.isEmpty {
+            pageSearchFilter.markSearchStructureChanged()
         }
         let orderedGroups = resultStack.arrangedSubviews
             .compactMap { $0 as? DashboardGlobalSearchGroupView }
@@ -808,7 +831,7 @@ final class DashboardCompositionController {
         DashboardScrollablePageViewController(wrapping: makeProviderPage(for: choice))
     }
 
-    private func makeSectionPage(for section: DashboardSection) -> NSView {
+    private func makeSectionPage(for section: DashboardSection, forSearch: Bool = false) -> NSView {
         dashboardPreferencePages.makePage(
             for: section,
             currentProviderName: state.currentProviderName(),
@@ -821,7 +844,8 @@ final class DashboardCompositionController {
             animationKind: menuBarPreviewAnimationKind,
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive,
-            updateState: state.updateState()
+            updateState: state.updateState(),
+            forSearch: forSearch
         )
     }
 

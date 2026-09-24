@@ -107,7 +107,8 @@ final class DashboardPreferencePages {
         animationKind: MenuBarCompositorAnimationKind? = nil,
         animationSpriteImage: NSImage? = nil,
         animationFallbackActive: Bool = false,
-        updateState: UpdateCheckState
+        updateState: UpdateCheckState,
+        forSearch: Bool = false
     ) -> NSView {
         switch section {
         case .general:
@@ -144,7 +145,8 @@ final class DashboardPreferencePages {
         case .advanced:
             return advancedPage.make(.init(
                 relay: relay,
-                logViewer: logsPage.makeViewer()
+                logViewer: logsPage.makeViewer(),
+                includeLogViewer: !forSearch
             ))
         case .about:
             return DashboardAboutPage.make(

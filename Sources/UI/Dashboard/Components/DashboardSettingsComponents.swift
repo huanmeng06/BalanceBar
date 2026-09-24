@@ -64,9 +64,19 @@ enum DashboardSettingsComponents {
     static let settingsSectionSpacing: CGFloat = 28
     static func invalidateHostedSettingsRowHeight(for view: NSView) {
         var current: NSView? = view
+        var passedSection = false
         while let candidate = current {
             candidate.invalidateIntrinsicContentSize()
             candidate.needsLayout = true
+            if candidate is SettingsSectionView {
+                passedSection = true
+            }
+            if passedSection,
+               candidate.identifier == DashboardPageSearch.globalSearchGroupIdentifier {
+                candidate.superview?.invalidateIntrinsicContentSize()
+                candidate.superview?.needsLayout = true
+                break
+            }
             current = candidate.superview
         }
     }

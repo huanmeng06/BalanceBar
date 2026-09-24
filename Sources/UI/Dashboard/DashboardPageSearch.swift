@@ -564,7 +564,8 @@ enum DashboardSettingsSearchCatalog {
 
     static func rankedSections(
         query: String,
-        statusLinks: [StatusLink] = []
+        statusLinks: [StatusLink] = [],
+        runtimeTexts: [DashboardSection: [String]] = [:]
     ) -> [(section: DashboardSection, match: DashboardPageSearch.Match)] {
         var scored: [(section: DashboardSection, match: DashboardPageSearch.Match)] = []
         for section in DashboardSection.allCases {
@@ -577,6 +578,13 @@ enum DashboardSettingsSearchCatalog {
                     if let dynamicMatch, match == nil || dynamicMatch > match! {
                         match = dynamicMatch
                     }
+                }
+            }
+            for runtimeText in runtimeTexts[section, default: []] {
+                if let runtimeMatch = DashboardPageSearch.bestMatch(
+                    texts: [runtimeText], query: query
+                ), match == nil || runtimeMatch > match! {
+                    match = runtimeMatch
                 }
             }
             if let match {
@@ -739,6 +747,7 @@ final class DashboardPageSearchFilter {
 
     private let searchIndexes = NSMapTable<NSView, SearchIndex>.strongToStrongObjects()
     private var activeSearchIndex: SearchIndex?
+    private var needsInitialProjectionLayout = true
     private let hiddenBySearch = NSHashTable<NSView>.weakObjects()
     private let originalStackVisibilityPriority = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
     private let originalStackParent = NSMapTable<NSView, NSStackView>.strongToWeakObjects()
@@ -748,6 +757,20 @@ final class DashboardPageSearchFilter {
     func invalidateSearchIndex() {
         searchIndexes.removeAllObjects()
         activeSearchIndex = nil
+        needsInitialProjectionLayout = true
+    }
+
+    func resetSearchState() {
+        restoreSearchHiddens()
+        invalidateSearchIndex()
+    }
+
+    func requestVisibilityReset() {
+        invalidateSearchIndex()
+    }
+
+    func markSearchStructureChanged() {
+        needsInitialProjectionLayout = true
     }
 
     @discardableResult
@@ -758,23 +781,25 @@ final class DashboardPageSearchFilter {
         mode: DashboardPageSearchMode
     ) -> Bool {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if needle.isEmpty {
-            restoreSearchHiddens()
-        }
+        // Restore the previous projection before matching the current one so
+        // business visibility changes and detached arranged views are always
+        // evaluated against the complete mounted section tree. Layout itself
+        // remains coalesced; this is a view-state reset, not a forced pass.
+        restoreSearchHiddens()
         let searchIndex = index(for: root)
         activeSearchIndex = searchIndex
         defer { activeSearchIndex = nil }
         if needle.isEmpty {
             setEmptyStateHidden(true, in: root)
             restoreAboutContent(in: root)
-            refreshSearchSectionHeights(in: root)
+            refreshSearchSectionHeights(in: root, forceLayout: false)
             return true
         }
         if DashboardPageSearch.matches(pageTitle, query: needle) {
             restoreSearchHiddens()
             setEmptyStateHidden(true, in: root)
             restoreAboutContent(in: root)
-            refreshSearchSectionHeights(in: root)
+            refreshSearchSectionHeights(in: root, forceLayout: DashboardPageSearch.normalize(needle).count == 1)
             return true
         }
 
@@ -794,7 +819,10 @@ final class DashboardPageSearchFilter {
             revealFirstMatch(in: root)
         }
         root.needsLayout = true
-        refreshSearchSectionHeights(in: root)
+        refreshSearchSectionHeights(
+            in: root,
+            forceLayout: DashboardPageSearch.normalize(needle).count == 1
+        )
         return matched
     }
 
@@ -843,13 +871,18 @@ final class DashboardPageSearchFilter {
         return descendants.contains { containsVisibleSearchSection(in: $0) }
     }
 
-    private func refreshSearchSectionHeights(in root: NSView) {
-        for section in collectSections(in: root) {
-            (section as? SettingsSectionView)?
-                .updateSearchNaturalHeightConstraintForCurrentVisibility()
+    private func refreshSearchSectionHeights(in root: NSView, forceLayout: Bool) {
+        if globalSearchGroups(in: root).isEmpty {
+            for section in collectSections(in: root) {
+                (section as? SettingsSectionView)?
+                    .updateSearchNaturalHeightConstraintForCurrentVisibility()
+            }
         }
         root.needsLayout = true
-        root.layoutSubtreeIfNeeded()
+        if needsInitialProjectionLayout || forceLayout {
+            root.layoutSubtreeIfNeeded()
+            needsInitialProjectionLayout = false
+        }
     }
 
     func pageContainsMatch(
