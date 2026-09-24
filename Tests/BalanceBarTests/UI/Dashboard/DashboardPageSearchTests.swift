@@ -463,23 +463,26 @@ final class DashboardPageSearchTests: XCTestCase {
     }
 
     func testSettingsSearchResultsDoNotDependOnStartingSection() throws {
-        let appDelegate = AppDelegate(
-            repository: CCSwitchRepository(
-                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-global-search.db")
+        func rows(
+            startingAt section: DashboardSection,
+            query: String
+        ) throws -> [String] {
+            let appDelegate = AppDelegate(
+                repository: CCSwitchRepository(
+                    databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-global-search.db")
+                )
             )
-        )
-        let composition = appDelegate.dashboardCompositionForTesting
-        defer { composition.teardownForTesting() }
-        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
-        window.setContentSize(NSSize(width: 1000, height: 700))
-
-        for query in ["5", "7", "font menu", "langauge", "a"] {
-            composition.showSection(.general)
+            let composition = appDelegate.dashboardCompositionForTesting
+            defer { composition.teardownForTesting() }
+            let window = try XCTUnwrap(composition.makeWindowForTesting(showing: section))
+            window.setContentSize(NSSize(width: 1000, height: 700))
             composition.applySearchQueryForTesting(query)
             window.layoutIfNeeded()
-            let generalStartRows = visibleSearchableRowTitles(
-                in: composition.currentHostedPageContentForTesting()
-            )
+            return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
+        }
+
+        for query in ["5", "7", "font menu", "langauge", "a"] {
+            let generalStartRows = try rows(startingAt: .general, query: query)
             if query == "5" {
                 XCTAssertTrue(
                     generalStartRows.contains(
@@ -493,19 +496,16 @@ final class DashboardPageSearchTests: XCTestCase {
                 )
             }
 
-            composition.applySearchQueryForTesting("")
-            composition.showSection(.menuBar)
-            composition.applySearchQueryForTesting(query)
-            window.layoutIfNeeded()
+            let menuBarStartRows = try rows(startingAt: .menuBar, query: query)
             XCTAssertEqual(
-                visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting()),
+                menuBarStartRows,
                 generalStartRows,
                 "query: \(query)"
             )
         }
     }
 
-    func testGlobalSearchSingleCharacterDoesNotMaterializeEverySettingsPage() throws {
+    func testGlobalSearchSingleCharacterMaterializesCompleteCatalogCandidates() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
                 databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-search-materialization.db")
@@ -520,10 +520,19 @@ final class DashboardPageSearchTests: XCTestCase {
             DashboardPageSearchDiagnostics.reset()
             composition.applySearchQueryForTesting(query)
 
-            XCTAssertLessThan(
+            let expectedSections = Set(
+                DashboardSettingsSearchCatalog.rankedSections(
+                    query: query,
+                    includeSupportingTexts: false,
+                    singleCharacterWordBoundaryOnly: true
+                )
+                    .map(\.section)
+                    .filter { $0 != .about }
+            ).union([.general])
+            XCTAssertGreaterThanOrEqual(
                 DashboardPageSearchDiagnostics.globalSearchPagesMaterializedCount,
-                DashboardSection.allCases.filter { $0 != .about }.count,
-                "a one-character query must use the candidate catalog instead of materializing every settings page (query: \(query))"
+                expectedSections.count,
+                "single-character candidate completeness (query: \(query))"
             )
             if query == "t" {
                 composition.applySearchQueryForTesting("ti")
@@ -1085,6 +1094,41 @@ final class DashboardPageSearchTests: XCTestCase {
         )
     }
 
+    func testActiveGlobalSearchSidebarSelectionKeepsSearchRootMountedUntilClear() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-search-sidebar.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+
+        composition.applySearchQueryForTesting(
+            tr(.keyDashboardGeneralAndRefreshPagesLanguage)
+        )
+        let searchRoot = composition.currentHostedPageContentForTesting()
+        let materializedBeforeSelection = DashboardPageSearchDiagnostics.globalSearchPagesMaterializedCount
+
+        composition.showSection(.menuBar)
+
+        XCTAssertTrue(
+            composition.currentHostedPageContentForTesting() === searchRoot,
+            "active global search must not replace its result root for a sidebar selection"
+        )
+        XCTAssertEqual(composition.section, .menuBar)
+        XCTAssertEqual(
+            DashboardPageSearchDiagnostics.globalSearchPagesMaterializedCount,
+            materializedBeforeSelection
+        )
+
+        composition.applySearchQueryForTesting("")
+
+        XCTAssertFalse(composition.currentHostedPageContentForTesting() === searchRoot)
+        XCTAssertEqual(composition.section, .menuBar)
+    }
+
     func testSearchShowsCrossSectionResultsThenClearsToTheStartingPage() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
@@ -1475,33 +1519,42 @@ final class DashboardPageSearchTests: XCTestCase {
         }
 
         try select(.openMainWindow)
-        let reverseRow = try XCTUnwrap(
+        let normalReverseRow = try XCTUnwrap(
             row(containingTitle: reverseTitle, in: composition.currentHostedPageContentForTesting())
         )
-        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertFalse(normalReverseRow.isHidden)
 
         composition.applySearchQueryForTesting(reverseTitle)
         window.layoutIfNeeded()
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertFalse(reverseRow.isHidden)
+        let reverseSearchRow = try XCTUnwrap(
+            row(containingTitle: reverseTitle, in: composition.currentHostedPageContentForTesting())
+        )
+        XCTAssertFalse(reverseSearchRow.isHidden)
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
 
         try select(.matchLeftClick)
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertTrue(reverseSearchRow.isHidden)
         XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
 
         composition.applySearchQueryForTesting("")
         window.layoutIfNeeded()
-        XCTAssertTrue(reverseRow.isHidden)
+        let restoredReverseRow = try XCTUnwrap(
+            row(containingTitle: reverseTitle, in: composition.currentHostedPageContentForTesting())
+        )
+        XCTAssertTrue(restoredReverseRow.isHidden)
 
         try select(.openMainWindow)
-        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertFalse(restoredReverseRow.isHidden)
 
         composition.applySearchQueryForTesting(reverseTitle)
         window.layoutIfNeeded()
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertFalse(reverseRow.isHidden)
+        let secondSearchRow = try XCTUnwrap(
+            row(containingTitle: reverseTitle, in: composition.currentHostedPageContentForTesting())
+        )
+        XCTAssertFalse(secondSearchRow.isHidden)
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
     }
 

@@ -25,6 +25,7 @@ final class DashboardPageSession {
     private(set) var section: DashboardSection = .general
     private(set) var selectedProviderID: String?
     private(set) var sourceListController: DashboardSourceListController?
+    var shouldPreserveSectionSelection: ((DashboardSection) -> Bool)?
     private var showsUpdateAvailableBadge = false
     private var isTornDown = false
     private weak var window: NSWindow?
@@ -47,7 +48,7 @@ final class DashboardPageSession {
         let sourceList = DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)
         sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
         sourceList.onSelectSection = { [weak self] section in
-            self?.showSection(section)
+            self?.selectSection(section)
         }
         sourceListController = sourceList
         let sidebar = sourceList.makeSidebar(in: window)
@@ -95,7 +96,7 @@ final class DashboardPageSession {
            actions.providerChoices().contains(where: { $0.id == selectedProviderID }) {
             showProvider(selectedProviderID)
         } else {
-            showSection(selectedSection)
+            selectSection(selectedSection)
         }
         window.displayIfNeeded()
         DashboardKeyViewLoop.invalidate(window)
@@ -113,6 +114,18 @@ final class DashboardPageSession {
         replacePage {
             actions.makeSectionPage(section)
         }
+    }
+
+    func selectSection(_ section: DashboardSection) {
+        guard !isTornDown else { return }
+        if shouldPreserveSectionSelection?(section) == true {
+            self.section = section
+            selectedProviderID = nil
+            window?.title = section.title
+            sourceListController?.applySelection(section)
+            return
+        }
+        showSection(section)
     }
 
     func showSearchResults(makeContent: () -> NSView, preservingCurrentPage: Bool = false) {
