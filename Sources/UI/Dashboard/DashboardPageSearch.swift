@@ -551,11 +551,23 @@ enum DashboardSettingsSearchCatalog {
     }
 
     static func rankedSections(
-        query: String
+        query: String,
+        statusLinks: [StatusLink] = []
     ) -> [(section: DashboardSection, match: DashboardPageSearch.Match)] {
         var scored: [(section: DashboardSection, match: DashboardPageSearch.Match)] = []
         for section in DashboardSection.allCases {
-            if let match = match(for: section, query: query) {
+            var match = match(for: section, query: query)
+            if section == .menu {
+                for link in statusLinks {
+                    let dynamicMatch = DashboardPageSearch.bestMatch(
+                        texts: [link.title, link.url], query: query
+                    )
+                    if let dynamicMatch, match == nil || dynamicMatch > match! {
+                        match = dynamicMatch
+                    }
+                }
+            }
+            if let match {
                 scored.append((section: section, match: match))
             }
         }
@@ -693,6 +705,7 @@ enum DashboardSettingsSearchCatalog {
 }
 
 final class DashboardPageSearchFilter {
+    var statusLinks: [StatusLink] = []
     private let hiddenBySearch = NSHashTable<NSView>.weakObjects()
     private let originalStackVisibilityPriority = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
     private let originalStackParent = NSMapTable<NSView, NSStackView>.strongToWeakObjects()
@@ -737,7 +750,6 @@ final class DashboardPageSearchFilter {
             revealFirstMatch(in: root)
         }
         root.needsLayout = true
-        root.layoutSubtreeIfNeeded()
         refreshSearchSectionHeights(in: root)
         return matched
     }
@@ -905,7 +917,11 @@ final class DashboardPageSearchFilter {
             )
         }
         guard let stack = rowStack(in: section) else {
-            let visibleCopyMatches = includeVisibleCopy && visibleCopy(in: section).contains {
+            var searchableCopy = includeVisibleCopy ? visibleCopy(in: section) : []
+            if includeVisibleCopy, containsStatusLinksEditor(in: section) {
+                searchableCopy.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
+            }
+            let visibleCopyMatches = searchableCopy.contains {
                 DashboardPageSearch.matches($0, query: query)
             }
             let countsAsHit = visibleCopyMatches && !DashboardSearchVisibility.isBusinessHidden(section)
@@ -994,6 +1010,9 @@ final class DashboardPageSearchFilter {
         }
         if includeVisibleCopy {
             supportingValues.append(contentsOf: visibleCopy(in: row))
+            if containsStatusLinksEditor(in: row) {
+                supportingValues.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
+            }
         }
         return DashboardPageSearch.bestMatch(
             texts: values,
@@ -1001,6 +1020,11 @@ final class DashboardPageSearchFilter {
             supportingTexts: supportingValues,
             query: query
         )
+    }
+
+    private func containsStatusLinksEditor(in view: NSView) -> Bool {
+        if view is StatusLinksEditorHostingView { return true }
+        return view.subviews.contains { containsStatusLinksEditor(in: $0) }
     }
 
     private func rowContentMatches(

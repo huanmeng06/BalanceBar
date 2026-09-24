@@ -362,6 +362,19 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(DashboardPageSearch.matches("Language", query: "xyz"))
     }
 
+    func testFreshDynamicStatusLinkQuerySelectsMenuSection() {
+        let links = [StatusLink(title: "Tibo 的动态", url: "https://example.com/tibo")]
+        let sections = DashboardSettingsSearchCatalog.rankedSections(
+            query: "tibo",
+            statusLinks: links
+        ).map(\.section)
+
+        XCTAssertTrue(
+            sections.contains(.menu),
+            "a direct query must include the menu page before its status-link editor is mounted"
+        )
+    }
+
     func testSearchMatcherDoesNotCombineKeywordsAcrossRows() {
         let first = SettingsRowView(title: "Menu")
         let second = SettingsRowView(title: "Font Size")

@@ -30,7 +30,10 @@ private final class DashboardGlobalSearchResultsView: NSStackView {
         alignment = .leading
         spacing = DashboardSettingsComponents.settingsSectionSpacing
         distribution = .gravityAreas
-        detachesHiddenViews = false
+        // Search projection groups must collapse with their arranged spacing;
+        // keeping hidden groups attached leaves a fixed outer gap per stale
+        // query result.
+        detachesHiddenViews = true
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.required, for: .vertical)
         setContentCompressionResistancePriority(.required, for: .vertical)
@@ -54,7 +57,9 @@ private final class DashboardGlobalSearchGroupView: NSStackView {
         alignment = .leading
         spacing = DashboardSettingsComponents.settingsSectionSpacing
         distribution = .gravityAreas
-        detachesHiddenViews = false
+        // Hidden sections are removed from the layout contribution, including
+        // the stack spacing between them.
+        detachesHiddenViews = true
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.required, for: .vertical)
         setContentCompressionResistancePriority(.required, for: .vertical)
@@ -192,6 +197,8 @@ final class DashboardCompositionController {
         launchWithChatGPTController: launchWithChatGPTController
     )
     private let pageSearchFilter = DashboardPageSearchFilter()
+    private var pendingDashboardSearchWorkItem: DispatchWorkItem?
+    private var dashboardSearchGeneration: UInt64 = 0
     private lazy var pageSession = DashboardPageSession(
         actions: DashboardWindowControllerActions(
             makeSectionPage: { [weak self] section in
@@ -556,7 +563,24 @@ final class DashboardCompositionController {
 
     private func bindDashboardSearch() {
         pageSession.toolbarController.onSearchQueryChanged = { [weak self] query in
+            self?.pendingDashboardSearchWorkItem?.cancel()
             self?.handleDashboardSearch(query)
+        }
+        pageSession.toolbarController.onSearchDraftChanged = { [weak self] query in
+            guard let self else { return }
+            self.pendingDashboardSearchWorkItem?.cancel()
+            self.dashboardSearchGeneration &+= 1
+            let generation = self.dashboardSearchGeneration
+            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self.handleDashboardSearch(query)
+                return
+            }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, self.dashboardSearchGeneration == generation else { return }
+                self.handleDashboardSearch(query)
+            }
+            self.pendingDashboardSearchWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(45), execute: work)
         }
     }
 
@@ -575,19 +599,19 @@ final class DashboardCompositionController {
             globalSettingsSearchContent = nil
             globalSearchOriginContent = nil
             globalSettingsSearchSections.removeAll()
-            applyMountedPageSearch()
+            applyMountedPageSearch(queryOverride: query)
             return
         }
         if !isGlobalSettingsSearchActive {
             isGlobalSettingsSearchActive = true
-            showGlobalSettingsSearchPage()
+            showGlobalSettingsSearchPage(initialQuery: needle)
             return
         }
-        applyMountedPageSearch()
+        applyMountedPageSearch(queryOverride: query)
     }
 
-    private func applyMountedPageSearch() {
-        let query = pageSession.toolbarController.searchQuery
+    private func applyMountedPageSearch(queryOverride: String? = nil) {
+        let query = queryOverride ?? pageSession.toolbarController.searchQuery
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if needle.isEmpty, isGlobalSettingsSearchActive {
             clearGlobalSettingsSearch()
@@ -600,14 +624,15 @@ final class DashboardCompositionController {
             globalSettingsSearchSections.removeAll()
         } else if !needle.isEmpty, !isGlobalSettingsSearchActive {
             isGlobalSettingsSearchActive = true
-            showGlobalSettingsSearchPage()
+            showGlobalSettingsSearchPage(initialQuery: query)
             return
         } else if !needle.isEmpty, isGlobalSettingsSearchActive,
                   pageSession.currentHostedPageContent() !== globalSettingsSearchContent {
             guard !isBuildingGlobalSearchPage else { return }
-            showGlobalSettingsSearchPage()
+            showGlobalSettingsSearchPage(initialQuery: query)
             return
         }
+        pageSearchFilter.statusLinks = state.statusLinks()
         if !needle.isEmpty, isGlobalSettingsSearchActive {
             addGlobalSettingsSearchPages(matching: needle)
         }
@@ -623,7 +648,7 @@ final class DashboardCompositionController {
         pageSession.restoreCurrentPageScrollToTop()
     }
 
-    private func showGlobalSettingsSearchPage() {
+    private func showGlobalSettingsSearchPage(initialQuery: String? = nil) {
         guard !isBuildingGlobalSearchPage else { return }
         isBuildingGlobalSearchPage = true
         defer { isBuildingGlobalSearchPage = false }
@@ -632,6 +657,7 @@ final class DashboardCompositionController {
         }
         globalSettingsSearchContent = nil
         globalSettingsSearchSections.removeAll()
+        pageSearchFilter.statusLinks = state.statusLinks()
         pageSession.showSearchResults(makeContent: { [weak self] in
             guard let self else {
                 return DashboardSettingsComponents.makeSettingsPageContent([])
@@ -640,6 +666,20 @@ final class DashboardCompositionController {
             self.globalSettingsSearchContent = content
             return content
         }, preservingCurrentPage: true)
+        // The first committed query must build its complete candidate set in
+        // the same turn. Otherwise a direct query can miss dynamic sections
+        // until a later edit happens to broaden or change the query.
+        let initialQuery = (initialQuery ?? pageSession.toolbarController.searchQuery)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !initialQuery.isEmpty {
+            addGlobalSettingsSearchPages(matching: initialQuery)
+            _ = pageSearchFilter.apply(
+                query: initialQuery,
+                to: pageSession.currentHostedPageContent(),
+                pageTitle: "",
+                mode: .titles
+            )
+        }
     }
 
     private func clearGlobalSettingsSearch() {
@@ -672,9 +712,13 @@ final class DashboardCompositionController {
     private func addGlobalSettingsSearchPages(matching query: String) {
         guard let searchContent = globalSettingsSearchContent,
               let resultStack = searchContent as? DashboardGlobalSearchResultsView else { return }
-        let missingSections = DashboardSettingsSearchCatalog.rankedSections(query: query)
+        let missingSections = DashboardSettingsSearchCatalog.rankedSections(
+            query: query,
+            statusLinks: state.statusLinks()
+        )
             .map(\.section)
             .filter { $0 != .about && !globalSettingsSearchSections.contains($0) }
+            .sorted { $0.rawValue < $1.rawValue }
         guard !missingSections.isEmpty else { return }
 
         for settingsSection in missingSections {

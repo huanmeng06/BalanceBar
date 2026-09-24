@@ -343,6 +343,17 @@ final class SettingsRowView: NSView {
         return false
     }
 
+    private var isInsideGlobalSearchProjection: Bool {
+        var ancestor = superview
+        while let view = ancestor {
+            if view.identifier == DashboardPageSearch.globalSearchGroupIdentifier {
+                return true
+            }
+            ancestor = view.superview
+        }
+        return false
+    }
+
     static func enclosing(_ view: NSView) -> SettingsRowView? {
         var current: NSView? = view
         while let candidate = current {
@@ -372,6 +383,13 @@ final class SettingsRowView: NSView {
     }
 
     private func updateSearchNaturalHeightConstraint() {
+        // Global result stacks now collapse hidden arranged views natively.
+        // An exact row height here fights that stack fitting pass and can
+        // briefly stretch controls while a query is changing.
+        if isInsideGlobalSearchProjection {
+            searchNaturalHeightConstraint?.isActive = false
+            return
+        }
         guard hasSearchHiddenSiblingInOwningCard else {
             searchNaturalHeightConstraint?.isActive = false
             return
