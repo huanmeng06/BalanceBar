@@ -717,6 +717,18 @@ final class DashboardCompositionController {
         mode: DashboardPageSearchMode
     ) {
         pendingSearchMatchWorkItem?.cancel()
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            _ = pageSearchFilter.apply(
+                query: query,
+                to: root,
+                pageTitle: pageTitle,
+                mode: mode
+            )
+            lastAppliedSearchQuery = query
+            lastAppliedSearchRevision = searchDataRevision
+            lastAppliedSearchRoot = root
+            return
+        }
         let documents = pageSearchFilter.searchDocuments(for: root)
         let queryRevision = searchDataRevision
         let queryGeneration = dashboardSearchGeneration
