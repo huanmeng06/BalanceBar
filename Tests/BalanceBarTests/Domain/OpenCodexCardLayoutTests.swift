@@ -84,6 +84,11 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertNil(balance.progress)
         XCTAssertEqual(balance.linkPrefix?.minY, 28 - shift)
         XCTAssertEqual(balance.link?.minY, 28 - shift)
+        XCTAssertEqual(balance.quotaDetail, CGRect(x: 14, y: 29, width: 128, height: 18))
+        XCTAssertEqual(balance.amount, CGRect(x: 149, y: 0, width: 141, height: 48))
+        XCTAssertEqual(balance.amount.height, 48)
+        XCTAssertEqual(balance.amount.maxY, balance.quotaDetail.maxY + 1)
+        XCTAssertEqual(official.amount.height, OpenCodexCardLayout.lunaReserveNoProgressAmountHeight)
     }
 
     func testOfficialQuotaLayoutKeepsBankedResetCompactGapWhenQuotaProgressIsHidden() throws {

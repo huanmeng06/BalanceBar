@@ -703,6 +703,36 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertEqual(balanceAmount.verticalAlignment, .top)
         XCTAssertEqual(balanceAmount.contentAlignmentForTesting, .topTrailing)
 
+        let hiddenProgressController = makeController()
+        defer { hiddenProgressController.teardown() }
+        let hiddenProgressSettings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true,
+            showQuotaProgressBar: false
+        )
+        hiddenProgressController.start(
+            snapshot: Snapshot.balance("Provider", 1.02, "USD", nil, date, progressPercentage: 40),
+            refreshDate: date,
+            menuInput: makeMenuInput(activeClient: .grok),
+            settings: hiddenProgressSettings
+        )
+        let hiddenOverview = try XCTUnwrap(hiddenProgressController.menuItemsForTesting.first?.view)
+        let hiddenAmount = try XCTUnwrap(amountViews(in: hiddenOverview).first)
+        let hiddenLayout = OpenCodexCardLayout.frames(
+            for: .balance,
+            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
+            includesQuotaProgress: false
+        )
+        XCTAssertEqual(hiddenAmount.frame, hiddenLayout.amount)
+        XCTAssertEqual(hiddenLayout.amount.height, 48)
+        XCTAssertEqual(hiddenLayout.amount.maxY, hiddenLayout.quotaDetail.maxY + 1)
+        XCTAssertEqual(hiddenAmount.verticalAlignment, .top)
+        XCTAssertEqual(hiddenAmount.contentAlignmentForTesting, .topTrailing)
+        XCTAssertTrue(progressViews(in: hiddenOverview).isEmpty)
+
         let officialController = makeController()
         defer { officialController.teardown() }
         officialController.start(

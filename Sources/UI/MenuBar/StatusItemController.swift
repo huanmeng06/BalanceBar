@@ -6093,9 +6093,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         )
                     )
                 }
-                // The balance amount frame is already top-aligned with the
-                // shorter detail row. Pin the SwiftUI glyphs to that top edge
-                // instead of centering them in the tall amount box.
+                // With or without the progress bar, the balance amount frame's
+                // top sits 1pt above the shorter detail row. Pin the glyphs
+                // to that edge instead of centering them in the tall box.
                 amount = makeOverviewNumericAmount(
                     plan: plan,
                     sample: sample,
