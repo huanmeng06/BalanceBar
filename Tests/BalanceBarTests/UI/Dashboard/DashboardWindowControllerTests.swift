@@ -4450,7 +4450,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 font: probabilityLink.font ?? .systemFont(ofSize: 12, weight: .medium)
             ) + 4
         )
-        XCTAssertEqual(probabilityLink.restingTextColor, NSColor.linkColor)
         XCTAssertEqual(
             probabilityLink.attributedStringValue.attribute(
                 .foregroundColor,
@@ -4809,7 +4808,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(probabilityLink.stringValue, "数据来源")
         XCTAssertEqual(probabilityLink.stringValue, tr(.keyCodexBankedResetProbabilitySource))
-        XCTAssertEqual(probabilityLink.restingTextColor, NSColor.linkColor)
         XCTAssertEqual(
             probabilityLink.attributedStringValue.attribute(
                 .foregroundColor,
@@ -6036,7 +6034,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertFalse(sourceLink.stringValue.isEmpty, file: file, line: line)
         XCTAssertFalse(sourceLink.stringValue.contains("codex-reset.com"), file: file, line: line)
         XCTAssertFalse(sourceLink.stringValue.contains("https://"), file: file, line: line)
-        XCTAssertEqual(sourceLink.restingTextColor, NSColor.linkColor, file: file, line: line)
         XCTAssertEqual(
             sourceLink.attributedStringValue.attribute(
                 .foregroundColor,

@@ -435,13 +435,6 @@ class HoverLinkTextField: NSTextField {
             refreshNativeTooltip()
         }
     }
-    /// Drawn color. Defaults to the system link color; hover underlines it.
-    var restingTextColor: NSColor = .linkColor {
-        didSet {
-            guard !isApplyingStyle else { return }
-            applyStyle(text: stringValue, underlined: isHovered)
-        }
-    }
     private(set) var interactionMode: InteractionMode = .normal
     private(set) var visibleTextHitRect = NSRect.zero
     private(set) var isHoverHintVisible = false
@@ -826,7 +819,7 @@ class HoverLinkTextField: NSTextField {
     private func applyStyle(text: String, underlined: Bool) {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font ?? NSFont.systemFont(ofSize: 12),
-            .foregroundColor: restingTextColor
+            .foregroundColor: NSColor.linkColor
         ]
         if underlined { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
         isApplyingStyle = true
