@@ -90,25 +90,13 @@ final class DashboardMenuBarQuotaSection {
         let lunaReserveResetTimeRow: NSView?
         if let autoSwitchLunaReserve, let lunaReserveResetTimeModeControl {
             let autoSwitchRow = SettingsRowView(
-                title: tr(
-                    .keyDashboardMenuBarPageAutoSwitchLunaReserve,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
-                detail: tr(
-                    .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
+                title: DashboardSettingsFormattedCopy.autoSwitchLunaReserveTitle(),
+                detail: DashboardSettingsFormattedCopy.autoSwitchLunaReserveDescription(),
                 accessoryView: autoSwitchLunaReserve
             )
             let resetTimeRow = SettingsRowView(
-                title: tr(
-                    .keyDashboardMenuBarPageLunaReserveResetTime,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
-                detail: tr(
-                    .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
+                title: DashboardSettingsFormattedCopy.lunaReserveResetTimeTitle(),
+                detail: DashboardSettingsFormattedCopy.lunaReserveResetTimeDescription(),
                 accessoryView: lunaReserveResetTimeModeControl
             )
             self.autoSwitchLunaReserveRow = autoSwitchRow
@@ -313,10 +301,7 @@ final class DashboardMenuBarQuotaSection {
         control.widthAnchor.constraint(
             greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
         ).isActive = true
-        control.toolTip = tr(
-            .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
-            arguments: [tr(.keyLunaReserveTitle)]
-        )
+        control.toolTip = DashboardSettingsFormattedCopy.lunaReserveResetTimeDescription()
         return control
     }
 
@@ -347,14 +332,6 @@ final class DashboardMenuBarQuotaSection {
     private static func lunaReserveResetTimeModeLabel(
         _ mode: LunaReserveResetTimeMode
     ) -> String {
-        switch mode {
-        case .lunaReserve:
-            return tr(
-                .keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve,
-                arguments: [tr(.keyLunaReserveTitle)]
-            )
-        case .originalQuota:
-            return tr(.keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota)
-        }
+        DashboardSettingsFormattedCopy.lunaReserveResetTimeModeTitle(mode)
     }
 }

@@ -16,6 +16,8 @@ final class CCSwitchRepository {
 
     private static let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+    static var loadChoicesCountForTesting = 0
+
     let databaseURL: URL
     private let appSettingsURL: URL
     private let homeDirectoryURL: URL
@@ -101,6 +103,7 @@ final class CCSwitchRepository {
     }
 
     func loadChoices(appType: String) -> [ProviderChoice] {
+        Self.loadChoicesCountForTesting += 1
         let fileManager = FileManager.default
         let databaseExists = fileManager.fileExists(atPath: databaseURL.path)
         let databaseReadable = fileManager.isReadableFile(atPath: databaseURL.path)

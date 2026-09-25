@@ -184,7 +184,7 @@ final class StatusLinksEditorHostingView: NSView,
         let tableContainer = NSBox()
         let scrollView = StatusLinksScrollView()
         let resetButton = NSButton(
-            title: tr(.keyStatusLinksEditorRestoreDefaults),
+            title: DashboardSettingsFormattedCopy.statusLinksRestoreDefaultsTitle(),
             target: nil,
             action: nil
         )
@@ -738,7 +738,7 @@ final class StatusLinksEditorHostingView: NSView,
         button.controlSize = .small
         button.font = .systemFont(ofSize: 12)
         button.identifier = NSUserInterfaceItemIdentifier("statusLinks.reset")
-        button.setAccessibilityLabel(tr(.keyStatusLinksEditorRestoreDefaults))
+        button.setAccessibilityLabel(DashboardSettingsFormattedCopy.statusLinksRestoreDefaultsTitle())
         button.setContentHuggingPriority(.required, for: .horizontal)
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
     }

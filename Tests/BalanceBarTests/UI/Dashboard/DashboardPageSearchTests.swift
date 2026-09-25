@@ -1034,6 +1034,144 @@ final class DashboardPageSearchTests: XCTestCase {
         }
     }
 
+    func testArgumentBearingCopyIsInTheStaticCatalog() {
+        let cases: [(String, DashboardSection)] = [
+            (DashboardSettingsFormattedCopy.autoSwitchLunaReserveDescription(), .menuBar),
+            (DashboardSettingsFormattedCopy.lunaReserveResetTimeDescription(), .menuBar),
+            (DashboardSettingsFormattedCopy.lunaReserveResetTimeModeTitle(.lunaReserve), .menuBar),
+            (DashboardSettingsFormattedCopy.menuLunaReserveDisplayModeDescription(), .menu),
+            (DashboardSettingsFormattedCopy.hideExhaustedQuotaDescription(), .menu)
+        ]
+        for (query, section) in cases {
+            XCTAssertTrue(
+                DashboardSettingsSearchCatalog.matchingSections(query: query).contains(section),
+                query
+            )
+        }
+    }
+
+    func testArgumentBearingSettingsCopyMatchesFromEveryStartingSection() throws {
+        let previousOverride = LunaReserveUserFacing.testOverride
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = previousOverride }
+        let defaults = UserDefaults.standard
+        let modeKey = AppPreferences.menuLunaReserveDisplayModeKey
+        let previousMode = defaults.string(forKey: modeKey)
+        defaults.set(LunaReserveDisplayMode.always.rawValue, forKey: modeKey)
+        defer {
+            if let previousMode {
+                defaults.set(previousMode, forKey: modeKey)
+            } else {
+                defaults.removeObject(forKey: modeKey)
+            }
+        }
+        let repository = CCSwitchRepository(
+            databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-argument-copy.db")
+        )
+        let cases: [(String, DashboardSection, DashboardSection)] = [
+            (
+                DashboardSettingsFormattedCopy.autoSwitchLunaReserveDescription(),
+                .menuBar,
+                .general
+            ),
+            (
+                DashboardSettingsFormattedCopy.lunaReserveResetTimeDescription(),
+                .menuBar,
+                .menu
+            ),
+            (
+                DashboardSettingsFormattedCopy.menuLunaReserveDisplayModeDescription(),
+                .menu,
+                .general
+            ),
+            (
+                DashboardSettingsFormattedCopy.hideExhaustedQuotaDescription(),
+                .menu,
+                .advanced
+            )
+        ]
+
+        func rows(startingAt section: DashboardSection, query: String) throws -> [String] {
+            let appDelegate = AppDelegate(repository: repository)
+            let composition = appDelegate.dashboardCompositionForTesting
+            defer { composition.teardownForTesting() }
+            let window = try XCTUnwrap(composition.makeWindowForTesting(showing: section))
+            window.setContentSize(NSSize(width: 1000, height: 700))
+            composition.applySearchQueryForTesting(query)
+            window.layoutIfNeeded()
+            return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
+        }
+
+        for (query, owner, other) in cases {
+            let ownerRows = try rows(startingAt: owner, query: query)
+            XCTAssertFalse(ownerRows.isEmpty, query)
+            let otherRows = try rows(startingAt: other, query: query)
+            XCTAssertEqual(otherRows, ownerRows, query)
+        }
+    }
+
+    func testCandidateCorpusCoversMountedSettingsCopy() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-mounted-copy.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        for section in [DashboardSection.general, .menuBar, .menu, .advanced] {
+            composition.showSection(section)
+            window.layoutIfNeeded()
+            let runtime = composition.searchRuntimeTextsForTesting()
+            let copy = composition.visibleSearchCopyForTesting(
+                in: composition.currentHostedPageContentForTesting()
+            )
+            for text in Set(copy) {
+                let trimmed = text
+                    .replacingOccurrences(of: "\u{2060}", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                XCTAssertTrue(
+                    DashboardSettingsSearchCatalog.matchingSections(
+                        query: trimmed,
+                        runtimeTexts: runtime
+                    ).contains(section),
+                    "\(section) visible copy is missing from the candidate corpus: \(trimmed)"
+                )
+            }
+        }
+    }
+
+    func testGlobalSearchTypingDoesNotReadProviderDatabase() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("issue-457-search-io-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("cc-switch.db")
+        try createProviderFixture(
+            at: databaseURL,
+            name: "MyPrivateProviderXYZ",
+            appType: AssistantClient.codex.appType
+        )
+        let appDelegate = AppDelegate(repository: CCSwitchRepository(databaseURL: databaseURL))
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        window.layoutIfNeeded()
+
+        CCSwitchRepository.loadChoicesCountForTesting = 0
+        for query in ["s", "st", "sta", "stat", "status"] {
+            composition.applySearchQueryForTesting(query)
+        }
+        XCTAssertEqual(
+            CCSwitchRepository.loadChoicesCountForTesting,
+            0,
+            "candidate selection must read the in-memory provider name"
+        )
+    }
+
     func testGlobalSearchAdvancedProjectionDoesNotCreateLogViewer() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(

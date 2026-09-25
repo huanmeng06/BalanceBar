@@ -82,8 +82,39 @@ private final class DashboardGlobalSearchGroupView: NSStackView {
     }
 }
 
-private final class DashboardSearchCancellationState {
-    var workItem: DispatchWorkItem?
+/// One search match's cancellation flag. The work item closure retains this
+/// token, and the controller retains the work item. The token must not retain
+/// the work item, or every live query keeps its documents alive.
+private final class DashboardSearchCancellationToken {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+}
+
+private struct DashboardSearchRuntimeIdentity: Equatable {
+    var languageKey: String
+    var providerName: String
+    var updateState: UpdateCheckState
+    var balanceDisplayThreshold: Double
+    var statusLinks: [StatusLink]
+    var menuBarIconOffsetY: Double
+    var menuBarAmountOffsetY: Double
+    var menuBarWidthAdjustment: Double
+    var animationMode: MenuBarAnimationMode
+    var animationFrameRate: Int
+    var previewPrimary: String
+    var previewSecondary: String
 }
 
 struct DashboardCompositionActions {
@@ -205,7 +236,10 @@ final class DashboardCompositionController {
     )
     private let pageSearchFilter = DashboardPageSearchFilter()
     private var pendingDashboardSearchWorkItem: DispatchWorkItem?
+    private var pendingSearchCancellation: DashboardSearchCancellationToken?
     private var pendingSearchMatchWorkItem: DispatchWorkItem?
+    private var cachedSearchRuntimeIdentity: DashboardSearchRuntimeIdentity?
+    private var cachedSearchRuntimeTexts: [DashboardSection: [String]] = [:]
     private var dashboardSearchGeneration: UInt64 = 0
     private var searchDataRevision: UInt64 = 0
     private var lastAppliedSearchQuery: String?
@@ -619,6 +653,14 @@ final class DashboardCompositionController {
         pageSession.currentHostedPageContent()
     }
 
+    func visibleSearchCopyForTesting(in view: NSView) -> [String] {
+        pageSearchFilter.visibleCopyForTesting(in: view)
+    }
+
+    func searchRuntimeTextsForTesting() -> [DashboardSection: [String]] {
+        settingsSearchRuntimeTexts()
+    }
+
     private func bindDashboardSearch() {
         pageSession.shouldPreserveSectionSelection = { [weak self] target in
             guard let self else { return false }
@@ -689,8 +731,7 @@ final class DashboardCompositionController {
             )
         }
         searchDataRevision &+= 1
-        pendingSearchMatchWorkItem?.cancel()
-        pendingSearchMatchWorkItem = nil
+        cancelPendingSearchMatch()
         pageSearchFilter.prepareForDataRefresh()
         lastAppliedSearchQuery = nil
         lastAppliedSearchRoot = nil
@@ -775,6 +816,13 @@ final class DashboardCompositionController {
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
     }
 
+    private func cancelPendingSearchMatch() {
+        pendingSearchCancellation?.cancel()
+        pendingSearchCancellation = nil
+        pendingSearchMatchWorkItem?.cancel()
+        pendingSearchMatchWorkItem = nil
+    }
+
     private func submitSearch(
         query: String,
         root: NSView,
@@ -782,7 +830,7 @@ final class DashboardCompositionController {
         mode: DashboardPageSearchMode,
         synchronously: Bool = false
     ) {
-        pendingSearchMatchWorkItem?.cancel()
+        cancelPendingSearchMatch()
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             pendingSearchScrollPreserve = nil
             lastSettledSearchQuery = nil
@@ -822,18 +870,19 @@ final class DashboardCompositionController {
             return
         }
 
-        let cancellationState = DashboardSearchCancellationState()
+        let cancellation = DashboardSearchCancellationToken()
+        pendingSearchCancellation = cancellation
         let workItem = DispatchWorkItem { [weak self] in
             let matches = DashboardPageSearch.matchDocuments(
                 documents,
                 query: query,
-                isCancelled: { cancellationState.workItem?.isCancelled == true }
+                isCancelled: { cancellation.isCancelled }
             )
-            guard cancellationState.workItem?.isCancelled != true else { return }
+            guard !cancellation.isCancelled else { return }
             let matchedDocumentIDs = Set(matches.map(\.documentID))
             DispatchQueue.main.async { [weak self] in
                 guard let self,
-                      cancellationState.workItem?.isCancelled != true,
+                      !cancellation.isCancelled,
                       self.dashboardSearchGeneration == queryGeneration,
                       self.searchDataRevision == queryRevision,
                       self.pageSession.toolbarController.searchQuery == query else {
@@ -855,7 +904,6 @@ final class DashboardCompositionController {
                 self.lastAppliedSearchRoot = currentRoot
             }
         }
-        cancellationState.workItem = workItem
         pendingSearchMatchWorkItem = workItem
         DispatchQueue.global(qos: .userInitiated).async(execute: workItem)
     }
@@ -976,16 +1024,19 @@ final class DashboardCompositionController {
 
     private func settingsSearchRuntimeTexts() -> [DashboardSection: [String]] {
         let preferences = state.preferences
+        let snapshot = state.snapshot()
         let presentation = DashboardMenuBarPage.presentation(
-            for: state.snapshot(),
+            for: snapshot,
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
             quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             resolving: state.menuBarSnapshot
         )
-        return DashboardSettingsSearchRuntime.textsBySection(
-            currentProviderName: state.currentProviderName(),
+        // Provider name is the in-memory cache. This path must not open SQLite.
+        let identity = DashboardSearchRuntimeIdentity(
+            languageKey: "\(AppLanguage.selected.rawValue)|\(AppLanguage.resolved.rawValue)",
+            providerName: state.currentProviderName(),
             updateState: state.updateState(),
             balanceDisplayThreshold: preferences.balanceDisplayThreshold,
             statusLinks: state.statusLinks(),
@@ -994,9 +1045,28 @@ final class DashboardCompositionController {
             menuBarWidthAdjustment: preferences.menuBarStatusItemWidthAdjustment,
             animationMode: preferences.menuBarAnimationMode,
             animationFrameRate: preferences.menuBarAnimationFrameRate,
-            menuBarPreviewPrimary: presentation.primary,
-            menuBarPreviewSecondary: presentation.secondary
+            previewPrimary: presentation.primary,
+            previewSecondary: presentation.secondary
         )
+        if identity == cachedSearchRuntimeIdentity {
+            return cachedSearchRuntimeTexts
+        }
+        let texts = DashboardSettingsSearchRuntime.textsBySection(
+            currentProviderName: identity.providerName,
+            updateState: identity.updateState,
+            balanceDisplayThreshold: identity.balanceDisplayThreshold,
+            statusLinks: identity.statusLinks,
+            menuBarIconOffsetY: identity.menuBarIconOffsetY,
+            menuBarAmountOffsetY: identity.menuBarAmountOffsetY,
+            menuBarWidthAdjustment: identity.menuBarWidthAdjustment,
+            animationMode: identity.animationMode,
+            animationFrameRate: identity.animationFrameRate,
+            menuBarPreviewPrimary: identity.previewPrimary,
+            menuBarPreviewSecondary: identity.previewSecondary
+        )
+        cachedSearchRuntimeIdentity = identity
+        cachedSearchRuntimeTexts = texts
+        return texts
     }
 
     private func addGlobalSettingsSearchPages(matching query: String) {

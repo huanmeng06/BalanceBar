@@ -501,37 +501,148 @@ enum DashboardSettingsSearchCatalog {
             return [
                 tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
                 tr(.keyDashboardMenuBarPageFiveHourQuota),
-                tr(.keyDashboardMenuBarPageSevenDayQuota),
-                tr(
-                    .keyDashboardMenuBarPageAutoSwitchLunaReserve,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
-                tr(
-                    .keyDashboardMenuBarPageLunaReserveResetTime,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                )
-            ]
+                tr(.keyDashboardMenuBarPageSevenDayQuota)
+            ] + DashboardSettingsFormattedCopy.sharedVisibleTexts(for: .menuBar)
         case .about:
             return [
                 "BalanceBar",
                 tr(.keyDashboardAboutPageVersionValue, arguments: [""])
             ]
         case .general, .menu, .advanced:
-            if section == .menu {
-                return [
-                    tr(.keyDashboardMenuPageLunaReserveDisplayMode, arguments: [tr(.keyLunaReserveTitle)]),
-                    tr(.keyDashboardMenuPageHideExhaustedQuota)
-                ]
+            var texts = DashboardSettingsFormattedCopy.sharedVisibleTexts(for: section)
+            if section == .general {
+                texts.append(contentsOf: DashboardSettingsFormattedCopy.languageMenuTitles())
             }
+            return texts
+        }
+    }
+}
+
+/// Formatted settings copy that `tr(key)` cannot produce without arguments.
+/// Row builders and the candidate catalog both call these functions, so a
+/// subtitle that needs arguments cannot enter the page without also entering
+/// candidate selection.
+enum DashboardSettingsFormattedCopy {
+    static func currentProviderValue(_ name: String) -> String {
+        tr(
+            .keyDashboardGeneralAndRefreshPagesCurrentProviderValue,
+            arguments: [name]
+        )
+    }
+
+    static func autoSwitchLunaReserveTitle() -> String {
+        tr(
+            .keyDashboardMenuBarPageAutoSwitchLunaReserve,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func autoSwitchLunaReserveDescription() -> String {
+        tr(
+            .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func lunaReserveResetTimeTitle() -> String {
+        tr(
+            .keyDashboardMenuBarPageLunaReserveResetTime,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func lunaReserveResetTimeDescription() -> String {
+        tr(
+            .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func lunaReserveResetTimeModeTitle(_ mode: LunaReserveResetTimeMode) -> String {
+        switch mode {
+        case .lunaReserve:
+            return tr(
+                .keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve,
+                arguments: [tr(.keyLunaReserveTitle)]
+            )
+        case .originalQuota:
+            return tr(.keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota)
+        }
+    }
+
+    static func menuLunaReserveDisplayModeTitle() -> String {
+        tr(
+            .keyDashboardMenuPageLunaReserveDisplayMode,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func menuLunaReserveDisplayModeDescription() -> String {
+        tr(
+            .keyDashboardMenuPageLunaReserveDisplayModeDescription,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func hideExhaustedQuotaDescription() -> String {
+        tr(
+            .keyDashboardMenuPageHideExhaustedQuotaDescription,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func lunaReserveDisplayModeTitle(_ mode: LunaReserveDisplayMode) -> String {
+        switch mode {
+        case .disabled:
+            return tr(.keyDashboardMenuPageLunaReserveDisplayModeDisabled)
+        case .whenQuotaExhausted:
+            return tr(.keyDashboardMenuPageLunaReserveDisplayModeWhenQuotaExhausted)
+        case .always:
+            return tr(.keyDashboardMenuPageLunaReserveDisplayModeAlways)
+        }
+    }
+
+    static func restoreDefaultsTitle() -> String {
+        tr(.keyCommonRestoreDefaults)
+    }
+
+    static func statusLinksRestoreDefaultsTitle() -> String {
+        tr(.keyStatusLinksEditorRestoreDefaults)
+    }
+
+    /// Titles shown in the language popup. The row matcher searches these
+    /// item titles, including Follow System, in addition to the translated
+    /// word for Language.
+    static func languageMenuTitles() -> [String] {
+        AppLanguage.allCases.map(\.localizedTitle)
+    }
+
+    static func sharedVisibleTexts(for section: DashboardSection) -> [String] {
+        switch section {
+        case .menuBar:
+            return [
+                autoSwitchLunaReserveTitle(),
+                autoSwitchLunaReserveDescription(),
+                lunaReserveResetTimeTitle(),
+                lunaReserveResetTimeDescription()
+            ] + LunaReserveResetTimeMode.allCases.map { lunaReserveResetTimeModeTitle($0) }
+        case .menu:
+            return [
+                menuLunaReserveDisplayModeTitle(),
+                menuLunaReserveDisplayModeDescription(),
+                hideExhaustedQuotaDescription(),
+                restoreDefaultsTitle(),
+                statusLinksRestoreDefaultsTitle()
+            ] + LunaReserveDisplayMode.allCases.map { lunaReserveDisplayModeTitle($0) }
+        case .general, .advanced, .about:
             return []
         }
     }
 }
 
-/// Dynamic settings copy the live row matcher can see. Candidate selection
-/// must use this same set: a string that only exists after a page is built
-/// would otherwise be found from the starting section and missed from every
-/// other section.
+/// Dynamic values the row matcher can see and the static catalog cannot
+/// know ahead of time. Argument-bearing localized copy is not listed here;
+/// `DashboardSettingsFormattedCopy` puts that copy in the static catalog.
 enum DashboardSettingsSearchRuntime {
     static func textsBySection(
         currentProviderName: String,
@@ -550,25 +661,27 @@ enum DashboardSettingsSearchRuntime {
         let frameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
         return [
             .general: nonempty([
-                tr(
-                    .keyDashboardGeneralAndRefreshPagesCurrentProviderValue,
-                    arguments: [currentProviderName]
-                ),
+                DashboardSettingsFormattedCopy.currentProviderValue(currentProviderName),
                 update.subtitle,
                 update.buttonTitle
             ]),
-            .menuBar: nonempty([
-                menuBarPreviewPrimary,
-                menuBarPreviewSecondary,
-                DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: menuBarIconOffsetY).text,
-                DashboardMenuBarLayoutSection.amountOffsetSummarySubtitle(y: menuBarAmountOffsetY).text,
-                DashboardMenuBarLayoutSection.widthAdjustmentSummarySubtitle(menuBarWidthAdjustment).text,
-                String(frameRate),
-                DashboardMenuBarPage.animationFrameRateSubtitle(
-                    mode: animationMode,
-                    fps: frameRate
+            .menuBar: nonempty(
+                [
+                    menuBarPreviewPrimary,
+                    menuBarPreviewSecondary,
+                    String(frameRate),
+                    DashboardMenuBarPage.animationFrameRateSubtitle(
+                        mode: animationMode,
+                        fps: frameRate
+                    )
+                ] + searchableSubtitleTexts(
+                    DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: menuBarIconOffsetY)
+                ) + searchableSubtitleTexts(
+                    DashboardMenuBarLayoutSection.amountOffsetSummarySubtitle(y: menuBarAmountOffsetY)
+                ) + searchableSubtitleTexts(
+                    DashboardMenuBarLayoutSection.widthAdjustmentSummarySubtitle(menuBarWidthAdjustment)
                 )
-            ]),
+            ),
             .menu: nonempty(
                 [DashboardMenuPage.formattedBalanceDisplayThreshold(balanceDisplayThreshold)]
                     + statusLinks.flatMap { [$0.title, $0.url] }
@@ -578,6 +691,17 @@ enum DashboardSettingsSearchRuntime {
 
     private static func nonempty(_ values: [String]) -> [String] {
         values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    /// Semantic subtitle text, plus the line-broken form the label shows.
+    /// Word joiners are layout-only and are not part of the searchable text.
+    private static func searchableSubtitleTexts(_ subtitle: LocalizedSubtitle) -> [String] {
+        let laidOut = DashboardSettingsComponents.subtitleDisplayText(
+            subtitle,
+            constrainedTo: 10_000,
+            font: .systemFont(ofSize: 12)
+        ).replacingOccurrences(of: "\u{2060}", with: "")
+        return [subtitle.text, laidOut]
     }
 }
 
@@ -1331,6 +1455,10 @@ final class DashboardPageSearchFilter {
             values.append(contentsOf: visibleCopy(in: child, skipping: skip))
         }
         return values
+    }
+
+    func visibleCopyForTesting(in view: NSView) -> [String] {
+        visibleCopy(in: view)
     }
 
     private func isHiddenSubtree(_ view: NSView) -> Bool {

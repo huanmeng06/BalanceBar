@@ -193,7 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self, self.activeClient == .codex else { return false }
                 return self.ccSwitchRepository.loadCurrent(appType: self.activeClient.appType)?.isOfficial == true
             },
-            providerChoices: { [weak self] in self?.ccSwitchRepository.loadChoices(appType: self?.activeClient.appType ?? AssistantClient.codex.appType) ?? [] },
+            providerChoices: { [weak self] in self?.providerChoicesCache ?? [] },
             snapshot: { [weak self] in self?.snapshot ?? .placeholder },
             quickSwitchSummaries: { [weak self] in self?.quickSwitchSummariesSnapshot() ?? [:] },
             refreshDate: { [weak self] in self?.refreshDate(for: self?.snapshot ?? .placeholder) },
@@ -320,6 +320,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var lastSuccessfulRefresh: Date?
     private var dashboardProviderPageRevision: UInt64 = 0
     private var lastProviderID: String?
+    /// In-memory provider list and current name. Search reads these values
+    /// and does not open the provider database on each query.
+    private var providerChoicesCache: [ProviderChoice] = []
+    private var currentProviderNameCache = ""
     private var clientSnapshots: [
         AssistantClient: (providerID: String, snapshot: Snapshot)
     ] = [:]
@@ -433,6 +437,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore()
         )
         super.init()
+        reloadCurrentProviderNameCache()
         self.updateService.onStateChange = { [weak self] _ in
             guard let self else { return }
             let applyUpdateState = { [weak self] in
@@ -447,7 +452,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             databaseURL: repository.databaseURL,
             onChange: { [weak self] in
                 DispatchQueue.main.async { [weak self] in
-                    self?.refreshStatusItemMenuInput()
+                    guard let self else { return }
+                    let appType = self.activeClient.appType
+                    // Publish the search cache from a background read. The
+                    // status menu still loads its own choices when it rebuilds.
+                    DispatchQueue.global(qos: .utility).async { [weak self] in
+                        self?.reloadCurrentProviderNameCache(appType: appType)
+                    }
+                    self.refreshStatusItemMenuInput()
                 }
                 self?.refresh(reason: .configurationChanged)
                 self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: self?.activeClient ?? .codex)
@@ -628,8 +640,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func currentProviderName() -> String {
-        ccSwitchRepository.loadChoices(appType: activeClient.appType)
-            .first(where: { $0.isCurrent })?.name ?? tr(.keyAppNotFound2)
+        currentProviderNameCache
+    }
+
+    /// Loads provider choices off the caller thread when that caller is already
+    /// in the background, and publishes them on the main thread. Search only
+    /// reads `providerChoicesCache` / `currentProviderNameCache`.
+    private func reloadCurrentProviderNameCache(appType: String? = nil) {
+        let resolvedAppType = appType ?? activeClient.appType
+        let choices = ccSwitchRepository.loadChoices(appType: resolvedAppType)
+        let name = choices.first(where: { $0.isCurrent })?.name ?? tr(.keyAppNotFound2)
+        let publish = { [weak self] in
+            guard let self, self.activeClient.appType == resolvedAppType else { return }
+            self.providerChoicesCache = choices
+            self.currentProviderNameCache = name
+        }
+        if Thread.isMainThread {
+            publish()
+        } else {
+            DispatchQueue.main.async(execute: publish)
+        }
     }
 
     private func quickSwitchSummariesSnapshot() -> [String: String] {
@@ -1677,6 +1707,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
         let currentProvider = ccSwitchRepository.loadCurrent(appType: client.appType)
+        reloadCurrentProviderNameCache()
         let cached = clientSnapshots[client]
         let hasCachedSnapshot = cached.map { currentProvider?.id == $0.providerID } ?? false
         // A following cached render layouts icon+digits together. Skip the
@@ -1722,6 +1753,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         providerRefreshCoordinator.performAsync { [weak self] in
             guard let self else { return }
             let current = self.ccSwitchRepository.loadCurrent(appType: client.appType)
+            self.reloadCurrentProviderNameCache(appType: client.appType)
             guard let current else {
                 SwitchLog.write(
                     "refresh failed; client=\(client.rawValue); current provider not found",

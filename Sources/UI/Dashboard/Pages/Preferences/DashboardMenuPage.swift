@@ -435,22 +435,13 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             self.lunaReserveHideExhaustedQuotaSwitch = lunaReserveHideExhaustedQuotaSwitch
 
             let lunaReserveDisplayModeRow = makeRow(
-                tr(
-                    .keyDashboardMenuPageLunaReserveDisplayMode,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
-                subtitle: tr(
-                    .keyDashboardMenuPageLunaReserveDisplayModeDescription,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
+                DashboardSettingsFormattedCopy.menuLunaReserveDisplayModeTitle(),
+                subtitle: DashboardSettingsFormattedCopy.menuLunaReserveDisplayModeDescription(),
                 control: lunaReserveDisplayModeControl
             )
             let lunaReserveHideExhaustedQuotaRow = makeRow(
                 tr(.keyDashboardMenuPageHideExhaustedQuota),
-                subtitle: tr(
-                    .keyDashboardMenuPageHideExhaustedQuotaDescription,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
+                subtitle: DashboardSettingsFormattedCopy.hideExhaustedQuotaDescription(),
                 control: lunaReserveHideExhaustedQuotaSwitch
             )
             self.lunaReserveHideExhaustedQuotaRow = lunaReserveHideExhaustedQuotaRow
@@ -484,7 +475,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             self.onQuotaProgressColorConfigurationChanged?(normalized)
         }
         quotaColorSlider = slider
-        let resetButton = NSButton(title: tr(.keyCommonRestoreDefaults), target: self, action: #selector(resetQuotaProgressColors(_:)))
+        let resetButton = NSButton(
+            title: DashboardSettingsFormattedCopy.restoreDefaultsTitle(),
+            target: self,
+            action: #selector(resetQuotaProgressColors(_:))
+        )
         Self.configureQuotaColorResetButton(resetButton)
         let colorControls = QuotaColorSelectionStack()
         colorControls.orientation = .horizontal
@@ -961,10 +956,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         control.widthAnchor.constraint(
             greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
         ).isActive = true
-        control.toolTip = tr(
-            .keyDashboardMenuPageLunaReserveDisplayMode,
-            arguments: [tr(.keyLunaReserveTitle)]
-        )
+        control.toolTip = DashboardSettingsFormattedCopy.menuLunaReserveDisplayModeTitle()
         return control
     }
 
@@ -1002,14 +994,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     private static func lunaReserveDisplayModeLabel(_ mode: LunaReserveDisplayMode) -> String {
-        switch mode {
-        case .disabled:
-            return tr(.keyDashboardMenuPageLunaReserveDisplayModeDisabled)
-        case .whenQuotaExhausted:
-            return tr(.keyDashboardMenuPageLunaReserveDisplayModeWhenQuotaExhausted)
-        case .always:
-            return tr(.keyDashboardMenuPageLunaReserveDisplayModeAlways)
-        }
+        DashboardSettingsFormattedCopy.lunaReserveDisplayModeTitle(mode)
     }
 
     private static func parseBalanceDisplayThreshold(_ text: String) -> Double? {
