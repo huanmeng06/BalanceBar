@@ -1481,6 +1481,7 @@ final class DashboardPageSearchFilter {
             ]
         )
         empty.identifier = DashboardPageSearch.emptyStateIdentifier
+        empty.reserveHeadingBand()
         if let stack = contentStack(in: root) {
             stack.addView(empty, in: .top)
             empty.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true

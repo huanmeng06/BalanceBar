@@ -133,6 +133,21 @@ final class SettingsSectionView: NSView {
         ])
     }
 
+    /// Keeps the section-title band above the card. Search's empty state has
+    /// no title text, but its card should still start where a titled card
+    /// starts. The card already spans the content column; pinning the empty
+    /// label to that width makes its frame 4pt wider because `NSTextField`
+    /// alignment insets sit outside the alignment rect.
+    func reserveHeadingBand() {
+        headingLabel.stringValue = ""
+        headingLabel.isHidden = false
+        headingLabel.setAccessibilityElement(false)
+        headingLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        if headingLabel.superview == nil {
+            contentStack.insertView(headingLabel, at: 0, in: .top)
+        }
+    }
+
     override var isHidden: Bool {
         get { super.isHidden }
         set {

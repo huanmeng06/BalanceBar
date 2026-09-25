@@ -406,6 +406,71 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(isCollapsedForSearch(unmatched))
     }
 
+    func testEmptySearchCardKeepsTheSectionTitleBand() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-empty-title-band.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 980, height: 640))
+
+        composition.applySearchQueryForTesting("zzznomatch")
+        window.layoutIfNeeded()
+        let empty = try XCTUnwrap(
+            emptyState(in: composition.currentHostedPageContentForTesting()) as? SettingsSectionView
+        )
+        let emptyCard = empty.cardView.convert(empty.cardView.bounds, to: nil)
+        let emptyHeading = empty.headingLabel.convert(empty.headingLabel.bounds, to: nil)
+        XCTAssertFalse(empty.headingLabel.isHidden)
+        XCTAssertEqual(empty.headingLabel.stringValue, "")
+        XCTAssertGreaterThanOrEqual(
+            emptyHeading.height,
+            ceil(SettingsSectionView.headingFont.boundingRectForFont.height) - 0.5
+        )
+        XCTAssertEqual(
+            sectionHeadingToCardGap(in: empty),
+            SettingsSectionView.headingToCardSpacing,
+            accuracy: 1
+        )
+
+        composition.applySearchQueryForTesting("7")
+        window.layoutIfNeeded()
+        let section = try XCTUnwrap(firstVisibleSearchSection(in: composition.currentHostedPageContentForTesting()))
+        let sectionCard = section.cardView.convert(section.cardView.bounds, to: nil)
+        let sectionHeading = section.headingLabel.convert(section.headingLabel.bounds, to: nil)
+        // The red title band is the content column: same edges as the card
+        // under a real section title, not the glyph width of that title.
+        XCTAssertEqual(emptyCard.minX, sectionCard.minX, accuracy: 1)
+        XCTAssertEqual(emptyCard.maxX, sectionCard.maxX, accuracy: 1)
+        XCTAssertEqual(emptyCard.width, sectionCard.width, accuracy: 1)
+        XCTAssertEqual(emptyCard.maxY, sectionCard.maxY, accuracy: 1)
+        XCTAssertEqual(emptyHeading.maxY, sectionHeading.maxY, accuracy: 1)
+        XCTAssertEqual(emptyHeading.height, sectionHeading.height, accuracy: 1)
+        XCTAssertEqual(emptyHeading.minX, sectionHeading.minX, accuracy: 1)
+        XCTAssertGreaterThan(emptyHeading.maxY, emptyCard.maxY)
+    }
+
+    private func firstVisibleSearchSection(in view: NSView) -> SettingsSectionView? {
+        if let section = view as? SettingsSectionView,
+           section.identifier != DashboardPageSearch.emptyStateIdentifier,
+           !section.headingLabel.isHidden,
+           !DashboardSearchVisibility.isCollapsedForSearchLayout(section) {
+            return section
+        }
+        let children = view.subviews + ((view as? NSStackView)?.arrangedSubviews ?? [])
+        for child in children {
+            if let found = firstVisibleSearchSection(in: child) { return found }
+        }
+        return nil
+    }
+
     func testGlobalSearchStartsAtTopAndRefreshKeepsTheScrolledOffset() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
