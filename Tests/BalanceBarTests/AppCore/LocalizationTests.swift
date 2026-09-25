@@ -305,11 +305,19 @@ final class LocalizationTests: XCTestCase {
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilitySource, language: .simplifiedChinese),
-            "数据来源：codex-reset.com"
+            "数据来源"
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilitySource, language: .english),
-            "Data source: codex-reset.com"
+            "Data source"
+        )
+        XCTAssertEqual(
+            tr(
+                .keyCodexBankedResetNearestExpiry,
+                arguments: ["10/5 07:30"],
+                language: .simplifiedChinese
+            ),
+            "最近到期：10/5 07:30"
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetProbability24h, language: .simplifiedChinese),
@@ -334,12 +342,21 @@ final class LocalizationTests: XCTestCase {
                 "\(language.rawValue) title \(title) should not end with a colon"
             )
             let source = tr(.keyCodexBankedResetProbabilitySource, language: language)
-            XCTAssertTrue(
-                source.contains(colon),
-                "\(language.rawValue) source \(source) should use \(colon)"
-            )
-            XCTAssertTrue(source.contains("codex-reset.com"))
+            XCTAssertFalse(source.contains("codex-reset.com"))
+            XCTAssertFalse(source.contains(colon))
             XCTAssertFalse(source.contains("willcodexquotareset.com"))
+            let nearest = tr(
+                .keyCodexBankedResetNearestExpiry,
+                arguments: ["10/5 07:30"],
+                language: language
+            )
+            XCTAssertTrue(nearest.contains("10/5 07:30"))
+            XCTAssertTrue(
+                nearest.contains(colon),
+                "\(language.rawValue) nearest expiry \(nearest) should use \(colon)"
+            )
+            XCTAssertFalse(nearest.hasSuffix("到期"))
+            XCTAssertFalse(nearest.hasSuffix("Expires 10/5 07:30"))
             let hint = tr(
                 .keyCodexBankedResetProbabilityHint,
                 arguments: ["2026-09-13"],
@@ -366,7 +383,7 @@ final class LocalizationTests: XCTestCase {
         let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
         let contentWidth = OpenCodexCardLayout.contentWidth
         XCTAssertEqual(OpenCodexCardLayout.quotaResetPointSize, 13, accuracy: 0.001)
-        XCTAssertEqual(OpenCodexCardLayout.bankedResetForecastLineCount, 2)
+        XCTAssertEqual(OpenCodexCardLayout.bankedResetForecastLineCount, 1)
         XCTAssertEqual(
             OpenCodexCardLayout.bankedResetForecastLineHeight(),
             ceil(subtitleFont.ascender - subtitleFont.descender + 2),

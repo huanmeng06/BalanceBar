@@ -4425,6 +4425,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(probabilityLink.stringValue, tr(.keyCodexBankedResetProbabilitySource))
         XCTAssertFalse(probabilityLink.stringValue.isEmpty)
+        XCTAssertFalse(probabilityLink.stringValue.contains("codex-reset.com"))
+        XCTAssertTrue(probabilityLink.hoverHint.contains("codex-reset.com"))
         XCTAssertNotEqual(probabilityLink.stringValue, tr(.keyCodexBankedResetProbabilityPrefix))
         XCTAssertEqual(
             probabilityLink.hoverHintDelay,
@@ -4454,7 +4456,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 at: 0,
                 effectiveRange: nil
             ) as? NSColor,
-            NSColor.linkColor
+            NSColor.secondaryLabelColor
         )
         XCTAssertFalse(
             allControls(of: overview, as: HoverLinkTextField.self).contains {
@@ -4540,7 +4542,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(separator.frame.minX, percent24.frame.maxX, accuracy: 0.001)
         XCTAssertEqual(separator.frame.maxX, prefix48.frame.minX, accuracy: 0.001)
         XCTAssertGreaterThan(probabilityLink.frame.minY, percent24.frame.maxY)
-        XCTAssertGreaterThan(large24.frame.minY, probabilityLink.frame.maxY)
+        XCTAssertLessThan(large24.frame.minY, probabilityLink.frame.minY)
+        XCTAssertGreaterThan(large24.frame.maxY, probabilityLink.frame.maxY)
         let resetTitle = try XCTUnwrap(
             allControls(of: overview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == tr(.keyCodexBankedResetTitle)
@@ -4553,6 +4556,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertGreaterThan(percent24.frame.minY, resetTitle.frame.maxY)
         XCTAssertGreaterThan(resetTitle.frame.minY, firstChrome.frame.maxY)
+        XCTAssertLessThan(probabilityLink.frame.maxY, probabilityTitle.frame.minY)
+        let nearestExpiry = try XCTUnwrap(
+            allControls(of: overview, as: AccountMarqueeView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.nearestExpiry"
+            }
+        )
+        let expectedNearest = try XCTUnwrap(
+            CodexBankedResetFormatting.nearestExpiryText(cards: bankedReset.cards)
+        )
+        XCTAssertEqual(nearestExpiry.accountLabel.stringValue, expectedNearest)
+        XCTAssertNotEqual(expectedNearest, bankedReset.cards[0].expiresText)
+        XCTAssertFalse(expectedNearest.hasSuffix("到期"))
+        XCTAssertEqual(nearestExpiry.accountLabel.textColor, NSColor.secondaryLabelColor)
+        XCTAssertLessThan(nearestExpiry.frame.maxY, resetTitle.frame.minY)
+        XCTAssertGreaterThan(nearestExpiry.frame.minY, firstChrome.frame.maxY)
         let probabilityMetrics = try XCTUnwrap(frames.bankedResetForecastMetrics)
         let cardSummary = try XCTUnwrap(frames.bankedResetSummaryRow)
         XCTAssertEqual(
@@ -4844,7 +4862,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
         XCTAssertGreaterThan(probabilityLink.frame.minY, percent24.frame.maxY)
-        XCTAssertGreaterThan(large24.frame.minY, probabilityLink.frame.maxY)
+        XCTAssertLessThan(large24.frame.minY, probabilityLink.frame.minY)
+        XCTAssertGreaterThan(large24.frame.maxY, probabilityLink.frame.maxY)
+        XCTAssertFalse(probabilityLink.stringValue.contains("codex-reset.com"))
+        XCTAssertTrue(probabilityLink.hoverHint.contains("codex-reset.com"))
         let probabilityTitle = try XCTUnwrap(
             allControls(of: overview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == tr(.keyCodexBankedResetProbabilityPrefix)
@@ -4856,6 +4877,30 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         XCTAssertGreaterThan(percent24.frame.minY, resetTitle.frame.maxY)
+        XCTAssertLessThan(probabilityLink.frame.maxY, probabilityTitle.frame.minY)
+        let nearestExpiry = try XCTUnwrap(
+            allControls(of: overview, as: AccountMarqueeView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.nearestExpiry"
+            }
+        )
+        let expectedNearest = try XCTUnwrap(
+            CodexBankedResetFormatting.nearestExpiryText(cards: bankedReset.cards)
+        )
+        XCTAssertEqual(nearestExpiry.accountLabel.stringValue, expectedNearest)
+        XCTAssertEqual(
+            expectedNearest,
+            tr(
+                .keyCodexBankedResetNearestExpiry,
+                arguments: [
+                    OfficialQuotaResetFormatter.bankedResetString(
+                        for: earlier,
+                        relativeTo: date
+                    ) ?? ""
+                ]
+            )
+        )
+        XCTAssertNotEqual(expectedNearest, bankedReset.cards[0].expiresText)
+        XCTAssertLessThan(nearestExpiry.frame.maxY, resetTitle.frame.minY)
         assertBankedResetProbabilityLeadingAligned(
             in: overview,
             title: probabilityTitle,
@@ -5035,6 +5080,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
             XCTAssertGreaterThan(sourceLink.frame.minY, percent24.frame.maxY)
+            XCTAssertFalse(sourceLink.stringValue.contains("codex-reset.com"))
+            XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"))
             let probabilityTitle = try XCTUnwrap(
                 allControls(of: overview, as: AccountMarqueeView.self).first {
                     $0.accountLabel.stringValue == tr(
@@ -5049,6 +5096,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 sourceLink: sourceLink,
                 prefix24: prefix24
             )
+            XCTAssertLessThan(sourceLink.frame.maxY, probabilityTitle.frame.minY)
             XCTAssertLessThanOrEqual(
                 AccountMarqueeView.textWidth(
                     of: tr(.keyCodexBankedResetProbabilitySource, language: language),
@@ -5203,6 +5251,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 name
             )
             XCTAssertEqual(source.stringValue, tr(.keyCodexBankedResetProbabilitySource), name)
+            XCTAssertFalse(source.stringValue.contains("codex-reset.com"), name)
+            XCTAssertTrue(source.hoverHint.contains("codex-reset.com"), name)
             XCTAssertEqual(
                 source.hoverHint,
                 StatusItemController.codexResetForecastHint(for: forecast),
@@ -5517,6 +5567,30 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 "count field for \(mode)"
             )
             XCTAssertEqual(countField.stringValue, "0", "count 0 for \(mode)")
+            let resetTitle = try XCTUnwrap(
+                allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.accountLabel.stringValue == tr(.keyCodexBankedResetTitle)
+                },
+                "reset title for \(mode)"
+            )
+            let countView = try XCTUnwrap(
+                allControls(of: overview, as: OverviewNumericTextView.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.count"
+                },
+                "count view for \(mode)"
+            )
+            XCTAssertEqual(
+                resetTitle.frame.midY,
+                overview.convert(countView.frame, from: countView.superview).midY,
+                accuracy: 1,
+                "collapsed reset subtitle for \(mode)"
+            )
+            XCTAssertFalse(
+                overview.subviews.contains {
+                    $0.identifier?.rawValue == "codex.bankedReset.nearestExpiry"
+                },
+                "no nearest expiry for \(mode)"
+            )
             XCTAssertFalse(
                 overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" },
                 "no tickets for \(mode)"
@@ -5915,7 +5989,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 at: 0,
                 effectiveRange: nil
             ) as? NSColor,
-            NSColor.linkColor,
+            NSColor.secondaryLabelColor,
             file: file,
             line: line
         )

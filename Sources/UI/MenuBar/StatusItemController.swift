@@ -5698,6 +5698,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let officialQuotaWindows = quotaPresentation.windows
         let lunaReserve = quotaPresentation.lunaReserve
         let bankedReset = quotaPresentation.bankedReset
+        let nearestExpiryText = bankedReset.flatMap {
+            CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards)
+        }
         let subscription = menuInput.openAIAccount?.subscription
         let subscriptionTextWidth = subscription.map {
             AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
@@ -5719,7 +5722,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && snapshot.kind == .official
                 && bankedReset != nil,
             bankedResetCardCount: bankedReset?.cards.count ?? 0,
-            bankedResetDisplayMode: menuInput.bankedResetDisplayMode
+            bankedResetDisplayMode: menuInput.bankedResetDisplayMode,
+            includesBankedResetNearestExpiry: nearestExpiryText != nil
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.wantsLayer = true
@@ -5920,6 +5924,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             )
                         )
                     )
+                    if let nearestExpiryText, summaryRow.reset.width > 0 {
+                        let nearest = makeMarqueeOverviewLabel(
+                            nearestExpiryText,
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                                weight: .regular
+                            ),
+                            textColor: .secondaryLabelColor,
+                            frame: overviewMarqueeFrame(
+                                summaryRow.reset,
+                                avoidingAmountFrame: amount.frame,
+                                amountText: plan.layoutReservationText
+                            )
+                        )
+                        nearest.identifier = NSUserInterfaceItemIdentifier(
+                            "codex.bankedReset.nearestExpiry"
+                        )
+                        view.addSubview(nearest)
+                    }
                 }
 
                 if !isCompactBankedReset {
@@ -6343,10 +6366,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             )
         )
-        if let sourceFrame = layout.bankedResetForecastSource {
+        if row.reset.width > 0 {
             addBankedResetProbabilitySourceLink(
                 to: view,
-                frame: sourceFrame,
+                frame: overviewMarqueeFrame(
+                    row.reset,
+                    avoidingAmountFrame: amount.frame,
+                    amountText: marqueeAmountText,
+                    amountFont: amountFont
+                ),
                 forecast: forecast
             )
         }
@@ -6365,9 +6393,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         frame: NSRect,
         forecast: CodexResetForecast
     ) {
-        let titleFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let titleFont = NSFont.systemFont(
+            ofSize: OpenCodexCardLayout.quotaResetPointSize,
+            weight: .regular
+        )
         let titleText = tr(.keyCodexBankedResetProbabilitySource)
         let title = HoverLinkTextField(text: titleText)
+        title.restingTextColor = .secondaryLabelColor
         title.font = titleFont
         title.lineBreakMode = .byClipping
         title.usesSingleLineMode = true
@@ -6384,7 +6416,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             x: frame.minX,
             y: frame.minY,
             width: titleWidth,
-            height: max(title.frame.height, frame.height)
+            height: frame.height
         )
         // NSTextField cells can draw glyphs inset of the view frame. Shift
         // the link so its visible text shares the probability title's leading

@@ -448,12 +448,13 @@
 "codex.banked_reset.full_reset_title" = "Redefinição completa";
 "codex.banked_reset.full_reset_window" = "Cota semanal + 5 horas";
 "codex.banked_reset.expires_value" = "Expira em %1$@";
+"codex.banked_reset.nearest_expiry" = "Validade mais próxima: %1$@";
 "codex.banked_reset.remaining_hours" = "%1$@ horas";
 "codex.banked_reset.remaining_days" = "%1$@ dias";
 "codex.banked_reset.remaining_days_hours" = "%1$@ d %2$@ h";
 "codex.banked_reset.remaining_minutes" = "%1$@ minutos";
 "codex.banked_reset.probability_prefix" = "Probabilidade de reset";
-"codex.banked_reset.probability_source" = "Fonte dos dados: codex-reset.com";
+"codex.banked_reset.probability_source" = "Fonte dos dados";
 "codex.banked_reset.probability_hint" = "Previsão de um reset global extra nas próximas 24 e 48 horas. Fonte dos dados: codex-reset.com. Fonte atualizada em %1$@. Esta é uma previsão de terceiros de um reset global extra, não o horário de reset garantido da cota semanal desta conta, e não garante um cartão de reset. A confiança é uma categoria do modelo, não uma promessa de precisão.";
 "codex.banked_reset.probability_24h" = "Em 24 h";
 "codex.banked_reset.probability_48h" = "Em 48 h";
