@@ -386,6 +386,26 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(emptyState(in: stack)?.isHidden != false)
     }
 
+    func testDataRefreshKeepsTheExistingSearchProjectionUntilRematch() {
+        let matching = SettingsRowView(title: "Target")
+        let unmatched = SettingsRowView(title: "Other")
+        let section = SettingsSectionView(title: "Settings", contentViews: [matching, unmatched])
+        let root = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertTrue(filter.apply(query: "Target", to: root, pageTitle: "Settings", mode: .titles))
+        XCTAssertFalse(isCollapsedForSearch(matching))
+        XCTAssertTrue(isCollapsedForSearch(unmatched))
+
+        filter.prepareForDataRefresh()
+        XCTAssertFalse(isCollapsedForSearch(matching))
+        XCTAssertTrue(isCollapsedForSearch(unmatched))
+
+        filter.markSearchStructureChanged()
+        XCTAssertFalse(isCollapsedForSearch(matching))
+        XCTAssertTrue(isCollapsedForSearch(unmatched))
+    }
+
     func testSettingsSearchIncludesSubtitlesOptionsAndOnlyLanguageIsCrossLanguage() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

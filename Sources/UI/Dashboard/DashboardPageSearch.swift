@@ -602,12 +602,18 @@ final class DashboardPageSearchFilter {
     }
 
     func prepareForDataRefresh() {
-        restoreSearchHiddens()
+        // Refreshing the search data must not clear the visible projection.
+        // The old match set remains on screen until the replacement match set
+        // is ready; restoring every search-hidden view here creates a visible
+        // unfiltered frame during dashboard refreshes.
         invalidateSearchIndex()
     }
 
     func markSearchStructureChanged() {
-        restoreSearchHiddens()
+        // New global-search groups can be attached while an older query is
+        // already projected. Keep that projection mounted while rebuilding
+        // the index; query clearing and root teardown are the paths that
+        // intentionally restore search-hidden views.
         invalidateSearchIndex()
         needsInitialProjectionLayout = true
     }
