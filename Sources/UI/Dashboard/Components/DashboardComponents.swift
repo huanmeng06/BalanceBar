@@ -435,8 +435,7 @@ class HoverLinkTextField: NSTextField {
             refreshNativeTooltip()
         }
     }
-    /// Most links draw in the system link color. A menu subtitle can stay
-    /// secondary while remaining clickable.
+    /// Drawn color. Defaults to the system link color; hover underlines it.
     var restingTextColor: NSColor = .linkColor {
         didSet {
             guard !isApplyingStyle else { return }

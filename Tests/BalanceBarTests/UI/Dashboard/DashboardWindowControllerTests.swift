@@ -4450,13 +4450,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 font: probabilityLink.font ?? .systemFont(ofSize: 12, weight: .medium)
             ) + 4
         )
+        XCTAssertEqual(probabilityLink.restingTextColor, NSColor.linkColor)
         XCTAssertEqual(
             probabilityLink.attributedStringValue.attribute(
                 .foregroundColor,
                 at: 0,
                 effectiveRange: nil
             ) as? NSColor,
-            NSColor.secondaryLabelColor
+            NSColor.linkColor
+        )
+        XCTAssertNil(
+            probabilityLink.attributedStringValue.attribute(
+                .underlineStyle,
+                at: 0,
+                effectiveRange: nil
+            )
         )
         XCTAssertFalse(
             allControls(of: overview, as: HoverLinkTextField.self).contains {
@@ -4799,7 +4807,50 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.bankedReset.probability"
             }
         )
+        XCTAssertEqual(probabilityLink.stringValue, "数据来源")
         XCTAssertEqual(probabilityLink.stringValue, tr(.keyCodexBankedResetProbabilitySource))
+        XCTAssertEqual(probabilityLink.restingTextColor, NSColor.linkColor)
+        XCTAssertEqual(
+            probabilityLink.attributedStringValue.attribute(
+                .foregroundColor,
+                at: 0,
+                effectiveRange: nil
+            ) as? NSColor,
+            NSColor.linkColor
+        )
+        XCTAssertNil(
+            probabilityLink.attributedStringValue.attribute(
+                .underlineStyle,
+                at: 0,
+                effectiveRange: nil
+            )
+        )
+        let sourceHost = try XCTUnwrap(overview as? MenuHoverLinkHostView)
+        let sourceHit = probabilityLink.visibleTextHitRect
+        XCTAssertFalse(sourceHit.isEmpty)
+        sourceHost.forwardHover(
+            atHostPoint: sourceHost.convert(
+                NSPoint(x: sourceHit.midX, y: sourceHit.midY),
+                from: probabilityLink
+            )
+        )
+        XCTAssertNotNil(
+            probabilityLink.attributedStringValue.attribute(
+                .underlineStyle,
+                at: 0,
+                effectiveRange: nil
+            )
+        )
+        sourceHost.forwardHover(
+            atHostPoint: NSPoint(x: sourceHost.bounds.maxX - 1, y: sourceHost.bounds.midY)
+        )
+        XCTAssertNil(
+            probabilityLink.attributedStringValue.attribute(
+                .underlineStyle,
+                at: 0,
+                effectiveRange: nil
+            )
+        )
         XCTAssertEqual(
             probabilityLink.hoverHintDelay,
             OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay,
@@ -5983,15 +6034,29 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             line: line
         )
         XCTAssertFalse(sourceLink.stringValue.isEmpty, file: file, line: line)
+        XCTAssertFalse(sourceLink.stringValue.contains("codex-reset.com"), file: file, line: line)
+        XCTAssertFalse(sourceLink.stringValue.contains("https://"), file: file, line: line)
+        XCTAssertEqual(sourceLink.restingTextColor, NSColor.linkColor, file: file, line: line)
         XCTAssertEqual(
             sourceLink.attributedStringValue.attribute(
                 .foregroundColor,
                 at: 0,
                 effectiveRange: nil
             ) as? NSColor,
-            NSColor.secondaryLabelColor,
+            NSColor.linkColor,
             file: file,
             line: line
         )
+        XCTAssertNil(
+            sourceLink.attributedStringValue.attribute(
+                .underlineStyle,
+                at: 0,
+                effectiveRange: nil
+            ),
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"), file: file, line: line)
+        XCTAssertFalse(sourceLink.hoverHint.contains("https://"), file: file, line: line)
     }
 }

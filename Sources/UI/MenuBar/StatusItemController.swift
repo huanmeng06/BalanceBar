@@ -6399,7 +6399,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let titleText = tr(.keyCodexBankedResetProbabilitySource)
         let title = HoverLinkTextField(text: titleText)
-        title.restingTextColor = .secondaryLabelColor
         title.font = titleFont
         title.lineBreakMode = .byClipping
         title.usesSingleLineMode = true
