@@ -920,6 +920,14 @@ final class DashboardCompositionController {
         let ranked = DashboardSettingsSearchCatalog.rankedSections(query: query)
         let orderedSettingsSections = DashboardSection.allCases.filter { $0 != .about }
         var candidateSections = ranked.map(\.section).filter { $0 != .about }
+        if state.statusLinks().contains(where: { link in
+            DashboardPageSearch.bestMatch(texts: [link.title, link.url], query: query) != nil
+        }), !candidateSections.contains(.menu) {
+            // Status Links are runtime data rather than localization catalog
+            // entries. Keep Menu in the candidate set when a fresh process
+            // loads a persisted link after the Settings catalog is built.
+            candidateSections.append(.menu)
+        }
         if !candidateSections.contains(section) {
             candidateSections.append(section)
         }

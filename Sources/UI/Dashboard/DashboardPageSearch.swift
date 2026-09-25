@@ -986,6 +986,9 @@ final class DashboardPageSearchFilter {
             // corpus except for the dedicated language row.
             supportingValues.append(contentsOf: visibleCopy(in: row))
         }
+        if containsStatusLinksEditor(in: row) {
+            supportingValues.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
+        }
         if isLanguagePreferenceRow(row) {
             supportingValues.append(contentsOf: DashboardSettingsSearchCatalog.languageSearchTitles())
         }
@@ -1084,6 +1087,9 @@ final class DashboardPageSearchFilter {
                 documentIDByView[ObjectIdentifier(row)] = rowID
                 let title = rowTitle(of: row)
                 var supportingTexts = ([sectionHeading(section)].compactMap { $0 } + copy)
+                if containsStatusLinksEditor(in: row) {
+                    supportingTexts.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
+                }
                 if isLanguagePreferenceRow(row) {
                     supportingTexts.append(contentsOf: DashboardSettingsSearchCatalog.languageSearchTitles())
                 }

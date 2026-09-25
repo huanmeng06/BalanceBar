@@ -542,11 +542,58 @@ final class DashboardPageSearchTests: XCTestCase {
         )
     }
 
-    func testFreshDynamicStatusLinkQuerySelectsMenuSection() {
-        let sections = DashboardSettingsSearchCatalog.rankedSections(query: "tibo")
-            .map(\.section)
+    func testFreshDynamicStatusLinkQuerySelectsMenuSection() throws {
+        let defaults = UserDefaults.standard
+        let previousData = defaults.data(forKey: "statusLinks")
+        let previousStatusMenu = defaults.object(forKey: "showStatusMenu")
+        defer {
+            if let previousData {
+                defaults.set(previousData, forKey: "statusLinks")
+            } else {
+                defaults.removeObject(forKey: "statusLinks")
+            }
+            if let previousStatusMenu {
+                defaults.set(previousStatusMenu, forKey: "showStatusMenu")
+            } else {
+                defaults.removeObject(forKey: "showStatusMenu")
+            }
+        }
+        defaults.set(
+            try JSONEncoder().encode([
+                StatusLink(title: "Tibo", url: "https://tibo.example"),
+                StatusLink(title: "Codex", url: "https://codex.example")
+            ]),
+            forKey: "statusLinks"
+        )
+        defaults.set(true, forKey: "showStatusMenu")
 
-        XCTAssertFalse(sections.contains(.menu))
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-dynamic-status-links.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+
+        func statusLinksEditor(in root: NSView) -> StatusLinksEditorHostingView? {
+            if let editor = root as? StatusLinksEditorHostingView { return editor }
+            for child in root.subviews {
+                if let editor = statusLinksEditor(in: child) { return editor }
+            }
+            return nil
+        }
+
+        for query in ["Tibo", "Codex"] {
+            composition.applySearchQueryForTesting(query)
+            let root = composition.currentHostedPageContentForTesting()
+            let editor = statusLinksEditor(in: root)
+            XCTAssertTrue(
+                editor?.isHidden == false,
+                "\(query): editorVisible=\(editor?.isHidden == false), materialized=\(DashboardPageSearchDiagnostics.globalSearchPagesMaterializedCount)"
+            )
+        }
     }
 
     func testSearchMatcherDoesNotCombineKeywordsAcrossRows() {
