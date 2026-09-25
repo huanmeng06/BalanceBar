@@ -677,7 +677,6 @@ final class DashboardPageSearchFilter {
             hideAboutContentIfPresent(in: root)
         } else {
             restoreAboutContent(in: root)
-            revealFirstMatch(in: root)
         }
         root.needsLayout = true
         refreshSearchSectionHeights(in: root)
@@ -1520,24 +1519,4 @@ final class DashboardPageSearchFilter {
         return view.subviews.flatMap { aboutContent(in: $0) }
     }
 
-    private func revealFirstMatch(in root: NSView) {
-        guard let match = firstVisibleMatch(in: root) else { return }
-        match.scrollToVisible(match.bounds)
-    }
-
-    private func firstVisibleMatch(in view: NSView) -> NSView? {
-        if view.identifier == DashboardPageSearch.emptyStateIdentifier
-            || DashboardSearchVisibility.isCollapsedForSearchLayout(view) {
-            return nil
-        }
-        if DashboardPageSearch.isSearchableRow(view) {
-            return view
-        }
-        for child in view.subviews {
-            if let found = firstVisibleMatch(in: child) {
-                return found
-            }
-        }
-        return nil
-    }
 }

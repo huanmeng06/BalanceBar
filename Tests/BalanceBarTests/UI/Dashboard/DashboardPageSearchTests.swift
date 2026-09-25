@@ -406,6 +406,81 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(isCollapsedForSearch(unmatched))
     }
 
+    func testGlobalSearchStartsAtTopAndRefreshKeepsTheScrolledOffset() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-search-scroll-refresh.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 420))
+
+        composition.applySearchQueryForTesting("状态")
+        window.layoutIfNeeded()
+        let page = try XCTUnwrap(composition.scrollablePageForTesting)
+        XCTAssertEqual(
+            page.scrollOffset,
+            0,
+            accuracy: 1,
+            "the first global search starts at offset 0"
+        )
+
+        assertSearchRefreshPreservesScroll("refreshMenuPage", on: page, window: window) {
+            composition.refreshMenuPage()
+        }
+        assertSearchRefreshPreservesScroll("refreshMenuBarPage", on: page, window: window) {
+            composition.refreshMenuBarPage(snapshot: .placeholder)
+        }
+        assertSearchRefreshPreservesScroll("refreshMountedPage", on: page, window: window) {
+            composition.refreshMountedPage(snapshot: .placeholder, refreshDate: nil, revision: 1)
+        }
+
+        page.restoreScrollOffset(250)
+        window.layoutIfNeeded()
+        XCTAssertGreaterThan(page.scrollOffset, 100)
+        composition.applySearchQueryForTesting("语言")
+        window.layoutIfNeeded()
+        XCTAssertEqual(
+            page.scrollOffset,
+            0,
+            accuracy: 1,
+            "changing the query starts at the top"
+        )
+    }
+
+    private func assertSearchRefreshPreservesScroll(
+        _ label: String,
+        on page: DashboardScrollablePageViewController,
+        window: NSWindow,
+        refresh: () -> Void
+    ) {
+        page.restoreScrollOffset(250)
+        window.layoutIfNeeded()
+        let offsetBeforeRefresh = page.scrollOffset
+        let documentHeight = page.scrollViewForTesting.documentView?.frame.height ?? 0
+        XCTAssertEqual(
+            offsetBeforeRefresh,
+            250,
+            accuracy: 2,
+            "\(label) needs a scrolled search document; offset=\(offsetBeforeRefresh), documentHeight=\(documentHeight)"
+        )
+
+        refresh()
+        window.layoutIfNeeded()
+        XCTAssertEqual(
+            page.scrollOffset,
+            offsetBeforeRefresh,
+            accuracy: 2,
+            "\(label) must keep the user's scroll offset while rematching the same query"
+        )
+    }
+
     func testSettingsSearchIncludesSubtitlesOptionsAndOnlyLanguageIsCrossLanguage() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

@@ -211,6 +211,12 @@ final class DashboardCompositionController {
     private var lastAppliedSearchQuery: String?
     private var lastAppliedSearchRevision: UInt64 = 0
     private weak var lastAppliedSearchRoot: NSView?
+    /// Query whose scroll offset was captured before a same-query data refresh.
+    /// A new query must not reuse it.
+    private var pendingSearchScrollPreserve: (query: String, offset: CGFloat)?
+    /// Last query that finished projecting. Survives data invalidation so a
+    /// repeat apply of that query does not reset scroll.
+    private var lastSettledSearchQuery: String?
     private var synchronousSearchForTesting = false
     private lazy var pageSession = DashboardPageSession(
         actions: DashboardWindowControllerActions(
@@ -669,6 +675,19 @@ final class DashboardCompositionController {
     }
 
     private func invalidateSearchData() {
+        let activeQuery = pageSession.toolbarController.searchQuery
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if activeQuery.isEmpty {
+            pendingSearchScrollPreserve = nil
+        } else {
+            // Capture before refresh mutates the mounted pages. The rematch
+            // below must put this offset back instead of scrolling to the
+            // first match.
+            pendingSearchScrollPreserve = (
+                query: activeQuery,
+                offset: pageSession.pageScrollOffsetY()
+            )
+        }
         searchDataRevision &+= 1
         pendingSearchMatchWorkItem?.cancel()
         pendingSearchMatchWorkItem = nil
@@ -765,6 +784,8 @@ final class DashboardCompositionController {
     ) {
         pendingSearchMatchWorkItem?.cancel()
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pendingSearchScrollPreserve = nil
+            lastSettledSearchQuery = nil
             _ = pageSearchFilter.apply(
                 query: query,
                 to: root,
@@ -776,6 +797,9 @@ final class DashboardCompositionController {
             lastAppliedSearchRoot = root
             return
         }
+        // Decide scroll before matching. `nil` means this apply must not move
+        // the scroll view at all.
+        let scrollTarget = searchScrollTarget(for: query)
         let documents = pageSearchFilter.searchDocuments(for: root, mode: mode)
         let queryRevision = searchDataRevision
         let queryGeneration = dashboardSearchGeneration
@@ -790,6 +814,8 @@ final class DashboardCompositionController {
                 mode: mode,
                 matchedDocumentIDs: Set(matches.map(\.documentID))
             )
+            settleSearchScroll(to: scrollTarget)
+            lastSettledSearchQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
             lastAppliedSearchQuery = query
             lastAppliedSearchRevision = queryRevision
             lastAppliedSearchRoot = root
@@ -822,6 +848,8 @@ final class DashboardCompositionController {
                     mode: mode,
                     matchedDocumentIDs: matchedDocumentIDs
                 )
+                self.settleSearchScroll(to: scrollTarget)
+                self.lastSettledSearchQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
                 self.lastAppliedSearchQuery = query
                 self.lastAppliedSearchRevision = queryRevision
                 self.lastAppliedSearchRoot = currentRoot
@@ -830,6 +858,31 @@ final class DashboardCompositionController {
         cancellationState.workItem = workItem
         pendingSearchMatchWorkItem = workItem
         DispatchQueue.global(qos: .userInitiated).async(execute: workItem)
+    }
+
+    /// Search filtering only hides and restores rows. Scroll policy lives here:
+    /// the first query and a changed query start at offset 0 after layout;
+    /// a same-query refresh returns the offset captured before that refresh.
+    /// A repeat apply of the query already on screen returns nil.
+    private func searchScrollTarget(for query: String) -> CGFloat? {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preserve = pendingSearchScrollPreserve
+        pendingSearchScrollPreserve = nil
+        if let preserve, preserve.query == needle {
+            return preserve.offset
+        }
+        if lastSettledSearchQuery == needle {
+            return nil
+        }
+        return 0
+    }
+
+    private func settleSearchScroll(to target: CGFloat?) {
+        guard let target else { return }
+        window?.layoutIfNeeded()
+        contentHost.layoutSubtreeIfNeeded()
+        guard abs(pageSession.pageScrollOffsetY() - target) > 1 else { return }
+        pageSession.restorePageScrollOffsetY(target)
     }
 
     private func showGlobalSettingsSearchPage(initialQuery: String? = nil) {
@@ -848,6 +901,8 @@ final class DashboardCompositionController {
             globalSearchOriginSection = nil
         }
         pageSearchFilter.resetSearchState()
+        pendingSearchScrollPreserve = nil
+        lastSettledSearchQuery = nil
         lastAppliedSearchQuery = nil
         lastAppliedSearchRoot = nil
         globalSettingsSearchContent = nil
@@ -896,6 +951,8 @@ final class DashboardCompositionController {
         globalSearchGroupsBySection.removeAll()
         globalSearchOriginContent = nil
         globalSearchOriginSection = nil
+        pendingSearchScrollPreserve = nil
+        lastSettledSearchQuery = nil
         lastAppliedSearchQuery = nil
         lastAppliedSearchRoot = nil
         if let origin, originSection == section {
