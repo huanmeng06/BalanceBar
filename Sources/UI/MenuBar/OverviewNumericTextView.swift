@@ -98,11 +98,41 @@ private final class OverviewNumericTextModel: ObservableObject {
     }
 }
 
+enum OverviewNumericVerticalAlignment: Equatable {
+    /// Vertically center glyphs inside the numeric frame. This is the
+    /// historical SwiftUI placement used by quota, Reserve, and banked reset.
+    case center
+    /// Pin glyphs to the top of the numeric frame. Used when that frame's top
+    /// already lines up with a shorter AppKit detail row.
+    case top
+}
+
+enum OverviewNumericContentAlignment: Equatable {
+    case leading
+    case trailing
+    case topLeading
+    case topTrailing
+
+    fileprivate var swiftUI: Alignment {
+        switch self {
+        case .leading:
+            return .leading
+        case .trailing:
+            return .trailing
+        case .topLeading:
+            return .topLeading
+        case .topTrailing:
+            return .topTrailing
+        }
+    }
+}
+
 private struct OverviewNumericTextRoot: View {
     @ObservedObject var model: OverviewNumericTextModel
     let font: NSFont
     let color: NSColor
     var alignment: NSTextAlignment = .right
+    var contentAlignment: OverviewNumericContentAlignment = .trailing
 
     var body: some View {
         HStack(spacing: 0) {
@@ -123,7 +153,7 @@ private struct OverviewNumericTextRoot: View {
         .frame(
             maxWidth: .infinity,
             maxHeight: .infinity,
-            alignment: alignment == .left || alignment == .natural ? .leading : .trailing
+            alignment: contentAlignment.swiftUI
         )
         .geometryGroup()
         .compositingGroup()
@@ -145,6 +175,8 @@ private struct OverviewNumericTextRoot: View {
 
 final class OverviewNumericTextView: NSView {
     let textField: NSTextField
+    let verticalAlignment: OverviewNumericVerticalAlignment
+    private let contentAlignment: OverviewNumericContentAlignment
     private let model: OverviewNumericTextModel
     private let hostingView: NSHostingView<OverviewNumericTextRoot>
     private(set) var currentValue: Double
@@ -157,15 +189,43 @@ final class OverviewNumericTextView: NSView {
     var isDigitRollingForTesting: Bool { isDigitRolling }
     var isHostingVisibleForTesting: Bool { !hostingView.isHidden }
     var hostingClipsToBoundsForTesting: Bool { hostingView.clipsToBounds }
+    var contentAlignmentForTesting: OverviewNumericContentAlignment { contentAlignment }
+    var hostsFullBoundsForTesting: Bool {
+        hostingView.frame == bounds && textField.frame == bounds
+    }
+
+    static func contentAlignment(
+        horizontal: NSTextAlignment,
+        vertical: OverviewNumericVerticalAlignment
+    ) -> OverviewNumericContentAlignment {
+        let leading = horizontal == .left || horizontal == .natural
+        switch (leading, vertical) {
+        case (true, .center):
+            return .leading
+        case (false, .center):
+            return .trailing
+        case (true, .top):
+            return .topLeading
+        case (false, .top):
+            return .topTrailing
+        }
+    }
 
     init(
         text: String,
         font: NSFont,
         value: Double,
         textColor: NSColor = .labelColor,
-        alignment: NSTextAlignment = .right
+        alignment: NSTextAlignment = .right,
+        verticalAlignment: OverviewNumericVerticalAlignment = .center
     ) {
         currentValue = value
+        self.verticalAlignment = verticalAlignment
+        let contentAlignment = Self.contentAlignment(
+            horizontal: alignment,
+            vertical: verticalAlignment
+        )
+        self.contentAlignment = contentAlignment
         textField = NSTextField(labelWithString: text)
         textField.font = font
         textField.textColor = textColor
@@ -181,7 +241,8 @@ final class OverviewNumericTextView: NSView {
                 model: model,
                 font: font,
                 color: textColor,
-                alignment: alignment
+                alignment: alignment,
+                contentAlignment: contentAlignment
             )
         )
         super.init(frame: .zero)

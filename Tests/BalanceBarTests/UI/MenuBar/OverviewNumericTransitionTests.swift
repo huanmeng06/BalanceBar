@@ -355,6 +355,71 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(view.textField.stringValue, "¥1.50")
         XCTAssertEqual(plan.format.displayParts.prefix, "¥")
         XCTAssertEqual(plan.format.displayParts.fractionLength, 2)
+        XCTAssertEqual(view.verticalAlignment, .center)
+        XCTAssertEqual(view.contentAlignmentForTesting, .trailing)
+    }
+
+    func testNumericFrameAlignmentContractPinsOnlyTopVerticalAlignment() {
+        XCTAssertEqual(
+            OverviewNumericTextView.contentAlignment(horizontal: .right, vertical: .center),
+            .trailing
+        )
+        XCTAssertEqual(
+            OverviewNumericTextView.contentAlignment(horizontal: .right, vertical: .top),
+            .topTrailing
+        )
+        XCTAssertEqual(
+            OverviewNumericTextView.contentAlignment(horizontal: .left, vertical: .center),
+            .leading
+        )
+        XCTAssertEqual(
+            OverviewNumericTextView.contentAlignment(horizontal: .left, vertical: .top),
+            .topLeading
+        )
+        XCTAssertEqual(
+            OverviewNumericTextView.contentAlignment(horizontal: .natural, vertical: .center),
+            .leading
+        )
+        XCTAssertEqual(
+            OverviewNumericTextView.contentAlignment(horizontal: .center, vertical: .top),
+            .topTrailing
+        )
+    }
+
+    func testTopAlignedCurrencyKeepsItsFrameWhileDigitsRoll() {
+        let previous = balanceSample(amount: 1.70, progress: 40)
+        let current = balanceSample(amount: 1.50, progress: 30)
+        let plan = OverviewNumericTransition.plan(
+            previous: previous,
+            current: current,
+            reduceMotion: false
+        )
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+        let view = OverviewNumericTextView(
+            text: plan.startText,
+            font: font,
+            value: plan.startValue,
+            verticalAlignment: .top
+        )
+        let amountFrame = OpenCodexCardLayout.frames(for: .balance, linkPrefixWidth: 62).amount
+        view.frame = amountFrame
+        view.layoutSubtreeIfNeeded()
+        view.configure(plan: plan, sample: current)
+
+        XCTAssertEqual(view.frame, amountFrame)
+        XCTAssertEqual(view.verticalAlignment, .top)
+        XCTAssertEqual(view.contentAlignmentForTesting, .topTrailing)
+        XCTAssertTrue(view.hostsFullBoundsForTesting)
+        XCTAssertTrue(view.hasPendingAnimationForTesting)
+
+        view.playPendingIfNeeded()
+
+        XCTAssertEqual(view.frame, amountFrame)
+        XCTAssertEqual(view.verticalAlignment, .top)
+        XCTAssertEqual(view.contentAlignmentForTesting, .topTrailing)
+        XCTAssertTrue(view.hostsFullBoundsForTesting)
+        XCTAssertTrue(view.isDigitRollingForTesting)
+        XCTAssertFalse(view.hasPendingAnimationForTesting)
     }
 
     private var fiveHour: OverviewNumericIdentity {
@@ -609,6 +674,127 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertEqual(amountTexts(in: overview), ["84%", "45%"])
         XCTAssertTrue(progressValues(in: overview).isEmpty)
+    }
+
+    func testBalanceAmountIsTopAlignedWhileOtherNumericCardsStayCentered() throws {
+        let previousOverride = LunaReserveUserFacing.testOverride
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = previousOverride }
+
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let balanceController = makeController()
+        defer { balanceController.teardown() }
+        balanceController.start(
+            snapshot: Snapshot.balance("Provider", 1.02, "USD", nil, date, progressPercentage: 40),
+            refreshDate: date,
+            menuInput: makeMenuInput(activeClient: .grok),
+            settings: makeSettings()
+        )
+        let balanceOverview = try XCTUnwrap(balanceController.menuItemsForTesting.first?.view)
+        let balanceAmounts = amountViews(in: balanceOverview)
+        XCTAssertEqual(balanceAmounts.count, 1)
+        let balanceAmount = try XCTUnwrap(balanceAmounts.first)
+        let balanceLayout = OpenCodexCardLayout.frames(
+            for: .balance,
+            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
+        )
+        XCTAssertEqual(balanceAmount.frame, balanceLayout.amount)
+        XCTAssertEqual(balanceLayout.amount, CGRect(x: 149, y: 18, width: 141, height: 48))
+        XCTAssertEqual(balanceAmount.verticalAlignment, .top)
+        XCTAssertEqual(balanceAmount.contentAlignmentForTesting, .topTrailing)
+
+        let officialController = makeController()
+        defer { officialController.teardown() }
+        officialController.start(
+            snapshot: Snapshot.official(
+                "OpenAI Official",
+                45,
+                "7 day",
+                "2d",
+                date,
+                windows: [
+                    OfficialQuotaWindow(
+                        kind: .fiveHour,
+                        remaining: 84,
+                        label: "5 hour",
+                        daysText: "5h",
+                        reset: "1h",
+                        durationSeconds: 18_000
+                    ),
+                    OfficialQuotaWindow(
+                        kind: .sevenDay,
+                        remaining: 45,
+                        label: "7 day",
+                        daysText: "7d",
+                        reset: "2d",
+                        durationSeconds: 604_800
+                    )
+                ],
+                lunaReserve: LunaReserveQuota(
+                    status: .available,
+                    remaining: 80,
+                    reset: "1h"
+                ),
+                bankedReset: CodexBankedReset(cards: [
+                    CodexBankedResetCard(
+                        id: "card",
+                        resetType: "codex_rate_limits",
+                        titleText: "Full reset",
+                        expiresAt: date.addingTimeInterval(86_400),
+                        expiresText: "later"
+                    )
+                ]),
+                resetForecast: .demo(updatedAt: date)
+            ),
+            refreshDate: date,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+        let officialOverview = try XCTUnwrap(officialController.menuItemsForTesting.first?.view)
+        assertCentered(
+            .officialWindow(provider: "OpenAI Official", kind: .fiveHour),
+            horizontal: .trailing,
+            in: officialOverview
+        )
+        assertCentered(
+            .officialWindow(provider: "OpenAI Official", kind: .sevenDay),
+            horizontal: .trailing,
+            in: officialOverview
+        )
+        assertCentered(
+            .lunaReserve(provider: "OpenAI Official"),
+            horizontal: .trailing,
+            in: officialOverview
+        )
+        assertCentered(
+            .bankedResetCount(provider: "OpenAI Official"),
+            horizontal: .trailing,
+            in: officialOverview
+        )
+        assertCentered(
+            .bankedResetProbability24h(provider: "OpenAI Official"),
+            horizontal: .leading,
+            in: officialOverview
+        )
+        assertCentered(
+            .bankedResetProbability48h(provider: "OpenAI Official"),
+            horizontal: .leading,
+            in: officialOverview
+        )
+    }
+
+    private func assertCentered(
+        _ identity: OverviewNumericIdentity,
+        horizontal: OverviewNumericContentAlignment,
+        in overview: NSView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let identifier = OverviewNumericPresentation.amountIdentifier(for: identity)
+        let view = amountViews(in: overview).first { $0.identifier == identifier }
+        XCTAssertNotNil(view, "missing numeric view \(identifier.rawValue)", file: file, line: line)
+        XCTAssertEqual(view?.verticalAlignment, .center, file: file, line: line)
+        XCTAssertEqual(view?.contentAlignmentForTesting, horizontal, file: file, line: line)
     }
 
     private var fiveHour: OverviewNumericIdentity {

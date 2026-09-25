@@ -6093,7 +6093,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         )
                     )
                 }
-                amount = makeOverviewNumericAmount(plan: plan, sample: sample, frame: layout.amount)
+                // The balance amount frame is already top-aligned with the
+                // shorter detail row. Pin the SwiftUI glyphs to that top edge
+                // instead of centering them in the tall amount box.
+                amount = makeOverviewNumericAmount(
+                    plan: plan,
+                    sample: sample,
+                    frame: layout.amount,
+                    verticalAlignment: .top
+                )
                 marqueeAmountText = plan.layoutReservationText
             } else {
                 if settings.showQuotaProgressBar,
@@ -6547,7 +6555,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeOverviewNumericAmount(
         plan: OverviewNumericTransitionPlan,
         sample: OverviewNumericSample,
-        frame: NSRect
+        frame: NSRect,
+        verticalAlignment: OverviewNumericVerticalAlignment = .center
     ) -> OverviewNumericTextView {
         let font = NSFont.monospacedDigitSystemFont(
             ofSize: OpenCodexCardLayout.quotaAmountPointSize,
@@ -6556,7 +6565,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let view = OverviewNumericTextView(
             text: plan.startText,
             font: font,
-            value: plan.startValue
+            value: plan.startValue,
+            verticalAlignment: verticalAlignment
         )
         view.frame = frame
         view.identifier = OverviewNumericPresentation.amountIdentifier(for: sample.identity)
