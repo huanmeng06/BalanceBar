@@ -1,4 +1,5 @@
 import AppKit
+import SQLite3
 import XCTest
 @testable import BalanceBar
 
@@ -929,6 +930,108 @@ final class DashboardPageSearchTests: XCTestCase {
             layoutsAfterFirstQuery,
             "steady-state query changes must leave layout to the normal display cycle"
         )
+
+        composition.refreshMenuPage()
+        XCTAssertEqual(
+            DashboardPageSearchDiagnostics.synchronousLayoutCount,
+            layoutsAfterFirstQuery,
+            "same-query refresh must not synchronously lay out the window to keep the scroll offset"
+        )
+    }
+
+    func testRuntimeSearchCorpusSelectsSectionsHiddenFromTheStaticCatalog() throws {
+        let provider = "MyPrivateProviderXYZ"
+        let current = try XCTUnwrap(AppSemanticVersion("1.0.0"))
+        let latest = try XCTUnwrap(AppSemanticVersion("9.8.7"))
+        let texts = DashboardSettingsSearchRuntime.textsBySection(
+            currentProviderName: provider,
+            updateState: .available(current: current, latest: latest),
+            balanceDisplayThreshold: 37.42,
+            statusLinks: [
+                StatusLink(title: "TiboPrivate", url: "https://tibo.private.example")
+            ],
+            menuBarIconOffsetY: 7.3,
+            menuBarAmountOffsetY: 0,
+            menuBarWidthAdjustment: 0,
+            animationMode: .efficient,
+            animationFrameRate: 24,
+            menuBarPreviewPrimary: "PreviewSentinelXYZ",
+            menuBarPreviewSecondary: ""
+        )
+        let cases: [(String, DashboardSection)] = [
+            (provider, .general),
+            ("9.8.7", .general),
+            ("37.42", .menu),
+            ("TiboPrivate", .menu),
+            ("tibo.private.example", .menu),
+            ("7.3", .menuBar),
+            ("PreviewSentinelXYZ", .menuBar)
+        ]
+        for (query, section) in cases {
+            XCTAssertFalse(
+                DashboardSettingsSearchCatalog.matchingSections(query: query).contains(section),
+                "static catalog must not know \(query)"
+            )
+            XCTAssertTrue(
+                DashboardSettingsSearchCatalog.matchingSections(
+                    query: query,
+                    runtimeTexts: texts
+                ).contains(section),
+                query
+            )
+        }
+    }
+
+    func testRuntimeSettingsCopyMatchesFromEveryStartingSection() throws {
+        let defaults = UserDefaults.standard
+        let previousThreshold = defaults.object(forKey: AppPreferences.balanceDisplayThresholdKey)
+        let previousIconOffset = defaults.object(forKey: AppPreferences.menuBarIconOffsetYKey)
+        defer {
+            if let previousThreshold {
+                defaults.set(previousThreshold, forKey: AppPreferences.balanceDisplayThresholdKey)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.balanceDisplayThresholdKey)
+            }
+            if let previousIconOffset {
+                defaults.set(previousIconOffset, forKey: AppPreferences.menuBarIconOffsetYKey)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.menuBarIconOffsetYKey)
+            }
+        }
+        defaults.set(37.42, forKey: AppPreferences.balanceDisplayThresholdKey)
+        defaults.set(7.3, forKey: AppPreferences.menuBarIconOffsetYKey)
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("issue-457-runtime-search-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("cc-switch.db")
+        try createProviderFixture(
+            at: databaseURL,
+            name: "MyPrivateProviderXYZ",
+            appType: AssistantClient.codex.appType
+        )
+        let repository = CCSwitchRepository(databaseURL: databaseURL)
+
+        func rows(startingAt section: DashboardSection, query: String) throws -> [String] {
+            let appDelegate = AppDelegate(repository: repository)
+            let composition = appDelegate.dashboardCompositionForTesting
+            defer { composition.teardownForTesting() }
+            let window = try XCTUnwrap(composition.makeWindowForTesting(showing: section))
+            window.setContentSize(NSSize(width: 1000, height: 700))
+            composition.applySearchQueryForTesting(query)
+            window.layoutIfNeeded()
+            return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
+        }
+
+        for query in ["MyPrivateProviderXYZ", "37.42", "7.3"] {
+            let generalRows = try rows(startingAt: .general, query: query)
+            XCTAssertFalse(generalRows.isEmpty, query)
+            for startingSection in [DashboardSection.menuBar, .menu, .advanced] {
+                let startRows = try rows(startingAt: startingSection, query: query)
+                XCTAssertEqual(startRows, generalRows, "query: \(query), section: \(startingSection)")
+            }
+        }
     }
 
     func testGlobalSearchAdvancedProjectionDoesNotCreateLogViewer() throws {
@@ -2522,6 +2625,38 @@ private func visibleSearchableRowTitles(in root: NSView) -> [String] {
         return titles
     }
     return visibleRows(in: root).sorted()
+}
+
+private func createProviderFixture(at databaseURL: URL, name: String, appType: String) throws {
+    var database: OpaquePointer?
+    let openCode = sqlite3_open(databaseURL.path, &database)
+    guard openCode == SQLITE_OK, let database else {
+        throw NSError(domain: "BalanceBarTests", code: Int(openCode))
+    }
+    defer { sqlite3_close(database) }
+    let sql = """
+    CREATE TABLE providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        app_type TEXT NOT NULL,
+        is_current INTEGER NOT NULL,
+        sort_index INTEGER,
+        created_at INTEGER NOT NULL
+    );
+    INSERT INTO providers (id, name, app_type, is_current, sort_index, created_at)
+    VALUES ('runtime-provider', '\(name)', '\(appType)', 1, 0, 0);
+    """
+    var errorMessage: UnsafeMutablePointer<CChar>?
+    let execCode = sqlite3_exec(database, sql, nil, nil, &errorMessage)
+    if execCode != SQLITE_OK {
+        let message = errorMessage.map { String(cString: $0) } ?? "sqlite exec failed"
+        sqlite3_free(errorMessage)
+        throw NSError(
+            domain: "BalanceBarTests",
+            code: Int(execCode),
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
+    }
 }
 
 private func sectionHeadingToCardGap(in section: SettingsSectionView) -> CGFloat {

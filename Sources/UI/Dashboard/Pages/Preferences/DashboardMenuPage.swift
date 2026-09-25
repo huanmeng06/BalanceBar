@@ -1023,7 +1023,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         return normalized >= AppPreferences.minimumBalanceDisplayThreshold ? normalized : nil
     }
 
-    private static func formattedBalanceDisplayThreshold(_ value: Double) -> String {
+    static func formattedBalanceDisplayThreshold(_ value: Double) -> String {
         String(format: "%.2f", value)
     }
 }

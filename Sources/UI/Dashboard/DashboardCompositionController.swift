@@ -861,7 +861,7 @@ final class DashboardCompositionController {
     }
 
     /// Search filtering only hides and restores rows. Scroll policy lives here:
-    /// the first query and a changed query start at offset 0 after layout;
+    /// the first query and a changed query start at offset 0;
     /// a same-query refresh returns the offset captured before that refresh.
     /// A repeat apply of the query already on screen returns nil.
     private func searchScrollTarget(for query: String) -> CGFloat? {
@@ -878,11 +878,17 @@ final class DashboardCompositionController {
     }
 
     private func settleSearchScroll(to target: CGFloat?) {
-        guard let target else { return }
-        window?.layoutIfNeeded()
-        contentHost.layoutSubtreeIfNeeded()
-        guard abs(pageSession.pageScrollOffsetY() - target) > 1 else { return }
-        pageSession.restorePageScrollOffsetY(target)
+        guard let target else {
+            pageSession.cancelScheduledPageScrollRestoration()
+            return
+        }
+        // Compare before layout. A matching offset, including steady-state
+        // typing that is already at the top, must not force a window layout.
+        guard abs(pageSession.pageScrollOffsetY() - target) > 1 else {
+            pageSession.cancelScheduledPageScrollRestoration()
+            return
+        }
+        pageSession.schedulePageScrollRestoration(target)
     }
 
     private func showGlobalSettingsSearchPage(initialQuery: String? = nil) {
@@ -968,23 +974,43 @@ final class DashboardCompositionController {
         return content
     }
 
+    private func settingsSearchRuntimeTexts() -> [DashboardSection: [String]] {
+        let preferences = state.preferences
+        let presentation = DashboardMenuBarPage.presentation(
+            for: state.snapshot(),
+            showAmount: preferences.showMenuBarAmount,
+            showReset: preferences.showMenuBarReset,
+            quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
+            lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
+            resolving: state.menuBarSnapshot
+        )
+        return DashboardSettingsSearchRuntime.textsBySection(
+            currentProviderName: state.currentProviderName(),
+            updateState: state.updateState(),
+            balanceDisplayThreshold: preferences.balanceDisplayThreshold,
+            statusLinks: state.statusLinks(),
+            menuBarIconOffsetY: preferences.menuBarIconOffsetY,
+            menuBarAmountOffsetY: preferences.menuBarAmountOffsetY,
+            menuBarWidthAdjustment: preferences.menuBarStatusItemWidthAdjustment,
+            animationMode: preferences.menuBarAnimationMode,
+            animationFrameRate: preferences.menuBarAnimationFrameRate,
+            menuBarPreviewPrimary: presentation.primary,
+            menuBarPreviewSecondary: presentation.secondary
+        )
+    }
+
     private func addGlobalSettingsSearchPages(matching query: String) {
         guard let searchContent = globalSettingsSearchContent,
               let resultStack = searchContent as? DashboardGlobalSearchResultsView else { return }
         // Materialize only catalog/runtime candidates for this query. Every
         // candidate uses the same real-row projection so changing query
         // length never changes the representation of an existing result.
-        let ranked = DashboardSettingsSearchCatalog.rankedSections(query: query)
+        let ranked = DashboardSettingsSearchCatalog.rankedSections(
+            query: query,
+            runtimeTexts: settingsSearchRuntimeTexts()
+        )
         let orderedSettingsSections = DashboardSection.allCases.filter { $0 != .about }
         var candidateSections = ranked.map(\.section).filter { $0 != .about }
-        if state.statusLinks().contains(where: { link in
-            DashboardPageSearch.bestMatch(texts: [link.title, link.url], query: query) != nil
-        }), !candidateSections.contains(.menu) {
-            // Status Links are runtime data rather than localization catalog
-            // entries. Keep Menu in the candidate set when a fresh process
-            // loads a persisted link after the Settings catalog is built.
-            candidateSections.append(.menu)
-        }
         if !candidateSections.contains(section) {
             candidateSections.append(section)
         }

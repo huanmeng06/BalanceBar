@@ -177,6 +177,14 @@ final class DashboardPageSession {
         scrollablePage?.restoreScrollOffset(offset)
     }
 
+    func schedulePageScrollRestoration(_ offset: CGFloat) {
+        scrollablePage?.scheduleVisualOffsetRestoration(offset)
+    }
+
+    func cancelScheduledPageScrollRestoration() {
+        scrollablePage?.cancelScheduledVisualOffsetRestoration()
+    }
+
     func restoreCurrentPageScrollToTop() {
         scrollablePage?.restoreScrollOffset(0)
     }

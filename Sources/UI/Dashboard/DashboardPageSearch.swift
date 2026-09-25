@@ -374,17 +374,21 @@ enum DashboardSettingsSearchCatalog {
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    static func matchingSections(query: String) -> [DashboardSection] {
-        rankedSections(query: query).map(\.section)
+    static func matchingSections(
+        query: String,
+        runtimeTexts: [DashboardSection: [String]] = [:]
+    ) -> [DashboardSection] {
+        rankedSections(query: query, runtimeTexts: runtimeTexts).map(\.section)
     }
 
     static func rankedSections(
-        query: String
+        query: String,
+        runtimeTexts: [DashboardSection: [String]] = [:]
     ) -> [(section: DashboardSection, match: DashboardPageSearch.Match)] {
         var scored: [(section: DashboardSection, match: DashboardPageSearch.Match)] = []
         for section in DashboardSection.allCases {
             let match = DashboardPageSearch.bestMatch(
-                texts: titles(for: section),
+                texts: titles(for: section) + (runtimeTexts[section] ?? []),
                 query: query
             )
             if let match {
@@ -524,9 +528,64 @@ enum DashboardSettingsSearchCatalog {
     }
 }
 
+/// Dynamic settings copy the live row matcher can see. Candidate selection
+/// must use this same set: a string that only exists after a page is built
+/// would otherwise be found from the starting section and missed from every
+/// other section.
+enum DashboardSettingsSearchRuntime {
+    static func textsBySection(
+        currentProviderName: String,
+        updateState: UpdateCheckState,
+        balanceDisplayThreshold: Double,
+        statusLinks: [StatusLink],
+        menuBarIconOffsetY: Double,
+        menuBarAmountOffsetY: Double,
+        menuBarWidthAdjustment: Double,
+        animationMode: MenuBarAnimationMode,
+        animationFrameRate: Int,
+        menuBarPreviewPrimary: String,
+        menuBarPreviewSecondary: String
+    ) -> [DashboardSection: [String]] {
+        let update = DashboardUpdatePresentation.make(for: updateState)
+        let frameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
+        return [
+            .general: nonempty([
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesCurrentProviderValue,
+                    arguments: [currentProviderName]
+                ),
+                update.subtitle,
+                update.buttonTitle
+            ]),
+            .menuBar: nonempty([
+                menuBarPreviewPrimary,
+                menuBarPreviewSecondary,
+                DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: menuBarIconOffsetY).text,
+                DashboardMenuBarLayoutSection.amountOffsetSummarySubtitle(y: menuBarAmountOffsetY).text,
+                DashboardMenuBarLayoutSection.widthAdjustmentSummarySubtitle(menuBarWidthAdjustment).text,
+                String(frameRate),
+                DashboardMenuBarPage.animationFrameRateSubtitle(
+                    mode: animationMode,
+                    fps: frameRate
+                )
+            ]),
+            .menu: nonempty(
+                [DashboardMenuPage.formattedBalanceDisplayThreshold(balanceDisplayThreshold)]
+                    + statusLinks.flatMap { [$0.title, $0.url] }
+            )
+        ]
+    }
+
+    private static func nonempty(_ values: [String]) -> [String] {
+        values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+}
+
 /// Deterministic counters used by search regression tests. They describe
 /// structural work, rather than timing, so CI can enforce the steady-state
 /// query contract without relying on a machine-specific performance budget.
+/// Search scroll correction must not call `layoutIfNeeded` itself. This
+/// counter only moves for the first projection pass inside the filter.
 enum DashboardPageSearchDiagnostics {
     static var searchIndexBuildCount = 0
     static var synchronousLayoutCount = 0
