@@ -191,14 +191,21 @@ enum DashboardPageSearch {
         bestMatch(texts: [text], query: query) != nil
     }
 
+    /// Localization source used by search. Word joiners exist only in the
+    /// AppKit layout string and must not participate in matching.
+    static func semanticSearchText(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{2060}", with: "")
+    }
+
     static func bestMatch(
         texts: [String],
         supportingTexts: [String] = [],
         query: String
     ) -> Match? {
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let needle = semanticSearchText(query)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return nil }
-        let values = texts + supportingTexts
+        let values = (texts + supportingTexts).map(semanticSearchText)
         guard values.contains(where: { $0.localizedStandardContains(needle) }) else {
             return nil
         }
@@ -693,15 +700,10 @@ enum DashboardSettingsSearchRuntime {
         values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    /// Semantic subtitle text, plus the line-broken form the label shows.
-    /// Word joiners are layout-only and are not part of the searchable text.
+    /// Candidate copy for a subtitle. This is the localization source the
+    /// mounted row indexes, without AppKit layout tokens.
     private static func searchableSubtitleTexts(_ subtitle: LocalizedSubtitle) -> [String] {
-        let laidOut = DashboardSettingsComponents.subtitleDisplayText(
-            subtitle,
-            constrainedTo: 10_000,
-            font: .systemFont(ofSize: 12)
-        ).replacingOccurrences(of: "\u{2060}", with: "")
-        return [subtitle.text, laidOut]
+        [DashboardPageSearch.semanticSearchText(subtitle.text)]
     }
 }
 
@@ -1434,7 +1436,8 @@ final class DashboardPageSearchFilter {
         }
         var values: [String] = []
         if let field = view as? NSTextField {
-            let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = DashboardPageSearch.semanticSearchText(searchableString(from: field))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty {
                 values.append(text)
             }
@@ -1459,6 +1462,13 @@ final class DashboardPageSearchFilter {
 
     func visibleCopyForTesting(in view: NSView) -> [String] {
         visibleCopy(in: view)
+    }
+
+    private func searchableString(from field: NSTextField) -> String {
+        if let semantic = field as? SettingsSemanticSubtitleLabel {
+            return semantic.sourceAccessibilityText
+        }
+        return field.stringValue
     }
 
     private func isHiddenSubtree(_ view: NSView) -> Bool {

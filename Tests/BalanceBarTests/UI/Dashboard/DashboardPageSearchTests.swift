@@ -1143,6 +1143,30 @@ final class DashboardPageSearchTests: XCTestCase {
         }
     }
 
+    func testSemanticSubtitleSearchUsesSourceTextWithoutLayoutJoiners() {
+        let subtitle = DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: 7.3)
+        let label = SettingsSemanticSubtitleLabel(
+            frame: NSRect(x: 0, y: 0, width: 1_000, height: 40)
+        )
+        label.setLocalizedSubtitle(subtitle)
+        label.layoutSubtreeIfNeeded()
+        XCTAssertTrue(
+            label.stringValue.contains("\u{2060}"),
+            "layout still inserts word joiners into stringValue"
+        )
+        XCTAssertTrue(label.sourceAccessibilityText.localizedStandardContains("7.3"))
+        XCTAssertFalse(label.sourceAccessibilityText.contains("\u{2060}"))
+
+        let copy = DashboardPageSearchFilter().visibleCopyForTesting(in: label)
+        XCTAssertTrue(
+            copy.contains { $0.localizedStandardContains("7.3") },
+            "search indexes the semantic source, so 7.3 remains a substring"
+        )
+        XCTAssertFalse(copy.contains { $0.contains("\u{2060}") })
+        XCTAssertTrue(DashboardPageSearch.matches(label.sourceAccessibilityText, query: "7.3"))
+        XCTAssertTrue(DashboardPageSearch.matches(label.stringValue, query: "7.3"))
+    }
+
     func testGlobalSearchTypingDoesNotReadProviderDatabase() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("issue-457-search-io-\(UUID().uuidString)", isDirectory: true)
@@ -1154,19 +1178,22 @@ final class DashboardPageSearchTests: XCTestCase {
             name: "MyPrivateProviderXYZ",
             appType: AssistantClient.codex.appType
         )
-        let appDelegate = AppDelegate(repository: CCSwitchRepository(databaseURL: databaseURL))
+        let repository = CCSwitchRepository(databaseURL: databaseURL)
+        let loadChoicesCount = LockedInt()
+        repository.loadChoicesObserver = { loadChoicesCount.increment() }
+        let appDelegate = AppDelegate(repository: repository)
         let composition = appDelegate.dashboardCompositionForTesting
         defer { composition.teardownForTesting() }
         let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
         window.setContentSize(NSSize(width: 1000, height: 700))
         window.layoutIfNeeded()
 
-        CCSwitchRepository.loadChoicesCountForTesting = 0
+        loadChoicesCount.reset()
         for query in ["s", "st", "sta", "stat", "status"] {
             composition.applySearchQueryForTesting(query)
         }
         XCTAssertEqual(
-            CCSwitchRepository.loadChoicesCountForTesting,
+            loadChoicesCount.value,
             0,
             "candidate selection must read the in-memory provider name"
         )
@@ -2893,4 +2920,27 @@ private func firstDescendant(of root: NSView, matching predicate: (NSView) -> Bo
 
 private extension SettingsRowView {
     var enclosingSection: SettingsSectionView? { SettingsSectionView.enclosing(self) }
+}
+
+private final class LockedInt: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func increment() {
+        lock.lock()
+        storage += 1
+        lock.unlock()
+    }
+
+    func reset() {
+        lock.lock()
+        storage = 0
+        lock.unlock()
+    }
 }
