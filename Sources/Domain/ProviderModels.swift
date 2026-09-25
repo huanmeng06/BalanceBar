@@ -201,6 +201,13 @@ struct OpenCodexCardFrames: Equatable {
     let quotaRows: [OpenCodexQuotaRowFrames]
     let lunaReserveRow: OpenCodexQuotaRowFrames?
     let bankedResetSummaryRow: OpenCodexQuotaRowFrames?
+    /// Independent quota-style row for the 24h reset probability. Nil when
+    /// the banked-reset section is hidden. Its amount is the large 24h
+    /// figure; `reset` stays zero because the source line is full width.
+    let bankedResetProbabilityRow: OpenCodexQuotaRowFrames?
+    /// Full-width data-source line under the probability amount.
+    let bankedResetForecastSource: CGRect?
+    /// Full-width 24h + 48h line under the source. No confidence line.
     let bankedResetForecastMetrics: CGRect?
     let bankedResetForecastConfidence: CGRect?
     let bankedResetDetailRows: [OpenCodexQuotaRowFrames]
@@ -290,13 +297,12 @@ enum OpenCodexCardLayout {
     static let bankedResetRemainingWidth: CGFloat = 120
     static let bankedResetChromeInset: CGFloat = 8
     static let bankedResetChromeCornerRadius: CGFloat = 10
-    /// Gap between the probability line and the first ticket chrome.
+    /// Gap between the reset-card summary and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
-    /// Extra compact subtitle rows: 24h+48h on one line, confidence below.
-    /// Height follows the measured 13pt subtitle font, not a hardcoded
-    /// Chinese glyph width or the 17pt quota reset line box. Both forecast
-    /// rows share the title's leading inset; longer locales pack by
-    /// tightening gap/separator instead of shifting left.
+    /// Subtitle rows under the probability amount: data source, then 24h+48h
+    /// on one line. Confidence is not part of the menu block. Height follows
+    /// the measured 13pt subtitle font. Both lines use the title's leading
+    /// inset; longer locales pack the metrics row by tightening gap/separator.
     static let bankedResetForecastLineGap: CGFloat = 2
     static let bankedResetForecastLineCount = 2
     static var bankedResetForecastMetricsWidth: CGFloat {
@@ -403,8 +409,14 @@ enum OpenCodexCardLayout {
         }
     }
 
-    static func bankedResetSummaryHeight() -> CGFloat {
+    /// Title, large 24h number, source line, and 24h+48h line. No progress bar.
+    static func bankedResetProbabilityBlockHeight() -> CGFloat {
         lunaReserveNoProgressRowHeight + bankedResetForecastExtraHeight()
+    }
+
+    /// Reset-card header only. The probability block is a separate row above it.
+    static func bankedResetSummaryHeight() -> CGFloat {
+        lunaReserveNoProgressRowHeight
     }
     /// Detailed ticket list shows at most two full rows plus half of a
     /// third so leftover cards remain obvious. 1–2 cards stay unclipped.
@@ -525,6 +537,8 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
+                bankedResetProbabilityRow: nil,
+                bankedResetForecastSource: nil,
                 bankedResetForecastMetrics: nil,
                 bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
@@ -565,6 +579,8 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
+                bankedResetProbabilityRow: nil,
+                bankedResetForecastSource: nil,
                 bankedResetForecastMetrics: nil,
                 bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
@@ -604,13 +620,17 @@ enum OpenCodexCardLayout {
         let reserveGap = includesLunaReserve && windowCount > 0 ? rowGap : 0
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
-        let bankedSummaryHeight = includesBankedReset
-            ? bankedResetSummaryHeight()
-            : 0
         let forecastExtraHeight = includesBankedReset
             ? bankedResetForecastExtraHeight()
             : 0
         let forecastLineHeight = bankedResetForecastLineHeight()
+        let probabilityBlockHeight = includesBankedReset
+            ? bankedResetProbabilityBlockHeight()
+            : 0
+        let cardSummaryHeight = includesBankedReset
+            ? bankedResetSummaryHeight()
+            : 0
+        let probabilityCardGap = includesBankedReset ? rowGap : 0
         let bankedDetailHeight = bankedResetDetailRowHeight
         let bankedVisibleTicketStackHeight = bankedResetVisibleTicketStackHeight(
             cardCount: bankedDetailCount
@@ -619,7 +639,10 @@ enum OpenCodexCardLayout {
         let bankedDetailBlockHeight = bankedDetailCount > 0
             ? bankedVisibleTicketStackHeight + bankedResetSummaryDetailGap
             : 0
-        let bankedBlockHeight = bankedSummaryHeight + bankedDetailBlockHeight
+        let bankedBlockHeight = probabilityBlockHeight
+            + probabilityCardGap
+            + cardSummaryHeight
+            + bankedDetailBlockHeight
         let bankedLeadingGap = includesBankedReset
             && (windowCount > 0 || includesLunaReserve) ? rowGap : 0
         let quotaLift = bankedBlockHeight + bankedLeadingGap
@@ -737,49 +760,59 @@ enum OpenCodexCardLayout {
                     : .zero
             )
             : nil
-        let bankedSummaryY = bottomInset + bankedDetailBlockHeight
+        let cardSummaryY = bottomInset + bankedDetailBlockHeight
+        let probabilityBottomY = cardSummaryY + cardSummaryHeight + probabilityCardGap
+        let probabilityAmountY = probabilityBottomY + forecastExtraHeight
+        let bankedContentShift = quotaRowHeight - lunaReserveNoProgressRowHeight
+        // The card header stays a compact no-progress row. Do not inherit the
+        // quota-window rowHeight, or hiding window progress bars lifts 重置卡
+        // into the probability block. The probability row is a sibling above
+        // it, with the same gap used between 5-hour and 7-day rows.
         let bankedResetSummaryRow = includesBankedReset
-            ? {
-                // Banked reset is always a compact no-progress row. Do not
-                // inherit the quota-window rowHeight, or hiding window
-                // progress bars lifts 重置卡 into the last window's gap.
-                // Extra forecast lines sit below the original two-line box.
-                let bankedContentShift = quotaRowHeight - lunaReserveNoProgressRowHeight
-                return OpenCodexQuotaRowFrames(
-                    quotaDetail: CGRect(
-                        x: horizontalInset,
-                        y: bankedSummaryY
-                            + forecastExtraHeight
-                            + quotaDetailOffset
-                            - bankedContentShift,
-                        width: 128,
-                        height: quotaDetailHeight
-                    ),
-                    reset: CGRect(
-                        x: horizontalInset,
-                        y: bankedSummaryY
-                            + forecastExtraHeight
-                            + quotaResetOffset
-                            - bankedContentShift,
-                        width: 128,
-                        height: quotaResetHeight
-                    ),
-                    amount: CGRect(
-                        x: amountX,
-                        y: bankedSummaryY
-                            + forecastExtraHeight
-                            + max(0, quotaAmountOffset - bankedContentShift),
-                        width: amountWidth,
-                        height: lunaReserveNoProgressAmountHeight
-                    ),
-                    progress: .zero
-                )
-            }()
+            ? OpenCodexQuotaRowFrames(
+                quotaDetail: CGRect(
+                    x: horizontalInset,
+                    y: cardSummaryY
+                        + quotaDetailOffset
+                        - bankedContentShift,
+                    width: 128,
+                    height: quotaDetailHeight
+                ),
+                reset: .zero,
+                amount: CGRect(
+                    x: amountX,
+                    y: cardSummaryY + max(0, quotaAmountOffset - bankedContentShift),
+                    width: amountWidth,
+                    height: lunaReserveNoProgressAmountHeight
+                ),
+                progress: .zero
+            )
             : nil
-        let bankedResetForecastConfidence = includesBankedReset
+        let bankedResetProbabilityRow = includesBankedReset
+            ? OpenCodexQuotaRowFrames(
+                quotaDetail: CGRect(
+                    x: horizontalInset,
+                    y: probabilityAmountY
+                        + (lunaReserveNoProgressAmountHeight - quotaDetailHeight) / 2,
+                    width: 128,
+                    height: quotaDetailHeight
+                ),
+                reset: .zero,
+                amount: CGRect(
+                    x: amountX,
+                    y: probabilityAmountY,
+                    width: amountWidth,
+                    height: lunaReserveNoProgressAmountHeight
+                ),
+                progress: .zero
+            )
+            : nil
+        let bankedResetForecastSource = includesBankedReset
             ? CGRect(
                 x: horizontalInset,
-                y: bankedSummaryY,
+                y: probabilityAmountY
+                    - bankedResetForecastLineGap
+                    - forecastLineHeight,
                 width: contentWidth,
                 height: forecastLineHeight
             )
@@ -787,7 +820,7 @@ enum OpenCodexCardLayout {
         let bankedResetForecastMetrics = includesBankedReset
             ? CGRect(
                 x: horizontalInset,
-                y: bankedSummaryY + forecastLineHeight + bankedResetForecastLineGap,
+                y: probabilityBottomY,
                 width: bankedResetForecastMetricsWidth,
                 height: forecastLineHeight
             )
@@ -883,8 +916,10 @@ enum OpenCodexCardLayout {
             quotaRows: rows,
             lunaReserveRow: lunaReserveRow,
             bankedResetSummaryRow: bankedResetSummaryRow,
+            bankedResetProbabilityRow: bankedResetProbabilityRow,
+            bankedResetForecastSource: bankedResetForecastSource,
             bankedResetForecastMetrics: bankedResetForecastMetrics,
-            bankedResetForecastConfidence: bankedResetForecastConfidence,
+            bankedResetForecastConfidence: nil,
             bankedResetDetailRows: bankedResetDetailRows,
             bankedResetTicketViewport: bankedDetailCount > 0
                 ? CGRect(
