@@ -548,7 +548,9 @@ enum OpenCodexCardLayout {
                     x: amountX,
                     y: max(0, 18 - progressShift),
                     width: amountWidth,
-                    height: includesQuotaProgress ? 48 : lunaReserveNoProgressAmountHeight
+                    // Keep the 48pt box when the progress slot collapses.
+                    // A 42pt box would leave its top 5pt below the detail row.
+                    height: 48
                 ),
                 progress: includesQuotaProgress
                     ? CGRect(x: horizontalInset, y: 8, width: contentWidth, height: 5)
