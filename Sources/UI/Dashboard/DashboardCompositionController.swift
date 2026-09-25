@@ -1101,6 +1101,9 @@ final class DashboardCompositionController {
         }
         pageSearchFilter.markSearchStructureChanged()
 
+        let empty = resultStack.arrangedSubviews.first {
+            $0.identifier == DashboardPageSearch.emptyStateIdentifier
+        }
         let orderedGroups = resultStack.arrangedSubviews
             .compactMap { $0 as? DashboardGlobalSearchGroupView }
             .sorted { lhs, rhs in
@@ -1109,6 +1112,9 @@ final class DashboardCompositionController {
                 return lhsIndex < rhsIndex
             }
         resultStack.setViews(orderedGroups, in: .top)
+        if let empty {
+            resultStack.addView(empty, in: .top)
+        }
         resultStack.needsLayout = true
     }
 

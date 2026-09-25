@@ -387,6 +387,74 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(emptyState(in: stack)?.isHidden != false)
     }
 
+    func testEmptyStateStaysVisibleAcrossRepeatedUnmatchedQueries() {
+        let language = SettingsRowView(title: "Language")
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([
+            SettingsSectionView(title: "Application", contentViews: [language])
+        ])
+        let filter = DashboardPageSearchFilter()
+
+        XCTAssertFalse(
+            filter.apply(
+                query: "zzznomatch",
+                to: stack,
+                pageTitle: "General",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(try XCTUnwrap(emptyState(in: stack)).isHidden)
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "Language",
+                to: stack,
+                pageTitle: "General",
+                mode: .titles
+            )
+        )
+        XCTAssertTrue(emptyState(in: stack)?.isHidden != false)
+
+        XCTAssertFalse(
+            filter.apply(
+                query: "zzznomatch",
+                to: stack,
+                pageTitle: "General",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(try XCTUnwrap(emptyState(in: stack)).isHidden)
+
+        XCTAssertTrue(
+            filter.apply(
+                query: "",
+                to: stack,
+                pageTitle: "General",
+                mode: .titles
+            )
+        )
+        XCTAssertTrue(emptyState(in: stack)?.isHidden != false)
+
+        XCTAssertFalse(
+            filter.apply(
+                query: "stillnomatch",
+                to: stack,
+                pageTitle: "General",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(try XCTUnwrap(emptyState(in: stack)).isHidden)
+
+        XCTAssertFalse(
+            filter.apply(
+                query: "anothernomatch",
+                to: stack,
+                pageTitle: "General",
+                mode: .titles
+            )
+        )
+        XCTAssertFalse(try XCTUnwrap(emptyState(in: stack)).isHidden)
+    }
+
     func testDataRefreshKeepsTheExistingSearchProjectionUntilRematch() {
         let matching = SettingsRowView(title: "Target")
         let unmatched = SettingsRowView(title: "Other")
@@ -456,6 +524,23 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(emptyHeading.height, sectionHeading.height, accuracy: 1)
         XCTAssertEqual(emptyHeading.minX, sectionHeading.minX, accuracy: 1)
         XCTAssertGreaterThan(emptyHeading.maxY, emptyCard.maxY)
+
+        composition.applySearchQueryForTesting("")
+        window.layoutIfNeeded()
+        composition.applySearchQueryForTesting("zzznomatch")
+        window.layoutIfNeeded()
+        let shownAgain = try XCTUnwrap(
+            emptyState(in: composition.currentHostedPageContentForTesting()) as? SettingsSectionView
+        )
+        XCTAssertFalse(shownAgain.isHidden)
+        XCTAssertGreaterThan(shownAgain.cardView.frame.height, 1)
+        composition.applySearchQueryForTesting("stillnomatch")
+        window.layoutIfNeeded()
+        let stillShown = try XCTUnwrap(
+            emptyState(in: composition.currentHostedPageContentForTesting()) as? SettingsSectionView
+        )
+        XCTAssertFalse(stillShown.isHidden)
+        XCTAssertGreaterThan(stillShown.cardView.frame.height, 1)
     }
 
     private func firstVisibleSearchSection(in view: NSView) -> SettingsSectionView? {
@@ -2749,7 +2834,14 @@ private func emptyState(in root: NSView) -> NSView? {
     if root.identifier == DashboardPageSearch.emptyStateIdentifier {
         return root
     }
-    for child in root.subviews {
+    var children = root.subviews
+    if let stack = root as? NSStackView {
+        children.append(contentsOf: stack.arrangedSubviews)
+    }
+    var visited = Set<ObjectIdentifier>()
+    for child in children {
+        let identity = ObjectIdentifier(child)
+        guard visited.insert(identity).inserted else { continue }
         if let found = emptyState(in: child) {
             return found
         }

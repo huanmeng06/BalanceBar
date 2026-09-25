@@ -30,7 +30,9 @@ enum DashboardSearchVisibility {
         }
         if wasBusinessHidden, !hidden, !isEffectivelyHidden(view) {
             revealSearchHiddenSectionAncestors(of: view)
-            hideSearchEmptyState(from: view)
+            if view.identifier != DashboardPageSearch.emptyStateIdentifier {
+                hideSearchEmptyState(from: view)
+            }
             syncSeparatedRows(around: view)
             DashboardKeyViewLoop.invalidate(view.window)
         }
@@ -99,11 +101,18 @@ enum DashboardSearchVisibility {
 
     private static func hideSearchEmptyState(in view: NSView) {
         if view.identifier == DashboardPageSearch.emptyStateIdentifier {
-            view.isHidden = true
+            withSearchVisibilityMutation {
+                view.isHidden = true
+            }
             return
         }
         for child in view.subviews {
             hideSearchEmptyState(in: child)
+        }
+        if let stack = view as? NSStackView {
+            for arranged in stack.arrangedSubviews {
+                hideSearchEmptyState(in: arranged)
+            }
         }
     }
 
@@ -1643,11 +1652,23 @@ final class DashboardPageSearchFilter {
 
     private func setEmptyStateHidden(_ hidden: Bool, in root: NSView) {
         if hidden {
-            emptyStateView(in: root)?.isHidden = true
+            guard let empty = emptyStateView(in: root) else { return }
+            setEmptyStateVisible(empty, false)
             return
         }
         let empty = emptyStateView(in: root) ?? installEmptyState(in: root)
-        empty.isHidden = false
+        setEmptyStateVisible(empty, true)
+    }
+
+    /// Empty-state visibility is presentational. Writing it through the
+    /// business `isHidden` path marks the card as business-hidden, and the
+    /// next show then hides the card again via `hideSearchEmptyState`.
+    private func setEmptyStateVisible(_ empty: NSView, _ visible: Bool) {
+        DashboardSearchVisibility.setBusinessHidden(empty, false)
+        DashboardSearchVisibility.setSearchHidden(empty, false)
+        DashboardSearchVisibility.withSearchVisibilityMutation {
+            empty.isHidden = !visible
+        }
     }
 
     private func emptyStateView(in root: NSView) -> NSView? {
