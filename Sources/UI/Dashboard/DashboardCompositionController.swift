@@ -652,6 +652,15 @@ final class DashboardCompositionController {
                 scrollOffsetY: Double(self.pageSession.pageScrollOffsetY())
             )
         }
+        dashboardPreferencePages.setSearchRestoreSnapshotProvider { [weak self] in
+            guard let self else {
+                return DashboardRestoreToken(section: .menuBar, scrollOffsetY: 0)
+            }
+            return DashboardRestoreToken(
+                section: .menuBar,
+                scrollOffsetY: Double(self.pageSession.sectionScrollOffsetY(.menuBar))
+            )
+        }
     }
 
     func teardownForTesting() { teardown() }

@@ -119,8 +119,9 @@ final class DashboardPageSearchTests: XCTestCase {
         composition.setPersistRestoreTokenForTesting { persistedTokens.append($0) }
         composition.setRelaunchApplicationForTesting { relaunchCount += 1 }
 
-        let injectedToken = composition.searchMenuBarPageForTesting.restoreSnapshotProvider()
-        XCTAssertEqual(injectedToken.section, .menuBar)
+        composition.restorePageScrollOffsetY(120)
+        let productionOffset = composition.pageScrollOffsetY()
+        XCTAssertGreaterThan(productionOffset, 20)
         composition.searchMenuBarPageForTesting.persistRestoreToken(
             DashboardRestoreToken(section: .menuBar, scrollOffsetY: 42)
         )
@@ -131,6 +132,9 @@ final class DashboardPageSearchTests: XCTestCase {
         composition.applySearchQueryForTesting(tr(.keyDashboardMenuBarPagePreview))
         window.layoutIfNeeded()
         XCTAssertTrue(composition.isSearchProjectionActiveForTesting)
+        let searchToken = composition.searchMenuBarPageForTesting.restoreSnapshotProvider()
+        XCTAssertEqual(searchToken.section, .menuBar)
+        XCTAssertEqual(searchToken.scrollOffsetY, Double(productionOffset), accuracy: 1)
 
         let icon = NSImage(size: NSSize(width: 16, height: 16))
         icon.isTemplate = true

@@ -413,6 +413,9 @@ final class DashboardPreferencePages {
 
     func setRestoreSnapshotProvider(_ provider: @escaping () -> DashboardRestoreToken) {
         menuBarPage.restoreSnapshotProvider = provider
+    }
+
+    func setSearchRestoreSnapshotProvider(_ provider: @escaping () -> DashboardRestoreToken) {
         searchMenuBarPage.restoreSnapshotProvider = provider
     }
 

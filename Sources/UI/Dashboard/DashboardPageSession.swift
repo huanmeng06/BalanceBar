@@ -233,6 +233,10 @@ final class DashboardPageSession {
         scrollablePage?.scrollOffset ?? 0
     }
 
+    func sectionScrollOffsetY(_ section: DashboardSection) -> CGFloat {
+        (cachedSectionPages[section] as? DashboardScrollablePageViewController)?.scrollOffset ?? 0
+    }
+
     func restorePageScrollOffsetY(_ offset: CGFloat) {
         scrollablePage?.restoreScrollOffset(offset)
     }
