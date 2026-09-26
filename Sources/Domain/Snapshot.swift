@@ -403,13 +403,19 @@ struct CodexResetForecast: Equatable {
         return (publishedAt, targetAt)
     }
 
-    /// Elapsed fill from the publish instant toward reset. 0 at publish, 1 at
-    /// reset; remaining time is the unfilled left side.
+    /// Elapsed share of the publish → reset span. 0 at publish, 1 at reset.
     func officialCountdownElapsedFraction(now: Date = Date()) -> Double? {
         guard let span = officialCountdownProgressSpan() else { return nil }
         let duration = span.targetAt.timeIntervalSince(span.publishedAt)
         guard duration > 0 else { return nil }
         return min(1, max(0, now.timeIntervalSince(span.publishedAt) / duration))
+    }
+
+    /// Remaining fill attached to the left (reset) endpoint. 1 at publish, 0 at
+    /// reset; elapsed time is the unfilled right side.
+    func officialCountdownRemainingFraction(now: Date = Date()) -> Double? {
+        guard let elapsed = officialCountdownElapsedFraction(now: now) else { return nil }
+        return min(1, max(0, 1 - elapsed))
     }
 
     func officialHintText(language: AppLanguage = .selected) -> String? {

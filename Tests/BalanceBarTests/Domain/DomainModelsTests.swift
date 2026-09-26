@@ -491,7 +491,17 @@ final class DomainModelsTests: XCTestCase {
             accuracy: 0.0001
         )
         XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: published)),
+            1,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
             try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: date)),
+            0.5,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: date)),
             0.5,
             accuracy: 0.0001
         )
@@ -501,13 +511,28 @@ final class DomainModelsTests: XCTestCase {
             accuracy: 0.0001
         )
         XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: resetAt)),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
             try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: resetAt.addingTimeInterval(30))),
             1,
             accuracy: 0.0001
         )
         XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: resetAt.addingTimeInterval(30))),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
             try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: published.addingTimeInterval(-30))),
             0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: published.addingTimeInterval(-30))),
+            1,
             accuracy: 0.0001
         )
         let inverted = CodexResetForecast(
@@ -523,6 +548,7 @@ final class DomainModelsTests: XCTestCase {
             )
         )
         XCTAssertNil(inverted.officialCountdownElapsedFraction(now: date))
+        XCTAssertNil(inverted.officialCountdownRemainingFraction(now: date))
         XCTAssertEqual(
             inverted.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 具体时间点"

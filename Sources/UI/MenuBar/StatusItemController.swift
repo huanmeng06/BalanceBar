@@ -6482,13 +6482,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     forecast: forecast,
                     provider: provider
                 )
-            } else if let elapsed = forecast.officialCountdownElapsedFraction(
+            } else if let remaining = forecast.officialCountdownRemainingFraction(
                 now: bankedResetCountdownNow()
             ) {
                 addBankedResetOfficialCountdownProgress(
                     to: view,
                     frame: metricsFrame,
-                    elapsedFraction: elapsed
+                    remainingFraction: remaining
                 )
             } else if let hint = forecast.officialHintText() {
                 addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint)
@@ -6499,7 +6499,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func addBankedResetOfficialCountdownProgress(
         to view: MenuHoverLinkHostView,
         frame: NSRect,
-        elapsedFraction: Double
+        remainingFraction: Double
     ) {
         let height = OpenCodexCardLayout.quotaProgressHeight
         let barFrame = NSRect(
@@ -6509,9 +6509,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             height: height
         )
         let progress = QuotaProgressView(
-            percentage: elapsedFraction * 100,
+            percentage: remainingFraction * 100,
             colorConfiguration: settings.quotaProgressColorConfiguration,
-            fillOrigin: .trailing
+            fillOrigin: .leading
         )
         progress.frame = barFrame
         progress.identifier = NSUserInterfaceItemIdentifier(
@@ -6894,10 +6894,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
         ).resetForecast
-        guard let elapsed = forecast.officialCountdownElapsedFraction(
+        guard let remaining = forecast.officialCountdownRemainingFraction(
             now: bankedResetCountdownNow()
         ) else { return }
-        progress.setPercentage(elapsed * 100, animated: false)
+        progress.setPercentage(remaining * 100, animated: false)
     }
 
     private func overviewNumericTextViews(in view: NSView) -> [OverviewNumericTextView] {

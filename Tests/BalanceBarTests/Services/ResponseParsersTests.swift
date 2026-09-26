@@ -910,6 +910,7 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(noWindow.officialSignal?.publishedAt, future)
         XCTAssertEqual(noWindow.remainingCountdownSeconds(now: now), nil)
         XCTAssertNil(noWindow.officialCountdownProgressSpan())
+        XCTAssertNil(noWindow.officialCountdownRemainingFraction(now: now))
         XCTAssertEqual(
             noWindow.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 暂无具体时间点"
@@ -944,8 +945,18 @@ final class ResponseParsersTests: XCTestCase {
             accuracy: 0.0001
         )
         XCTAssertEqual(
+            try XCTUnwrap(isoWindow.officialCountdownRemainingFraction(now: past)),
+            1,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
             try XCTUnwrap(isoWindow.officialCountdownElapsedFraction(now: future)),
             1,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(isoWindow.officialCountdownRemainingFraction(now: future)),
+            0,
             accuracy: 0.0001
         )
         XCTAssertEqual(isoWindow.remainingCountdownMinutes(now: now), 61)
@@ -961,6 +972,7 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(unixWindow.remainingCountdownSeconds(now: now), 3_665)
         XCTAssertNil(unixWindow.officialSignal?.publishedAt)
         XCTAssertNil(unixWindow.officialCountdownProgressSpan())
+        XCTAssertNil(unixWindow.officialCountdownRemainingFraction(now: now))
         XCTAssertEqual(
             unixWindow.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 具体时间点"

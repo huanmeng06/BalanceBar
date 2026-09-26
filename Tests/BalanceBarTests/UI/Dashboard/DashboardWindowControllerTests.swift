@@ -5781,7 +5781,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNil(controller.bankedResetCountdownTimerForTesting)
     }
 
-    func testOfficialCodexMenuProbabilityBlockShowsRightOriginCountdownProgressBar() throws {
+    func testOfficialCodexMenuProbabilityBlockShowsLeadingRemainingCountdownProgressBar() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -5901,9 +5901,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(progressViews.count, 1)
         let bar = try XCTUnwrap(progressViews.first)
         XCTAssertEqual(bar.identifier?.rawValue, "codex.bankedReset.officialCountdownProgress")
-        XCTAssertEqual(bar.fillOrigin, .trailing)
-        let expectedElapsed = 3_600.0 / (3_600.0 + 3_665.0) * 100
-        XCTAssertEqual(bar.percentage, expectedElapsed, accuracy: 0.001)
+        XCTAssertEqual(bar.fillOrigin, .leading)
+        let expectedRemaining = 3_665.0 / (3_600.0 + 3_665.0) * 100
+        XCTAssertEqual(bar.percentage, expectedRemaining, accuracy: 0.001)
         let metrics = try XCTUnwrap(
             OpenCodexCardLayout.frames(
                 for: .quota,
@@ -5931,8 +5931,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(1)
         controller.bankedResetCountdownTimerForTesting?.fire()
         XCTAssertEqual(countdown.textField.stringValue, "1h1m")
-        let elapsedAfterTick = 3_601.0 / (3_600.0 + 3_665.0) * 100
-        XCTAssertEqual(bar.percentage, elapsedAfterTick, accuracy: 0.001)
+        let remainingAfterTick = 3_664.0 / (3_600.0 + 3_665.0) * 100
+        XCTAssertEqual(bar.percentage, remainingAfterTick, accuracy: 0.001)
         controller.menuDidClose(controller.statusMenuForTesting)
     }
 
