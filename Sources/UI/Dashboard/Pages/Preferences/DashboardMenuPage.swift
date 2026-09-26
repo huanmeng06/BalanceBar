@@ -89,11 +89,14 @@ private final class QuotaColorSelectionStack: NSStackView, SettingsRowAccessoryL
 }
 
 /// Dedicated Auto Layout row for a wide custom control that must sit below the
-/// title, detail, and trailing action instead of beside them.
+/// title, detail, and trailing action instead of beside them. The header uses
+/// the same 62 pt standard-row content band and centerY relationship as
+/// SettingsRowView; only the custom control extends the row below it.
 private final class MenuDedicatedControlRow: NSView {
     let titleLabel: NSTextField
     let detailLabel: NSTextField
     private let labelsStack = NSStackView()
+    private let headerBand = NSView()
     private let trailingControl: NSView?
     private let control: NSView
 
@@ -172,7 +175,11 @@ private final class MenuDedicatedControlRow: NSView {
             labelsStack.addArrangedSubview(detailLabel)
         }
 
-        addSubview(labelsStack)
+        headerBand.translatesAutoresizingMaskIntoConstraints = false
+        headerBand.setContentHuggingPriority(.required, for: .vertical)
+        headerBand.setContentCompressionResistancePriority(.required, for: .vertical)
+        addSubview(headerBand)
+        headerBand.addSubview(labelsStack)
         control.translatesAutoresizingMaskIntoConstraints = false
         control.setContentHuggingPriority(.defaultLow, for: .horizontal)
         control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -181,13 +188,27 @@ private final class MenuDedicatedControlRow: NSView {
         addSubview(control)
 
         var constraints: [NSLayoutConstraint] = [
-            labelsStack.leadingAnchor.constraint(
+            headerBand.leadingAnchor.constraint(
                 equalTo: leadingAnchor,
                 constant: SettingsRowView.horizontalPadding
             ),
-            labelsStack.topAnchor.constraint(
+            headerBand.trailingAnchor.constraint(
+                equalTo: trailingAnchor,
+                constant: -SettingsRowView.horizontalPadding
+            ),
+            headerBand.topAnchor.constraint(
                 equalTo: topAnchor,
                 constant: SettingsRowView.verticalPadding
+            ),
+            headerBand.heightAnchor.constraint(
+                greaterThanOrEqualToConstant: SettingsRowView.minimumHeight
+                    - SettingsRowView.verticalPadding * 2
+            ),
+            labelsStack.centerYAnchor.constraint(equalTo: headerBand.centerYAnchor),
+            labelsStack.leadingAnchor.constraint(equalTo: headerBand.leadingAnchor),
+            headerBand.heightAnchor.constraint(greaterThanOrEqualTo: labelsStack.heightAnchor),
+            labelsStack.bottomAnchor.constraint(
+                lessThanOrEqualTo: headerBand.bottomAnchor
             ),
             control.leadingAnchor.constraint(
                 equalTo: leadingAnchor,
@@ -198,7 +219,7 @@ private final class MenuDedicatedControlRow: NSView {
                 constant: -SettingsRowView.horizontalPadding
             ),
             control.topAnchor.constraint(
-                greaterThanOrEqualTo: labelsStack.bottomAnchor,
+                greaterThanOrEqualTo: headerBand.bottomAnchor,
                 constant: DashboardSettingsComponents.settingsRowContentControlSpacing
             ),
             control.bottomAnchor.constraint(
@@ -218,25 +239,18 @@ private final class MenuDedicatedControlRow: NSView {
                     equalTo: trailingControl.leadingAnchor,
                     constant: -SettingsRowView.contentSpacing
                 ),
+                labelsStack.topAnchor.constraint(
+                    greaterThanOrEqualTo: headerBand.topAnchor
+                ),
                 trailingControl.trailingAnchor.constraint(
-                    equalTo: trailingAnchor,
-                    constant: -SettingsRowView.horizontalPadding
+                    equalTo: headerBand.trailingAnchor
                 ),
-                trailingControl.centerYAnchor.constraint(equalTo: labelsStack.centerYAnchor),
-                trailingControl.topAnchor.constraint(
-                    greaterThanOrEqualTo: topAnchor,
-                    constant: SettingsRowView.verticalPadding
-                ),
-                control.topAnchor.constraint(
-                    greaterThanOrEqualTo: trailingControl.bottomAnchor,
-                    constant: DashboardSettingsComponents.settingsRowContentControlSpacing
-                )
+                trailingControl.centerYAnchor.constraint(equalTo: headerBand.centerYAnchor)
             ])
         } else {
             constraints.append(
                 labelsStack.trailingAnchor.constraint(
-                    equalTo: trailingAnchor,
-                    constant: -SettingsRowView.horizontalPadding
+                    equalTo: headerBand.trailingAnchor
                 )
             )
         }

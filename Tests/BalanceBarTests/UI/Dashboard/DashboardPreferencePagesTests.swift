@@ -3370,6 +3370,130 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testMenuDedicatedControlRowUsesStandardCenteredHeaderBand() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.DedicatedHeaderBand.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let standardController = DashboardMenuBarPage()
+        let standardPage = standardController.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            snapshot: Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        let dedicatedController = DashboardMenuPage()
+        let dedicatedPage = dedicatedController.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        defer {
+            standardController.teardown()
+            dedicatedController.teardown()
+        }
+
+        let standardWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 900),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let dedicatedWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 900),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer {
+            standardWindow.orderOut(nil)
+            dedicatedWindow.orderOut(nil)
+        }
+        pinMenuPage(standardPage, in: standardWindow, width: 516, height: 900)
+        pinMenuPage(dedicatedPage, in: dedicatedWindow, width: 516, height: 900)
+
+        let standardTitle = try XCTUnwrap(
+            descendants(of: standardPage)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.stringValue == tr(.keyDashboardMenuBarPageIconDisplayMode) }
+        )
+        let standardRow = try XCTUnwrap(SettingsRowView.enclosing(standardTitle))
+        let standardDetail = standardRow.detailLabel
+        let standardControl = try XCTUnwrap(standardRow.accessoryView)
+
+        let resetButton = try XCTUnwrap(
+            descendants(of: dedicatedPage)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyCommonRestoreDefaults) }
+        )
+        let dedicatedRow = try XCTUnwrap(resetButton.superview)
+        let dedicatedTitle = try XCTUnwrap(
+            descendants(of: dedicatedRow)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.stringValue == tr(.keyDashboardMenuPageProgressColorRanges) }
+        )
+        let dedicatedDetail = try XCTUnwrap(
+            descendants(of: dedicatedRow)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.stringValue == tr(.keyDashboardMenuPageProgressColorRangesDescription) }
+        )
+        let slider = try XCTUnwrap(
+            descendants(of: dedicatedRow).compactMap { $0 as? QuotaColorThresholdSlider }.first
+        )
+
+        func headerFrame(title: NSTextField, detail: NSTextField, in row: NSView) -> NSRect {
+            let titleFrame = title.convert(title.bounds, to: row)
+            let detailFrame = detail.convert(detail.bounds, to: row)
+            return NSRect(
+                x: min(titleFrame.minX, detailFrame.minX),
+                y: min(titleFrame.minY, detailFrame.minY),
+                width: max(titleFrame.maxX, detailFrame.maxX) - min(titleFrame.minX, detailFrame.minX),
+                height: max(titleFrame.maxY, detailFrame.maxY) - min(titleFrame.minY, detailFrame.minY)
+            )
+        }
+
+        func visualTopOffset(of point: CGFloat, in row: NSView) -> CGFloat {
+            row.isFlipped ? point - row.bounds.minY : row.bounds.maxY - point
+        }
+
+        let standardHeader = headerFrame(title: standardTitle, detail: standardDetail, in: standardRow)
+        let dedicatedHeader = headerFrame(title: dedicatedTitle, detail: dedicatedDetail, in: dedicatedRow)
+        let standardControlFrame = standardControl.convert(standardControl.bounds, to: standardRow)
+        let resetFrame = resetButton.convert(resetButton.bounds, to: dedicatedRow)
+        XCTAssertEqual(
+            visualTopOffset(of: standardHeader.midY, in: standardRow),
+            visualTopOffset(of: dedicatedHeader.midY, in: dedicatedRow),
+            accuracy: 1,
+            "dedicated header must use the same top-relative center as a standard SettingsRowView"
+        )
+        XCTAssertEqual(
+            visualTopOffset(of: standardControlFrame.midY, in: standardRow),
+            visualTopOffset(of: resetFrame.midY, in: dedicatedRow),
+            accuracy: 1,
+            "dedicated trailing action must share the standard header center"
+        )
+        if dedicatedRow.isFlipped {
+            XCTAssertLessThan(dedicatedHeader.maxY, slider.convert(slider.bounds, to: dedicatedRow).minY)
+        } else {
+            XCTAssertGreaterThan(dedicatedHeader.minY, slider.convert(slider.bounds, to: dedicatedRow).maxY)
+        }
+    }
+
     func testLunaReserveMenuDisplaySettingsLocalizePersistAndRevealExhaustedQuotaSwitch() throws {
         LunaReserveUserFacing.testOverride = true
         defer { LunaReserveUserFacing.testOverride = nil }

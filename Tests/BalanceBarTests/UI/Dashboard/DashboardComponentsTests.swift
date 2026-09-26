@@ -2,6 +2,38 @@ import AppKit
 import XCTest
 @testable import BalanceBar
 
+private final class FixedPreviewRowAccessory: NSView, SettingsRowAccessoryLayout {
+    let allowsTextDrivenDedicatedRow = false
+    let minimumInlineLabelWidth: CGFloat = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: 190),
+            heightAnchor.constraint(equalToConstant: 42)
+        ])
+    }
+
+    convenience init() {
+        self.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func updateAvailableRowWidth(_ width: CGFloat) {
+        _ = width
+    }
+
+    var naturalAccessoryWidth: CGFloat { 190 }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: 190, height: 42)
+    }
+}
+
 @MainActor
 final class DashboardComponentsTests: XCTestCase {
     func testDashboardSectionsPreserveNavigationOrderAndMetadata() {
@@ -297,6 +329,82 @@ final class DashboardComponentsTests: XCTestCase {
             let narrowAgainHeight = try layout(at: 300)
             XCTAssertEqual(narrowAgainHeight, narrowHeight, accuracy: 0.5)
         }
+    }
+
+    func testPreviewRowKeepsNaturalLabelGeometryBesideFixedAccessory() throws {
+        let row = SettingsRowView(
+            title: "当前布局",
+            detail: "菜单栏会随服务商数据实时更新",
+            accessoryView: FixedPreviewRowAccessory(),
+            minimumHeight: DashboardMenuBarPage.previewRowHeight,
+            verticalPadding: DashboardMenuBarPage.previewRowVerticalPadding
+        )
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Preview fixture",
+            rows: [row]
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 360),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = section
+        defer { window.orderOut(nil) }
+
+        let nativeRow = try XCTUnwrap(row as? SettingsRowView)
+        let widths: [CGFloat] = [720, 516, 320]
+        var heights: [CGFloat] = []
+        for width in widths {
+            layoutSettingsSection(section, in: window, width: width, height: 360)
+            heights.append(row.frame.height)
+
+            XCTAssertEqual(nativeRow.contentStack.alignment, .centerY)
+            XCTAssertEqual(nativeRow.titleLabel.bounds.height,
+                           nativeRow.titleLabel.intrinsicContentSize.height,
+                           accuracy: 1,
+                           "title must keep its natural height at width \(width)")
+            XCTAssertEqual(nativeRow.detailLabel.bounds.height,
+                           nativeRow.detailLabel.intrinsicContentSize.height,
+                           accuracy: 1,
+                           "detail must keep its natural height at width \(width)")
+
+            let titleFrame = nativeRow.titleLabel.convert(nativeRow.titleLabel.bounds, to: row)
+            let detailFrame = nativeRow.detailLabel.convert(nativeRow.detailLabel.bounds, to: row)
+            let labelsFrame = nativeRow.labelsStack.convert(nativeRow.labelsStack.bounds, to: row)
+            let accessory = try XCTUnwrap(nativeRow.accessoryView)
+            let accessoryFrame = accessory.convert(accessory.bounds, to: row)
+
+            XCTAssertEqual(
+                nativeRow.labelsStack.bounds.height,
+                nativeRow.titleLabel.bounds.height
+                    + SettingsRowView.labelSpacing
+                    + nativeRow.detailLabel.bounds.height,
+                accuracy: 1,
+                "labels column must equal its two natural fields plus spacing at width \(width)"
+            )
+            XCTAssertGreaterThanOrEqual(
+                titleFrame.minY,
+                detailFrame.maxY - 0.5,
+                "title and detail must stay ordered at width \(width)"
+            )
+            XCTAssertEqual(
+                titleFrame.minY - detailFrame.maxY,
+                SettingsRowView.labelSpacing,
+                accuracy: 1,
+                "title/detail visual gap must remain compact at width \(width)"
+            )
+            XCTAssertEqual(labelsFrame.midY, accessoryFrame.midY, accuracy: 0.5)
+            XCTAssertEqual(labelsFrame.midY, row.bounds.midY, accuracy: 0.5)
+            XCTAssertEqual(accessoryFrame.midY, row.bounds.midY, accuracy: 0.5)
+            XCTAssertEqual(accessoryFrame.height, 42, accuracy: 0.5)
+            XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame))
+            XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(accessoryFrame))
+            XCTAssertFalse(labelsFrame.intersects(accessoryFrame))
+        }
+
+        XCTAssertEqual(heights[0], DashboardSettingsComponents.standardRowHeight, accuracy: 0.5)
+        XCTAssertGreaterThan(heights[2], heights[0], "narrow preview text must grow naturally")
     }
 
     func testSettingsRowsKeepControlsAtFourNaturalTextLinesAndMoveAfterWithoutTruncatingLabels() throws {
