@@ -278,11 +278,32 @@ enum CodexResetProbability: Equatable {
 
 /// Documented `official_signal` object from the public forecast payload.
 /// Presence of this value, not any nested score, switches the menu into
-/// strong-signal mode. Probability is parsed separately and may be missing.
+/// strong-signal mode. Probability and a future countdown instant are parsed
+/// separately and may be missing.
 struct CodexResetOfficialSignal: Equatable {
     var probability: CodexResetProbability
+    /// Absolute future instant from `official_signal.window` or an equivalent
+    /// single-instant field. Nil when the payload has no countdown target.
+    var targetAt: Date? = nil
 
     static let probabilityUnavailable = CodexResetOfficialSignal(probability: .unavailable)
+}
+
+/// Compact remaining-time text for the strong-signal amount slot.
+enum CodexResetOfficialCountdownFormatting {
+    static func displayText(seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        let hours = clamped / 3_600
+        let minutes = (clamped % 3_600) / 60
+        let remainder = clamped % 60
+        if hours > 0 {
+            return String(format: "%dh%02dm%02ds", hours, minutes, remainder)
+        }
+        if minutes > 0 {
+            return String(format: "%dm%02ds", minutes, remainder)
+        }
+        return "\(remainder)s"
+    }
 }
 
 /// Mutually exclusive menu presentation for the reset-probability block.
@@ -358,13 +379,33 @@ struct CodexResetForecast: Equatable {
         menuProbabilityPresentation.showsOrdinaryForecastMetrics
     }
 
-    func menuPrimaryDisplayText(language: AppLanguage = .selected) -> String {
+    func remainingCountdownSeconds(now: Date = Date()) -> Int? {
+        guard let targetAt = officialSignal?.targetAt else { return nil }
+        return max(0, Int(targetAt.timeIntervalSince(now).rounded(.down)))
+    }
+
+    func officialHintText(language: AppLanguage = .selected) -> String? {
+        guard officialSignal != nil else { return nil }
+        if officialSignal?.targetAt != nil {
+            return tr(.keyCodexBankedResetOfficialHintTime, language: language)
+        }
+        return tr(.keyCodexBankedResetOfficialHintNoTime, language: language)
+    }
+
+    func menuPrimaryDisplayText(
+        language: AppLanguage = .selected,
+        now: Date = Date()
+    ) -> String {
         switch menuProbabilityPresentation {
         case .ordinary(let probability):
             return probability.displayText
-        case .strongSignal(.percent(let value)):
-            return CodexResetProbability.percent(value).displayText
         case .strongSignal:
+            if let seconds = remainingCountdownSeconds(now: now) {
+                return CodexResetOfficialCountdownFormatting.displayText(seconds: seconds)
+            }
+            if case .percent(let value) = officialSignal?.probability {
+                return CodexResetProbability.percent(value).displayText
+            }
             return tr(.keyCodexBankedResetHighProbability, language: language)
         }
     }

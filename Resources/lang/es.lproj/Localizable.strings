@@ -459,6 +459,8 @@
 "codex.banked_reset.probability_24h" = "En 24 h";
 "codex.banked_reset.probability_48h" = "En 48 h";
 "codex.banked_reset.high_probability" = "Alta prob.";
+"codex.banked_reset.official_hint_no_time" = "Aviso oficial · Sin hora concreta";
+"codex.banked_reset.official_hint_time" = "Aviso oficial · Hora concreta";
 "codex.banked_reset.confidence_prefix" = "Confianza:";
 "codex.banked_reset.confidence_low" = "Baja";
 "codex.banked_reset.confidence_medium" = "Media";

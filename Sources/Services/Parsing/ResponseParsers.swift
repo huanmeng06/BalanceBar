@@ -641,7 +641,7 @@ enum CodexResetForecastParser {
     static let websiteURL = URL(string: "https://codex-reset.com/")!
     static let forecastURL = URL(string: "https://codex-reset.com/api/forecast")!
 
-    static func parse(data: Data) -> CodexResetForecast {
+    static func parse(data: Data, now: Date = Date()) -> CodexResetForecast {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return .unavailable
         }
@@ -652,16 +652,49 @@ enum CodexResetForecastParser {
             confidence: confidence(object["confidence"]),
             updatedAt: ResponseParsingSupport.timestampDate(object["updated_at"]),
             isCached: false,
-            officialSignal: officialSignal(from: object)
+            officialSignal: officialSignal(from: object, now: now)
         )
     }
 
-    private static func officialSignal(from object: [String: Any]) -> CodexResetOfficialSignal? {
+    private static func officialSignal(
+        from object: [String: Any],
+        now: Date
+    ) -> CodexResetOfficialSignal? {
         switch object["official_signal"] {
         case nil, is NSNull:
             return nil
         default:
-            return CodexResetOfficialSignal(probability: signalProbability(from: object))
+            return CodexResetOfficialSignal(
+                probability: signalProbability(from: object),
+                targetAt: officialSignalTargetAt(from: object, now: now)
+            )
+        }
+    }
+
+    /// Single future instant from `official_signal.window` or equivalent
+    /// deadline/target fields. Tweet time (`official_signal.at`), recurring
+    /// hour windows, `last_reset_at`, and `context.reset_at` are ignored.
+    private static func officialSignalTargetAt(
+        from object: [String: Any],
+        now: Date
+    ) -> Date? {
+        let official = object["official_signal"] as? [String: Any]
+        guard let official else { return nil }
+        return singleFutureInstant(official["window"], now: now)
+            ?? ResponseParsingSupport.resetDate(official["deadline"], now: now)
+            ?? ResponseParsingSupport.resetDate(official["target"], now: now)
+    }
+
+    private static func singleFutureInstant(_ value: Any?, now: Date) -> Date? {
+        switch value {
+        case nil, is NSNull:
+            return nil
+        case let dict as [String: Any]:
+            return ResponseParsingSupport.resetDate(dict["at"], now: now)
+                ?? ResponseParsingSupport.resetDate(dict["deadline"], now: now)
+                ?? ResponseParsingSupport.resetDate(dict["target"], now: now)
+        default:
+            return ResponseParsingSupport.resetDate(value, now: now)
         }
     }
 

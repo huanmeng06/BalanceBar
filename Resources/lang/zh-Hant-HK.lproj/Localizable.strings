@@ -459,6 +459,8 @@
 "codex.banked_reset.probability_24h" = "24 小時內";
 "codex.banked_reset.probability_48h" = "48 小時內";
 "codex.banked_reset.high_probability" = "高概率";
+"codex.banked_reset.official_hint_no_time" = "官方重置提示 · 暫無具體時間點";
+"codex.banked_reset.official_hint_time" = "官方重置提示 · 具體時間點";
 "codex.banked_reset.confidence_prefix" = "置信度：";
 "codex.banked_reset.confidence_low" = "低";
 "codex.banked_reset.confidence_medium" = "中";

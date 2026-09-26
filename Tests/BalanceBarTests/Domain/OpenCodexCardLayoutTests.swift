@@ -236,7 +236,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(shownMetrics.maxY, probabilityOn.reset.minY)
     }
 
-    func testBankedResetProbabilityHidesOrdinaryForecastMetricsInStrongSignalMode() throws {
+    func testBankedResetProbabilityKeepsForecastMetricsSlotForOfficialHint() throws {
         let windows = [
             OfficialQuotaWindow(
                 kind: .fiveHour,
@@ -269,14 +269,28 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             includesBankedReset: true,
             bankedResetCardCount: 2,
             bankedResetDisplayMode: .compact,
+            includesBankedResetForecastMetrics: true
+        )
+        let hiddenMetrics = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .compact,
             includesBankedResetForecastMetrics: false
         )
         let ordinaryProbability = try XCTUnwrap(ordinary.bankedResetProbabilityRow)
         let strongProbability = try XCTUnwrap(strongSignal.bankedResetProbabilityRow)
         XCTAssertNotNil(ordinary.bankedResetForecastMetrics)
-        XCTAssertNil(strongSignal.bankedResetForecastMetrics)
+        XCTAssertNotNil(strongSignal.bankedResetForecastMetrics)
+        XCTAssertEqual(ordinary.cardSize.height, strongSignal.cardSize.height, accuracy: 0.001)
         XCTAssertEqual(
-            ordinary.cardSize.height - strongSignal.cardSize.height,
+            ordinary.bankedResetForecastMetrics,
+            strongSignal.bankedResetForecastMetrics
+        )
+        XCTAssertNil(hiddenMetrics.bankedResetForecastMetrics)
+        XCTAssertEqual(
+            ordinary.cardSize.height - hiddenMetrics.cardSize.height,
             OpenCodexCardLayout.bankedResetForecastLineGap
                 + OpenCodexCardLayout.bankedResetForecastExtraHeight(),
             accuracy: 0.001

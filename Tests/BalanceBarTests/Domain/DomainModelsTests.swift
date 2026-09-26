@@ -392,6 +392,70 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertNotEqual(fallbackForecast.menuPrimaryDisplayText(), "20%")
         XCTAssertNotEqual(fallbackForecast.menuPrimaryDisplayText(), "83%")
+        XCTAssertEqual(
+            fallbackForecast.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 暂无具体时间点"
+        )
+        XCTAssertNil(fallbackForecast.remainingCountdownSeconds(now: date))
+
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 5_025),
+            "1h23m45s"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 723),
+            "12m03s"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 45),
+            "45s"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 0),
+            "0s"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: -8),
+            "0s"
+        )
+
+        let countdownForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(71),
+                targetAt: date.addingTimeInterval(3_665)
+            )
+        )
+        XCTAssertEqual(countdownForecast.remainingCountdownSeconds(now: date), 3_665)
+        XCTAssertEqual(countdownForecast.menuPrimaryDisplayText(now: date), "1h01m05s")
+        XCTAssertEqual(
+            countdownForecast.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 具体时间点"
+        )
+        XCTAssertEqual(
+            countdownForecast.officialHintText(language: .english),
+            "Official reset hint · Specific time"
+        )
+        XCTAssertFalse(
+            countdownForecast.officialHintText(language: .simplifiedChinese)?.contains("10/5") == true
+        )
+        XCTAssertEqual(
+            countdownForecast.remainingCountdownSeconds(now: date.addingTimeInterval(3_665)),
+            0
+        )
+        XCTAssertEqual(
+            countdownForecast.menuPrimaryDisplayText(now: date.addingTimeInterval(4_000)),
+            "0s"
+        )
+        XCTAssertEqual(
+            countdownForecast.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 具体时间点"
+        )
+        XCTAssertNil(zeroCountPresented.resetForecast.officialHintText())
 
         let balance = Snapshot.balance(
             "Custom",

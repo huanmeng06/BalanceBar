@@ -10,16 +10,20 @@ enum OverviewNumericIdentity: Hashable {
     case bankedResetProbability24h(provider: String)
     case bankedResetProbability48h(provider: String)
     case bankedResetProbabilitySignal(provider: String)
+    case bankedResetProbabilityCountdown(provider: String)
 }
 
 enum OverviewNumericFormat: Equatable {
     case integerPercent
     case currency(unit: String)
     case integerCount
+    case remainingSeconds
 
     func isCompatible(with other: OverviewNumericFormat) -> Bool {
         switch (self, other) {
-        case (.integerPercent, .integerPercent), (.integerCount, .integerCount):
+        case (.integerPercent, .integerPercent),
+             (.integerCount, .integerCount),
+             (.remainingSeconds, .remainingSeconds):
             return true
         case let (.currency(left), .currency(right)):
             return left.uppercased() == right.uppercased()
@@ -34,6 +38,10 @@ enum OverviewNumericFormat: Equatable {
             return "\(Int(value))%"
         case .integerCount:
             return "\(Int(value))"
+        case .remainingSeconds:
+            return CodexResetOfficialCountdownFormatting.displayText(
+                seconds: max(0, Int(value.rounded(.down)))
+            )
         case .currency(let unit):
             return StatusItemController.formatBalanceSummary(value, unit: unit)
         }
@@ -45,6 +53,13 @@ enum OverviewNumericFormat: Equatable {
             return OverviewNumericDisplayParts(prefix: "", suffix: "%", fractionLength: 0)
         case .integerCount:
             return OverviewNumericDisplayParts(prefix: "", suffix: "", fractionLength: 0)
+        case .remainingSeconds:
+            return OverviewNumericDisplayParts(
+                prefix: "",
+                suffix: "",
+                fractionLength: 0,
+                remainingTime: true
+            )
         case .currency(let unit):
             switch unit.uppercased() {
             case "USD":
@@ -62,6 +77,7 @@ struct OverviewNumericDisplayParts: Equatable {
     let prefix: String
     let suffix: String
     let fractionLength: Int
+    var remainingTime: Bool = false
 }
 
 struct OverviewNumericSample: Equatable {
@@ -116,7 +132,7 @@ enum OverviewNumericTransition {
         switch format {
         case .currency:
             return currencyDigitRollDuration
-        case .integerPercent, .integerCount:
+        case .integerPercent, .integerCount, .remainingSeconds:
             return duration
         }
     }
@@ -160,7 +176,8 @@ enum OverviewNumericPresentation {
         snapshot: Snapshot,
         lunaReserveDisplayMode: LunaReserveDisplayMode,
         hideExhaustedQuota: Bool,
-        showBankedReset: Bool
+        showBankedReset: Bool,
+        now: Date = Date()
     ) -> [OverviewNumericSample] {
         switch snapshot.kind {
         case .placeholder, .error:
@@ -229,17 +246,26 @@ enum OverviewNumericPresentation {
                             )
                         )
                     }
-                case .strongSignal(.percent(let percent)):
-                    samples.append(
-                        OverviewNumericSample(
-                            identity: .bankedResetProbabilitySignal(provider: snapshot.provider),
-                            format: .integerPercent,
-                            value: Double(percent),
-                            progressPercentage: nil
-                        )
-                    )
                 case .strongSignal:
-                    break
+                    if let seconds = presentation.resetForecast.remainingCountdownSeconds(now: now) {
+                        samples.append(
+                            OverviewNumericSample(
+                                identity: .bankedResetProbabilityCountdown(provider: snapshot.provider),
+                                format: .remainingSeconds,
+                                value: Double(seconds),
+                                progressPercentage: nil
+                            )
+                        )
+                    } else if case .percent(let percent) = presentation.resetForecast.officialSignal?.probability {
+                        samples.append(
+                            OverviewNumericSample(
+                                identity: .bankedResetProbabilitySignal(provider: snapshot.provider),
+                                format: .integerPercent,
+                                value: Double(percent),
+                                progressPercentage: nil
+                            )
+                        )
+                    }
                 }
             }
             return samples
@@ -272,6 +298,8 @@ enum OverviewNumericPresentation {
             return NSUserInterfaceItemIdentifier("codex.bankedReset.probability48h")
         case .bankedResetProbabilitySignal:
             return NSUserInterfaceItemIdentifier("codex.bankedReset.probabilitySignalAmount")
+        case .bankedResetProbabilityCountdown:
+            return NSUserInterfaceItemIdentifier("codex.bankedReset.probabilityCountdownAmount")
         default:
             return NSUserInterfaceItemIdentifier("overview.numeric.amount.\(progressKey(for: identity))")
         }
@@ -295,6 +323,8 @@ enum OverviewNumericPresentation {
             return "bankedReset.probability48h"
         case .bankedResetProbabilitySignal:
             return "bankedReset.probabilitySignal"
+        case .bankedResetProbabilityCountdown:
+            return "bankedReset.probabilityCountdown"
         }
     }
 }

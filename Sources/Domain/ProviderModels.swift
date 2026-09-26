@@ -205,8 +205,9 @@ struct OpenCodexCardFrames: Equatable {
     /// banked-reset section is hidden. Its amount is the large primary
     /// figure; `reset` is the data-source subtitle under the title.
     let bankedResetProbabilityRow: OpenCodexQuotaRowFrames?
-    /// 24h + 48h line flush under the probability amount. Nil in
-    /// official-signal mode so ordinary forecast is not mixed in.
+    /// Extra line under the data-source subtitle. Ordinary mode packs
+    /// 24h+48h; strong-signal mode uses the same slot for the gray
+    /// official-hint line.
     let bankedResetForecastMetrics: CGRect?
     let bankedResetForecastConfidence: CGRect?
     let bankedResetDetailRows: [OpenCodexQuotaRowFrames]
@@ -323,10 +324,11 @@ enum OpenCodexCardLayout {
     static let bankedResetChromeCornerRadius: CGFloat = 10
     /// Gap between the reset-card summary and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
-    /// Ordinary mode keeps one 24h+48h line under the probability amount.
-    /// Official-signal mode drops that line. The data source sits in the
-    /// amount's reset slot. Confidence is not part of the menu block.
-    /// Longer locales pack the metrics row by tightening gap/separator.
+    /// One extra line under the data-source subtitle. Ordinary mode packs
+    /// 24h+48h; strong-signal mode draws the gray official-hint copy here.
+    /// The data source sits in the amount's reset slot. Confidence is not
+    /// part of the menu block. Longer locales pack 24h+48h by tightening
+    /// gap/separator.
     static let bankedResetForecastLineGap: CGFloat = 2
     static let bankedResetForecastLineCount = 1
     static var bankedResetForecastMetricsWidth: CGFloat {
@@ -439,9 +441,9 @@ enum OpenCodexCardLayout {
         quotaDetailOffset + quotaDetailHeight - quotaResetOffset
     }
 
-    /// Two-line text band, plus the 24h+48h line when ordinary forecast is
-    /// visible. `quotaTitleTopInset` keeps the next-block title 17pt below
-    /// the bar or 24h line, matching 5h progress → 7-day title.
+    /// Two-line text band, plus the extra metrics/hint line when that slot
+    /// is visible. `quotaTitleTopInset` keeps the next-block title 17pt below
+    /// the bar or extra line, matching 5h progress → 7-day title.
     static func bankedResetProbabilityBlockHeight(
         includesForecastMetrics: Bool = true
     ) -> CGFloat {

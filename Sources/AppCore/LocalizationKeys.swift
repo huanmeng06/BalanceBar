@@ -470,6 +470,8 @@
     case keyCodexBankedResetProbability24h = "codex.banked_reset.probability_24h"
     case keyCodexBankedResetProbability48h = "codex.banked_reset.probability_48h"
     case keyCodexBankedResetHighProbability = "codex.banked_reset.high_probability"
+    case keyCodexBankedResetOfficialHintNoTime = "codex.banked_reset.official_hint_no_time"
+    case keyCodexBankedResetOfficialHintTime = "codex.banked_reset.official_hint_time"
     case keyCodexBankedResetConfidencePrefix = "codex.banked_reset.confidence_prefix"
     case keyCodexBankedResetConfidenceLow = "codex.banked_reset.confidence_low"
     case keyCodexBankedResetConfidenceMedium = "codex.banked_reset.confidence_medium"

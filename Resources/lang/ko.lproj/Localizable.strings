@@ -459,6 +459,8 @@
 "codex.banked_reset.probability_24h" = "24시간 이내";
 "codex.banked_reset.probability_48h" = "48시간 이내";
 "codex.banked_reset.high_probability" = "고확률";
+"codex.banked_reset.official_hint_no_time" = "공식 리셋 안내 · 구체적 시각 없음";
+"codex.banked_reset.official_hint_time" = "공식 리셋 안내 · 구체적 시각";
 "codex.banked_reset.confidence_prefix" = "신뢰도:";
 "codex.banked_reset.confidence_low" = "낮음";
 "codex.banked_reset.confidence_medium" = "중간";

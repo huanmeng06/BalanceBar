@@ -879,6 +879,131 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(relocated.officialSignal?.probability, .unavailable)
         XCTAssertNotEqual(relocated.officialSignal?.probability, .percent(93))
         XCTAssertTrue(relocated.hasAnyValue)
+        XCTAssertNil(relocated.officialSignal?.targetAt)
+        XCTAssertEqual(
+            relocated.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 暂无具体时间点"
+        )
+        XCTAssertEqual(
+            relocated.officialHintText(language: .english),
+            "Official reset hint · No specific time"
+        )
+    }
+
+    func testCodexResetForecastParserReadsOfficialSignalWindowAsFutureInstant() {
+        let future = now.addingTimeInterval(3_665)
+        let past = now.addingTimeInterval(-120)
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        let futureISO = iso.string(from: future)
+        let pastISO = iso.string(from: past)
+        let futureUnix = Int(future.timeIntervalSince1970)
+
+        let noWindow = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"score":{"value":71},"window":null,"at":"\#(futureISO)"},"probabilities":{"rounded_24h":20,"rounded_48h":35},"time_window":{"start_hour":23,"end_hour":2},"last_reset_at":"\#(futureISO)","context":{"reset_at":"\#(futureISO)"}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertEqual(noWindow.officialSignal?.probability, .percent(71))
+        XCTAssertNil(noWindow.officialSignal?.targetAt)
+        XCTAssertEqual(noWindow.remainingCountdownSeconds(now: now), nil)
+        XCTAssertEqual(
+            noWindow.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 暂无具体时间点"
+        )
+        XCTAssertEqual(noWindow.menuPrimaryDisplayText(language: .english, now: now), "71%")
+        XCTAssertFalse(noWindow.showsOrdinaryForecastMetrics)
+
+        let missingWindow = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{"score":{"value":71}},"probabilities":{"rounded_24h":20}}"#.utf8),
+            now: now
+        )
+        XCTAssertNil(missingWindow.officialSignal?.targetAt)
+        XCTAssertEqual(
+            missingWindow.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 暂无具体时间点"
+        )
+
+        let isoWindow = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"score":{"value":71},"window":"\#(futureISO)","at":"\#(pastISO)"},"probabilities":{"rounded_24h":20,"rounded_48h":35}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertEqual(isoWindow.remainingCountdownSeconds(now: now), 3_665)
+        XCTAssertEqual(
+            isoWindow.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 具体时间点"
+        )
+        XCTAssertEqual(
+            isoWindow.officialHintText(language: .english),
+            "Official reset hint · Specific time"
+        )
+        XCTAssertEqual(isoWindow.menuPrimaryDisplayText(now: now), "1h01m05s")
+        XCTAssertFalse(isoWindow.officialHintText()?.contains("10/5") == true)
+        XCTAssertNotEqual(isoWindow.menuPrimaryDisplayText(now: now), "71%")
+
+        let unixWindow = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"score":{"value":72},"window":\#(futureUnix)},"probabilities":{"rounded_24h":20}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertEqual(unixWindow.remainingCountdownSeconds(now: now), 3_665)
+
+        let nestedDeadline = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"score":{"value":73},"window":{"deadline":\#(futureUnix)}},"probabilities":{"rounded_24h":20}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertEqual(nestedDeadline.remainingCountdownSeconds(now: now), 3_665)
+
+        let nestedTarget = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"window":{"target":"\#(futureISO)"},"at":"\#(pastISO)"},"probabilities":{"rounded_24h":20,"signal_percent":74}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertEqual(nestedTarget.remainingCountdownSeconds(now: now), 3_665)
+        XCTAssertEqual(nestedTarget.officialSignal?.probability, .percent(74))
+
+        let hourRangeWindow = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"score":{"value":71},"window":{"start_hour":23,"end_hour":2,"label":"11 PM - 2 AM","timezone":"UTC"}},"probabilities":{"rounded_24h":20}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertNil(hourRangeWindow.officialSignal?.targetAt)
+        XCTAssertEqual(
+            hourRangeWindow.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 暂无具体时间点"
+        )
+
+        let pastWindow = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"score":{"value":71},"window":"\#(pastISO)"},"probabilities":{"rounded_24h":20}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertNil(pastWindow.officialSignal?.targetAt)
+        XCTAssertEqual(
+            pastWindow.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 暂无具体时间点"
+        )
+        XCTAssertEqual(pastWindow.menuPrimaryDisplayText(language: .english, now: now), "71%")
+
+        let ordinary = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"probabilities":{"rounded_24h":20,"rounded_48h":35},"time_window":{"start_hour":23,"end_hour":2},"last_reset_at":"\#(futureISO)","context":{"reset_at":"\#(futureISO)"}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertNil(ordinary.officialSignal)
+        XCTAssertNil(ordinary.officialHintText())
+        XCTAssertTrue(ordinary.showsOrdinaryForecastMetrics)
+        XCTAssertEqual(ordinary.menuPrimaryDisplayText(now: now), "20%")
     }
 
     func testOfficialQuotaParserRejectsInvalidAndMissingFixtures() throws {
