@@ -2,15 +2,15 @@
 "notifications.page.title" = "Notificações";
 "notifications.quota_reminders" = "Alertas de cota";
 "notifications.global_description" = "Avisar quando saldos ou cotas cruzarem os limites";
-"notifications.permission_disabled" = "As notificações do sistema estão desativadas. O BalanceBar não pode enviar alertas.";
-"notifications.permission_pending" = "Notification permission has not been granted yet.";
+"notifications.permission_disabled" = "As notificações do sistema estão desativadas e o BalanceBar não pode enviar alertas";
+"notifications.permission_pending" = "Notification permission has not been granted yet";
 "notifications.open_system_settings" = "Abrir Ajustes do Sistema";
 "notifications.advanced_settings" = "Ajustes avançados";
 "notifications.agent_enabled" = "Alertas ativados";
 "notifications.agent_disabled" = "Alertas desativados";
 "notifications.provider_rules" = "Provedores";
 "notifications.resource_rules" = "Recursos";
-"notifications.no_providers" = "Nenhum provedor para este Agent.";
+"notifications.no_providers" = "Nenhum provedor para este Agent";
 "notifications.back" = "Voltar";
 "notifications.first_threshold" = "Alertar abaixo de";
 "notifications.second_alert" = "Segundo alerta";
@@ -25,3 +25,8 @@
 "notifications.recovered_title" = "%1$@ resources restored";
 "notifications.quota_value" = "%1$@ remaining %2$@%%";
 "notifications.balance_value" = "%1$@ remaining %2$@";
+"notifications.system_settings" = "Ajustes do Sistema";
+"notifications.pause_notifications" = "Pausar notificações";
+"notifications.pause_duration" = "Escolher por quanto tempo pausar";
+"notifications.pause_today" = "Pausar até o fim do dia";
+"notifications.agent_settings" = "Ajustes do Agent";

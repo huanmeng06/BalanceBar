@@ -2,15 +2,15 @@
 "notifications.page.title" = "Notificaciones";
 "notifications.quota_reminders" = "Avisos de cuota";
 "notifications.global_description" = "Avisar cuando saldos o cuotas crucen los umbrales";
-"notifications.permission_disabled" = "Las notificaciones del sistema están desactivadas. BalanceBar no puede enviar avisos.";
-"notifications.permission_pending" = "Notification permission has not been granted yet.";
+"notifications.permission_disabled" = "Las notificaciones del sistema están desactivadas y BalanceBar no puede enviar avisos";
+"notifications.permission_pending" = "Notification permission has not been granted yet";
 "notifications.open_system_settings" = "Abrir Ajustes del Sistema";
 "notifications.advanced_settings" = "Ajustes avanzados";
 "notifications.agent_enabled" = "Avisos activados";
 "notifications.agent_disabled" = "Avisos desactivados";
 "notifications.provider_rules" = "Proveedores";
 "notifications.resource_rules" = "Recursos";
-"notifications.no_providers" = "No hay proveedores para este Agent.";
+"notifications.no_providers" = "No hay proveedores para este Agent";
 "notifications.back" = "Atrás";
 "notifications.first_threshold" = "Avisar por debajo de";
 "notifications.second_alert" = "Segundo aviso";
@@ -25,3 +25,8 @@
 "notifications.recovered_title" = "%1$@ resources restored";
 "notifications.quota_value" = "%1$@ remaining %2$@%%";
 "notifications.balance_value" = "%1$@ remaining %2$@";
+"notifications.system_settings" = "Ajustes del Sistema";
+"notifications.pause_notifications" = "Pausar notificaciones";
+"notifications.pause_duration" = "Elegir cuánto pausar las notificaciones";
+"notifications.pause_today" = "Pausar hasta el final de hoy";
+"notifications.agent_settings" = "Ajustes de Agent";

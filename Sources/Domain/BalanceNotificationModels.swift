@@ -9,9 +9,14 @@ enum BalanceNotificationAgent: String, CaseIterable, Codable, Hashable {
     case gemini
     case grok
 
+    /// Dashboard rows currently represent the three integrations with live
+    /// provider refresh sources. Gemini remains in the persisted model for
+    /// forward compatibility with the notification contract.
+    static let dashboardCases: [Self] = [.gpt, .claude, .grok]
+
     var title: String {
         switch self {
-        case .gpt: return "GPT"
+        case .gpt: return "ChatGPT"
         case .claude: return "Claude"
         case .gemini: return "Gemini"
         case .grok: return "Grok"

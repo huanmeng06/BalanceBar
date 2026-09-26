@@ -13,7 +13,7 @@ private final class DashboardNotificationPageRelay: NSObject {
     var onThreshold: ((BalanceNotificationResourceKey, BalanceNotificationResourceKind, String?, Bool, Double) -> Void)?
     var onSecondThresholdToggle: ((BalanceNotificationResourceKey, BalanceNotificationResourceKind, String?, Bool) -> Void)?
     var onOpenSettings: (() -> Void)?
-    var onPause: (() -> Void)?
+    var onPauseSelection: ((String) -> Void)?
     var onResume: (() -> Void)?
     var onBack: (() -> Void)?
     var onAgent: ((BalanceNotificationAgent) -> Void)?
@@ -55,7 +55,10 @@ private final class DashboardNotificationPageRelay: NSObject {
     }
 
     @objc func openSettings(_ sender: NSButton) { onOpenSettings?() }
-    @objc func pause(_ sender: NSButton) { onPause?() }
+    @objc func pauseSelection(_ sender: NSPopUpButton) {
+        guard let selection = sender.selectedItem?.representedObject as? String else { return }
+        onPauseSelection?(selection)
+    }
     @objc func resume(_ sender: NSButton) { onResume?() }
     @objc func back(_ sender: NSButton) { onBack?() }
 
@@ -161,7 +164,19 @@ final class DashboardNotificationPages {
             self?.refresh()
         }
         relay.onOpenSettings = { [weak self] in self?.configuration.coordinator.openSystemSettings() }
-        relay.onPause = { [weak self] in self?.configuration.coordinator.pause(for: 3_600); self?.refresh() }
+        relay.onPauseSelection = { [weak self] selection in
+            guard let self else { return }
+            switch selection {
+            case "today":
+                let calendar = Calendar.autoupdatingCurrent
+                let start = calendar.startOfDay(for: Date())
+                let end = calendar.date(byAdding: .day, value: 1, to: start) ?? Date().addingTimeInterval(86_400)
+                self.configuration.coordinator.pause(for: max(0, end.timeIntervalSinceNow))
+            default:
+                self.configuration.coordinator.pause(for: 3_600)
+            }
+            self.refresh()
+        }
         relay.onResume = { [weak self] in self?.configuration.coordinator.resume(); self?.refresh() }
         relay.onBack = { [weak self] in self?.goBack() }
         relay.onAgent = { [weak self] agent in self?.path = [.agent(agent)]; self?.rebuild() }
@@ -207,64 +222,96 @@ final class DashboardNotificationPages {
 
     private func makeRootPage() -> NSView {
         let settings = configuration.coordinator.settings
+        let permission = configuration.coordinator.permissionState
         let globalSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: "notification-global",
             isOn: settings.globalEnabled,
             target: relay,
             action: #selector(DashboardNotificationPageRelay.globalToggle(_:))
         )
-        let global = SettingsRowView(
-            title: tr("notifications.quota_reminders"),
-            detail: tr("notifications.global_description"),
-            accessoryView: globalSwitch
-        )
-
-        var rows: [NSView] = [global]
-        switch configuration.coordinator.permissionState {
-        case .denied:
-            let open = NSButton(
-                title: tr("notifications.open_system_settings"),
+        var globalControls: [NSView] = []
+        if permission == .denied {
+            let systemSettings = NSButton(
+                title: tr("notifications.system_settings"),
                 target: relay,
                 action: #selector(DashboardNotificationPageRelay.openSettings(_:))
             )
-            rows.append(SettingsRowView(
-                title: tr("notifications.permission_disabled"),
-                detail: tr("notifications.permission_disabled"),
-                accessoryView: open
-            ))
-        case .unknown:
-            rows.append(SettingsRowView(
-                title: tr("notifications.permission_pending"),
-                detail: tr("notifications.permission_pending")
-            ))
-        case .authorized:
-            break
+            globalControls.append(systemSettings)
         }
-
-        let pauseButton = NSButton(
-            title: tr("notifications.pause_one_hour"),
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.pause(_:))
+        globalControls.append(globalSwitch)
+        let globalAccessory = NSStackView(views: globalControls)
+        globalAccessory.orientation = .horizontal
+        globalAccessory.spacing = 8
+        let global = SettingsRowView(
+            title: tr("notifications.quota_reminders"),
+            detail: permission == .denied
+                ? tr("notifications.permission_disabled")
+                : tr("notifications.global_description"),
+            accessoryView: globalAccessory
         )
+
+        let pauseMenu = NSPopUpButton()
+        pauseMenu.addItem(withTitle: tr("notifications.pause_one_hour"))
+        pauseMenu.item(at: 0)?.representedObject = "oneHour"
+        pauseMenu.addItem(withTitle: tr("notifications.pause_today"))
+        pauseMenu.item(at: 1)?.representedObject = "today"
+        pauseMenu.target = relay
+        pauseMenu.action = #selector(DashboardNotificationPageRelay.pauseSelection(_:))
         let resumeButton = NSButton(
             title: tr("notifications.resume"),
             target: relay,
             action: #selector(DashboardNotificationPageRelay.resume(_:))
         )
-        let pauseStack = NSStackView(views: [pauseButton, resumeButton])
-        pauseStack.orientation = .horizontal
-        pauseStack.spacing = 8
-        rows.append(SettingsRowView(
-            title: tr("notifications.pause_one_hour"),
-            detail: settings.pauseUntil.map { $0 > Date() ? tr("notifications.pause_one_hour") : "" },
-            accessoryView: pauseStack
-        ))
-
-        let agentRows = BalanceNotificationAgent.allCases.map { makeAgentRow($0, settings: settings) }
-        rows.append(SettingsSectionView(title: tr("notifications.page.title"), contentViews: agentRows))
+        let pauseControls = NSStackView(views: [pauseMenu, resumeButton])
+        pauseControls.orientation = .horizontal
+        pauseControls.spacing = 8
+        let pauseDetail = tr("notifications.pause_duration")
+        let notificationRows: [NSView] = [
+            global,
+            SettingsRowView(
+                title: tr("notifications.pause_notifications"),
+                detail: pauseDetail,
+                accessoryView: pauseControls
+            )
+        ]
         return DashboardSettingsComponents.makeSettingsPageContent([
-            SettingsSectionView(title: tr("notifications.page.title"), contentViews: rows)
+            SettingsSectionView(title: tr("notifications.page.title"), contentViews: notificationRows),
+            makeAgentSettingsSection(settings: settings)
         ])
+    }
+
+    private func makeAgentSettingsSection(settings: BalanceNotificationSettings) -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        let heading = NSTextField(labelWithString: tr("notifications.agent_settings"))
+        heading.font = SettingsSectionView.headingFont
+        heading.translatesAutoresizingMaskIntoConstraints = false
+        let cards = NSStackView(views: BalanceNotificationAgent.dashboardCases.map {
+            SettingsSectionView(
+                title: "",
+                contentViews: [makeAgentRow($0, settings: settings)]
+            )
+        })
+        cards.orientation = .vertical
+        cards.alignment = .leading
+        cards.spacing = 10
+        cards.detachesHiddenViews = true
+        cards.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(heading)
+        container.addSubview(cards)
+        NSLayoutConstraint.activate([
+            heading.topAnchor.constraint(equalTo: container.topAnchor),
+            heading.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            heading.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            cards.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: SettingsSectionView.headingToCardSpacing),
+            cards.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            cards.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            cards.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+        for card in cards.arrangedSubviews {
+            card.widthAnchor.constraint(equalTo: cards.widthAnchor).isActive = true
+        }
+        return container
     }
 
     private func makeAgentRow(
