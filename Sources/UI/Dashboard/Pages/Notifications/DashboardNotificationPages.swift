@@ -128,6 +128,7 @@ final class DashboardNotificationPages {
     private var path: [NotificationPagePath] = []
     private weak var pauseDetailLabel: NSTextField?
     private weak var pauseMenu: NSPopUpButton?
+    private weak var detailsStack: NSStackView?
     private var pauseTimer: Timer?
 
     private enum NotificationPagePath: Equatable {
@@ -142,7 +143,11 @@ final class DashboardNotificationPages {
         relay.onGlobalToggle = { [weak self] enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
-            coordinator.performAsync { coordinator.setGlobalEnabled(enabled) }
+            coordinator.performAsync {
+                coordinator.setGlobalEnabled(enabled)
+                if !enabled { coordinator.resume() }
+                DispatchQueue.main.async { [weak self] in self?.updateGlobalVisibility() }
+            }
         }
         relay.onAgentToggle = { [weak self] agent, enabled in
             guard let self else { return }
@@ -299,13 +304,31 @@ final class DashboardNotificationPages {
             accessoryView: pauseMenu
         )
         pauseDetailLabel = pauseRow.detailLabel
-        let notificationRows: [NSView] = [global, pauseRow]
+        let pauseSection = SettingsSectionView(title: "", contentViews: [pauseRow])
+        let agentSettings = makeAgentSettingsSection(settings: settings)
+        let details = NSStackView(views: [pauseSection, agentSettings])
+        details.orientation = .vertical
+        details.alignment = .leading
+        details.spacing = DashboardSettingsComponents.settingsSectionSpacing
+        details.detachesHiddenViews = true
+        details.translatesAutoresizingMaskIntoConstraints = false
+        pauseSection.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
+        agentSettings.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
+        detailsStack = details
+        updateGlobalVisibility()
         updatePausePresentation()
         startPauseTimer()
         return DashboardSettingsComponents.makeSettingsPageContent([
-            SettingsSectionView(title: tr("notifications.page.title"), contentViews: notificationRows),
-            makeAgentSettingsSection(settings: settings)
+            SettingsSectionView(title: tr("notifications.page.title"), contentViews: [global]),
+            details
         ])
+    }
+
+    private func updateGlobalVisibility() {
+        let settings = configuration.coordinator.settings
+        let permission = configuration.coordinator.permissionState
+        detailsStack?.isHidden = !settings.globalEnabled || permission == .denied
+        updatePausePresentation()
     }
 
     private func startPauseTimer() {
