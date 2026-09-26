@@ -106,6 +106,19 @@ final class DashboardScrollablePageViewController: NSViewController {
         DashboardPageScrollPosition.restore(visualOffsetY: offset, in: pageScrollView)
     }
 
+    /// Completes the width-dependent row layout before a newly replaced page
+    /// is displayed. Settings rows first learn their wrapping width during
+    /// layout and commit the resulting intrinsic height on the main queue;
+    /// flushing that commit and laying out once more keeps the first visible
+    /// geometry equal to the geometry after the next runloop turn.
+    func settleInitialLayout() {
+        view.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: view)
+        view.layoutSubtreeIfNeeded()
+        SettingsRowView.flushPendingWrappingHeightCommits(in: view)
+        view.layoutSubtreeIfNeeded()
+    }
+
     /// Applies `offset` on the next layout pass. Search uses this so a query
     /// change can return to the top without laying out the window on the
     /// typing callback. A no-op when the page is already there.
