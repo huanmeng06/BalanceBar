@@ -572,7 +572,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     }
 
     private func expandGroups() {
-        for root in roots where root.isGroup {
+        for root in navigationRoots where root.isGroup {
             outlineView.expandItem(root, expandChildren: true)
         }
     }
