@@ -295,6 +295,9 @@ final class DashboardPageSession {
         // (notably on Xcode 16.4 CI).
         DashboardPageInstrumentation.measure(.initialLayoutSettle) {
             contentHost.layoutSubtreeIfNeeded()
+            if let scrollablePage = page as? DashboardScrollablePageViewController {
+                scrollablePage.settleInitialLayout()
+            }
         }
         preparePageForDisplay?()
         DashboardPageInstrumentation.measure(.displayIfNeeded) {

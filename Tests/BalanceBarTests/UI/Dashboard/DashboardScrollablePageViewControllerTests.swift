@@ -4,6 +4,57 @@ import XCTest
 
 @MainActor
 final class DashboardScrollablePageViewControllerTests: XCTestCase {
+    func testSettleInitialLayoutKeepsWrappingGeometryStableAcrossNextLayout() throws {
+        let row = SettingsRowView(
+            title: "Progress",
+            detail: "A long localized description that must wrap at the solved page width before the page becomes visible.",
+            accessoryView: NSSwitch()
+        )
+        let section = SettingsSectionView(title: "Menu", contentViews: [row])
+        let content = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let page = DashboardScrollablePageViewController(wrapping: content)
+        let window = makeWindow(width: 420, height: 520, hosting: page)
+        defer { window.orderOut(nil) }
+
+        page.settleInitialLayout()
+        let initialRowFrame = row.convert(row.bounds, to: page.view)
+        let initialSectionFrame = section.convert(section.bounds, to: page.view)
+
+        // This models the next main-runloop work that used to commit wrapping
+        // heights after the page had already been displayed.
+        SettingsRowView.flushPendingWrappingHeightCommits(in: page.view)
+        page.view.layoutSubtreeIfNeeded()
+
+        assertFrame(row.convert(row.bounds, to: page.view), equals: initialRowFrame)
+        assertFrame(section.convert(section.bounds, to: page.view), equals: initialSectionFrame)
+    }
+
+    private func assertFrame(_ actual: NSRect, equals expected: NSRect, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(actual.minX, expected.minX, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(actual.minY, expected.minY, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(actual.width, expected.width, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(actual.height, expected.height, accuracy: 0.5, file: file, line: line)
+    }
+
+    private func initialSettingsGeometry(of page: DashboardScrollablePageViewController) -> [NSRect] {
+        descendants(of: page.view).compactMap { view in
+            guard view is SettingsRowView || view is SettingsSectionView else { return nil }
+            return view.convert(view.bounds, to: page.view)
+        }
+    }
+
+    private func assertSettingsGeometry(
+        _ actual: [NSRect],
+        equals expected: [NSRect],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(actual.count, expected.count, file: file, line: line)
+        for (actualFrame, expectedFrame) in zip(actual, expected) {
+            assertFrame(actualFrame, equals: expectedFrame, file: file, line: line)
+        }
+    }
+
     func testControllerCreatesAndOwnsPageScrollChromeForOrdinaryContent() throws {
         let filler = tallFiller(height: 1800)
         let content = DashboardSettingsComponents.makeSettingsPageContent([filler])
@@ -306,11 +357,26 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         window.layoutIfNeeded()
         composition.contentHost.layoutSubtreeIfNeeded()
         let menuBarPage = try XCTUnwrap(composition.scrollablePageForTesting)
+        let menuBarInitialGeometry = initialSettingsGeometry(of: menuBarPage)
+        SettingsRowView.flushPendingWrappingHeightCommits(in: menuBarPage.view)
+        menuBarPage.view.layoutSubtreeIfNeeded()
+        assertSettingsGeometry(
+            initialSettingsGeometry(of: menuBarPage),
+            equals: menuBarInitialGeometry
+        )
         composition.restorePageScrollOffsetY(96)
         XCTAssertEqual(composition.pageScrollOffsetY(), 96, accuracy: 2)
         XCTAssertEqual(menuBarPage.scrollOffset, 96, accuracy: 2)
         XCTAssertFalse(menuBarPage.isAtTop)
         XCTAssertTrue(menuBarPage.pageScrollView === menuBarPage.scrollViewForTesting)
+
+        composition.showSection(.menu)
+        window.layoutIfNeeded()
+        let menuPage = try XCTUnwrap(composition.scrollablePageForTesting)
+        let menuInitialGeometry = initialSettingsGeometry(of: menuPage)
+        SettingsRowView.flushPendingWrappingHeightCommits(in: menuPage.view)
+        menuPage.view.layoutSubtreeIfNeeded()
+        assertSettingsGeometry(initialSettingsGeometry(of: menuPage), equals: menuInitialGeometry)
     }
 
     func testClipViewListeningLivesOnThePageNotTheWindow() throws {
