@@ -269,7 +269,9 @@ final class DashboardNotificationPages {
             )
             globalControls.append(systemSettings)
         }
-        globalControls.append(globalSwitch)
+        if permission != .denied {
+            globalControls.append(globalSwitch)
+        }
         let globalAccessory = NSStackView(views: globalControls)
         globalAccessory.orientation = .horizontal
         globalAccessory.spacing = 8
