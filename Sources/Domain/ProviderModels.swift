@@ -406,13 +406,20 @@ enum OpenCodexCardLayout {
         }
     }
 
-    /// Same 60pt quota amount-band as 5-hour, plus the 24h+48h line below
-    /// the source subtitle. No progress bar.
+    /// Amount box covering the title+subtitle band. 31pt digits center on
+    /// those two lines instead of the 48pt quota amount that hangs into the
+    /// progress-bar slot.
+    static var bankedResetTextBandAmountHeight: CGFloat {
+        quotaDetailOffset + quotaDetailHeight - quotaResetOffset
+    }
+
+    /// 60pt quota row plus the 24h+48h line below the source subtitle.
+    /// No progress bar.
     static func bankedResetProbabilityBlockHeight() -> CGFloat {
         quotaRowHeight + bankedResetForecastExtraHeight()
     }
 
-    /// Reset-card header uses the same 60pt quota amount-band as 5-hour.
+    /// Reset-card header keeps the 60pt quota row for inter-block gaps.
     static func bankedResetSummaryHeight() -> CGFloat {
         quotaRowHeight
     }
@@ -762,9 +769,10 @@ enum OpenCodexCardLayout {
         let cardSummaryY = bottomInset + bankedDetailBlockHeight
         let probabilityBottomY = cardSummaryY + cardSummaryHeight + probabilityCardGap
         let probabilityRowY = probabilityBottomY + forecastExtraHeight
-        // Banked rows always use the 5-hour quota text/amount offsets, never
-        // the collapsed window `rowHeight`. Hiding 5h/7d progress bars must
-        // not pull 重置卡 into the probability block.
+        // Title and subtitle keep the 5-hour quota text offsets. Amount
+        // covers only that two-line band so the number is not pulled down
+        // by the progress-bar slot. Hiding 5h/7d progress bars must not
+        // pull 重置卡 into the probability block.
         func quotaBandFrames(rowY: CGFloat, showsReset: Bool) -> OpenCodexQuotaRowFrames {
             OpenCodexQuotaRowFrames(
                 quotaDetail: CGRect(
@@ -783,9 +791,9 @@ enum OpenCodexCardLayout {
                     : .zero,
                 amount: CGRect(
                     x: amountX,
-                    y: rowY + quotaAmountOffset,
+                    y: rowY + quotaResetOffset,
                     width: amountWidth,
-                    height: quotaAmountHeight
+                    height: bankedResetTextBandAmountHeight
                 ),
                 progress: .zero
             )

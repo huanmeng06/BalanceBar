@@ -4377,7 +4377,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(countField.alignment, .right)
         XCTAssertEqual(
             countField.frame.height,
-            OpenCodexCardLayout.quotaAmountHeight,
+            OpenCodexCardLayout.bankedResetTextBandAmountHeight,
             accuracy: 0.001
         )
         let chromes = overview.subviews.filter {
@@ -4511,10 +4511,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(large24.textField.alignment, .right)
         XCTAssertEqual(
             large24.frame.height,
+            OpenCodexCardLayout.bankedResetTextBandAmountHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            frames.quotaRows[0].amount.height,
             OpenCodexCardLayout.quotaAmountHeight,
             accuracy: 0.001
         )
-        XCTAssertEqual(large24.frame.height, frames.quotaRows[0].amount.height, accuracy: 0.001)
         XCTAssertNil(large24.sample?.progressPercentage)
         XCTAssertFalse(
             overview.subviews.contains { view in
@@ -4565,7 +4569,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(separator.frame.minX, percent24.frame.maxX, accuracy: 0.001)
         XCTAssertEqual(separator.frame.maxX, prefix48.frame.minX, accuracy: 0.001)
         XCTAssertGreaterThan(probabilityLink.frame.minY, percent24.frame.maxY)
-        XCTAssertLessThan(large24.frame.minY, probabilityLink.frame.minY)
+        XCTAssertLessThanOrEqual(large24.frame.minY, probabilityLink.frame.minY)
         XCTAssertGreaterThan(large24.frame.maxY, probabilityLink.frame.maxY)
         let resetTitle = try XCTUnwrap(
             allControls(of: overview, as: AccountMarqueeView.self).first {
@@ -4927,7 +4931,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
         XCTAssertGreaterThan(probabilityLink.frame.minY, percent24.frame.maxY)
-        XCTAssertLessThan(large24.frame.minY, probabilityLink.frame.minY)
+        XCTAssertLessThanOrEqual(large24.frame.minY, probabilityLink.frame.minY)
         XCTAssertGreaterThan(large24.frame.maxY, probabilityLink.frame.maxY)
         XCTAssertFalse(probabilityLink.stringValue.contains("codex-reset.com"))
         XCTAssertTrue(probabilityLink.hoverHint.contains("codex-reset.com"))
@@ -5647,7 +5651,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertEqual(
                 resetTitle.frame.minY
                     - overview.convert(countView.frame, from: countView.superview).minY,
-                OpenCodexCardLayout.quotaDetailOffset - OpenCodexCardLayout.quotaAmountOffset,
+                OpenCodexCardLayout.quotaDetailOffset - OpenCodexCardLayout.quotaResetOffset,
                 accuracy: 1,
                 "collapsed reset title offset for \(mode)"
             )
