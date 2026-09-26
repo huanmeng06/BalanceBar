@@ -349,6 +349,10 @@ final class DashboardMenuBarPage {
         resetRefreshSignatures()
     }
 
+    func activate() {
+        previewSection.activate()
+    }
+
     private func resetRefreshSignatures() {
         lastRefreshSignature = nil
         lastWarningRefreshSignature = nil

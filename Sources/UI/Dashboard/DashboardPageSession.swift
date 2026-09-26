@@ -163,22 +163,22 @@ final class DashboardPageSession {
     }
 
     private func showSectionMeasured(_ section: DashboardSection) {
+        guard !isTornDown else { return }
         DashboardPageInstrumentation.measure(.sidebarSelectionCallback) {
-            guard !isTornDown else { return }
             self.section = section
             self.selectedProviderID = nil
             self.window?.title = section.title
             self.sourceListController?.applySelection(section)
-            self.replacePage(activateSection: section) {
-                if let cached = self.cachedSectionPages[section] {
-                    return cached
-                }
-                let page = DashboardPageInstrumentation.measure(.makeSectionPage) {
-                    self.actions.makeSectionPage(section)
-                }
-                self.cachedSectionPages[section] = page
-                return page
+        }
+        self.replacePage(activateSection: section) {
+            if let cached = self.cachedSectionPages[section] {
+                return cached
             }
+            let page = DashboardPageInstrumentation.measure(.makeSectionPage) {
+                self.actions.makeSectionPage(section)
+            }
+            self.cachedSectionPages[section] = page
+            return page
         }
     }
 
@@ -275,7 +275,6 @@ final class DashboardPageSession {
     ) {
         actions.suspendSectionPage(mountedSection)
         if prepareForPageReplacement {
-            DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
             DashboardPageInstrumentation.measure(.prepareForPageReplacement) {
                 DashboardKeyViewLoop.prepareForPageReplacement(window)
                 actions.prepareForPageReplacement()
@@ -315,6 +314,10 @@ final class DashboardPageSession {
     }
 
     private func invalidateCachedSectionPages() {
+        DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
+        for page in cachedSectionPages.values {
+            DashboardSettingsComponents.disconnectPopUpButtonActions(in: page.view)
+        }
         guard !cachedSectionPages.isEmpty else {
             actions.invalidateSectionPages()
             return

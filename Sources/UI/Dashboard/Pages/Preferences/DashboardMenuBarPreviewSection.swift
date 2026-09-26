@@ -110,6 +110,7 @@ final class DashboardMenuBarPreviewSection {
     private weak var iconDisplayDelayRow: NSView?
     private var lastWarningRefreshSignature: WarningRefreshSignature?
     private var isBuilt = false
+    private var isSuspended = false
     private var previewAnimationActive = false
     private var previewAnimationKind: MenuBarCompositorAnimationKind = .none
     private var lastPreviewIconImage: NSImage?
@@ -142,6 +143,7 @@ final class DashboardMenuBarPreviewSection {
     }
 
     func teardown() {
+        isSuspended = false
         removeIconDisplayModeRevealHighlight()
         previewAnimationActive = false
         previewAnimationKind = .none
@@ -157,6 +159,7 @@ final class DashboardMenuBarPreviewSection {
     }
 
     func suspend() {
+        isSuspended = true
         removeIconDisplayModeRevealHighlight()
         previewAnimatedIconHost.removeRotationAnimation()
         previewAnimatedIconHost.isHidden = true
@@ -167,7 +170,12 @@ final class DashboardMenuBarPreviewSection {
         }
     }
 
+    func activate() {
+        isSuspended = false
+    }
+
     func prepare(input: DashboardMenuBarPage.Input) {
+        isSuspended = false
         previewAnimationActive = input.animationKind != .none
         previewAnimationKind = input.animationKind
         lastPreviewIconImage = Self.displayedPreviewIconImage(
@@ -767,6 +775,17 @@ final class DashboardMenuBarPreviewSection {
         guard isBuilt else { return }
 
         let staticImage = lastPreviewIconImage
+        guard !isSuspended else {
+            previewAnimatedIconHost.removeRotationAnimation()
+            previewAnimatedIconHost.isHidden = true
+            previewClaudeAnimatedIconHost.removeThinkingAnimation()
+            previewClaudeAnimatedIconHost.isHidden = true
+            if previewIcon.image !== staticImage {
+                previewIcon.image = staticImage
+            }
+            return
+        }
+
         guard kind != .none,
               !previewIconSlot.isHidden,
               let iconImage = iconImage ?? staticImage,

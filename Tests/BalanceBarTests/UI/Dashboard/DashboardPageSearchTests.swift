@@ -54,6 +54,55 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(makeCounts[.menu], 2)
     }
 
+    func testCachedSectionRetainsPopupActionsAndSearchRestoresItsHierarchy() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-474-cache-actions.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        window.layoutIfNeeded()
+
+        let originalContent = composition.currentHostedPageContentForTesting()
+        let popup = try XCTUnwrap(
+            firstDescendant(of: originalContent) { view in
+                (view as? NSPopUpButton)?.identifier?.rawValue
+                    == DashboardMenuBarPage.rightClickActionIdentifier
+            } as? NSPopUpButton
+        )
+        XCTAssertNotNil(popup.target)
+        XCTAssertNotNil(popup.action)
+
+        composition.showSection(.menu)
+        composition.showSection(.menuBar)
+        let returnedContent = composition.currentHostedPageContentForTesting()
+        XCTAssertTrue(returnedContent === originalContent)
+        let returnedPopup = try XCTUnwrap(
+            firstDescendant(of: returnedContent) { view in
+                (view as? NSPopUpButton)?.identifier?.rawValue
+                    == DashboardMenuBarPage.rightClickActionIdentifier
+            } as? NSPopUpButton
+        )
+        XCTAssertTrue(returnedPopup === popup)
+        XCTAssertNotNil(returnedPopup.target)
+        XCTAssertNotNil(returnedPopup.action)
+        XCTAssertTrue(NSApp.sendAction(
+            try XCTUnwrap(returnedPopup.action),
+            to: try XCTUnwrap(returnedPopup.target),
+            from: returnedPopup
+        ))
+
+        composition.applySearchQueryForTesting(
+            tr(.keyDashboardGeneralAndRefreshPagesLanguage)
+        )
+        composition.applySearchQueryForTesting("")
+        XCTAssertTrue(composition.currentHostedPageContentForTesting() === originalContent)
+        XCTAssertTrue(originalContent.superview != nil)
+    }
+
     func testRefreshItemInvokesSessionManualRefreshActionOnceAndSurvivesRebuild() throws {
         var refreshCount = 0
         let harness = DashboardShellTestHarness(

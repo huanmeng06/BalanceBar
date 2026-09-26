@@ -175,7 +175,6 @@ final class DashboardCompositionController {
     private var menuBarAnimationFallbackActive = false
     private var isGlobalSettingsSearchActive = false
     private weak var globalSettingsSearchContent: NSView?
-    private var globalSearchOriginContent: NSView?
     private var globalSearchOriginSection: DashboardSection?
     private var globalSettingsSearchSections: Set<DashboardSection> = []
     private var globalSearchGroupsBySection: [DashboardSection: DashboardGlobalSearchGroupView] = [:]
@@ -362,7 +361,6 @@ final class DashboardCompositionController {
         invalidateSearchData()
         isGlobalSettingsSearchActive = false
         globalSettingsSearchContent = nil
-        globalSearchOriginContent = nil
         globalSearchOriginSection = nil
         globalSettingsSearchSections.removeAll()
         globalSearchGroupsBySection.removeAll()
@@ -767,7 +765,6 @@ final class DashboardCompositionController {
         if selectedProviderID != nil || section == .about {
             isGlobalSettingsSearchActive = false
             globalSettingsSearchContent = nil
-            globalSearchOriginContent = nil
             globalSearchOriginSection = nil
             globalSettingsSearchSections.removeAll()
             globalSearchGroupsBySection.removeAll()
@@ -795,7 +792,6 @@ final class DashboardCompositionController {
         if selectedProviderID != nil || section == .about {
             isGlobalSettingsSearchActive = false
             globalSettingsSearchContent = nil
-            globalSearchOriginContent = nil
             globalSearchOriginSection = nil
             globalSettingsSearchSections.removeAll()
         } else if !needle.isEmpty, !isGlobalSettingsSearchActive {
@@ -958,13 +954,11 @@ final class DashboardCompositionController {
         defer { isBuildingGlobalSearchPage = false }
         if pageSession.currentHostedPageContent() !== globalSettingsSearchContent,
            pageSession.mountedSection != .about {
-            globalSearchOriginContent = pageSession.currentHostedPageContent()
             globalSearchOriginSection = section
         } else if pageSession.mountedSection == .about {
             // About content is not a settings origin page. If a non-empty
             // query crosses into Settings, clearing it must build the newly
             // selected logical section instead of restoring About.
-            globalSearchOriginContent = nil
             globalSearchOriginSection = nil
         }
         pageSearchFilter.resetSearchState()
@@ -1002,7 +996,6 @@ final class DashboardCompositionController {
     }
 
     private func clearGlobalSettingsSearch() {
-        let origin = globalSearchOriginContent
         let originSection = globalSearchOriginSection
         if let current = globalSettingsSearchContent {
             _ = pageSearchFilter.apply(
@@ -1016,14 +1009,13 @@ final class DashboardCompositionController {
         globalSettingsSearchContent = nil
         globalSettingsSearchSections.removeAll()
         globalSearchGroupsBySection.removeAll()
-        globalSearchOriginContent = nil
         globalSearchOriginSection = nil
         pendingSearchScrollPreserve = nil
         lastSettledSearchQuery = nil
         lastAppliedSearchQuery = nil
         lastAppliedSearchRoot = nil
-        if let origin, originSection == section {
-            pageSession.showHostedSettingsContent(origin)
+        if let originSection, originSection == section {
+            pageSession.showSection(originSection)
         } else {
             pageSession.showSection(section)
         }
@@ -1136,10 +1128,6 @@ final class DashboardCompositionController {
         _ group: DashboardGlobalSearchGroupView,
         for settingsSection: DashboardSection
     ) {
-        if settingsSection == globalSearchOriginSection, let origin = globalSearchOriginContent {
-            group.addPage(origin)
-            return
-        }
         let page = makeSectionPage(for: settingsSection, forSearch: true)
         let sourceStack: NSStackView? = {
             if let stack = page as? NSStackView { return stack }
@@ -1174,8 +1162,10 @@ final class DashboardCompositionController {
     }
 
     private func activateSectionPage(_ section: DashboardSection) {
+        dashboardPreferencePages.activate(section)
         switch section {
         case .general:
+            dashboardPreferencePages.refreshCurrentProviderName(state.currentProviderName())
             dashboardPreferencePages.refreshUpdateState(state.updateState())
             dashboardPreferencePages.refreshLaunchAtLogin()
             dashboardPreferencePages.refreshLaunchWithChatGPT()

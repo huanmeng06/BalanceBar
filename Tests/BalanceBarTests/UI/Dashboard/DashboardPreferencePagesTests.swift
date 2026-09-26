@@ -784,6 +784,27 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(applied.isEmpty)
     }
 
+    func testGeneralPageRefreshesCurrentProviderNameAfterCachedReentry() throws {
+        let suiteName = "DashboardPreferencePagesTests.CurrentProviderRefresh.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let controller = DashboardGeneralPage()
+        let page = controller.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "Provider A",
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+        ))
+        let labels = { self.descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue) }
+        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.currentProviderValue("Provider A")))
+
+        controller.refreshCurrentProviderName("Provider B")
+        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.currentProviderValue("Provider B")))
+        XCTAssertFalse(labels().contains(DashboardSettingsFormattedCopy.currentProviderValue("Provider A")))
+    }
+
     func testLaunchAtLoginGeneralRowReflectsStatesAndRoutesToggle() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -7697,6 +7718,44 @@ final class DashboardPreferencePagesTests: XCTestCase {
         controller.updatePreviewAnimation(active: false, iconImage: icon)
         XCTAssertTrue(host.isHidden)
         XCTAssertNil(host.rotationAnimationForTesting)
+    }
+
+    func testMenuBarPreviewSuspensionBlocksBackgroundAnimationRestartUntilActivation() throws {
+        let suiteName = "DashboardPreferencePagesTests.MenuBarPreviewSuspend.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        defer { controller.teardown() }
+        let icon = NSImage(size: NSSize(width: 16, height: 16))
+        icon.isTemplate = true
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .balance("Provider", 80, "USD", nil, Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: icon,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .visible
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+
+        controller.updatePreviewAnimation(active: true, iconImage: icon)
+        let host = controller.previewAnimationHostForTesting
+        let installCount = host.rotationAnimationInstallCount
+        XCTAssertNotNil(host.rotationAnimationForTesting)
+
+        controller.suspend()
+        controller.updatePreviewAnimation(active: true, iconImage: icon)
+        XCTAssertEqual(host.rotationAnimationInstallCount, installCount)
+        XCTAssertNil(host.rotationAnimationForTesting)
+
+        controller.activate()
+        controller.updatePreviewAnimation(active: true, iconImage: icon)
+        XCTAssertEqual(host.rotationAnimationInstallCount, installCount + 1)
+        XCTAssertNotNil(host.rotationAnimationForTesting)
     }
 
     func testMenuBarPreviewClaudeAnimationUsesSeparateSpriteCAHost() throws {

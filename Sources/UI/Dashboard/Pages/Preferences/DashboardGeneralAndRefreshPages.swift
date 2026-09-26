@@ -322,6 +322,7 @@ final class DashboardGeneralPage {
     private var updateButton: NSButton?
     private var updateNotesButton: NSButton?
     private var updateBadge: NSView?
+    private weak var currentProviderDetailLabel: NSTextField?
     private var launchAtLoginSwitch: NSSwitch?
     private var launchAtLoginSubtitleLabel: NSTextField?
     private var launchWithChatGPTSwitch: NSSwitch?
@@ -338,15 +339,15 @@ final class DashboardGeneralPage {
         let currentProviderText = DashboardSettingsFormattedCopy.currentProviderValue(
             input.currentProviderName
         )
+        let currentProviderRow = SettingsRowView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesCcSwitch),
+            detail: currentProviderText,
+            accessoryView: openButton
+        )
+        currentProviderDetailLabel = currentProviderRow.detailLabel
         let system = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesSystem),
-            contentViews: [
-                SettingsRowView(
-                    title: tr(.keyDashboardGeneralAndRefreshPagesCcSwitch),
-                    detail: currentProviderText,
-                    accessoryView: openButton
-                )
-            ]
+            contentViews: [currentProviderRow]
         )
 
         let launchAtLoginSwitch = DashboardSettingsComponents.makeSwitch(
@@ -630,6 +631,13 @@ final class DashboardGeneralPage {
         apply(presentation, to: updateNotesButton)
         updateBadge?.isHidden = !presentation.showsUpdateBadge
         (updateButton.superview as? DashboardAdaptiveControlsStackView)?.invalidateLayoutAfterContentChange()
+    }
+
+    func refreshCurrentProviderName(_ name: String) {
+        guard let currentProviderDetailLabel else { return }
+        currentProviderDetailLabel.stringValue = DashboardSettingsFormattedCopy.currentProviderValue(name)
+        currentProviderDetailLabel.superview?.needsLayout = true
+        currentProviderDetailLabel.superview?.superview?.needsLayout = true
     }
 
     private func launchAtLoginSubtitle(for state: LaunchAtLoginState) -> String {
