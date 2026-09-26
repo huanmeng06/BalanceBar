@@ -613,9 +613,6 @@ enum OpenCodexCardLayout {
         let windowContentShift = includesQuotaProgress
             ? 0
             : quotaRowHeight - lunaReserveNoProgressRowHeight
-        let windowAmountHeight = includesQuotaProgress
-            ? quotaAmountHeight
-            : lunaReserveNoProgressAmountHeight
         let rowGap = quotaRowGap
         let bottomInset = quotaBottomInset
         let titleGap = quotaTitleGap
@@ -701,11 +698,12 @@ enum OpenCodexCardLayout {
                     width: 128,
                     height: quotaResetHeight
                 ),
+                // Same title+subtitle band as 重置概率. Progress stays at row origin.
                 amount: CGRect(
                     x: amountX,
-                    y: y + max(0, quotaAmountOffset - windowContentShift),
+                    y: y + quotaResetOffset - windowContentShift,
                     width: amountWidth,
-                    height: windowAmountHeight
+                    height: bankedResetTextBandAmountHeight
                 ),
                 progress: includesQuotaProgress
                     ? CGRect(

@@ -3811,7 +3811,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             percentageLabels.allSatisfy {
                 ($0.font?.pointSize ?? 0) == OpenCodexCardLayout.quotaAmountPointSize
                     && ($0.font?.fontDescriptor.symbolicTraits.rawValue ?? 0) == expectedAmountTraits
-                    && $0.frame.height == OpenCodexCardLayout.quotaAmountHeight
+                    && $0.frame.height == OpenCodexCardLayout.bankedResetTextBandAmountHeight
             }
         )
 
@@ -4202,7 +4202,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(percentageLabels.count, 2)
         XCTAssertTrue(
             percentageLabels.allSatisfy {
-                $0.frame.height == OpenCodexCardLayout.lunaReserveNoProgressAmountHeight
+                $0.frame.height == OpenCodexCardLayout.bankedResetTextBandAmountHeight
             }
         )
     }
@@ -4516,7 +4516,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(
             frames.quotaRows[0].amount.height,
-            OpenCodexCardLayout.quotaAmountHeight,
+            OpenCodexCardLayout.bankedResetTextBandAmountHeight,
             accuracy: 0.001
         )
         XCTAssertNil(large24.sample?.progressPercentage)

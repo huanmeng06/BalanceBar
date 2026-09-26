@@ -69,7 +69,9 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertTrue(expanded.quotaRows.allSatisfy { $0.progress == .zero })
         XCTAssertTrue(
             expanded.quotaRows.allSatisfy {
-                $0.amount.height == OpenCodexCardLayout.lunaReserveNoProgressAmountHeight
+                $0.amount.height == OpenCodexCardLayout.bankedResetTextBandAmountHeight
+                    && abs($0.amount.minY - $0.reset.minY) < 0.001
+                    && abs($0.amount.maxY - $0.quotaDetail.maxY) < 0.001
             }
         )
         let withProgress = OpenCodexCardLayout.frames(
@@ -140,7 +142,24 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(withProgress.bankedResetForecastMetrics, withoutProgress.bankedResetForecastMetrics)
         XCTAssertNil(withProgress.bankedResetForecastConfidence)
         XCTAssertNil(withoutProgress.bankedResetForecastConfidence)
-        XCTAssertEqual(withProgress.quotaRows[1].progress.minY, withoutProgress.quotaRows[1].amount.minY)
+        XCTAssertEqual(
+            withoutProgress.quotaRows[1].amount.minY,
+            withoutProgress.quotaRows[1].reset.minY,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            withoutProgress.quotaRows[1].amount.height,
+            OpenCodexCardLayout.bankedResetTextBandAmountHeight,
+            accuracy: 0.001
+        )
+        let hiddenWindowShift = OpenCodexCardLayout.quotaRowHeight - noProgressRowHeight
+        XCTAssertEqual(
+            withProgress.quotaRows[1].progress.minY,
+            withoutProgress.quotaRows[1].reset.minY
+                - OpenCodexCardLayout.quotaResetOffset
+                + hiddenWindowShift,
+            accuracy: 0.001
+        )
         XCTAssertEqual(
             withoutProgress.quotaRows[0].amount.minY
                 - (withoutProgress.quotaRows[1].amount.minY + noProgressRowHeight),
@@ -156,8 +175,11 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         let probabilityRowMaxY = probabilityOff.amount.minY
             - OpenCodexCardLayout.quotaResetOffset
             + OpenCodexCardLayout.quotaRowHeight
+        let hiddenSevenDayOrigin = withoutProgress.quotaRows[1].reset.minY
+            - OpenCodexCardLayout.quotaResetOffset
+            + hiddenWindowShift
         XCTAssertEqual(
-            withoutProgress.quotaRows[1].amount.minY - probabilityRowMaxY,
+            hiddenSevenDayOrigin - probabilityRowMaxY,
             rowGap,
             accuracy: 0.001
         )
@@ -241,13 +263,23 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         let summary = try XCTUnwrap(frames.bankedResetSummaryRow)
         let metrics = try XCTUnwrap(frames.bankedResetForecastMetrics)
 
-        XCTAssertEqual(fiveHour.amount.height, OpenCodexCardLayout.quotaAmountHeight, accuracy: 0.001)
+        let textBandHeight = OpenCodexCardLayout.bankedResetTextBandAmountHeight
+        XCTAssertEqual(fiveHour.amount.height, textBandHeight, accuracy: 0.001)
+        XCTAssertEqual(fiveHour.amount.minY, fiveHour.reset.minY, accuracy: 0.001)
+        XCTAssertEqual(fiveHour.amount.maxY, fiveHour.quotaDetail.maxY, accuracy: 0.001)
+        XCTAssertEqual(sevenDay.amount.height, textBandHeight, accuracy: 0.001)
+        XCTAssertEqual(sevenDay.amount.minY, sevenDay.reset.minY, accuracy: 0.001)
+        XCTAssertEqual(sevenDay.amount.maxY, sevenDay.quotaDetail.maxY, accuracy: 0.001)
         XCTAssertEqual(
-            fiveHour.amount.minY,
-            fiveHour.progress.minY + OpenCodexCardLayout.quotaAmountOffset,
+            fiveHour.progress.height,
+            OpenCodexCardLayout.quotaProgressHeight,
             accuracy: 0.001
         )
-        let textBandHeight = OpenCodexCardLayout.bankedResetTextBandAmountHeight
+        XCTAssertEqual(
+            fiveHour.amount.minY,
+            fiveHour.progress.minY + OpenCodexCardLayout.quotaResetOffset,
+            accuracy: 0.001
+        )
         XCTAssertEqual(
             textBandHeight,
             OpenCodexCardLayout.quotaDetailOffset
@@ -419,7 +451,13 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertGreaterThan(frames.cardSize.height, baseline.cardSize.height)
         for row in frames.quotaRows {
             XCTAssertEqual(row.amount.width, baseline.amount.width)
-            XCTAssertEqual(row.amount.height, baseline.amount.height)
+            XCTAssertEqual(
+                row.amount.height,
+                OpenCodexCardLayout.bankedResetTextBandAmountHeight,
+                accuracy: 0.001
+            )
+            XCTAssertEqual(row.amount.minY, row.reset.minY, accuracy: 0.001)
+            XCTAssertEqual(row.amount.maxY, row.quotaDetail.maxY, accuracy: 0.001)
             XCTAssertEqual(row.quotaDetail.width, baseline.quotaDetail.width)
             XCTAssertEqual(row.quotaDetail.height, baseline.quotaDetail.height)
             XCTAssertEqual(row.reset.width, baseline.reset?.width ?? 0)
