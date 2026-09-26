@@ -279,7 +279,20 @@ final class DashboardCompositionController {
             didResize: { [weak self] in
                 self?.actions.onDidResize()
             },
-            onManualRefresh: actions.onManualRefresh
+            onManualRefresh: actions.onManualRefresh,
+            suspendSectionPage: { [weak self] section in
+                DashboardPageInstrumentation.measure(.preferencePagesSuspend) {
+                    self?.dashboardPreferencePages.suspend(section)
+                }
+            },
+            activateSectionPage: { [weak self] section in
+                self?.activateSectionPage(section)
+            },
+            invalidateSectionPages: { [weak self] in
+                DashboardPageInstrumentation.measure(.preferencePagesTeardown) {
+                    self?.dashboardPreferencePages.teardown()
+                }
+            }
         )
     )
     private lazy var windowController: DashboardWindowController = {
@@ -1158,7 +1171,30 @@ final class DashboardCompositionController {
 
     private func prepareForPageReplacement() {
         dashboardProviderPages.unmount()
-        dashboardPreferencePages.teardown()
+    }
+
+    private func activateSectionPage(_ section: DashboardSection) {
+        switch section {
+        case .general:
+            dashboardPreferencePages.refreshUpdateState(state.updateState())
+            dashboardPreferencePages.refreshLaunchAtLogin()
+            dashboardPreferencePages.refreshLaunchWithChatGPT()
+        case .menuBar:
+            dashboardPreferencePages.refreshMenuBar(
+                snapshot: state.snapshot(),
+                menuBarSnapshot: state.menuBarSnapshot,
+                statusItemVisibility: state.statusItemVisibility(),
+                iconImage: state.iconImage(),
+                animationIconImage: idleSafeMenuBarPreviewAnimationIconImage,
+                animationKind: menuBarPreviewAnimationKind,
+                animationSpriteImage: menuBarPreviewAnimationSpriteImage,
+                animationFallbackActive: menuBarAnimationFallbackActive
+            )
+        case .menu:
+            dashboardPreferencePages.refreshMenu()
+        case .advanced, .about:
+            break
+        }
     }
 
     private func makeSectionPageController(for section: DashboardSection) -> NSViewController {

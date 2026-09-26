@@ -3862,6 +3862,40 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
     }
 
+    func testMenuPageDefersStatusLinksEditorUntilShown() {
+        let suiteName = "DashboardPreferencePagesTests.StatusLinksLazy.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.showStatusMenu = false
+        var editorCreationCount = 0
+        let controller = DashboardMenuPage()
+        _ = controller.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                editorCreationCount += 1
+                return StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        XCTAssertEqual(editorCreationCount, 0)
+
+        controller.updateStatusVisibility(true, animated: false)
+        XCTAssertEqual(editorCreationCount, 1)
+        controller.updateStatusVisibility(false, animated: false)
+        controller.updateStatusVisibility(true, animated: false)
+        XCTAssertEqual(editorCreationCount, 1)
+        controller.teardown()
+    }
+
     func testMenuBarPreviewPresentationUsesSharedSnapshotValues() {
         let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
         let presentation = DashboardMenuBarPage.presentation(

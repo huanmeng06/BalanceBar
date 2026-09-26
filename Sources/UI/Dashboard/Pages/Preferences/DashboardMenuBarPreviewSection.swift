@@ -156,6 +156,17 @@ final class DashboardMenuBarPreviewSection {
         pageActionTarget.onRevealIconDisplayModeSetting = nil
     }
 
+    func suspend() {
+        removeIconDisplayModeRevealHighlight()
+        previewAnimatedIconHost.removeRotationAnimation()
+        previewAnimatedIconHost.isHidden = true
+        previewClaudeAnimatedIconHost.removeThinkingAnimation()
+        previewClaudeAnimatedIconHost.isHidden = true
+        if previewIcon.image == nil {
+            previewIcon.image = lastPreviewIconImage
+        }
+    }
+
     func prepare(input: DashboardMenuBarPage.Input) {
         previewAnimationActive = input.animationKind != .none
         previewAnimationKind = input.animationKind

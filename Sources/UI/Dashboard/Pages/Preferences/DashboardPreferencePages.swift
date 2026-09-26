@@ -48,6 +48,12 @@ final class DashboardPreferencePages {
     private let menuBarPage = DashboardMenuBarPage()
     private let advancedPage = DashboardAdvancedPage()
     private let logsPage = DashboardLogsPage()
+    // Global Search projects content into a detached tree. Keep its page
+    // models separate from the cached production pages.
+    private let searchGeneralPage = DashboardGeneralPage()
+    private let searchMenuPage = DashboardMenuPage()
+    private let searchMenuBarPage = DashboardMenuBarPage()
+    private let searchAdvancedPage = DashboardAdvancedPage()
 
     init(
         preferences: AppPreferences,
@@ -110,6 +116,10 @@ final class DashboardPreferencePages {
         updateState: UpdateCheckState,
         forSearch: Bool = false
     ) -> NSView {
+        let generalPage = forSearch ? searchGeneralPage : self.generalPage
+        let menuBarPage = forSearch ? searchMenuBarPage : self.menuBarPage
+        let menuPage = forSearch ? searchMenuPage : self.menuPage
+        let advancedPage = forSearch ? searchAdvancedPage : self.advancedPage
         switch section {
         case .general:
             return generalPage.make(.init(
@@ -182,6 +192,11 @@ final class DashboardPreferencePages {
 
     func refreshMenu() {
         menuPage.refresh(preferences: preferences)
+    }
+
+    func suspend(_ section: DashboardSection) {
+        guard section == .menuBar else { return }
+        menuBarPage.suspend()
     }
 
     func updateMenuBarPreviewIcon(_ image: NSImage?) {
@@ -295,5 +310,7 @@ final class DashboardPreferencePages {
     func teardown() {
         menuBarPage.teardown()
         menuPage.teardown()
+        searchMenuBarPage.teardown()
+        searchMenuPage.teardown()
     }
 }

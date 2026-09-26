@@ -5,6 +5,55 @@ import XCTest
 
 @MainActor
 final class DashboardPageSearchTests: XCTestCase {
+    func testFixedSectionPagesReuseLifecycleAndInstrumentation() throws {
+        var makeCounts: [DashboardSection: Int] = [:]
+        var suspended: [DashboardSection] = []
+        var activated: [DashboardSection] = []
+        var invalidationCount = 0
+        var phases: [(DashboardPageInstrumentation.Phase, DashboardPageInstrumentation.Boundary)] = []
+        DashboardPageInstrumentation.eventRecorder = { phase, boundary in
+            phases.append((phase, boundary))
+        }
+        defer { DashboardPageInstrumentation.eventRecorder = nil }
+
+        let harness = DashboardShellTestHarness(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { section in
+                    makeCounts[section, default: 0] += 1
+                    return DashboardHostedPageViewController(wrapping: NSView())
+                },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {},
+                suspendSectionPage: { suspended.append($0) },
+                activateSectionPage: { activated.append($0) },
+                invalidateSectionPages: { invalidationCount += 1 }
+            )
+        )
+        defer { harness.teardown() }
+
+        harness.open(initialSection: .menu)
+        harness.showSection(.menuBar)
+        harness.showSection(.menu)
+        harness.showSection(.menuBar)
+
+        XCTAssertEqual(makeCounts[.menu], 1)
+        XCTAssertEqual(makeCounts[.menuBar], 1)
+        XCTAssertEqual(activated, [.menu, .menuBar, .menu, .menuBar])
+        XCTAssertEqual(suspended, [.general, .menu, .menuBar, .menu])
+        XCTAssertTrue(phases.contains { $0.0 == .makeSectionPage && $0.1 == .begin })
+        XCTAssertTrue(phases.contains { $0.0 == .initialLayoutSettle && $0.1 == .end })
+        XCTAssertTrue(phases.contains { $0.0 == .totalSelectionToReady && $0.1 == .end })
+
+        harness.rebuild()
+        XCTAssertEqual(invalidationCount, 1)
+        harness.showSection(.menu)
+        XCTAssertEqual(makeCounts[.menu], 2)
+    }
+
     func testRefreshItemInvokesSessionManualRefreshActionOnceAndSurvivesRebuild() throws {
         var refreshCount = 0
         let harness = DashboardShellTestHarness(
