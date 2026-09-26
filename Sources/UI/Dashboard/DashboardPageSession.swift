@@ -1,4 +1,44 @@
 import AppKit
+import os
+
+enum DashboardPageInstrumentation {
+    enum Phase: String {
+        case sidebarSelectionCallback = "sidebar-selection-callback"
+        case prepareForPageReplacement = "prepare-for-page-replacement"
+        case preferencePagesSuspend = "preference-pages-suspend"
+        case preferencePagesTeardown = "preference-pages-teardown"
+        case makeSectionPage = "make-section-page"
+        case pageContainerReplace = "page-container-replace"
+        case initialLayoutSettle = "initial-layout-settle"
+        case displayIfNeeded = "display-if-needed"
+        case didShowPage = "did-show-page"
+        case recalculateKeyViewLoop = "recalculate-key-view-loop"
+        case totalSelectionToReady = "selection-to-ready"
+    }
+
+    enum Boundary: Equatable {
+        case begin
+        case end
+    }
+
+    nonisolated(unsafe) static var eventRecorder: ((Phase, Boundary) -> Void)?
+
+    private static let log = OSLog(
+        subsystem: Bundle.main.bundleIdentifier ?? "BalanceBar",
+        category: "DashboardNavigation"
+    )
+
+    @discardableResult
+    static func measure<T>(_ phase: Phase, _ work: () -> T) -> T {
+        eventRecorder?(phase, .begin)
+        os_signpost(.begin, log: log, name: "DashboardNavigation", "%{public}s", phase.rawValue)
+        defer {
+            os_signpost(.end, log: log, name: "DashboardNavigation", "%{public}s", phase.rawValue)
+            eventRecorder?(phase, .end)
+        }
+        return work()
+    }
+}
 
 /// Page factories and close/resize callbacks used by composition and tests.
 /// Window lifecycle does not own these closures.
@@ -11,6 +51,9 @@ struct DashboardWindowControllerActions {
     let didClose: () -> Void
     let didResize: () -> Void
     var onManualRefresh: () -> Void = {}
+    var suspendSectionPage: (DashboardSection) -> Void = { _ in }
+    var activateSectionPage: (DashboardSection) -> Void = { _ in }
+    var invalidateSectionPages: () -> Void = {}
 }
 
 /// Composition-owned page, source-list, toolbar, and accessory session.
@@ -33,6 +76,7 @@ final class DashboardPageSession {
     private var showsUpdateAvailableBadge = false
     private var isTornDown = false
     private weak var window: NSWindow?
+    private var cachedSectionPages: [DashboardSection: NSViewController] = [:]
 
     var contentHost: NSView { pageContainer.view }
     var scrollablePage: DashboardScrollablePageViewController? {
@@ -92,6 +136,7 @@ final class DashboardPageSession {
             searchWindow?.preservesToolbarSearchEditing = true
         }
         defer { searchWindow?.preservesToolbarSearchEditing = false }
+        invalidateCachedSectionPages()
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: window.contentView)
         let selectedSection = section
@@ -112,13 +157,28 @@ final class DashboardPageSession {
 
     func showSection(_ section: DashboardSection) {
         guard !isTornDown else { return }
-        self.section = section
-        mountedSection = section
-        selectedProviderID = nil
-        window?.title = section.title
-        sourceListController?.applySelection(section)
-        replacePage {
-            actions.makeSectionPage(section)
+        DashboardPageInstrumentation.measure(.totalSelectionToReady) {
+            self.showSectionMeasured(section)
+        }
+    }
+
+    private func showSectionMeasured(_ section: DashboardSection) {
+        guard !isTornDown else { return }
+        DashboardPageInstrumentation.measure(.sidebarSelectionCallback) {
+            self.section = section
+            self.selectedProviderID = nil
+            self.window?.title = section.title
+            self.sourceListController?.applySelection(section)
+        }
+        self.replacePage(activateSection: section) {
+            if let cached = self.cachedSectionPages[section] {
+                return cached
+            }
+            let page = DashboardPageInstrumentation.measure(.makeSectionPage) {
+                self.actions.makeSectionPage(section)
+            }
+            self.cachedSectionPages[section] = page
+            return page
         }
     }
 
@@ -173,6 +233,10 @@ final class DashboardPageSession {
         scrollablePage?.scrollOffset ?? 0
     }
 
+    func sectionScrollOffsetY(_ section: DashboardSection) -> CGFloat {
+        (cachedSectionPages[section] as? DashboardScrollablePageViewController)?.scrollOffset ?? 0
+    }
+
     func restorePageScrollOffsetY(_ offset: CGFloat) {
         scrollablePage?.restoreScrollOffset(offset)
     }
@@ -199,6 +263,7 @@ final class DashboardPageSession {
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
+        invalidateCachedSectionPages()
         accessoryHost.detach()
         toolbarController.detach()
         sourceListController?.teardown()
@@ -209,30 +274,60 @@ final class DashboardPageSession {
 
     private func replacePage(
         prepareForPageReplacement: Bool = true,
+        activateSection: DashboardSection? = nil,
         makePage: () -> NSViewController
     ) {
+        actions.suspendSectionPage(mountedSection)
         if prepareForPageReplacement {
-            DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
-            DashboardKeyViewLoop.prepareForPageReplacement(window)
-            actions.prepareForPageReplacement()
+            DashboardPageInstrumentation.measure(.prepareForPageReplacement) {
+                DashboardKeyViewLoop.prepareForPageReplacement(window)
+                actions.prepareForPageReplacement()
+            }
         }
         let page = makePage()
-        pageContainer.replacePage(page)
+        DashboardPageInstrumentation.measure(.pageContainerReplace) {
+            pageContainer.replacePage(page)
+        }
         accessoryHost.apply(page: page)
+        if let activateSection {
+            mountedSection = activateSection
+            actions.activateSectionPage(activateSection)
+        }
         // Complete the replacement synchronously so native accessibility
         // descendants are materialized before callers inspect the page
         // (notably on Xcode 16.4 CI).
-        contentHost.layoutSubtreeIfNeeded()
-        if let scrollablePage = page as? DashboardScrollablePageViewController {
-            scrollablePage.settleInitialLayout()
+        DashboardPageInstrumentation.measure(.initialLayoutSettle) {
+            contentHost.layoutSubtreeIfNeeded()
+            if let scrollablePage = page as? DashboardScrollablePageViewController {
+                scrollablePage.settleInitialLayout()
+            }
         }
         preparePageForDisplay?()
-        window?.displayIfNeeded()
-        actions.didShowPage()
-        DashboardKeyViewLoop.invalidate(window)
+        DashboardPageInstrumentation.measure(.displayIfNeeded) {
+            window?.displayIfNeeded()
+        }
+        DashboardPageInstrumentation.measure(.didShowPage) {
+            actions.didShowPage()
+        }
+        DashboardPageInstrumentation.measure(.recalculateKeyViewLoop) {
+            DashboardKeyViewLoop.invalidate(window)
+        }
         if AutomatedTestHost.isRunning, let window {
             ApplicationWindowPresentation.presentInBackground(window)
         }
+    }
+
+    private func invalidateCachedSectionPages() {
+        DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
+        for page in cachedSectionPages.values {
+            DashboardSettingsComponents.disconnectPopUpButtonActions(in: page.view)
+        }
+        guard !cachedSectionPages.isEmpty else {
+            actions.invalidateSectionPages()
+            return
+        }
+        actions.invalidateSectionPages()
+        cachedSectionPages.removeAll()
     }
 
     private func detachPageContainerFromParent() {

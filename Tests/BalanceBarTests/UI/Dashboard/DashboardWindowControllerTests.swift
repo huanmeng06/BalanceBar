@@ -2099,8 +2099,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
 
         let editor = findStatusLinksEditor(in: page)
-        XCTAssertNotNil(editor, "The Status Links editor stays in the page so it can animate in place")
-        XCTAssertFalse(editor?.isVisible ?? true)
+        XCTAssertNil(editor, "The Status Links editor is deferred while the setting is disabled")
+
+        appDelegate.dashboardCompositionForTesting.updateMenuStatusVisibility(true, animated: false)
+        let materializedEditor = findStatusLinksEditor(in: page)
+        XCTAssertNotNil(materializedEditor)
+        XCTAssertFalse(materializedEditor?.isHidden ?? true)
+
+        appDelegate.dashboardCompositionForTesting.updateMenuStatusVisibility(false, animated: false)
+        appDelegate.dashboardCompositionForTesting.updateMenuStatusVisibility(true, animated: false)
+        XCTAssertTrue(findStatusLinksEditor(in: page) === materializedEditor)
     }
 
     func testMenuPageLaysOutReachableStatusLinksEditorWhenMenuDisplayIsEnabled() throws {

@@ -341,6 +341,18 @@ final class DashboardMenuBarPage {
         resetRefreshSignatures()
     }
 
+    /// Cached pages remain mounted in memory but detached from the content
+    /// pane. Stop compositor work while the page is hidden and force the next
+    /// activation through the normal bounded refresh path.
+    func suspend() {
+        previewSection.suspend()
+        resetRefreshSignatures()
+    }
+
+    func activate() {
+        previewSection.activate()
+    }
+
     private func resetRefreshSignatures() {
         lastRefreshSignature = nil
         lastWarningRefreshSignature = nil

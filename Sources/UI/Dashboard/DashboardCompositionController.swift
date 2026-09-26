@@ -175,7 +175,6 @@ final class DashboardCompositionController {
     private var menuBarAnimationFallbackActive = false
     private var isGlobalSettingsSearchActive = false
     private weak var globalSettingsSearchContent: NSView?
-    private var globalSearchOriginContent: NSView?
     private var globalSearchOriginSection: DashboardSection?
     private var globalSettingsSearchSections: Set<DashboardSection> = []
     private var globalSearchGroupsBySection: [DashboardSection: DashboardGlobalSearchGroupView] = [:]
@@ -279,7 +278,20 @@ final class DashboardCompositionController {
             didResize: { [weak self] in
                 self?.actions.onDidResize()
             },
-            onManualRefresh: actions.onManualRefresh
+            onManualRefresh: actions.onManualRefresh,
+            suspendSectionPage: { [weak self] section in
+                DashboardPageInstrumentation.measure(.preferencePagesSuspend) {
+                    self?.dashboardPreferencePages.suspend(section)
+                }
+            },
+            activateSectionPage: { [weak self] section in
+                self?.activateSectionPage(section)
+            },
+            invalidateSectionPages: { [weak self] in
+                DashboardPageInstrumentation.measure(.preferencePagesTeardown) {
+                    self?.dashboardPreferencePages.teardown()
+                }
+            }
         )
     )
     private lazy var windowController: DashboardWindowController = {
@@ -309,6 +321,12 @@ final class DashboardCompositionController {
     var selectedProviderID: String? { pageSession.selectedProviderID }
     var pageContainerForTesting: DashboardPageContainerViewController {
         pageSession.pageContainer
+    }
+    var searchMenuBarPageForTesting: DashboardMenuBarPage {
+        dashboardPreferencePages.searchMenuBarPageForTesting
+    }
+    var isSearchProjectionActiveForTesting: Bool {
+        dashboardPreferencePages.isSearchProjectionActiveForTesting
     }
     var scrollablePageForTesting: DashboardScrollablePageViewController? {
         pageSession.scrollablePage
@@ -348,8 +366,8 @@ final class DashboardCompositionController {
     func teardown() {
         invalidateSearchData()
         isGlobalSettingsSearchActive = false
+        dashboardPreferencePages.setSearchProjectionActive(false)
         globalSettingsSearchContent = nil
-        globalSearchOriginContent = nil
         globalSearchOriginSection = nil
         globalSettingsSearchSections.removeAll()
         globalSearchGroupsBySection.removeAll()
@@ -634,6 +652,15 @@ final class DashboardCompositionController {
                 scrollOffsetY: Double(self.pageSession.pageScrollOffsetY())
             )
         }
+        dashboardPreferencePages.setSearchRestoreSnapshotProvider { [weak self] in
+            guard let self else {
+                return DashboardRestoreToken(section: .menuBar, scrollOffsetY: 0)
+            }
+            return DashboardRestoreToken(
+                section: .menuBar,
+                scrollOffsetY: Double(self.pageSession.sectionScrollOffsetY(.menuBar))
+            )
+        }
     }
 
     func teardownForTesting() { teardown() }
@@ -753,8 +780,8 @@ final class DashboardCompositionController {
         }
         if selectedProviderID != nil || section == .about {
             isGlobalSettingsSearchActive = false
+            dashboardPreferencePages.setSearchProjectionActive(false)
             globalSettingsSearchContent = nil
-            globalSearchOriginContent = nil
             globalSearchOriginSection = nil
             globalSettingsSearchSections.removeAll()
             globalSearchGroupsBySection.removeAll()
@@ -781,8 +808,8 @@ final class DashboardCompositionController {
         }
         if selectedProviderID != nil || section == .about {
             isGlobalSettingsSearchActive = false
+            dashboardPreferencePages.setSearchProjectionActive(false)
             globalSettingsSearchContent = nil
-            globalSearchOriginContent = nil
             globalSearchOriginSection = nil
             globalSettingsSearchSections.removeAll()
         } else if !needle.isEmpty, !isGlobalSettingsSearchActive {
@@ -943,15 +970,14 @@ final class DashboardCompositionController {
         guard !isBuildingGlobalSearchPage else { return }
         isBuildingGlobalSearchPage = true
         defer { isBuildingGlobalSearchPage = false }
+        dashboardPreferencePages.setSearchProjectionActive(true)
         if pageSession.currentHostedPageContent() !== globalSettingsSearchContent,
            pageSession.mountedSection != .about {
-            globalSearchOriginContent = pageSession.currentHostedPageContent()
             globalSearchOriginSection = section
         } else if pageSession.mountedSection == .about {
             // About content is not a settings origin page. If a non-empty
             // query crosses into Settings, clearing it must build the newly
             // selected logical section instead of restoring About.
-            globalSearchOriginContent = nil
             globalSearchOriginSection = nil
         }
         pageSearchFilter.resetSearchState()
@@ -989,7 +1015,6 @@ final class DashboardCompositionController {
     }
 
     private func clearGlobalSettingsSearch() {
-        let origin = globalSearchOriginContent
         let originSection = globalSearchOriginSection
         if let current = globalSettingsSearchContent {
             _ = pageSearchFilter.apply(
@@ -1000,17 +1025,17 @@ final class DashboardCompositionController {
             )
         }
         isGlobalSettingsSearchActive = false
+        dashboardPreferencePages.setSearchProjectionActive(false)
         globalSettingsSearchContent = nil
         globalSettingsSearchSections.removeAll()
         globalSearchGroupsBySection.removeAll()
-        globalSearchOriginContent = nil
         globalSearchOriginSection = nil
         pendingSearchScrollPreserve = nil
         lastSettledSearchQuery = nil
         lastAppliedSearchQuery = nil
         lastAppliedSearchRoot = nil
-        if let origin, originSection == section {
-            pageSession.showHostedSettingsContent(origin)
+        if let originSection, originSection == section {
+            pageSession.showSection(originSection)
         } else {
             pageSession.showSection(section)
         }
@@ -1123,10 +1148,6 @@ final class DashboardCompositionController {
         _ group: DashboardGlobalSearchGroupView,
         for settingsSection: DashboardSection
     ) {
-        if settingsSection == globalSearchOriginSection, let origin = globalSearchOriginContent {
-            group.addPage(origin)
-            return
-        }
         let page = makeSectionPage(for: settingsSection, forSearch: true)
         let sourceStack: NSStackView? = {
             if let stack = page as? NSStackView { return stack }
@@ -1158,7 +1179,32 @@ final class DashboardCompositionController {
 
     private func prepareForPageReplacement() {
         dashboardProviderPages.unmount()
-        dashboardPreferencePages.teardown()
+    }
+
+    private func activateSectionPage(_ section: DashboardSection) {
+        dashboardPreferencePages.activate(section)
+        switch section {
+        case .general:
+            dashboardPreferencePages.refreshCurrentProviderName(state.currentProviderName())
+            dashboardPreferencePages.refreshUpdateState(state.updateState())
+            dashboardPreferencePages.refreshLaunchAtLogin()
+            dashboardPreferencePages.refreshLaunchWithChatGPT()
+        case .menuBar:
+            dashboardPreferencePages.refreshMenuBar(
+                snapshot: state.snapshot(),
+                menuBarSnapshot: state.menuBarSnapshot,
+                statusItemVisibility: state.statusItemVisibility(),
+                iconImage: state.iconImage(),
+                animationIconImage: idleSafeMenuBarPreviewAnimationIconImage,
+                animationKind: menuBarPreviewAnimationKind,
+                animationSpriteImage: menuBarPreviewAnimationSpriteImage,
+                animationFallbackActive: menuBarAnimationFallbackActive
+            )
+        case .menu:
+            dashboardPreferencePages.refreshMenu()
+        case .advanced, .about:
+            break
+        }
     }
 
     private func makeSectionPageController(for section: DashboardSection) -> NSViewController {

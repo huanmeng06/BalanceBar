@@ -90,9 +90,21 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         window.layoutIfNeeded()
         window.displayIfNeeded()
 
-        XCTAssertTrue(DashboardSearchVisibility.isCollapsedForSearchLayout(silentRow))
-        XCTAssertNotNil(languagePopup.window)
-        XCTAssertFalse(DashboardSearchVisibility.isCollapsedForSearchLayout(languagePopup))
+        let searchPage = composition.currentHostedPageContentForTesting()
+        let searchSilentSwitch = try XCTUnwrap(
+            descendant(in: searchPage, as: NSSwitch.self) {
+                $0.identifier?.rawValue == AppPreferences.silentLaunchKey
+            }
+        )
+        let searchLanguagePopup = try XCTUnwrap(
+            descendant(in: searchPage, as: NSPopUpButton.self) {
+                $0.identifier?.rawValue == AppLanguage.preferenceKey
+            }
+        )
+        let searchSilentRow = try XCTUnwrap(SettingsRowView.enclosing(searchSilentSwitch))
+        XCTAssertTrue(DashboardSearchVisibility.isCollapsedForSearchLayout(searchSilentRow))
+        XCTAssertNotNil(searchLanguagePopup.window)
+        XCTAssertFalse(DashboardSearchVisibility.isCollapsedForSearchLayout(searchLanguagePopup))
 
         composition.applySearchQueryForTesting("")
         window.layoutIfNeeded()
@@ -121,27 +133,35 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
                 $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey && $0.isEditable
             }
         )
-        let row = try XCTUnwrap(SettingsRowView.enclosing(field))
         XCTAssertTrue(field.window === window)
 
-        if window.makeFirstResponder(field) {
+        let wasEditing = window.makeFirstResponder(field)
+        if wasEditing {
             XCTAssertTrue(
                 window.firstResponder === field
                     || (window.firstResponder as? NSTextView)?.delegate as AnyObject? === field
             )
-            composition.applySearchQueryForTesting(tr(.keyDashboardMenuPageStatusLinks))
-            window.layoutIfNeeded()
-            window.displayIfNeeded()
-            XCTAssertTrue(DashboardSearchVisibility.isCollapsedForSearchLayout(row))
+        }
+        composition.applySearchQueryForTesting(tr(.keyDashboardMenuPageStatusLinks))
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let searchField = try XCTUnwrap(
+            descendant(in: composition.currentHostedPageContentForTesting(), as: NSTextField.self) {
+                $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey
+                    && $0.isEditable
+            }
+        )
+        let searchRow = try XCTUnwrap(SettingsRowView.enclosing(searchField))
+
+        if wasEditing {
+            XCTAssertTrue(DashboardSearchVisibility.isCollapsedForSearchLayout(searchRow))
             XCTAssertFalse(window.firstResponder === field)
             if let editor = window.firstResponder as? NSTextView, editor.isFieldEditor {
                 XCTAssertFalse((editor.delegate as AnyObject?) === field)
             }
             XCTAssertNil(field.currentEditor())
         } else {
-            composition.applySearchQueryForTesting(tr(.keyDashboardMenuPageStatusLinks))
-            window.layoutIfNeeded()
-            XCTAssertTrue(DashboardSearchVisibility.isCollapsedForSearchLayout(row))
+            XCTAssertTrue(DashboardSearchVisibility.isCollapsedForSearchLayout(searchRow))
         }
     }
 
@@ -352,16 +372,17 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         window.layoutIfNeeded()
         window.displayIfNeeded()
 
-        let page = try XCTUnwrap(composition.pageContainerForTesting.currentPage?.view)
+        composition.applySearchQueryForTesting(tr(.keyDashboardMenuPageLowBalanceDisplayThreshold))
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+
+        let searchPage = composition.currentHostedPageContentForTesting()
         let field = try XCTUnwrap(
-            descendant(in: page, as: NSTextField.self) {
+            descendant(in: searchPage, as: NSTextField.self) {
                 $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey && $0.isEditable
             }
         )
         let row = try XCTUnwrap(SettingsRowView.enclosing(field))
-        composition.applySearchQueryForTesting(tr(.keyDashboardMenuPageLowBalanceDisplayThreshold))
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
         XCTAssertFalse(DashboardSearchVisibility.isCollapsedForSearchLayout(row))
         XCTAssertTrue(field.window === window)
 

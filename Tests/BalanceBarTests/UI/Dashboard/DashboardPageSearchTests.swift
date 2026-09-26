@@ -5,6 +5,156 @@ import XCTest
 
 @MainActor
 final class DashboardPageSearchTests: XCTestCase {
+    func testFixedSectionPagesReuseLifecycleAndInstrumentation() throws {
+        var makeCounts: [DashboardSection: Int] = [:]
+        var suspended: [DashboardSection] = []
+        var activated: [DashboardSection] = []
+        var invalidationCount = 0
+        var phases: [(DashboardPageInstrumentation.Phase, DashboardPageInstrumentation.Boundary)] = []
+        DashboardPageInstrumentation.eventRecorder = { phase, boundary in
+            phases.append((phase, boundary))
+        }
+        defer { DashboardPageInstrumentation.eventRecorder = nil }
+
+        let harness = DashboardShellTestHarness(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { section in
+                    makeCounts[section, default: 0] += 1
+                    return DashboardHostedPageViewController(wrapping: NSView())
+                },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {},
+                suspendSectionPage: { suspended.append($0) },
+                activateSectionPage: { activated.append($0) },
+                invalidateSectionPages: { invalidationCount += 1 }
+            )
+        )
+        defer { harness.teardown() }
+
+        harness.open(initialSection: .menu)
+        harness.showSection(.menuBar)
+        harness.showSection(.menu)
+        harness.showSection(.menuBar)
+
+        XCTAssertEqual(makeCounts[.menu], 1)
+        XCTAssertEqual(makeCounts[.menuBar], 1)
+        XCTAssertEqual(activated, [.menu, .menuBar, .menu, .menuBar])
+        XCTAssertEqual(suspended, [.general, .menu, .menuBar, .menu])
+        XCTAssertTrue(phases.contains { $0.0 == .makeSectionPage && $0.1 == .begin })
+        XCTAssertTrue(phases.contains { $0.0 == .initialLayoutSettle && $0.1 == .end })
+        XCTAssertTrue(phases.contains { $0.0 == .totalSelectionToReady && $0.1 == .end })
+
+        harness.rebuild()
+        XCTAssertEqual(invalidationCount, 1)
+        harness.showSection(.menu)
+        XCTAssertEqual(makeCounts[.menu], 2)
+    }
+
+    func testCachedSectionRetainsPopupActionsAndSearchRestoresItsHierarchy() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-474-cache-actions.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        window.layoutIfNeeded()
+
+        let originalContent = composition.currentHostedPageContentForTesting()
+        let popup = try XCTUnwrap(
+            firstDescendant(of: originalContent) { view in
+                (view as? NSPopUpButton)?.identifier?.rawValue
+                    == DashboardMenuBarPage.rightClickActionIdentifier
+            } as? NSPopUpButton
+        )
+        XCTAssertNotNil(popup.target)
+        XCTAssertNotNil(popup.action)
+
+        composition.showSection(.menu)
+        composition.showSection(.menuBar)
+        let returnedContent = composition.currentHostedPageContentForTesting()
+        XCTAssertTrue(returnedContent === originalContent)
+        let returnedPopup = try XCTUnwrap(
+            firstDescendant(of: returnedContent) { view in
+                (view as? NSPopUpButton)?.identifier?.rawValue
+                    == DashboardMenuBarPage.rightClickActionIdentifier
+            } as? NSPopUpButton
+        )
+        XCTAssertTrue(returnedPopup === popup)
+        XCTAssertNotNil(returnedPopup.target)
+        XCTAssertNotNil(returnedPopup.action)
+        XCTAssertTrue(NSApp.sendAction(
+            try XCTUnwrap(returnedPopup.action),
+            to: try XCTUnwrap(returnedPopup.target),
+            from: returnedPopup
+        ))
+
+        composition.applySearchQueryForTesting(
+            tr(.keyDashboardGeneralAndRefreshPagesLanguage)
+        )
+        composition.applySearchQueryForTesting("")
+        XCTAssertTrue(composition.currentHostedPageContentForTesting() === originalContent)
+        XCTAssertTrue(originalContent.superview != nil)
+    }
+
+    func testSearchMenuBarProjectionSuspendsAndReceivesInjectedRestoreBehavior() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-474-search-lifecycle.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+
+        var persistedTokens: [DashboardRestoreToken] = []
+        var relaunchCount = 0
+        composition.setPersistRestoreTokenForTesting { persistedTokens.append($0) }
+        composition.setRelaunchApplicationForTesting { relaunchCount += 1 }
+
+        composition.restorePageScrollOffsetY(120)
+        let productionOffset = composition.pageScrollOffsetY()
+        XCTAssertGreaterThan(productionOffset, 20)
+        composition.searchMenuBarPageForTesting.persistRestoreToken(
+            DashboardRestoreToken(section: .menuBar, scrollOffsetY: 42)
+        )
+        composition.searchMenuBarPageForTesting.relaunchApplication()
+        XCTAssertEqual(persistedTokens.map(\.scrollOffsetY), [42])
+        XCTAssertEqual(relaunchCount, 1)
+
+        composition.applySearchQueryForTesting(tr(.keyDashboardMenuBarPagePreview))
+        window.layoutIfNeeded()
+        XCTAssertTrue(composition.isSearchProjectionActiveForTesting)
+        let searchToken = composition.searchMenuBarPageForTesting.restoreSnapshotProvider()
+        XCTAssertEqual(searchToken.section, .menuBar)
+        XCTAssertEqual(searchToken.scrollOffsetY, Double(productionOffset), accuracy: 1)
+
+        let icon = NSImage(size: NSSize(width: 16, height: 16))
+        icon.isTemplate = true
+        composition.updateMenuBarPreviewAnimation(active: true, iconImage: icon)
+        window.layoutIfNeeded()
+        let searchHost = composition.searchMenuBarPageForTesting.previewAnimationHostForTesting
+        let installCount = searchHost.rotationAnimationInstallCount
+        XCTAssertNotNil(searchHost.rotationAnimationForTesting)
+
+        composition.applySearchQueryForTesting("")
+        XCTAssertFalse(composition.isSearchProjectionActiveForTesting)
+        composition.updateMenuBarPreviewAnimation(active: true, iconImage: icon)
+        XCTAssertEqual(searchHost.rotationAnimationInstallCount, installCount)
+        XCTAssertNil(searchHost.rotationAnimationForTesting)
+
+        composition.applySearchQueryForTesting(tr(.keyDashboardMenuBarPagePreview))
+        composition.updateMenuBarPreviewAnimation(active: true, iconImage: icon)
+        XCTAssertGreaterThan(searchHost.rotationAnimationInstallCount, installCount)
+    }
+
     func testRefreshItemInvokesSessionManualRefreshActionOnceAndSurvivesRebuild() throws {
         var refreshCount = 0
         let harness = DashboardShellTestHarness(

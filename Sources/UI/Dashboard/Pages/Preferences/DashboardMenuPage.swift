@@ -310,27 +310,22 @@ private final class MenuDedicatedControlRow: NSView {
 /// Pins the Status Links editor to its explicit height so the native section
 /// card follows Auto Layout instead of the editor's unconstrained table fitting size.
 private final class MenuStatusLinksEditorHost: NSView {
-    let editor: StatusLinksEditorHostingView
+    private let makeEditor: () -> StatusLinksEditorHostingView
+    private(set) var editor: StatusLinksEditorHostingView?
     private var heightConstraint: NSLayoutConstraint!
 
-    init(editor: StatusLinksEditorHostingView) {
-        self.editor = editor
+    init(makeEditor: @escaping () -> StatusLinksEditorHostingView) {
+        self.makeEditor = makeEditor
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         clipsToBounds = true
         setContentHuggingPriority(.required, for: .vertical)
         setContentCompressionResistancePriority(.required, for: .vertical)
-        editor.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(editor)
-        let heightConstraint = heightAnchor.constraint(equalToConstant: editor.currentHeight)
+        let heightConstraint = heightAnchor.constraint(equalToConstant: 0)
         self.heightConstraint = heightConstraint
         NSLayoutConstraint.activate([
-            editor.topAnchor.constraint(equalTo: topAnchor),
-            editor.leadingAnchor.constraint(equalTo: leadingAnchor),
-            editor.trailingAnchor.constraint(equalTo: trailingAnchor),
             heightConstraint
         ])
-        syncHeight()
     }
 
     required init?(coder: NSCoder) {
@@ -341,8 +336,24 @@ private final class MenuStatusLinksEditorHost: NSView {
         NSSize(width: NSView.noIntrinsicMetric, height: heightConstraint.constant)
     }
 
+    @discardableResult
+    func ensureEditor() -> StatusLinksEditorHostingView {
+        if let editor { return editor }
+        let editor = makeEditor()
+        self.editor = editor
+        editor.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(editor)
+        NSLayoutConstraint.activate([
+            editor.topAnchor.constraint(equalTo: topAnchor),
+            editor.leadingAnchor.constraint(equalTo: leadingAnchor),
+            editor.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+        syncHeight()
+        return editor
+    }
+
     func syncHeight() {
-        let height = max(0, editor.currentHeight)
+        let height = max(0, editor?.currentHeight ?? 0)
         heightConstraint.constant = height
         isHidden = height <= 0.5
         invalidateIntrinsicContentSize()
@@ -386,6 +397,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private var statusSubtitleLabel: NSTextField?
     private var statusLinksEditor: StatusLinksEditorHostingView?
     private var statusLinksEditorHost: MenuStatusLinksEditorHost?
+    private var makeStatusLinksEditor: (() -> StatusLinksEditorHostingView)?
+    private var statusLinksVisible = false
     private var balanceDisplayThresholdValue = AppPreferences.defaultBalanceDisplayThreshold
     private var onBalanceDisplayThresholdChanged: ((Double) -> Void)?
     private var onQuotaProgressColorConfigurationChanged: ((QuotaProgressColorConfiguration) -> Void)?
@@ -401,6 +414,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         balanceDisplayThresholdValue = input.preferences.balanceDisplayThreshold
         onBalanceDisplayThresholdChanged = input.onBalanceDisplayThresholdChanged
         onQuotaProgressColorConfigurationChanged = input.onQuotaProgressColorConfigurationChanged
+        makeStatusLinksEditor = input.makeStatusLinksEditor
+        statusLinksVisible = input.preferences.showStatusMenu
         quotaColorConfiguration = input.preferences.quotaProgressColorConfiguration
         lunaReserveDisplayModeControl = nil
         lunaReserveHideExhaustedQuotaRow = nil
@@ -672,13 +687,15 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         )
         statusSubtitleLabel = statusRow.detailLabel
 
-        // Keep one editor instance in the page for both states so toggling
-        // animates its height in place instead of rebuilding the whole page.
-        let editor = input.makeStatusLinksEditor()
-        statusLinksEditor = editor
-        let editorHost = MenuStatusLinksEditorHost(editor: editor)
+        // Keep one editor instance in the page for both states, but defer its
+        // expensive table hierarchy until the section is actually visible.
+        let editorHost = MenuStatusLinksEditorHost(makeEditor: input.makeStatusLinksEditor)
         statusLinksEditorHost = editorHost
-        editor.setVisible(statusVisible, animated: false)
+        if statusVisible {
+            let editor = editorHost.ensureEditor()
+            statusLinksEditor = editor
+            editor.setVisible(true, animated: false)
+        }
         editorHost.syncHeight()
         let quickLinks = SettingsSectionView(
             title: tr(.keyDashboardMenuPageOpenProject),
@@ -726,6 +743,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         showBankedResetSwitch?.state = preferences.showBankedReset ? .on : .off
         updateBankedResetSettingsVisibility(preferences.showBankedReset)
         let statusLinks = preferences.statusLinks
+        if statusLinksVisible, statusLinksEditor == nil, let host = statusLinksEditorHost {
+            statusLinksEditor = host.ensureEditor()
+            statusLinksEditor?.setVisible(true, animated: false)
+        }
         if statusLinksEditor?.links != statusLinks {
             statusLinksEditor?.updateLinks(statusLinks)
         }
@@ -758,9 +779,13 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     func updateStatusVisibility(_ visible: Bool, animated: Bool) {
+        statusLinksVisible = visible
         statusSubtitleLabel?.stringValue = visible
             ? tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks2)
             : tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar2)
+        if visible, statusLinksEditor == nil, let host = statusLinksEditorHost {
+            statusLinksEditor = host.ensureEditor()
+        }
         statusLinksEditor?.setVisible(visible, animated: animated)
         statusLinksEditorHost?.isHidden = !visible
         statusLinksEditorHost?.syncHeight()
@@ -777,6 +802,9 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         selectLastRow: Bool = false,
         completion: (() -> Void)? = nil
     ) {
+        if statusLinksEditor == nil, statusLinksVisible, let host = statusLinksEditorHost {
+            statusLinksEditor = host.ensureEditor()
+        }
         guard let statusLinksEditor else {
             completion?()
             return
@@ -808,6 +836,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
         statusLinksEditorHost = nil
+        makeStatusLinksEditor = nil
+        statusLinksVisible = false
         statusSubtitleLabel = nil
     }
 
