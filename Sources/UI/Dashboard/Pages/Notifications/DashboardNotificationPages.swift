@@ -128,6 +128,9 @@ final class DashboardNotificationPages {
     private var path: [NotificationPagePath] = []
     private weak var pauseDetailLabel: NSTextField?
     private weak var pauseMenu: NSPopUpButton?
+    private weak var pauseRow: NSView?
+    private weak var notificationSection: SettingsSectionView?
+    private weak var agentSettingsView: NSView?
     private weak var detailsStack: NSStackView?
     private var pauseTimer: Timer?
 
@@ -304,22 +307,27 @@ final class DashboardNotificationPages {
             accessoryView: pauseMenu
         )
         pauseDetailLabel = pauseRow.detailLabel
-        let pauseSection = SettingsSectionView(title: "", contentViews: [pauseRow])
+        self.pauseRow = pauseRow
+        let notificationSection = SettingsSectionView(
+            title: tr("notifications.page.title"),
+            contentViews: [global, pauseRow]
+        )
+        self.notificationSection = notificationSection
         let agentSettings = makeAgentSettingsSection(settings: settings)
-        let details = NSStackView(views: [pauseSection, agentSettings])
+        self.agentSettingsView = agentSettings
+        let details = NSStackView(views: [agentSettings])
         details.orientation = .vertical
         details.alignment = .leading
         details.spacing = DashboardSettingsComponents.settingsSectionSpacing
         details.detachesHiddenViews = true
         details.translatesAutoresizingMaskIntoConstraints = false
-        pauseSection.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
         agentSettings.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
         detailsStack = details
         updateGlobalVisibility()
         updatePausePresentation()
         startPauseTimer()
         return DashboardSettingsComponents.makeSettingsPageContent([
-            SettingsSectionView(title: tr("notifications.page.title"), contentViews: [global]),
+            notificationSection,
             details
         ])
     }
@@ -327,7 +335,11 @@ final class DashboardNotificationPages {
     private func updateGlobalVisibility() {
         let settings = configuration.coordinator.settings
         let permission = configuration.coordinator.permissionState
-        detailsStack?.isHidden = !settings.globalEnabled || permission == .denied
+        let active = settings.globalEnabled && permission != .denied
+        pauseRow?.isHidden = !active
+        notificationSection?.reconcileSeparators()
+        agentSettingsView?.isHidden = !active
+        detailsStack?.isHidden = !active
         updatePausePresentation()
     }
 
