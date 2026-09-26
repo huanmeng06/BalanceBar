@@ -407,6 +407,8 @@ enum DashboardSettingsSearchCatalog {
             prefixes = ["dashboard.advanced.page.", "dashboard.logs.page."]
         case .about:
             prefixes = ["dashboard.about.page."]
+        case .notifications:
+            prefixes = ["notifications."]
         }
         return LocalizationKey.allCases
             .filter { key in
@@ -535,6 +537,8 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardAboutPageACcSwitchBasedMenuBarBalanceViewer,
                 .keyDashboardAboutPageOpenTheBalancebarGithubRepository
             ]
+        case .notifications:
+            return []
         }
     }
 
@@ -557,6 +561,13 @@ enum DashboardSettingsSearchCatalog {
                 texts.append(contentsOf: DashboardSettingsFormattedCopy.languageMenuTitles())
             }
             return texts
+        case .notifications:
+            return [
+                tr("notifications.permission_disabled"),
+                tr("notifications.open_system_settings"),
+                tr("notifications.pause_one_hour"),
+                tr("notifications.resume")
+            ]
         }
     }
 }
@@ -677,7 +688,7 @@ enum DashboardSettingsFormattedCopy {
                 restoreDefaultsTitle(),
                 statusLinksRestoreDefaultsTitle()
             ] + LunaReserveDisplayMode.allCases.map { lunaReserveDisplayModeTitle($0) }
-        case .general, .advanced, .about:
+        case .general, .advanced, .about, .notifications:
             return []
         }
     }
