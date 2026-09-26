@@ -76,8 +76,12 @@ final class SystemBalanceNotificationClient: NSObject, BalanceNotificationClient
 
     func openSettings() {
         let bundleID = Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar.app"
-        let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings?bundleIdentifier=\(bundleID)")
-        if let url, !NSWorkspace.shared.open(url) {
+        let urls = [
+            URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?bundleIdentifier=\(bundleID)"),
+            URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings?bundleIdentifier=\(bundleID)")
+        ].compactMap { $0 }
+        let opened = urls.contains { NSWorkspace.shared.open($0) }
+        if !opened {
             SwitchLog.write(
                 "notification settings could not be opened",
                 level: .warning,
