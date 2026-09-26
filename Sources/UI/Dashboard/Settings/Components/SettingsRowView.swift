@@ -443,17 +443,18 @@ final class SettingsRowView: NSView {
         layoutSubtreeIfNeeded()
     }
 
-    /// Runs the same coalesced height commit production schedules after
-    /// `layout()`. Tests use this to observe the mouse-down path without
-    /// calling `refreshWrappingLayout()` (the mouse-up settle).
-    func flushPendingWrappingHeightCommitForTesting() {
+    /// Commits any wrapping height discovered during the most recent layout.
+    /// Page replacement uses this to finish width-dependent intrinsic sizing
+    /// before the page is displayed; callers must invoke it outside layout().
+    func flushPendingWrappingHeightCommit() {
         wrappingCommitWorkItem?.cancel()
         performScheduledWrappingHeightCommit()
     }
 
+    /// Commits pending wrapping heights throughout a page subtree.
     static func flushPendingWrappingHeightCommits(in view: NSView) {
         if let row = view as? SettingsRowView {
-            row.flushPendingWrappingHeightCommitForTesting()
+            row.flushPendingWrappingHeightCommit()
         }
         view.subviews.forEach { flushPendingWrappingHeightCommits(in: $0) }
     }

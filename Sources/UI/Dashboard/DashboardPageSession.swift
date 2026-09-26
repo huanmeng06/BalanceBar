@@ -223,6 +223,9 @@ final class DashboardPageSession {
         // descendants are materialized before callers inspect the page
         // (notably on Xcode 16.4 CI).
         contentHost.layoutSubtreeIfNeeded()
+        if let scrollablePage = page as? DashboardScrollablePageViewController {
+            scrollablePage.settleInitialLayout()
+        }
         preparePageForDisplay?()
         window?.displayIfNeeded()
         actions.didShowPage()
