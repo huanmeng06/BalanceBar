@@ -200,10 +200,13 @@ enum DashboardPageSearch {
         bestMatch(texts: [text], query: query) != nil
     }
 
-    /// Localization source used by search. Word joiners exist only in the
-    /// AppKit layout string and must not participate in matching.
+    /// Localization source used by search. Layout-only tokens must not
+    /// participate in matching: word joiners and non-breaking spaces are
+    /// visual grouping, not part of the query.
     static func semanticSearchText(_ text: String) -> String {
-        text.replacingOccurrences(of: "\u{2060}", with: "")
+        text
+            .replacingOccurrences(of: "\u{2060}", with: "")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
     }
 
     static func bestMatch(

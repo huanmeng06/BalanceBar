@@ -1141,13 +1141,21 @@ final class DashboardPageSearchTests: XCTestCase {
         defer { LunaReserveUserFacing.testOverride = previousOverride }
         let defaults = UserDefaults.standard
         let modeKey = AppPreferences.menuLunaReserveDisplayModeKey
+        let autoSwitchKey = AppPreferences.menuBarAutoSwitchLunaReserveKey
         let previousMode = defaults.string(forKey: modeKey)
+        let previousAutoSwitch = defaults.object(forKey: autoSwitchKey)
         defaults.set(LunaReserveDisplayMode.always.rawValue, forKey: modeKey)
+        defaults.set(true, forKey: autoSwitchKey)
         defer {
             if let previousMode {
                 defaults.set(previousMode, forKey: modeKey)
             } else {
                 defaults.removeObject(forKey: modeKey)
+            }
+            if let previousAutoSwitch {
+                defaults.set(previousAutoSwitch, forKey: autoSwitchKey)
+            } else {
+                defaults.removeObject(forKey: autoSwitchKey)
             }
         }
         let repository = CCSwitchRepository(
@@ -1250,6 +1258,13 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(copy.contains { $0.contains("\u{2060}") })
         XCTAssertTrue(DashboardPageSearch.matches(label.sourceAccessibilityText, query: "7.3"))
         XCTAssertTrue(DashboardPageSearch.matches(label.stringValue, query: "7.3"))
+        XCTAssertTrue(
+            DashboardPageSearch.matches(
+                DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: 7.3).text,
+                query: "+ 7.3 pt"
+            )
+        )
+        XCTAssertTrue(DashboardPageSearch.matches(label.stringValue, query: "+ 7.3 pt"))
     }
 
     func testGlobalSearchTypingDoesNotReadProviderDatabase() throws {
