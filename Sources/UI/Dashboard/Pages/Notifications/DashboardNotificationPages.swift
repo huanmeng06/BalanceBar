@@ -372,6 +372,7 @@ final class DashboardNotificationPages {
         updateGlobalVisibility()
         updatePausePresentation()
         startPauseTimer()
+        reminderRules.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
         return DashboardSettingsComponents.makeSettingsPageContent([
             notificationSection,
             details
