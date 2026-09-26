@@ -411,6 +411,58 @@ final class DomainModelsTests: XCTestCase {
             )
         )
         XCTAssertFalse(expiry.contains("GMT"))
+
+        let soon = CodexBankedResetCard(
+            id: "soon",
+            resetType: "codex_rate_limits",
+            titleText: "Reset",
+            expiresAt: now.addingTimeInterval(3_600),
+            expiresText: "ticket"
+        )
+        let later = CodexBankedResetCard(
+            id: "later",
+            resetType: "codex_rate_limits",
+            titleText: "Reset",
+            expiresAt: now.addingTimeInterval(86_400),
+            expiresText: "later ticket"
+        )
+        let past = CodexBankedResetCard(
+            id: "past",
+            resetType: "codex_rate_limits",
+            titleText: "Reset",
+            expiresAt: now.addingTimeInterval(-60),
+            expiresText: nil
+        )
+        let undated = CodexBankedResetCard(
+            id: "undated",
+            resetType: "codex_rate_limits",
+            titleText: "Reset",
+            expiresAt: nil,
+            expiresText: nil
+        )
+        let stamp = try XCTUnwrap(
+            OfficialQuotaResetFormatter.bankedResetString(
+                for: soon.expiresAt,
+                relativeTo: now
+            )
+        )
+        XCTAssertEqual(
+            CodexBankedResetFormatting.nearestExpiryText(
+                cards: [later, undated, past, soon],
+                relativeTo: now
+            ),
+            tr(.keyCodexBankedResetNearestExpiry, arguments: [stamp])
+        )
+        XCTAssertNil(
+            CodexBankedResetFormatting.nearestExpiryText(
+                cards: [past, undated],
+                relativeTo: now
+            )
+        )
+        XCTAssertNotEqual(
+            CodexBankedResetFormatting.nearestExpiryText(cards: [soon], relativeTo: now),
+            CodexBankedResetFormatting.expiryText(for: soon.expiresAt, relativeTo: now)
+        )
     }
 
     func testOfficialQuotaMenuPresentationSupportsLunaReserveDisplayModesAndExhaustedHiding() {

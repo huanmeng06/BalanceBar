@@ -463,6 +463,28 @@ enum CodexBankedResetFormatting {
         return tr(.keyCodexBankedResetExpiresValue, arguments: [formatted])
     }
 
+    /// Earliest future card expiry, as `最近到期：10/5 07:30`. The argument is
+    /// the same date-time used on a ticket, without that ticket's "到期" suffix.
+    static func nearestExpiryText(
+        cards: [CodexBankedResetCard],
+        relativeTo now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        let earliest = cards.compactMap(\.expiresAt).filter { $0 > now }.min()
+        guard let formatted = OfficialQuotaResetFormatter.bankedResetString(
+            for: earliest,
+            relativeTo: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
+        ) else {
+            return nil
+        }
+        return tr(.keyCodexBankedResetNearestExpiry, arguments: [formatted])
+    }
+
     static func remaining(
         until expiresAt: Date?,
         now: Date

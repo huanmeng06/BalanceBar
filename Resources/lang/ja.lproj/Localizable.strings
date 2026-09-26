@@ -448,12 +448,13 @@
 "codex.banked_reset.full_reset_title" = "完全リセット";
 "codex.banked_reset.full_reset_window" = "週間 + 5時間の上限";
 "codex.banked_reset.expires_value" = "%1$@ に期限切れ";
+"codex.banked_reset.nearest_expiry" = "直近の期限：%1$@";
 "codex.banked_reset.remaining_hours" = "%1$@ 時間";
 "codex.banked_reset.remaining_days" = "%1$@ 日";
 "codex.banked_reset.remaining_days_hours" = "%1$@ 日 %2$@ 時間";
 "codex.banked_reset.remaining_minutes" = "%1$@ 分";
 "codex.banked_reset.probability_prefix" = "リセット確率";
-"codex.banked_reset.probability_source" = "データ出典：codex-reset.com";
+"codex.banked_reset.probability_source" = "データ出典";
 "codex.banked_reset.probability_hint" = "今後24時間および48時間以内に追加のグローバルリセットが発生する可能性の予測です。データ出典：codex-reset.com。ソース更新：%1$@。これは第三者によるグローバル追加リセットの予測であり、このアカウントの週次枠の確定リセット時刻ではなく、リセットカードの付与も保証しません。信頼度はモデルの分類であり、予測が正確であることは意味しません。";
 "codex.banked_reset.probability_24h" = "24時間以内";
 "codex.banked_reset.probability_48h" = "48時間以内";
