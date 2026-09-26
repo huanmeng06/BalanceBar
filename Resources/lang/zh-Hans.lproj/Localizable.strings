@@ -448,12 +448,13 @@
 "codex.banked_reset.full_reset_title" = "完全重置";
 "codex.banked_reset.full_reset_window" = "每周 + 5 小时额度";
 "codex.banked_reset.expires_value" = "%1$@ 到期";
+"codex.banked_reset.nearest_expiry" = "最近到期：%1$@";
 "codex.banked_reset.remaining_hours" = "%1$@ 小时";
 "codex.banked_reset.remaining_days" = "%1$@ 天";
 "codex.banked_reset.remaining_days_hours" = "%1$@ 天 %2$@ 小时";
 "codex.banked_reset.remaining_minutes" = "%1$@ 分钟";
 "codex.banked_reset.probability_prefix" = "重置概率";
-"codex.banked_reset.probability_source" = "数据来源：codex-reset.com";
+"codex.banked_reset.probability_source" = "数据来源";
 "codex.banked_reset.probability_hint" = "预测未来 24 小时和 48 小时内出现额外全局重置的可能性。数据来源：codex-reset.com。来源更新于 %1$@。这是第三方对全局额外重置的预测，不是当前账户周额度的确定重置时间，也不保证发放重置卡。置信度为模型分类，不代表预测一定准确。";
 "codex.banked_reset.probability_24h" = "24 小时内";
 "codex.banked_reset.probability_48h" = "48 小时内";

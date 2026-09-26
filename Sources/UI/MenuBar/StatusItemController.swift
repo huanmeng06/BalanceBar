@@ -5698,6 +5698,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let officialQuotaWindows = quotaPresentation.windows
         let lunaReserve = quotaPresentation.lunaReserve
         let bankedReset = quotaPresentation.bankedReset
+        let nearestExpiryText = bankedReset.flatMap {
+            CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards)
+        }
         let subscription = menuInput.openAIAccount?.subscription
         let subscriptionTextWidth = subscription.map {
             AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
@@ -5719,7 +5722,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && snapshot.kind == .official
                 && bankedReset != nil,
             bankedResetCardCount: bankedReset?.cards.count ?? 0,
-            bankedResetDisplayMode: menuInput.bankedResetDisplayMode
+            bankedResetDisplayMode: menuInput.bankedResetDisplayMode,
+            includesBankedResetNearestExpiry: nearestExpiryText != nil
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.wantsLayer = true
@@ -5883,6 +5887,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let bankedReset,
                let summaryRow = layout.bankedResetSummaryRow {
                 let isCompactBankedReset = menuInput.bankedResetDisplayMode == .compact
+                if layout.bankedResetProbabilityRow != nil {
+                    addBankedResetProbabilityBlock(
+                        to: view,
+                        layout: layout,
+                        forecast: quotaPresentation.resetForecast,
+                        provider: snapshot.provider
+                    )
+                }
                 if summaryRow.amount.width > 0 {
                     let sample = OverviewNumericSample(
                         identity: .bankedResetCount(provider: snapshot.provider),
@@ -5912,66 +5924,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             )
                         )
                     )
-                }
-
-                if summaryRow.reset.width > 0 {
-                    let titleFont = NSFont.systemFont(ofSize: 12, weight: .medium)
-                    let titleText = tr(.keyCodexBankedResetProbabilityPrefix)
-                    let title = HoverLinkTextField(text: titleText)
-                    title.font = titleFont
-                    title.lineBreakMode = .byClipping
-                    title.usesSingleLineMode = true
-                    title.sizeToFit()
-                    let titleWidth = min(
-                        summaryRow.reset.width,
-                        max(
-                            ceil(title.frame.width) + 4,
-                            ceil(title.attributedStringValue.size().width) + 8,
-                            ceil(AccountMarqueeView.textWidth(of: titleText, font: titleFont)) + 8
+                    if let nearestExpiryText, summaryRow.reset.width > 0 {
+                        let nearest = makeMarqueeOverviewLabel(
+                            nearestExpiryText,
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                                weight: .regular
+                            ),
+                            textColor: .secondaryLabelColor,
+                            frame: overviewMarqueeFrame(
+                                summaryRow.reset,
+                                avoidingAmountFrame: amount.frame,
+                                amountText: plan.layoutReservationText
+                            )
                         )
-                    )
-                    title.frame = CGRect(
-                        x: summaryRow.reset.minX,
-                        y: summaryRow.reset.minY,
-                        width: titleWidth,
-                        height: max(title.frame.height, summaryRow.reset.height)
-                    )
-                    // NSTextField cells can draw glyphs inset of the view
-                    // frame. Shift the link so its visible text shares the
-                    // 重置卡 leading edge instead of looking indented.
-                    let titleTextInset = title.cell?
-                        .titleRect(forBounds: title.bounds).minX ?? 0
-                    if titleTextInset != 0 {
-                        title.frame.origin.x = summaryRow.reset.minX - titleTextInset
+                        nearest.identifier = NSUserInterfaceItemIdentifier(
+                            "codex.bankedReset.nearestExpiry"
+                        )
+                        view.addSubview(nearest)
                     }
-                    title.identifier = NSUserInterfaceItemIdentifier(
-                        "codex.bankedReset.probability"
-                    )
-                    title.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
-                    title.hoverHint = Self.codexResetForecastHint(
-                        for: quotaPresentation.resetForecast
-                    )
-                    title.onActivate = {
-                        NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
-                    }
-                    view.addSubview(title)
-                    view.track(title)
-                }
-
-                if let metricsFrame = layout.bankedResetForecastMetrics {
-                    addBankedResetForecastMetrics(
-                        to: view,
-                        frame: metricsFrame,
-                        forecast: quotaPresentation.resetForecast,
-                        provider: snapshot.provider
-                    )
-                }
-                if let confidenceFrame = layout.bankedResetForecastConfidence {
-                    addBankedResetForecastConfidence(
-                        to: view,
-                        frame: confidenceFrame,
-                        forecast: quotaPresentation.resetForecast
-                    )
                 }
 
                 if !isCompactBankedReset {
@@ -6093,7 +6064,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         )
                     )
                 }
-                amount = makeOverviewNumericAmount(plan: plan, sample: sample, frame: layout.amount)
+                // With or without the progress bar, the balance amount frame's
+                // top sits 1pt above the shorter detail row. Pin the glyphs
+                // to that edge instead of centering them in the tall box.
+                amount = makeOverviewNumericAmount(
+                    plan: plan,
+                    sample: sample,
+                    frame: layout.amount,
+                    verticalAlignment: .top
+                )
                 marqueeAmountText = plan.layoutReservationText
             } else {
                 if settings.showQuotaProgressBar,
@@ -6327,6 +6306,138 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return tr(.keyCodexBankedResetProbabilityHint, arguments: [updatedText])
     }
 
+    private func addBankedResetProbabilityBlock(
+        to view: MenuHoverLinkHostView,
+        layout: OpenCodexCardFrames,
+        forecast: CodexResetForecast,
+        provider: String
+    ) {
+        guard let row = layout.bankedResetProbabilityRow else { return }
+        let amountFont = NSFont.monospacedDigitSystemFont(
+            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+            weight: .semibold
+        )
+        let amount: NSView
+        let marqueeAmountText: String
+        if case .percent(let percent) = forecast.probability24h {
+            let sample = OverviewNumericSample(
+                identity: .bankedResetProbability24h(provider: provider),
+                format: .integerPercent,
+                value: Double(percent),
+                progressPercentage: nil
+            )
+            let plan = overviewNumericPlan(for: sample)
+            let numeric = makeOverviewNumericAmount(
+                plan: plan,
+                sample: sample,
+                frame: row.amount
+            )
+            // The subtitle 24h view keeps codex.bankedReset.probability24h.
+            numeric.identifier = NSUserInterfaceItemIdentifier(
+                "codex.bankedReset.probability24hAmount"
+            )
+            numeric.textField.identifier = numeric.identifier
+            amount = numeric
+            marqueeAmountText = plan.layoutReservationText
+        } else {
+            let label = makeOverviewLabel(forecast.probability24h.displayText, font: amountFont)
+            label.alignment = .right
+            label.frame = row.amount
+            label.identifier = NSUserInterfaceItemIdentifier(
+                "codex.bankedReset.probability24hAmount"
+            )
+            amount = label
+            marqueeAmountText = forecast.probability24h.displayText
+        }
+        view.addSubview(amount)
+        view.addSubview(
+            makeMarqueeOverviewLabel(
+                tr(.keyCodexBankedResetProbabilityPrefix),
+                font: .systemFont(
+                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                    weight: .medium
+                ),
+                textColor: .labelColor,
+                frame: overviewMarqueeFrame(
+                    row.quotaDetail,
+                    avoidingAmountFrame: amount.frame,
+                    amountText: marqueeAmountText,
+                    amountFont: amountFont
+                )
+            )
+        )
+        if row.reset.width > 0 {
+            addBankedResetProbabilitySourceLink(
+                to: view,
+                frame: overviewMarqueeFrame(
+                    row.reset,
+                    avoidingAmountFrame: amount.frame,
+                    amountText: marqueeAmountText,
+                    amountFont: amountFont
+                ),
+                forecast: forecast
+            )
+        }
+        if let metricsFrame = layout.bankedResetForecastMetrics {
+            addBankedResetForecastMetrics(
+                to: view,
+                frame: metricsFrame,
+                forecast: forecast,
+                provider: provider
+            )
+        }
+    }
+
+    private func addBankedResetProbabilitySourceLink(
+        to view: MenuHoverLinkHostView,
+        frame: NSRect,
+        forecast: CodexResetForecast
+    ) {
+        let titleFont = NSFont.systemFont(
+            ofSize: OpenCodexCardLayout.quotaResetPointSize,
+            weight: .regular
+        )
+        let titleText = tr(.keyCodexBankedResetProbabilitySource)
+        let title = HoverLinkTextField(text: titleText)
+        title.font = titleFont
+        title.lineBreakMode = .byClipping
+        title.usesSingleLineMode = true
+        title.sizeToFit()
+        let titleWidth = min(
+            frame.width,
+            max(
+                ceil(title.frame.width) + 4,
+                ceil(title.attributedStringValue.size().width) + 8,
+                ceil(AccountMarqueeView.textWidth(of: titleText, font: titleFont)) + 8
+            )
+        )
+        title.frame = CGRect(
+            x: frame.minX,
+            y: frame.minY,
+            width: titleWidth,
+            height: frame.height
+        )
+        // NSTextField cells can draw glyphs inset of the view frame. Shift
+        // origin.x so the visible text shares the quota subtitle's leading
+        // edge. Leave origin.y on the reset frame; a vertical inset would
+        // push 「数据来源」 off the 5h0m subtitle.
+        let titleTextInset = title.cell?
+            .titleRect(forBounds: title.bounds).minX ?? 0
+        if titleTextInset != 0 {
+            title.frame.origin.x = frame.minX - titleTextInset
+        }
+        title.identifier = NSUserInterfaceItemIdentifier(
+            "codex.bankedReset.probability"
+        )
+        title.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
+        title.hoverHint = Self.codexResetForecastHint(for: forecast)
+        title.onActivate = {
+            NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
+        }
+        view.addSubview(title)
+        view.track(title)
+    }
+
     private func addBankedResetForecastMetrics(
         to view: MenuHoverLinkHostView,
         frame: NSRect,
@@ -6466,42 +6577,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return label
     }
 
-    private func addBankedResetForecastConfidence(
-        to view: MenuHoverLinkHostView,
-        frame: NSRect,
-        forecast: CodexResetForecast
-    ) {
-        let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
-        let prefix = tr(.keyCodexBankedResetConfidencePrefix)
-        let value = forecast.confidence.displayText()
-        let prefixWidth = min(
-            frame.width,
-            OpenCodexCardLayout.forecastTextWidth(prefix, font: subtitleFont)
-        )
-        let prefixLabel = addBankedResetForecastPrefix(
-            to: view,
-            frame: frame,
-            x: frame.minX,
-            width: prefixWidth,
-            text: prefix,
-            identifier: "codex.bankedReset.confidencePrefix",
-            font: subtitleFont
-        )
-        let valueLabel = makeOverviewLabel(value, font: subtitleFont)
-        valueLabel.textColor = .secondaryLabelColor
-        valueLabel.lineBreakMode = .byClipping
-        valueLabel.usesSingleLineMode = true
-        valueLabel.identifier = NSUserInterfaceItemIdentifier(
-            "codex.bankedReset.confidence"
-        )
-        addBankedResetForecastValue(
-            valueLabel,
-            to: view,
-            frame: frame,
-            after: prefixLabel
-        )
-    }
-
     @discardableResult
     private func addBankedResetForecastPrefix(
         to view: MenuHoverLinkHostView,
@@ -6527,27 +6602,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return prefixLabel
     }
 
-    private func addBankedResetForecastValue(
-        _ valueView: NSView,
-        to view: MenuHoverLinkHostView,
-        frame: NSRect,
-        after prefixLabel: NSTextField
-    ) {
-        let width = max(0, frame.maxX - prefixLabel.frame.maxX - 4)
-        guard width > 0 else { return }
-        valueView.frame = CGRect(
-            x: prefixLabel.frame.maxX + 4,
-            y: frame.minY,
-            width: width,
-            height: frame.height
-        )
-        view.addSubview(valueView)
-    }
-
     private func makeOverviewNumericAmount(
         plan: OverviewNumericTransitionPlan,
         sample: OverviewNumericSample,
-        frame: NSRect
+        frame: NSRect,
+        verticalAlignment: OverviewNumericVerticalAlignment = .center
     ) -> OverviewNumericTextView {
         let font = NSFont.monospacedDigitSystemFont(
             ofSize: OpenCodexCardLayout.quotaAmountPointSize,
@@ -6556,7 +6615,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let view = OverviewNumericTextView(
             text: plan.startText,
             font: font,
-            value: plan.startValue
+            value: plan.startValue,
+            verticalAlignment: verticalAlignment
         )
         view.frame = frame
         view.identifier = OverviewNumericPresentation.amountIdentifier(for: sample.identity)
@@ -6629,7 +6689,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let progressViews = overviewNumericProgressViews(in: overview)
         for sample in samples {
             let displayed: OverviewNumericSample?
-            if let view = amountViews.first(where: { $0.sample?.identity == sample.identity }),
+            let matchingAmounts = amountViews.filter { $0.sample?.identity == sample.identity }
+            if let view = matchingAmounts.first,
                let current = view.sample {
                 displayed = OverviewNumericSample(
                     identity: current.identity,
@@ -6642,7 +6703,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     current: sample,
                     reduceMotion: reduceMotion
                 )
-                view.apply(plan: plan, sample: sample)
+                // The large 24h figure and the subtitle 24h share one sample.
+                for amountView in matchingAmounts {
+                    amountView.apply(plan: plan, sample: sample)
+                }
             } else if let link = linkViews.first(where: { $0.sample?.identity == sample.identity }),
                       let current = link.sample {
                 displayed = OverviewNumericSample(

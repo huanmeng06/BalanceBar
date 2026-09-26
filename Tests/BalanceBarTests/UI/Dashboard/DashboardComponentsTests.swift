@@ -1325,6 +1325,18 @@ final class DashboardComponentsTests: XCTestCase {
                 + DashboardTextTooltipLayout.horizontalInset * 2
         )
         let longLabel = try XCTUnwrap(longController.view.subviews.first as? NSTextField)
+        XCTAssertFalse(longLabel is InlineRangeLinkTextField)
+        XCTAssertEqual(longLabel.stringValue, longHint)
+        XCTAssertEqual(longLabel.textColor, NSColor.labelColor)
+        let hostRange = (longHint as NSString).range(of: "codex-reset.com")
+        XCTAssertNotEqual(hostRange.location, NSNotFound)
+        XCTAssertNil(
+            longLabel.attributedStringValue.attribute(
+                .link,
+                at: hostRange.location,
+                effectiveRange: nil
+            )
+        )
         XCTAssertEqual(longLabel.lineBreakMode, .byWordWrapping)
         XCTAssertEqual(longLabel.maximumNumberOfLines, 0)
         XCTAssertEqual(longLabel.preferredMaxLayoutWidth, long.textWidth)
