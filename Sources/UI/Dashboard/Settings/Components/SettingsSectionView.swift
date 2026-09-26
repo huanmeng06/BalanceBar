@@ -95,8 +95,7 @@ final class SettingsSectionView: NSView {
             let shouldInsertSeparator = hasFollowingRow
                 && (separatorIndices?.contains(index) ?? true)
             if shouldInsertSeparator {
-                let separator = NSBox()
-                separator.boxType = .separator
+                let separator = SettingsCardSeparatorView()
                 separator.translatesAutoresizingMaskIntoConstraints = false
                 separator.heightAnchor.constraint(
                     equalToConstant: DashboardSettingsComponents.settingsSeparatorHeight
@@ -241,6 +240,26 @@ final class SettingsSectionView: NSView {
             return section !== self && DashboardSearchVisibility.isSearchHidden(section)
         }
         return view.subviews.contains { containsSearchHiddenSection(in: $0) }
+    }
+}
+
+/// Mid-card hairline. `NSBox` does not participate in `writeHidden`, so search
+/// must route `isHidden` through the same business/search split as rows.
+final class SettingsCardSeparatorView: NSBox {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        boxType = .separator
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var isHidden: Bool {
+        get { super.isHidden }
+        set {
+            DashboardSearchVisibility.writeHidden(self, newValue) { super.isHidden = $0 }
+        }
     }
 }
 
