@@ -8,7 +8,19 @@ final class DashboardAdvancedPage {
 
     struct Input {
         let relay: DashboardPreferencePageRelay
-        let logViewer: NSView
+        let logViewer: NSView?
+
+        let includeLogViewer: Bool
+
+        init(
+            relay: DashboardPreferencePageRelay,
+            logViewer: NSView?,
+            includeLogViewer: Bool = true
+        ) {
+            self.relay = relay
+            self.logViewer = logViewer
+            self.includeLogViewer = includeLogViewer
+        }
     }
 
     func make(_ input: Input) -> NSView {
@@ -35,9 +47,13 @@ final class DashboardAdvancedPage {
             detail: tr(.keyDashboardAdvancedPageRecordsRuntimeStatusAndErrors),
             accessoryView: logButtons
         )
+        var contentViews: [NSView] = [debugLogRow]
+        if input.includeLogViewer, let logViewer = input.logViewer {
+            contentViews.append(Self.makePinnedLogViewer(logViewer))
+        }
         let logs = SettingsSectionView(
             title: tr(.keyDashboardAdvancedPageDiagnostics),
-            contentViews: [debugLogRow, Self.makePinnedLogViewer(input.logViewer)]
+            contentViews: contentViews
         )
         return DashboardSettingsComponents.makeSettingsPageContent([logs])
     }

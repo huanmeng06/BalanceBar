@@ -21,6 +21,102 @@ struct DashboardCompositionState {
     let setStatusLinks: ([StatusLink]) -> Void
 }
 
+/// Arranged result stacks preserve AppKit's visibility-priority collapse
+/// semantics for filtered sections and whole-page groups.
+private final class DashboardGlobalSearchResultsView: NSStackView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        orientation = .vertical
+        alignment = .leading
+        spacing = DashboardSettingsComponents.settingsSectionSpacing
+        distribution = .gravityAreas
+        // Search projection groups must collapse with their arranged spacing;
+        // keeping hidden groups attached leaves a fixed outer gap per stale
+        // query result.
+        detachesHiddenViews = true
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func addGroup(_ group: NSView, spacing _: CGFloat) {
+        addArrangedSubview(group)
+        group.translatesAutoresizingMaskIntoConstraints = false
+        group.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+    }
+}
+
+private final class DashboardGlobalSearchGroupView: NSStackView {
+    var settingsSection: DashboardSection = .general
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        identifier = DashboardPageSearch.globalSearchGroupIdentifier
+        orientation = .vertical
+        alignment = .leading
+        spacing = DashboardSettingsComponents.settingsSectionSpacing
+        distribution = .gravityAreas
+        // Hidden sections are removed from the layout contribution, including
+        // the stack spacing between them.
+        detachesHiddenViews = true
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func addPage(_ page: NSView) {
+        addArrangedSubview(page)
+        page.translatesAutoresizingMaskIntoConstraints = false
+        page.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+    }
+
+    func addSection(_ section: NSView, spacing _: CGFloat) {
+        addArrangedSubview(section)
+        section.translatesAutoresizingMaskIntoConstraints = false
+        section.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+    }
+}
+
+/// One search match's cancellation flag. The work item closure retains this
+/// token, and the controller retains the work item. The token must not retain
+/// the work item, or every live query keeps its documents alive.
+private final class DashboardSearchCancellationToken {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+}
+
+private struct DashboardSearchRuntimeIdentity: Equatable {
+    var languageKey: String
+    var providerName: String
+    var updateState: UpdateCheckState
+    var balanceDisplayThreshold: Double
+    var statusLinks: [StatusLink]
+    var menuBarIconOffsetY: Double
+    var menuBarAmountOffsetY: Double
+    var menuBarWidthAdjustment: Double
+    var animationMode: MenuBarAnimationMode
+    var animationFrameRate: Int
+    var previewPrimary: String
+    var previewSecondary: String
+}
+
 struct DashboardCompositionActions {
     let onManualRefresh: () -> Void
     let onSwitchProvider: (String) -> Void
@@ -77,6 +173,13 @@ final class DashboardCompositionController {
     private var menuBarPreviewAnimationIconImage: NSImage?
     private var menuBarPreviewAnimationSpriteImage: NSImage?
     private var menuBarAnimationFallbackActive = false
+    private var isGlobalSettingsSearchActive = false
+    private weak var globalSettingsSearchContent: NSView?
+    private var globalSearchOriginContent: NSView?
+    private var globalSearchOriginSection: DashboardSection?
+    private var globalSettingsSearchSections: Set<DashboardSection> = []
+    private var globalSearchGroupsBySection: [DashboardSection: DashboardGlobalSearchGroupView] = [:]
+    private var isBuildingGlobalSearchPage = false
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
             onRefresh: actions.onManualRefresh,
@@ -132,6 +235,23 @@ final class DashboardCompositionController {
         launchWithChatGPTController: launchWithChatGPTController
     )
     private let pageSearchFilter = DashboardPageSearchFilter()
+    private var pendingDashboardSearchWorkItem: DispatchWorkItem?
+    private var pendingSearchCancellation: DashboardSearchCancellationToken?
+    private var pendingSearchMatchWorkItem: DispatchWorkItem?
+    private var cachedSearchRuntimeIdentity: DashboardSearchRuntimeIdentity?
+    private var cachedSearchRuntimeTexts: [DashboardSection: [String]] = [:]
+    private var dashboardSearchGeneration: UInt64 = 0
+    private var searchDataRevision: UInt64 = 0
+    private var lastAppliedSearchQuery: String?
+    private var lastAppliedSearchRevision: UInt64 = 0
+    private weak var lastAppliedSearchRoot: NSView?
+    /// Query whose scroll offset was captured before a same-query data refresh.
+    /// A new query must not reuse it.
+    private var pendingSearchScrollPreserve: (query: String, offset: CGFloat)?
+    /// Last query that finished projecting. Survives data invalidation so a
+    /// repeat apply of that query does not reset scroll.
+    private var lastSettledSearchQuery: String?
+    private var synchronousSearchForTesting = false
     private lazy var pageSession = DashboardPageSession(
         actions: DashboardWindowControllerActions(
             makeSectionPage: { [weak self] section in
@@ -145,7 +265,12 @@ final class DashboardCompositionController {
             providerChoices: { [weak self] in self?.state.providerChoices() ?? [] },
             prepareForPageReplacement: { [weak self] in self?.prepareForPageReplacement() },
             didShowPage: { [weak self] in
-                self?.applyMountedPageSearch()
+                // Page replacement invokes this callback synchronously. The
+                // toolbar's searchQuery is the live accepted editor value, so
+                // the search page cannot be cleared by an older submission.
+                if self?.isBuildingGlobalSearchPage != true {
+                    self?.applyMountedPageSearch()
+                }
                 self?.actions.onDidShowPage()
             },
             didClose: { [weak self] in
@@ -214,10 +339,20 @@ final class DashboardCompositionController {
         refreshLaunchAtLogin()
         refreshLaunchWithChatGPT()
     }
-    func rebuild() { pageSession.rebuild(on: windowController) }
-    func showSection(_ section: DashboardSection) { pageSession.showSection(section) }
+    func rebuild() {
+        invalidateSearchData()
+        pageSession.rebuild(on: windowController)
+    }
+    func showSection(_ section: DashboardSection) { pageSession.selectSection(section) }
     func showProvider(_ providerID: String) { pageSession.showProvider(providerID) }
     func teardown() {
+        invalidateSearchData()
+        isGlobalSettingsSearchActive = false
+        globalSettingsSearchContent = nil
+        globalSearchOriginContent = nil
+        globalSearchOriginSection = nil
+        globalSettingsSearchSections.removeAll()
+        globalSearchGroupsBySection.removeAll()
         dashboardProviderPages.teardown()
         dashboardPreferencePages.teardown()
         pageSession.teardown()
@@ -225,6 +360,7 @@ final class DashboardCompositionController {
     }
 
     func refreshMountedPage(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
+        invalidateSearchData()
         _ = dashboardProviderPages.refreshMountedPage(
             input: makeProviderPageInput(
                 snapshot: snapshot,
@@ -233,14 +369,33 @@ final class DashboardCompositionController {
                 revision: revision
             )
         )
-        refreshMenuBarPage(snapshot: snapshot)
+        refreshMenuBarPage(
+            snapshot: snapshot,
+            invalidateSearchData: false,
+            reapplySearch: false
+        )
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
         }
     }
 
     func refreshMenuBarPage(snapshot: Snapshot) {
-        guard window?.isVisible == true, section == .menuBar else { return }
+        refreshMenuBarPage(
+            snapshot: snapshot,
+            invalidateSearchData: true,
+            reapplySearch: true
+        )
+    }
+
+    private func refreshMenuBarPage(
+        snapshot: Snapshot,
+        invalidateSearchData: Bool,
+        reapplySearch: Bool
+    ) {
+        guard canUpdateSettingsPage(.menuBar) else { return }
+        if invalidateSearchData {
+            self.invalidateSearchData()
+        }
         dashboardPreferencePages.refreshMenuBar(
             snapshot: snapshot,
             menuBarSnapshot: state.menuBarSnapshot,
@@ -251,13 +406,15 @@ final class DashboardCompositionController {
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive
         )
-        if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if reapplySearch,
+           !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
         }
     }
 
     func refreshMenuPage() {
-        guard window?.isVisible == true, section == .menu else { return }
+        guard canUpdateSettingsPage(.menu) else { return }
+        invalidateSearchData()
         dashboardPreferencePages.refreshMenu()
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
@@ -273,7 +430,7 @@ final class DashboardCompositionController {
         if let image {
             menuBarPreviewAnimationIconImage = image
         }
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.updateMenuBarPreviewIcon(image)
     }
 
@@ -286,7 +443,7 @@ final class DashboardCompositionController {
             menuBarPreviewAnimationIconImage = iconImage
         }
         menuBarPreviewAnimationSpriteImage = nil
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.updateMenuBarPreviewAnimation(
             kind: menuBarPreviewAnimationKind,
             iconImage: iconImage ?? menuBarPreviewAnimationIconImage,
@@ -344,7 +501,7 @@ final class DashboardCompositionController {
         } else {
             menuBarPreviewAnimationSpriteImage = nil
         }
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.updateMenuBarPreviewAnimation(
             kind: menuBarPreviewAnimationKind,
             iconImage: iconImage ?? menuBarPreviewAnimationIconImage,
@@ -360,7 +517,7 @@ final class DashboardCompositionController {
 
     func updateMenuBarAnimationFallback(active: Bool) {
         menuBarAnimationFallbackActive = active
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.updateMenuBarAnimationFallback(active: active)
     }
 
@@ -368,7 +525,7 @@ final class DashboardCompositionController {
         _ widthAdjustment: Double,
         horizontalPadding: CGFloat
     ) {
-        guard window?.isVisible == true, section == .menuBar else { return }
+        guard canUpdateSettingsPage(.menuBar) else { return }
         dashboardPreferencePages.refreshMenuBarWidthAdjustment(
             widthAdjustment,
             horizontalPadding: horizontalPadding
@@ -394,22 +551,22 @@ final class DashboardCompositionController {
     }
 
     func refreshLaunchAtLogin() {
-        guard window?.isVisible == true, section == .general else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchAtLogin()
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
-        guard window?.isVisible == true, section == .general else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchAtLogin(state)
     }
 
     func refreshLaunchWithChatGPT() {
-        guard window?.isVisible == true, section == .general else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchWithChatGPT()
     }
 
     func refreshLaunchWithChatGPT(_ state: LaunchWithChatGPTState) {
-        guard window?.isVisible == true, section == .general else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchWithChatGPT(state)
     }
 
@@ -484,75 +641,506 @@ final class DashboardCompositionController {
     var searchQueryForTesting: String { pageSession.toolbarController.searchQuery }
 
     func applySearchQueryForTesting(_ query: String) {
+        synchronousSearchForTesting = true
+        defer { synchronousSearchForTesting = false }
         pageSession.toolbarController.setQuery(query)
+        pendingDashboardSearchWorkItem?.cancel()
+        dashboardSearchGeneration &+= 1
+        handleDashboardSearch(query)
     }
 
     func currentHostedPageContentForTesting() -> NSView {
         pageSession.currentHostedPageContent()
     }
 
+    func visibleSearchCopyForTesting(in view: NSView) -> [String] {
+        pageSearchFilter.visibleCopyForTesting(in: view)
+    }
+
+    func searchRuntimeTextsForTesting() -> [DashboardSection: [String]] {
+        settingsSearchRuntimeTexts()
+    }
+
     private func bindDashboardSearch() {
-        pageSession.toolbarController.onSearchQueryChanged = { [weak self] query in
-            self?.handleDashboardSearch(query)
+        pageSession.shouldPreserveSectionSelection = { [weak self] target in
+            guard let self else { return false }
+            let query = self.pageSession.toolbarController.searchQuery
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return !query.isEmpty
+                && target != .about
+                && (self.isGlobalSettingsSearchActive
+                    || self.pageSession.mountedSection == .about)
         }
+        pageSession.onPreservedSectionSelection = { [weak self] target in
+            guard let self,
+                  self.pageSession.mountedSection == .about,
+                  target != .about else { return }
+            let query = self.pageSession.toolbarController.searchQuery
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else { return }
+            // About remains mounted while the logical selection changes. Move
+            // directly into the Settings search root so no unfiltered target
+            // page is displayed between the two presentations.
+            self.applyMountedPageSearch(queryOverride: query)
+        }
+        pageSession.preparePageForDisplay = { [weak self] in
+            guard let self,
+                  !self.isBuildingGlobalSearchPage,
+                  self.pageSession.section == .about else { return }
+            let query = self.pageSession.toolbarController.searchQuery
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else { return }
+            // A Settings -> About navigation replaces the root. Apply the
+            // visible-copy projection before display so the first frame is
+            // already filtered.
+            self.applyMountedPageSearch(queryOverride: query, synchronously: true)
+        }
+        pageSession.toolbarController.onSearchQueryChanged = { [weak self] query in
+            self?.scheduleDashboardSearch(query)
+        }
+    }
+
+    private func scheduleDashboardSearch(_ query: String) {
+        pendingDashboardSearchWorkItem?.cancel()
+        dashboardSearchGeneration &+= 1
+        let generation = dashboardSearchGeneration
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            handleDashboardSearch(query)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.dashboardSearchGeneration == generation else { return }
+            self.handleDashboardSearch(query)
+        }
+        pendingDashboardSearchWorkItem = work
+        DispatchQueue.main.async(execute: work)
+    }
+
+    private func invalidateSearchData() {
+        let activeQuery = pageSession.toolbarController.searchQuery
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if activeQuery.isEmpty {
+            pendingSearchScrollPreserve = nil
+        } else {
+            // Capture before refresh mutates the mounted pages. The rematch
+            // below must put this offset back instead of scrolling to the
+            // first match.
+            pendingSearchScrollPreserve = (
+                query: activeQuery,
+                offset: pageSession.pageScrollOffsetY()
+            )
+        }
+        searchDataRevision &+= 1
+        cancelPendingSearchMatch()
+        pageSearchFilter.prepareForDataRefresh()
+        lastAppliedSearchQuery = nil
+        lastAppliedSearchRoot = nil
     }
 
     private func handleDashboardSearch(_ query: String) {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if needle.isEmpty {
-            applyMountedPageSearch()
-            return
-        }
-        if currentPageContainsSearchMatch(needle) {
-            applyMountedPageSearch()
-            return
-        }
-
-        let originSection = section
-        let originProviderID = selectedProviderID
-        let candidates = DashboardSettingsSearchCatalog.matchingSections(query: needle)
-            .filter { originProviderID != nil || $0 != originSection }
-        for destination in candidates {
-            pageSession.showSection(destination)
-            if currentPageContainsSearchMatch(needle) {
+            if isGlobalSettingsSearchActive {
+                clearGlobalSettingsSearch()
                 return
             }
-        }
-
-        if selectedProviderID != originProviderID || section != originSection {
-            if let originProviderID {
-                pageSession.showProvider(originProviderID)
-            } else {
-                pageSession.showSection(originSection)
+            if pageSession.mountedSection != section {
+                pageSession.showSection(section)
+                return
             }
+            applyMountedPageSearch()
+            return
         }
-        applyMountedPageSearch()
+        if selectedProviderID != nil || section == .about {
+            isGlobalSettingsSearchActive = false
+            globalSettingsSearchContent = nil
+            globalSearchOriginContent = nil
+            globalSearchOriginSection = nil
+            globalSettingsSearchSections.removeAll()
+            globalSearchGroupsBySection.removeAll()
+            applyMountedPageSearch(queryOverride: query)
+            return
+        }
+        if !isGlobalSettingsSearchActive {
+            isGlobalSettingsSearchActive = true
+            showGlobalSettingsSearchPage(initialQuery: needle)
+            return
+        }
+        applyMountedPageSearch(queryOverride: query)
     }
 
-    private func applyMountedPageSearch() {
-        let query = pageSession.toolbarController.searchQuery
-        _ = pageSearchFilter.apply(
+    private func applyMountedPageSearch(
+        queryOverride: String? = nil,
+        synchronously: Bool = false
+    ) {
+        let query = queryOverride ?? pageSession.toolbarController.searchQuery
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if needle.isEmpty, isGlobalSettingsSearchActive {
+            clearGlobalSettingsSearch()
+            return
+        }
+        if selectedProviderID != nil || section == .about {
+            isGlobalSettingsSearchActive = false
+            globalSettingsSearchContent = nil
+            globalSearchOriginContent = nil
+            globalSearchOriginSection = nil
+            globalSettingsSearchSections.removeAll()
+        } else if !needle.isEmpty, !isGlobalSettingsSearchActive {
+            isGlobalSettingsSearchActive = true
+            showGlobalSettingsSearchPage(initialQuery: query)
+            return
+        } else if !needle.isEmpty, isGlobalSettingsSearchActive,
+                  pageSession.currentHostedPageContent() !== globalSettingsSearchContent {
+            guard !isBuildingGlobalSearchPage else { return }
+            showGlobalSettingsSearchPage(initialQuery: query)
+            return
+        }
+        pageSearchFilter.statusLinks = state.statusLinks()
+        if !needle.isEmpty, isGlobalSettingsSearchActive {
+            addGlobalSettingsSearchPages(matching: needle)
+        }
+        let root = pageSession.currentHostedPageContent()
+        if lastAppliedSearchQuery == query,
+           lastAppliedSearchRevision == searchDataRevision,
+           lastAppliedSearchRoot === root {
+            return
+        }
+        submitSearch(
             query: query,
-            to: pageSession.currentHostedPageContent(),
+            root: root,
             pageTitle: currentSearchPageTitle(),
-            mode: currentSearchMode()
+            mode: currentSearchMode(),
+            synchronously: synchronously
         )
         DashboardKeyViewLoop.resignUnreachableFirstResponder(window)
-        DashboardKeyViewLoop.invalidate(window)
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
-        pageSession.restoreCurrentPageScrollToTop()
     }
 
-    private func currentPageContainsSearchMatch(_ query: String) -> Bool {
-        pageSearchFilter.pageContainsMatch(
-            query: query,
-            in: pageSession.currentHostedPageContent(),
-            pageTitle: currentSearchPageTitle(),
-            mode: currentSearchMode()
+    private func cancelPendingSearchMatch() {
+        pendingSearchCancellation?.cancel()
+        pendingSearchCancellation = nil
+        pendingSearchMatchWorkItem?.cancel()
+        pendingSearchMatchWorkItem = nil
+    }
+
+    private func submitSearch(
+        query: String,
+        root: NSView,
+        pageTitle: String,
+        mode: DashboardPageSearchMode,
+        synchronously: Bool = false
+    ) {
+        cancelPendingSearchMatch()
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pendingSearchScrollPreserve = nil
+            lastSettledSearchQuery = nil
+            _ = pageSearchFilter.apply(
+                query: query,
+                to: root,
+                pageTitle: pageTitle,
+                mode: mode
+            )
+            lastAppliedSearchQuery = query
+            lastAppliedSearchRevision = searchDataRevision
+            lastAppliedSearchRoot = root
+            return
+        }
+        // Decide scroll before matching. `nil` means this apply must not move
+        // the scroll view at all.
+        let scrollTarget = searchScrollTarget(for: query)
+        let documents = pageSearchFilter.searchDocuments(for: root, mode: mode)
+        let queryRevision = searchDataRevision
+        let queryGeneration = dashboardSearchGeneration
+        let rootID = ObjectIdentifier(root)
+
+        if synchronously || synchronousSearchForTesting || AutomatedTestHost.isRunning {
+            let matches = DashboardPageSearch.matchDocuments(documents, query: query)
+            _ = pageSearchFilter.apply(
+                query: query,
+                to: root,
+                pageTitle: pageTitle,
+                mode: mode,
+                matchedDocumentIDs: Set(matches.map(\.documentID))
+            )
+            settleSearchScroll(to: scrollTarget)
+            lastSettledSearchQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            lastAppliedSearchQuery = query
+            lastAppliedSearchRevision = queryRevision
+            lastAppliedSearchRoot = root
+            return
+        }
+
+        let cancellation = DashboardSearchCancellationToken()
+        pendingSearchCancellation = cancellation
+        let workItem = DispatchWorkItem { [weak self] in
+            let matches = DashboardPageSearch.matchDocuments(
+                documents,
+                query: query,
+                isCancelled: { cancellation.isCancelled }
+            )
+            guard !cancellation.isCancelled else { return }
+            let matchedDocumentIDs = Set(matches.map(\.documentID))
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      !cancellation.isCancelled,
+                      self.dashboardSearchGeneration == queryGeneration,
+                      self.searchDataRevision == queryRevision,
+                      self.pageSession.toolbarController.searchQuery == query else {
+                    return
+                }
+                let currentRoot = self.pageSession.currentHostedPageContent()
+                guard ObjectIdentifier(currentRoot) == rootID else { return }
+                _ = self.pageSearchFilter.apply(
+                    query: query,
+                    to: currentRoot,
+                    pageTitle: pageTitle,
+                    mode: mode,
+                    matchedDocumentIDs: matchedDocumentIDs
+                )
+                self.settleSearchScroll(to: scrollTarget)
+                self.lastSettledSearchQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                self.lastAppliedSearchQuery = query
+                self.lastAppliedSearchRevision = queryRevision
+                self.lastAppliedSearchRoot = currentRoot
+            }
+        }
+        pendingSearchMatchWorkItem = workItem
+        DispatchQueue.global(qos: .userInitiated).async(execute: workItem)
+    }
+
+    /// Search filtering only hides and restores rows. Scroll policy lives here:
+    /// the first query and a changed query start at offset 0;
+    /// a same-query refresh returns the offset captured before that refresh.
+    /// A repeat apply of the query already on screen returns nil.
+    private func searchScrollTarget(for query: String) -> CGFloat? {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preserve = pendingSearchScrollPreserve
+        pendingSearchScrollPreserve = nil
+        if let preserve, preserve.query == needle {
+            return preserve.offset
+        }
+        if lastSettledSearchQuery == needle {
+            return nil
+        }
+        return 0
+    }
+
+    private func settleSearchScroll(to target: CGFloat?) {
+        guard let target else {
+            pageSession.cancelScheduledPageScrollRestoration()
+            return
+        }
+        // Compare before layout. A matching offset, including steady-state
+        // typing that is already at the top, must not force a window layout.
+        guard abs(pageSession.pageScrollOffsetY() - target) > 1 else {
+            pageSession.cancelScheduledPageScrollRestoration()
+            return
+        }
+        pageSession.schedulePageScrollRestoration(target)
+    }
+
+    private func showGlobalSettingsSearchPage(initialQuery: String? = nil) {
+        guard !isBuildingGlobalSearchPage else { return }
+        isBuildingGlobalSearchPage = true
+        defer { isBuildingGlobalSearchPage = false }
+        if pageSession.currentHostedPageContent() !== globalSettingsSearchContent,
+           pageSession.mountedSection != .about {
+            globalSearchOriginContent = pageSession.currentHostedPageContent()
+            globalSearchOriginSection = section
+        } else if pageSession.mountedSection == .about {
+            // About content is not a settings origin page. If a non-empty
+            // query crosses into Settings, clearing it must build the newly
+            // selected logical section instead of restoring About.
+            globalSearchOriginContent = nil
+            globalSearchOriginSection = nil
+        }
+        pageSearchFilter.resetSearchState()
+        pendingSearchScrollPreserve = nil
+        lastSettledSearchQuery = nil
+        lastAppliedSearchQuery = nil
+        lastAppliedSearchRoot = nil
+        globalSettingsSearchContent = nil
+        globalSettingsSearchSections.removeAll()
+        globalSearchGroupsBySection.removeAll()
+        pageSearchFilter.statusLinks = state.statusLinks()
+        pageSession.showSearchResults(makeContent: { [weak self] in
+            guard let self else {
+                return DashboardSettingsComponents.makeSettingsPageContent([])
+            }
+            let content = self.makeGlobalSettingsSearchContent()
+            self.globalSettingsSearchContent = content
+            return content
+        }, preservingCurrentPage: true)
+        // The first committed query must build its complete candidate set in
+        // the same turn. Otherwise a direct query can miss dynamic sections
+        // until a later edit happens to broaden or change the query.
+        let initialQuery = (initialQuery ?? pageSession.toolbarController.searchQuery)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !initialQuery.isEmpty {
+            addGlobalSettingsSearchPages(matching: initialQuery)
+            let root = pageSession.currentHostedPageContent()
+            submitSearch(
+                query: initialQuery,
+                root: root,
+                pageTitle: "",
+                mode: .titles
+            )
+        }
+    }
+
+    private func clearGlobalSettingsSearch() {
+        let origin = globalSearchOriginContent
+        let originSection = globalSearchOriginSection
+        if let current = globalSettingsSearchContent {
+            _ = pageSearchFilter.apply(
+                query: "",
+                to: current,
+                pageTitle: "",
+                mode: .titles
+            )
+        }
+        isGlobalSettingsSearchActive = false
+        globalSettingsSearchContent = nil
+        globalSettingsSearchSections.removeAll()
+        globalSearchGroupsBySection.removeAll()
+        globalSearchOriginContent = nil
+        globalSearchOriginSection = nil
+        pendingSearchScrollPreserve = nil
+        lastSettledSearchQuery = nil
+        lastAppliedSearchQuery = nil
+        lastAppliedSearchRoot = nil
+        if let origin, originSection == section {
+            pageSession.showHostedSettingsContent(origin)
+        } else {
+            pageSession.showSection(section)
+        }
+    }
+
+    private func makeGlobalSettingsSearchContent() -> NSView {
+        let content = DashboardGlobalSearchResultsView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        return content
+    }
+
+    private func settingsSearchRuntimeTexts() -> [DashboardSection: [String]] {
+        let preferences = state.preferences
+        let snapshot = state.snapshot()
+        let presentation = DashboardMenuBarPage.presentation(
+            for: snapshot,
+            showAmount: preferences.showMenuBarAmount,
+            showReset: preferences.showMenuBarReset,
+            quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
+            lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
+            resolving: state.menuBarSnapshot
         )
+        // Provider name is the in-memory cache. This path must not open SQLite.
+        let identity = DashboardSearchRuntimeIdentity(
+            languageKey: "\(AppLanguage.selected.rawValue)|\(AppLanguage.resolved.rawValue)",
+            providerName: state.currentProviderName(),
+            updateState: state.updateState(),
+            balanceDisplayThreshold: preferences.balanceDisplayThreshold,
+            statusLinks: state.statusLinks(),
+            menuBarIconOffsetY: preferences.menuBarIconOffsetY,
+            menuBarAmountOffsetY: preferences.menuBarAmountOffsetY,
+            menuBarWidthAdjustment: preferences.menuBarStatusItemWidthAdjustment,
+            animationMode: preferences.menuBarAnimationMode,
+            animationFrameRate: preferences.menuBarAnimationFrameRate,
+            previewPrimary: presentation.primary,
+            previewSecondary: presentation.secondary
+        )
+        if identity == cachedSearchRuntimeIdentity {
+            return cachedSearchRuntimeTexts
+        }
+        let texts = DashboardSettingsSearchRuntime.textsBySection(
+            currentProviderName: identity.providerName,
+            updateState: identity.updateState,
+            balanceDisplayThreshold: identity.balanceDisplayThreshold,
+            statusLinks: identity.statusLinks,
+            menuBarIconOffsetY: identity.menuBarIconOffsetY,
+            menuBarAmountOffsetY: identity.menuBarAmountOffsetY,
+            menuBarWidthAdjustment: identity.menuBarWidthAdjustment,
+            animationMode: identity.animationMode,
+            animationFrameRate: identity.animationFrameRate,
+            menuBarPreviewPrimary: identity.previewPrimary,
+            menuBarPreviewSecondary: identity.previewSecondary
+        )
+        cachedSearchRuntimeIdentity = identity
+        cachedSearchRuntimeTexts = texts
+        return texts
+    }
+
+    private func addGlobalSettingsSearchPages(matching query: String) {
+        guard let searchContent = globalSettingsSearchContent,
+              let resultStack = searchContent as? DashboardGlobalSearchResultsView else { return }
+        // Materialize only catalog/runtime candidates for this query. Every
+        // candidate uses the same real-row projection so changing query
+        // length never changes the representation of an existing result.
+        let ranked = DashboardSettingsSearchCatalog.rankedSections(
+            query: query,
+            runtimeTexts: settingsSearchRuntimeTexts()
+        )
+        let orderedSettingsSections = DashboardSection.allCases.filter { $0 != .about }
+        var candidateSections = ranked.map(\.section).filter { $0 != .about }
+        if !candidateSections.contains(section) {
+            candidateSections.append(section)
+        }
+        let missingSections = candidateSections.filter {
+            !globalSettingsSearchSections.contains($0)
+        }
+        guard !missingSections.isEmpty else { return }
+
+        for settingsSection in missingSections {
+            let group = DashboardGlobalSearchGroupView()
+            group.settingsSection = settingsSection
+            group.translatesAutoresizingMaskIntoConstraints = false
+            populateGlobalSearchGroup(group, for: settingsSection)
+            resultStack.addGroup(group, spacing: DashboardSettingsComponents.settingsSectionSpacing)
+            globalSettingsSearchSections.insert(settingsSection)
+            globalSearchGroupsBySection[settingsSection] = group
+            DashboardPageSearchDiagnostics.globalSearchPagesMaterializedCount += 1
+        }
+        pageSearchFilter.markSearchStructureChanged()
+
+        let empty = resultStack.arrangedSubviews.first {
+            $0.identifier == DashboardPageSearch.emptyStateIdentifier
+        }
+        let orderedGroups = resultStack.arrangedSubviews
+            .compactMap { $0 as? DashboardGlobalSearchGroupView }
+            .sorted { lhs, rhs in
+                let lhsIndex = orderedSettingsSections.firstIndex(of: lhs.settingsSection) ?? .max
+                let rhsIndex = orderedSettingsSections.firstIndex(of: rhs.settingsSection) ?? .max
+                return lhsIndex < rhsIndex
+            }
+        resultStack.setViews(orderedGroups, in: .top)
+        if let empty {
+            resultStack.addView(empty, in: .top)
+        }
+        resultStack.needsLayout = true
+    }
+
+
+    private func populateGlobalSearchGroup(
+        _ group: DashboardGlobalSearchGroupView,
+        for settingsSection: DashboardSection
+    ) {
+        if settingsSection == globalSearchOriginSection, let origin = globalSearchOriginContent {
+            group.addPage(origin)
+            return
+        }
+        let page = makeSectionPage(for: settingsSection, forSearch: true)
+        let sourceStack: NSStackView? = {
+            if let stack = page as? NSStackView { return stack }
+            return page.subviews.compactMap { $0 as? NSStackView }.first
+        }()
+        for sourceSection in sourceStack?.arrangedSubviews ?? [] {
+            sourceStack?.removeView(sourceSection)
+            sourceSection.removeFromSuperview()
+            group.addSection(sourceSection, spacing: DashboardSettingsComponents.settingsSectionSpacing)
+        }
     }
 
     private func currentSearchPageTitle() -> String {
+        if isGlobalSettingsSearchActive { return "" }
         if let selectedProviderID,
            let name = state.providerChoices().first(where: { $0.id == selectedProviderID })?.name {
             return name
@@ -562,6 +1150,10 @@ final class DashboardCompositionController {
 
     private func currentSearchMode() -> DashboardPageSearchMode {
         selectedProviderID != nil || section == .about ? .visibleCopy : .titles
+    }
+
+    private func canUpdateSettingsPage(_ target: DashboardSection) -> Bool {
+        window?.isVisible == true && (section == target || isGlobalSettingsSearchActive)
     }
 
     private func prepareForPageReplacement() {
@@ -583,7 +1175,7 @@ final class DashboardCompositionController {
         DashboardScrollablePageViewController(wrapping: makeProviderPage(for: choice))
     }
 
-    private func makeSectionPage(for section: DashboardSection) -> NSView {
+    private func makeSectionPage(for section: DashboardSection, forSearch: Bool = false) -> NSView {
         dashboardPreferencePages.makePage(
             for: section,
             currentProviderName: state.currentProviderName(),
@@ -596,7 +1188,8 @@ final class DashboardCompositionController {
             animationKind: menuBarPreviewAnimationKind,
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive,
-            updateState: state.updateState()
+            updateState: state.updateState(),
+            forSearch: forSearch
         )
     }
 
@@ -649,6 +1242,7 @@ final class DashboardCompositionController {
         case .url: links[index].url = value
         }
         state.setStatusLinks(links)
+        invalidateSearchData()
         SwitchLog.write(
             "status link edited; index=\(index); field=\(field == .title ? "title" : "url"); length=\(value.count)",
             category: "configuration"
@@ -657,11 +1251,12 @@ final class DashboardCompositionController {
     }
 
     private func addStatusLink(at index: Int) {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         var links = state.statusLinks()
         guard links.indices.contains(index) || index == links.endIndex else { return }
         links.insert(StatusLink(title: "", url: ""), at: index)
         state.setStatusLinks(links)
+        invalidateSearchData()
         SwitchLog.write("status link added; count=\(links.count)", category: "configuration")
         dashboardPreferencePages.updateMenuStatusLinks(
             links,
@@ -674,23 +1269,25 @@ final class DashboardCompositionController {
     }
 
     private func removeStatusLink(at index: Int) {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         var links = state.statusLinks()
         guard index >= 0, index < links.count else { return }
         links.remove(at: index)
         state.setStatusLinks(links)
+        invalidateSearchData()
         SwitchLog.write("status link removed; index=\(index); count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
         dashboardPreferencePages.updateMenuStatusLinks(links, mutation: .remove(index))
     }
 
     private func moveStatusLink(from: Int, to: Int) {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         var links = state.statusLinks()
         guard links.indices.contains(from), links.indices.contains(to), from != to else { return }
         let movedLink = links.remove(at: from)
         links.insert(movedLink, at: to)
         state.setStatusLinks(links)
+        invalidateSearchData()
         SwitchLog.write(
             "status link moved; from=\(from); to=\(to)",
             category: "configuration"
@@ -703,11 +1300,12 @@ final class DashboardCompositionController {
     }
 
     private func duplicateStatusLink(at index: Int) {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         var links = state.statusLinks()
         guard links.indices.contains(index) else { return }
         links.insert(links[index], at: index + 1)
         state.setStatusLinks(links)
+        invalidateSearchData()
         SwitchLog.write(
             "status link duplicated; index=\(index); count=\(links.count)",
             category: "configuration"
@@ -720,9 +1318,10 @@ final class DashboardCompositionController {
     }
 
     private func resetStatusLinks() {
-        guard section == .menu else { return }
+        guard section == .menu || isGlobalSettingsSearchActive else { return }
         let links = state.defaultStatusLinks()
         state.setStatusLinks(links)
+        invalidateSearchData()
         SwitchLog.write("status links restored to defaults; count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
         dashboardPreferencePages.updateMenuStatusLinks(links)

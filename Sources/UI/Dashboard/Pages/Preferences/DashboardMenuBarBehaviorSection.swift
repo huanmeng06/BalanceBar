@@ -6,8 +6,6 @@ final class DashboardMenuBarBehaviorSection {
     private weak var reverseMouseButtonsSwitch: NSSwitch?
     private weak var rightClickActionRow: NSView?
     private weak var reverseMouseButtonsRow: NSView?
-    private var behaviorSeparators: [NSView] = []
-
     func make(input: DashboardMenuBarPage.Input) -> NSView {
         let rightClickActionControl = makeRightClickActionControl(
             value: input.preferences.menuBarRightClickAction,
@@ -41,7 +39,6 @@ final class DashboardMenuBarBehaviorSection {
                 reverseMouseButtonsRow
             ]
         )
-        behaviorSeparators = behaviorSection.separators
         updateVisibility(rightClickAction: input.preferences.menuBarRightClickAction)
         return behaviorSection
     }
@@ -63,18 +60,9 @@ final class DashboardMenuBarBehaviorSection {
     private func updateVisibility(rightClickAction: MenuBarRightClickAction) {
         let showReverse = rightClickAction != .matchLeftClick
         reverseMouseButtonsRow?.isHidden = !showReverse
-        let rows = [rightClickActionRow, reverseMouseButtonsRow]
-        for (index, separator) in behaviorSeparators.enumerated() {
-            guard index < rows.count,
-                  index + 1 < rows.count else {
-                separator.isHidden = true
-                continue
-            }
-            let hasVisibleRowAfter = rows[(index + 1)...].contains { $0?.isHidden == false }
-            separator.isHidden = !(rows[index]?.isHidden == false && hasVisibleRowAfter)
-        }
         guard let row = rightClickActionRow ?? reverseMouseButtonsRow,
               let section = SettingsSectionView.enclosing(row) else { return }
+        section.reconcileSeparators()
         section.cardView.invalidateHostedSettingsRowHeight()
         section.invalidateIntrinsicContentSize()
         section.needsLayout = true

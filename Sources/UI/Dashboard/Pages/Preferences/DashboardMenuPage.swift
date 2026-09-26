@@ -383,11 +383,9 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private weak var bankedResetDisplayModeControl: NSPopUpButton?
     private weak var lunaReserveHideExhaustedQuotaRow: NSView?
     private weak var lunaReserveHideExhaustedQuotaSwitch: NSSwitch?
-    private var balanceDisplaySeparators: [NSView] = []
     private var statusSubtitleLabel: NSTextField?
     private var statusLinksEditor: StatusLinksEditorHostingView?
     private var statusLinksEditorHost: MenuStatusLinksEditorHost?
-    private var statusLinksSeparators: [NSView] = []
     private var balanceDisplayThresholdValue = AppPreferences.defaultBalanceDisplayThreshold
     private var onBalanceDisplayThresholdChanged: ((Double) -> Void)?
     private var onQuotaProgressColorConfigurationChanged: ((QuotaProgressColorConfiguration) -> Void)?
@@ -396,27 +394,22 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private var quotaColorConfiguration: QuotaProgressColorConfiguration = .default
     private weak var showQuotaProgressBarSwitch: NSSwitch?
     private var progressBarDetailRows: [NSView] = []
-    private var progressBarSeparators: [NSView] = []
     private weak var showBankedResetSwitch: NSSwitch?
     private var bankedResetDetailRows: [NSView] = []
-    private var bankedResetSeparators: [NSView] = []
 
     func make(_ input: Input) -> NSView {
         balanceDisplayThresholdValue = input.preferences.balanceDisplayThreshold
         onBalanceDisplayThresholdChanged = input.onBalanceDisplayThresholdChanged
         onQuotaProgressColorConfigurationChanged = input.onQuotaProgressColorConfigurationChanged
         quotaColorConfiguration = input.preferences.quotaProgressColorConfiguration
-        balanceDisplaySeparators = []
         lunaReserveDisplayModeControl = nil
         lunaReserveHideExhaustedQuotaRow = nil
         lunaReserveHideExhaustedQuotaSwitch = nil
         bankedResetDisplayModeControl = nil
         showQuotaProgressBarSwitch = nil
         progressBarDetailRows = []
-        progressBarSeparators = []
         showBankedResetSwitch = nil
         bankedResetDetailRows = []
-        bankedResetSeparators = []
 
         let lunaReserveRows: [NSView]
         if LunaReserveUserFacing.isCurrentlyEnabled {
@@ -435,22 +428,13 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             self.lunaReserveHideExhaustedQuotaSwitch = lunaReserveHideExhaustedQuotaSwitch
 
             let lunaReserveDisplayModeRow = makeRow(
-                tr(
-                    .keyDashboardMenuPageLunaReserveDisplayMode,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
-                subtitle: tr(
-                    .keyDashboardMenuPageLunaReserveDisplayModeDescription,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
+                DashboardSettingsFormattedCopy.menuLunaReserveDisplayModeTitle(),
+                subtitle: DashboardSettingsFormattedCopy.menuLunaReserveDisplayModeDescription(),
                 control: lunaReserveDisplayModeControl
             )
             let lunaReserveHideExhaustedQuotaRow = makeRow(
                 tr(.keyDashboardMenuPageHideExhaustedQuota),
-                subtitle: tr(
-                    .keyDashboardMenuPageHideExhaustedQuotaDescription,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
+                subtitle: DashboardSettingsFormattedCopy.hideExhaustedQuotaDescription(),
                 control: lunaReserveHideExhaustedQuotaSwitch
             )
             self.lunaReserveHideExhaustedQuotaRow = lunaReserveHideExhaustedQuotaRow
@@ -461,7 +445,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         } else {
             lunaReserveRows = []
         }
-        statusLinksSeparators = []
 
         let balanceDisplayThreshold = DashboardSettingsComponents.makeNumericTextField(
             identifier: AppPreferences.balanceDisplayThresholdKey,
@@ -484,7 +467,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             self.onQuotaProgressColorConfigurationChanged?(normalized)
         }
         quotaColorSlider = slider
-        let resetButton = NSButton(title: tr(.keyCommonRestoreDefaults), target: self, action: #selector(resetQuotaProgressColors(_:)))
+        let resetButton = NSButton(
+            title: DashboardSettingsFormattedCopy.restoreDefaultsTitle(),
+            target: self,
+            action: #selector(resetQuotaProgressColors(_:))
+        )
         Self.configureQuotaColorResetButton(resetButton)
         let colorControls = QuotaColorSelectionStack()
         colorControls.orientation = .horizontal
@@ -525,8 +512,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 title: tr(.keyDashboardMenuPageBalanceDisplay),
                 contentViews: lunaReserveRows
             )
-        if let balanceDisplay {
-            balanceDisplaySeparators = balanceDisplay.separators
+        if balanceDisplay != nil {
             updateLunaReserveDisplayModeVisibility(
                 input.preferences.menuLunaReserveDisplayMode
             )
@@ -562,7 +548,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 bankedResetDisplayModeRow
             ]
         )
-        bankedResetSeparators = bankedReset.separators
         updateBankedResetSettingsVisibility(input.preferences.showBankedReset)
 
         let showQuotaProgressBarSwitch = DashboardSettingsComponents.makeSwitch(
@@ -604,7 +589,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 thresholdRow
             ]
         )
-        progressBarSeparators = progressBar.separators
         updateProgressBarSettingsVisibility(input.preferences.showQuotaProgressBar)
 
         let quickSwitch = DashboardSettingsComponents.makeSwitch(
@@ -705,8 +689,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             contentViews: [statusRow, editorHost],
             separatorIndices: [0]
         )
-        statusLinksSeparators = statusLinks.separators
-        statusLinksSeparators.forEach { $0.isHidden = !statusVisible }
+        statusLinksEditorHost?.isHidden = !statusVisible
+        statusLinks.reconcileSeparators()
         var sections: [NSView] = [progressBar, bankedReset, items, quickLinks, statusLinks]
         if let balanceDisplay {
             sections.insert(balanceDisplay, at: 0)
@@ -778,10 +762,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             ? tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks2)
             : tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar2)
         statusLinksEditor?.setVisible(visible, animated: animated)
+        statusLinksEditorHost?.isHidden = !visible
         statusLinksEditorHost?.syncHeight()
-        statusLinksSeparators.forEach {
-            DashboardSearchVisibility.setBusinessHidden($0, !visible)
-            $0.isHidden = !visible
+        if let host = statusLinksEditorHost {
+            SettingsSectionView.enclosing(host)?.reconcileSeparators()
         }
         invalidateHostedSection(for: statusLinksEditorHost ?? statusLinksEditor)
         DashboardKeyViewLoop.invalidate(statusLinksEditorHost?.window ?? statusLinksEditor?.window)
@@ -814,8 +798,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         bankedResetDisplayModeControl = nil
         showBankedResetSwitch = nil
         bankedResetDetailRows = []
-        bankedResetSeparators = []
-        balanceDisplaySeparators = []
         onBalanceDisplayThresholdChanged = nil
         onQuotaProgressColorConfigurationChanged = nil
         quotaColorButtons = [:]
@@ -823,12 +805,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         quotaColorSlider = nil
         showQuotaProgressBarSwitch = nil
         progressBarDetailRows = []
-        progressBarSeparators = []
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
         statusLinksEditorHost = nil
         statusSubtitleLabel = nil
-        statusLinksSeparators = []
     }
 
     @objc private func toggleQuotaColor(_ sender: NSButton) {
@@ -871,11 +851,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let shouldShowHideOption = mode != .disabled
         lunaReserveHideExhaustedQuotaRow?.isHidden = !shouldShowHideOption
         lunaReserveHideExhaustedQuotaSwitch?.isEnabled = shouldShowHideOption
-        if let separator = balanceDisplaySeparators.first {
-            // When the dependent switch is hidden, collapse the separator
-            // between the two remaining balance-display rows.
-            DashboardSearchVisibility.setBusinessHidden(separator, !shouldShowHideOption)
-            separator.isHidden = !shouldShowHideOption
+        if let row = lunaReserveHideExhaustedQuotaRow {
+            SettingsSectionView.enclosing(row)?.reconcileSeparators()
         }
         invalidateHostedSection(for: lunaReserveHideExhaustedQuotaRow)
         DashboardKeyViewLoop.invalidate(lunaReserveHideExhaustedQuotaRow?.window)
@@ -886,10 +863,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             DashboardSearchVisibility.setBusinessHidden($0, !visible)
             $0.isHidden = !visible
         }
-        updateSeparatorVisibility(
-            separators: progressBarSeparators,
-            visibleRows: [true] + progressBarDetailRows.map { _ in visible }
-        )
+        if let row = showQuotaProgressBarSwitch.flatMap({ SettingsRowView.enclosing($0) })
+            ?? progressBarDetailRows.first {
+            SettingsSectionView.enclosing(row)?.reconcileSeparators()
+        }
         invalidateHostedSection(for: showQuotaProgressBarSwitch)
         DashboardKeyViewLoop.invalidate(showQuotaProgressBarSwitch?.window)
     }
@@ -899,26 +876,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             DashboardSearchVisibility.setBusinessHidden($0, !visible)
             $0.isHidden = !visible
         }
-        updateSeparatorVisibility(
-            separators: bankedResetSeparators,
-            visibleRows: [true] + bankedResetDetailRows.map { _ in visible }
-        )
+        if let row = showBankedResetSwitch.flatMap({ SettingsRowView.enclosing($0) })
+            ?? bankedResetDetailRows.first {
+            SettingsSectionView.enclosing(row)?.reconcileSeparators()
+        }
         invalidateHostedSection(for: showBankedResetSwitch)
         DashboardKeyViewLoop.invalidate(showBankedResetSwitch?.window)
-    }
-
-    private func updateSeparatorVisibility(separators: [NSView], visibleRows: [Bool]) {
-        for (index, separator) in separators.enumerated() {
-            guard index < visibleRows.count - 1 else {
-                DashboardSearchVisibility.setBusinessHidden(separator, true)
-                separator.isHidden = true
-                continue
-            }
-            let hasVisibleRowAfter = visibleRows[(index + 1)...].contains(true)
-            let shouldShow = visibleRows[index] && hasVisibleRowAfter
-            DashboardSearchVisibility.setBusinessHidden(separator, !shouldShow)
-            separator.isHidden = !shouldShow
-        }
     }
 
     private func invalidateHostedSection(for view: NSView?) {
@@ -961,10 +924,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         control.widthAnchor.constraint(
             greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
         ).isActive = true
-        control.toolTip = tr(
-            .keyDashboardMenuPageLunaReserveDisplayMode,
-            arguments: [tr(.keyLunaReserveTitle)]
-        )
+        control.toolTip = DashboardSettingsFormattedCopy.menuLunaReserveDisplayModeTitle()
         return control
     }
 
@@ -1002,14 +962,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     private static func lunaReserveDisplayModeLabel(_ mode: LunaReserveDisplayMode) -> String {
-        switch mode {
-        case .disabled:
-            return tr(.keyDashboardMenuPageLunaReserveDisplayModeDisabled)
-        case .whenQuotaExhausted:
-            return tr(.keyDashboardMenuPageLunaReserveDisplayModeWhenQuotaExhausted)
-        case .always:
-            return tr(.keyDashboardMenuPageLunaReserveDisplayModeAlways)
-        }
+        DashboardSettingsFormattedCopy.lunaReserveDisplayModeTitle(mode)
     }
 
     private static func parseBalanceDisplayThreshold(_ text: String) -> Double? {
@@ -1023,7 +976,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         return normalized >= AppPreferences.minimumBalanceDisplayThreshold ? normalized : nil
     }
 
-    private static func formattedBalanceDisplayThreshold(_ value: Double) -> String {
+    static func formattedBalanceDisplayThreshold(_ value: Double) -> String {
         String(format: "%.2f", value)
     }
 }

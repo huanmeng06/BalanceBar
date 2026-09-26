@@ -345,21 +345,21 @@ final class DashboardMenuBarLayoutSection {
         return "\(nonBreakingSpace)\(sign)\(nonBreakingSpace)\(String(format: "%.1f", abs(value)))\(nonBreakingSpace)pt"
     }
 
-    private static func iconOffsetSummarySubtitle(y: Double) -> LocalizedSubtitle {
+    static func iconOffsetSummarySubtitle(y: Double) -> LocalizedSubtitle {
         trSubtitle(
             .keyDashboardMenuBarPageFineTuneTheIconSVerticalPositionYaxisvalue,
             arguments: [signedPointText(y)]
         )
     }
 
-    private static func amountOffsetSummarySubtitle(y: Double) -> LocalizedSubtitle {
+    static func amountOffsetSummarySubtitle(y: Double) -> LocalizedSubtitle {
         trSubtitle(
             .keyDashboardMenuBarPageFineTuneTheAmountSVerticalPositionYaxisvalue,
             arguments: [signedPointText(y)]
         )
     }
 
-    private static func widthAdjustmentSummarySubtitle(_ value: Double) -> LocalizedSubtitle {
+    static func widthAdjustmentSummarySubtitle(_ value: Double) -> LocalizedSubtitle {
         trSubtitle(
             .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
             arguments: [signedPointText(value)]

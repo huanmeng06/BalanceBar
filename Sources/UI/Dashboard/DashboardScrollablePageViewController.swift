@@ -46,6 +46,7 @@ final class DashboardScrollablePageViewController: NSViewController {
     /// subtree layout from `viewDidLayout()`.
     private var pendingScrolledOffsetBase: CGFloat?
     private var pendingCompensationLayoutPasses = 0
+    private var scheduledVisualOffset: CGFloat?
     private var clipViewObserver: NSObjectProtocol?
 
     init(
@@ -87,6 +88,7 @@ final class DashboardScrollablePageViewController: NSViewController {
 
     override func viewDidLayout() {
         super.viewDidLayout()
+        applyScheduledVisualOffsetIfNeeded()
         applyPendingScrolledOffsetCompensationIfNeeded()
         updateTopSpacingModeIfNeeded()
     }
@@ -102,6 +104,22 @@ final class DashboardScrollablePageViewController: NSViewController {
     func restoreScrollOffset(_ offset: CGFloat) {
         view.layoutSubtreeIfNeeded()
         DashboardPageScrollPosition.restore(visualOffsetY: offset, in: pageScrollView)
+    }
+
+    /// Applies `offset` on the next layout pass. Search uses this so a query
+    /// change can return to the top without laying out the window on the
+    /// typing callback. A no-op when the page is already there.
+    func scheduleVisualOffsetRestoration(_ offset: CGFloat) {
+        guard abs(scrollOffset - offset) > 1 else {
+            scheduledVisualOffset = nil
+            return
+        }
+        scheduledVisualOffset = offset
+        view.needsLayout = true
+    }
+
+    func cancelScheduledVisualOffsetRestoration() {
+        scheduledVisualOffset = nil
     }
 
     var scrollViewForTesting: NSScrollView { pageScrollView }
@@ -152,6 +170,13 @@ final class DashboardScrollablePageViewController: NSViewController {
         hostedContent.superview?.needsLayout = true
         hostedContent.needsLayout = true
         view.needsLayout = true
+    }
+
+    private func applyScheduledVisualOffsetIfNeeded() {
+        guard let offset = scheduledVisualOffset else { return }
+        scheduledVisualOffset = nil
+        guard abs(scrollOffset - offset) > 1 else { return }
+        DashboardPageScrollPosition.restore(visualOffsetY: offset, in: pageScrollView)
     }
 
     private func applyPendingScrolledOffsetCompensationIfNeeded() {
