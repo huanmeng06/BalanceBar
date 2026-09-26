@@ -730,6 +730,94 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertEqual(DashboardSettingsLayoutMetrics.cardHeightMeasurements, 0)
     }
 
+    func testHiddenAccessoryReleasesConstraintGraphAndRestoresInlineAndVerticalLayouts() throws {
+        let leading = NSButton(title: "Every 10 sec", target: nil, action: nil)
+        let trailing = NSButton(title: "For 30 sec", target: nil, action: nil)
+        [leading, trailing].forEach { button in
+            button.bezelStyle = .rounded
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        }
+        let controls = DashboardAdaptiveControlsStackView(views: [leading, trailing])
+        controls.orientation = .horizontal
+        controls.alignment = .centerY
+        controls.spacing = 5
+        controls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        let row = SettingsRowView(
+            title: "Balance updates during tasks",
+            detail: "Requests the current provider's balance while an agent is running.",
+            accessoryView: controls
+        )
+        let section = SettingsSectionView(title: "Refresh", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        func layout(at width: CGFloat) {
+            pin(section, to: host, window: window, width: width)
+        }
+
+        func availableLabelWidth() -> CGFloat {
+            max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
+        }
+
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        let wideVisibleLabelWidth = row.labelsStack.bounds.width
+        XCTAssertLessThan(wideVisibleLabelWidth, availableLabelWidth() - 1)
+
+        controls.isHidden = true
+        row.refreshWrappingLayout()
+        layout(at: 720)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertEqual(row.labelsStack.bounds.width, availableLabelWidth(), accuracy: 1)
+        XCTAssertEqual(
+            row.detailLabel.preferredMaxLayoutWidth,
+            availableLabelWidth(),
+            accuracy: 1,
+            "hidden inline accessories must release the reserved label width"
+        )
+        XCTAssertGreaterThan(row.labelsStack.bounds.width, wideVisibleLabelWidth + 1)
+
+        controls.isHidden = false
+        row.refreshWrappingLayout()
+        layout(at: 720)
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertEqual(row.labelsStack.bounds.width, wideVisibleLabelWidth, accuracy: 1)
+
+        layout(at: 280)
+        XCTAssertEqual(controls.orientation, .vertical)
+        XCTAssertEqual(row.contentStack.orientation, .vertical)
+        let narrowVisibleHeight = row.frame.height
+        XCTAssertEqual(row.labelsStack.bounds.width, availableLabelWidth(), accuracy: 1)
+
+        controls.isHidden = true
+        row.refreshWrappingLayout()
+        layout(at: 280)
+        XCTAssertEqual(row.contentStack.orientation, .horizontal)
+        XCTAssertEqual(row.labelsStack.bounds.width, availableLabelWidth(), accuracy: 1)
+        XCTAssertLessThan(
+            row.frame.height,
+            narrowVisibleHeight - 8,
+            "hidden dedicated accessories must not retain their vertical layout space"
+        )
+        XCTAssertTrue(
+            row.bounds.insetBy(dx: 0, dy: -0.5).contains(
+                row.labelsStack.convert(row.labelsStack.bounds, to: row)
+            )
+        )
+
+        controls.isHidden = false
+        row.refreshWrappingLayout()
+        layout(at: 280)
+        XCTAssertEqual(controls.orientation, .vertical)
+        XCTAssertEqual(row.contentStack.orientation, .vertical)
+        XCTAssertEqual(row.frame.height, narrowVisibleHeight, accuracy: 1)
+    }
+
     func testVerticalControlsCanStayBesideContentUntilInlineLabelWidthIsExhausted() throws {
         DashboardSettingsLayoutMetrics.reset()
         let leading = NSButton(title: "View Release Notes", target: nil, action: nil)

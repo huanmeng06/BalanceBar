@@ -288,6 +288,14 @@ final class SettingsRowView: NSView {
     private var detailWidthConstraint: NSLayoutConstraint?
     private var inlineContentConstraints: [NSLayoutConstraint] = []
     private var verticalContentConstraints: [NSLayoutConstraint] = []
+    private var hiddenContentConstraints: [NSLayoutConstraint] = []
+    private var accessoryWidthLimitConstraint: NSLayoutConstraint?
+    private enum AccessoryConstraintState {
+        case inline
+        case vertical
+        case hidden
+    }
+    private var accessoryConstraintState: AccessoryConstraintState = .hidden
     private var wrappingHeightIsDirty = false
     private var wrappingCommitWorkItem: DispatchWorkItem?
     private var isPerformingLayout = false
@@ -522,7 +530,7 @@ final class SettingsRowView: NSView {
         } else {
             accessoryHeight = 0
         }
-        let contentHeight = stacksVertically
+        let contentHeight = accessoryView?.isHidden != true && stacksVertically
             ? labelsHeight
                 + DashboardSettingsComponents.settingsRowContentControlSpacing
                 + accessoryHeight
@@ -639,11 +647,14 @@ final class SettingsRowView: NSView {
     }
 
     private func wrappingWidthForLabels() -> CGFloat {
-        let laidOut = labelsStack.bounds.width
-        if laidOut > 1 { return laidOut }
         let available = max(0, bounds.width - Self.horizontalPadding * 2)
         guard available > 1 else { return 0 }
-        if stacksVertically || accessoryView == nil || accessoryView?.isHidden == true {
+        if accessoryView?.isHidden == true {
+            return available
+        }
+        let laidOut = labelsStack.bounds.width
+        if laidOut > 1 { return laidOut }
+        if stacksVertically || accessoryView == nil {
             return available
         }
         let accessoryWidth: CGFloat
@@ -788,6 +799,16 @@ final class SettingsRowView: NSView {
                 contentStack.heightAnchor.constraint(greaterThanOrEqualTo: labelsContainer.heightAnchor),
                 contentStack.heightAnchor.constraint(greaterThanOrEqualTo: accessory.heightAnchor)
             ]
+            hiddenContentConstraints = [
+                labelsContainer.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor),
+                labelsContainer.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor),
+                labelsContainer.centerYAnchor.constraint(equalTo: contentStack.centerYAnchor),
+                contentStack.heightAnchor.constraint(greaterThanOrEqualTo: labelsContainer.heightAnchor)
+            ]
+            accessoryWidthLimitConstraint = accessory.widthAnchor.constraint(
+                lessThanOrEqualTo: widthAnchor,
+                constant: -(Self.horizontalPadding * 2)
+            )
         } else {
             inlineContentConstraints = [
                 labelsContainer.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor),
@@ -795,9 +816,17 @@ final class SettingsRowView: NSView {
                 labelsContainer.centerYAnchor.constraint(equalTo: contentStack.centerYAnchor),
                 contentStack.heightAnchor.constraint(greaterThanOrEqualTo: labelsContainer.heightAnchor)
             ]
+            hiddenContentConstraints = inlineContentConstraints
         }
-        NSLayoutConstraint.activate(inlineContentConstraints)
-        var constraints: [NSLayoutConstraint] = [
+        if accessory?.isHidden == true {
+            NSLayoutConstraint.activate(hiddenContentConstraints)
+            accessoryConstraintState = .hidden
+        } else {
+            NSLayoutConstraint.activate(inlineContentConstraints)
+            accessoryWidthLimitConstraint?.isActive = true
+            accessoryConstraintState = .inline
+        }
+        let constraints: [NSLayoutConstraint] = [
             contentStack.leadingAnchor.constraint(
                 equalTo: leadingAnchor,
                 constant: Self.horizontalPadding
@@ -821,14 +850,6 @@ final class SettingsRowView: NSView {
                 constant: rowVerticalPadding * 2
             ),
         ]
-        if let accessoryView {
-            constraints.append(
-                accessoryView.widthAnchor.constraint(
-                    lessThanOrEqualTo: widthAnchor,
-                    constant: -(Self.horizontalPadding * 2)
-                )
-            )
-        }
         NSLayoutConstraint.activate(constraints)
         bindAccessibility()
     }
@@ -882,7 +903,10 @@ final class SettingsRowView: NSView {
     }
 
     private func syncAdaptiveAccessory() {
-        guard let accessoryView, !accessoryView.isHidden else { return }
+        guard let accessoryView, !accessoryView.isHidden else {
+            applyHiddenAccessoryLayout()
+            return
+        }
         let availableWidth = max(0, bounds.width - Self.horizontalPadding * 2)
         if let adaptive = accessoryView as? SettingsRowAccessoryLayout {
             adaptive.updateAvailableRowWidth(availableWidth)
@@ -899,8 +923,59 @@ final class SettingsRowView: NSView {
         updateAccessoryNaturalWidthLock()
     }
 
+    private func applyHiddenAccessoryLayout() {
+        // Ordinary subviews do not inherit NSStackView's hidden-arranged-view
+        // behavior. Remove every accessory edge from the graph so wrapping
+        // width, natural height, and the solved frame use the same geometry.
+        let changed = accessoryConstraintState != .hidden || stacksVertically
+        if changed {
+            stacksVertically = false
+            contentStack.orientation = .horizontal
+            contentStack.alignment = .centerY
+            contentStack.spacing = Self.contentSpacing
+            NSLayoutConstraint.deactivate(inlineContentConstraints)
+            NSLayoutConstraint.deactivate(verticalContentConstraints)
+            NSLayoutConstraint.activate(hiddenContentConstraints)
+            accessoryConstraintState = .hidden
+            accessoryWidthLimitConstraint?.isActive = false
+            accessoryNaturalWidthConstraint?.isActive = false
+            wrappingHeightIsDirty = true
+            if !isPerformingLayout {
+                invalidateIntrinsicContentSize()
+                notifyHeightHost()
+            }
+            needsLayout = true
+        } else {
+            accessoryWidthLimitConstraint?.isActive = false
+            accessoryNaturalWidthConstraint?.isActive = false
+        }
+    }
+
+    private func activateAccessoryConstraints(_ state: AccessoryConstraintState) {
+        guard accessoryConstraintState != state else { return }
+        NSLayoutConstraint.deactivate(inlineContentConstraints)
+        NSLayoutConstraint.deactivate(verticalContentConstraints)
+        NSLayoutConstraint.deactivate(hiddenContentConstraints)
+        switch state {
+        case .inline:
+            NSLayoutConstraint.activate(inlineContentConstraints)
+            accessoryWidthLimitConstraint?.isActive = true
+        case .vertical:
+            NSLayoutConstraint.activate(verticalContentConstraints)
+            accessoryWidthLimitConstraint?.isActive = true
+        case .hidden:
+            NSLayoutConstraint.activate(hiddenContentConstraints)
+            accessoryWidthLimitConstraint?.isActive = false
+        }
+        accessoryConstraintState = state
+    }
+
     private func updateAccessoryNaturalWidthLock() {
-        guard let accessoryView, !accessoryView.isHidden else { return }
+        guard let accessoryView, !accessoryView.isHidden else {
+            accessoryWidthLimitConstraint?.isActive = false
+            accessoryNaturalWidthConstraint?.isActive = false
+            return
+        }
         if stacksVertically {
             accessoryNaturalWidthConstraint?.isActive = false
             return
@@ -961,23 +1036,23 @@ final class SettingsRowView: NSView {
     }
 
     private func applyVerticalStacking(_ vertical: Bool) {
-        guard stacksVertically != vertical else { return }
+        let orientationChanged = stacksVertically != vertical
+        let desiredState: AccessoryConstraintState = vertical ? .vertical : .inline
+        let constraintsChanged = accessoryConstraintState != desiredState
+        guard orientationChanged || constraintsChanged else { return }
         stacksVertically = vertical
         if vertical {
-            NSLayoutConstraint.deactivate(inlineContentConstraints)
-            NSLayoutConstraint.activate(verticalContentConstraints)
             contentStack.orientation = .vertical
             contentStack.alignment = .trailing
             contentStack.spacing = DashboardSettingsComponents.settingsRowContentControlSpacing
             accessoryView?.setContentHuggingPriority(.required, for: .horizontal)
         } else {
-            NSLayoutConstraint.deactivate(verticalContentConstraints)
-            NSLayoutConstraint.activate(inlineContentConstraints)
             contentStack.orientation = .horizontal
             contentStack.alignment = .centerY
             contentStack.spacing = Self.contentSpacing
             accessoryView?.setContentHuggingPriority(.required, for: .horizontal)
         }
+        activateAccessoryConstraints(desiredState)
         wrappingHeightIsDirty = true
         if isPerformingLayout {
             needsLayout = true
