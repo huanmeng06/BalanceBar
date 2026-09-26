@@ -15,7 +15,6 @@ final class DashboardMenuBarQuotaSection {
     private weak var autoSwitchLunaReserveSwitch: NSSwitch?
     private weak var lunaReserveResetTimeModeControl: NSPopUpButton?
     private weak var quotaResetDisplayModeControl: NSPopUpButton?
-    private var quotaSeparators: [NSView] = []
     private weak var quotaSection: SettingsSectionView?
     private var lastQuotaVisibilitySignature: [Bool]?
 
@@ -32,7 +31,6 @@ final class DashboardMenuBarQuotaSection {
     }
 
     func make(input: DashboardMenuBarPage.Input) -> NSView {
-        quotaSeparators = []
         quotaSection = nil
         lastQuotaVisibilitySignature = nil
 
@@ -137,7 +135,6 @@ final class DashboardMenuBarQuotaSection {
             ].compactMap { $0 }
         )
         self.quotaSection = quotaSection
-        self.quotaSeparators = quotaSection.separators
         updateVisibility(
             showAmount: input.preferences.showMenuBarAmount,
             showReset: input.preferences.showMenuBarReset,
@@ -203,27 +200,7 @@ final class DashboardMenuBarQuotaSection {
         autoSwitchLunaReserveSwitch?.isEnabled = showAmount
         lunaReserveResetTimeModeControl?.isEnabled = showAmount && autoSwitchLunaReserve
 
-        // The separators describe visible row boundaries. When the dependent
-        // Reserve row is hidden, keep exactly one separator after each visible
-        // row that has another visible row later in the ordered list. This
-        // collapses hidden rows without producing doubled lines.
-        let rows = [
-            amountDisplayRow,
-            resetCountdownRow,
-            quotaWindowPreferenceRow,
-            quotaResetDisplayModeRow,
-            autoSwitchLunaReserveRow,
-            lunaReserveResetTimeRow
-        ]
-        for (index, separator) in quotaSeparators.enumerated() {
-            guard index < rows.count,
-                  index + 1 < rows.count else {
-                separator.isHidden = true
-                continue
-            }
-            let hasVisibleRowAfter = rows[(index + 1)...].contains { $0?.isHidden == false }
-            separator.isHidden = !(rows[index]?.isHidden == false && hasVisibleRowAfter)
-        }
+        quotaSection?.reconcileSeparators()
         guard let quotaSection else { return }
         quotaCardLayoutCountForTesting += 1
         quotaSection.cardView.invalidateHostedSettingsRowHeight()

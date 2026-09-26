@@ -25,7 +25,7 @@ enum DashboardSearchVisibility {
         setBusinessHidden(view, hidden)
         superSetter(isEffectivelyHidden(view))
         if wasBusinessHidden != hidden {
-            syncSeparatedRows(around: view)
+            reconcileDerivedSeparators(around: view)
             DashboardKeyViewLoop.invalidate(view.window)
         }
         if wasBusinessHidden, !hidden, !isEffectivelyHidden(view) {
@@ -33,7 +33,7 @@ enum DashboardSearchVisibility {
             if view.identifier != DashboardPageSearch.emptyStateIdentifier {
                 hideSearchEmptyState(from: view)
             }
-            syncSeparatedRows(around: view)
+            reconcileDerivedSeparators(around: view)
             DashboardKeyViewLoop.invalidate(view.window)
         }
     }
@@ -55,14 +55,11 @@ enum DashboardSearchVisibility {
     }
 
     static func isBusinessHidden(_ view: NSView) -> Bool {
-        if let stored = storedBusinessHidden(view) {
-            return stored
-        }
-        // Card separators do not override `isHidden` unless they are
-        // `SettingsCardSeparatorView`. Inferring from the current bit latches
-        // a search collapse as business-hidden and blocks restore.
         if view is NSBox {
             return false
+        }
+        if let stored = storedBusinessHidden(view) {
+            return stored
         }
         return view.isHidden && !isSearchHidden(view)
     }
@@ -126,42 +123,54 @@ enum DashboardSearchVisibility {
         }
     }
 
-    private static func syncSeparatedRows(around view: NSView) {
+    static func reconcileDerivedSeparators(around view: NSView) {
+        if let section = SettingsSectionView.enclosing(view) {
+            section.reconcileSeparators()
+            return
+        }
         guard let stack = view.superview as? NSStackView else { return }
-        let arranged = stack.arrangedSubviews
-        for (index, candidate) in arranged.enumerated() {
-            guard candidate is NSBox else { continue }
-            let shouldShow = adjacentContentViewsAreExpanded(in: arranged, separatorIndex: index)
-                && storedBusinessHidden(candidate) != true
-            if shouldShow {
-                if isSearchHidden(candidate) {
-                    setSearchHidden(candidate, false)
-                }
-                withSearchVisibilityMutation {
-                    restoreCollapsedStackVisibility(candidate)
-                    candidate.isHidden = false
-                }
-            } else if storedBusinessHidden(candidate) == true {
-                withSearchVisibilityMutation {
-                    candidate.isHidden = true
-                }
-            } else if !isSearchHidden(candidate), !candidate.isHidden {
-                withSearchVisibilityMutation {
-                    candidate.isHidden = true
-                }
+        reconcileDerivedSeparators(in: stack)
+    }
+
+    static func reconcileDerivedSeparators(in stack: NSStackView) {
+        if let section = SettingsSectionView.enclosing(stack) {
+            section.reconcileSeparators()
+            return
+        }
+        let contentViews = stack.arrangedSubviews.filter { !($0 is NSBox) }
+        let separators = stack.arrangedSubviews.filter { $0 is NSBox }
+        reconcileDerivedSeparators(contentViews: contentViews, separators: separators)
+    }
+
+    /// A hairline after row N is shown when that row is expanded and any later
+    /// content row is also expanded. Hidden rows in between do not consume the
+    /// line.
+    static func reconcileDerivedSeparators(contentViews: [NSView], separators: [NSView]) {
+        for (index, separator) in separators.enumerated() {
+            let shouldShow: Bool
+            if index < contentViews.count {
+                let previousVisible = !isCollapsedForSearchLayout(contentViews[index])
+                let hasVisibleAfter = index + 1 < contentViews.count
+                    && contentViews[(index + 1)...].contains { !isCollapsedForSearchLayout($0) }
+                shouldShow = previousVisible && hasVisibleAfter
+            } else {
+                shouldShow = false
             }
-            DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: candidate)
+            applyDerivedSeparatorHidden(separator, hidden: !shouldShow)
         }
     }
 
-    static func adjacentContentViewsAreExpanded(in arranged: [NSView], separatorIndex: Int) -> Bool {
-        let previousVisible = arranged[..<separatorIndex].reversed().first { !($0 is NSBox) }.map {
-            !isCollapsedForSearchLayout($0)
-        } ?? false
-        let nextVisible = arranged[(separatorIndex + 1)...].first { !($0 is NSBox) }.map {
-            !isCollapsedForSearchLayout($0)
-        } ?? false
-        return previousVisible && nextVisible
+    private static func applyDerivedSeparatorHidden(_ separator: NSView, hidden: Bool) {
+        objc_setAssociatedObject(separator, &businessKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        setSearchHidden(separator, false)
+        withSearchVisibilityMutation {
+            if let stack = separator.superview as? NSStackView,
+               stack.arrangedSubviews.contains(separator) {
+                stack.setVisibilityPriority(.mustHold, for: separator)
+            }
+            separator.isHidden = hidden
+        }
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: separator)
     }
 
     static func isCollapsedForSearchLayout(_ view: NSView) -> Bool {
@@ -1100,15 +1109,13 @@ final class DashboardPageSearchFilter {
             for row in rows(in: section) {
                 _ = restoreSearchHiddenView(row)
             }
-            if let stack = rowStack(in: section) {
-                syncSeparators(in: stack)
-            }
+            reconcileSeparators(in: section)
             return SectionFilterResult(
                 countsAsHit: !DashboardSearchVisibility.isBusinessHidden(section),
                 hideSectionForSearch: false
             )
         }
-        guard let stack = rowStack(in: section) else {
+        guard rowStack(in: section) != nil else {
             var searchableCopy = includeVisibleCopy ? visibleCopy(in: section) : []
             if includeVisibleCopy, containsStatusLinksEditor(in: section) {
                 searchableCopy.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
@@ -1139,7 +1146,7 @@ final class DashboardPageSearchFilter {
                 hideForSearch(view)
             }
         }
-        syncSeparators(in: stack)
+        reconcileSeparators(in: section)
         return SectionFilterResult(
             countsAsHit: visibleRowCount > 0,
             hideSectionForSearch: visibleRowCount == 0
@@ -1505,11 +1512,18 @@ final class DashboardPageSearchFilter {
         view.isHidden && !DashboardSearchVisibility.isSearchHidden(view)
     }
 
-    private func syncSeparators(in stack: NSStackView) {
-        reconcileCardSeparators(in: stack, usingSearchHiding: true)
+    private func reconcileSeparators(in section: NSView) {
+        if let native = section as? SettingsSectionView {
+            native.reconcileSeparators()
+            return
+        }
+        if let stack = rowStack(in: section) {
+            DashboardSearchVisibility.reconcileDerivedSeparators(in: stack)
+        }
     }
 
     private func hideForSearch(_ view: NSView) {
+        guard !(view is NSBox) else { return }
         guard !DashboardSearchVisibility.isSearchHidden(view) else { return }
         DashboardSearchVisibility.setBusinessHidden(
             view,
@@ -1588,10 +1602,17 @@ final class DashboardPageSearchFilter {
     }
 
     private func restoreSearchHiddens() {
+        let sections = NSHashTable<NSView>.weakObjects()
         let stacks = NSHashTable<NSStackView>.weakObjects()
         for view in hiddenBySearch.allObjects {
-            if let stack = restoreSearchHiddenView(view) {
-                stacks.add(stack)
+            guard !(view is NSBox) else { continue }
+            let restoredStack = restoreSearchHiddenView(view)
+            if let section = view as? SettingsSectionView {
+                sections.add(section)
+            } else if let section = SettingsSectionView.enclosing(view) {
+                sections.add(section)
+            } else if let restoredStack {
+                stacks.add(restoredStack)
             }
         }
         hiddenBySearch.removeAllObjects()
@@ -1599,50 +1620,11 @@ final class DashboardPageSearchFilter {
         originalStackParent.removeAllObjects()
         originalStackIndex.removeAllObjects()
         originalStackWidthConstraint.removeAllObjects()
+        for section in sections.allObjects {
+            reconcileSeparators(in: section)
+        }
         for stack in stacks.allObjects {
-            syncSeparatorsAfterRestore(in: stack)
-        }
-    }
-
-    private func syncSeparatorsAfterRestore(in stack: NSStackView) {
-        reconcileCardSeparators(in: stack, usingSearchHiding: false)
-    }
-
-    private func reconcileCardSeparators(in stack: NSStackView, usingSearchHiding: Bool) {
-        let arranged = stack.arrangedSubviews
-        for (index, view) in arranged.enumerated() {
-            guard view is NSBox else { continue }
-            let shouldShow = DashboardSearchVisibility.adjacentContentViewsAreExpanded(
-                in: arranged,
-                separatorIndex: index
-            ) && DashboardSearchVisibility.storedBusinessHidden(view) != true
-            if shouldShow {
-                revealSeparator(view)
-            } else if usingSearchHiding, DashboardSearchVisibility.storedBusinessHidden(view) != true {
-                hideForSearch(view)
-            } else {
-                collapseSeparatorToBusinessState(view)
-            }
-            DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
-        }
-    }
-
-    private func revealSeparator(_ view: NSView) {
-        if DashboardSearchVisibility.isSearchHidden(view) {
-            _ = restoreSearchHiddenView(view)
-        }
-        DashboardSearchVisibility.withSearchVisibilityMutation {
-            DashboardSearchVisibility.restoreCollapsedStackVisibility(view)
-            view.isHidden = false
-        }
-    }
-
-    private func collapseSeparatorToBusinessState(_ view: NSView) {
-        if DashboardSearchVisibility.isSearchHidden(view) {
-            _ = restoreSearchHiddenView(view)
-        }
-        DashboardSearchVisibility.withSearchVisibilityMutation {
-            view.isHidden = true
+            DashboardSearchVisibility.reconcileDerivedSeparators(in: stack)
         }
     }
 

@@ -407,7 +407,8 @@ enum DashboardSettingsComponents {
             let shouldInsertSeparator = hasFollowingRow
                 && (separatorIndices?.contains(index) ?? true)
             if shouldInsertSeparator {
-                let separator = SettingsCardSeparatorView()
+                let separator = NSBox()
+                separator.boxType = .separator
                 separator.translatesAutoresizingMaskIntoConstraints = false
                 separator.heightAnchor.constraint(equalToConstant: settingsSeparatorHeight).isActive = true
                 rowsStack.addArrangedSubview(separator)

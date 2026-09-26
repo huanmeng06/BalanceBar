@@ -95,7 +95,6 @@ final class DashboardMenuBarPreviewSection {
     private weak var runtimeOnlyWarningLabel: NSTextField?
     private weak var runtimeOnlyWarningSettingsButton: NSButton?
     private weak var runtimeOnlyWarningRow: NSView?
-    private var previewSeparators: [NSView] = []
     private weak var previewSection: SettingsSectionView?
     private var capsuleLeadingConstraint: NSLayoutConstraint?
     private var capsuleTrailingConstraint: NSLayoutConstraint?
@@ -179,7 +178,6 @@ final class DashboardMenuBarPreviewSection {
 
     func make(input: DashboardMenuBarPage.Input) -> NSView {
         prepare(input: input)
-        previewSeparators = []
         previewSection = nil
         lastWarningRefreshSignature = nil
 
@@ -436,7 +434,6 @@ final class DashboardMenuBarPreviewSection {
             ]
         )
         self.previewSection = previewSection
-        self.previewSeparators = previewSection.separators
         isBuilt = true
         return previewSection
     }
@@ -949,24 +946,7 @@ final class DashboardMenuBarPreviewSection {
     }
 
     func updatePreviewSeparators() {
-        // Current layout and menu bar display stay visible. Delay follows
-        // Only While Running; warnings come last:
-        // current layout → menu bar display → delay → overflow → runtime.
-        let visibleRows = [
-            true,
-            true,
-            iconDisplayDelayRow?.isHidden == false,
-            overflowWarningRow?.isHidden == false,
-            runtimeOnlyWarningRow?.isHidden == false
-        ]
-        for (index, separator) in previewSeparators.enumerated() {
-            guard index + 1 < visibleRows.count else {
-                separator.isHidden = true
-                continue
-            }
-            let hasVisibleRowAfter = visibleRows[(index + 1)...].contains(true)
-            separator.isHidden = !(visibleRows[index] && hasVisibleRowAfter)
-        }
+        previewSection?.reconcileSeparators()
         updatePreviewCardLayout()
     }
 

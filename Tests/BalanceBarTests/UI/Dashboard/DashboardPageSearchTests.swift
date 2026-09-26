@@ -2309,7 +2309,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(first.isHidden)
         XCTAssertTrue(second.isHidden)
         XCTAssertTrue(separator.isHidden)
-        XCTAssertTrue(DashboardSearchVisibility.isSearchHidden(separator))
+        XCTAssertFalse(DashboardSearchVisibility.isSearchHidden(separator))
 
         second.isHidden = false
         XCTAssertFalse(second.isHidden)
@@ -2453,23 +2453,108 @@ final class DashboardPageSearchTests: XCTestCase {
         assertAdjacentVisibleRowsHaveOneSeparator(section)
     }
 
-    func testSearchLeavesExplicitlyBusinessHiddenSeparatorCollapsed() throws {
-        let first = SettingsRowView(title: "Alpha Item")
-        let second = SettingsRowView(title: "Beta Item")
-        let section = SettingsSectionView(title: "Group Heading", contentViews: [first, second])
+    func testSearchKeepsOneSeparatorAcrossBusinessHiddenMiddleRow() throws {
+        let first = SettingsRowView(title: "Display Mode")
+        let middle = SettingsRowView(title: "Delay")
+        let last = SettingsRowView(title: "Overflow Warning")
+        middle.isHidden = true
+        let section = SettingsSectionView(
+            title: "Preview",
+            contentViews: [first, middle, last]
+        )
         let root = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 740, height: 520),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = root
+        defer {
+            window.contentView = nil
+            window.orderOut(nil)
+        }
+        window.layoutIfNeeded()
+        XCTAssertEqual(section.separators.count, 2)
+        XCTAssertFalse(section.separators[0].isHidden)
+        XCTAssertTrue(section.separators[1].isHidden)
+
         let filter = DashboardPageSearchFilter()
+        XCTAssertTrue(filter.apply(query: "Display Mode", to: root, pageTitle: "Menu Bar", mode: .titles))
+        window.layoutIfNeeded()
+        XCTAssertFalse(isCollapsedForSearch(first))
+        XCTAssertTrue(isCollapsedForSearch(middle))
+        XCTAssertTrue(isCollapsedForSearch(last))
+        XCTAssertTrue(section.separators.allSatisfy(\.isHidden))
+
+        XCTAssertTrue(filter.apply(query: "Preview", to: root, pageTitle: "Menu Bar", mode: .titles))
+        window.layoutIfNeeded()
+        XCTAssertFalse(isCollapsedForSearch(first))
+        XCTAssertTrue(isCollapsedForSearch(middle))
+        XCTAssertFalse(isCollapsedForSearch(last))
+        XCTAssertFalse(section.separators[0].isHidden)
+        XCTAssertTrue(section.separators[1].isHidden)
+        XCTAssertFalse(DashboardSearchVisibility.isSearchHidden(section.separators[0]))
+        assertVisualSeparatorsMatchVisibleRows(section)
+    }
+
+    func testGeneralRefreshSeparatorReturnsAfterHeadingMatch() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPageSearchTests.RefreshSeparator.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let page = DashboardGeneralPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+        ))
+        defer { DashboardSettingsComponents.disconnectPopUpButtonActions(in: page) }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 740, height: 900),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer {
+            window.contentView = nil
+            window.orderOut(nil)
+        }
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+
+        let refreshHeading = tr(.keyDashboardGeneralAndRefreshPagesRefresh, language: .english)
+        let firstTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: .english)
+        let secondTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceData, language: .english)
+        let section = try XCTUnwrap(firstSection(titled: refreshHeading, in: page) as? SettingsSectionView)
+        XCTAssertEqual(section.contentViews.count, 2)
+        XCTAssertEqual(section.separators.count, 1)
         let separator = try XCTUnwrap(section.separators.first)
-        separator.isHidden = true
+        XCTAssertFalse(separator.isHidden)
 
-        XCTAssertTrue(filter.apply(query: "Alpha Item", to: root, pageTitle: "Settings Page", mode: .titles))
-        XCTAssertTrue(filter.apply(query: "Group Heading", to: root, pageTitle: "Settings Page", mode: .titles))
-        XCTAssertTrue(DashboardSearchVisibility.isBusinessHidden(separator))
-        XCTAssertTrue(isCollapsedForSearch(separator))
+        let filter = DashboardPageSearchFilter()
+        XCTAssertTrue(filter.apply(query: firstTitle, to: page, pageTitle: "General", mode: .titles))
+        window.layoutIfNeeded()
+        XCTAssertFalse(isCollapsedForSearch(section.contentViews[0]))
+        XCTAssertTrue(isCollapsedForSearch(section.contentViews[1]))
+        XCTAssertTrue(separator.isHidden)
 
-        XCTAssertTrue(filter.apply(query: "", to: root, pageTitle: "Settings Page", mode: .titles))
-        XCTAssertTrue(DashboardSearchVisibility.isBusinessHidden(separator))
-        XCTAssertTrue(isCollapsedForSearch(separator))
+        XCTAssertTrue(filter.apply(query: refreshHeading, to: page, pageTitle: "General", mode: .titles))
+        window.layoutIfNeeded()
+        XCTAssertFalse(isCollapsedForSearch(section.contentViews[0]))
+        XCTAssertFalse(isCollapsedForSearch(section.contentViews[1]))
+        XCTAssertFalse(separator.isHidden)
+        XCTAssertFalse(DashboardSearchVisibility.isSearchHidden(separator))
+        XCTAssertNotEqual(section.cardView.visibilityPriority(for: separator), .notVisible)
+        assertVisualSeparatorsMatchVisibleRows(section)
+        XCTAssertTrue(section.contentViews[0] === settingsRow(titled: firstTitle, in: section))
+        XCTAssertTrue(section.contentViews[1] === settingsRow(titled: secondTitle, in: section))
     }
 
     func testVisibleCopySkipsHiddenSubtreeCopy() {
@@ -3125,6 +3210,30 @@ private func assertAdjacentVisibleRowsHaveOneSeparator(_ section: SettingsSectio
         lastVisibleContentIndex = index
     }
     XCTAssertNotNil(lastVisibleContentIndex)
+}
+
+private func assertVisualSeparatorsMatchVisibleRows(_ section: SettingsSectionView) {
+    let rows = section.contentViews
+    let separators = section.separators
+    var lastVisibleIndex: Int?
+    for (index, row) in rows.enumerated() {
+        guard !DashboardSearchVisibility.isCollapsedForSearchLayout(row) else { continue }
+        if let previous = lastVisibleIndex {
+            let between = separators.enumerated().filter { $0.offset >= previous && $0.offset < index }
+            let visibleSeparators = between.filter { candidate in
+                !candidate.element.isHidden
+                    && !DashboardSearchVisibility.isSearchHidden(candidate.element)
+                    && !DashboardSearchVisibility.isCollapsedForSearchLayout(candidate.element)
+            }
+            XCTAssertEqual(
+                visibleSeparators.count,
+                1,
+                "expected one separator between visible rows \(previous) and \(index)"
+            )
+        }
+        lastVisibleIndex = index
+    }
+    XCTAssertNotNil(lastVisibleIndex)
 }
 
 private func row(containingTitle title: String, in root: NSView) -> NSView? {
