@@ -347,6 +347,213 @@ final class DomainModelsTests: XCTestCase {
             zeroCountPresented.resetForecast.confidence.displayText(language: .simplifiedChinese),
             "未知"
         )
+        XCTAssertNil(zeroCountPresented.resetForecast.officialSignal)
+        XCTAssertEqual(
+            zeroCountPresented.resetForecast.menuProbabilityPresentation,
+            .ordinary(.percent(12))
+        )
+        XCTAssertTrue(zeroCountPresented.resetForecast.showsOrdinaryForecastMetrics)
+
+        let strongSignalForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(probability: .percent(71))
+        )
+        XCTAssertEqual(
+            strongSignalForecast.menuProbabilityPresentation,
+            .strongSignal(.percent(71))
+        )
+        XCTAssertFalse(strongSignalForecast.showsOrdinaryForecastMetrics)
+        XCTAssertEqual(strongSignalForecast.menuPrimaryDisplayText(language: .english), "71%")
+
+        let fallbackForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: .probabilityUnavailable
+        )
+        XCTAssertEqual(
+            fallbackForecast.menuProbabilityPresentation,
+            .strongSignal(.unavailable)
+        )
+        XCTAssertFalse(fallbackForecast.showsOrdinaryForecastMetrics)
+        XCTAssertEqual(
+            fallbackForecast.menuPrimaryDisplayText(language: .simplifiedChinese),
+            "高概率"
+        )
+        XCTAssertEqual(
+            fallbackForecast.menuPrimaryDisplayText(language: .english),
+            "High Prob."
+        )
+        XCTAssertNotEqual(fallbackForecast.menuPrimaryDisplayText(), "20%")
+        XCTAssertNotEqual(fallbackForecast.menuPrimaryDisplayText(), "83%")
+        XCTAssertEqual(
+            fallbackForecast.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 暂无具体时间点"
+        )
+        XCTAssertNil(fallbackForecast.remainingCountdownSeconds(now: date))
+
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 14_363),
+            "3h59m"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 5_025),
+            "1h23m"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 723),
+            "12m"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 45),
+            "0m"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 0),
+            "0m"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: -8),
+            "0m"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(minutes: 239),
+            "3h59m"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(minutes: 0),
+            "0m"
+        )
+
+        let countdownForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(71),
+                targetAt: date.addingTimeInterval(3_665)
+            )
+        )
+        XCTAssertEqual(countdownForecast.remainingCountdownSeconds(now: date), 3_665)
+        XCTAssertEqual(countdownForecast.remainingCountdownMinutes(now: date), 61)
+        XCTAssertEqual(countdownForecast.menuPrimaryDisplayText(now: date), "1h1m")
+        XCTAssertEqual(
+            countdownForecast.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 具体时间点"
+        )
+        XCTAssertEqual(
+            countdownForecast.officialHintText(language: .english),
+            "Official reset hint · Specific time"
+        )
+        XCTAssertFalse(
+            countdownForecast.officialHintText(language: .simplifiedChinese)?.contains("10/5") == true
+        )
+        XCTAssertEqual(
+            countdownForecast.remainingCountdownSeconds(now: date.addingTimeInterval(3_665)),
+            0
+        )
+        XCTAssertEqual(
+            countdownForecast.menuPrimaryDisplayText(now: date.addingTimeInterval(4_000)),
+            "0m"
+        )
+        XCTAssertEqual(
+            countdownForecast.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 具体时间点"
+        )
+        XCTAssertNil(countdownForecast.officialCountdownProgressSpan())
+
+        let published = date.addingTimeInterval(-3_600)
+        let resetAt = date.addingTimeInterval(3_600)
+        let progressForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(71),
+                targetAt: resetAt,
+                publishedAt: published
+            )
+        )
+        XCTAssertNil(progressForecast.officialHintText())
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: published)),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: published)),
+            1,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: date)),
+            0.5,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: date)),
+            0.5,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: resetAt)),
+            1,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: resetAt)),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: resetAt.addingTimeInterval(30))),
+            1,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: resetAt.addingTimeInterval(30))),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: published.addingTimeInterval(-30))),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownRemainingFraction(now: published.addingTimeInterval(-30))),
+            1,
+            accuracy: 0.0001
+        )
+        let inverted = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(71),
+                targetAt: published,
+                publishedAt: resetAt
+            )
+        )
+        XCTAssertNil(inverted.officialCountdownElapsedFraction(now: date))
+        XCTAssertNil(inverted.officialCountdownRemainingFraction(now: date))
+        XCTAssertEqual(
+            inverted.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 具体时间点"
+        )
+        XCTAssertNil(zeroCountPresented.resetForecast.officialHintText())
 
         let balance = Snapshot.balance(
             "Custom",

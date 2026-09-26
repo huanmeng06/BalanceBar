@@ -80,6 +80,7 @@ private final class OverviewNumericTextModel: ObservableObject {
     @Published var prefix: String
     @Published var suffix: String
     @Published var fractionLength: Int
+    @Published var remainingTime = false
     @Published var countsDown = false
 
     init(amount: Double) {
@@ -93,6 +94,7 @@ private final class OverviewNumericTextModel: ObservableObject {
         self.prefix = parts.prefix
         self.suffix = parts.suffix
         self.fractionLength = parts.fractionLength
+        self.remainingTime = parts.remainingTime
         self.amount = amount
         self.countsDown = countsDown
     }
@@ -162,12 +164,39 @@ private struct OverviewNumericTextRoot: View {
 
     @ViewBuilder
     private var numericValue: some View {
-        if model.fractionLength > 0 {
+        if model.remainingTime {
+            remainingTimeValue
+        } else if model.fractionLength > 0 {
             Text(model.amount, format: .number.precision(.fractionLength(model.fractionLength)))
                 .contentTransition(.numericText(countsDown: model.countsDown))
                 .animation(.snappy(duration: OverviewNumericTransition.currencyDigitRollDuration, extraBounce: 0), value: model.amount)
         } else {
             Text(verbatim: "\(Int(model.amount))")
+                .contentTransition(.numericText(countsDown: model.countsDown))
+        }
+    }
+
+    private var remainingTimeValue: some View {
+        let total = max(0, Int(model.amount.rounded(.down)))
+        let hours = total / 60
+        let minutes = total % 60
+        return HStack(spacing: 0) {
+            if hours > 0 {
+                rollingInteger(hours, minDigits: 1)
+                Text("h")
+            }
+            rollingInteger(minutes, minDigits: 1)
+            Text("m")
+        }
+    }
+
+    @ViewBuilder
+    private func rollingInteger(_ value: Int, minDigits: Int) -> some View {
+        if minDigits > 1 {
+            Text(value, format: .number.precision(.integerLength(minDigits)).grouping(.never))
+                .contentTransition(.numericText(countsDown: model.countsDown))
+        } else {
+            Text(verbatim: "\(value)")
                 .contentTransition(.numericText(countsDown: model.countsDown))
         }
     }
@@ -302,6 +331,9 @@ final class OverviewNumericTextView: NSView {
     }
 
     func apply(plan: OverviewNumericTransitionPlan, sample: OverviewNumericSample) {
+        if self.sample == sample, currentValue == plan.toValue, !plan.animates {
+            return
+        }
         self.sample = sample
         pendingPlan = nil
         if plan.animates, window != nil {
@@ -371,7 +403,7 @@ final class OverviewNumericTextView: NSView {
         switch format {
         case .currency:
             return .snappy(duration: OverviewNumericTransition.currencyDigitRollDuration, extraBounce: 0)
-        case .integerPercent, .integerCount:
+        case .integerPercent, .integerCount, .remainingMinutes:
             return .easeOut(duration: OverviewNumericTransition.duration)
         }
     }

@@ -1064,6 +1064,52 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(QuotaProgressView.progressColor(for: 50.01).isEqual(NSColor.systemGreen))
     }
 
+    func testQuotaProgressTrailingFillGrowsFromTheRight() throws {
+        let bounds = NSRect(x: 0, y: 0, width: 100, height: 5)
+        XCTAssertNil(
+            QuotaProgressView.fillRect(in: bounds, percentage: 0, fillOrigin: .trailing)
+        )
+        XCTAssertNil(
+            QuotaProgressView.fillRect(in: bounds, percentage: 0, fillOrigin: .leading)
+        )
+        let trailingHalf = try XCTUnwrap(
+            QuotaProgressView.fillRect(
+                in: bounds,
+                percentage: 50,
+                fillOrigin: .trailing
+            )
+        )
+        XCTAssertEqual(trailingHalf.maxX, 100, accuracy: 0.001)
+        XCTAssertEqual(trailingHalf.width, 50, accuracy: 0.001)
+        XCTAssertEqual(trailingHalf.minX, 50, accuracy: 0.001)
+        let leadingHalf = try XCTUnwrap(
+            QuotaProgressView.fillRect(
+                in: bounds,
+                percentage: 50,
+                fillOrigin: .leading
+            )
+        )
+        XCTAssertEqual(leadingHalf.minX, 0, accuracy: 0.001)
+        XCTAssertEqual(leadingHalf.width, 50, accuracy: 0.001)
+        let trailingStart = try XCTUnwrap(
+            QuotaProgressView.fillRect(
+                in: bounds,
+                percentage: 1,
+                fillOrigin: .trailing
+            )
+        )
+        XCTAssertEqual(trailingStart.maxX, 100, accuracy: 0.001)
+        XCTAssertEqual(trailingStart.width, 5, accuracy: 0.001)
+
+        let view = QuotaProgressView(percentage: 0, fillOrigin: .trailing)
+        XCTAssertEqual(view.fillOrigin, .trailing)
+        XCTAssertEqual(view.colorPercentage, 100)
+        view.setPercentage(80, animated: false)
+        XCTAssertEqual(view.percentage, 80)
+        XCTAssertEqual(view.colorPercentage, 20)
+        XCTAssertEqual(view.fillRatio, 0.8, accuracy: 0.0001)
+    }
+
     func testQuotaProgressSetPercentageUpdatesFillRatioWithoutAnimation() {
         let view = QuotaProgressView(percentage: 84)
         XCTAssertEqual(view.percentage, 84)

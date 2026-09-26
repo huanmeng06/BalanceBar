@@ -328,6 +328,30 @@ final class LocalizationTests: XCTestCase {
             "48 小时内"
         )
         XCTAssertEqual(
+            tr(.keyCodexBankedResetHighProbability, language: .simplifiedChinese),
+            "高概率"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetHighProbability, language: .english),
+            "High Prob."
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetOfficialHintNoTime, language: .simplifiedChinese),
+            "官方重置提示 · 暂无具体时间点"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetOfficialHintTime, language: .simplifiedChinese),
+            "官方重置提示 · 具体时间点"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetOfficialHintNoTime, language: .english),
+            "Official reset hint · No specific time"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetOfficialHintTime, language: .english),
+            "Official reset hint · Specific time"
+        )
+        XCTAssertEqual(
             tr(.keyCodexBankedResetConfidencePrefix, language: .simplifiedChinese),
             "置信度："
         )
@@ -368,6 +392,25 @@ final class LocalizationTests: XCTestCase {
             XCTAssertFalse(hint.contains("hint_copy"))
             XCTAssertFalse(tr(.keyCodexBankedResetProbability24h, language: language).isEmpty)
             XCTAssertFalse(tr(.keyCodexBankedResetProbability48h, language: language).isEmpty)
+            let highProbability = tr(.keyCodexBankedResetHighProbability, language: language)
+            XCTAssertFalse(highProbability.isEmpty)
+            XCTAssertFalse(highProbability.contains("%"))
+            XCTAssertFalse(highProbability.contains(colon))
+            let noTimeHint = tr(.keyCodexBankedResetOfficialHintNoTime, language: language)
+            let timeHint = tr(.keyCodexBankedResetOfficialHintTime, language: language)
+            XCTAssertFalse(noTimeHint.isEmpty)
+            XCTAssertFalse(timeHint.isEmpty)
+            XCTAssertFalse(noTimeHint.contains("10/5"))
+            XCTAssertFalse(timeHint.contains("10/5"))
+            XCTAssertFalse(timeHint.contains("%"))
+            XCTAssertNotEqual(noTimeHint, timeHint)
+            XCTAssertLessThanOrEqual(
+                OpenCodexCardLayout.forecastTextWidth(
+                    highProbability,
+                    font: OpenCodexCardLayout.bankedResetPrimaryLabelFont(for: highProbability)
+                ),
+                OpenCodexCardLayout.amountWidth
+            )
             let confidencePrefix = tr(.keyCodexBankedResetConfidencePrefix, language: language)
             XCTAssertTrue(
                 confidencePrefix.contains(colon),
@@ -414,6 +457,22 @@ final class LocalizationTests: XCTestCase {
                 demoPacking.totalWidth,
                 OpenCodexCardLayout.contentWidth,
                 "24h+48h demo \(language.rawValue)"
+            )
+            XCTAssertLessThanOrEqual(
+                AccountMarqueeView.textWidth(
+                    of: tr(.keyCodexBankedResetOfficialHintNoTime, language: language),
+                    font: subtitleFont
+                ),
+                contentWidth,
+                "official hint no-time \(language.rawValue)"
+            )
+            XCTAssertLessThanOrEqual(
+                AccountMarqueeView.textWidth(
+                    of: tr(.keyCodexBankedResetOfficialHintTime, language: language),
+                    font: subtitleFont
+                ),
+                contentWidth,
+                "official hint time \(language.rawValue)"
             )
             let longestConfidence = [
                 tr(.keyCodexBankedResetConfidenceLow, language: language),
@@ -1194,7 +1253,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 473)
+        XCTAssertEqual(expectedKeys.count, 476)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

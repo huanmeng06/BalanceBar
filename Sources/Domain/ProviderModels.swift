@@ -201,11 +201,13 @@ struct OpenCodexCardFrames: Equatable {
     let quotaRows: [OpenCodexQuotaRowFrames]
     let lunaReserveRow: OpenCodexQuotaRowFrames?
     let bankedResetSummaryRow: OpenCodexQuotaRowFrames?
-    /// Independent quota-style row for the 24h reset probability. Nil when
-    /// the banked-reset section is hidden. Its amount is the large 24h
+    /// Independent quota-style row for reset probability. Nil when the
+    /// banked-reset section is hidden. Its amount is the large primary
     /// figure; `reset` is the data-source subtitle under the title.
     let bankedResetProbabilityRow: OpenCodexQuotaRowFrames?
-    /// 24h + 48h line flush under the probability amount. No confidence line.
+    /// Extra line under the data-source subtitle. Ordinary mode packs
+    /// 24h+48h; strong-signal mode uses the same slot for the gray
+    /// official-hint line.
     let bankedResetForecastMetrics: CGRect?
     let bankedResetForecastConfidence: CGRect?
     let bankedResetDetailRows: [OpenCodexQuotaRowFrames]
@@ -322,10 +324,12 @@ enum OpenCodexCardLayout {
     static let bankedResetChromeCornerRadius: CGFloat = 10
     /// Gap between the reset-card summary and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
-    /// The 24h+48h line is the only row outside the probability amount.
-    /// The data source sits in that amount's reset slot. Confidence is not
-    /// part of the menu block. Longer locales pack the metrics row by
-    /// tightening gap/separator.
+    /// One extra line under the data-source subtitle. Ordinary mode packs
+    /// 24h+48h; strong-signal mode draws the gray no-time hint or the
+    /// remaining-time progress bar (left fill) here.
+    /// The data source sits in the amount's reset slot. Confidence is not
+    /// part of the menu block. Longer locales pack 24h+48h by tightening
+    /// gap/separator.
     static let bankedResetForecastLineGap: CGFloat = 2
     static let bankedResetForecastLineCount = 1
     static var bankedResetForecastMetricsWidth: CGFloat {
@@ -438,14 +442,35 @@ enum OpenCodexCardLayout {
         quotaDetailOffset + quotaDetailHeight - quotaResetOffset
     }
 
-    /// Two-line text band plus the 24h+48h line 2pt below the source subtitle.
-    /// `quotaTitleTopInset` keeps the next-block title 17pt below the bar
-    /// or 24h line, matching 5h progress → 7-day title.
-    static func bankedResetProbabilityBlockHeight() -> CGFloat {
-        quotaTitleTopInset
+    /// Two-line text band, plus the extra metrics/hint line when that slot
+    /// is visible. `quotaTitleTopInset` keeps the next-block title 17pt below
+    /// the bar or extra line, matching 5h progress → 7-day title.
+    static func bankedResetProbabilityBlockHeight(
+        includesForecastMetrics: Bool = true
+    ) -> CGFloat {
+        let metricsHeight = includesForecastMetrics
+            ? bankedResetForecastLineGap + bankedResetForecastExtraHeight()
+            : 0
+        return quotaTitleTopInset
             + bankedResetTextBandAmountHeight
-            + bankedResetForecastLineGap
-            + bankedResetForecastExtraHeight()
+            + metricsHeight
+    }
+
+    /// Large primary label for the strong-signal fallback. Shrinks just
+    /// enough to stay inside the amount box so short localized tags do not
+    /// overflow the 141pt column.
+    static func bankedResetPrimaryLabelFont(for text: String) -> NSFont {
+        let maxSize = quotaAmountPointSize
+        let minSize: CGFloat = 17
+        var size = maxSize
+        while size > minSize {
+            let font = NSFont.systemFont(ofSize: size, weight: .semibold)
+            if forecastTextWidth(text, font: font) <= amountWidth {
+                return font
+            }
+            size -= 1
+        }
+        return NSFont.systemFont(ofSize: minSize, weight: .semibold)
     }
 
     /// Reset-card header is the same two-line band plus the 3pt title inset.
@@ -497,7 +522,8 @@ enum OpenCodexCardLayout {
         includesBankedReset: Bool = false,
         bankedResetCardCount: Int = 0,
         bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
-        includesBankedResetNearestExpiry: Bool = false
+        includesBankedResetNearestExpiry: Bool = false,
+        includesBankedResetForecastMetrics: Bool = true
     ) -> OpenCodexCardFrames {
         let recognizedWindowCount = officialQuotaWindows.filter { $0.kind != .other }.count
         if category == .quota,
@@ -514,7 +540,8 @@ enum OpenCodexCardLayout {
                 includesBankedReset: includesBankedReset,
                 bankedResetCardCount: bankedResetCardCount,
                 bankedResetDisplayMode: bankedResetDisplayMode,
-                includesBankedResetNearestExpiry: includesBankedResetNearestExpiry
+                includesBankedResetNearestExpiry: includesBankedResetNearestExpiry,
+                includesBankedResetForecastMetrics: includesBankedResetForecastMetrics
             )
         }
 
@@ -636,7 +663,8 @@ enum OpenCodexCardLayout {
         includesBankedReset: Bool,
         bankedResetCardCount: Int,
         bankedResetDisplayMode: CodexBankedResetDisplayMode,
-        includesBankedResetNearestExpiry: Bool
+        includesBankedResetNearestExpiry: Bool,
+        includesBankedResetForecastMetrics: Bool
     ) -> OpenCodexCardFrames {
         let windowCount = windows.count
         let rowHeight = includesQuotaProgress ? quotaProgressRowHeight : lunaReserveNoProgressRowHeight
@@ -659,12 +687,15 @@ enum OpenCodexCardLayout {
         let reserveGap = includesLunaReserve && windowCount > 0 ? rowGap : 0
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
-        let forecastExtraHeight = includesBankedReset
+        let showsForecastMetrics = includesBankedReset && includesBankedResetForecastMetrics
+        let forecastExtraHeight = showsForecastMetrics
             ? bankedResetForecastLineGap + bankedResetForecastExtraHeight()
             : 0
         let forecastLineHeight = bankedResetForecastLineHeight()
         let probabilityBlockHeight = includesBankedReset
-            ? bankedResetProbabilityBlockHeight()
+            ? bankedResetProbabilityBlockHeight(
+                includesForecastMetrics: includesBankedResetForecastMetrics
+            )
             : 0
         let cardSummaryHeight = includesBankedReset
             ? bankedResetSummaryHeight()
@@ -847,7 +878,7 @@ enum OpenCodexCardLayout {
         let bankedResetProbabilityRow = includesBankedReset
             ? quotaBandFrames(rowY: probabilityRowY, showsReset: true)
             : nil
-        let bankedResetForecastMetrics = includesBankedReset
+        let bankedResetForecastMetrics = showsForecastMetrics
             ? CGRect(
                 x: horizontalInset,
                 y: probabilityBottomY,

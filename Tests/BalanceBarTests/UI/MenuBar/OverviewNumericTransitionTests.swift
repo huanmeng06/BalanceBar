@@ -97,6 +97,20 @@ final class OverviewNumericTransitionTests: XCTestCase {
         )
         XCTAssertEqual(OverviewNumericFormat.currency(unit: "USD").displayText(for: 1.70), "$1.70")
         XCTAssertEqual(OverviewNumericFormat.integerCount.displayText(for: 2), "2")
+        XCTAssertEqual(
+            OverviewNumericFormat.remainingMinutes.displayText(for: 239),
+            "3h59m"
+        )
+        XCTAssertEqual(
+            OverviewNumericFormat.remainingMinutes.displayText(for: 83),
+            "1h23m"
+        )
+        XCTAssertEqual(
+            OverviewNumericFormat.remainingMinutes.displayText(for: 12),
+            "12m"
+        )
+        XCTAssertEqual(OverviewNumericFormat.remainingMinutes.displayText(for: 0), "0m")
+        XCTAssertTrue(OverviewNumericFormat.remainingMinutes.displayParts.remainingTime)
 
         let cnyParts = OverviewNumericFormat.currency(unit: "CNY").displayParts
         XCTAssertEqual(cnyParts.prefix, "¥")
@@ -235,6 +249,144 @@ final class OverviewNumericTransitionTests: XCTestCase {
             ]
         )
         XCTAssertEqual(samples.last?.displayText, "42%")
+
+        let strongSignalSamples = OverviewNumericPresentation.samples(
+            snapshot: Snapshot.official(
+                "OpenAI",
+                45,
+                "7 day",
+                "2d",
+                date,
+                windows: official.officialQuotaWindows,
+                bankedReset: official.bankedReset,
+                resetForecast: CodexResetForecast(
+                    probability24h: .percent(20),
+                    probability48h: .percent(35),
+                    confidence: .low,
+                    updatedAt: date,
+                    isCached: false,
+                    officialSignal: CodexResetOfficialSignal(probability: .percent(71))
+                )
+            ),
+            lunaReserveDisplayMode: .disabled,
+            hideExhaustedQuota: false,
+            showBankedReset: true
+        )
+        XCTAssertEqual(
+            strongSignalSamples.map(\.identity),
+            [
+                .officialWindow(provider: "OpenAI", kind: .sevenDay),
+                .bankedResetCount(provider: "OpenAI"),
+                .bankedResetProbabilitySignal(provider: "OpenAI")
+            ]
+        )
+        XCTAssertEqual(strongSignalSamples.last?.displayText, "71%")
+
+        let countdownSamples = OverviewNumericPresentation.samples(
+            snapshot: Snapshot.official(
+                "OpenAI",
+                45,
+                "7 day",
+                "2d",
+                date,
+                windows: official.officialQuotaWindows,
+                bankedReset: official.bankedReset,
+                resetForecast: CodexResetForecast(
+                    probability24h: .percent(20),
+                    probability48h: .percent(35),
+                    confidence: .low,
+                    updatedAt: date,
+                    isCached: false,
+                    officialSignal: CodexResetOfficialSignal(
+                        probability: .percent(71),
+                        targetAt: date.addingTimeInterval(3_665)
+                    )
+                )
+            ),
+            lunaReserveDisplayMode: .disabled,
+            hideExhaustedQuota: false,
+            showBankedReset: true,
+            now: date
+        )
+        XCTAssertEqual(
+            countdownSamples.map(\.identity),
+            [
+                .officialWindow(provider: "OpenAI", kind: .sevenDay),
+                .bankedResetCount(provider: "OpenAI"),
+                .bankedResetProbabilityCountdown(provider: "OpenAI")
+            ]
+        )
+        XCTAssertEqual(countdownSamples.last?.displayText, "1h1m")
+        XCTAssertEqual(countdownSamples.last?.format, .remainingMinutes)
+        XCTAssertEqual(countdownSamples.last?.value, 61)
+        let sameMinuteTick = OverviewNumericTransition.plan(
+            previous: countdownSamples.last,
+            current: OverviewNumericSample(
+                identity: .bankedResetProbabilityCountdown(provider: "OpenAI"),
+                format: .remainingMinutes,
+                value: 61,
+                progressPercentage: nil
+            ),
+            reduceMotion: false
+        )
+        XCTAssertFalse(sameMinuteTick.animates)
+        XCTAssertEqual(sameMinuteTick.startText, "1h1m")
+        XCTAssertEqual(sameMinuteTick.endText, "1h1m")
+        let countdownTick = OverviewNumericTransition.plan(
+            previous: countdownSamples.last,
+            current: OverviewNumericSample(
+                identity: .bankedResetProbabilityCountdown(provider: "OpenAI"),
+                format: .remainingMinutes,
+                value: 59,
+                progressPercentage: nil
+            ),
+            reduceMotion: false
+        )
+        XCTAssertTrue(countdownTick.animates)
+        XCTAssertEqual(countdownTick.startText, "1h1m")
+        XCTAssertEqual(countdownTick.endText, "59m")
+        let reduceMotionTick = OverviewNumericTransition.plan(
+            previous: countdownSamples.last,
+            current: OverviewNumericSample(
+                identity: .bankedResetProbabilityCountdown(provider: "OpenAI"),
+                format: .remainingMinutes,
+                value: 59,
+                progressPercentage: nil
+            ),
+            reduceMotion: true
+        )
+        XCTAssertFalse(reduceMotionTick.animates)
+        XCTAssertEqual(reduceMotionTick.startText, "59m")
+
+        let fallbackSamples = OverviewNumericPresentation.samples(
+            snapshot: Snapshot.official(
+                "OpenAI",
+                45,
+                "7 day",
+                "2d",
+                date,
+                windows: official.officialQuotaWindows,
+                bankedReset: official.bankedReset,
+                resetForecast: CodexResetForecast(
+                    probability24h: .percent(20),
+                    probability48h: .percent(35),
+                    confidence: .low,
+                    updatedAt: date,
+                    isCached: false,
+                    officialSignal: .probabilityUnavailable
+                )
+            ),
+            lunaReserveDisplayMode: .disabled,
+            hideExhaustedQuota: false,
+            showBankedReset: true
+        )
+        XCTAssertEqual(
+            fallbackSamples.map(\.identity),
+            [
+                .officialWindow(provider: "OpenAI", kind: .sevenDay),
+                .bankedResetCount(provider: "OpenAI")
+            ]
+        )
         let first24 = OverviewNumericTransition.plan(
             previous: nil,
             current: samples[2],

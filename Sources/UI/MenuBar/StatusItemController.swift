@@ -2215,6 +2215,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var overviewMenuWasSeen = false
     private var overviewNumericOpenWorkItem: DispatchWorkItem?
     var overviewNumericReduceMotionForTesting: Bool?
+    var bankedResetCountdownNowForTesting: Date?
+    var bankedResetCountdownTimerForTesting: Timer? { bankedResetCountdownTimer }
+    private var bankedResetCountdownTimer: Timer?
     var lastSeenOverviewNumericsForTesting: [OverviewNumericIdentity: OverviewNumericSample] {
         lastSeenOverviewNumerics
     }
@@ -2754,6 +2757,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
         overviewMenuWasSeen = false
+        stopBankedResetCountdownTimer()
         cancelPendingOverviewNumericTransitions()
         lastSeenOverviewNumerics = [:]
         presentedOverviewNumerics = []
@@ -2818,6 +2822,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         rebuildOrDeferMenu(forceDefer: deferMenuRebuild)
         applyInPlaceOverviewNumericUpdatesIfTracking()
+        syncBankedResetCountdownTimer()
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
     }
 
@@ -3012,6 +3017,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         isStatusMenuTracking = true
         overviewMenuWasSeen = true
         playPendingOverviewNumericTransitions()
+        syncBankedResetCountdownTimer()
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
     }
@@ -3025,6 +3031,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             overviewMenuWasSeen = false
         }
         isStatusMenuTracking = false
+        stopBankedResetCountdownTimer()
         cancelPendingOverviewNumericTransitions()
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
@@ -6269,8 +6276,43 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             snapshot: snapshot,
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
-            showBankedReset: settings.showBankedReset
+            showBankedReset: settings.showBankedReset,
+            now: bankedResetCountdownNow()
         )
+    }
+
+    private func bankedResetCountdownNow() -> Date {
+        bankedResetCountdownNowForTesting ?? Date()
+    }
+
+    private func syncBankedResetCountdownTimer() {
+        let shouldRun = isStatusMenuTracking
+            && settings.showBankedReset
+            && snapshot.kind == .official
+            && snapshot.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+            ).resetForecast.remainingCountdownSeconds(now: bankedResetCountdownNow()) != nil
+        if shouldRun {
+            startBankedResetCountdownTimerIfNeeded()
+        } else {
+            stopBankedResetCountdownTimer()
+        }
+    }
+
+    private func startBankedResetCountdownTimerIfNeeded() {
+        guard bankedResetCountdownTimer == nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            self?.applyInPlaceOverviewNumericUpdatesIfTracking()
+        }
+        timer.tolerance = 0.05
+        RunLoop.main.add(timer, forMode: .common)
+        bankedResetCountdownTimer = timer
+    }
+
+    private func stopBankedResetCountdownTimer() {
+        bankedResetCountdownTimer?.invalidate()
+        bankedResetCountdownTimer = nil
     }
 
     private func shouldReduceOverviewNumericMotion() -> Bool {
@@ -6319,7 +6361,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let amount: NSView
         let marqueeAmountText: String
-        if case .percent(let percent) = forecast.probability24h {
+        var reservationFont = amountFont
+        if let minutes = forecast.remainingCountdownMinutes(now: bankedResetCountdownNow()) {
+            let sample = OverviewNumericSample(
+                identity: .bankedResetProbabilityCountdown(provider: provider),
+                format: .remainingMinutes,
+                value: Double(minutes),
+                progressPercentage: nil
+            )
+            let plan = overviewNumericPlan(for: sample)
+            let numeric = makeOverviewNumericAmount(
+                plan: plan,
+                sample: sample,
+                frame: row.amount
+            )
+            numeric.identifier = NSUserInterfaceItemIdentifier(
+                "codex.bankedReset.probabilityCountdownAmount"
+            )
+            numeric.textField.identifier = numeric.identifier
+            amount = numeric
+            marqueeAmountText = plan.layoutReservationText
+        } else {
+        switch forecast.menuProbabilityPresentation {
+        case .ordinary(.percent(let percent)):
             let sample = OverviewNumericSample(
                 identity: .bankedResetProbability24h(provider: provider),
                 format: .integerPercent,
@@ -6339,7 +6403,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             numeric.textField.identifier = numeric.identifier
             amount = numeric
             marqueeAmountText = plan.layoutReservationText
-        } else {
+        case .strongSignal(.percent(let percent)):
+            let sample = OverviewNumericSample(
+                identity: .bankedResetProbabilitySignal(provider: provider),
+                format: .integerPercent,
+                value: Double(percent),
+                progressPercentage: nil
+            )
+            let plan = overviewNumericPlan(for: sample)
+            let numeric = makeOverviewNumericAmount(
+                plan: plan,
+                sample: sample,
+                frame: row.amount
+            )
+            numeric.identifier = NSUserInterfaceItemIdentifier(
+                "codex.bankedReset.probabilitySignalAmount"
+            )
+            numeric.textField.identifier = numeric.identifier
+            amount = numeric
+            marqueeAmountText = plan.layoutReservationText
+        case .ordinary:
             let label = makeOverviewLabel(forecast.probability24h.displayText, font: amountFont)
             label.alignment = .right
             label.frame = row.amount
@@ -6348,6 +6431,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
             amount = label
             marqueeAmountText = forecast.probability24h.displayText
+        case .strongSignal:
+            let text = forecast.menuPrimaryDisplayText()
+            let labelFont = OpenCodexCardLayout.bankedResetPrimaryLabelFont(for: text)
+            let label = makeOverviewLabel(text, font: labelFont)
+            label.alignment = .right
+            label.frame = row.amount
+            label.identifier = NSUserInterfaceItemIdentifier(
+                "codex.bankedReset.probabilityHighLabel"
+            )
+            amount = label
+            marqueeAmountText = text
+            reservationFont = labelFont
+        }
         }
         view.addSubview(amount)
         view.addSubview(
@@ -6362,7 +6458,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     row.quotaDetail,
                     avoidingAmountFrame: amount.frame,
                     amountText: marqueeAmountText,
-                    amountFont: amountFont
+                    amountFont: reservationFont
                 )
             )
         )
@@ -6373,19 +6469,74 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     row.reset,
                     avoidingAmountFrame: amount.frame,
                     amountText: marqueeAmountText,
-                    amountFont: amountFont
+                    amountFont: reservationFont
                 ),
                 forecast: forecast
             )
         }
         if let metricsFrame = layout.bankedResetForecastMetrics {
-            addBankedResetForecastMetrics(
-                to: view,
-                frame: metricsFrame,
-                forecast: forecast,
-                provider: provider
-            )
+            if forecast.showsOrdinaryForecastMetrics {
+                addBankedResetForecastMetrics(
+                    to: view,
+                    frame: metricsFrame,
+                    forecast: forecast,
+                    provider: provider
+                )
+            } else if let remaining = forecast.officialCountdownRemainingFraction(
+                now: bankedResetCountdownNow()
+            ) {
+                addBankedResetOfficialCountdownProgress(
+                    to: view,
+                    frame: metricsFrame,
+                    remainingFraction: remaining
+                )
+            } else if let hint = forecast.officialHintText() {
+                addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint)
+            }
         }
+    }
+
+    private func addBankedResetOfficialCountdownProgress(
+        to view: MenuHoverLinkHostView,
+        frame: NSRect,
+        remainingFraction: Double
+    ) {
+        let height = OpenCodexCardLayout.quotaProgressHeight
+        let barFrame = NSRect(
+            x: frame.minX,
+            y: frame.midY - height / 2,
+            width: frame.width,
+            height: height
+        )
+        let progress = QuotaProgressView(
+            percentage: remainingFraction * 100,
+            colorConfiguration: settings.quotaProgressColorConfiguration,
+            fillOrigin: .leading
+        )
+        progress.frame = barFrame
+        progress.identifier = NSUserInterfaceItemIdentifier(
+            "codex.bankedReset.officialCountdownProgress"
+        )
+        view.addSubview(progress)
+    }
+
+    private func addBankedResetOfficialHint(
+        to view: MenuHoverLinkHostView,
+        frame: NSRect,
+        text: String
+    ) {
+        let label = makeOverviewLabel(
+            text,
+            font: OpenCodexCardLayout.bankedResetForecastSubtitleFont
+        )
+        label.textColor = .secondaryLabelColor
+        label.lineBreakMode = .byClipping
+        label.usesSingleLineMode = true
+        label.identifier = NSUserInterfaceItemIdentifier(
+            "codex.bankedReset.officialHint"
+        )
+        label.frame = frame
+        view.addSubview(label)
     }
 
     private func addBankedResetProbabilitySourceLink(
@@ -6732,6 +6883,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
+        applyOfficialCountdownProgressIfNeeded(in: overview)
+    }
+
+    private func applyOfficialCountdownProgressIfNeeded(in overview: NSView) {
+        guard let progress = overviewNumericProgressViews(in: overview).first(where: {
+            $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress"
+        }) else { return }
+        let forecast = snapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+        ).resetForecast
+        guard let remaining = forecast.officialCountdownRemainingFraction(
+            now: bankedResetCountdownNow()
+        ) else { return }
+        progress.setPercentage(remaining * 100, animated: false)
     }
 
     private func overviewNumericTextViews(in view: NSView) -> [OverviewNumericTextView] {

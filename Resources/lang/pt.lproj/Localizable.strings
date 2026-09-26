@@ -458,6 +458,9 @@
 "codex.banked_reset.probability_hint" = "Previsão de um reset global extra nas próximas 24 e 48 horas. Fonte dos dados: codex-reset.com. Fonte atualizada em %1$@. Esta é uma previsão de terceiros de um reset global extra, não o horário de reset garantido da cota semanal desta conta, e não garante um cartão de reset. A confiança é uma categoria do modelo, não uma promessa de precisão.";
 "codex.banked_reset.probability_24h" = "Em 24 h";
 "codex.banked_reset.probability_48h" = "Em 48 h";
+"codex.banked_reset.high_probability" = "Alta prob.";
+"codex.banked_reset.official_hint_no_time" = "Aviso oficial · Sem hora específica";
+"codex.banked_reset.official_hint_time" = "Aviso oficial · Hora específica";
 "codex.banked_reset.confidence_prefix" = "Confiança:";
 "codex.banked_reset.confidence_low" = "Baixa";
 "codex.banked_reset.confidence_medium" = "Média";

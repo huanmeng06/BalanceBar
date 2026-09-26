@@ -276,6 +276,53 @@ enum CodexResetProbability: Equatable {
     }
 }
 
+/// Documented `official_signal` object from the public forecast payload.
+/// Presence of this value, not any nested score, switches the menu into
+/// strong-signal mode. Probability and a future countdown instant are parsed
+/// separately and may be missing.
+struct CodexResetOfficialSignal: Equatable {
+    var probability: CodexResetProbability
+    /// Absolute future instant from `official_signal.window` or an equivalent
+    /// single-instant field. Nil when the payload has no countdown target.
+    var targetAt: Date? = nil
+    /// Tweet/publish instant from `official_signal.at`. Used only as the
+    /// progress-bar right endpoint, never as the countdown amount.
+    var publishedAt: Date? = nil
+
+    static let probabilityUnavailable = CodexResetOfficialSignal(probability: .unavailable)
+}
+
+/// Compact remaining-time text for the strong-signal amount slot.
+/// Minute precision matches quota remaining (`3h59m`, `12m`, `0m`).
+enum CodexResetOfficialCountdownFormatting {
+    static func displayText(seconds: Int) -> String {
+        displayText(minutes: max(0, seconds) / 60)
+    }
+
+    static func displayText(minutes: Int) -> String {
+        let clamped = max(0, minutes)
+        let hours = clamped / 60
+        let remainder = clamped % 60
+        if hours > 0 {
+            return "\(hours)h\(remainder)m"
+        }
+        return "\(remainder)m"
+    }
+}
+
+/// Mutually exclusive menu presentation for the reset-probability block.
+enum CodexResetMenuProbabilityPresentation: Equatable {
+    case ordinary(CodexResetProbability)
+    case strongSignal(CodexResetProbability)
+
+    var showsOrdinaryForecastMetrics: Bool {
+        if case .ordinary = self {
+            return true
+        }
+        return false
+    }
+}
+
 enum CodexResetConfidence: Equatable {
     case low
     case medium
@@ -305,6 +352,9 @@ struct CodexResetForecast: Equatable {
     var confidence: CodexResetConfidence
     var updatedAt: Date?
     var isCached: Bool
+    /// Nil keeps ordinary 24h/48h forecast. Non-nil enters strong-signal mode
+    /// even when nested probability fields cannot be read.
+    var officialSignal: CodexResetOfficialSignal? = nil
 
     static let unavailable = CodexResetForecast(
         probability24h: .unavailable,
@@ -319,6 +369,82 @@ struct CodexResetForecast: Equatable {
             || probability48h != .unavailable
             || confidence != .unavailable
             || updatedAt != nil
+            || officialSignal != nil
+    }
+
+    var menuProbabilityPresentation: CodexResetMenuProbabilityPresentation {
+        if let officialSignal {
+            return .strongSignal(officialSignal.probability)
+        }
+        return .ordinary(probability24h)
+    }
+
+    var showsOrdinaryForecastMetrics: Bool {
+        menuProbabilityPresentation.showsOrdinaryForecastMetrics
+    }
+
+    func remainingCountdownSeconds(now: Date = Date()) -> Int? {
+        guard let targetAt = officialSignal?.targetAt else { return nil }
+        return max(0, Int(targetAt.timeIntervalSince(now).rounded(.down)))
+    }
+
+    func remainingCountdownMinutes(now: Date = Date()) -> Int? {
+        remainingCountdownSeconds(now: now).map { $0 / 60 }
+    }
+
+    /// Publish → reset span for the strong-signal time bar. Requires a future
+    /// `targetAt` later than `publishedAt`.
+    func officialCountdownProgressSpan() -> (publishedAt: Date, targetAt: Date)? {
+        guard let targetAt = officialSignal?.targetAt,
+              let publishedAt = officialSignal?.publishedAt,
+              targetAt > publishedAt else {
+            return nil
+        }
+        return (publishedAt, targetAt)
+    }
+
+    /// Elapsed share of the publish → reset span. 0 at publish, 1 at reset.
+    func officialCountdownElapsedFraction(now: Date = Date()) -> Double? {
+        guard let span = officialCountdownProgressSpan() else { return nil }
+        let duration = span.targetAt.timeIntervalSince(span.publishedAt)
+        guard duration > 0 else { return nil }
+        return min(1, max(0, now.timeIntervalSince(span.publishedAt) / duration))
+    }
+
+    /// Remaining fill attached to the left (reset) endpoint. 1 at publish, 0 at
+    /// reset; elapsed time is the unfilled right side.
+    func officialCountdownRemainingFraction(now: Date = Date()) -> Double? {
+        guard let elapsed = officialCountdownElapsedFraction(now: now) else { return nil }
+        return min(1, max(0, 1 - elapsed))
+    }
+
+    func officialHintText(language: AppLanguage = .selected) -> String? {
+        guard officialSignal != nil else { return nil }
+        if officialCountdownProgressSpan() != nil {
+            return nil
+        }
+        if officialSignal?.targetAt != nil {
+            return tr(.keyCodexBankedResetOfficialHintTime, language: language)
+        }
+        return tr(.keyCodexBankedResetOfficialHintNoTime, language: language)
+    }
+
+    func menuPrimaryDisplayText(
+        language: AppLanguage = .selected,
+        now: Date = Date()
+    ) -> String {
+        switch menuProbabilityPresentation {
+        case .ordinary(let probability):
+            return probability.displayText
+        case .strongSignal:
+            if let seconds = remainingCountdownSeconds(now: now) {
+                return CodexResetOfficialCountdownFormatting.displayText(seconds: seconds)
+            }
+            if case .percent(let value) = officialSignal?.probability {
+                return CodexResetProbability.percent(value).displayText
+            }
+            return tr(.keyCodexBankedResetHighProbability, language: language)
+        }
     }
 
     func markingCached() -> CodexResetForecast {

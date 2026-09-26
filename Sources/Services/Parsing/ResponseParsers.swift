@@ -641,7 +641,7 @@ enum CodexResetForecastParser {
     static let websiteURL = URL(string: "https://codex-reset.com/")!
     static let forecastURL = URL(string: "https://codex-reset.com/api/forecast")!
 
-    static func parse(data: Data) -> CodexResetForecast {
+    static func parse(data: Data, now: Date = Date()) -> CodexResetForecast {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return .unavailable
         }
@@ -651,8 +651,85 @@ enum CodexResetForecastParser {
             probability48h: percent(probabilities?["rounded_48h"]),
             confidence: confidence(object["confidence"]),
             updatedAt: ResponseParsingSupport.timestampDate(object["updated_at"]),
-            isCached: false
+            isCached: false,
+            officialSignal: officialSignal(from: object, now: now)
         )
+    }
+
+    private static func officialSignal(
+        from object: [String: Any],
+        now: Date
+    ) -> CodexResetOfficialSignal? {
+        switch object["official_signal"] {
+        case nil, is NSNull:
+            return nil
+        default:
+            return CodexResetOfficialSignal(
+                probability: signalProbability(from: object),
+                targetAt: officialSignalTargetAt(from: object, now: now),
+                publishedAt: officialSignalPublishedAt(from: object)
+            )
+        }
+    }
+
+    /// Single future instant from `official_signal.window` or equivalent
+    /// deadline/target fields. Recurring hour windows, `last_reset_at`, and
+    /// `context.reset_at` are ignored. Tweet time is `publishedAt`.
+    private static func officialSignalTargetAt(
+        from object: [String: Any],
+        now: Date
+    ) -> Date? {
+        let official = object["official_signal"] as? [String: Any]
+        guard let official else { return nil }
+        return singleFutureInstant(official["window"], now: now)
+            ?? ResponseParsingSupport.resetDate(official["deadline"], now: now)
+            ?? ResponseParsingSupport.resetDate(official["target"], now: now)
+    }
+
+    /// Publish instant from `official_signal.at`. Past timestamps are kept so
+    /// the progress bar can measure elapsed time from the tweet.
+    private static func officialSignalPublishedAt(from object: [String: Any]) -> Date? {
+        let official = object["official_signal"] as? [String: Any]
+        guard let official else { return nil }
+        return ResponseParsingSupport.timestampDate(official["at"])
+    }
+
+    private static func singleFutureInstant(_ value: Any?, now: Date) -> Date? {
+        switch value {
+        case nil, is NSNull:
+            return nil
+        case let dict as [String: Any]:
+            return ResponseParsingSupport.resetDate(dict["at"], now: now)
+                ?? ResponseParsingSupport.resetDate(dict["deadline"], now: now)
+                ?? ResponseParsingSupport.resetDate(dict["target"], now: now)
+        default:
+            return ResponseParsingSupport.resetDate(value, now: now)
+        }
+    }
+
+    /// Compatibility reads for the current public schema. UI must not depend
+    /// on these paths; missing or relocated fields become `.unavailable`.
+    private static func signalProbability(from object: [String: Any]) -> CodexResetProbability {
+        let probabilities = object["probabilities"] as? [String: Any]
+        let official = object["official_signal"] as? [String: Any]
+        let nestedScore = official?["score"] as? [String: Any]
+        let topScore = object["signal_score"] as? [String: Any]
+        let candidates: [CodexResetProbability] = [
+            percent(nestedScore?["value"]),
+            percent(nestedScore?["base"]),
+            percent(official?["score"]),
+            percent(probabilities?["signal_percent"]),
+            percent(probabilities?["commitment_floor_percent"]),
+            fractionPercent(probabilities?["commitment"]),
+            percent(topScore?["value"]),
+            percent(topScore?["base"])
+        ]
+        return candidates.first { candidate in
+            if case .percent = candidate {
+                return true
+            }
+            return false
+        } ?? .unavailable
     }
 
     private static func percent(_ value: Any?) -> CodexResetProbability {
@@ -660,6 +737,32 @@ enum CodexResetForecastParser {
             return .unavailable
         }
         return .percent(score)
+    }
+
+    /// `probabilities.commitment` is a 0...1 fraction in the current schema.
+    /// Values already expressed as 0...100 percents are accepted as-is.
+    private static func fractionPercent(_ value: Any?) -> CodexResetProbability {
+        if let number = value as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return .unavailable
+            }
+            let doubleValue = number.doubleValue
+            guard doubleValue.isFinite else { return .unavailable }
+            if (0...1).contains(doubleValue) {
+                return percent(doubleValue * 100)
+            }
+            return percent(doubleValue)
+        }
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let parsed = Double(trimmed), parsed.isFinite {
+                if (0...1).contains(parsed) {
+                    return percent(parsed * 100)
+                }
+                return percent(parsed)
+            }
+        }
+        return .unavailable
     }
 
     private static func integerPercent(_ value: Any?) -> Int? {
