@@ -230,6 +230,46 @@ final class BalanceNotificationCoordinator {
         }
     }
 
+    /// Updates one shared window rule. Existing Agent/resource overrides remain
+    /// untouched; inherited rules immediately follow the new values.
+    func updateGlobalRule(
+        resourceID: String,
+        kind: BalanceNotificationResourceKind,
+        firstThreshold: Double,
+        secondThreshold: Double
+    ) {
+        onQueue {
+            let first = BalanceNotificationResourceRule.normalizedFirstThreshold(
+                firstThreshold,
+                kind: kind
+            )
+            let second = BalanceNotificationResourceRule.normalizedSecondThreshold(
+                secondThreshold,
+                firstThreshold: first,
+                kind: kind
+            )
+            self.store.update { settings in
+                settings.setGlobalThresholds(
+                    for: resourceID,
+                    first: first,
+                    second: second
+                )
+                for index in settings.resourceRules.indices where
+                    settings.resourceRules[index].usesGlobalDefaults &&
+                    settings.resourceRules[index].key.resourceID == resourceID {
+                    var rule = settings.resourceRules[index]
+                    rule.firstThreshold = first
+                    rule.secondThreshold = second
+                    rule.secondEnabled = second > 0
+                    rule.stage = .normal
+                    rule.lastValue = nil
+                    settings.resourceRules[index] = rule
+                }
+            }
+            self.processStoredSnapshotsOnQueue()
+        }
+    }
+
     func updateRule(
         key: BalanceNotificationResourceKey,
         kind: BalanceNotificationResourceKind,
@@ -260,6 +300,13 @@ final class BalanceNotificationCoordinator {
                     || old.enabled != rule.enabled {
                     rule.stage = .normal
                     rule.lastValue = nil
+                }
+                if old.firstThreshold != rule.firstThreshold
+                    || old.secondThreshold != rule.secondThreshold
+                    || old.secondEnabled != rule.secondEnabled
+                    || old.kind != rule.kind
+                    || old.unit != rule.unit {
+                    rule.usesGlobalDefaults = false
                 }
                 settings.upsert(rule)
             }

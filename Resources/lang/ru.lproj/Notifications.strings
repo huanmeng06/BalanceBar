@@ -32,3 +32,12 @@
 "notifications.agent_settings" = "Настройки Agent";
 "notifications.pause_none" = "Нет";
 "notifications.pause_status" = "Пауза до %1$@ · Осталось: %2$@";
+"notifications.reminder_rules" = "Общие правила оповещений";
+"notifications.global_rules_hint" = "Введите 0, чтобы отключить оповещение";
+"notifications.five_hour_reminder" = "Оповещение за 5 часов";
+"notifications.seven_day_reminder" = "Оповещение за 7 дней";
+"notifications.balance_reminder" = "Оповещение о балансе";
+"notifications.first_reminder" = "Первое оповещение:";
+"notifications.second_reminder" = "Второе оповещение:";
+"notifications.agent_follows_global" = "Следует глобальным правилам";
+"notifications.agent_customized" = "Настроено отдельно";

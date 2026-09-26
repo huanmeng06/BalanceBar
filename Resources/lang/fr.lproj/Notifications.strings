@@ -32,3 +32,12 @@
 "notifications.agent_settings" = "Réglages des Agent";
 "notifications.pause_none" = "Aucune";
 "notifications.pause_status" = "Suspendu jusqu’au %1$@ · Restant : %2$@";
+"notifications.reminder_rules" = "Règles générales de rappel";
+"notifications.global_rules_hint" = "Saisir 0 pour désactiver un rappel";
+"notifications.five_hour_reminder" = "Rappel de 5 heures";
+"notifications.seven_day_reminder" = "Rappel de 7 jours";
+"notifications.balance_reminder" = "Rappel de solde";
+"notifications.first_reminder" = "Premier rappel :";
+"notifications.second_reminder" = "Deuxième rappel :";
+"notifications.agent_follows_global" = "Suit les règles globales";
+"notifications.agent_customized" = "Adapté séparément";

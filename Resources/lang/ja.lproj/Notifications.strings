@@ -32,3 +32,12 @@
 "notifications.agent_settings" = "Agent 設定";
 "notifications.pause_none" = "なし";
 "notifications.pause_status" = "%1$@ まで一時停止 · 残り：%2$@";
+"notifications.reminder_rules" = "共通通知ルール";
+"notifications.global_rules_hint" = "0 を入力すると通知しません";
+"notifications.five_hour_reminder" = "5 時間の通知";
+"notifications.seven_day_reminder" = "7 日間の通知";
+"notifications.balance_reminder" = "残高の通知";
+"notifications.first_reminder" = "1 回目の通知：";
+"notifications.second_reminder" = "2 回目の通知：";
+"notifications.agent_follows_global" = "全体のルールに従う";
+"notifications.agent_customized" = "個別に設定済み";

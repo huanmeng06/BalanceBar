@@ -32,3 +32,12 @@
 "notifications.agent_settings" = "Agent 설정";
 "notifications.pause_none" = "없음";
 "notifications.pause_status" = "%1$@까지 일시 정지 · 남은 시간: %2$@";
+"notifications.reminder_rules" = "공통 알림 규칙";
+"notifications.global_rules_hint" = "0을 입력하면 알림하지 않습니다";
+"notifications.five_hour_reminder" = "5시간 알림";
+"notifications.seven_day_reminder" = "7일 알림";
+"notifications.balance_reminder" = "잔액 알림";
+"notifications.first_reminder" = "첫 번째 알림:";
+"notifications.second_reminder" = "두 번째 알림:";
+"notifications.agent_follows_global" = "전역 규칙 따름";
+"notifications.agent_customized" = "개별 설정됨";
