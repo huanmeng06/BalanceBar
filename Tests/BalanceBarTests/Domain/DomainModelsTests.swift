@@ -347,6 +347,51 @@ final class DomainModelsTests: XCTestCase {
             zeroCountPresented.resetForecast.confidence.displayText(language: .simplifiedChinese),
             "未知"
         )
+        XCTAssertNil(zeroCountPresented.resetForecast.officialSignal)
+        XCTAssertEqual(
+            zeroCountPresented.resetForecast.menuProbabilityPresentation,
+            .ordinary(.percent(12))
+        )
+        XCTAssertTrue(zeroCountPresented.resetForecast.showsOrdinaryForecastMetrics)
+
+        let strongSignalForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(probability: .percent(71))
+        )
+        XCTAssertEqual(
+            strongSignalForecast.menuProbabilityPresentation,
+            .strongSignal(.percent(71))
+        )
+        XCTAssertFalse(strongSignalForecast.showsOrdinaryForecastMetrics)
+        XCTAssertEqual(strongSignalForecast.menuPrimaryDisplayText(language: .english), "71%")
+
+        let fallbackForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: .probabilityUnavailable
+        )
+        XCTAssertEqual(
+            fallbackForecast.menuProbabilityPresentation,
+            .strongSignal(.unavailable)
+        )
+        XCTAssertFalse(fallbackForecast.showsOrdinaryForecastMetrics)
+        XCTAssertEqual(
+            fallbackForecast.menuPrimaryDisplayText(language: .simplifiedChinese),
+            "高概率"
+        )
+        XCTAssertEqual(
+            fallbackForecast.menuPrimaryDisplayText(language: .english),
+            "High Prob."
+        )
+        XCTAssertNotEqual(fallbackForecast.menuPrimaryDisplayText(), "20%")
+        XCTAssertNotEqual(fallbackForecast.menuPrimaryDisplayText(), "83%")
 
         let balance = Snapshot.balance(
             "Custom",

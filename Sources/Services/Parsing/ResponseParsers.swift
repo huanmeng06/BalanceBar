@@ -651,8 +651,43 @@ enum CodexResetForecastParser {
             probability48h: percent(probabilities?["rounded_48h"]),
             confidence: confidence(object["confidence"]),
             updatedAt: ResponseParsingSupport.timestampDate(object["updated_at"]),
-            isCached: false
+            isCached: false,
+            officialSignal: officialSignal(from: object)
         )
+    }
+
+    private static func officialSignal(from object: [String: Any]) -> CodexResetOfficialSignal? {
+        switch object["official_signal"] {
+        case nil, is NSNull:
+            return nil
+        default:
+            return CodexResetOfficialSignal(probability: signalProbability(from: object))
+        }
+    }
+
+    /// Compatibility reads for the current public schema. UI must not depend
+    /// on these paths; missing or relocated fields become `.unavailable`.
+    private static func signalProbability(from object: [String: Any]) -> CodexResetProbability {
+        let probabilities = object["probabilities"] as? [String: Any]
+        let official = object["official_signal"] as? [String: Any]
+        let nestedScore = official?["score"] as? [String: Any]
+        let topScore = object["signal_score"] as? [String: Any]
+        let candidates: [CodexResetProbability] = [
+            percent(nestedScore?["value"]),
+            percent(nestedScore?["base"]),
+            percent(official?["score"]),
+            percent(probabilities?["signal_percent"]),
+            percent(probabilities?["commitment_floor_percent"]),
+            fractionPercent(probabilities?["commitment"]),
+            percent(topScore?["value"]),
+            percent(topScore?["base"])
+        ]
+        return candidates.first { candidate in
+            if case .percent = candidate {
+                return true
+            }
+            return false
+        } ?? .unavailable
     }
 
     private static func percent(_ value: Any?) -> CodexResetProbability {
@@ -660,6 +695,32 @@ enum CodexResetForecastParser {
             return .unavailable
         }
         return .percent(score)
+    }
+
+    /// `probabilities.commitment` is a 0...1 fraction in the current schema.
+    /// Values already expressed as 0...100 percents are accepted as-is.
+    private static func fractionPercent(_ value: Any?) -> CodexResetProbability {
+        if let number = value as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return .unavailable
+            }
+            let doubleValue = number.doubleValue
+            guard doubleValue.isFinite else { return .unavailable }
+            if (0...1).contains(doubleValue) {
+                return percent(doubleValue * 100)
+            }
+            return percent(doubleValue)
+        }
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let parsed = Double(trimmed), parsed.isFinite {
+                if (0...1).contains(parsed) {
+                    return percent(parsed * 100)
+                }
+                return percent(parsed)
+            }
+        }
+        return .unavailable
     }
 
     private static func integerPercent(_ value: Any?) -> Int? {

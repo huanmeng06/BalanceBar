@@ -458,6 +458,7 @@
 "codex.banked_reset.probability_hint" = "Прогноз дополнительного глобального сброса в ближайшие 24 и 48 часов. Источник данных: codex-reset.com. Источник обновлён %1$@. Это сторонний прогноз глобального дополнительного сброса, а не гарантированное время сброса недельной квоты этого аккаунта, и он не гарантирует карту сброса. Уверенность — категория модели, а не обещание точности.";
 "codex.banked_reset.probability_24h" = "За 24 ч";
 "codex.banked_reset.probability_48h" = "За 48 ч";
+"codex.banked_reset.high_probability" = "Выс. вер.";
 "codex.banked_reset.confidence_prefix" = "Уверенность:";
 "codex.banked_reset.confidence_low" = "Низкая";
 "codex.banked_reset.confidence_medium" = "Средняя";

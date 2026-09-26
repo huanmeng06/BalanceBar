@@ -5723,7 +5723,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && bankedReset != nil,
             bankedResetCardCount: bankedReset?.cards.count ?? 0,
             bankedResetDisplayMode: menuInput.bankedResetDisplayMode,
-            includesBankedResetNearestExpiry: nearestExpiryText != nil
+            includesBankedResetNearestExpiry: nearestExpiryText != nil,
+            includesBankedResetForecastMetrics: quotaPresentation.resetForecast.showsOrdinaryForecastMetrics
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.wantsLayer = true
@@ -6319,7 +6320,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let amount: NSView
         let marqueeAmountText: String
-        if case .percent(let percent) = forecast.probability24h {
+        var reservationFont = amountFont
+        switch forecast.menuProbabilityPresentation {
+        case .ordinary(.percent(let percent)):
             let sample = OverviewNumericSample(
                 identity: .bankedResetProbability24h(provider: provider),
                 format: .integerPercent,
@@ -6339,7 +6342,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             numeric.textField.identifier = numeric.identifier
             amount = numeric
             marqueeAmountText = plan.layoutReservationText
-        } else {
+        case .strongSignal(.percent(let percent)):
+            let sample = OverviewNumericSample(
+                identity: .bankedResetProbabilitySignal(provider: provider),
+                format: .integerPercent,
+                value: Double(percent),
+                progressPercentage: nil
+            )
+            let plan = overviewNumericPlan(for: sample)
+            let numeric = makeOverviewNumericAmount(
+                plan: plan,
+                sample: sample,
+                frame: row.amount
+            )
+            numeric.identifier = NSUserInterfaceItemIdentifier(
+                "codex.bankedReset.probabilitySignalAmount"
+            )
+            numeric.textField.identifier = numeric.identifier
+            amount = numeric
+            marqueeAmountText = plan.layoutReservationText
+        case .ordinary:
             let label = makeOverviewLabel(forecast.probability24h.displayText, font: amountFont)
             label.alignment = .right
             label.frame = row.amount
@@ -6348,6 +6370,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
             amount = label
             marqueeAmountText = forecast.probability24h.displayText
+        case .strongSignal:
+            let text = forecast.menuPrimaryDisplayText()
+            let labelFont = OpenCodexCardLayout.bankedResetPrimaryLabelFont(for: text)
+            let label = makeOverviewLabel(text, font: labelFont)
+            label.alignment = .right
+            label.frame = row.amount
+            label.identifier = NSUserInterfaceItemIdentifier(
+                "codex.bankedReset.probabilityHighLabel"
+            )
+            amount = label
+            marqueeAmountText = text
+            reservationFont = labelFont
         }
         view.addSubview(amount)
         view.addSubview(
@@ -6362,7 +6396,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     row.quotaDetail,
                     avoidingAmountFrame: amount.frame,
                     amountText: marqueeAmountText,
-                    amountFont: amountFont
+                    amountFont: reservationFont
                 )
             )
         )
@@ -6373,7 +6407,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     row.reset,
                     avoidingAmountFrame: amount.frame,
                     amountText: marqueeAmountText,
-                    amountFont: amountFont
+                    amountFont: reservationFont
                 ),
                 forecast: forecast
             )

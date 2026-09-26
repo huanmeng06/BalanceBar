@@ -9,6 +9,7 @@ enum OverviewNumericIdentity: Hashable {
     case bankedResetCount(provider: String)
     case bankedResetProbability24h(provider: String)
     case bankedResetProbability48h(provider: String)
+    case bankedResetProbabilitySignal(provider: String)
 }
 
 enum OverviewNumericFormat: Equatable {
@@ -206,25 +207,39 @@ enum OverviewNumericPresentation {
                         progressPercentage: nil
                     )
                 )
-                if case .percent(let percent) = presentation.resetForecast.probability24h {
+                switch presentation.resetForecast.menuProbabilityPresentation {
+                case .ordinary:
+                    if case .percent(let percent) = presentation.resetForecast.probability24h {
+                        samples.append(
+                            OverviewNumericSample(
+                                identity: .bankedResetProbability24h(provider: snapshot.provider),
+                                format: .integerPercent,
+                                value: Double(percent),
+                                progressPercentage: nil
+                            )
+                        )
+                    }
+                    if case .percent(let percent) = presentation.resetForecast.probability48h {
+                        samples.append(
+                            OverviewNumericSample(
+                                identity: .bankedResetProbability48h(provider: snapshot.provider),
+                                format: .integerPercent,
+                                value: Double(percent),
+                                progressPercentage: nil
+                            )
+                        )
+                    }
+                case .strongSignal(.percent(let percent)):
                     samples.append(
                         OverviewNumericSample(
-                            identity: .bankedResetProbability24h(provider: snapshot.provider),
+                            identity: .bankedResetProbabilitySignal(provider: snapshot.provider),
                             format: .integerPercent,
                             value: Double(percent),
                             progressPercentage: nil
                         )
                     )
-                }
-                if case .percent(let percent) = presentation.resetForecast.probability48h {
-                    samples.append(
-                        OverviewNumericSample(
-                            identity: .bankedResetProbability48h(provider: snapshot.provider),
-                            format: .integerPercent,
-                            value: Double(percent),
-                            progressPercentage: nil
-                        )
-                    )
+                case .strongSignal:
+                    break
                 }
             }
             return samples
@@ -255,6 +270,8 @@ enum OverviewNumericPresentation {
             return NSUserInterfaceItemIdentifier("codex.bankedReset.probability24h")
         case .bankedResetProbability48h:
             return NSUserInterfaceItemIdentifier("codex.bankedReset.probability48h")
+        case .bankedResetProbabilitySignal:
+            return NSUserInterfaceItemIdentifier("codex.bankedReset.probabilitySignalAmount")
         default:
             return NSUserInterfaceItemIdentifier("overview.numeric.amount.\(progressKey(for: identity))")
         }
@@ -276,6 +293,8 @@ enum OverviewNumericPresentation {
             return "bankedReset.probability24h"
         case .bankedResetProbability48h:
             return "bankedReset.probability48h"
+        case .bankedResetProbabilitySignal:
+            return "bankedReset.probabilitySignal"
         }
     }
 }

@@ -328,6 +328,14 @@ final class LocalizationTests: XCTestCase {
             "48 小时内"
         )
         XCTAssertEqual(
+            tr(.keyCodexBankedResetHighProbability, language: .simplifiedChinese),
+            "高概率"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetHighProbability, language: .english),
+            "High Prob."
+        )
+        XCTAssertEqual(
             tr(.keyCodexBankedResetConfidencePrefix, language: .simplifiedChinese),
             "置信度："
         )
@@ -368,6 +376,17 @@ final class LocalizationTests: XCTestCase {
             XCTAssertFalse(hint.contains("hint_copy"))
             XCTAssertFalse(tr(.keyCodexBankedResetProbability24h, language: language).isEmpty)
             XCTAssertFalse(tr(.keyCodexBankedResetProbability48h, language: language).isEmpty)
+            let highProbability = tr(.keyCodexBankedResetHighProbability, language: language)
+            XCTAssertFalse(highProbability.isEmpty)
+            XCTAssertFalse(highProbability.contains("%"))
+            XCTAssertFalse(highProbability.contains(colon))
+            XCTAssertLessThanOrEqual(
+                OpenCodexCardLayout.forecastTextWidth(
+                    highProbability,
+                    font: OpenCodexCardLayout.bankedResetPrimaryLabelFont(for: highProbability)
+                ),
+                OpenCodexCardLayout.amountWidth
+            )
             let confidencePrefix = tr(.keyCodexBankedResetConfidencePrefix, language: language)
             XCTAssertTrue(
                 confidencePrefix.contains(colon),
@@ -1194,7 +1213,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 473)
+        XCTAssertEqual(expectedKeys.count, 474)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

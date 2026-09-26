@@ -276,6 +276,28 @@ enum CodexResetProbability: Equatable {
     }
 }
 
+/// Documented `official_signal` object from the public forecast payload.
+/// Presence of this value, not any nested score, switches the menu into
+/// strong-signal mode. Probability is parsed separately and may be missing.
+struct CodexResetOfficialSignal: Equatable {
+    var probability: CodexResetProbability
+
+    static let probabilityUnavailable = CodexResetOfficialSignal(probability: .unavailable)
+}
+
+/// Mutually exclusive menu presentation for the reset-probability block.
+enum CodexResetMenuProbabilityPresentation: Equatable {
+    case ordinary(CodexResetProbability)
+    case strongSignal(CodexResetProbability)
+
+    var showsOrdinaryForecastMetrics: Bool {
+        if case .ordinary = self {
+            return true
+        }
+        return false
+    }
+}
+
 enum CodexResetConfidence: Equatable {
     case low
     case medium
@@ -305,6 +327,9 @@ struct CodexResetForecast: Equatable {
     var confidence: CodexResetConfidence
     var updatedAt: Date?
     var isCached: Bool
+    /// Nil keeps ordinary 24h/48h forecast. Non-nil enters strong-signal mode
+    /// even when nested probability fields cannot be read.
+    var officialSignal: CodexResetOfficialSignal? = nil
 
     static let unavailable = CodexResetForecast(
         probability24h: .unavailable,
@@ -319,6 +344,29 @@ struct CodexResetForecast: Equatable {
             || probability48h != .unavailable
             || confidence != .unavailable
             || updatedAt != nil
+            || officialSignal != nil
+    }
+
+    var menuProbabilityPresentation: CodexResetMenuProbabilityPresentation {
+        if let officialSignal {
+            return .strongSignal(officialSignal.probability)
+        }
+        return .ordinary(probability24h)
+    }
+
+    var showsOrdinaryForecastMetrics: Bool {
+        menuProbabilityPresentation.showsOrdinaryForecastMetrics
+    }
+
+    func menuPrimaryDisplayText(language: AppLanguage = .selected) -> String {
+        switch menuProbabilityPresentation {
+        case .ordinary(let probability):
+            return probability.displayText
+        case .strongSignal(.percent(let value)):
+            return CodexResetProbability.percent(value).displayText
+        case .strongSignal:
+            return tr(.keyCodexBankedResetHighProbability, language: language)
+        }
     }
 
     func markingCached() -> CodexResetForecast {

@@ -458,6 +458,7 @@
 "codex.banked_reset.probability_hint" = "今後24時間および48時間以内に追加のグローバルリセットが発生する可能性の予測です。データ出典：codex-reset.com。ソース更新：%1$@。これは第三者によるグローバル追加リセットの予測であり、このアカウントの週次枠の確定リセット時刻ではなく、リセットカードの付与も保証しません。信頼度はモデルの分類であり、予測が正確であることは意味しません。";
 "codex.banked_reset.probability_24h" = "24時間以内";
 "codex.banked_reset.probability_48h" = "48時間以内";
+"codex.banked_reset.high_probability" = "高確率";
 "codex.banked_reset.confidence_prefix" = "信頼度：";
 "codex.banked_reset.confidence_low" = "低";
 "codex.banked_reset.confidence_medium" = "中";

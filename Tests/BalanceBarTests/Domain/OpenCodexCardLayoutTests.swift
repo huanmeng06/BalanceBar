@@ -236,6 +236,79 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(shownMetrics.maxY, probabilityOn.reset.minY)
     }
 
+    func testBankedResetProbabilityHidesOrdinaryForecastMetricsInStrongSignalMode() throws {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 82,
+                label: "5-hour",
+                daysText: "5 hours",
+                reset: "2h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 82,
+                label: "7-day",
+                daysText: "7 days",
+                reset: "7d",
+                durationSeconds: 604_800
+            )
+        ]
+        let ordinary = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .compact,
+            includesBankedResetForecastMetrics: true
+        )
+        let strongSignal = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .compact,
+            includesBankedResetForecastMetrics: false
+        )
+        let ordinaryProbability = try XCTUnwrap(ordinary.bankedResetProbabilityRow)
+        let strongProbability = try XCTUnwrap(strongSignal.bankedResetProbabilityRow)
+        XCTAssertNotNil(ordinary.bankedResetForecastMetrics)
+        XCTAssertNil(strongSignal.bankedResetForecastMetrics)
+        XCTAssertEqual(
+            ordinary.cardSize.height - strongSignal.cardSize.height,
+            OpenCodexCardLayout.bankedResetForecastLineGap
+                + OpenCodexCardLayout.bankedResetForecastExtraHeight(),
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            OpenCodexCardLayout.bankedResetProbabilityBlockHeight()
+                - OpenCodexCardLayout.bankedResetProbabilityBlockHeight(
+                    includesForecastMetrics: false
+                ),
+            OpenCodexCardLayout.bankedResetForecastLineGap
+                + OpenCodexCardLayout.bankedResetForecastExtraHeight(),
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            strongSignal.quotaRows[1].progress.minY - strongProbability.quotaDetail.maxY,
+            OpenCodexCardLayout.quotaVisibleBlockGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            ordinary.quotaRows[1].progress.minY - ordinaryProbability.quotaDetail.maxY,
+            OpenCodexCardLayout.quotaVisibleBlockGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(strongProbability.progress, .zero)
+        XCTAssertGreaterThan(strongProbability.reset.width, 0)
+        XCTAssertEqual(
+            strongProbability.amount.height,
+            OpenCodexCardLayout.bankedResetTextBandAmountHeight,
+            accuracy: 0.001
+        )
+    }
+
     func testBankedResetProbabilityAndSummaryAmountSpansTitleAndSubtitleBand() throws {
         let windows = [
             OfficialQuotaWindow(

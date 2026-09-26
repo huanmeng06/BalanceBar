@@ -806,6 +806,81 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertFalse(noteOnly.hasAnyValue)
     }
 
+    func testCodexResetForecastParserReadsOfficialSignalIndependentlyOfOrdinaryForecast() {
+        let ordinary = CodexResetForecastParser.parse(
+            data: Data(#"{"probabilities":{"rounded_24h":20,"rounded_48h":35,"signal_percent":71,"commitment":0.72},"signal_score":{"value":73}}"#.utf8)
+        )
+        XCTAssertNil(ordinary.officialSignal)
+        XCTAssertEqual(ordinary.probability24h, .percent(20))
+        XCTAssertEqual(ordinary.probability48h, .percent(35))
+        XCTAssertEqual(ordinary.menuProbabilityPresentation, .ordinary(.percent(20)))
+        XCTAssertTrue(ordinary.showsOrdinaryForecastMetrics)
+        XCTAssertEqual(ordinary.menuPrimaryDisplayText(language: .english), "20%")
+
+        let nullSignal = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":null,"probabilities":{"rounded_24h":20,"rounded_48h":35,"signal_percent":71}}"#.utf8)
+        )
+        XCTAssertNil(nullSignal.officialSignal)
+        XCTAssertEqual(nullSignal.menuProbabilityPresentation, .ordinary(.percent(20)))
+
+        let scored = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"score":{"value":71,"base":74}},"probabilities":{"rounded_24h":20,"rounded_48h":35,"signal_percent":72,"commitment":0.73,"commitment_floor_percent":75},"signal_score":{"value":76}}
+            """#.utf8)
+        )
+        XCTAssertEqual(scored.officialSignal?.probability, .percent(71))
+        XCTAssertEqual(scored.probability24h, .percent(20))
+        XCTAssertEqual(scored.probability48h, .percent(35))
+        XCTAssertEqual(scored.menuProbabilityPresentation, .strongSignal(.percent(71)))
+        XCTAssertFalse(scored.showsOrdinaryForecastMetrics)
+        XCTAssertEqual(scored.menuPrimaryDisplayText(language: .english), "71%")
+        XCTAssertNotEqual(scored.officialSignal?.probability, .percent(20))
+        XCTAssertNotEqual(scored.officialSignal?.probability, .percent(83))
+        XCTAssertNotEqual(scored.officialSignal?.probability, .percent(93))
+
+        let signalPercent = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{},"probabilities":{"rounded_24h":20,"rounded_48h":35,"signal_percent":72,"commitment":0.73}}"#.utf8)
+        )
+        XCTAssertEqual(signalPercent.officialSignal?.probability, .percent(72))
+        XCTAssertEqual(signalPercent.menuPrimaryDisplayText(language: .english), "72%")
+
+        let commitment = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{"tweet_id":"1"},"probabilities":{"rounded_24h":20,"rounded_48h":35,"commitment":0.73}}"#.utf8)
+        )
+        XCTAssertEqual(commitment.officialSignal?.probability, .percent(73))
+
+        let missingProbability = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{"tweet_id":"1","summary":"reset"},"probabilities":{"rounded_24h":20,"rounded_48h":35}}"#.utf8)
+        )
+        XCTAssertEqual(
+            missingProbability.officialSignal,
+            .probabilityUnavailable
+        )
+        XCTAssertEqual(missingProbability.probability24h, .percent(20))
+        XCTAssertEqual(
+            missingProbability.menuProbabilityPresentation,
+            .strongSignal(.unavailable)
+        )
+        XCTAssertEqual(
+            missingProbability.menuPrimaryDisplayText(language: .simplifiedChinese),
+            "高概率"
+        )
+        XCTAssertEqual(
+            missingProbability.menuPrimaryDisplayText(language: .english),
+            "High Prob."
+        )
+        XCTAssertNotEqual(missingProbability.menuPrimaryDisplayText(), "20%")
+        XCTAssertNotEqual(missingProbability.menuPrimaryDisplayText(), "83%")
+        XCTAssertNotEqual(missingProbability.menuPrimaryDisplayText(), "93%")
+
+        let relocated = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{"mystery":93},"probabilities":{"rounded_24h":20}}"#.utf8)
+        )
+        XCTAssertEqual(relocated.officialSignal?.probability, .unavailable)
+        XCTAssertNotEqual(relocated.officialSignal?.probability, .percent(93))
+        XCTAssertTrue(relocated.hasAnyValue)
+    }
+
     func testOfficialQuotaParserRejectsInvalidAndMissingFixtures() throws {
         XCTAssertThrowsError(
             try OfficialQuotaResponseParser.parse(

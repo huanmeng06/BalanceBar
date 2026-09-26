@@ -235,6 +235,68 @@ final class OverviewNumericTransitionTests: XCTestCase {
             ]
         )
         XCTAssertEqual(samples.last?.displayText, "42%")
+
+        let strongSignalSamples = OverviewNumericPresentation.samples(
+            snapshot: Snapshot.official(
+                "OpenAI",
+                45,
+                "7 day",
+                "2d",
+                date,
+                windows: official.officialQuotaWindows,
+                bankedReset: official.bankedReset,
+                resetForecast: CodexResetForecast(
+                    probability24h: .percent(20),
+                    probability48h: .percent(35),
+                    confidence: .low,
+                    updatedAt: date,
+                    isCached: false,
+                    officialSignal: CodexResetOfficialSignal(probability: .percent(71))
+                )
+            ),
+            lunaReserveDisplayMode: .disabled,
+            hideExhaustedQuota: false,
+            showBankedReset: true
+        )
+        XCTAssertEqual(
+            strongSignalSamples.map(\.identity),
+            [
+                .officialWindow(provider: "OpenAI", kind: .sevenDay),
+                .bankedResetCount(provider: "OpenAI"),
+                .bankedResetProbabilitySignal(provider: "OpenAI")
+            ]
+        )
+        XCTAssertEqual(strongSignalSamples.last?.displayText, "71%")
+
+        let fallbackSamples = OverviewNumericPresentation.samples(
+            snapshot: Snapshot.official(
+                "OpenAI",
+                45,
+                "7 day",
+                "2d",
+                date,
+                windows: official.officialQuotaWindows,
+                bankedReset: official.bankedReset,
+                resetForecast: CodexResetForecast(
+                    probability24h: .percent(20),
+                    probability48h: .percent(35),
+                    confidence: .low,
+                    updatedAt: date,
+                    isCached: false,
+                    officialSignal: .probabilityUnavailable
+                )
+            ),
+            lunaReserveDisplayMode: .disabled,
+            hideExhaustedQuota: false,
+            showBankedReset: true
+        )
+        XCTAssertEqual(
+            fallbackSamples.map(\.identity),
+            [
+                .officialWindow(provider: "OpenAI", kind: .sevenDay),
+                .bankedResetCount(provider: "OpenAI")
+            ]
+        )
         let first24 = OverviewNumericTransition.plan(
             previous: nil,
             current: samples[2],

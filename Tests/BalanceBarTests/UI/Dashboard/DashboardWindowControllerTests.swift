@@ -5379,6 +5379,216 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
     }
 
+    func testOfficialCodexMenuProbabilityBlockSwitchesToOfficialSignalPresentation() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2d0h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "7d0h",
+                durationSeconds: 604_800
+            )
+        ]
+        let date = Date()
+        let bankedReset = CodexBankedReset(cards: [
+            CodexBankedResetCard(
+                id: "card",
+                resetType: "codex_rate_limits",
+                titleText: tr(.keyCodexBankedResetFullResetTitle),
+                windowText: tr(.keyCodexBankedResetFullResetWindow),
+                expiresAt: date.addingTimeInterval(3_600),
+                expiresText: "later",
+                remainingText: "1h",
+                remainingIsWarning: false
+            )
+        ])
+        let cases: [(
+            String,
+            CodexResetForecast,
+            String,
+            String,
+            Bool
+        )] = [
+            (
+                "signal-percent",
+                CodexResetForecast(
+                    probability24h: .percent(20),
+                    probability48h: .percent(35),
+                    confidence: .low,
+                    updatedAt: date,
+                    isCached: false,
+                    officialSignal: CodexResetOfficialSignal(probability: .percent(71))
+                ),
+                "71%",
+                "codex.bankedReset.probabilitySignalAmount",
+                true
+            ),
+            (
+                "signal-fallback",
+                CodexResetForecast(
+                    probability24h: .percent(20),
+                    probability48h: .percent(35),
+                    confidence: .low,
+                    updatedAt: date,
+                    isCached: false,
+                    officialSignal: .probabilityUnavailable
+                ),
+                tr(.keyCodexBankedResetHighProbability),
+                "codex.bankedReset.probabilityHighLabel",
+                false
+            )
+        ]
+
+        for (name, forecast, largeText, largeIdentifier, usesNumeric) in cases {
+            let controller = StatusItemController(
+                actions: StatusItemController.Actions(
+                    manualRefresh: {},
+                    openDashboard: {},
+                    openChatGPT: {},
+                    openCCSwitch: {},
+                    quit: {},
+                    switchProvider: { _ in },
+                    openProviderWebsite: {},
+                    openStatusLink: { _ in },
+                    iconChanged: { _ in }
+                )
+            )
+            defer { controller.teardown() }
+            controller.start(
+                snapshot: .official(
+                    "OpenAI Official",
+                    45,
+                    windows[1].label,
+                    windows[1].reset,
+                    date,
+                    windows: windows,
+                    bankedReset: bankedReset,
+                    resetForecast: forecast
+                ),
+                refreshDate: date,
+                menuInput: StatusItemController.MenuInput(
+                    choices: [],
+                    quickSwitchSummaries: [:],
+                    activeClient: .codex,
+                    openAIAccount: nil,
+                    statusLinks: [],
+                    showQuickSwitchMenu: false,
+                    showOpenChatGPTMenu: false,
+                    showOpenCCSwitchMenu: false,
+                    showStatusMenu: false
+                ),
+                settings: StatusItemController.MenuBarSettings(
+                    showIcon: true,
+                    showAmount: true,
+                    showReset: true,
+                    horizontalPadding: 6,
+                    keepMenuOpenAfterRefresh: true
+                )
+            )
+            let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view, name)
+            let frames = OpenCodexCardLayout.frames(
+                for: .quota,
+                officialQuotaWindows: windows,
+                includesBankedReset: true,
+                bankedResetCardCount: 1,
+                includesBankedResetForecastMetrics: false
+            )
+            XCTAssertEqual(overview.bounds.size, frames.cardSize, name)
+            XCTAssertNil(frames.bankedResetForecastMetrics, name)
+            let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
+            XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)), name)
+            XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilitySource)), name)
+            XCTAssertTrue(labels.contains(largeText), name)
+            XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)), name)
+            XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability48h)), name)
+            XCTAssertFalse(labels.contains("20%"), name)
+            XCTAssertFalse(labels.contains("35%"), name)
+            XCTAssertFalse(labels.contains("83%"), name)
+            XCTAssertFalse(labels.contains("93%"), name)
+            XCTAssertFalse(
+                overview.subviews.contains {
+                    $0.identifier?.rawValue == "codex.bankedReset.probability24hPrefix"
+                },
+                name
+            )
+            XCTAssertFalse(
+                overview.subviews.contains {
+                    $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
+                },
+                name
+            )
+            XCTAssertFalse(
+                overview.subviews.contains {
+                    $0.identifier?.rawValue == "codex.bankedReset.probability24h"
+                },
+                name
+            )
+            XCTAssertFalse(
+                overview.subviews.contains {
+                    $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
+                },
+                name
+            )
+            let source = try XCTUnwrap(
+                allControls(of: overview, as: HoverLinkTextField.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.probability"
+                },
+                name
+            )
+            XCTAssertEqual(source.stringValue, tr(.keyCodexBankedResetProbabilitySource), name)
+            XCTAssertFalse(source.stringValue.contains("codex-reset.com"), name)
+            XCTAssertTrue(source.hoverHint.contains("codex-reset.com"), name)
+            XCTAssertEqual(
+                source.hoverHint,
+                StatusItemController.codexResetForecastHint(for: forecast),
+                name
+            )
+            XCTAssertNil(source.toolTip, name)
+            XCTAssertEqual(
+                source.hoverHintDelay,
+                OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay,
+                accuracy: 0.001,
+                name
+            )
+            let largeFields = allControls(of: overview, as: NSTextField.self).filter {
+                $0.identifier?.rawValue == largeIdentifier
+            }
+            XCTAssertEqual(largeFields.map(\.stringValue), [largeText], name)
+            XCTAssertEqual(largeFields.first?.alignment, .right, name)
+            let largeNumeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
+                $0.identifier?.rawValue == largeIdentifier
+            }
+            XCTAssertEqual(largeNumeric.count, usesNumeric ? 1 : 0, name)
+            if usesNumeric {
+                XCTAssertEqual(
+                    largeNumeric[0].textField.font?.pointSize,
+                    OpenCodexCardLayout.quotaAmountPointSize,
+                    name
+                )
+                XCTAssertNil(largeNumeric[0].sample?.progressPercentage, name)
+            } else {
+                XCTAssertEqual(
+                    largeFields[0].font,
+                    OpenCodexCardLayout.bankedResetPrimaryLabelFont(for: largeText),
+                    name
+                )
+            }
+        }
+    }
+
     func testOfficialCodexMenuCardHidesBankedResetWhenShowBankedResetIsOff() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
