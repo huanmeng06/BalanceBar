@@ -30,3 +30,5 @@
 "notifications.pause_duration" = "选择暂停通知的时长";
 "notifications.pause_today" = "今日内暂停";
 "notifications.agent_settings" = "Agent 设置";
+"notifications.pause_none" = "无";
+"notifications.pause_status" = "暂停至：%1$@ · 剩余：%2$@";

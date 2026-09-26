@@ -30,3 +30,5 @@
 "notifications.pause_duration" = "Выберите длительность паузы";
 "notifications.pause_today" = "Приостановить до конца дня";
 "notifications.agent_settings" = "Настройки Agent";
+"notifications.pause_none" = "Нет";
+"notifications.pause_status" = "Пауза до %1$@ · Осталось: %2$@";

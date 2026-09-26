@@ -154,6 +154,13 @@ final class BalanceNotificationCoordinator {
         onQueue { store.settings }
     }
 
+    /// UI actions enqueue persistence/evaluation work so a native switch or
+    /// popup can finish its AppKit animation without waiting on the serial
+    /// notification state queue.
+    func performAsync(_ work: @escaping () -> Void) {
+        queue.async(execute: work)
+    }
+
     func refreshPermission() {
         client.authorizationStatus { [weak self] state in
             guard let self else { return }
