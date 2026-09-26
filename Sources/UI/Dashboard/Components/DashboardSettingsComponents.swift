@@ -61,11 +61,24 @@ enum DashboardSettingsLayoutMetrics {
 }
 
 enum DashboardSettingsComponents {
+    static let settingsSectionSpacing: CGFloat = 28
     static func invalidateHostedSettingsRowHeight(for view: NSView) {
-        view.invalidateIntrinsicContentSize()
-        view.needsLayout = true
-        view.superview?.invalidateIntrinsicContentSize()
-        view.superview?.needsLayout = true
+        var current: NSView? = view
+        var passedSection = false
+        while let candidate = current {
+            candidate.invalidateIntrinsicContentSize()
+            candidate.needsLayout = true
+            if candidate is SettingsSectionView {
+                passedSection = true
+            }
+            if passedSection,
+               candidate.identifier == DashboardPageSearch.globalSearchGroupIdentifier {
+                candidate.superview?.invalidateIntrinsicContentSize()
+                candidate.superview?.needsLayout = true
+                break
+            }
+            current = candidate.superview
+        }
     }
     static let settingsSeparatorHeight: CGFloat = 1
     static let standardRowHeight: CGFloat = 62
@@ -301,7 +314,7 @@ enum DashboardSettingsComponents {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 28
+        stack.spacing = settingsSectionSpacing
         stack.distribution = .gravityAreas
         stack.translatesAutoresizingMaskIntoConstraints = false
         // Horizontal width belongs to the scroll document, not to whichever

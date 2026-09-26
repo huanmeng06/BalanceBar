@@ -16,6 +16,23 @@ final class CCSwitchRepository {
 
     private static let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+    private let loadChoicesObserverLock = NSLock()
+    private var loadChoicesObserverStorage: (() -> Void)?
+
+    /// Tests may observe provider-list reads. Production leaves this nil.
+    var loadChoicesObserver: (() -> Void)? {
+        get {
+            loadChoicesObserverLock.lock()
+            defer { loadChoicesObserverLock.unlock() }
+            return loadChoicesObserverStorage
+        }
+        set {
+            loadChoicesObserverLock.lock()
+            loadChoicesObserverStorage = newValue
+            loadChoicesObserverLock.unlock()
+        }
+    }
+
     let databaseURL: URL
     private let appSettingsURL: URL
     private let homeDirectoryURL: URL
@@ -101,6 +118,8 @@ final class CCSwitchRepository {
     }
 
     func loadChoices(appType: String) -> [ProviderChoice] {
+        let observer = loadChoicesObserver
+        observer?()
         let fileManager = FileManager.default
         let databaseExists = fileManager.fileExists(atPath: databaseURL.path)
         let databaseReadable = fileManager.isReadableFile(atPath: databaseURL.path)

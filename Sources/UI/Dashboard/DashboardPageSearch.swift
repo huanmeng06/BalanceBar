@@ -25,13 +25,15 @@ enum DashboardSearchVisibility {
         setBusinessHidden(view, hidden)
         superSetter(isEffectivelyHidden(view))
         if wasBusinessHidden != hidden {
-            syncSeparatedRows(around: view)
+            reconcileDerivedSeparators(around: view)
             DashboardKeyViewLoop.invalidate(view.window)
         }
         if wasBusinessHidden, !hidden, !isEffectivelyHidden(view) {
             revealSearchHiddenSectionAncestors(of: view)
-            hideSearchEmptyState(from: view)
-            syncSeparatedRows(around: view)
+            if view.identifier != DashboardPageSearch.emptyStateIdentifier {
+                hideSearchEmptyState(from: view)
+            }
+            reconcileDerivedSeparators(around: view)
             DashboardKeyViewLoop.invalidate(view.window)
         }
     }
@@ -48,8 +50,15 @@ enum DashboardSearchVisibility {
         objc_getAssociatedObject(view, &searchKey) as? Bool ?? false
     }
 
+    static func storedBusinessHidden(_ view: NSView) -> Bool? {
+        objc_getAssociatedObject(view, &businessKey) as? Bool
+    }
+
     static func isBusinessHidden(_ view: NSView) -> Bool {
-        if let stored = objc_getAssociatedObject(view, &businessKey) as? Bool {
+        if view is NSBox {
+            return false
+        }
+        if let stored = storedBusinessHidden(view) {
             return stored
         }
         return view.isHidden && !isSearchHidden(view)
@@ -99,45 +108,69 @@ enum DashboardSearchVisibility {
 
     private static func hideSearchEmptyState(in view: NSView) {
         if view.identifier == DashboardPageSearch.emptyStateIdentifier {
-            view.isHidden = true
+            withSearchVisibilityMutation {
+                view.isHidden = true
+            }
             return
         }
         for child in view.subviews {
             hideSearchEmptyState(in: child)
         }
+        if let stack = view as? NSStackView {
+            for arranged in stack.arrangedSubviews {
+                hideSearchEmptyState(in: arranged)
+            }
+        }
     }
 
-    private static func syncSeparatedRows(around view: NSView) {
-        guard let stack = view.superview as? NSStackView else { return }
-        let arranged = stack.arrangedSubviews
-        for (index, candidate) in arranged.enumerated() {
-            guard candidate is NSBox else { continue }
-            let previousVisible = arranged[..<index].reversed().first { !($0 is NSBox) }.map {
-                !isCollapsedForSearchLayout($0)
-            } ?? false
-            let nextVisible = arranged[(index + 1)...].first { !($0 is NSBox) }.map {
-                !isCollapsedForSearchLayout($0)
-            } ?? false
-            let shouldHide = !(previousVisible && nextVisible)
-            if shouldHide {
-                if !candidate.isHidden && !isSearchHidden(candidate) {
-                    candidate.isHidden = true
-                }
-            } else {
-                if isSearchHidden(candidate), !isBusinessHidden(candidate) {
-                    setSearchHidden(candidate, false)
-                    withSearchVisibilityMutation {
-                        restoreCollapsedStackVisibility(candidate)
-                    }
-                }
-                if !isBusinessHidden(candidate), candidate.isHidden {
-                    withSearchVisibilityMutation {
-                        candidate.isHidden = false
-                    }
-                }
-            }
-            DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: candidate)
+    static func reconcileDerivedSeparators(around view: NSView) {
+        if let section = SettingsSectionView.enclosing(view) {
+            section.reconcileSeparators()
+            return
         }
+        guard let stack = view.superview as? NSStackView else { return }
+        reconcileDerivedSeparators(in: stack)
+    }
+
+    static func reconcileDerivedSeparators(in stack: NSStackView) {
+        if let section = SettingsSectionView.enclosing(stack) {
+            section.reconcileSeparators()
+            return
+        }
+        let contentViews = stack.arrangedSubviews.filter { !($0 is NSBox) }
+        let separators = stack.arrangedSubviews.filter { $0 is NSBox }
+        reconcileDerivedSeparators(contentViews: contentViews, separators: separators)
+    }
+
+    /// A hairline after row N is shown when that row is expanded and any later
+    /// content row is also expanded. Hidden rows in between do not consume the
+    /// line.
+    static func reconcileDerivedSeparators(contentViews: [NSView], separators: [NSView]) {
+        for (index, separator) in separators.enumerated() {
+            let shouldShow: Bool
+            if index < contentViews.count {
+                let previousVisible = !isCollapsedForSearchLayout(contentViews[index])
+                let hasVisibleAfter = index + 1 < contentViews.count
+                    && contentViews[(index + 1)...].contains { !isCollapsedForSearchLayout($0) }
+                shouldShow = previousVisible && hasVisibleAfter
+            } else {
+                shouldShow = false
+            }
+            applyDerivedSeparatorHidden(separator, hidden: !shouldShow)
+        }
+    }
+
+    private static func applyDerivedSeparatorHidden(_ separator: NSView, hidden: Bool) {
+        objc_setAssociatedObject(separator, &businessKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        setSearchHidden(separator, false)
+        withSearchVisibilityMutation {
+            if let stack = separator.superview as? NSStackView,
+               stack.arrangedSubviews.contains(separator) {
+                stack.setVisibilityPriority(.mustHold, for: separator)
+            }
+            separator.isHidden = hidden
+        }
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: separator)
     }
 
     static func isCollapsedForSearchLayout(_ view: NSView) -> Bool {
@@ -165,12 +198,70 @@ enum DashboardPageSearch {
     static let rowIdentifier = NSUserInterfaceItemIdentifier("dashboard.settings.row")
     static let emptyStateIdentifier = NSUserInterfaceItemIdentifier("dashboard.search.emptyState")
     static let aboutContentIdentifier = NSUserInterfaceItemIdentifier("dashboard.about.content")
+    static let globalSearchGroupIdentifier = NSUserInterfaceItemIdentifier("dashboard.search.globalGroup")
     private static var searchableRowKey: UInt8 = 0
+    private static let normalizedTextCache = NSCache<NSString, NSString>()
+
+    enum MatchKind: Sendable {
+        case contains
+    }
+
+    struct Match: Equatable, Comparable, Sendable {
+        let kind: MatchKind
+        let relevance: Double
+
+        init(kind: MatchKind, relevance: Double = 0) {
+            self.kind = kind
+            self.relevance = relevance
+        }
+
+        static func < (lhs: Match, rhs: Match) -> Bool {
+            return lhs.relevance < rhs.relevance
+        }
+    }
 
     static func matches(_ text: String, query: String) -> Bool {
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return false }
-        return text.localizedStandardContains(needle)
+        bestMatch(texts: [text], query: query) != nil
+    }
+
+    /// Localization source used by search. Layout-only tokens must not
+    /// participate in matching: word joiners and non-breaking spaces are
+    /// visual grouping, not part of the query.
+    static func semanticSearchText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\u{2060}", with: "")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+
+    static func bestMatch(
+        texts: [String],
+        supportingTexts: [String] = [],
+        query: String
+    ) -> Match? {
+        let needle = semanticSearchText(query)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return nil }
+        let values = (texts + supportingTexts).map(semanticSearchText)
+        guard values.contains(where: { $0.localizedStandardContains(needle) }) else {
+            return nil
+        }
+        return Match(kind: .contains, relevance: 1)
+    }
+
+    static func normalize(_ text: String) -> String {
+        if let cached = normalizedTextCache.object(forKey: text as NSString) {
+            return cached as String
+        }
+        let widthFolded = text.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? text
+        let folded = widthFolded.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        )
+        let normalized = folded
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        normalizedTextCache.setObject(normalized as NSString, forKey: text as NSString)
+        return normalized
     }
 
     /// Marks a row as searchable without requiring `identifier` to stay
@@ -188,27 +279,180 @@ enum DashboardPageSearch {
         }
         return view.identifier == rowIdentifier
     }
+
+    static func matchDocuments(
+        _ documents: [DashboardSearchDocument],
+        query: String,
+        isCancelled: @Sendable () -> Bool = { false }
+    ) -> [DashboardSearchMatchResult] {
+        var matches: [DashboardSearchMatchResult] = []
+        matches.reserveCapacity(documents.count / 4)
+        for document in documents {
+            if isCancelled() { return [] }
+            guard document.businessVisible,
+                  let match = bestMatch(
+                    texts: document.texts,
+                    supportingTexts: document.supportingTexts,
+                    query: query
+                  ) else {
+                continue
+            }
+            matches.append(
+                DashboardSearchMatchResult(documentID: document.id, match: match)
+            )
+        }
+        return matches.sorted {
+            if $0.match != $1.match { return $0.match > $1.match }
+            return $0.documentID < $1.documentID
+        }
+    }
 }
 
-enum DashboardPageSearchMode {
-    /// Settings pages: section headings and row titles.
+enum DashboardPageSearchMode: Sendable {
+    /// Settings pages: section headings, row titles, subtitles and the
+    /// current-language contents of row controls.
     case titles
     /// Provider detail and About: currently visible copy.
     case visibleCopy
 }
 
+/// Immutable search input prepared on the main thread and consumed by the
+/// background matcher. It intentionally contains no AppKit objects.
+struct DashboardSearchDocument: Sendable {
+    let id: String
+    let sectionID: String?
+    let texts: [String]
+    let supportingTexts: [String]
+    let businessVisible: Bool
+    let order: Int
+}
+
+struct DashboardSearchMatchResult: Sendable {
+    let documentID: String
+    let match: DashboardPageSearch.Match
+}
+
 enum DashboardSettingsSearchCatalog {
+    private static let languageKey = LocalizationKey.keyDashboardGeneralAndRefreshPagesLanguage
+    private static let keysRequiringArguments: Set<String> = [
+        "dashboard.about.page.version_value",
+        "dashboard.general.and.refresh.pages.current_provider_value",
+        "dashboard.general.and.refresh.pages.downloading_value",
+        "dashboard.general.and.refresh.pages.installing_value",
+        "dashboard.general.and.refresh.pages.new_version_available_value_value",
+        "dashboard.general.and.refresh.pages.update_check_failed_try_again_reason",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_forbidden_value",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_not_found_value",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_server_error_value",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_status_value",
+        "dashboard.general.and.refresh.pages.update_check_failure_reason_http_too_many_requests_value",
+        "dashboard.menu.bar.page.adjusts_the_gap_between_balancebar_and_other_items_widthvalue",
+        "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate",
+        "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range",
+        "dashboard.menu.bar.page.auto_switch_luna_reserve",
+        "dashboard.menu.bar.page.auto_switch_luna_reserve_description",
+        "dashboard.menu.bar.page.fine_tune_the_amount_s_vertical_position_yaxisvalue",
+        "dashboard.menu.bar.page.fine_tune_the_icon_s_vertical_position_yaxisvalue",
+        "dashboard.menu.bar.page.luna_reserve_reset_time",
+        "dashboard.menu.bar.page.luna_reserve_reset_time_description",
+        "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve",
+        "dashboard.menu.page.hide_exhausted_quota_description",
+        "dashboard.menu.page.luna_reserve_display_mode",
+        "dashboard.menu.page.luna_reserve_display_mode_description"
+    ]
+    private static var cachedCatalogLanguageKey: String?
+    private static var cachedTitlesBySection: [DashboardSection: [String]] = [:]
+
+    /// The language row is the one intentional cross-language entry point.
+    /// Every other catalog value comes from the currently selected UI locale.
+    static func languageSearchTitles() -> [String] {
+        AppLanguage.allCases
+            .filter { $0 != .system }
+            .map { tr(languageKey, language: $0) }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
     static func titles(for section: DashboardSection) -> [String] {
+        let languageKey = "\(AppLanguage.selected.rawValue)|\(AppLanguage.resolved.rawValue)"
+        if cachedCatalogLanguageKey != languageKey {
+            cachedCatalogLanguageKey = languageKey
+            cachedTitlesBySection = Dictionary(uniqueKeysWithValues: DashboardSection.allCases.map {
+                ($0, buildTitles(for: $0))
+            })
+        }
+        return cachedTitlesBySection[section] ?? []
+    }
+
+    private static func buildTitles(for section: DashboardSection) -> [String] {
         var values = [section.title]
         values.append(contentsOf: keys(for: section).map { tr($0) })
         values.append(contentsOf: extraTitles(for: section))
+        values.append(contentsOf: localizedSettingsCopy(for: section))
+        if section == .general {
+            values.append(contentsOf: languageSearchTitles())
+        }
         return values
     }
 
-    static func matchingSections(query: String) -> [DashboardSection] {
-        DashboardSection.allCases.filter { section in
-            titles(for: section).contains { DashboardPageSearch.matches($0, query: query) }
+    private static func localizedSettingsCopy(for section: DashboardSection) -> [String] {
+        let prefixes: [String]
+        switch section {
+        case .general:
+            prefixes = ["dashboard.general.and.refresh.pages."]
+        case .menuBar:
+            prefixes = ["dashboard.menu.bar.page."]
+        case .menu:
+            prefixes = ["dashboard.menu.page."]
+        case .advanced:
+            prefixes = ["dashboard.advanced.page.", "dashboard.logs.page."]
+        case .about:
+            prefixes = ["dashboard.about.page."]
         }
+        return LocalizationKey.allCases
+            .filter { key in
+                prefixes.contains { prefix in key.rawValue.hasPrefix(prefix) }
+                    && !keysRequiringArguments.contains(key.rawValue)
+            }
+            .map { tr($0) }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    static func matchingSections(
+        query: String,
+        runtimeTexts: [DashboardSection: [String]] = [:]
+    ) -> [DashboardSection] {
+        rankedSections(query: query, runtimeTexts: runtimeTexts).map(\.section)
+    }
+
+    static func rankedSections(
+        query: String,
+        runtimeTexts: [DashboardSection: [String]] = [:]
+    ) -> [(section: DashboardSection, match: DashboardPageSearch.Match)] {
+        var scored: [(section: DashboardSection, match: DashboardPageSearch.Match)] = []
+        for section in DashboardSection.allCases {
+            let match = DashboardPageSearch.bestMatch(
+                texts: titles(for: section) + (runtimeTexts[section] ?? []),
+                query: query
+            )
+            if let match {
+                scored.append((section: section, match: match))
+            }
+        }
+        return scored
+            .sorted { lhs, rhs in
+                if lhs.match != rhs.match { return lhs.match > rhs.match }
+                return lhs.section.rawValue < rhs.section.rawValue
+            }
+    }
+
+    static func match(
+        for section: DashboardSection,
+        query: String
+    ) -> DashboardPageSearch.Match? {
+        return DashboardPageSearch.bestMatch(
+            texts: titles(for: section),
+            query: query
+        )
     }
 
     static func firstMatchingSection(query: String) -> DashboardSection? {
@@ -298,53 +542,346 @@ enum DashboardSettingsSearchCatalog {
         switch section {
         case .menuBar:
             return [
-                tr(
-                    .keyDashboardMenuBarPageAutoSwitchLunaReserve,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                ),
-                tr(
-                    .keyDashboardMenuBarPageLunaReserveResetTime,
-                    arguments: [tr(.keyLunaReserveTitle)]
-                )
-            ]
+                tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
+                tr(.keyDashboardMenuBarPageFiveHourQuota),
+                tr(.keyDashboardMenuBarPageSevenDayQuota)
+            ] + DashboardSettingsFormattedCopy.sharedVisibleTexts(for: .menuBar)
         case .about:
             return [
                 "BalanceBar",
                 tr(.keyDashboardAboutPageVersionValue, arguments: [""])
             ]
         case .general, .menu, .advanced:
-            if section == .menu {
-                return [
-                    tr(.keyDashboardMenuPageLunaReserveDisplayMode, arguments: [tr(.keyLunaReserveTitle)]),
-                    tr(.keyDashboardMenuPageHideExhaustedQuota)
-                ]
+            var texts = DashboardSettingsFormattedCopy.sharedVisibleTexts(for: section)
+            if section == .general {
+                texts.append(contentsOf: DashboardSettingsFormattedCopy.languageMenuTitles())
             }
+            return texts
+        }
+    }
+}
+
+/// Formatted settings copy that `tr(key)` cannot produce without arguments.
+/// Row builders and the candidate catalog both call these functions, so a
+/// subtitle that needs arguments cannot enter the page without also entering
+/// candidate selection.
+enum DashboardSettingsFormattedCopy {
+    static func currentProviderValue(_ name: String) -> String {
+        tr(
+            .keyDashboardGeneralAndRefreshPagesCurrentProviderValue,
+            arguments: [name]
+        )
+    }
+
+    static func autoSwitchLunaReserveTitle() -> String {
+        tr(
+            .keyDashboardMenuBarPageAutoSwitchLunaReserve,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func autoSwitchLunaReserveDescription() -> String {
+        tr(
+            .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func lunaReserveResetTimeTitle() -> String {
+        tr(
+            .keyDashboardMenuBarPageLunaReserveResetTime,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func lunaReserveResetTimeDescription() -> String {
+        tr(
+            .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func lunaReserveResetTimeModeTitle(_ mode: LunaReserveResetTimeMode) -> String {
+        switch mode {
+        case .lunaReserve:
+            return tr(
+                .keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve,
+                arguments: [tr(.keyLunaReserveTitle)]
+            )
+        case .originalQuota:
+            return tr(.keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota)
+        }
+    }
+
+    static func menuLunaReserveDisplayModeTitle() -> String {
+        tr(
+            .keyDashboardMenuPageLunaReserveDisplayMode,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func menuLunaReserveDisplayModeDescription() -> String {
+        tr(
+            .keyDashboardMenuPageLunaReserveDisplayModeDescription,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func hideExhaustedQuotaDescription() -> String {
+        tr(
+            .keyDashboardMenuPageHideExhaustedQuotaDescription,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
+    }
+
+    static func lunaReserveDisplayModeTitle(_ mode: LunaReserveDisplayMode) -> String {
+        switch mode {
+        case .disabled:
+            return tr(.keyDashboardMenuPageLunaReserveDisplayModeDisabled)
+        case .whenQuotaExhausted:
+            return tr(.keyDashboardMenuPageLunaReserveDisplayModeWhenQuotaExhausted)
+        case .always:
+            return tr(.keyDashboardMenuPageLunaReserveDisplayModeAlways)
+        }
+    }
+
+    static func restoreDefaultsTitle() -> String {
+        tr(.keyCommonRestoreDefaults)
+    }
+
+    static func statusLinksRestoreDefaultsTitle() -> String {
+        tr(.keyStatusLinksEditorRestoreDefaults)
+    }
+
+    /// Titles shown in the language popup. The row matcher searches these
+    /// item titles, including Follow System, in addition to the translated
+    /// word for Language.
+    static func languageMenuTitles() -> [String] {
+        AppLanguage.allCases.map(\.localizedTitle)
+    }
+
+    static func sharedVisibleTexts(for section: DashboardSection) -> [String] {
+        switch section {
+        case .menuBar:
+            return [
+                autoSwitchLunaReserveTitle(),
+                autoSwitchLunaReserveDescription(),
+                lunaReserveResetTimeTitle(),
+                lunaReserveResetTimeDescription()
+            ] + LunaReserveResetTimeMode.allCases.map { lunaReserveResetTimeModeTitle($0) }
+        case .menu:
+            return [
+                menuLunaReserveDisplayModeTitle(),
+                menuLunaReserveDisplayModeDescription(),
+                hideExhaustedQuotaDescription(),
+                restoreDefaultsTitle(),
+                statusLinksRestoreDefaultsTitle()
+            ] + LunaReserveDisplayMode.allCases.map { lunaReserveDisplayModeTitle($0) }
+        case .general, .advanced, .about:
             return []
         }
     }
 }
 
+/// Dynamic values the row matcher can see and the static catalog cannot
+/// know ahead of time. Argument-bearing localized copy is not listed here;
+/// `DashboardSettingsFormattedCopy` puts that copy in the static catalog.
+enum DashboardSettingsSearchRuntime {
+    static func textsBySection(
+        currentProviderName: String,
+        updateState: UpdateCheckState,
+        balanceDisplayThreshold: Double,
+        statusLinks: [StatusLink],
+        menuBarIconOffsetY: Double,
+        menuBarAmountOffsetY: Double,
+        menuBarWidthAdjustment: Double,
+        animationMode: MenuBarAnimationMode,
+        animationFrameRate: Int,
+        menuBarPreviewPrimary: String,
+        menuBarPreviewSecondary: String
+    ) -> [DashboardSection: [String]] {
+        let update = DashboardUpdatePresentation.make(for: updateState)
+        let frameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
+        return [
+            .general: nonempty([
+                DashboardSettingsFormattedCopy.currentProviderValue(currentProviderName),
+                update.subtitle,
+                update.buttonTitle
+            ]),
+            .menuBar: nonempty(
+                [
+                    menuBarPreviewPrimary,
+                    menuBarPreviewSecondary,
+                    String(frameRate),
+                    DashboardMenuBarPage.animationFrameRateSubtitle(
+                        mode: animationMode,
+                        fps: frameRate
+                    )
+                ] + searchableSubtitleTexts(
+                    DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: menuBarIconOffsetY)
+                ) + searchableSubtitleTexts(
+                    DashboardMenuBarLayoutSection.amountOffsetSummarySubtitle(y: menuBarAmountOffsetY)
+                ) + searchableSubtitleTexts(
+                    DashboardMenuBarLayoutSection.widthAdjustmentSummarySubtitle(menuBarWidthAdjustment)
+                )
+            ),
+            .menu: nonempty(
+                [DashboardMenuPage.formattedBalanceDisplayThreshold(balanceDisplayThreshold)]
+                    + statusLinks.flatMap { [$0.title, $0.url] }
+            )
+        ]
+    }
+
+    private static func nonempty(_ values: [String]) -> [String] {
+        values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    /// Candidate copy for a subtitle. This is the localization source the
+    /// mounted row indexes, without AppKit layout tokens.
+    private static func searchableSubtitleTexts(_ subtitle: LocalizedSubtitle) -> [String] {
+        [DashboardPageSearch.semanticSearchText(subtitle.text)]
+    }
+}
+
+/// Deterministic counters used by search regression tests. They describe
+/// structural work, rather than timing, so CI can enforce the steady-state
+/// query contract without relying on a machine-specific performance budget.
+/// Search scroll correction must not call `layoutIfNeeded` itself. This
+/// counter only moves for the first projection pass inside the filter.
+enum DashboardPageSearchDiagnostics {
+    static var searchIndexBuildCount = 0
+    static var synchronousLayoutCount = 0
+    static var globalSearchPagesMaterializedCount = 0
+
+    static func reset() {
+        searchIndexBuildCount = 0
+        synchronousLayoutCount = 0
+        globalSearchPagesMaterializedCount = 0
+    }
+}
+
 final class DashboardPageSearchFilter {
+    var statusLinks: [StatusLink] = []
+    private final class SearchIndex {
+        weak var root: NSView?
+        let sections: [NSView]
+        let rowsBySection: [ObjectIdentifier: [NSView]]
+        let globalSearchGroups: [NSView]
+        let documents: [DashboardSearchDocument]
+        let documentIDByView: [ObjectIdentifier: String]
+        let topLevelDocumentIDs: [String]
+        let visibleCopyByView: [ObjectIdentifier: [String]]
+        let topLevelVisibleCopy: [String]
+
+        init(
+            root: NSView,
+            sections: [NSView],
+            rowsBySection: [ObjectIdentifier: [NSView]],
+            globalSearchGroups: [NSView],
+            documents: [DashboardSearchDocument],
+            documentIDByView: [ObjectIdentifier: String],
+            topLevelDocumentIDs: [String],
+            visibleCopyByView: [ObjectIdentifier: [String]],
+            topLevelVisibleCopy: [String]
+        ) {
+            self.root = root
+            self.sections = sections
+            self.rowsBySection = rowsBySection
+            self.globalSearchGroups = globalSearchGroups
+            self.documents = documents
+            self.documentIDByView = documentIDByView
+            self.topLevelDocumentIDs = topLevelDocumentIDs
+            self.visibleCopyByView = visibleCopyByView
+            self.topLevelVisibleCopy = topLevelVisibleCopy
+        }
+    }
+
+    private let searchIndexes = NSMapTable<NSView, SearchIndex>.strongToStrongObjects()
+    private var activeSearchIndex: SearchIndex?
+    private var activeDocumentMatches: Set<String>?
+    private var needsInitialProjectionLayout = true
     private let hiddenBySearch = NSHashTable<NSView>.weakObjects()
     private let originalStackVisibilityPriority = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
+    private let originalStackParent = NSMapTable<NSView, NSStackView>.strongToWeakObjects()
+    private let originalStackIndex = NSMapTable<NSView, NSNumber>.weakToStrongObjects()
+    private let originalStackWidthConstraint = NSMapTable<NSView, NSLayoutConstraint>.strongToStrongObjects()
+
+    func invalidateSearchIndex() {
+        searchIndexes.removeAllObjects()
+        activeSearchIndex = nil
+        activeDocumentMatches = nil
+    }
+
+    func resetSearchState() {
+        restoreSearchHiddens()
+        invalidateSearchIndex()
+        activeDocumentMatches = nil
+    }
+
+    func requestVisibilityReset() {
+        invalidateSearchIndex()
+    }
+
+    func prepareForDataRefresh() {
+        // Refreshing the search data must not clear the visible projection.
+        // The old match set remains on screen until the replacement match set
+        // is ready; restoring every search-hidden view here creates a visible
+        // unfiltered frame during dashboard refreshes.
+        invalidateSearchIndex()
+    }
+
+    func markSearchStructureChanged() {
+        // New global-search groups can be attached while an older query is
+        // already projected. Keep that projection mounted while rebuilding
+        // the index; query clearing and root teardown are the paths that
+        // intentionally restore search-hidden views.
+        invalidateSearchIndex()
+        needsInitialProjectionLayout = true
+    }
+
+    func searchDocuments(
+        for root: NSView,
+        mode: DashboardPageSearchMode
+    ) -> [DashboardSearchDocument] {
+        let documents = index(for: root).documents
+        guard case .visibleCopy = mode else { return documents }
+        return documents
+    }
 
     @discardableResult
     func apply(
         query: String,
         to root: NSView,
         pageTitle: String,
-        mode: DashboardPageSearchMode
+        mode: DashboardPageSearchMode,
+        matchedDocumentIDs: Set<String>? = nil
     ) -> Bool {
-        restoreSearchHiddens()
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pageTitleMatches = !needle.isEmpty
+            && DashboardPageSearch.matches(pageTitle, query: needle)
+        if needle.isEmpty || pageTitleMatches {
+            restoreSearchHiddens()
+        }
+        let searchIndex = index(for: root)
+        activeSearchIndex = searchIndex
+        activeDocumentMatches = matchedDocumentIDs
+        defer {
+            activeSearchIndex = nil
+            activeDocumentMatches = nil
+        }
+        // Search-hidden rows remain in the index even when NSStackView has
+        // detached them. Filtering can therefore restore or collapse only
+        // the result-set delta instead of rebuilding the whole projection.
         if needle.isEmpty {
             setEmptyStateHidden(true, in: root)
             restoreAboutContent(in: root)
+            refreshSearchSectionHeights(in: root)
             return true
         }
-        if DashboardPageSearch.matches(pageTitle, query: needle) {
+        if pageTitleMatches {
             setEmptyStateHidden(true, in: root)
             restoreAboutContent(in: root)
+            refreshSearchSectionHeights(in: root)
             return true
         }
 
@@ -355,16 +892,79 @@ final class DashboardPageSearchFilter {
         case .visibleCopy:
             matched = applyVisibleCopyFilter(query: needle, to: root)
         }
+        synchronizeGlobalSearchGroups(in: root)
         setEmptyStateHidden(matched, in: root)
         if !matched {
             hideAboutContentIfPresent(in: root)
         } else {
             restoreAboutContent(in: root)
-            revealFirstMatch(in: root)
         }
         root.needsLayout = true
-        root.layoutSubtreeIfNeeded()
+        refreshSearchSectionHeights(in: root)
         return matched
+    }
+
+    private func synchronizeGlobalSearchGroups(in root: NSView) {
+        for group in globalSearchGroups(in: root) {
+            let hasVisibleSection = containsVisibleSearchSection(in: group)
+            if hasVisibleSection {
+                _ = restoreSearchHiddenView(group)
+            } else {
+                hideForSearch(group)
+            }
+        }
+    }
+
+    private func globalSearchGroups(in view: NSView) -> [NSView] {
+        if let activeSearchIndex, activeSearchIndex.root === view {
+            return activeSearchIndex.globalSearchGroups
+        }
+        var result: [NSView] = []
+        var visited = Set<ObjectIdentifier>()
+        func visit(_ candidate: NSView) {
+            let identity = ObjectIdentifier(candidate)
+            guard visited.insert(identity).inserted else { return }
+            if candidate.identifier == DashboardPageSearch.globalSearchGroupIdentifier {
+                result.append(candidate)
+            }
+            for child in candidate.subviews {
+                visit(child)
+            }
+            if let stack = candidate as? NSStackView {
+                for arranged in stack.arrangedSubviews {
+                    visit(arranged)
+                }
+            }
+        }
+        visit(view)
+        return result
+    }
+
+    private func containsVisibleSearchSection(in view: NSView) -> Bool {
+        if let section = view as? SettingsSectionView {
+            return !DashboardSearchVisibility.isEffectivelyHidden(section)
+                && !DashboardSearchVisibility.isBusinessHidden(section)
+        }
+        var descendants = view.subviews
+        if let stack = view as? NSStackView {
+            descendants.append(contentsOf: stack.arrangedSubviews)
+        }
+        return descendants.contains { containsVisibleSearchSection(in: $0) }
+    }
+
+    private func refreshSearchSectionHeights(in root: NSView) {
+        if globalSearchGroups(in: root).isEmpty {
+            for section in collectSections(in: root) {
+                (section as? SettingsSectionView)?
+                    .updateSearchNaturalHeightConstraintForCurrentVisibility()
+            }
+        }
+        root.needsLayout = true
+        if needsInitialProjectionLayout {
+            DashboardPageSearchDiagnostics.synchronousLayoutCount += 1
+            root.layoutSubtreeIfNeeded()
+            needsInitialProjectionLayout = false
+        }
     }
 
     func pageContainsMatch(
@@ -373,17 +973,50 @@ final class DashboardPageSearchFilter {
         pageTitle: String,
         mode: DashboardPageSearchMode
     ) -> Bool {
+        pageMatch(query: query, in: root, pageTitle: pageTitle, mode: mode) != nil
+    }
+
+    func pageMatch(
+        query: String,
+        in root: NSView,
+        pageTitle: String,
+        mode: DashboardPageSearchMode
+    ) -> DashboardPageSearch.Match? {
+        let searchIndex = index(for: root)
+        activeSearchIndex = searchIndex
+        defer { activeSearchIndex = nil }
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return true }
-        if DashboardPageSearch.matches(pageTitle, query: needle) {
-            return true
+        guard !needle.isEmpty else { return nil }
+        var best = DashboardPageSearch.bestMatch(texts: [pageTitle], query: needle)
+        func keepBest(_ candidate: DashboardPageSearch.Match?) {
+            guard let candidate else { return }
+            if best == nil || candidate > best! { best = candidate }
         }
         switch mode {
         case .titles:
-            return collectSections(in: root).contains { sectionMatches($0, query: needle) }
+            for section in collectSections(in: root) {
+                if let heading = sectionHeading(section) {
+                    keepBest(DashboardPageSearch.bestMatch(texts: [heading], query: needle))
+                }
+                for row in rows(in: section) {
+                    keepBest(rowMatch(row, query: needle, includeVisibleCopy: false, sectionHeading: sectionHeading(section)))
+                }
+            }
         case .visibleCopy:
-            return visibleCopy(in: root).contains { DashboardPageSearch.matches($0, query: needle) }
+            let sections = collectSections(in: root)
+            for section in sections {
+                if let heading = sectionHeading(section) {
+                    keepBest(DashboardPageSearch.bestMatch(texts: [heading], query: needle))
+                }
+                for row in rows(in: section) {
+                    keepBest(rowMatch(row, query: needle, includeVisibleCopy: true, sectionHeading: sectionHeading(section)))
+                }
+            }
+            for copy in visibleCopy(in: root, skipping: sections) {
+                keepBest(DashboardPageSearch.bestMatch(texts: [copy], query: needle))
+            }
         }
+        return best
     }
 
     private func applyTitleFilter(query: String, to root: NSView) -> Bool {
@@ -393,8 +1026,9 @@ final class DashboardPageSearchFilter {
         }
         var anyMatch = false
         for section in sections {
-            let result = applySectionFilter(section, query: query)
+            let result = applySectionFilter(section, query: query, includeVisibleCopy: false)
             if result.countsAsHit {
+                _ = restoreSearchHiddenView(section)
                 anyMatch = true
             } else if result.hideSectionForSearch {
                 hideForSearch(section)
@@ -406,8 +1040,16 @@ final class DashboardPageSearchFilter {
     private func applyVisibleCopyFilter(query: String, to root: NSView) -> Bool {
         let sections = collectSections(in: root)
         if sections.isEmpty {
-            let matched = visibleCopy(in: root).contains {
-                DashboardPageSearch.matches($0, query: query)
+            let matched: Bool
+            if let activeDocumentMatches,
+               let index = activeSearchIndex {
+                matched = index.topLevelDocumentIDs.contains {
+                    activeDocumentMatches.contains($0)
+                }
+            } else {
+                matched = (activeSearchIndex?.topLevelVisibleCopy ?? visibleCopy(in: root)).contains {
+                    DashboardPageSearch.matches($0, query: query)
+                }
             }
             if !matched {
                 hideAboutContentIfPresent(in: root)
@@ -418,13 +1060,27 @@ final class DashboardPageSearchFilter {
         for section in sections {
             let result = applySectionFilter(section, query: query, includeVisibleCopy: true)
             if result.countsAsHit {
+                _ = restoreSearchHiddenView(section)
                 anyMatch = true
             } else if result.hideSectionForSearch {
                 hideForSearch(section)
             }
         }
-        let unmatchedTopLevel = visibleCopy(in: root, skipping: sections).contains {
-            DashboardPageSearch.matches($0, query: query)
+        var topLevelCopy = activeSearchIndex?.topLevelVisibleCopy
+            ?? visibleCopy(in: root, skipping: sections)
+        if !statusLinks.isEmpty, containsStatusLinksEditor(in: root) {
+            topLevelCopy.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
+        }
+        let unmatchedTopLevel: Bool
+        if let activeDocumentMatches,
+           let index = activeSearchIndex {
+            unmatchedTopLevel = index.topLevelDocumentIDs.contains {
+                activeDocumentMatches.contains($0)
+            }
+        } else {
+            unmatchedTopLevel = topLevelCopy.contains {
+                DashboardPageSearch.matches($0, query: query)
+            }
         }
         return anyMatch || unmatchedTopLevel
     }
@@ -439,14 +1095,32 @@ final class DashboardPageSearchFilter {
         query: String,
         includeVisibleCopy: Bool = false
     ) -> SectionFilterResult {
-        if sectionHeading(section).map({ DashboardPageSearch.matches($0, query: query) }) == true {
+        let headingMatches: Bool
+        if let activeDocumentMatches,
+           let sectionID = activeSearchIndex?.documentIDByView[ObjectIdentifier(section)] {
+            headingMatches = activeDocumentMatches.contains(sectionID)
+        } else {
+            headingMatches = sectionHeading(section).map {
+                DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil
+            } == true
+        }
+        if headingMatches {
+            _ = restoreSearchHiddenView(section)
+            for row in rows(in: section) {
+                _ = restoreSearchHiddenView(row)
+            }
+            reconcileSeparators(in: section)
             return SectionFilterResult(
                 countsAsHit: !DashboardSearchVisibility.isBusinessHidden(section),
                 hideSectionForSearch: false
             )
         }
-        guard let stack = rowStack(in: section) else {
-            let visibleCopyMatches = includeVisibleCopy && visibleCopy(in: section).contains {
+        guard rowStack(in: section) != nil else {
+            var searchableCopy = includeVisibleCopy ? visibleCopy(in: section) : []
+            if includeVisibleCopy, containsStatusLinksEditor(in: section) {
+                searchableCopy.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
+            }
+            let visibleCopyMatches = searchableCopy.contains {
                 DashboardPageSearch.matches($0, query: query)
             }
             let countsAsHit = visibleCopyMatches && !DashboardSearchVisibility.isBusinessHidden(section)
@@ -456,8 +1130,15 @@ final class DashboardPageSearchFilter {
             )
         }
         var visibleRowCount = 0
-        for view in stack.arrangedSubviews where !(view is NSBox) {
-            if rowContentMatches(view, query: query, includeVisibleCopy: includeVisibleCopy) {
+        let heading = sectionHeading(section)
+        for view in rows(in: section) where !(view is NSBox) {
+            if rowContentMatches(
+                view,
+                query: query,
+                includeVisibleCopy: includeVisibleCopy,
+                sectionHeading: heading
+            ) {
+                _ = restoreSearchHiddenView(view)
                 if !DashboardSearchVisibility.isBusinessHidden(view) {
                     visibleRowCount += 1
                 }
@@ -465,7 +1146,7 @@ final class DashboardPageSearchFilter {
                 hideForSearch(view)
             }
         }
-        syncSeparators(in: stack)
+        reconcileSeparators(in: section)
         return SectionFilterResult(
             countsAsHit: visibleRowCount > 0,
             hideSectionForSearch: visibleRowCount == 0
@@ -473,34 +1154,118 @@ final class DashboardPageSearchFilter {
     }
 
     private func sectionMatches(_ section: NSView, query: String) -> Bool {
-        if sectionHeading(section).map({ DashboardPageSearch.matches($0, query: query) }) == true {
+        if sectionHeading(section).map({ DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil }) == true {
             return true
         }
-        return rows(in: section).contains { rowMatches($0, query: query, includeVisibleCopy: false) }
+        return rows(in: section).contains {
+            rowMatches(
+                $0,
+                query: query,
+                includeVisibleCopy: true,
+                sectionHeading: sectionHeading(section)
+            )
+        }
     }
 
     private func rowMatches(
         _ row: NSView,
         query: String,
-        includeVisibleCopy: Bool
+        includeVisibleCopy: Bool,
+        sectionHeading: String?
     ) -> Bool {
-        guard !DashboardSearchVisibility.isBusinessHidden(row) else { return false }
-        return rowContentMatches(row, query: query, includeVisibleCopy: includeVisibleCopy)
+        rowMatch(
+            row,
+            query: query,
+            includeVisibleCopy: includeVisibleCopy,
+            sectionHeading: sectionHeading
+        ) != nil
+    }
+
+    private func rowMatch(
+        _ row: NSView,
+        query: String,
+        includeVisibleCopy: Bool,
+        sectionHeading: String?
+    ) -> DashboardPageSearch.Match? {
+        guard !DashboardSearchVisibility.isBusinessHidden(row) else { return nil }
+        return rowSearchMatch(
+            row,
+            query: query,
+            includeVisibleCopy: includeVisibleCopy,
+            sectionHeading: sectionHeading
+        )
+    }
+
+    private func rowSearchMatch(
+        _ row: NSView,
+        query: String,
+        includeVisibleCopy: Bool,
+        sectionHeading: String?
+    ) -> DashboardPageSearch.Match? {
+        let title = rowTitle(of: row)
+        var supportingValues: [String] = []
+        if includeVisibleCopy {
+            supportingValues.append(contentsOf: activeSearchIndex?.visibleCopyByView[ObjectIdentifier(row)]
+                ?? visibleCopy(in: row))
+        } else {
+            // Settings search includes the row's current-language subtitle
+            // and control contents, while avoiding any alternate-language
+            // corpus except for the dedicated language row.
+            supportingValues.append(contentsOf: visibleCopy(in: row))
+        }
+        if containsStatusLinksEditor(in: row) {
+            supportingValues.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
+        }
+        if isLanguagePreferenceRow(row) {
+            supportingValues.append(contentsOf: DashboardSettingsSearchCatalog.languageSearchTitles())
+        }
+        return DashboardPageSearch.bestMatch(
+            texts: [title],
+            supportingTexts: supportingValues,
+            query: query
+        )
+    }
+
+    private func containsStatusLinksEditor(in view: NSView) -> Bool {
+        if view is StatusLinksEditorHostingView { return true }
+        return view.subviews.contains { containsStatusLinksEditor(in: $0) }
+    }
+
+    private func isLanguagePreferenceRow(_ row: NSView) -> Bool {
+        let preferenceIdentifier = NSUserInterfaceItemIdentifier(AppLanguage.preferenceKey)
+        func containsPreferenceControl(_ view: NSView) -> Bool {
+            if view.identifier == preferenceIdentifier { return true }
+            return view.subviews.contains(where: containsPreferenceControl)
+        }
+        return containsPreferenceControl(row)
     }
 
     private func rowContentMatches(
         _ row: NSView,
         query: String,
-        includeVisibleCopy: Bool
+        includeVisibleCopy: Bool,
+        sectionHeading: String?
     ) -> Bool {
-        if DashboardPageSearch.matches(rowTitle(of: row), query: query) {
-            return true
+        if let activeDocumentMatches,
+           let documentID = activeSearchIndex?.documentIDByView[ObjectIdentifier(row)] {
+            return activeDocumentMatches.contains(documentID)
         }
-        guard includeVisibleCopy else { return false }
-        return searchableCopy(in: row).contains { DashboardPageSearch.matches($0, query: query) }
+        return rowSearchMatch(
+            row,
+            query: query,
+            includeVisibleCopy: includeVisibleCopy,
+            sectionHeading: sectionHeading
+        ) != nil
     }
 
     private func collectSections(in view: NSView) -> [NSView] {
+        if let activeSearchIndex, activeSearchIndex.root === view {
+            return activeSearchIndex.sections
+        }
+        return collectSectionsUncached(in: view)
+    }
+
+    private func collectSectionsUncached(in view: NSView) -> [NSView] {
         if view.identifier == DashboardPageSearch.emptyStateIdentifier {
             return []
         }
@@ -510,14 +1275,136 @@ final class DashboardPageSearchFilter {
         if DashboardSearchVisibility.isBusinessHidden(view) {
             return []
         }
-        return view.subviews.flatMap { collectSections(in: $0) }
+        return view.subviews.flatMap { collectSectionsUncached(in: $0) }
+    }
+
+    private func index(for root: NSView) -> SearchIndex {
+        if let existing = searchIndexes.object(forKey: root), existing.root === root {
+            return existing
+        }
+        let sections = collectSectionsUncached(in: root)
+        DashboardPageSearchDiagnostics.searchIndexBuildCount += 1
+        var rowsBySection: [ObjectIdentifier: [NSView]] = [:]
+        var documents: [DashboardSearchDocument] = []
+        var documentIDByView: [ObjectIdentifier: String] = [:]
+        var visibleCopyByView: [ObjectIdentifier: [String]] = [:]
+        var documentOrder = 0
+        for section in sections {
+            let rows = rowsUncached(in: section)
+            rowsBySection[ObjectIdentifier(section)] = rows
+            let sectionID = searchDocumentID(for: section, prefix: "section")
+            documentIDByView[ObjectIdentifier(section)] = sectionID
+            if let heading = sectionHeading(section), !heading.isEmpty {
+                documents.append(
+                    DashboardSearchDocument(
+                        id: sectionID,
+                        sectionID: nil,
+                        texts: [heading],
+                        supportingTexts: [],
+                        businessVisible: !DashboardSearchVisibility.isBusinessHidden(section),
+                        order: documentOrder
+                    )
+                )
+                documentOrder += 1
+            }
+            for row in rows {
+                let copy = visibleCopy(in: row)
+                visibleCopyByView[ObjectIdentifier(row)] = copy
+                let rowID = searchDocumentID(for: row, prefix: "row")
+                documentIDByView[ObjectIdentifier(row)] = rowID
+                let title = rowTitle(of: row)
+                var supportingTexts = ([sectionHeading(section)].compactMap { $0 } + copy)
+                if containsStatusLinksEditor(in: row) {
+                    supportingTexts.append(contentsOf: statusLinks.flatMap { [$0.title, $0.url] })
+                }
+                if isLanguagePreferenceRow(row) {
+                    supportingTexts.append(contentsOf: DashboardSettingsSearchCatalog.languageSearchTitles())
+                }
+                documents.append(
+                    DashboardSearchDocument(
+                        id: rowID,
+                        sectionID: sectionID,
+                        texts: [title],
+                        supportingTexts: supportingTexts,
+                        businessVisible: !DashboardSearchVisibility.isBusinessHidden(row),
+                        order: documentOrder
+                    )
+                )
+                documentOrder += 1
+            }
+        }
+        let globalSearchGroups = globalSearchGroupsUncached(in: root)
+        let topLevelVisibleCopy = visibleCopy(in: root, skipping: sections)
+        var topLevelDocumentIDs: [String] = []
+        for copy in topLevelVisibleCopy {
+            let id = "copy-\(documentOrder)"
+            topLevelDocumentIDs.append(id)
+            documents.append(
+                DashboardSearchDocument(
+                    id: id,
+                    sectionID: nil,
+                    texts: [copy],
+                    supportingTexts: [],
+                    businessVisible: true,
+                    order: documentOrder
+                )
+            )
+            documentOrder += 1
+        }
+        let index = SearchIndex(
+            root: root,
+            sections: sections,
+            rowsBySection: rowsBySection,
+            globalSearchGroups: globalSearchGroups,
+            documents: documents,
+            documentIDByView: documentIDByView,
+            topLevelDocumentIDs: topLevelDocumentIDs,
+            visibleCopyByView: visibleCopyByView,
+            topLevelVisibleCopy: topLevelVisibleCopy
+        )
+        searchIndexes.setObject(index, forKey: root)
+        return index
+    }
+
+    private func searchDocumentID(for view: NSView, prefix: String) -> String {
+        "\(prefix)-\(ObjectIdentifier(view).hashValue)"
     }
 
     private func rows(in section: NSView) -> [NSView] {
+        if let activeSearchIndex,
+           let rows = activeSearchIndex.rowsBySection[ObjectIdentifier(section)] {
+            return rows
+        }
+        return rowsUncached(in: section)
+    }
+
+    private func rowsUncached(in section: NSView) -> [NSView] {
         if let native = section as? SettingsSectionView {
             return native.contentViews
         }
         return rowStack(in: section)?.arrangedSubviews.filter { !($0 is NSBox) } ?? []
+    }
+
+    private func globalSearchGroupsUncached(in view: NSView) -> [NSView] {
+        var result: [NSView] = []
+        var visited = Set<ObjectIdentifier>()
+        func visit(_ candidate: NSView) {
+            let identity = ObjectIdentifier(candidate)
+            guard visited.insert(identity).inserted else { return }
+            if candidate.identifier == DashboardPageSearch.globalSearchGroupIdentifier {
+                result.append(candidate)
+            }
+            for child in candidate.subviews {
+                visit(child)
+            }
+            if let stack = candidate as? NSStackView {
+                for arranged in stack.arrangedSubviews {
+                    visit(arranged)
+                }
+            }
+        }
+        visit(view)
+        return result
     }
 
     private func rowStack(in section: NSView) -> NSStackView? {
@@ -571,32 +1458,6 @@ final class DashboardPageSearchFilter {
         return nil
     }
 
-    private func searchableCopy(in view: NSView) -> [String] {
-        if view.identifier == DashboardPageSearch.emptyStateIdentifier {
-            return []
-        }
-        var values: [String] = []
-        if let field = view as? NSTextField {
-            let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty {
-                values.append(text)
-            }
-        }
-        if let button = view as? NSButton {
-            let title = button.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !title.isEmpty {
-                values.append(title)
-            }
-            if let label = button.accessibilityLabel(), !label.isEmpty {
-                values.append(label)
-            }
-        }
-        for child in view.subviews {
-            values.append(contentsOf: searchableCopy(in: child))
-        }
-        return values
-    }
-
     private func visibleCopy(in view: NSView, skipping skip: [NSView] = []) -> [String] {
         if skip.contains(where: { view === $0 || view.isDescendant(of: $0) }) {
             return []
@@ -612,7 +1473,8 @@ final class DashboardPageSearchFilter {
         }
         var values: [String] = []
         if let field = view as? NSTextField {
-            let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = DashboardPageSearch.semanticSearchText(searchableString(from: field))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty {
                 values.append(text)
             }
@@ -626,45 +1488,42 @@ final class DashboardPageSearchFilter {
                 values.append(label)
             }
         }
+        if let popup = view as? NSPopUpButton {
+            values.append(contentsOf: popup.itemTitles)
+        }
         for child in view.subviews {
             values.append(contentsOf: visibleCopy(in: child, skipping: skip))
         }
         return values
     }
 
+    func visibleCopyForTesting(in view: NSView) -> [String] {
+        visibleCopy(in: view)
+    }
+
+    private func searchableString(from field: NSTextField) -> String {
+        if let semantic = field as? SettingsSemanticSubtitleLabel {
+            return semantic.sourceAccessibilityText
+        }
+        return field.stringValue
+    }
+
     private func isHiddenSubtree(_ view: NSView) -> Bool {
         view.isHidden && !DashboardSearchVisibility.isSearchHidden(view)
     }
 
-    private func syncSeparators(in stack: NSStackView) {
-        let arranged = stack.arrangedSubviews
-        for (index, view) in arranged.enumerated() {
-            guard view is NSBox else { continue }
-            let previousVisible = arranged[..<index].reversed().first { !($0 is NSBox) }.map {
-                !DashboardSearchVisibility.isCollapsedForSearchLayout($0)
-            } ?? false
-            let nextVisible = arranged[(index + 1)...].first { !($0 is NSBox) }.map {
-                !DashboardSearchVisibility.isCollapsedForSearchLayout($0)
-            } ?? false
-            let shouldShow = previousVisible && nextVisible
-            if shouldShow {
-                if DashboardSearchVisibility.isSearchHidden(view) {
-                    _ = restoreSearchHiddenView(view)
-                } else {
-                    DashboardSearchVisibility.setBusinessHidden(view, view.isHidden)
-                }
-                if !DashboardSearchVisibility.isBusinessHidden(view) {
-                    DashboardSearchVisibility.withSearchVisibilityMutation {
-                        view.isHidden = false
-                    }
-                }
-            } else {
-                hideForSearch(view)
-            }
+    private func reconcileSeparators(in section: NSView) {
+        if let native = section as? SettingsSectionView {
+            native.reconcileSeparators()
+            return
+        }
+        if let stack = rowStack(in: section) {
+            DashboardSearchVisibility.reconcileDerivedSeparators(in: stack)
         }
     }
 
     private func hideForSearch(_ view: NSView) {
+        guard !(view is NSBox) else { return }
         guard !DashboardSearchVisibility.isSearchHidden(view) else { return }
         DashboardSearchVisibility.setBusinessHidden(
             view,
@@ -677,8 +1536,21 @@ final class DashboardPageSearchFilter {
     }
 
     private func collapseViewForSearch(_ view: NSView) {
+        var ownerStack: NSStackView?
         DashboardSearchVisibility.withSearchVisibilityMutation {
             if let stack = view.superview as? NSStackView, stack.arrangedSubviews.contains(view) {
+                ownerStack = stack
+                originalStackParent.setObject(stack, forKey: view)
+                if let index = stack.arrangedSubviews.firstIndex(where: { $0 === view }) {
+                    originalStackIndex.setObject(NSNumber(value: index), forKey: view)
+                }
+                if let widthConstraint = fullWidthConstraint(for: view, in: stack) {
+                    originalStackWidthConstraint.setObject(widthConstraint, forKey: view)
+                } else if shouldPreserveFullWidth(for: view, in: stack) {
+                    let widthConstraint = view.widthAnchor.constraint(equalTo: stack.widthAnchor)
+                    widthConstraint.isActive = true
+                    originalStackWidthConstraint.setObject(widthConstraint, forKey: view)
+                }
                 if originalStackVisibilityPriority.object(forKey: view) == nil {
                     originalStackVisibilityPriority.setObject(
                         NSNumber(value: stack.visibilityPriority(for: view).rawValue),
@@ -690,7 +1562,7 @@ final class DashboardPageSearchFilter {
                 view.isHidden = true
             }
         }
-        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: ownerStack ?? view)
     }
 
     @discardableResult
@@ -699,9 +1571,19 @@ final class DashboardPageSearchFilter {
         DashboardSearchVisibility.setSearchHidden(view, false)
         var restoredStack: NSStackView?
         DashboardSearchVisibility.withSearchVisibilityMutation {
-            if let stack = view.superview as? NSStackView,
-               stack.arrangedSubviews.contains(view),
+            let stack: NSStackView? = {
+                if let current = view.superview as? NSStackView,
+                   current.arrangedSubviews.contains(view) {
+                    return current
+                }
+                guard let original = originalStackParent.object(forKey: view) else { return nil }
+                let index = originalStackIndex.object(forKey: view)?.intValue ?? original.arrangedSubviews.count
+                original.insertArrangedSubview(view, at: min(index, original.arrangedSubviews.count))
+                return original
+            }()
+            if let stack,
                let stored = originalStackVisibilityPriority.object(forKey: view) {
+                originalStackWidthConstraint.object(forKey: view)?.isActive = true
                 stack.setVisibilityPriority(
                     NSStackView.VisibilityPriority(rawValue: stored.floatValue),
                     for: view
@@ -710,52 +1592,85 @@ final class DashboardPageSearchFilter {
             }
         }
         originalStackVisibilityPriority.removeObject(forKey: view)
+        originalStackParent.removeObject(forKey: view)
+        originalStackIndex.removeObject(forKey: view)
+        originalStackWidthConstraint.removeObject(forKey: view)
         hiddenBySearch.remove(view)
         DashboardSearchVisibility.restoreBusinessHidden(view)
-        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: restoredStack ?? view)
         return restoredStack
     }
 
     private func restoreSearchHiddens() {
+        let sections = NSHashTable<NSView>.weakObjects()
         let stacks = NSHashTable<NSStackView>.weakObjects()
         for view in hiddenBySearch.allObjects {
-            if let stack = restoreSearchHiddenView(view) {
-                stacks.add(stack)
+            guard !(view is NSBox) else { continue }
+            let restoredStack = restoreSearchHiddenView(view)
+            if let section = view as? SettingsSectionView {
+                sections.add(section)
+            } else if let section = SettingsSectionView.enclosing(view) {
+                sections.add(section)
+            } else if let restoredStack {
+                stacks.add(restoredStack)
             }
         }
         hiddenBySearch.removeAllObjects()
         originalStackVisibilityPriority.removeAllObjects()
+        originalStackParent.removeAllObjects()
+        originalStackIndex.removeAllObjects()
+        originalStackWidthConstraint.removeAllObjects()
+        for section in sections.allObjects {
+            reconcileSeparators(in: section)
+        }
         for stack in stacks.allObjects {
-            syncSeparatorsAfterRestore(in: stack)
+            DashboardSearchVisibility.reconcileDerivedSeparators(in: stack)
         }
     }
 
-    private func syncSeparatorsAfterRestore(in stack: NSStackView) {
-        let arranged = stack.arrangedSubviews
-        for (index, view) in arranged.enumerated() {
-            guard view is NSBox else { continue }
-            let previousVisible = arranged[..<index].reversed().first { !($0 is NSBox) }.map {
-                !DashboardSearchVisibility.isBusinessHidden($0)
-            } ?? false
-            let nextVisible = arranged[(index + 1)...].first { !($0 is NSBox) }.map {
-                !DashboardSearchVisibility.isBusinessHidden($0)
-            } ?? false
-            let shouldShow = previousVisible && nextVisible
-            DashboardSearchVisibility.setBusinessHidden(view, !shouldShow)
-            DashboardSearchVisibility.withSearchVisibilityMutation {
-                view.isHidden = !shouldShow
+    private func fullWidthConstraint(for view: NSView, in stack: NSStackView) -> NSLayoutConstraint? {
+        (view.constraints + stack.constraints).first { constraint in
+            guard constraint.relation == .equal,
+                  constraint.firstAttribute == .width,
+                  constraint.secondAttribute == .width,
+                  abs(constraint.multiplier - 1) < 0.001,
+                  abs(constraint.constant) < 0.001 else {
+                return false
             }
-            DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: view)
+            let first = constraint.firstItem as AnyObject?
+            let second = constraint.secondItem as AnyObject?
+            return (first === view && second === stack)
+                || (first === stack && second === view)
         }
+    }
+
+    private func shouldPreserveFullWidth(for view: NSView, in stack: NSStackView) -> Bool {
+        view is SettingsSectionView
+            || view.identifier == DashboardPageSearch.sectionIdentifier
+            || view.identifier == DashboardPageSearch.globalSearchGroupIdentifier
+            || stack.identifier == DashboardPageSearch.globalSearchGroupIdentifier
+            || stack is SettingsSectionCardView
     }
 
     private func setEmptyStateHidden(_ hidden: Bool, in root: NSView) {
         if hidden {
-            emptyStateView(in: root)?.isHidden = true
+            guard let empty = emptyStateView(in: root) else { return }
+            setEmptyStateVisible(empty, false)
             return
         }
         let empty = emptyStateView(in: root) ?? installEmptyState(in: root)
-        empty.isHidden = false
+        setEmptyStateVisible(empty, true)
+    }
+
+    /// Empty-state visibility is presentational. Writing it through the
+    /// business `isHidden` path marks the card as business-hidden, and the
+    /// next show then hides the card again via `hideSearchEmptyState`.
+    private func setEmptyStateVisible(_ empty: NSView, _ visible: Bool) {
+        DashboardSearchVisibility.setBusinessHidden(empty, false)
+        DashboardSearchVisibility.setSearchHidden(empty, false)
+        DashboardSearchVisibility.withSearchVisibilityMutation {
+            empty.isHidden = !visible
+        }
     }
 
     private func emptyStateView(in root: NSView) -> NSView? {
@@ -786,6 +1701,7 @@ final class DashboardPageSearchFilter {
             ]
         )
         empty.identifier = DashboardPageSearch.emptyStateIdentifier
+        empty.reserveHeadingBand()
         if let stack = contentStack(in: root) {
             stack.addView(empty, in: .top)
             empty.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -824,24 +1740,4 @@ final class DashboardPageSearchFilter {
         return view.subviews.flatMap { aboutContent(in: $0) }
     }
 
-    private func revealFirstMatch(in root: NSView) {
-        guard let match = firstVisibleMatch(in: root) else { return }
-        match.scrollToVisible(match.bounds)
-    }
-
-    private func firstVisibleMatch(in view: NSView) -> NSView? {
-        if view.identifier == DashboardPageSearch.emptyStateIdentifier
-            || DashboardSearchVisibility.isCollapsedForSearchLayout(view) {
-            return nil
-        }
-        if DashboardPageSearch.isSearchableRow(view) {
-            return view
-        }
-        for child in view.subviews {
-            if let found = firstVisibleMatch(in: child) {
-                return found
-            }
-        }
-        return nil
-    }
 }

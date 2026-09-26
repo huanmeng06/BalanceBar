@@ -94,7 +94,6 @@ final class DashboardMenuBarIconTaskStatusSection {
     private weak var animationFrameRateRow: NSView?
     private weak var animationFallbackWarningLabel: NSTextField?
     private weak var animationFallbackWarningRow: NSView?
-    private var iconTaskStatusSeparators: [NSView] = []
     private weak var iconTaskStatusSection: SettingsSectionView?
     private struct IconTaskVisibilitySignature: Equatable {
         let showIcon: Bool
@@ -128,7 +127,6 @@ final class DashboardMenuBarIconTaskStatusSection {
     }
 
     func make(input: DashboardMenuBarPage.Input) -> NSView {
-        iconTaskStatusSeparators = []
         iconTaskStatusSection = nil
         lastIconTaskVisibilitySignature = nil
         animationFallbackActive = input.animationFallbackActive
@@ -240,7 +238,6 @@ final class DashboardMenuBarIconTaskStatusSection {
             ]
         )
         self.iconTaskStatusSection = iconTaskStatusSection
-        self.iconTaskStatusSeparators = iconTaskStatusSection.separators
         updateVisibility(
             showTaskStatusIcon: input.preferences.showMenuBarIcon,
             displayMode: input.preferences.menuBarIconDisplayMode,
@@ -316,21 +313,7 @@ final class DashboardMenuBarIconTaskStatusSection {
 
         // Delay now lives on the preview card. Icon rows are task status →
         // animation → animation mode → frame rate → fallback warning.
-        let visibleRows = [
-            true,
-            showDependentRows,
-            showAnimationMode,
-            showAnimationMode,
-            showFallbackWarning
-        ]
-        for (index, separator) in iconTaskStatusSeparators.enumerated() {
-            guard index < visibleRows.count - 1 else {
-                separator.isHidden = true
-                continue
-            }
-            let hasVisibleRowAfter = visibleRows[(index + 1)...].contains(true)
-            separator.isHidden = !(visibleRows[index] && hasVisibleRowAfter)
-        }
+        iconTaskStatusSection?.reconcileSeparators()
         updateCardLayout()
     }
 

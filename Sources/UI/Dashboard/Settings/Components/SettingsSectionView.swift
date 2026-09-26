@@ -20,8 +20,12 @@ final class SettingsSectionView: NSView {
     let contentStack = NSStackView()
     private(set) var contentViews: [NSView]
     private(set) var separators: [NSView] = []
+    private var searchNaturalHeightConstraint: NSLayoutConstraint?
 
     var rowsStack: NSStackView { cardView }
+    var hasSearchNaturalHeightConstraintForTesting: Bool {
+        searchNaturalHeightConstraint?.isActive == true
+    }
 
     init(
         title: String,
@@ -127,6 +131,32 @@ final class SettingsSectionView: NSView {
             contentStack.bottomAnchor.constraint(equalTo: bottomAnchor),
             cardView.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
         ])
+        reconcileSeparators()
+    }
+
+    /// Hairlines follow the final visible rows. They do not store search or
+    /// business hidden flags of their own.
+    func reconcileSeparators() {
+        DashboardSearchVisibility.reconcileDerivedSeparators(
+            contentViews: contentViews,
+            separators: separators
+        )
+        cardView.invalidateHostedSettingsRowHeight()
+    }
+
+    /// Keeps the section-title band above the card. Search's empty state has
+    /// no title text, but its card should still start where a titled card
+    /// starts. The card already spans the content column; pinning the empty
+    /// label to that width makes its frame 4pt wider because `NSTextField`
+    /// alignment insets sit outside the alignment rect.
+    func reserveHeadingBand() {
+        headingLabel.stringValue = ""
+        headingLabel.isHidden = false
+        headingLabel.setAccessibilityElement(false)
+        headingLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        if headingLabel.superview == nil {
+            contentStack.insertView(headingLabel, at: 0, in: .top)
+        }
     }
 
     override var isHidden: Bool {
@@ -140,6 +170,88 @@ final class SettingsSectionView: NSView {
         let stackHeight = contentStack.intrinsicContentSize.height
         let height = stackHeight > 0 ? stackHeight : contentStack.fittingSize.height
         return NSSize(width: NSView.noIntrinsicMetric, height: height)
+    }
+
+    override func layout() {
+        super.layout()
+        updateSearchNaturalHeightConstraintForCurrentVisibility()
+    }
+
+    func updateSearchNaturalHeightConstraintForCurrentVisibility() {
+        // Global search stacks already collapse hidden arranged sections with
+        // NSStackView's native visibility semantics. Locking the section to a
+        // transient intrinsic height here creates a required constraint that
+        // can capture the pre-wrapping size for one layout pass.
+        if isInsideGlobalSearchProjection {
+            searchNaturalHeightConstraint?.isActive = false
+            return
+        }
+        guard !DashboardSearchVisibility.isSearchHidden(self),
+              !DashboardSearchVisibility.isBusinessHidden(self)
+        else {
+            searchNaturalHeightConstraint?.isActive = false
+            return
+        }
+        let hasSearchHiddenSibling: Bool
+        if let stack = superview as? NSStackView,
+           stack.arrangedSubviews.contains(where: { $0 === self }) {
+            hasSearchHiddenSibling = stack.arrangedSubviews.contains { sibling in
+                sibling !== self && DashboardSearchVisibility.isSearchHidden(sibling)
+            }
+        } else {
+            hasSearchHiddenSibling = searchHiddenSiblingInAncestorContainer()
+        }
+
+        guard hasSearchHiddenSibling else {
+            searchNaturalHeightConstraint?.isActive = false
+            return
+        }
+
+        let naturalHeight = intrinsicContentSize.height
+        if let searchNaturalHeightConstraint {
+            if abs(searchNaturalHeightConstraint.constant - naturalHeight) > 0.5 {
+                searchNaturalHeightConstraint.constant = naturalHeight
+            }
+            searchNaturalHeightConstraint.isActive = true
+            return
+        }
+
+        let constraint = heightAnchor.constraint(equalToConstant: naturalHeight)
+        constraint.isActive = true
+        searchNaturalHeightConstraint = constraint
+    }
+
+    private var isInsideGlobalSearchProjection: Bool {
+        var ancestor = superview
+        while let view = ancestor {
+            if view.identifier == DashboardPageSearch.globalSearchGroupIdentifier {
+                return true
+            }
+            ancestor = view.superview
+        }
+        return false
+    }
+
+    private func searchHiddenSiblingInAncestorContainer() -> Bool {
+        var child: NSView = self
+        var ancestor = superview
+        while let container = ancestor {
+            if container.subviews.contains(where: { sibling in
+                sibling !== child && containsSearchHiddenSection(in: sibling)
+            }) {
+                return true
+            }
+            child = container
+            ancestor = container.superview
+        }
+        return false
+    }
+
+    private func containsSearchHiddenSection(in view: NSView) -> Bool {
+        if let section = view as? SettingsSectionView {
+            return section !== self && DashboardSearchVisibility.isSearchHidden(section)
+        }
+        return view.subviews.contains { containsSearchHiddenSection(in: $0) }
     }
 }
 

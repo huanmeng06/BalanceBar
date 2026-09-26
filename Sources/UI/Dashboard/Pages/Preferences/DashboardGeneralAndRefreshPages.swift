@@ -335,7 +335,9 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.openCCSwitch(_:))
         )
-        let currentProviderText = tr(.keyDashboardGeneralAndRefreshPagesCurrentProviderValue, arguments: [String(describing: input.currentProviderName)])
+        let currentProviderText = DashboardSettingsFormattedCopy.currentProviderValue(
+            input.currentProviderName
+        )
         let system = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesSystem),
             contentViews: [
@@ -499,10 +501,13 @@ final class DashboardGeneralPage {
 
         let languagePopup = DashboardSettingsComponents.makePopUpButton(
             identifier: AppLanguage.preferenceKey,
-            items: AppLanguage.allCases.map {
+            items: zip(
+                AppLanguage.allCases,
+                DashboardSettingsFormattedCopy.languageMenuTitles()
+            ).map { language, title in
                 DashboardSettingsComponents.PopUpItem(
-                    title: $0.localizedTitle,
-                    representedObject: $0.rawValue
+                    title: title,
+                    representedObject: language.rawValue
                 )
             },
             selectedIndex: AppLanguage.allCases.firstIndex(of: AppLanguage.selected),

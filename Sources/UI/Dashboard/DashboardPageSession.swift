@@ -24,8 +24,12 @@ final class DashboardPageSession {
     var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current
 
     private(set) var section: DashboardSection = .general
+    private(set) var mountedSection: DashboardSection = .general
     private(set) var selectedProviderID: String?
     private(set) var sourceListController: DashboardSourceListController?
+    var shouldPreserveSectionSelection: ((DashboardSection) -> Bool)?
+    var onPreservedSectionSelection: ((DashboardSection) -> Void)?
+    var preparePageForDisplay: (() -> Void)?
     private var showsUpdateAvailableBadge = false
     private var isTornDown = false
     private weak var window: NSWindow?
@@ -49,7 +53,7 @@ final class DashboardPageSession {
         let sourceList = DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)
         sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
         sourceList.onSelectSection = { [weak self] section in
-            self?.showSection(section)
+            self?.selectSection(section)
         }
         sourceListController = sourceList
         let sidebar = sourceList.makeSidebar(in: window)
@@ -97,7 +101,7 @@ final class DashboardPageSession {
            actions.providerChoices().contains(where: { $0.id == selectedProviderID }) {
             showProvider(selectedProviderID)
         } else {
-            showSection(selectedSection)
+            selectSection(selectedSection)
         }
         window.displayIfNeeded()
         DashboardKeyViewLoop.invalidate(window)
@@ -109,6 +113,7 @@ final class DashboardPageSession {
     func showSection(_ section: DashboardSection) {
         guard !isTornDown else { return }
         self.section = section
+        mountedSection = section
         selectedProviderID = nil
         window?.title = section.title
         sourceListController?.applySelection(section)
@@ -117,11 +122,41 @@ final class DashboardPageSession {
         }
     }
 
+    func selectSection(_ section: DashboardSection) {
+        guard !isTornDown else { return }
+        if shouldPreserveSectionSelection?(section) == true {
+            self.section = section
+            selectedProviderID = nil
+            window?.title = section.title
+            sourceListController?.applySelection(section)
+            onPreservedSectionSelection?(section)
+            return
+        }
+        showSection(section)
+    }
+
+    func showSearchResults(makeContent: () -> NSView, preservingCurrentPage: Bool = false) {
+        guard !isTornDown else { return }
+        selectedProviderID = nil
+        replacePage(prepareForPageReplacement: !preservingCurrentPage) {
+            DashboardScrollablePageViewController(wrapping: makeContent())
+        }
+    }
+
+    func showHostedSettingsContent(_ content: NSView) {
+        guard !isTornDown else { return }
+        selectedProviderID = nil
+        replacePage(prepareForPageReplacement: false) {
+            DashboardScrollablePageViewController(wrapping: content)
+        }
+    }
+
     func showProvider(_ providerID: String) {
         guard !isTornDown,
               let choice = actions.providerChoices().first(where: { $0.id == providerID })
         else { return }
         selectedProviderID = providerID
+        mountedSection = section
         window?.title = choice.name
         sourceListController?.applySelection(nil)
         replacePage {
@@ -140,6 +175,14 @@ final class DashboardPageSession {
 
     func restorePageScrollOffsetY(_ offset: CGFloat) {
         scrollablePage?.restoreScrollOffset(offset)
+    }
+
+    func schedulePageScrollRestoration(_ offset: CGFloat) {
+        scrollablePage?.scheduleVisualOffsetRestoration(offset)
+    }
+
+    func cancelScheduledPageScrollRestoration() {
+        scrollablePage?.cancelScheduledVisualOffsetRestoration()
     }
 
     func restoreCurrentPageScrollToTop() {
@@ -164,10 +207,15 @@ final class DashboardPageSession {
         window = nil
     }
 
-    private func replacePage(makePage: () -> NSViewController) {
-        DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
-        DashboardKeyViewLoop.prepareForPageReplacement(window)
-        actions.prepareForPageReplacement()
+    private func replacePage(
+        prepareForPageReplacement: Bool = true,
+        makePage: () -> NSViewController
+    ) {
+        if prepareForPageReplacement {
+            DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
+            DashboardKeyViewLoop.prepareForPageReplacement(window)
+            actions.prepareForPageReplacement()
+        }
         let page = makePage()
         pageContainer.replacePage(page)
         accessoryHost.apply(page: page)
@@ -175,6 +223,7 @@ final class DashboardPageSession {
         // descendants are materialized before callers inspect the page
         // (notably on Xcode 16.4 CI).
         contentHost.layoutSubtreeIfNeeded()
+        preparePageForDisplay?()
         window?.displayIfNeeded()
         actions.didShowPage()
         DashboardKeyViewLoop.invalidate(window)
