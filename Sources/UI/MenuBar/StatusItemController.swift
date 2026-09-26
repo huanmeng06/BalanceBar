@@ -6482,10 +6482,42 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     forecast: forecast,
                     provider: provider
                 )
+            } else if let elapsed = forecast.officialCountdownElapsedFraction(
+                now: bankedResetCountdownNow()
+            ) {
+                addBankedResetOfficialCountdownProgress(
+                    to: view,
+                    frame: metricsFrame,
+                    elapsedFraction: elapsed
+                )
             } else if let hint = forecast.officialHintText() {
                 addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint)
             }
         }
+    }
+
+    private func addBankedResetOfficialCountdownProgress(
+        to view: MenuHoverLinkHostView,
+        frame: NSRect,
+        elapsedFraction: Double
+    ) {
+        let height = OpenCodexCardLayout.quotaProgressHeight
+        let barFrame = NSRect(
+            x: frame.minX,
+            y: frame.midY - height / 2,
+            width: frame.width,
+            height: height
+        )
+        let progress = QuotaProgressView(
+            percentage: elapsedFraction * 100,
+            colorConfiguration: settings.quotaProgressColorConfiguration,
+            fillOrigin: .trailing
+        )
+        progress.frame = barFrame
+        progress.identifier = NSUserInterfaceItemIdentifier(
+            "codex.bankedReset.officialCountdownProgress"
+        )
+        view.addSubview(progress)
     }
 
     private func addBankedResetOfficialHint(
@@ -6851,6 +6883,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
+        applyOfficialCountdownProgressIfNeeded(in: overview)
+    }
+
+    private func applyOfficialCountdownProgressIfNeeded(in overview: NSView) {
+        guard let progress = overviewNumericProgressViews(in: overview).first(where: {
+            $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress"
+        }) else { return }
+        let forecast = snapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+        ).resetForecast
+        guard let elapsed = forecast.officialCountdownElapsedFraction(
+            now: bankedResetCountdownNow()
+        ) else { return }
+        progress.setPercentage(elapsed * 100, animated: false)
     }
 
     private func overviewNumericTextViews(in view: NSView) -> [OverviewNumericTextView] {

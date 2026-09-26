@@ -890,7 +890,7 @@ final class ResponseParsersTests: XCTestCase {
         )
     }
 
-    func testCodexResetForecastParserReadsOfficialSignalWindowAsFutureInstant() {
+    func testCodexResetForecastParserReadsOfficialSignalWindowAsFutureInstant() throws {
         let future = now.addingTimeInterval(3_665)
         let past = now.addingTimeInterval(-120)
         let iso = ISO8601DateFormatter()
@@ -907,7 +907,9 @@ final class ResponseParsersTests: XCTestCase {
         )
         XCTAssertEqual(noWindow.officialSignal?.probability, .percent(71))
         XCTAssertNil(noWindow.officialSignal?.targetAt)
+        XCTAssertEqual(noWindow.officialSignal?.publishedAt, future)
         XCTAssertEqual(noWindow.remainingCountdownSeconds(now: now), nil)
+        XCTAssertNil(noWindow.officialCountdownProgressSpan())
         XCTAssertEqual(
             noWindow.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 暂无具体时间点"
@@ -920,6 +922,7 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertNil(missingWindow.officialSignal?.targetAt)
+        XCTAssertNil(missingWindow.officialSignal?.publishedAt)
         XCTAssertEqual(
             missingWindow.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 暂无具体时间点"
@@ -932,17 +935,21 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(isoWindow.remainingCountdownSeconds(now: now), 3_665)
+        XCTAssertEqual(isoWindow.officialSignal?.publishedAt, past)
+        XCTAssertEqual(isoWindow.officialSignal?.targetAt, future)
+        XCTAssertNil(isoWindow.officialHintText())
         XCTAssertEqual(
-            isoWindow.officialHintText(language: .simplifiedChinese),
-            "官方重置提示 · 具体时间点"
+            try XCTUnwrap(isoWindow.officialCountdownElapsedFraction(now: past)),
+            0,
+            accuracy: 0.0001
         )
         XCTAssertEqual(
-            isoWindow.officialHintText(language: .english),
-            "Official reset hint · Specific time"
+            try XCTUnwrap(isoWindow.officialCountdownElapsedFraction(now: future)),
+            1,
+            accuracy: 0.0001
         )
         XCTAssertEqual(isoWindow.remainingCountdownMinutes(now: now), 61)
         XCTAssertEqual(isoWindow.menuPrimaryDisplayText(now: now), "1h1m")
-        XCTAssertFalse(isoWindow.officialHintText()?.contains("10/5") == true)
         XCTAssertNotEqual(isoWindow.menuPrimaryDisplayText(now: now), "71%")
 
         let unixWindow = CodexResetForecastParser.parse(
@@ -952,6 +959,12 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(unixWindow.remainingCountdownSeconds(now: now), 3_665)
+        XCTAssertNil(unixWindow.officialSignal?.publishedAt)
+        XCTAssertNil(unixWindow.officialCountdownProgressSpan())
+        XCTAssertEqual(
+            unixWindow.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 具体时间点"
+        )
 
         let nestedDeadline = CodexResetForecastParser.parse(
             data: Data(#"""
@@ -969,6 +982,8 @@ final class ResponseParsersTests: XCTestCase {
         )
         XCTAssertEqual(nestedTarget.remainingCountdownSeconds(now: now), 3_665)
         XCTAssertEqual(nestedTarget.officialSignal?.probability, .percent(74))
+        XCTAssertEqual(nestedTarget.officialSignal?.publishedAt, past)
+        XCTAssertNotNil(nestedTarget.officialCountdownProgressSpan())
 
         let hourRangeWindow = CodexResetForecastParser.parse(
             data: Data(#"""

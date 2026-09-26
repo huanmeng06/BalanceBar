@@ -285,6 +285,9 @@ struct CodexResetOfficialSignal: Equatable {
     /// Absolute future instant from `official_signal.window` or an equivalent
     /// single-instant field. Nil when the payload has no countdown target.
     var targetAt: Date? = nil
+    /// Tweet/publish instant from `official_signal.at`. Used only as the
+    /// progress-bar right endpoint, never as the countdown amount.
+    var publishedAt: Date? = nil
 
     static let probabilityUnavailable = CodexResetOfficialSignal(probability: .unavailable)
 }
@@ -389,8 +392,31 @@ struct CodexResetForecast: Equatable {
         remainingCountdownSeconds(now: now).map { $0 / 60 }
     }
 
+    /// Publish → reset span for the strong-signal time bar. Requires a future
+    /// `targetAt` later than `publishedAt`.
+    func officialCountdownProgressSpan() -> (publishedAt: Date, targetAt: Date)? {
+        guard let targetAt = officialSignal?.targetAt,
+              let publishedAt = officialSignal?.publishedAt,
+              targetAt > publishedAt else {
+            return nil
+        }
+        return (publishedAt, targetAt)
+    }
+
+    /// Elapsed fill from the publish instant toward reset. 0 at publish, 1 at
+    /// reset; remaining time is the unfilled left side.
+    func officialCountdownElapsedFraction(now: Date = Date()) -> Double? {
+        guard let span = officialCountdownProgressSpan() else { return nil }
+        let duration = span.targetAt.timeIntervalSince(span.publishedAt)
+        guard duration > 0 else { return nil }
+        return min(1, max(0, now.timeIntervalSince(span.publishedAt) / duration))
+    }
+
     func officialHintText(language: AppLanguage = .selected) -> String? {
         guard officialSignal != nil else { return nil }
+        if officialCountdownProgressSpan() != nil {
+            return nil
+        }
         if officialSignal?.targetAt != nil {
             return tr(.keyCodexBankedResetOfficialHintTime, language: language)
         }

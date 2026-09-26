@@ -204,6 +204,11 @@ final class DashboardUpdateBadgeView: NSView {
     }
 }
 
+enum QuotaProgressFillOrigin: Equatable {
+    case leading
+    case trailing
+}
+
 final class QuotaProgressView: NSView {
     private(set) var percentage: Double {
         didSet {
@@ -214,15 +219,21 @@ final class QuotaProgressView: NSView {
     }
     var fillRatio: Double { percentage / 100 }
     let colorConfiguration: QuotaProgressColorConfiguration
+    let fillOrigin: QuotaProgressFillOrigin
     private var interpolator: OverviewNumericInterpolator?
     private var pendingAnimatedPercentage: Double?
     private var pendingAnimatedDuration: TimeInterval = OverviewNumericTransition.duration
 
     var hasPendingAnimationForTesting: Bool { pendingAnimatedPercentage != nil }
 
-    init(percentage: Double, colorConfiguration: QuotaProgressColorConfiguration = .default) {
+    init(
+        percentage: Double,
+        colorConfiguration: QuotaProgressColorConfiguration = .default,
+        fillOrigin: QuotaProgressFillOrigin = .leading
+    ) {
         self.percentage = min(100, max(0, percentage))
         self.colorConfiguration = colorConfiguration.normalized()
+        self.fillOrigin = fillOrigin
         super.init(frame: .zero)
     }
 
@@ -281,11 +292,47 @@ final class QuotaProgressView: NSView {
         NSColor.quaternaryLabelColor.setFill()
         NSBezierPath(roundedRect: track, xRadius: radius, yRadius: radius).fill()
 
-        let width = track.width * CGFloat(percentage / 100)
-        guard width > 0 else { return }
-        let fill = NSRect(x: track.minX, y: track.minY, width: max(track.height, width), height: track.height)
-        Self.progressColor(for: percentage, configuration: colorConfiguration).setFill()
+        guard let fill = Self.fillRect(in: track, percentage: percentage, fillOrigin: fillOrigin) else {
+            return
+        }
+        Self.progressColor(for: colorPercentage, configuration: colorConfiguration).setFill()
         NSBezierPath(roundedRect: fill, xRadius: radius, yRadius: radius).fill()
+    }
+
+    /// Trailing fill is elapsed time from the right; color still follows remaining.
+    var colorPercentage: Double {
+        switch fillOrigin {
+        case .leading:
+            return percentage
+        case .trailing:
+            return 100 - percentage
+        }
+    }
+
+    static func fillRect(
+        in bounds: NSRect,
+        percentage: Double,
+        fillOrigin: QuotaProgressFillOrigin
+    ) -> NSRect? {
+        let width = bounds.width * CGFloat(min(100, max(0, percentage)) / 100)
+        guard width > 0 else { return nil }
+        let fillWidth = min(bounds.width, max(bounds.height, width))
+        switch fillOrigin {
+        case .leading:
+            return NSRect(
+                x: bounds.minX,
+                y: bounds.minY,
+                width: fillWidth,
+                height: bounds.height
+            )
+        case .trailing:
+            return NSRect(
+                x: bounds.maxX - fillWidth,
+                y: bounds.minY,
+                width: fillWidth,
+                height: bounds.height
+            )
+        }
     }
 
     static func progressColor(for percentage: Double, configuration: QuotaProgressColorConfiguration = .default) -> NSColor {

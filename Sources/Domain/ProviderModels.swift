@@ -325,7 +325,8 @@ enum OpenCodexCardLayout {
     /// Gap between the reset-card summary and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
     /// One extra line under the data-source subtitle. Ordinary mode packs
-    /// 24h+48h; strong-signal mode draws the gray official-hint copy here.
+    /// 24h+48h; strong-signal mode draws the gray no-time hint or the
+    /// publish-to-reset progress bar here.
     /// The data source sits in the amount's reset slot. Confidence is not
     /// part of the menu block. Longer locales pack 24h+48h by tightening
     /// gap/separator.

@@ -666,14 +666,15 @@ enum CodexResetForecastParser {
         default:
             return CodexResetOfficialSignal(
                 probability: signalProbability(from: object),
-                targetAt: officialSignalTargetAt(from: object, now: now)
+                targetAt: officialSignalTargetAt(from: object, now: now),
+                publishedAt: officialSignalPublishedAt(from: object)
             )
         }
     }
 
     /// Single future instant from `official_signal.window` or equivalent
-    /// deadline/target fields. Tweet time (`official_signal.at`), recurring
-    /// hour windows, `last_reset_at`, and `context.reset_at` are ignored.
+    /// deadline/target fields. Recurring hour windows, `last_reset_at`, and
+    /// `context.reset_at` are ignored. Tweet time is `publishedAt`.
     private static func officialSignalTargetAt(
         from object: [String: Any],
         now: Date
@@ -683,6 +684,14 @@ enum CodexResetForecastParser {
         return singleFutureInstant(official["window"], now: now)
             ?? ResponseParsingSupport.resetDate(official["deadline"], now: now)
             ?? ResponseParsingSupport.resetDate(official["target"], now: now)
+    }
+
+    /// Publish instant from `official_signal.at`. Past timestamps are kept so
+    /// the progress bar can measure elapsed time from the tweet.
+    private static func officialSignalPublishedAt(from object: [String: Any]) -> Date? {
+        let official = object["official_signal"] as? [String: Any]
+        guard let official else { return nil }
+        return ResponseParsingSupport.timestampDate(official["at"])
     }
 
     private static func singleFutureInstant(_ value: Any?, now: Date) -> Date? {

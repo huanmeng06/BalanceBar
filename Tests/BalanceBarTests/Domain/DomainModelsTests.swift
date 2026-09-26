@@ -468,6 +468,65 @@ final class DomainModelsTests: XCTestCase {
             countdownForecast.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 具体时间点"
         )
+        XCTAssertNil(countdownForecast.officialCountdownProgressSpan())
+
+        let published = date.addingTimeInterval(-3_600)
+        let resetAt = date.addingTimeInterval(3_600)
+        let progressForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(71),
+                targetAt: resetAt,
+                publishedAt: published
+            )
+        )
+        XCTAssertNil(progressForecast.officialHintText())
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: published)),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: date)),
+            0.5,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: resetAt)),
+            1,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: resetAt.addingTimeInterval(30))),
+            1,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(progressForecast.officialCountdownElapsedFraction(now: published.addingTimeInterval(-30))),
+            0,
+            accuracy: 0.0001
+        )
+        let inverted = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(71),
+                targetAt: published,
+                publishedAt: resetAt
+            )
+        )
+        XCTAssertNil(inverted.officialCountdownElapsedFraction(now: date))
+        XCTAssertEqual(
+            inverted.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 具体时间点"
+        )
         XCTAssertNil(zeroCountPresented.resetForecast.officialHintText())
 
         let balance = Snapshot.balance(
