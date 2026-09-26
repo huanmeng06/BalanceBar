@@ -138,30 +138,24 @@ final class DashboardNotificationPages {
         self.configuration = configuration
         relay.onGlobalToggle = { [weak self] enabled in
             self?.configuration.coordinator.setGlobalEnabled(enabled)
-            self?.refresh()
         }
         relay.onAgentToggle = { [weak self] agent, enabled in
             self?.configuration.coordinator.setAgentEnabled(enabled, agent: agent)
-            self?.refresh()
         }
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
             self?.configuration.coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID)
-            self?.refresh()
         }
         relay.onResourceToggle = { [weak self] key, kind, unit, enabled in
             self?.configuration.coordinator.setResourceEnabled(enabled, key: key, kind: kind, unit: unit)
-            self?.refresh()
         }
         relay.onThreshold = { [weak self] key, kind, unit, isSecond, value in
             self?.configuration.coordinator.updateRule(key: key, kind: kind, unit: unit) { rule in
                 if isSecond { rule.secondThreshold = BalanceNotificationResourceRule.normalizedSecondThreshold(value, firstThreshold: rule.firstThreshold, kind: kind) }
                 else { rule.firstThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(value, kind: kind) }
             }
-            self?.refresh()
         }
         relay.onSecondThresholdToggle = { [weak self] key, kind, unit, enabled in
             self?.configuration.coordinator.updateRule(key: key, kind: kind, unit: unit) { $0.secondEnabled = enabled }
-            self?.refresh()
         }
         relay.onOpenSettings = { [weak self] in self?.configuration.coordinator.openSystemSettings() }
         relay.onPauseSelection = { [weak self] selection in
@@ -250,29 +244,8 @@ final class DashboardNotificationPages {
             accessoryView: globalAccessory
         )
 
-        let pauseMenu = NSPopUpButton()
-        pauseMenu.addItem(withTitle: tr("notifications.pause_one_hour"))
-        pauseMenu.item(at: 0)?.representedObject = "oneHour"
-        pauseMenu.addItem(withTitle: tr("notifications.pause_today"))
-        pauseMenu.item(at: 1)?.representedObject = "today"
-        pauseMenu.target = relay
-        pauseMenu.action = #selector(DashboardNotificationPageRelay.pauseSelection(_:))
-        let resumeButton = NSButton(
-            title: tr("notifications.resume"),
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.resume(_:))
-        )
-        let pauseControls = NSStackView(views: [pauseMenu, resumeButton])
-        pauseControls.orientation = .horizontal
-        pauseControls.spacing = 8
-        let pauseDetail = tr("notifications.pause_duration")
         let notificationRows: [NSView] = [
-            global,
-            SettingsRowView(
-                title: tr("notifications.pause_notifications"),
-                detail: pauseDetail,
-                accessoryView: pauseControls
-            )
+            global
         ]
         return DashboardSettingsComponents.makeSettingsPageContent([
             SettingsSectionView(title: tr("notifications.page.title"), contentViews: notificationRows),
