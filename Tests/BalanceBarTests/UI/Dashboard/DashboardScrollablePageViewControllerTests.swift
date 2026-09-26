@@ -36,6 +36,25 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(actual.height, expected.height, accuracy: 0.5, file: file, line: line)
     }
 
+    private func initialSettingsGeometry(of page: DashboardScrollablePageViewController) -> [NSRect] {
+        descendants(of: page.view).compactMap { view in
+            guard view is SettingsRowView || view is SettingsSectionView else { return nil }
+            return view.convert(view.bounds, to: page.view)
+        }
+    }
+
+    private func assertSettingsGeometry(
+        _ actual: [NSRect],
+        equals expected: [NSRect],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(actual.count, expected.count, file: file, line: line)
+        for (actualFrame, expectedFrame) in zip(actual, expected) {
+            assertFrame(actualFrame, equals: expectedFrame, file: file, line: line)
+        }
+    }
+
     func testControllerCreatesAndOwnsPageScrollChromeForOrdinaryContent() throws {
         let filler = tallFiller(height: 1800)
         let content = DashboardSettingsComponents.makeSettingsPageContent([filler])
@@ -338,11 +357,26 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         window.layoutIfNeeded()
         composition.contentHost.layoutSubtreeIfNeeded()
         let menuBarPage = try XCTUnwrap(composition.scrollablePageForTesting)
+        let menuBarInitialGeometry = initialSettingsGeometry(of: menuBarPage)
+        SettingsRowView.flushPendingWrappingHeightCommits(in: menuBarPage.view)
+        menuBarPage.view.layoutSubtreeIfNeeded()
+        assertSettingsGeometry(
+            initialSettingsGeometry(of: menuBarPage),
+            equals: menuBarInitialGeometry
+        )
         composition.restorePageScrollOffsetY(96)
         XCTAssertEqual(composition.pageScrollOffsetY(), 96, accuracy: 2)
         XCTAssertEqual(menuBarPage.scrollOffset, 96, accuracy: 2)
         XCTAssertFalse(menuBarPage.isAtTop)
         XCTAssertTrue(menuBarPage.pageScrollView === menuBarPage.scrollViewForTesting)
+
+        composition.showSection(.menu)
+        window.layoutIfNeeded()
+        let menuPage = try XCTUnwrap(composition.scrollablePageForTesting)
+        let menuInitialGeometry = initialSettingsGeometry(of: menuPage)
+        SettingsRowView.flushPendingWrappingHeightCommits(in: menuPage.view)
+        menuPage.view.layoutSubtreeIfNeeded()
+        assertSettingsGeometry(initialSettingsGeometry(of: menuPage), equals: menuInitialGeometry)
     }
 
     func testClipViewListeningLivesOnThePageNotTheWindow() throws {

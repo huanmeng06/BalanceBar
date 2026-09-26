@@ -225,8 +225,6 @@ final class DashboardPageSession {
         contentHost.layoutSubtreeIfNeeded()
         if let scrollablePage = page as? DashboardScrollablePageViewController {
             scrollablePage.settleInitialLayout()
-        } else {
-            contentHost.layoutSubtreeIfNeeded()
         }
         preparePageForDisplay?()
         window?.displayIfNeeded()
