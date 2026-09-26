@@ -354,6 +354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let balanceAPIClient = BalanceAPIClient()
     private let balanceProgressStore = ProviderBalanceProgressStore()
     private lazy var notificationCoordinator = BalanceNotificationCoordinator()
+    private var lastNotificationPermissionState: BalanceNotificationPermissionState?
     private var providerRefreshCoordinator: ProviderRefreshCoordinator!
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
@@ -445,8 +446,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore()
         )
         super.init()
-        notificationCoordinator.onPermissionStateChanged = { [weak self] _ in
+        notificationCoordinator.onPermissionStateChanged = { [weak self] state in
             guard let self else { return }
+            let previous = self.lastNotificationPermissionState
+            self.lastNotificationPermissionState = state
+            guard state == .denied || previous == .denied else { return }
             DispatchQueue.main.async {
                 self.dashboardComposition.refreshNotificationsPage()
             }
