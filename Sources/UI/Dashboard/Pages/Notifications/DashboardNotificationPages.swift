@@ -422,7 +422,9 @@ final class DashboardNotificationPages {
         })
         cards.orientation = .vertical
         cards.alignment = .leading
-        cards.spacing = 10
+        // Six AppKit points render as roughly twelve physical pixels on the
+        // Retina displays this Dashboard targets.
+        cards.spacing = 6
         cards.detachesHiddenViews = true
         cards.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(heading)
