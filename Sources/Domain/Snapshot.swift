@@ -290,19 +290,20 @@ struct CodexResetOfficialSignal: Equatable {
 }
 
 /// Compact remaining-time text for the strong-signal amount slot.
+/// Minute precision matches quota remaining (`3h59m`, `12m`, `0m`).
 enum CodexResetOfficialCountdownFormatting {
     static func displayText(seconds: Int) -> String {
-        let clamped = max(0, seconds)
-        let hours = clamped / 3_600
-        let minutes = (clamped % 3_600) / 60
+        displayText(minutes: max(0, seconds) / 60)
+    }
+
+    static func displayText(minutes: Int) -> String {
+        let clamped = max(0, minutes)
+        let hours = clamped / 60
         let remainder = clamped % 60
         if hours > 0 {
-            return String(format: "%dh%02dm%02ds", hours, minutes, remainder)
+            return "\(hours)h\(remainder)m"
         }
-        if minutes > 0 {
-            return String(format: "%dm%02ds", minutes, remainder)
-        }
-        return "\(remainder)s"
+        return "\(remainder)m"
     }
 }
 
@@ -382,6 +383,10 @@ struct CodexResetForecast: Equatable {
     func remainingCountdownSeconds(now: Date = Date()) -> Int? {
         guard let targetAt = officialSignal?.targetAt else { return nil }
         return max(0, Int(targetAt.timeIntervalSince(now).rounded(.down)))
+    }
+
+    func remainingCountdownMinutes(now: Date = Date()) -> Int? {
+        remainingCountdownSeconds(now: now).map { $0 / 60 }
     }
 
     func officialHintText(language: AppLanguage = .selected) -> String? {

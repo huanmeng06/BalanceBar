@@ -940,7 +940,8 @@ final class ResponseParsersTests: XCTestCase {
             isoWindow.officialHintText(language: .english),
             "Official reset hint · Specific time"
         )
-        XCTAssertEqual(isoWindow.menuPrimaryDisplayText(now: now), "1h01m05s")
+        XCTAssertEqual(isoWindow.remainingCountdownMinutes(now: now), 61)
+        XCTAssertEqual(isoWindow.menuPrimaryDisplayText(now: now), "1h1m")
         XCTAssertFalse(isoWindow.officialHintText()?.contains("10/5") == true)
         XCTAssertNotEqual(isoWindow.menuPrimaryDisplayText(now: now), "71%")
 

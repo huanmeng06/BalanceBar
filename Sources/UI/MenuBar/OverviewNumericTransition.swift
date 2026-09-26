@@ -17,13 +17,13 @@ enum OverviewNumericFormat: Equatable {
     case integerPercent
     case currency(unit: String)
     case integerCount
-    case remainingSeconds
+    case remainingMinutes
 
     func isCompatible(with other: OverviewNumericFormat) -> Bool {
         switch (self, other) {
         case (.integerPercent, .integerPercent),
              (.integerCount, .integerCount),
-             (.remainingSeconds, .remainingSeconds):
+             (.remainingMinutes, .remainingMinutes):
             return true
         case let (.currency(left), .currency(right)):
             return left.uppercased() == right.uppercased()
@@ -38,9 +38,9 @@ enum OverviewNumericFormat: Equatable {
             return "\(Int(value))%"
         case .integerCount:
             return "\(Int(value))"
-        case .remainingSeconds:
+        case .remainingMinutes:
             return CodexResetOfficialCountdownFormatting.displayText(
-                seconds: max(0, Int(value.rounded(.down)))
+                minutes: max(0, Int(value.rounded(.down)))
             )
         case .currency(let unit):
             return StatusItemController.formatBalanceSummary(value, unit: unit)
@@ -53,7 +53,7 @@ enum OverviewNumericFormat: Equatable {
             return OverviewNumericDisplayParts(prefix: "", suffix: "%", fractionLength: 0)
         case .integerCount:
             return OverviewNumericDisplayParts(prefix: "", suffix: "", fractionLength: 0)
-        case .remainingSeconds:
+        case .remainingMinutes:
             return OverviewNumericDisplayParts(
                 prefix: "",
                 suffix: "",
@@ -132,7 +132,7 @@ enum OverviewNumericTransition {
         switch format {
         case .currency:
             return currencyDigitRollDuration
-        case .integerPercent, .integerCount, .remainingSeconds:
+        case .integerPercent, .integerCount, .remainingMinutes:
             return duration
         }
     }
@@ -247,12 +247,12 @@ enum OverviewNumericPresentation {
                         )
                     }
                 case .strongSignal:
-                    if let seconds = presentation.resetForecast.remainingCountdownSeconds(now: now) {
+                    if let minutes = presentation.resetForecast.remainingCountdownMinutes(now: now) {
                         samples.append(
                             OverviewNumericSample(
                                 identity: .bankedResetProbabilityCountdown(provider: snapshot.provider),
-                                format: .remainingSeconds,
-                                value: Double(seconds),
+                                format: .remainingMinutes,
+                                value: Double(minutes),
                                 progressPercentage: nil
                             )
                         )

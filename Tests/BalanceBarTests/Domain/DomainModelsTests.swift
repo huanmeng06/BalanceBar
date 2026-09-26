@@ -399,24 +399,36 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertNil(fallbackForecast.remainingCountdownSeconds(now: date))
 
         XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(seconds: 14_363),
+            "3h59m"
+        )
+        XCTAssertEqual(
             CodexResetOfficialCountdownFormatting.displayText(seconds: 5_025),
-            "1h23m45s"
+            "1h23m"
         )
         XCTAssertEqual(
             CodexResetOfficialCountdownFormatting.displayText(seconds: 723),
-            "12m03s"
+            "12m"
         )
         XCTAssertEqual(
             CodexResetOfficialCountdownFormatting.displayText(seconds: 45),
-            "45s"
+            "0m"
         )
         XCTAssertEqual(
             CodexResetOfficialCountdownFormatting.displayText(seconds: 0),
-            "0s"
+            "0m"
         )
         XCTAssertEqual(
             CodexResetOfficialCountdownFormatting.displayText(seconds: -8),
-            "0s"
+            "0m"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(minutes: 239),
+            "3h59m"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.displayText(minutes: 0),
+            "0m"
         )
 
         let countdownForecast = CodexResetForecast(
@@ -431,7 +443,8 @@ final class DomainModelsTests: XCTestCase {
             )
         )
         XCTAssertEqual(countdownForecast.remainingCountdownSeconds(now: date), 3_665)
-        XCTAssertEqual(countdownForecast.menuPrimaryDisplayText(now: date), "1h01m05s")
+        XCTAssertEqual(countdownForecast.remainingCountdownMinutes(now: date), 61)
+        XCTAssertEqual(countdownForecast.menuPrimaryDisplayText(now: date), "1h1m")
         XCTAssertEqual(
             countdownForecast.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 具体时间点"
@@ -449,7 +462,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(
             countdownForecast.menuPrimaryDisplayText(now: date.addingTimeInterval(4_000)),
-            "0s"
+            "0m"
         )
         XCTAssertEqual(
             countdownForecast.officialHintText(language: .simplifiedChinese),

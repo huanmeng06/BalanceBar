@@ -98,16 +98,19 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(OverviewNumericFormat.currency(unit: "USD").displayText(for: 1.70), "$1.70")
         XCTAssertEqual(OverviewNumericFormat.integerCount.displayText(for: 2), "2")
         XCTAssertEqual(
-            OverviewNumericFormat.remainingSeconds.displayText(for: 5_025),
-            "1h23m45s"
+            OverviewNumericFormat.remainingMinutes.displayText(for: 239),
+            "3h59m"
         )
         XCTAssertEqual(
-            OverviewNumericFormat.remainingSeconds.displayText(for: 723),
-            "12m03s"
+            OverviewNumericFormat.remainingMinutes.displayText(for: 83),
+            "1h23m"
         )
-        XCTAssertEqual(OverviewNumericFormat.remainingSeconds.displayText(for: 45), "45s")
-        XCTAssertEqual(OverviewNumericFormat.remainingSeconds.displayText(for: 0), "0s")
-        XCTAssertTrue(OverviewNumericFormat.remainingSeconds.displayParts.remainingTime)
+        XCTAssertEqual(
+            OverviewNumericFormat.remainingMinutes.displayText(for: 12),
+            "12m"
+        )
+        XCTAssertEqual(OverviewNumericFormat.remainingMinutes.displayText(for: 0), "0m")
+        XCTAssertTrue(OverviewNumericFormat.remainingMinutes.displayParts.remainingTime)
 
         let cnyParts = OverviewNumericFormat.currency(unit: "CNY").displayParts
         XCTAssertEqual(cnyParts.prefix, "¥")
@@ -313,33 +316,47 @@ final class OverviewNumericTransitionTests: XCTestCase {
                 .bankedResetProbabilityCountdown(provider: "OpenAI")
             ]
         )
-        XCTAssertEqual(countdownSamples.last?.displayText, "1h01m05s")
-        XCTAssertEqual(countdownSamples.last?.format, .remainingSeconds)
+        XCTAssertEqual(countdownSamples.last?.displayText, "1h1m")
+        XCTAssertEqual(countdownSamples.last?.format, .remainingMinutes)
+        XCTAssertEqual(countdownSamples.last?.value, 61)
+        let sameMinuteTick = OverviewNumericTransition.plan(
+            previous: countdownSamples.last,
+            current: OverviewNumericSample(
+                identity: .bankedResetProbabilityCountdown(provider: "OpenAI"),
+                format: .remainingMinutes,
+                value: 61,
+                progressPercentage: nil
+            ),
+            reduceMotion: false
+        )
+        XCTAssertFalse(sameMinuteTick.animates)
+        XCTAssertEqual(sameMinuteTick.startText, "1h1m")
+        XCTAssertEqual(sameMinuteTick.endText, "1h1m")
         let countdownTick = OverviewNumericTransition.plan(
             previous: countdownSamples.last,
             current: OverviewNumericSample(
                 identity: .bankedResetProbabilityCountdown(provider: "OpenAI"),
-                format: .remainingSeconds,
-                value: 3_664,
+                format: .remainingMinutes,
+                value: 59,
                 progressPercentage: nil
             ),
             reduceMotion: false
         )
         XCTAssertTrue(countdownTick.animates)
-        XCTAssertEqual(countdownTick.startText, "1h01m05s")
-        XCTAssertEqual(countdownTick.endText, "1h01m04s")
+        XCTAssertEqual(countdownTick.startText, "1h1m")
+        XCTAssertEqual(countdownTick.endText, "59m")
         let reduceMotionTick = OverviewNumericTransition.plan(
             previous: countdownSamples.last,
             current: OverviewNumericSample(
                 identity: .bankedResetProbabilityCountdown(provider: "OpenAI"),
-                format: .remainingSeconds,
-                value: 3_664,
+                format: .remainingMinutes,
+                value: 59,
                 progressPercentage: nil
             ),
             reduceMotion: true
         )
         XCTAssertFalse(reduceMotionTick.animates)
-        XCTAssertEqual(reduceMotionTick.startText, "1h01m04s")
+        XCTAssertEqual(reduceMotionTick.startText, "59m")
 
         let fallbackSamples = OverviewNumericPresentation.samples(
             snapshot: Snapshot.official(

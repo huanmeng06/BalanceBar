@@ -5728,9 +5728,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.bankedReset.probabilityCountdownAmount"
             }
         )
-        XCTAssertEqual(countdown.textField.stringValue, "1h01m05s")
-        XCTAssertEqual(countdown.sample?.format, .remainingSeconds)
-        XCTAssertEqual(countdown.sample?.value, 3_665)
+        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.sample?.format, .remainingMinutes)
+        XCTAssertEqual(countdown.sample?.value, 61)
         let hint = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.officialHint"
@@ -5754,8 +5754,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNotNil(controller.bankedResetCountdownTimerForTesting)
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(1)
         controller.bankedResetCountdownTimerForTesting?.fire()
-        XCTAssertEqual(countdown.textField.stringValue, "1h01m04s")
-        XCTAssertEqual(countdown.sample?.value, 3_664)
+        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.sample?.value, 61)
+        controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(66)
+        controller.bankedResetCountdownTimerForTesting?.fire()
+        XCTAssertEqual(countdown.textField.stringValue, "59m")
+        XCTAssertEqual(countdown.sample?.value, 59)
         XCTAssertEqual(hint.stringValue, "官方重置提示 · 具体时间点")
         controller.menuDidClose(controller.statusMenuForTesting)
         XCTAssertNil(controller.bankedResetCountdownTimerForTesting)

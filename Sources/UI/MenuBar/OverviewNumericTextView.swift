@@ -178,20 +178,15 @@ private struct OverviewNumericTextRoot: View {
 
     private var remainingTimeValue: some View {
         let total = max(0, Int(model.amount.rounded(.down)))
-        let hours = total / 3_600
-        let minutes = (total % 3_600) / 60
-        let seconds = total % 60
+        let hours = total / 60
+        let minutes = total % 60
         return HStack(spacing: 0) {
             if hours > 0 {
                 rollingInteger(hours, minDigits: 1)
                 Text("h")
             }
-            if hours > 0 || minutes > 0 {
-                rollingInteger(minutes, minDigits: hours > 0 ? 2 : 1)
-                Text("m")
-            }
-            rollingInteger(seconds, minDigits: (hours > 0 || minutes > 0) ? 2 : 1)
-            Text("s")
+            rollingInteger(minutes, minDigits: 1)
+            Text("m")
         }
     }
 
@@ -336,6 +331,9 @@ final class OverviewNumericTextView: NSView {
     }
 
     func apply(plan: OverviewNumericTransitionPlan, sample: OverviewNumericSample) {
+        if self.sample == sample, currentValue == plan.toValue, !plan.animates {
+            return
+        }
         self.sample = sample
         pendingPlan = nil
         if plan.animates, window != nil {
@@ -405,7 +403,7 @@ final class OverviewNumericTextView: NSView {
         switch format {
         case .currency:
             return .snappy(duration: OverviewNumericTransition.currencyDigitRollDuration, extraBounce: 0)
-        case .integerPercent, .integerCount, .remainingSeconds:
+        case .integerPercent, .integerCount, .remainingMinutes:
             return .easeOut(duration: OverviewNumericTransition.duration)
         }
     }

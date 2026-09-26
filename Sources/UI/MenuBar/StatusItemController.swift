@@ -6362,11 +6362,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let amount: NSView
         let marqueeAmountText: String
         var reservationFont = amountFont
-        if let seconds = forecast.remainingCountdownSeconds(now: bankedResetCountdownNow()) {
+        if let minutes = forecast.remainingCountdownMinutes(now: bankedResetCountdownNow()) {
             let sample = OverviewNumericSample(
                 identity: .bankedResetProbabilityCountdown(provider: provider),
-                format: .remainingSeconds,
-                value: Double(seconds),
+                format: .remainingMinutes,
+                value: Double(minutes),
                 progressPercentage: nil
             )
             let plan = overviewNumericPlan(for: sample)
