@@ -4602,7 +4602,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let cardSummary = try XCTUnwrap(frames.bankedResetSummaryRow)
         XCTAssertEqual(
             probabilityMetrics.minY - cardSummary.quotaDetail.maxY,
-            frames.quotaRows[0].progress.minY - frames.quotaRows[1].quotaDetail.maxY,
+            OpenCodexCardLayout.quotaRowGap,
             accuracy: 0.001
         )
         XCTAssertNil(frames.bankedResetForecastConfidence)

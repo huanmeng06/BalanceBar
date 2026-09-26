@@ -413,15 +413,17 @@ enum OpenCodexCardLayout {
         quotaDetailOffset + quotaDetailHeight - quotaResetOffset
     }
 
-    /// 60pt quota row plus the 24h+48h line below the source subtitle.
-    /// No progress bar.
+    /// Two-line text band plus the 24h+48h line 2pt below the source subtitle.
+    /// No progress-bar slot.
     static func bankedResetProbabilityBlockHeight() -> CGFloat {
-        quotaRowHeight + bankedResetForecastExtraHeight()
+        bankedResetTextBandAmountHeight
+            + bankedResetForecastLineGap
+            + bankedResetForecastExtraHeight()
     }
 
-    /// Reset-card header keeps the 60pt quota row for inter-block gaps.
+    /// Reset-card header is the same two-line band. Tickets sit 6pt below it.
     static func bankedResetSummaryHeight() -> CGFloat {
-        quotaRowHeight
+        bankedResetTextBandAmountHeight
     }
     /// Detailed ticket list shows at most two full rows plus half of a
     /// third so leftover cards remain obvious. 1–2 cards stay unclipped.
@@ -624,7 +626,7 @@ enum OpenCodexCardLayout {
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
         let forecastExtraHeight = includesBankedReset
-            ? bankedResetForecastExtraHeight()
+            ? bankedResetForecastLineGap + bankedResetForecastExtraHeight()
             : 0
         let forecastLineHeight = bankedResetForecastLineHeight()
         let probabilityBlockHeight = includesBankedReset
@@ -767,29 +769,28 @@ enum OpenCodexCardLayout {
         let cardSummaryY = bottomInset + bankedDetailBlockHeight
         let probabilityBottomY = cardSummaryY + cardSummaryHeight + probabilityCardGap
         let probabilityRowY = probabilityBottomY + forecastExtraHeight
-        // Title and subtitle keep the 5-hour quota text offsets. Amount
-        // covers only that two-line band so the number is not pulled down
-        // by the progress-bar slot. Hiding 5h/7d progress bars must not
-        // pull 重置卡 into the probability block.
+        // Row origin is the subtitle bottom. Title, subtitle, and amount
+        // keep the same two-line relationship; the unused progress-bar
+        // slot is not part of the block height.
         func quotaBandFrames(rowY: CGFloat, showsReset: Bool) -> OpenCodexQuotaRowFrames {
             OpenCodexQuotaRowFrames(
                 quotaDetail: CGRect(
                     x: horizontalInset,
-                    y: rowY + quotaDetailOffset,
+                    y: rowY + quotaDetailOffset - quotaResetOffset,
                     width: 128,
                     height: quotaDetailHeight
                 ),
                 reset: showsReset
                     ? CGRect(
                         x: horizontalInset,
-                        y: rowY + quotaResetOffset,
+                        y: rowY,
                         width: 128,
                         height: quotaResetHeight
                     )
                     : .zero,
                 amount: CGRect(
                     x: amountX,
-                    y: rowY + quotaResetOffset,
+                    y: rowY,
                     width: amountWidth,
                     height: bankedResetTextBandAmountHeight
                 ),
