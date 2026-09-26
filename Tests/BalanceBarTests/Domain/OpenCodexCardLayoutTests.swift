@@ -153,19 +153,20 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             rowGap,
             accuracy: 0.001
         )
-        let probabilityBoxMaxY = probabilityOff.amount.minY + noProgressRowHeight
+        let probabilityRowMaxY = probabilityOff.amount.minY
+            - OpenCodexCardLayout.quotaAmountOffset
+            + OpenCodexCardLayout.quotaRowHeight
         XCTAssertEqual(
-            withoutProgress.quotaRows[1].amount.minY - probabilityBoxMaxY,
+            withoutProgress.quotaRows[1].amount.minY - probabilityRowMaxY,
             rowGap,
             accuracy: 0.001
         )
         XCTAssertEqual(
-            withProgress.quotaRows[1].progress.minY
-                - (probabilityOn.amount.minY + noProgressRowHeight),
+            withProgress.quotaRows[1].progress.minY - probabilityRowMaxY,
             rowGap,
             accuracy: 0.001
         )
-        XCTAssertLessThanOrEqual(probabilityOff.quotaDetail.maxY, probabilityBoxMaxY + 0.001)
+        XCTAssertLessThanOrEqual(probabilityOff.quotaDetail.maxY, probabilityRowMaxY + 0.001)
         XCTAssertGreaterThan(withoutProgress.quotaRows[1].amount.minY, probabilityOff.quotaDetail.maxY)
         XCTAssertGreaterThan(probabilityOff.amount.minY, compactOff.amount.maxY)
         XCTAssertEqual(probabilityOff.progress, .zero)
@@ -184,22 +185,126 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             shownProgressBaseline,
             accuracy: 0.001
         )
-        let noProgressRow = withoutProgress.quotaRows[0]
+        let fiveHour = withProgress.quotaRows[0]
+        XCTAssertEqual(probabilityOff.amount.height, fiveHour.amount.height, accuracy: 0.001)
+        XCTAssertEqual(compactOff.amount.height, fiveHour.amount.height, accuracy: 0.001)
         XCTAssertEqual(
             probabilityOff.quotaDetail.minY - probabilityOff.amount.minY,
-            noProgressRow.quotaDetail.minY - noProgressRow.amount.minY,
+            fiveHour.quotaDetail.minY - fiveHour.amount.minY,
             accuracy: 0.001
         )
         XCTAssertEqual(
             probabilityOff.reset.minY - probabilityOff.amount.minY,
-            noProgressRow.reset.minY - noProgressRow.amount.minY,
+            fiveHour.reset.minY - fiveHour.amount.minY,
             accuracy: 0.001
         )
         let shownMetrics = try XCTUnwrap(withProgress.bankedResetForecastMetrics)
-        XCTAssertEqual(shownMetrics.maxY, probabilityOn.amount.minY, accuracy: 0.001)
         XCTAssertEqual(
-            probabilityOn.reset.minY - shownMetrics.maxY,
-            probabilityOn.quotaDetail.minY - probabilityOn.reset.maxY,
+            shownMetrics.maxY,
+            probabilityOn.amount.minY - OpenCodexCardLayout.quotaAmountOffset,
+            accuracy: 0.001
+        )
+        XCTAssertLessThanOrEqual(shownMetrics.maxY, probabilityOn.reset.minY)
+        XCTAssertEqual(
+            compactOff.quotaDetail.minY - compactOff.amount.minY,
+            fiveHour.quotaDetail.minY - fiveHour.amount.minY,
+            accuracy: 0.001
+        )
+    }
+
+    func testBankedResetProbabilityAndSummaryMatchFiveHourQuotaTextAndAmountFrames() throws {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 82,
+                label: "5-hour",
+                daysText: "5 hours",
+                reset: "2h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 82,
+                label: "7-day",
+                daysText: "7 days",
+                reset: "7d",
+                durationSeconds: 604_800
+            )
+        ]
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: windows,
+            includesQuotaProgress: true,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .compact,
+            includesBankedResetNearestExpiry: true
+        )
+        let fiveHour = frames.quotaRows[0]
+        let sevenDay = frames.quotaRows[1]
+        let probability = try XCTUnwrap(frames.bankedResetProbabilityRow)
+        let summary = try XCTUnwrap(frames.bankedResetSummaryRow)
+        let metrics = try XCTUnwrap(frames.bankedResetForecastMetrics)
+
+        XCTAssertEqual(fiveHour.amount.height, OpenCodexCardLayout.quotaAmountHeight, accuracy: 0.001)
+        XCTAssertEqual(probability.amount.height, fiveHour.amount.height, accuracy: 0.001)
+        XCTAssertEqual(summary.amount.height, fiveHour.amount.height, accuracy: 0.001)
+        XCTAssertEqual(
+            probability.quotaDetail.minY - probability.amount.minY,
+            fiveHour.quotaDetail.minY - fiveHour.amount.minY,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            probability.reset.minY - probability.amount.minY,
+            fiveHour.reset.minY - fiveHour.amount.minY,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            summary.quotaDetail.minY - summary.amount.minY,
+            fiveHour.quotaDetail.minY - fiveHour.amount.minY,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            summary.reset.minY - summary.amount.minY,
+            fiveHour.reset.minY - fiveHour.amount.minY,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(probability.progress, .zero)
+        XCTAssertEqual(summary.progress, .zero)
+        XCTAssertLessThanOrEqual(metrics.maxY, probability.amount.minY + 0.001)
+        XCTAssertLessThanOrEqual(metrics.maxY, probability.reset.minY + 0.001)
+        XCTAssertEqual(
+            metrics.maxY,
+            probability.amount.minY - OpenCodexCardLayout.quotaAmountOffset,
+            accuracy: 0.001
+        )
+
+        let shownBaseline = fiveHour.progress.minY - sevenDay.quotaDetail.maxY
+        XCTAssertEqual(
+            sevenDay.progress.minY - probability.quotaDetail.maxY,
+            shownBaseline,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            metrics.minY - summary.quotaDetail.maxY,
+            shownBaseline,
+            accuracy: 0.001
+        )
+
+        let collapsed = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 0,
+            bankedResetDisplayMode: .compact,
+            includesBankedResetNearestExpiry: false
+        )
+        let collapsedSummary = try XCTUnwrap(collapsed.bankedResetSummaryRow)
+        XCTAssertEqual(collapsedSummary.reset, .zero)
+        XCTAssertEqual(collapsedSummary.amount.height, fiveHour.amount.height, accuracy: 0.001)
+        XCTAssertEqual(
+            collapsedSummary.quotaDetail.minY - collapsedSummary.amount.minY,
+            fiveHour.quotaDetail.minY - fiveHour.amount.minY,
             accuracy: 0.001
         )
     }
@@ -583,7 +688,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertGreaterThan(summary.amount.width, 0)
         XCTAssertEqual(
             summary.amount.height,
-            OpenCodexCardLayout.lunaReserveNoProgressAmountHeight,
+            OpenCodexCardLayout.quotaAmountHeight,
             accuracy: 0.001
         )
         XCTAssertEqual(frames.bankedResetDetailRows.map(\.progress), [.zero, .zero])
@@ -593,8 +698,8 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(summary.badge, .zero)
         XCTAssertEqual(summary.reset, .zero)
         XCTAssertEqual(
-            summary.quotaDetail.midY,
-            summary.amount.midY,
+            summary.quotaDetail.minY - summary.amount.minY,
+            frames.quotaRows[0].quotaDetail.minY - frames.quotaRows[0].amount.minY,
             accuracy: 0.001
         )
         XCTAssertGreaterThan(summary.quotaDetail.minY, summary.amount.minY)
@@ -603,7 +708,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertGreaterThan(probability.reset.width, 0)
         XCTAssertEqual(
             probability.amount.height,
-            OpenCodexCardLayout.lunaReserveNoProgressAmountHeight,
+            OpenCodexCardLayout.quotaAmountHeight,
             accuracy: 0.001
         )
         XCTAssertGreaterThan(probability.quotaDetail.midY, probability.amount.midY)
@@ -657,13 +762,14 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(
-            summary.amount.minY - frames.bankedResetDetailRows[0].chrome.maxY,
+            (summary.amount.minY - OpenCodexCardLayout.quotaAmountOffset)
+                - frames.bankedResetDetailRows[0].chrome.maxY,
             OpenCodexCardLayout.bankedResetSummaryDetailGap,
             accuracy: 0.001
         )
         XCTAssertEqual(
-            frames.quotaRows[1].progress.minY - probability.amount.maxY,
-            OpenCodexCardLayout.quotaRowGap,
+            frames.quotaRows[1].progress.minY - probability.quotaDetail.maxY,
+            frames.quotaRows[0].progress.minY - frames.quotaRows[1].quotaDetail.maxY,
             accuracy: 0.001
         )
         let metrics = try XCTUnwrap(frames.bankedResetForecastMetrics)
@@ -687,7 +793,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(OpenCodexCardLayout.bankedResetForecastLineCount, 1)
         XCTAssertEqual(
             OpenCodexCardLayout.bankedResetProbabilityBlockHeight(),
-            OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+            OpenCodexCardLayout.quotaRowHeight
                 + OpenCodexCardLayout.bankedResetForecastExtraHeight(),
             accuracy: 0.001
         )
@@ -713,10 +819,14 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         )
         XCTAssertEqual(
             probability.reset.minY - metrics.maxY,
-            quotaTextGap,
+            frames.quotaRows[0].reset.minY - frames.quotaRows[0].progress.minY,
             accuracy: 0.001
         )
-        XCTAssertEqual(metrics.maxY, probability.amount.minY, accuracy: 0.001)
+        XCTAssertEqual(
+            metrics.maxY,
+            probability.amount.minY - OpenCodexCardLayout.quotaAmountOffset,
+            accuracy: 0.001
+        )
         XCTAssertLessThanOrEqual(probability.amount.minY, probability.reset.minY)
         XCTAssertGreaterThanOrEqual(probability.amount.maxY, probability.quotaDetail.maxY)
         let withExpiry = OpenCodexCardLayout.frames(
@@ -756,11 +866,11 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         )
         XCTAssertLessThanOrEqual(expirySummary.amount.minY, expirySummary.reset.minY)
         XCTAssertGreaterThanOrEqual(expirySummary.amount.maxY, expirySummary.quotaDetail.maxY)
-        XCTAssertGreaterThan(expirySummary.quotaDetail.maxY, summary.quotaDetail.maxY)
+        XCTAssertEqual(expirySummary.quotaDetail, summary.quotaDetail)
         XCTAssertEqual(expirySummary.progress, .zero)
         XCTAssertEqual(
-            metrics.minY - summary.amount.maxY,
-            OpenCodexCardLayout.quotaRowGap,
+            metrics.minY - summary.quotaDetail.maxY,
+            shownBaseline,
             accuracy: 0.001
         )
         XCTAssertGreaterThan(metrics.minY, frames.bankedResetDetailRows[0].chrome.maxY)
@@ -841,8 +951,8 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(compactSummary.chrome, .zero)
         XCTAssertEqual(compactSummary.reset, .zero)
         XCTAssertEqual(
-            compactSummary.quotaDetail.midY,
-            compactSummary.amount.midY,
+            compactSummary.quotaDetail.minY - compactSummary.amount.minY,
+            frames.quotaRows[0].quotaDetail.minY - frames.quotaRows[0].amount.minY,
             accuracy: 0.001
         )
         XCTAssertNotNil(compact.bankedResetProbabilityRow)
@@ -852,7 +962,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertGreaterThan(compact.cardSize.height, baseline.cardSize.height)
         XCTAssertEqual(
             compactSummary.amount.height,
-            OpenCodexCardLayout.lunaReserveNoProgressAmountHeight,
+            OpenCodexCardLayout.quotaAmountHeight,
             accuracy: 0.001
         )
         XCTAssertFalse(OpenCodexCardLayout.bankedResetTicketsNeedScroll(cardCount: 2))
@@ -981,7 +1091,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(
-            summary.amount.minY - viewport.maxY,
+            (summary.amount.minY - OpenCodexCardLayout.quotaAmountOffset) - viewport.maxY,
             OpenCodexCardLayout.bankedResetSummaryDetailGap,
             accuracy: 0.001
         )
@@ -989,11 +1099,15 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         let metrics = try XCTUnwrap(ten.bankedResetForecastMetrics)
         XCTAssertNil(ten.bankedResetForecastConfidence)
         XCTAssertEqual(
-            metrics.minY - summary.amount.maxY,
-            OpenCodexCardLayout.quotaRowGap,
+            metrics.minY - summary.quotaDetail.maxY,
+            ten.quotaRows[0].progress.minY - ten.quotaRows[1].quotaDetail.maxY,
             accuracy: 0.001
         )
-        XCTAssertEqual(probability.amount.minY, metrics.maxY, accuracy: 0.001)
+        XCTAssertEqual(
+            probability.amount.minY - OpenCodexCardLayout.quotaAmountOffset,
+            metrics.maxY,
+            accuracy: 0.001
+        )
         XCTAssertGreaterThan(summary.quotaDetail.minY, viewport.maxY)
         XCTAssertLessThan(
             two.bankedResetDetailRows[0].chrome.maxY,

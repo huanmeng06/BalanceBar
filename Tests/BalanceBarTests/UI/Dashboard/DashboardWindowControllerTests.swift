@@ -4375,6 +4375,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             OpenCodexCardLayout.quotaAmountPointSize
         )
         XCTAssertEqual(countField.alignment, .right)
+        XCTAssertEqual(
+            countField.frame.height,
+            OpenCodexCardLayout.quotaAmountHeight,
+            accuracy: 0.001
+        )
         let chromes = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.chrome"
         }
@@ -4504,6 +4509,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(large24.textField.stringValue, "24%")
         XCTAssertEqual(large24.textField.font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize)
         XCTAssertEqual(large24.textField.alignment, .right)
+        XCTAssertEqual(
+            large24.frame.height,
+            OpenCodexCardLayout.quotaAmountHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(large24.frame.height, frames.quotaRows[0].amount.height, accuracy: 0.001)
         XCTAssertNil(large24.sample?.progressPercentage)
         XCTAssertFalse(
             overview.subviews.contains { view in
@@ -4523,6 +4534,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         assertBankedResetForecastSubtitleFullyVisible(
             probabilityLink,
             expected: tr(.keyCodexBankedResetProbabilitySource)
+        )
+        XCTAssertEqual(
+            probabilityLink.frame.minY,
+            try XCTUnwrap(frames.bankedResetProbabilityRow).reset.minY,
+            accuracy: 0.001
         )
         let firstChrome = try XCTUnwrap(chromes.first)
         XCTAssertGreaterThan(
@@ -4581,8 +4597,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let probabilityMetrics = try XCTUnwrap(frames.bankedResetForecastMetrics)
         let cardSummary = try XCTUnwrap(frames.bankedResetSummaryRow)
         XCTAssertEqual(
-            probabilityMetrics.minY - cardSummary.amount.maxY,
-            OpenCodexCardLayout.quotaRowGap,
+            probabilityMetrics.minY - cardSummary.quotaDetail.maxY,
+            frames.quotaRows[0].progress.minY - frames.quotaRows[1].quotaDetail.maxY,
             accuracy: 0.001
         )
         XCTAssertNil(frames.bankedResetForecastConfidence)
@@ -5629,10 +5645,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 "count view for \(mode)"
             )
             XCTAssertEqual(
-                resetTitle.frame.midY,
-                overview.convert(countView.frame, from: countView.superview).midY,
+                resetTitle.frame.minY
+                    - overview.convert(countView.frame, from: countView.superview).minY,
+                OpenCodexCardLayout.quotaDetailOffset - OpenCodexCardLayout.quotaAmountOffset,
                 accuracy: 1,
-                "collapsed reset subtitle for \(mode)"
+                "collapsed reset title offset for \(mode)"
             )
             XCTAssertFalse(
                 overview.subviews.contains {

@@ -6418,8 +6418,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             height: frame.height
         )
         // NSTextField cells can draw glyphs inset of the view frame. Shift
-        // the link so its visible text shares the probability title's leading
-        // edge instead of looking indented.
+        // origin.x so the visible text shares the quota subtitle's leading
+        // edge. Leave origin.y on the reset frame; a vertical inset would
+        // push 「数据来源」 off the 5h0m subtitle.
         let titleTextInset = title.cell?
             .titleRect(forBounds: title.bounds).minX ?? 0
         if titleTextInset != 0 {

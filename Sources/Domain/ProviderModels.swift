@@ -406,15 +406,15 @@ enum OpenCodexCardLayout {
         }
     }
 
-    /// No-progress amount, source subtitle inside it, and the 24h+48h line
-    /// flush underneath. No progress bar.
+    /// Same 60pt quota amount-band as 5-hour, plus the 24h+48h line below
+    /// the source subtitle. No progress bar.
     static func bankedResetProbabilityBlockHeight() -> CGFloat {
-        lunaReserveNoProgressRowHeight + bankedResetForecastExtraHeight()
+        quotaRowHeight + bankedResetForecastExtraHeight()
     }
 
-    /// Reset-card header only. The probability block is a separate row above it.
+    /// Reset-card header uses the same 60pt quota amount-band as 5-hour.
     static func bankedResetSummaryHeight() -> CGFloat {
-        lunaReserveNoProgressRowHeight
+        quotaRowHeight
     }
     /// Detailed ticket list shows at most two full rows plus half of a
     /// third so leftover cards remain obvious. 1–2 cards stay unclipped.
@@ -761,64 +761,41 @@ enum OpenCodexCardLayout {
             : nil
         let cardSummaryY = bottomInset + bankedDetailBlockHeight
         let probabilityBottomY = cardSummaryY + cardSummaryHeight + probabilityCardGap
-        let probabilityAmountY = probabilityBottomY + forecastExtraHeight
-        let bankedContentShift = quotaRowHeight - lunaReserveNoProgressRowHeight
-        // Match a no-progress quota row: title and subtitle use the shifted
-        // offsets inside the 42pt amount. Do not inherit the 60pt quota
-        // rowHeight, or hiding window progress bars lifts 重置卡 into the
-        // probability block. The probability row stays a sibling above it.
-        func noProgressTextFrames(rowY: CGFloat) -> (detail: CGRect, reset: CGRect) {
-            (
-                CGRect(
+        let probabilityRowY = probabilityBottomY + forecastExtraHeight
+        // Banked rows always use the 5-hour quota text/amount offsets, never
+        // the collapsed window `rowHeight`. Hiding 5h/7d progress bars must
+        // not pull 重置卡 into the probability block.
+        func quotaBandFrames(rowY: CGFloat, showsReset: Bool) -> OpenCodexQuotaRowFrames {
+            OpenCodexQuotaRowFrames(
+                quotaDetail: CGRect(
                     x: horizontalInset,
-                    y: rowY + quotaDetailOffset - bankedContentShift,
+                    y: rowY + quotaDetailOffset,
                     width: 128,
                     height: quotaDetailHeight
                 ),
-                CGRect(
-                    x: horizontalInset,
-                    y: rowY + quotaResetOffset - bankedContentShift,
-                    width: 128,
-                    height: quotaResetHeight
-                )
+                reset: showsReset
+                    ? CGRect(
+                        x: horizontalInset,
+                        y: rowY + quotaResetOffset,
+                        width: 128,
+                        height: quotaResetHeight
+                    )
+                    : .zero,
+                amount: CGRect(
+                    x: amountX,
+                    y: rowY + quotaAmountOffset,
+                    width: amountWidth,
+                    height: quotaAmountHeight
+                ),
+                progress: .zero
             )
         }
         let summaryShowsExpiry = includesBankedReset && includesBankedResetNearestExpiry
-        let summaryText = noProgressTextFrames(rowY: cardSummaryY)
-        let probabilityText = noProgressTextFrames(rowY: probabilityAmountY)
         let bankedResetSummaryRow = includesBankedReset
-            ? OpenCodexQuotaRowFrames(
-                quotaDetail: summaryShowsExpiry
-                    ? summaryText.detail
-                    : CGRect(
-                        x: horizontalInset,
-                        y: cardSummaryY
-                            + (lunaReserveNoProgressAmountHeight - quotaDetailHeight) / 2,
-                        width: 128,
-                        height: quotaDetailHeight
-                    ),
-                reset: summaryShowsExpiry ? summaryText.reset : .zero,
-                amount: CGRect(
-                    x: amountX,
-                    y: cardSummaryY + max(0, quotaAmountOffset - bankedContentShift),
-                    width: amountWidth,
-                    height: lunaReserveNoProgressAmountHeight
-                ),
-                progress: .zero
-            )
+            ? quotaBandFrames(rowY: cardSummaryY, showsReset: summaryShowsExpiry)
             : nil
         let bankedResetProbabilityRow = includesBankedReset
-            ? OpenCodexQuotaRowFrames(
-                quotaDetail: probabilityText.detail,
-                reset: probabilityText.reset,
-                amount: CGRect(
-                    x: amountX,
-                    y: probabilityAmountY,
-                    width: amountWidth,
-                    height: lunaReserveNoProgressAmountHeight
-                ),
-                progress: .zero
-            )
+            ? quotaBandFrames(rowY: probabilityRowY, showsReset: true)
             : nil
         let bankedResetForecastMetrics = includesBankedReset
             ? CGRect(
