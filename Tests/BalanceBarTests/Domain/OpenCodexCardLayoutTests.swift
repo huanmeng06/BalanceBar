@@ -168,7 +168,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         )
         XCTAssertEqual(
             withProgress.quotaRows[0].progress.minY
-                - (withProgress.quotaRows[1].progress.minY + OpenCodexCardLayout.quotaRowHeight),
+                - (withProgress.quotaRows[1].progress.minY + OpenCodexCardLayout.quotaProgressRowHeight),
             rowGap,
             accuracy: 0.001
         )
@@ -274,7 +274,35 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         )
         XCTAssertEqual(
             fiveHour.amount.minY,
-            fiveHour.progress.minY + OpenCodexCardLayout.quotaResetOffset,
+            fiveHour.progress.minY + OpenCodexCardLayout.quotaProgressResetOffset,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            fiveHour.reset.minY - fiveHour.progress.maxY,
+            OpenCodexCardLayout.quotaProgressResetOffset
+                - OpenCodexCardLayout.quotaProgressHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            fiveHour.progress.minY - sevenDay.quotaDetail.maxY,
+            OpenCodexCardLayout.quotaProgressRowHeight
+                + OpenCodexCardLayout.quotaRowGap
+                - (
+                    OpenCodexCardLayout.quotaProgressDetailOffset
+                        + OpenCodexCardLayout.quotaDetailHeight
+                ),
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            fiveHour.progress.minY - sevenDay.quotaDetail.maxY,
+            17,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            fiveHour.progress.minY
+                + OpenCodexCardLayout.quotaProgressRowHeight
+                - fiveHour.quotaDetail.maxY,
+            3,
             accuracy: 0.001
         )
         XCTAssertEqual(
@@ -422,18 +450,18 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             officialQuotaWindows: windows
         )
 
-        XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 199))
+        XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 183))
         XCTAssertEqual(frames.quotaRows.count, 2)
-        XCTAssertEqual(frames.account, CGRect(x: 14, y: 153, width: 198, height: 17))
-        XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 153, width: 78, height: 17))
-        XCTAssertEqual(frames.title, CGRect(x: 14, y: 172, width: 189, height: 20))
-        XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 173, width: 81, height: 17))
+        XCTAssertEqual(frames.account, CGRect(x: 14, y: 137, width: 198, height: 17))
+        XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 137, width: 78, height: 17))
+        XCTAssertEqual(frames.title, CGRect(x: 14, y: 156, width: 189, height: 20))
+        XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 157, width: 81, height: 17))
 
         let fiveHour = frames.quotaRows[0]
         let sevenDay = frames.quotaRows[1]
         XCTAssertGreaterThan(fiveHour.progress.minY, sevenDay.progress.minY)
         XCTAssertEqual(
-            fiveHour.progress.minY - (sevenDay.progress.minY + OpenCodexCardLayout.quotaRowHeight),
+            fiveHour.progress.minY - (sevenDay.progress.minY + OpenCodexCardLayout.quotaProgressRowHeight),
             OpenCodexCardLayout.quotaRowGap,
             accuracy: 0.001
         )
@@ -507,11 +535,11 @@ final class OpenCodexCardLayoutTests: XCTestCase {
 
         XCTAssertEqual(frames.quotaRows.count, 2)
         XCTAssertNotNil(frames.lunaReserveRow)
-        XCTAssertEqual(frames.cardSize.height, 273)
+        XCTAssertEqual(frames.cardSize.height, 257)
         XCTAssertEqual(
             frames.lunaReserveRow?.progress.minY,
             OpenCodexCardLayout.quotaBottomInset
-                + OpenCodexCardLayout.quotaRowHeight
+                + OpenCodexCardLayout.quotaProgressRowHeight
                 + OpenCodexCardLayout.quotaRowGap
         )
         XCTAssertEqual(
@@ -533,7 +561,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             includesLunaReserve: true,
             includesLunaReserveProgress: false
         )
-        XCTAssertEqual(unavailableFrames.cardSize.height, 255)
+        XCTAssertEqual(unavailableFrames.cardSize.height, 239)
         XCTAssertEqual(unavailableFrames.lunaReserveRow?.progress ?? .zero, .zero)
         XCTAssertEqual(
             unavailableFrames.lunaReserveRow?.amount.height,
@@ -546,7 +574,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(
             unavailableFrames.lunaReserveRow?.amount.minY,
             OpenCodexCardLayout.quotaBottomInset
-                + OpenCodexCardLayout.quotaRowHeight
+                + OpenCodexCardLayout.quotaProgressRowHeight
                 + OpenCodexCardLayout.quotaRowGap
         )
         XCTAssertEqual(
@@ -942,7 +970,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertLessThan(firstDetail.icon.maxY, firstDetail.chrome.maxY)
         XCTAssertEqual(
             frames.quotaRows[0].progress.minY - frames.quotaRows[1].progress.minY,
-            OpenCodexCardLayout.quotaRowHeight + OpenCodexCardLayout.quotaRowGap,
+            OpenCodexCardLayout.quotaProgressRowHeight + OpenCodexCardLayout.quotaRowGap,
             accuracy: 0.001
         )
 

@@ -281,6 +281,12 @@ enum OpenCodexCardLayout {
     static let quotaResetHeight: CGFloat = 17
     static let quotaDetailHeight: CGFloat = 18
     static let quotaProgressHeight: CGFloat = 5
+    /// Official 5h/7d rows that draw a progress bar. 8pt shorter than
+    /// `quotaRowHeight` so the unused gap under the subtitle shrinks;
+    /// title/subtitle/amount stay the same distance from the row top.
+    static let quotaProgressRowHeight: CGFloat = 52
+    static let quotaProgressResetOffset: CGFloat = 12
+    static let quotaProgressDetailOffset: CGFloat = 31
     // An unavailable Reserve has no percentage to visualize. Keep enough
     // height for its two text lines and amount placeholder, but remove the
     // progress-bar slot and the gap that preceded it.
@@ -611,10 +617,16 @@ enum OpenCodexCardLayout {
         includesBankedResetNearestExpiry: Bool
     ) -> OpenCodexCardFrames {
         let windowCount = windows.count
-        let rowHeight = includesQuotaProgress ? quotaRowHeight : lunaReserveNoProgressRowHeight
+        let rowHeight = includesQuotaProgress ? quotaProgressRowHeight : lunaReserveNoProgressRowHeight
         let windowContentShift = includesQuotaProgress
             ? 0
             : quotaRowHeight - lunaReserveNoProgressRowHeight
+        let windowDetailOffset = includesQuotaProgress
+            ? quotaProgressDetailOffset
+            : quotaDetailOffset
+        let windowResetOffset = includesQuotaProgress
+            ? quotaProgressResetOffset
+            : quotaResetOffset
         let rowGap = quotaRowGap
         let bottomInset = quotaBottomInset
         let titleGap = quotaTitleGap
@@ -690,20 +702,20 @@ enum OpenCodexCardLayout {
             return OpenCodexQuotaRowFrames(
                 quotaDetail: CGRect(
                     x: horizontalInset,
-                    y: y + quotaDetailOffset - windowContentShift,
+                    y: y + windowDetailOffset - windowContentShift,
                     width: 128,
                     height: quotaDetailHeight
                 ),
                 reset: CGRect(
                     x: horizontalInset,
-                    y: y + quotaResetOffset - windowContentShift,
+                    y: y + windowResetOffset - windowContentShift,
                     width: 128,
                     height: quotaResetHeight
                 ),
                 // Same title+subtitle band as 重置概率. Progress stays at row origin.
                 amount: CGRect(
                     x: amountX,
-                    y: y + quotaResetOffset - windowContentShift,
+                    y: y + windowResetOffset - windowContentShift,
                     width: amountWidth,
                     height: bankedResetTextBandAmountHeight
                 ),

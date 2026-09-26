@@ -4193,7 +4193,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         ).cardSize.height
         XCTAssertEqual(
             frames.cardSize.height + 2 * (
-                OpenCodexCardLayout.quotaRowHeight - OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+                OpenCodexCardLayout.quotaProgressRowHeight - OpenCodexCardLayout.lunaReserveNoProgressRowHeight
             ),
             withProgressHeight
         )
