@@ -342,47 +342,97 @@ final class LocalizationResourceStore {
         arguments: [String] = [],
         preferredLanguages: [String] = Locale.preferredLanguages
     ) -> LocalizedSubtitle {
+        localizedSubtitle(
+            rawKey: key.rawKey,
+            language: language,
+            arguments: arguments,
+            preferredLanguages: preferredLanguages,
+            table: "Localizable"
+        )
+    }
+
+    /// Runtime-owned feature modules can keep their copy in the same bundled
+    /// `.strings` resources without expanding the long-lived typed-key enum.
+    /// This is useful for optional surfaces whose copy evolves independently
+    /// from the stable settings catalog.
+    func localized(
+        rawKey: String,
+        language: AppLanguage,
+        arguments: [String] = [],
+        preferredLanguages: [String] = Locale.preferredLanguages
+    ) -> String {
+        localizedSubtitle(
+            rawKey: rawKey,
+            language: language,
+            arguments: arguments,
+            preferredLanguages: preferredLanguages
+        ).text
+    }
+
+    func localizedSubtitle(
+        rawKey: String,
+        language: AppLanguage,
+        arguments: [String] = [],
+        preferredLanguages: [String] = Locale.preferredLanguages,
+        table: String = "Notifications"
+    ) -> LocalizedSubtitle {
         let resolvedLanguage = AppLanguage.resolved(
             for: language,
             preferredLanguages: preferredLanguages
         )
-        let selected = value(for: key, localization: resolvedLanguage.resourceLocalization)
+        let selected = value(
+            for: rawKey,
+            localization: resolvedLanguage.resourceLocalization,
+            table: table
+        )
         if let selected {
-            if let rendered = render(selected, key: key, arguments: arguments) {
+            if let rendered = render(selected, rawKey: rawKey, arguments: arguments) {
                 return rendered
             }
             NSLog(
                 "BalanceBar localization warning: invalid format for key %@ in %@",
-                key.rawKey,
+                rawKey,
                 resolvedLanguage.resourceLocalization
             )
         } else if resolvedLanguage != .english {
             NSLog(
                 "BalanceBar localization warning: missing key %@ in %@; trying English",
-                key.rawKey,
+                rawKey,
                 resolvedLanguage.resourceLocalization
             )
         }
 
         if resolvedLanguage != .english,
-           let english = value(for: key, localization: AppLanguage.english.resourceLocalization),
-           let rendered = render(english, key: key, arguments: arguments) {
+           let english = value(
+               for: rawKey,
+               localization: AppLanguage.english.resourceLocalization,
+               table: table
+           ),
+           let rendered = render(english, rawKey: rawKey, arguments: arguments) {
             return rendered
         }
 
-        NSLog("BalanceBar localization error: missing or invalid English key %@", key.rawKey)
-        return LocalizedSubtitle(text: "⟦\(key.rawKey)⟧")
+        NSLog("BalanceBar localization error: missing or invalid English key %@", rawKey)
+        return LocalizedSubtitle(text: "⟦\(rawKey)⟧")
     }
 
     private func value(for key: LocalizationKey, localization: String) -> String? {
+        value(for: key.rawKey, localization: localization)
+    }
+
+    private func value(
+        for rawKey: String,
+        localization: String,
+        table: String = "Localizable"
+    ) -> String? {
         guard let localizedBundle = localizedBundle(for: localization) else {
             return nil
         }
-        let missingValue = "\(Self.missingValuePrefix)\(localization)__\(key.rawKey)"
+        let missingValue = "\(Self.missingValuePrefix)\(localization)__\(rawKey)"
         let value = localizedBundle.localizedString(
-            forKey: key.rawKey,
+            forKey: rawKey,
             value: missingValue,
-            table: "Localizable"
+            table: table
         )
         return value == missingValue ? nil : value
     }
@@ -462,6 +512,14 @@ final class LocalizationResourceStore {
         key: LocalizationKey,
         arguments: [String]
     ) -> LocalizedSubtitle? {
+        render(format, rawKey: key.rawKey, arguments: arguments)
+    }
+
+    private func render(
+        _ format: String,
+        rawKey: String,
+        arguments: [String]
+    ) -> LocalizedSubtitle? {
         guard let indices = placeholderIndices(in: format) else {
             return nil
         }
@@ -469,7 +527,7 @@ final class LocalizationResourceStore {
         guard indices == expectedIndices else {
             NSLog(
                 "BalanceBar localization warning: placeholder mismatch for key %@ (indices=%@, arguments=%ld)",
-                key.rawKey,
+                rawKey,
                 String(describing: indices),
                 arguments.count
             )
@@ -648,6 +706,20 @@ enum LocalizationRuntime {
         )
     }
 
+    static func localized(
+        rawKey: String,
+        language: AppLanguage = .selected,
+        arguments: [String] = [],
+        preferredLanguages: [String] = Locale.preferredLanguages
+    ) -> String {
+        currentStore.localized(
+            rawKey: rawKey,
+            language: language,
+            arguments: arguments,
+            preferredLanguages: preferredLanguages
+        )
+    }
+
     static func localizedSubtitle(
         key: LocalizationKey,
         language: AppLanguage = .selected,
@@ -661,6 +733,20 @@ enum LocalizationRuntime {
             preferredLanguages: preferredLanguages
         )
     }
+
+    static func localizedSubtitle(
+        rawKey: String,
+        language: AppLanguage = .selected,
+        arguments: [String] = [],
+        preferredLanguages: [String] = Locale.preferredLanguages
+    ) -> LocalizedSubtitle {
+        currentStore.localizedSubtitle(
+            rawKey: rawKey,
+            language: language,
+            arguments: arguments,
+            preferredLanguages: preferredLanguages
+        )
+    }
 }
 
 func tr(
@@ -669,6 +755,14 @@ func tr(
     language: AppLanguage = .selected
 ) -> String {
     LocalizationRuntime.localized(key: key, language: language, arguments: arguments)
+}
+
+func tr(
+    _ rawKey: String,
+    arguments: [String] = [],
+    language: AppLanguage = .selected
+) -> String {
+    LocalizationRuntime.localized(rawKey: rawKey, language: language, arguments: arguments)
 }
 
 func trSubtitle(

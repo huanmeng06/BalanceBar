@@ -9,6 +9,12 @@
 /* Begin PBXBuildFile section */
 		A10000000000000000000020 /* BalanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* BalanceBar.swift */; };
 		A10000000000000000000044 /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000045 /* AppPreferences.swift */; };
+		A47000000000000000000002 /* BalanceNotificationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47000000000000000000001 /* BalanceNotificationModels.swift */; };
+		A47000000000000000000004 /* BalanceNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47000000000000000000003 /* BalanceNotificationCoordinator.swift */; };
+		A47000000000000000000006 /* DashboardNotificationPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47000000000000000000005 /* DashboardNotificationPages.swift */; };
+		A47000000000000000000008 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A47000000000000000000007 /* UserNotifications.framework */; };
+		A4700000000000000000000E /* Notifications.strings in Resources */ = {isa = PBXBuildFile; fileRef = A4700000000000000000000D /* Notifications.strings */; };
+		A4700000000000000000000F /* Notifications.strings in Test Resources */ = {isa = PBXBuildFile; fileRef = A4700000000000000000000D /* Notifications.strings */; };
 		A10000000000000000000021 /* BalanceBar.icns in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* BalanceBar.icns */; };
 		A10000000000000000000022 /* CodexIcon.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* CodexIcon.svg */; };
 		A10000000000000000000023 /* Claude.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Claude.svg */; };
@@ -134,6 +140,7 @@
 		A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DB /* ProviderSwitchCoordinator.swift */; };
 		A100000000000000000000DC /* DashboardCompositionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DD /* DashboardCompositionController.swift */; };
 		A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */; };
+		A4700000000000000000000C /* BalanceNotificationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4700000000000000000000B /* BalanceNotificationCoordinatorTests.swift */; };
 		A100000000000000000000E5 /* UpdateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E6 /* UpdateModels.swift */; };
 		A100000000000000000000E7 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E8 /* UpdateService.swift */; };
 		A100000000000000000000E9 /* UpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000EA /* UpdateTests.swift */; };
@@ -217,6 +224,22 @@
 		A10000000000000000000041 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		A10000000000000000000043 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000045 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
+		A47000000000000000000001 /* BalanceNotificationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceNotificationModels.swift; sourceTree = "<group>"; };
+		A47000000000000000000003 /* BalanceNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceNotificationCoordinator.swift; sourceTree = "<group>"; };
+		A47000000000000000000005 /* DashboardNotificationPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardNotificationPages.swift; sourceTree = "<group>"; };
+		A47000000000000000000007 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
+		A47000000000000000000010 /* Notifications.strings (en) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = en.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A47000000000000000000011 /* Notifications.strings (zh-Hans) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = zh-Hans.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A47000000000000000000012 /* Notifications.strings (zh-Hant-TW) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = zh-Hant-TW.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A47000000000000000000013 /* Notifications.strings (zh-Hant-HK) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = zh-Hant-HK.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A47000000000000000000014 /* Notifications.strings (ja) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = ja.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A47000000000000000000015 /* Notifications.strings (ko) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = ko.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A47000000000000000000016 /* Notifications.strings (es) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = es.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A47000000000000000000017 /* Notifications.strings (de) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = de.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A47000000000000000000018 /* Notifications.strings (fr) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = fr.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A47000000000000000000019 /* Notifications.strings (pt) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = pt.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A4700000000000000000001A /* Notifications.strings (ru) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = ru.lproj/Notifications.strings; sourceTree = "<group>"; };
+		A4700000000000000000001B /* Notifications.strings (it) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = it.lproj/Notifications.strings; sourceTree = "<group>"; };
 		A10000000000000000000047 /* AppPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferencesTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000004E /* AssistantClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantClient.swift; sourceTree = "<group>"; };
 		A1000000000000000000004F /* BalanceQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceQuery.swift; sourceTree = "<group>"; };
@@ -319,6 +342,7 @@
 		A100000000000000000000DB /* ProviderSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSwitchCoordinator.swift; sourceTree = "<group>"; };
 		A100000000000000000000DD /* DashboardCompositionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCompositionController.swift; sourceTree = "<group>"; };
 		A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderRefreshCoordinatorTests.swift; sourceTree = "<group>"; };
+		A4700000000000000000000B /* BalanceNotificationCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceNotificationCoordinatorTests.swift; sourceTree = "<group>"; };
 		A100000000000000000000E6 /* UpdateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateModels.swift; sourceTree = "<group>"; };
 		A100000000000000000000E8 /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
 		A100000000000000000000EA /* UpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateTests.swift; sourceTree = "<group>"; };
@@ -350,6 +374,7 @@
 				A10000000000000000000026 /* Foundation.framework in Frameworks */,
 				A10000000000000000000027 /* SwiftUI.framework in Frameworks */,
 				A10000000000000000000122 /* ServiceManagement.framework in Frameworks */,
+				A47000000000000000000008 /* UserNotifications.framework in Frameworks */,
 				A10000000000000000000028 /* libsqlite3.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -457,6 +482,7 @@
 			isa = PBXGroup;
 			children = (
 				A100000000000000000000F6 /* Localizable.strings */,
+				A4700000000000000000000D /* Notifications.strings */,
 				A32000000000000000000010 /* InfoPlist.strings */,
 			);
 			path = lang;
@@ -471,6 +497,7 @@
 				A1000000000000000000001A /* libsqlite3.tbd */,
 				A1000000000000000000002F /* XCTest.framework */,
 				A10000000000000000000123 /* ServiceManagement.framework */,
+				A47000000000000000000007 /* UserNotifications.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -555,6 +582,7 @@
 				A10000000000000000000067 /* BalanceAPIClientTests.swift */,
 				A10000000000000000000073 /* OfficialQuotaClientTests.swift */,
 				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
+				A4700000000000000000000B /* BalanceNotificationCoordinatorTests.swift */,
 				A100000000000000000000EA /* UpdateTests.swift */,
 				A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */,
 				A26400000000000000000004 /* QuotaProgressColorConfigurationTests.swift */,
@@ -624,6 +652,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000004E /* AssistantClient.swift */,
+				A47000000000000000000001 /* BalanceNotificationModels.swift */,
 				A1000000000000000000004F /* BalanceQuery.swift */,
 				A10000000000000000000050 /* ProviderModels.swift */,
 				A10000000000000000000051 /* Snapshot.swift */,
@@ -638,6 +667,7 @@
 			children = (
 				A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */,
 				A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */,
+				A47000000000000000000003 /* BalanceNotificationCoordinator.swift */,
 				A100000000000000000000EC /* ProviderBalanceProgressStore.swift */,
 				A100000000000000000000DB /* ProviderSwitchCoordinator.swift */,
 				A1000000000000000000005E /* CCSwitchRepository.swift */,
@@ -713,6 +743,7 @@
 				A39000000000000000000005 /* Settings */,
 				A100000000000000000000C0 /* Preferences */,
 				A100000000000000000000C7 /* Providers */,
+				A47000000000000000000009 /* Notifications */,
 				A1000000000000000000009C /* StatusLinks */,
 			);
 			path = Dashboard;
@@ -772,6 +803,14 @@
 				A39100000000000000000001 /* SettingsSectionView.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		A47000000000000000000009 /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				A47000000000000000000005 /* DashboardNotificationPages.swift */,
+			);
+			path = Pages/Notifications;
 			sourceTree = "<group>";
 		};
 		A1000000000000000000009C /* StatusLinks */ = {
@@ -931,6 +970,25 @@
 			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
+		A4700000000000000000000D /* Notifications.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A47000000000000000000010 /* Notifications.strings (en) */,
+				A47000000000000000000011 /* Notifications.strings (zh-Hans) */,
+				A47000000000000000000012 /* Notifications.strings (zh-Hant-TW) */,
+				A47000000000000000000013 /* Notifications.strings (zh-Hant-HK) */,
+				A47000000000000000000014 /* Notifications.strings (ja) */,
+				A47000000000000000000015 /* Notifications.strings (ko) */,
+				A47000000000000000000016 /* Notifications.strings (es) */,
+				A47000000000000000000017 /* Notifications.strings (de) */,
+				A47000000000000000000018 /* Notifications.strings (fr) */,
+				A47000000000000000000019 /* Notifications.strings (pt) */,
+				A4700000000000000000001A /* Notifications.strings (ru) */,
+				A4700000000000000000001B /* Notifications.strings (it) */,
+			);
+			name = Notifications.strings;
+			sourceTree = "<group>";
+		};
 		A32000000000000000000010 /* InfoPlist.strings */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -968,6 +1026,7 @@
 				A100000000000000000000E1 /* GitHub.svg in Resources */,
 				A34000000000000000000002 /* BankedResetTicket.svg in Resources */,
 				A100000000000000000000F0 /* Localizable.strings in Resources */,
+				A4700000000000000000000E /* Notifications.strings in Resources */,
 				A32000000000000000000001 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -978,6 +1037,7 @@
 			files = (
 				A100000000000000000000E2 /* GitHub.svg in Test Resources */,
 				A100000000000000000000F1 /* Localizable.strings in Test Resources */,
+				A4700000000000000000000F /* Notifications.strings in Test Resources */,
 				A32000000000000000000002 /* InfoPlist.strings in Test Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1033,6 +1093,7 @@
 				A10000000000000000000048 /* AssistantClient.swift in Sources */,
 				A10000000000000000000049 /* BalanceQuery.swift in Sources */,
 				A1000000000000000000004A /* ProviderModels.swift in Sources */,
+				A47000000000000000000002 /* BalanceNotificationModels.swift in Sources */,
 				A1000000000000000000004B /* Snapshot.swift in Sources */,
 				A1000000000000000000004C /* StatusLink.swift in Sources */,
 				A100000000000000000000E5 /* UpdateModels.swift in Sources */,
@@ -1087,10 +1148,12 @@
 				A100000000000000000000BA /* DashboardMenuPage.swift in Sources */,
 				A100000000000000000000BC /* DashboardPreferencePageRelay.swift in Sources */,
 				A100000000000000000000BE /* DashboardPreferencePages.swift in Sources */,
+				A47000000000000000000006 /* DashboardNotificationPages.swift in Sources */,
 				A100000000000000000000C3 /* DashboardProviderPages.swift in Sources */,
 				A100000000000000000000D2 /* ActivityCoordinator.swift in Sources */,
 				A100000000000000000000D4 /* CCSwitchDatabaseWatcher.swift in Sources */,
 				A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */,
+				A47000000000000000000004 /* BalanceNotificationCoordinator.swift in Sources */,
 				A100000000000000000000EB /* ProviderBalanceProgressStore.swift in Sources */,
 				A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */,
 				A100000000000000000000DC /* DashboardCompositionController.swift in Sources */,
@@ -1168,6 +1231,7 @@
 				A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */,
 				A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */,
 				A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */,
+				A4700000000000000000000C /* BalanceNotificationCoordinatorTests.swift in Sources */,
 				A100000000000000000000E9 /* UpdateTests.swift in Sources */,
 				A10000000000000000000124 /* LaunchAtLoginServiceTests.swift in Sources */,
 			);

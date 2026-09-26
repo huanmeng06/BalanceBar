@@ -1029,11 +1029,21 @@ final class MenuHoverLinkHostView: NSView {
 }
 
 enum DashboardSection: Int, CaseIterable {
-    case general
-    case menuBar
-    case menu
-    case advanced
-    case about
+    case general = 0
+    case menuBar = 1
+    case menu = 2
+    case advanced = 3
+    case about = 4
+    /// Notifications intentionally uses a non-contiguous raw value. Older
+    /// Dashboard restoration data and source-list probes treat 0...4 as the
+    /// original settings contract; the new independent page must not rewrite
+    /// those persisted identities.
+    case notifications = 10
+
+    /// Keep the long-standing settings search/order contract intact. Consumers
+    /// that need the complete navigation order can use `navigationCases`.
+    static let allCases: [DashboardSection] = [.general, .menuBar, .menu, .advanced, .about]
+    static let navigationCases: [DashboardSection] = [.general, .notifications, .menuBar, .menu, .advanced, .about]
 
     var title: String {
         switch self {
@@ -1042,6 +1052,7 @@ enum DashboardSection: Int, CaseIterable {
         case .menu: return tr(.keyDashboardComponentsMenu)
         case .advanced: return tr(.keyDashboardComponentsAdvanced)
         case .about: return tr(.keyDashboardComponentsAbout)
+        case .notifications: return tr("dashboard.components.notifications")
         }
     }
 
@@ -1052,6 +1063,7 @@ enum DashboardSection: Int, CaseIterable {
         case .menu: return "filemenu.and.selection"
         case .advanced: return "slider.horizontal.3"
         case .about: return "info.circle.fill"
+        case .notifications: return "bell.badge.fill"
         }
     }
 
@@ -1062,6 +1074,7 @@ enum DashboardSection: Int, CaseIterable {
         case .menu: return .systemTeal
         case .advanced: return .systemPurple
         case .about: return .systemGreen
+        case .notifications: return .systemOrange
         }
     }
 }

@@ -19,6 +19,45 @@ struct DashboardCompositionState {
     let statusLinks: () -> [StatusLink]
     let defaultStatusLinks: () -> [StatusLink]
     let setStatusLinks: ([StatusLink]) -> Void
+    let notificationConfiguration: DashboardNotificationPageConfiguration?
+
+    init(
+        preferences: AppPreferences,
+        devBundleIdentifier: String,
+        providerPollInterval: TimeInterval,
+        currentProviderName: @escaping () -> String,
+        currentProviderIsOfficial: @escaping () -> Bool,
+        providerChoices: @escaping () -> [ProviderChoice],
+        snapshot: @escaping () -> Snapshot,
+        quickSwitchSummaries: @escaping () -> [String: String],
+        refreshDate: @escaping () -> Date?,
+        menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
+        iconImage: @escaping () -> NSImage?,
+        statusItemVisibility: @escaping () -> StatusItemVisibility,
+        updateState: @escaping () -> UpdateCheckState,
+        statusLinks: @escaping () -> [StatusLink],
+        defaultStatusLinks: @escaping () -> [StatusLink],
+        setStatusLinks: @escaping ([StatusLink]) -> Void,
+        notificationConfiguration: DashboardNotificationPageConfiguration? = nil
+    ) {
+        self.preferences = preferences
+        self.devBundleIdentifier = devBundleIdentifier
+        self.providerPollInterval = providerPollInterval
+        self.currentProviderName = currentProviderName
+        self.currentProviderIsOfficial = currentProviderIsOfficial
+        self.providerChoices = providerChoices
+        self.snapshot = snapshot
+        self.quickSwitchSummaries = quickSwitchSummaries
+        self.refreshDate = refreshDate
+        self.menuBarSnapshot = menuBarSnapshot
+        self.iconImage = iconImage
+        self.statusItemVisibility = statusItemVisibility
+        self.updateState = updateState
+        self.statusLinks = statusLinks
+        self.defaultStatusLinks = defaultStatusLinks
+        self.setStatusLinks = setStatusLinks
+        self.notificationConfiguration = notificationConfiguration
+    }
 }
 
 /// Arranged result stacks preserve AppKit's visibility-priority collapse
@@ -231,7 +270,8 @@ final class DashboardCompositionController {
             onClamp: actions.onClamp
         ),
         launchAtLoginController: launchAtLoginController,
-        launchWithChatGPTController: launchWithChatGPTController
+        launchWithChatGPTController: launchWithChatGPTController,
+        notificationConfiguration: state.notificationConfiguration
     )
     private let pageSearchFilter = DashboardPageSearchFilter()
     private var pendingDashboardSearchWorkItem: DispatchWorkItem?
@@ -362,6 +402,13 @@ final class DashboardCompositionController {
         pageSession.rebuild(on: windowController)
     }
     func showSection(_ section: DashboardSection) { pageSession.selectSection(section) }
+
+    func showNotificationAgent(_ agent: BalanceNotificationAgent) {
+        if section != .notifications {
+            pageSession.selectSection(.notifications)
+        }
+        dashboardPreferencePages.showNotificationAgent(agent)
+    }
     func showProvider(_ providerID: String) { pageSession.showProvider(providerID) }
     func teardown() {
         invalidateSearchData()
@@ -434,6 +481,16 @@ final class DashboardCompositionController {
         guard canUpdateSettingsPage(.menu) else { return }
         invalidateSearchData()
         dashboardPreferencePages.refreshMenu()
+        if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            applyMountedPageSearch()
+        } else {
+            DashboardKeyViewLoop.invalidate(window)
+        }
+    }
+
+    func refreshNotificationsPage() {
+        guard canUpdateSettingsPage(.notifications) else { return }
+        dashboardPreferencePages.refreshNotifications()
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             applyMountedPageSearch()
         } else {
@@ -1202,7 +1259,7 @@ final class DashboardCompositionController {
             )
         case .menu:
             dashboardPreferencePages.refreshMenu()
-        case .advanced, .about:
+        case .advanced, .about, .notifications:
             break
         }
     }

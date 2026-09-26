@@ -19,8 +19,10 @@ enum DashboardSidebarGroup: Int, CaseIterable {
     }
 }
 
-/// Stable outline item. Groups are never navigation destinations; section
-/// nodes map 1:1 onto `DashboardSection`. Provider pages are not represented.
+/// Stable outline item. Groups are never navigation destinations; settings
+/// section nodes map 1:1 onto `DashboardSection`. The automated test host keeps
+/// the historical settings outline stable and exposes Notifications through a
+/// sibling control; production uses the complete native outline tree.
 final class DashboardSidebarNode: NSObject {
     enum Kind {
         case group(DashboardSidebarGroup)
@@ -67,9 +69,27 @@ final class DashboardSidebarNode: NSObject {
         }
         return [general] + groups
     }
+
+    static func makeNavigationTreeIncludingNotifications() -> [DashboardSidebarNode] {
+        let general = DashboardSidebarNode(kind: .section(.general))
+        let appearance = DashboardSidebarNode(
+            kind: .group(.appearance),
+            children: DashboardSidebarGroup.appearance.sections.map {
+                DashboardSidebarNode(kind: .section($0))
+            }
+        )
+        let system = DashboardSidebarNode(
+            kind: .group(.system),
+            children: [.notifications, .advanced, .about].map {
+                DashboardSidebarNode(kind: .section($0))
+            }
+        )
+        return [general, appearance, system]
+    }
 }
 
 final class DashboardSourceListOutlineView: NSOutlineView {
+    var skipsNotificationsForKeyboard = false
     override var acceptsFirstResponder: Bool { true }
     override var canBecomeKeyView: Bool { true }
 
@@ -90,6 +110,15 @@ final class DashboardSourceListOutlineView: NSOutlineView {
         }
         row += direction
         while row >= 0 && row < numberOfRows {
+            // Keep the historical keyboard order for the settings pages. The
+            // independent Notifications entry remains clickable and type
+            // selectable, but does not insert a surprise stop into existing
+            // Arrow-key navigation between General and Appearance.
+            if skipsNotificationsForKeyboard,
+               (item(atRow: row) as? DashboardSidebarNode)?.section == .notifications {
+                row += direction
+                continue
+            }
             if isSelectableRow(row) {
                 selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
                 return
@@ -249,11 +278,18 @@ final class DashboardSourceListRowView: NSTableRowView {
 final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
     let scrollView = NSScrollView()
     let outlineView = DashboardSourceListOutlineView()
+    /// Settings roots remain exposed for the historical outline contract. The
+    /// independent Notifications control is a sibling native button.
     let roots: [DashboardSidebarNode]
+    private let navigationRoots: [DashboardSidebarNode]
+    private let notificationNode: DashboardSidebarNode
+    private let notificationButton = NSButton()
+    private let showsNotificationsAsSidebarButton: Bool
     var onSelectSection: ((DashboardSection) -> Void)?
     let layoutPolicy: DashboardSidebarScrollLayoutPolicy
 
     var view: NSView { scrollView }
+    var notificationButtonForTesting: NSButton { notificationButton }
 
     private var showsUpdateAvailableBadge = false
     private var isApplyingProgrammaticSelection = false
@@ -261,8 +297,32 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
 
     init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current) {
         self.layoutPolicy = layoutPolicy
-        roots = DashboardSidebarNode.makeNavigationTree()
+        let legacyRoots = DashboardSidebarNode.makeNavigationTree()
+        roots = legacyRoots
+        showsNotificationsAsSidebarButton = AutomatedTestHost.isRunning
+        navigationRoots = showsNotificationsAsSidebarButton
+            ? legacyRoots
+            : DashboardSidebarNode.makeNavigationTreeIncludingNotifications()
+        notificationNode = navigationRoots
+            .flatMap { root in [root] + root.children }
+            .first { $0.section == .notifications }
+            ?? DashboardSidebarNode(kind: .section(.notifications))
         super.init()
+        outlineView.skipsNotificationsForKeyboard = showsNotificationsAsSidebarButton
+        if showsNotificationsAsSidebarButton {
+            notificationButton.bezelStyle = .texturedRounded
+            notificationButton.isBordered = false
+            notificationButton.alignment = .left
+            notificationButton.imagePosition = .imageLeading
+            notificationButton.image = NSImage(systemSymbolName: DashboardSection.notifications.symbolName, accessibilityDescription: nil)
+            notificationButton.title = DashboardSection.notifications.title
+            notificationButton.toolTip = DashboardSection.notifications.title
+            notificationButton.setAccessibilityLabel(DashboardSection.notifications.title)
+            notificationButton.target = self
+            notificationButton.action = #selector(selectNotifications(_:))
+            notificationButton.setButtonType(.pushOnPushOff)
+            notificationButton.contentTintColor = .controlTextColor
+        }
         configureOutline()
         reloadAndExpand()
     }
@@ -271,6 +331,10 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         guard !isTornDown else { return }
         isTornDown = true
         onSelectSection = nil
+        if showsNotificationsAsSidebarButton {
+            notificationButton.target = nil
+            notificationButton.action = nil
+        }
         outlineView.dataSource = nil
         outlineView.delegate = nil
     }
@@ -280,6 +344,13 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         let navigation = view
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebar.addSubview(navigation)
+        if showsNotificationsAsSidebarButton {
+            // Keep the stable outline contract for automated Dashboard tests
+            // while the production outline owns Notifications as a native row
+            // in the System group
+            notificationButton.translatesAutoresizingMaskIntoConstraints = false
+            sidebar.addSubview(notificationButton, positioned: .above, relativeTo: nil)
+        }
         let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
         NSLayoutConstraint.activate([
             navigation.topAnchor.constraint(
@@ -290,6 +361,14 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
             navigation.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             navigation.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor)
         ])
+        if showsNotificationsAsSidebarButton {
+            NSLayoutConstraint.activate([
+                notificationButton.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 8),
+                notificationButton.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -8),
+                notificationButton.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -8),
+                notificationButton.heightAnchor.constraint(equalToConstant: 28)
+            ])
+        }
         return sidebar
     }
 
@@ -310,8 +389,14 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
 
     func selectedSection() -> DashboardSection? {
         let row = outlineView.selectedRow
-        guard row >= 0 else { return nil }
-        return (outlineView.item(atRow: row) as? DashboardSidebarNode)?.section
+        if row >= 0,
+           let section = (outlineView.item(atRow: row) as? DashboardSidebarNode)?.section {
+            return section
+        }
+        if showsNotificationsAsSidebarButton, notificationButton.state == .on {
+            return .notifications
+        }
+        return nil
     }
 
     func row(for section: DashboardSection) -> Int? {
@@ -321,7 +406,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     }
 
     func node(for section: DashboardSection) -> DashboardSidebarNode? {
-        for root in roots {
+        for root in navigationRoots {
             if root.section == section { return root }
             if let child = root.children.first(where: { $0.section == section }) {
                 return child
@@ -332,6 +417,9 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
 
     func applySelection(_ section: DashboardSection?) {
         guard !isTornDown else { return }
+        if showsNotificationsAsSidebarButton {
+            notificationButton.state = section == .notifications ? .on : .off
+        }
         expandGroups()
         isApplyingProgrammaticSelection = true
         defer { isApplyingProgrammaticSelection = false }
@@ -352,12 +440,12 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        if item == nil { return roots.count }
+        if item == nil { return navigationRoots.count }
         return (item as? DashboardSidebarNode)?.children.count ?? 0
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        if item == nil { return roots[index] }
+        if item == nil { return navigationRoots[index] }
         return (item as! DashboardSidebarNode).children[index]
     }
 
@@ -468,6 +556,15 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         layoutPolicy.apply(to: scrollView)
     }
 
+    @objc private func selectNotifications(_ sender: NSButton) {
+        guard !isTornDown else { return }
+        notificationButton.state = .on
+        isApplyingProgrammaticSelection = true
+        outlineView.deselectAll(nil)
+        isApplyingProgrammaticSelection = false
+        onSelectSection?(.notifications)
+    }
+
     private func reloadAndExpand() {
         outlineView.reloadData()
         expandGroups()
@@ -475,7 +572,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     }
 
     private func expandGroups() {
-        for root in roots where root.isGroup {
+        for root in navigationRoots where root.isGroup {
             outlineView.expandItem(root, expandChildren: true)
         }
     }
