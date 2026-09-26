@@ -73,6 +73,24 @@ struct BalanceNotificationResourceRule: Codable, Equatable {
     var recoveryEnabled: Bool
     var stage: BalanceNotificationAlertStage
     var lastValue: Double?
+    /// True when this rule still inherits the global default for its kind.
+    /// Once an Agent/resource threshold is edited, the coordinator marks it
+    /// as a local override so later global changes leave it untouched.
+    var usesGlobalDefaults: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case kind
+        case unit
+        case enabled
+        case firstThreshold
+        case secondEnabled
+        case secondThreshold
+        case recoveryEnabled
+        case stage
+        case lastValue
+        case usesGlobalDefaults
+    }
 
     init(
         key: BalanceNotificationResourceKey,
@@ -84,7 +102,8 @@ struct BalanceNotificationResourceRule: Codable, Equatable {
         secondThreshold: Double? = nil,
         recoveryEnabled: Bool = false,
         stage: BalanceNotificationAlertStage = .normal,
-        lastValue: Double? = nil
+        lastValue: Double? = nil,
+        usesGlobalDefaults: Bool = false
     ) {
         self.key = key
         self.kind = kind
@@ -104,6 +123,24 @@ struct BalanceNotificationResourceRule: Codable, Equatable {
         self.recoveryEnabled = recoveryEnabled
         self.stage = stage
         self.lastValue = lastValue?.isFinite == true ? lastValue : nil
+        self.usesGlobalDefaults = usesGlobalDefaults
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = try container.decode(BalanceNotificationResourceKey.self, forKey: .key)
+        kind = try container.decode(BalanceNotificationResourceKind.self, forKey: .kind)
+        unit = try container.decodeIfPresent(String.self, forKey: .unit)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        firstThreshold = try container.decodeIfPresent(Double.self, forKey: .firstThreshold)
+            ?? (kind == .quotaPercent ? 20 : 5)
+        secondEnabled = try container.decodeIfPresent(Bool.self, forKey: .secondEnabled) ?? false
+        secondThreshold = try container.decodeIfPresent(Double.self, forKey: .secondThreshold)
+            ?? (kind == .quotaPercent ? 5 : max(0.01, firstThreshold / 2))
+        recoveryEnabled = try container.decodeIfPresent(Bool.self, forKey: .recoveryEnabled) ?? false
+        stage = try container.decodeIfPresent(BalanceNotificationAlertStage.self, forKey: .stage) ?? .normal
+        lastValue = try container.decodeIfPresent(Double.self, forKey: .lastValue)
+        usesGlobalDefaults = try container.decodeIfPresent(Bool.self, forKey: .usesGlobalDefaults) ?? false
     }
 
     static func normalizedFirstThreshold(
@@ -218,7 +255,10 @@ enum BalanceNotificationThresholdEvaluator {
 
         let previous = rule.lastValue
         rule.lastValue = value
-        guard rule.enabled else {
+        // A zero threshold is the shared UI's explicit "do not remind"
+        // value. It must short-circuit before the crossing comparison so a
+        // resource sitting exactly at zero does not emit an alert.
+        guard rule.enabled, rule.firstThreshold > 0 else {
             return BalanceNotificationEvaluation(rule: rule, alert: nil, recovered: false)
         }
 
@@ -242,6 +282,7 @@ enum BalanceNotificationThresholdEvaluator {
             )
         case .first:
             guard rule.secondEnabled,
+                  rule.secondThreshold > 0,
                   value <= rule.secondThreshold,
                   previous.map({ $0 > rule.secondThreshold }) ?? true else {
                 return BalanceNotificationEvaluation(rule: rule, alert: nil, recovered: false)
@@ -281,12 +322,59 @@ struct BalanceNotificationProviderPreference: Codable, Equatable {
 
 struct BalanceNotificationSettings: Codable, Equatable {
     var globalEnabled = false
+    /// Legacy aggregate defaults retained for settings migration. New UI uses
+    /// the window-specific values below.
+    var globalQuotaThreshold = 20.0
+    var globalBalanceThreshold = 5.0
+    /// Defaults used by every new rule until an Agent/resource is customized.
+    var globalFiveHourFirstThreshold = 20.0
+    var globalFiveHourSecondThreshold = 5.0
+    var globalSevenDayFirstThreshold = 20.0
+    var globalSevenDaySecondThreshold = 5.0
+    var globalBalanceFirstThreshold = 5.0
+    var globalBalanceSecondThreshold = 0.0
     var agentEnabled: [String: Bool] = Dictionary(
         uniqueKeysWithValues: BalanceNotificationAgent.allCases.map { ($0.rawValue, false) }
     )
     var providerPreferences: [BalanceNotificationProviderPreference] = []
     var resourceRules: [BalanceNotificationResourceRule] = []
     var pauseUntil: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case globalEnabled
+        case globalQuotaThreshold
+        case globalBalanceThreshold
+        case globalFiveHourFirstThreshold
+        case globalFiveHourSecondThreshold
+        case globalSevenDayFirstThreshold
+        case globalSevenDaySecondThreshold
+        case globalBalanceFirstThreshold
+        case globalBalanceSecondThreshold
+        case agentEnabled
+        case providerPreferences
+        case resourceRules
+        case pauseUntil
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        globalEnabled = try container.decodeIfPresent(Bool.self, forKey: .globalEnabled) ?? false
+        globalQuotaThreshold = try container.decodeIfPresent(Double.self, forKey: .globalQuotaThreshold) ?? 20
+        globalBalanceThreshold = try container.decodeIfPresent(Double.self, forKey: .globalBalanceThreshold) ?? 5
+        globalFiveHourFirstThreshold = try container.decodeIfPresent(Double.self, forKey: .globalFiveHourFirstThreshold) ?? globalQuotaThreshold
+        globalFiveHourSecondThreshold = try container.decodeIfPresent(Double.self, forKey: .globalFiveHourSecondThreshold) ?? 5
+        globalSevenDayFirstThreshold = try container.decodeIfPresent(Double.self, forKey: .globalSevenDayFirstThreshold) ?? globalQuotaThreshold
+        globalSevenDaySecondThreshold = try container.decodeIfPresent(Double.self, forKey: .globalSevenDaySecondThreshold) ?? 5
+        globalBalanceFirstThreshold = try container.decodeIfPresent(Double.self, forKey: .globalBalanceFirstThreshold) ?? globalBalanceThreshold
+        globalBalanceSecondThreshold = try container.decodeIfPresent(Double.self, forKey: .globalBalanceSecondThreshold) ?? 0
+        agentEnabled = try container.decodeIfPresent([String: Bool].self, forKey: .agentEnabled)
+            ?? Dictionary(uniqueKeysWithValues: BalanceNotificationAgent.allCases.map { ($0.rawValue, false) })
+        providerPreferences = try container.decodeIfPresent([BalanceNotificationProviderPreference].self, forKey: .providerPreferences) ?? []
+        resourceRules = try container.decodeIfPresent([BalanceNotificationResourceRule].self, forKey: .resourceRules) ?? []
+        pauseUntil = try container.decodeIfPresent(Date.self, forKey: .pauseUntil)
+    }
 
     func isAgentEnabled(_ agent: BalanceNotificationAgent) -> Bool {
         agentEnabled[agent.rawValue] ?? false
@@ -326,6 +414,62 @@ struct BalanceNotificationSettings: Codable, Equatable {
         resourceRules.first { $0.key == key }
     }
 
+    func globalThresholds(
+        for key: BalanceNotificationResourceKey,
+        kind: BalanceNotificationResourceKind
+    ) -> (first: Double, second: Double) {
+        switch key.resourceID {
+        case "five-hour":
+            return (globalFiveHourFirstThreshold, globalFiveHourSecondThreshold)
+        case "weekly":
+            return (globalSevenDayFirstThreshold, globalSevenDaySecondThreshold)
+        default:
+            if kind == .balance {
+                return (globalBalanceFirstThreshold, globalBalanceSecondThreshold)
+            }
+            return (globalFiveHourFirstThreshold, globalFiveHourSecondThreshold)
+        }
+    }
+
+    func defaultRule(
+        for key: BalanceNotificationResourceKey,
+        kind: BalanceNotificationResourceKind,
+        unit: String?
+    ) -> BalanceNotificationResourceRule {
+        let thresholds = globalThresholds(for: key, kind: kind)
+        return BalanceNotificationResourceRule(
+            key: key,
+            kind: kind,
+            unit: unit,
+            firstThreshold: thresholds.first,
+            secondEnabled: thresholds.second > 0,
+            secondThreshold: thresholds.second,
+            usesGlobalDefaults: true
+        )
+    }
+
+    mutating func setGlobalThresholds(
+        for resourceID: String,
+        first: Double,
+        second: Double
+    ) {
+        switch resourceID {
+        case "five-hour":
+            globalFiveHourFirstThreshold = first
+            globalFiveHourSecondThreshold = second
+            globalQuotaThreshold = first
+        case "weekly":
+            globalSevenDayFirstThreshold = first
+            globalSevenDaySecondThreshold = second
+        case "balance":
+            globalBalanceFirstThreshold = first
+            globalBalanceSecondThreshold = second
+            globalBalanceThreshold = first
+        default:
+            break
+        }
+    }
+
     mutating func rule(
         for key: BalanceNotificationResourceKey,
         kind: BalanceNotificationResourceKind,
@@ -336,7 +480,11 @@ struct BalanceNotificationSettings: Codable, Equatable {
             copy.update(kind: kind, unit: unit)
             return copy
         }
-        return BalanceNotificationResourceRule(key: key, kind: kind, unit: unit)
+        return defaultRule(for: key, kind: kind, unit: unit)
+    }
+
+    func hasCustomRules(for agent: BalanceNotificationAgent) -> Bool {
+        resourceRules.contains { $0.key.agent == agent && !$0.usesGlobalDefaults }
     }
 
     mutating func upsert(_ rule: BalanceNotificationResourceRule) {
@@ -389,6 +537,41 @@ final class BalanceNotificationSettingsStore {
         for agent in BalanceNotificationAgent.allCases where settings.agentEnabled[agent.rawValue] == nil {
             settings.agentEnabled[agent.rawValue] = false
         }
+        settings.globalQuotaThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(
+            settings.globalQuotaThreshold,
+            kind: .quotaPercent
+        )
+        settings.globalBalanceThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(
+            settings.globalBalanceThreshold,
+            kind: .balance
+        )
+        settings.globalFiveHourFirstThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(
+            settings.globalFiveHourFirstThreshold,
+            kind: .quotaPercent
+        )
+        settings.globalFiveHourSecondThreshold = BalanceNotificationResourceRule.normalizedSecondThreshold(
+            settings.globalFiveHourSecondThreshold,
+            firstThreshold: settings.globalFiveHourFirstThreshold,
+            kind: .quotaPercent
+        )
+        settings.globalSevenDayFirstThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(
+            settings.globalSevenDayFirstThreshold,
+            kind: .quotaPercent
+        )
+        settings.globalSevenDaySecondThreshold = BalanceNotificationResourceRule.normalizedSecondThreshold(
+            settings.globalSevenDaySecondThreshold,
+            firstThreshold: settings.globalSevenDayFirstThreshold,
+            kind: .quotaPercent
+        )
+        settings.globalBalanceFirstThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(
+            settings.globalBalanceFirstThreshold,
+            kind: .balance
+        )
+        settings.globalBalanceSecondThreshold = BalanceNotificationResourceRule.normalizedSecondThreshold(
+            settings.globalBalanceSecondThreshold,
+            firstThreshold: settings.globalBalanceFirstThreshold,
+            kind: .balance
+        )
         settings.resourceRules = settings.resourceRules.map { rule in
             var normalized = rule
             normalized.firstThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(

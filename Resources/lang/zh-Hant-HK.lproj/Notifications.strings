@@ -32,3 +32,12 @@
 "notifications.agent_settings" = "Agent 設定";
 "notifications.pause_none" = "無";
 "notifications.pause_status" = "暫停至：%1$@ · 剩餘：%2$@";
+"notifications.reminder_rules" = "通用提醒規則";
+"notifications.global_rules_hint" = "輸入 0 表示不提醒";
+"notifications.five_hour_reminder" = "5 小時提醒";
+"notifications.seven_day_reminder" = "7 日提醒";
+"notifications.balance_reminder" = "餘額提醒";
+"notifications.first_reminder" = "第一次提醒：";
+"notifications.second_reminder" = "第二次提醒：";
+"notifications.agent_follows_global" = "遵循全域規則";
+"notifications.agent_customized" = "已單獨調整";

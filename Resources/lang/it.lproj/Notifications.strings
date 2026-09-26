@@ -32,3 +32,12 @@
 "notifications.agent_settings" = "Impostazioni Agent";
 "notifications.pause_none" = "Nessuna";
 "notifications.pause_status" = "In pausa fino al %1$@ · Restante: %2$@";
+"notifications.reminder_rules" = "Regole generali dei promemoria";
+"notifications.global_rules_hint" = "Inserisci 0 per disattivare un promemoria";
+"notifications.five_hour_reminder" = "Promemoria di 5 ore";
+"notifications.seven_day_reminder" = "Promemoria di 7 giorni";
+"notifications.balance_reminder" = "Promemoria saldo";
+"notifications.first_reminder" = "Primo promemoria:";
+"notifications.second_reminder" = "Secondo promemoria:";
+"notifications.agent_follows_global" = "Segue le regole globali";
+"notifications.agent_customized" = "Personalizzato";

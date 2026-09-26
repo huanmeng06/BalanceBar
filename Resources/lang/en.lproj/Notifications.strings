@@ -32,3 +32,12 @@
 "notifications.agent_settings" = "Agent Settings";
 "notifications.pause_none" = "None";
 "notifications.pause_status" = "Paused until %1$@ · Remaining: %2$@";
+"notifications.reminder_rules" = "General Reminder Rules";
+"notifications.global_rules_hint" = "Enter 0 to disable a reminder";
+"notifications.five_hour_reminder" = "5-hour reminder";
+"notifications.seven_day_reminder" = "7-day reminder";
+"notifications.balance_reminder" = "Balance reminder";
+"notifications.first_reminder" = "First reminder:";
+"notifications.second_reminder" = "Second reminder:";
+"notifications.agent_follows_global" = "Following global rules";
+"notifications.agent_customized" = "Customized";
