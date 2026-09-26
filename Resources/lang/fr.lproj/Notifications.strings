@@ -30,3 +30,5 @@
 "notifications.pause_duration" = "Choisir la durée de suspension";
 "notifications.pause_today" = "Suspendre jusqu’à la fin de la journée";
 "notifications.agent_settings" = "Réglages des Agent";
+"notifications.pause_none" = "Aucune";
+"notifications.pause_status" = "Suspendu jusqu’au %1$@ · Restant : %2$@";

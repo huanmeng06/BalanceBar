@@ -30,3 +30,5 @@
 "notifications.pause_duration" = "Scegli la durata della pausa";
 "notifications.pause_today" = "Metti in pausa fino alla fine di oggi";
 "notifications.agent_settings" = "Impostazioni Agent";
+"notifications.pause_none" = "Nessuna";
+"notifications.pause_status" = "In pausa fino al %1$@ · Restante: %2$@";

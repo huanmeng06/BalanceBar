@@ -30,3 +30,5 @@
 "notifications.pause_duration" = "알림을 일시 정지할 시간 선택";
 "notifications.pause_today" = "오늘까지 일시 정지";
 "notifications.agent_settings" = "Agent 설정";
+"notifications.pause_none" = "없음";
+"notifications.pause_status" = "%1$@까지 일시 정지 · 남은 시간: %2$@";

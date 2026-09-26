@@ -126,6 +126,9 @@ final class DashboardNotificationPages {
     private let container = NSView()
     private var currentPage: NSView?
     private var path: [NotificationPagePath] = []
+    private weak var pauseDetailLabel: NSTextField?
+    private weak var pauseMenu: NSPopUpButton?
+    private var pauseTimer: Timer?
 
     private enum NotificationPagePath: Equatable {
         case root
@@ -137,46 +140,80 @@ final class DashboardNotificationPages {
     init(configuration: DashboardNotificationPageConfiguration) {
         self.configuration = configuration
         relay.onGlobalToggle = { [weak self] enabled in
-            self?.configuration.coordinator.setGlobalEnabled(enabled)
+            guard let self else { return }
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync { coordinator.setGlobalEnabled(enabled) }
         }
         relay.onAgentToggle = { [weak self] agent, enabled in
-            self?.configuration.coordinator.setAgentEnabled(enabled, agent: agent)
+            guard let self else { return }
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync { coordinator.setAgentEnabled(enabled, agent: agent) }
         }
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
-            self?.configuration.coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID)
+            guard let self else { return }
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync { coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID) }
         }
         relay.onResourceToggle = { [weak self] key, kind, unit, enabled in
-            self?.configuration.coordinator.setResourceEnabled(enabled, key: key, kind: kind, unit: unit)
+            guard let self else { return }
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync {
+                coordinator.setResourceEnabled(enabled, key: key, kind: kind, unit: unit)
+            }
         }
         relay.onThreshold = { [weak self] key, kind, unit, isSecond, value in
-            self?.configuration.coordinator.updateRule(key: key, kind: kind, unit: unit) { rule in
-                if isSecond { rule.secondThreshold = BalanceNotificationResourceRule.normalizedSecondThreshold(value, firstThreshold: rule.firstThreshold, kind: kind) }
-                else { rule.firstThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(value, kind: kind) }
+            guard let self else { return }
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync {
+                coordinator.updateRule(key: key, kind: kind, unit: unit) { rule in
+                    if isSecond { rule.secondThreshold = BalanceNotificationResourceRule.normalizedSecondThreshold(value, firstThreshold: rule.firstThreshold, kind: kind) }
+                    else { rule.firstThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(value, kind: kind) }
+                }
             }
         }
         relay.onSecondThresholdToggle = { [weak self] key, kind, unit, enabled in
-            self?.configuration.coordinator.updateRule(key: key, kind: kind, unit: unit) { $0.secondEnabled = enabled }
+            guard let self else { return }
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync {
+                coordinator.updateRule(key: key, kind: kind, unit: unit) { $0.secondEnabled = enabled }
+            }
         }
         relay.onOpenSettings = { [weak self] in self?.configuration.coordinator.openSystemSettings() }
         relay.onPauseSelection = { [weak self] selection in
             guard let self else { return }
-            switch selection {
-            case "today":
-                let calendar = Calendar.autoupdatingCurrent
-                let start = calendar.startOfDay(for: Date())
-                let end = calendar.date(byAdding: .day, value: 1, to: start) ?? Date().addingTimeInterval(86_400)
-                self.configuration.coordinator.pause(for: max(0, end.timeIntervalSinceNow))
-            default:
-                self.configuration.coordinator.pause(for: 3_600)
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync {
+                switch selection {
+                case "none":
+                    coordinator.resume()
+                case "today":
+                    let calendar = Calendar.autoupdatingCurrent
+                    let start = calendar.startOfDay(for: Date())
+                    let end = calendar.date(byAdding: .day, value: 1, to: start) ?? Date().addingTimeInterval(86_400)
+                    coordinator.pause(for: max(0, end.timeIntervalSinceNow))
+                default:
+                    coordinator.pause(for: 3_600)
+                }
+                DispatchQueue.main.async { [weak self] in self?.updatePausePresentation() }
             }
-            self.refresh()
         }
-        relay.onResume = { [weak self] in self?.configuration.coordinator.resume(); self?.refresh() }
+        relay.onResume = { [weak self] in
+            guard let self else { return }
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync {
+                coordinator.resume()
+                DispatchQueue.main.async { [weak self] in self?.updatePausePresentation() }
+            }
+        }
         relay.onBack = { [weak self] in self?.goBack() }
         relay.onAgent = { [weak self] agent in self?.path = [.agent(agent)]; self?.rebuild() }
         relay.onProvider = { [weak self] agent, providerID in self?.path = [.provider(agent, providerID)]; self?.rebuild() }
         relay.onResource = { [weak self] key in self?.path = [.resource(key)]; self?.rebuild() }
         container.translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    deinit {
+        pauseTimer?.invalidate()
     }
 
     func make() -> NSView {
@@ -244,14 +281,95 @@ final class DashboardNotificationPages {
             accessoryView: globalAccessory
         )
 
-        let notificationRows: [NSView] = [
-            global
-        ]
+        let pauseMenu = NSPopUpButton()
+        pauseMenu.addItem(withTitle: tr("notifications.pause_none"))
+        pauseMenu.item(at: 0)?.representedObject = "none"
+        pauseMenu.addItem(withTitle: tr("notifications.pause_one_hour"))
+        pauseMenu.item(at: 1)?.representedObject = "oneHour"
+        pauseMenu.addItem(withTitle: tr("notifications.pause_today"))
+        pauseMenu.item(at: 2)?.representedObject = "today"
+        pauseMenu.target = relay
+        pauseMenu.action = #selector(DashboardNotificationPageRelay.pauseSelection(_:))
+        self.pauseMenu = pauseMenu
+        let pauseRow = SettingsRowView(
+            title: tr("notifications.pause_notifications"),
+            detail: tr("notifications.pause_duration"),
+            accessoryView: pauseMenu
+        )
+        pauseDetailLabel = pauseRow.detailLabel
+        let notificationRows: [NSView] = [global, pauseRow]
+        updatePausePresentation()
+        startPauseTimer()
         return DashboardSettingsComponents.makeSettingsPageContent([
             SettingsSectionView(title: tr("notifications.page.title"), contentViews: notificationRows),
             makeAgentSettingsSection(settings: settings)
         ])
     }
+
+    private func startPauseTimer() {
+        pauseTimer?.invalidate()
+        pauseTimer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+            self?.updatePausePresentation()
+        }
+        if let pauseTimer {
+            RunLoop.main.add(pauseTimer, forMode: .common)
+        }
+    }
+
+    private func updatePausePresentation() {
+        guard let pauseDetailLabel else {
+            pauseTimer?.invalidate()
+            pauseTimer = nil
+            return
+        }
+        guard let pauseUntil = configuration.coordinator.settings.pauseUntil,
+              pauseUntil > Date() else {
+            if configuration.coordinator.settings.pauseUntil != nil {
+                configuration.coordinator.resume()
+            }
+            pauseDetailLabel.stringValue = tr("notifications.pause_duration")
+            selectPauseOption("none")
+            return
+        }
+        pauseDetailLabel.stringValue = tr(
+            "notifications.pause_status",
+            arguments: [Self.pauseDateFormatter.string(from: pauseUntil), remainingText(until: pauseUntil)]
+        )
+        selectPauseOption(pauseSelection(for: pauseUntil))
+    }
+
+    private func selectPauseOption(_ value: String) {
+        guard let item = pauseMenu?.itemArray.first(where: {
+            ($0.representedObject as? String) == value
+        }) else { return }
+        pauseMenu?.select(item)
+    }
+
+    private func pauseSelection(for pauseUntil: Date) -> String {
+        let calendar = Calendar.autoupdatingCurrent
+        let endOfToday = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: calendar.startOfDay(for: Date())
+        ) ?? Date()
+        return pauseUntil.timeIntervalSince(endOfToday) > -1 ? "today" : "oneHour"
+    }
+
+    private func remainingText(until date: Date) -> String {
+        let minutes = max(1, Int(ceil(max(0, date.timeIntervalSinceNow) / 60)))
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        return remainder == 0 ? "\(hours)h" : "\(hours)h \(remainder)m"
+    }
+
+    private static let pauseDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = .autoupdatingCurrent
+        formatter.dateFormat = "M/d HH:mm"
+        return formatter
+    }()
 
     private func makeAgentSettingsSection(settings: BalanceNotificationSettings) -> NSView {
         let container = NSView()

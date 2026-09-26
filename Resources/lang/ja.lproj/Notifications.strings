@@ -30,3 +30,5 @@
 "notifications.pause_duration" = "通知を停止する時間を選択";
 "notifications.pause_today" = "今日の終わりまで停止";
 "notifications.agent_settings" = "Agent 設定";
+"notifications.pause_none" = "なし";
+"notifications.pause_status" = "%1$@ まで一時停止 · 残り：%2$@";
