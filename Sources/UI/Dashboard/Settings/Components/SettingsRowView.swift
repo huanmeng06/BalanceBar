@@ -303,6 +303,7 @@ final class SettingsRowView: NSView {
     private var searchNaturalHeightConstraint: NSLayoutConstraint?
     private var labelsNaturalHeightConstraint: NSLayoutConstraint?
     private var labelsNaturalHeightFloorConstraint: NSLayoutConstraint?
+    private var accessoryVisibilityObservation: NSKeyValueObservation?
 
     init(
         title: String,
@@ -769,6 +770,9 @@ final class SettingsRowView: NSView {
             accessoryView.setContentHuggingPriority(.defaultHigh, for: .vertical)
             accessoryView.setContentCompressionResistancePriority(.required, for: .vertical)
             contentStack.addSubview(accessoryView)
+            accessoryVisibilityObservation = accessoryView.observe(\NSView.isHidden, options: [.new]) { [weak self] _, _ in
+                self?.accessoryVisibilityDidChange()
+            }
         }
 
         addSubview(contentStack)
@@ -852,6 +856,20 @@ final class SettingsRowView: NSView {
         ]
         NSLayoutConstraint.activate(constraints)
         bindAccessibility()
+    }
+
+    private func accessoryVisibilityDidChange() {
+        wrappingHeightIsDirty = true
+        guard !isPerformingLayout else {
+            needsLayout = true
+            return
+        }
+        syncAdaptiveAccessory()
+        invalidateIntrinsicContentSize()
+        contentStack.invalidateIntrinsicContentSize()
+        contentStack.needsLayout = true
+        needsLayout = true
+        notifyHeightHost()
     }
 
     private func bindAccessibility() {

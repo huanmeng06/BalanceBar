@@ -769,7 +769,6 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertLessThan(wideVisibleLabelWidth, availableLabelWidth() - 1)
 
         controls.isHidden = true
-        row.refreshWrappingLayout()
         layout(at: 720)
         XCTAssertEqual(row.contentStack.orientation, .horizontal)
         XCTAssertEqual(row.labelsStack.bounds.width, availableLabelWidth(), accuracy: 1)
@@ -782,7 +781,6 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertGreaterThan(row.labelsStack.bounds.width, wideVisibleLabelWidth + 1)
 
         controls.isHidden = false
-        row.refreshWrappingLayout()
         layout(at: 720)
         XCTAssertEqual(controls.orientation, .horizontal)
         XCTAssertEqual(row.contentStack.orientation, .horizontal)
@@ -795,7 +793,6 @@ final class SettingsRowViewTests: XCTestCase {
         XCTAssertEqual(row.labelsStack.bounds.width, availableLabelWidth(), accuracy: 1)
 
         controls.isHidden = true
-        row.refreshWrappingLayout()
         layout(at: 280)
         XCTAssertEqual(row.contentStack.orientation, .horizontal)
         XCTAssertEqual(row.labelsStack.bounds.width, availableLabelWidth(), accuracy: 1)
@@ -811,7 +808,6 @@ final class SettingsRowViewTests: XCTestCase {
         )
 
         controls.isHidden = false
-        row.refreshWrappingLayout()
         layout(at: 280)
         XCTAssertEqual(controls.orientation, .vertical)
         XCTAssertEqual(row.contentStack.orientation, .vertical)
