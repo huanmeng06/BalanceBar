@@ -103,6 +103,54 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(originalContent.superview != nil)
     }
 
+    func testSearchMenuBarProjectionSuspendsAndReceivesInjectedRestoreBehavior() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-474-search-lifecycle.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .menuBar))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+
+        var persistedTokens: [DashboardRestoreToken] = []
+        var relaunchCount = 0
+        composition.setPersistRestoreTokenForTesting { persistedTokens.append($0) }
+        composition.setRelaunchApplicationForTesting { relaunchCount += 1 }
+
+        let injectedToken = composition.searchMenuBarPageForTesting.restoreSnapshotProvider()
+        XCTAssertEqual(injectedToken.section, .menuBar)
+        composition.searchMenuBarPageForTesting.persistRestoreToken(
+            DashboardRestoreToken(section: .menuBar, scrollOffsetY: 42)
+        )
+        composition.searchMenuBarPageForTesting.relaunchApplication()
+        XCTAssertEqual(persistedTokens.map(\.scrollOffsetY), [42])
+        XCTAssertEqual(relaunchCount, 1)
+
+        composition.applySearchQueryForTesting(tr(.keyDashboardMenuBarPagePreview))
+        window.layoutIfNeeded()
+        XCTAssertTrue(composition.isSearchProjectionActiveForTesting)
+
+        let icon = NSImage(size: NSSize(width: 16, height: 16))
+        icon.isTemplate = true
+        composition.updateMenuBarPreviewAnimation(active: true, iconImage: icon)
+        window.layoutIfNeeded()
+        let searchHost = composition.searchMenuBarPageForTesting.previewAnimationHostForTesting
+        let installCount = searchHost.rotationAnimationInstallCount
+        XCTAssertNotNil(searchHost.rotationAnimationForTesting)
+
+        composition.applySearchQueryForTesting("")
+        XCTAssertFalse(composition.isSearchProjectionActiveForTesting)
+        composition.updateMenuBarPreviewAnimation(active: true, iconImage: icon)
+        XCTAssertEqual(searchHost.rotationAnimationInstallCount, installCount)
+        XCTAssertNil(searchHost.rotationAnimationForTesting)
+
+        composition.applySearchQueryForTesting(tr(.keyDashboardMenuBarPagePreview))
+        composition.updateMenuBarPreviewAnimation(active: true, iconImage: icon)
+        XCTAssertGreaterThan(searchHost.rotationAnimationInstallCount, installCount)
+    }
+
     func testRefreshItemInvokesSessionManualRefreshActionOnceAndSurvivesRebuild() throws {
         var refreshCount = 0
         let harness = DashboardShellTestHarness(

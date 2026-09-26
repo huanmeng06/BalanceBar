@@ -54,6 +54,7 @@ final class DashboardPreferencePages {
     private let searchMenuPage = DashboardMenuPage()
     private let searchMenuBarPage = DashboardMenuBarPage()
     private let searchAdvancedPage = DashboardAdvancedPage()
+    private var isSearchProjectionActive = false
 
     init(
         preferences: AppPreferences,
@@ -188,28 +189,49 @@ final class DashboardPreferencePages {
             animationSpriteImage: animationSpriteImage,
             animationFallbackActive: animationFallbackActive
         )
-        searchMenuBarPage.refresh(
-            snapshot: snapshot,
-            preferences: preferences,
-            menuBarSnapshot: menuBarSnapshot,
-            iconImage: iconImage,
-            statusItemVisibility: statusItemVisibility,
-            animationActive: animationActive,
-            animationIconImage: animationIconImage,
-            animationKind: animationKind,
-            animationSpriteImage: animationSpriteImage,
-            animationFallbackActive: animationFallbackActive
-        )
+        if isSearchProjectionActive {
+            searchMenuBarPage.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: menuBarSnapshot,
+                iconImage: iconImage,
+                statusItemVisibility: statusItemVisibility,
+                animationActive: animationActive,
+                animationIconImage: animationIconImage,
+                animationKind: animationKind,
+                animationSpriteImage: animationSpriteImage,
+                animationFallbackActive: animationFallbackActive
+            )
+        }
     }
 
     func refreshMenu() {
         menuPage.refresh(preferences: preferences)
-        searchMenuPage.refresh(preferences: preferences)
+        if isSearchProjectionActive {
+            searchMenuPage.refresh(preferences: preferences)
+        }
     }
 
     func suspend(_ section: DashboardSection) {
         guard section == .menuBar else { return }
         menuBarPage.suspend()
+    }
+
+    func setSearchProjectionActive(_ active: Bool) {
+        isSearchProjectionActive = active
+        if active {
+            searchMenuBarPage.activate()
+        } else {
+            searchMenuBarPage.suspend()
+        }
+    }
+
+    var searchMenuBarPageForTesting: DashboardMenuBarPage {
+        searchMenuBarPage
+    }
+
+    var isSearchProjectionActiveForTesting: Bool {
+        isSearchProjectionActive
     }
 
     func activate(_ section: DashboardSection) {
@@ -219,7 +241,9 @@ final class DashboardPreferencePages {
 
     func updateMenuBarPreviewIcon(_ image: NSImage?) {
         menuBarPage.updatePreviewIcon(image)
-        searchMenuBarPage.updatePreviewIcon(image)
+        if isSearchProjectionActive {
+            searchMenuBarPage.updatePreviewIcon(image)
+        }
     }
 
     func updateMenuBarPreviewAnimation(active: Bool, iconImage: NSImage?) {
@@ -228,11 +252,13 @@ final class DashboardPreferencePages {
             iconImage: iconImage,
             spriteImage: nil
         )
-        searchMenuBarPage.updatePreviewAnimation(
-            kind: active ? .codexRotation : .none,
-            iconImage: iconImage,
-            spriteImage: nil
-        )
+        if isSearchProjectionActive {
+            searchMenuBarPage.updatePreviewAnimation(
+                kind: active ? .codexRotation : .none,
+                iconImage: iconImage,
+                spriteImage: nil
+            )
+        }
     }
 
     func updateMenuBarPreviewAnimation(
@@ -245,11 +271,13 @@ final class DashboardPreferencePages {
             iconImage: iconImage,
             spriteImage: spriteImage
         )
-        searchMenuBarPage.updatePreviewAnimation(
-            kind: kind,
-            iconImage: iconImage,
-            spriteImage: spriteImage
-        )
+        if isSearchProjectionActive {
+            searchMenuBarPage.updatePreviewAnimation(
+                kind: kind,
+                iconImage: iconImage,
+                spriteImage: spriteImage
+            )
+        }
     }
 
     func updateMenuBarAnimationFallback(active: Bool) {
@@ -260,13 +288,15 @@ final class DashboardPreferencePages {
             animationEnabled: preferences.animateCodexActivity,
             animationMode: preferences.menuBarAnimationMode
         )
-        searchMenuBarPage.updateAnimationFallback(
-            active: active,
-            showTaskStatusIcon: preferences.showMenuBarIcon,
-            displayMode: preferences.menuBarIconDisplayMode,
-            animationEnabled: preferences.animateCodexActivity,
-            animationMode: preferences.menuBarAnimationMode
-        )
+        if isSearchProjectionActive {
+            searchMenuBarPage.updateAnimationFallback(
+                active: active,
+                showTaskStatusIcon: preferences.showMenuBarIcon,
+                displayMode: preferences.menuBarIconDisplayMode,
+                animationEnabled: preferences.animateCodexActivity,
+                animationMode: preferences.menuBarAnimationMode
+            )
+        }
     }
 
     func refreshMenuBarWidthAdjustment(
@@ -277,10 +307,12 @@ final class DashboardPreferencePages {
             widthAdjustment,
             horizontalPadding: horizontalPadding
         )
-        searchMenuBarPage.refreshWidthAdjustment(
-            widthAdjustment,
-            horizontalPadding: horizontalPadding
-        )
+        if isSearchProjectionActive {
+            searchMenuBarPage.refreshWidthAdjustment(
+                widthAdjustment,
+                horizontalPadding: horizontalPadding
+            )
+        }
     }
 
     func finishMenuBarWidthAdjustment(
@@ -291,50 +323,68 @@ final class DashboardPreferencePages {
             widthAdjustment,
             horizontalPadding: horizontalPadding
         )
-        searchMenuBarPage.finishWidthAdjustment(
-            widthAdjustment,
-            horizontalPadding: horizontalPadding
-        )
+        if isSearchProjectionActive {
+            searchMenuBarPage.finishWidthAdjustment(
+                widthAdjustment,
+                horizontalPadding: horizontalPadding
+            )
+        }
     }
 
     func restoreRequiredMenuBarToggle(identifier: String) {
         menuBarPage.restoreRequiredToggle(identifier: identifier)
-        searchMenuBarPage.restoreRequiredToggle(identifier: identifier)
+        if isSearchProjectionActive {
+            searchMenuBarPage.restoreRequiredToggle(identifier: identifier)
+        }
     }
 
     func refreshUpdateState(_ updateState: UpdateCheckState) {
         generalPage.refresh(updateState: updateState)
-        searchGeneralPage.refresh(updateState: updateState)
+        if isSearchProjectionActive {
+            searchGeneralPage.refresh(updateState: updateState)
+        }
     }
 
     func refreshCurrentProviderName(_ name: String) {
         generalPage.refreshCurrentProviderName(name)
-        searchGeneralPage.refreshCurrentProviderName(name)
+        if isSearchProjectionActive {
+            searchGeneralPage.refreshCurrentProviderName(name)
+        }
     }
 
     func refreshLaunchAtLogin() {
         generalPage.refreshLaunchAtLogin(launchAtLoginController.currentState())
-        searchGeneralPage.refreshLaunchAtLogin(launchAtLoginController.currentState())
+        if isSearchProjectionActive {
+            searchGeneralPage.refreshLaunchAtLogin(launchAtLoginController.currentState())
+        }
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
         generalPage.refreshLaunchAtLogin(state)
-        searchGeneralPage.refreshLaunchAtLogin(state)
+        if isSearchProjectionActive {
+            searchGeneralPage.refreshLaunchAtLogin(state)
+        }
     }
 
     func refreshLaunchWithChatGPT() {
         generalPage.refreshLaunchWithChatGPT(launchWithChatGPTController.currentState())
-        searchGeneralPage.refreshLaunchWithChatGPT(launchWithChatGPTController.currentState())
+        if isSearchProjectionActive {
+            searchGeneralPage.refreshLaunchWithChatGPT(launchWithChatGPTController.currentState())
+        }
     }
 
     func refreshLaunchWithChatGPT(_ state: LaunchWithChatGPTState) {
         generalPage.refreshLaunchWithChatGPT(state)
-        searchGeneralPage.refreshLaunchWithChatGPT(state)
+        if isSearchProjectionActive {
+            searchGeneralPage.refreshLaunchWithChatGPT(state)
+        }
     }
 
     func updateMenuStatusVisibility(_ visible: Bool, animated: Bool) {
         menuPage.updateStatusVisibility(visible, animated: animated)
-        searchMenuPage.updateStatusVisibility(visible, animated: animated)
+        if isSearchProjectionActive {
+            searchMenuPage.updateStatusVisibility(visible, animated: animated)
+        }
     }
 
     func updateMenuStatusLinks(
@@ -349,27 +399,35 @@ final class DashboardPreferencePages {
             selectLastRow: selectLastRow,
             completion: nil
         )
-        searchMenuPage.updateStatusLinks(
-            links,
-            mutation: mutation,
-            selectLastRow: selectLastRow,
-            completion: completion
-        )
+        if isSearchProjectionActive {
+            searchMenuPage.updateStatusLinks(
+                links,
+                mutation: mutation,
+                selectLastRow: selectLastRow,
+                completion: completion
+            )
+        } else {
+            completion?()
+        }
     }
 
     func setRestoreSnapshotProvider(_ provider: @escaping () -> DashboardRestoreToken) {
         menuBarPage.restoreSnapshotProvider = provider
+        searchMenuBarPage.restoreSnapshotProvider = provider
     }
 
     func setPersistRestoreToken(_ persist: @escaping (DashboardRestoreToken) -> Void) {
         menuBarPage.persistRestoreToken = persist
+        searchMenuBarPage.persistRestoreToken = persist
     }
 
     func setRelaunchApplication(_ relaunch: @escaping () -> Void) {
         menuBarPage.relaunchApplication = relaunch
+        searchMenuBarPage.relaunchApplication = relaunch
     }
 
     func teardown() {
+        isSearchProjectionActive = false
         menuBarPage.teardown()
         menuPage.teardown()
         searchMenuBarPage.teardown()

@@ -322,6 +322,12 @@ final class DashboardCompositionController {
     var pageContainerForTesting: DashboardPageContainerViewController {
         pageSession.pageContainer
     }
+    var searchMenuBarPageForTesting: DashboardMenuBarPage {
+        dashboardPreferencePages.searchMenuBarPageForTesting
+    }
+    var isSearchProjectionActiveForTesting: Bool {
+        dashboardPreferencePages.isSearchProjectionActiveForTesting
+    }
     var scrollablePageForTesting: DashboardScrollablePageViewController? {
         pageSession.scrollablePage
     }
@@ -360,6 +366,7 @@ final class DashboardCompositionController {
     func teardown() {
         invalidateSearchData()
         isGlobalSettingsSearchActive = false
+        dashboardPreferencePages.setSearchProjectionActive(false)
         globalSettingsSearchContent = nil
         globalSearchOriginSection = nil
         globalSettingsSearchSections.removeAll()
@@ -764,6 +771,7 @@ final class DashboardCompositionController {
         }
         if selectedProviderID != nil || section == .about {
             isGlobalSettingsSearchActive = false
+            dashboardPreferencePages.setSearchProjectionActive(false)
             globalSettingsSearchContent = nil
             globalSearchOriginSection = nil
             globalSettingsSearchSections.removeAll()
@@ -791,6 +799,7 @@ final class DashboardCompositionController {
         }
         if selectedProviderID != nil || section == .about {
             isGlobalSettingsSearchActive = false
+            dashboardPreferencePages.setSearchProjectionActive(false)
             globalSettingsSearchContent = nil
             globalSearchOriginSection = nil
             globalSettingsSearchSections.removeAll()
@@ -952,6 +961,7 @@ final class DashboardCompositionController {
         guard !isBuildingGlobalSearchPage else { return }
         isBuildingGlobalSearchPage = true
         defer { isBuildingGlobalSearchPage = false }
+        dashboardPreferencePages.setSearchProjectionActive(true)
         if pageSession.currentHostedPageContent() !== globalSettingsSearchContent,
            pageSession.mountedSection != .about {
             globalSearchOriginSection = section
@@ -1006,6 +1016,7 @@ final class DashboardCompositionController {
             )
         }
         isGlobalSettingsSearchActive = false
+        dashboardPreferencePages.setSearchProjectionActive(false)
         globalSettingsSearchContent = nil
         globalSettingsSearchSections.removeAll()
         globalSearchGroupsBySection.removeAll()
