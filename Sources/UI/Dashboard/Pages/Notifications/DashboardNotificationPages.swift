@@ -349,9 +349,25 @@ final class DashboardNotificationPages {
             }
         }
         relay.onBack = { [weak self] in self?.goBack() }
-        relay.onAgent = { [weak self] agent in self?.path = [.agent(agent)]; self?.rebuild() }
-        relay.onProvider = { [weak self] agent, providerID in self?.path = [.provider(agent, providerID)]; self?.rebuild() }
-        relay.onResource = { [weak self] key in self?.path = [.resource(key)]; self?.rebuild() }
+        relay.onAgent = { [weak self] agent in
+            guard let self else { return }
+            self.path = [.agent(agent)]
+            self.rebuild()
+        }
+        relay.onProvider = { [weak self] agent, providerID in
+            guard let self else { return }
+            self.path = self.path.filter {
+                if case .agent = $0 { return true }
+                return false
+            }
+            self.path.append(.provider(agent, providerID))
+            self.rebuild()
+        }
+        relay.onResource = { [weak self] key in
+            guard let self else { return }
+            self.path.append(.resource(key))
+            self.rebuild()
+        }
         container.translatesAutoresizingMaskIntoConstraints = false
     }
 
@@ -882,14 +898,63 @@ final class DashboardNotificationPages {
         if descriptors.isEmpty {
             rows.append(SettingsRowView(title: tr("notifications.resource_rules"), detail: tr("notifications.no_providers")))
         } else {
-            rows.append(contentsOf: descriptors.map { descriptor in
-                makeResourceRow(descriptor, settings: settings)
-            })
+            for descriptor in descriptors {
+                rows.append(contentsOf: makeResourceSettingsRows(descriptor, settings: settings))
+            }
         }
         let providerName = configuration.providerChoices(agent).first { $0.id == providerID }?.name ?? providerID
         return DashboardSettingsComponents.makeSettingsPageContent([
             SettingsSectionView(title: "\(agent.title) · \(providerName)", contentViews: rows)
         ])
+    }
+
+    private func makeResourceSettingsRows(
+        _ descriptor: BalanceNotificationResourceDescriptor,
+        settings: BalanceNotificationSettings
+    ) -> [NSView] {
+        let rule = settings.rule(for: descriptor.key)
+            ?? settings.defaultRule(for: descriptor.key, kind: descriptor.kind, unit: descriptor.unit)
+        let enabled = DashboardSettingsComponents.makeSwitch(
+            identifier: "resource:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
+            isOn: rule.enabled,
+            target: relay,
+            action: #selector(DashboardNotificationPageRelay.resourceToggle(_:))
+        )
+        enabled.toolTip = descriptor.unit ?? ""
+        enabled.setAccessibilityValue(descriptor.kind.rawValue)
+        let enableRow = SettingsRowView(
+            title: descriptor.title,
+            detail: descriptor.unit == "%"
+                ? tr("notifications.quota_value", arguments: [descriptor.title, formatted(descriptor.value ?? 0, kind: .quotaPercent)])
+                : tr("notifications.balance_value", arguments: [descriptor.title, formatted(descriptor.value ?? 0, kind: .balance)]),
+            accessoryView: enabled
+        )
+        let firstField = thresholdField(rule.firstThreshold, key: descriptor.key, kind: descriptor.kind, unit: descriptor.unit, isSecond: false)
+        let firstRow = SettingsRowView(
+            title: tr("notifications.first_threshold"),
+            detail: thresholdDetail(rule, descriptor: descriptor, second: false),
+            accessoryView: firstField
+        )
+        let secondSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: "resource:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
+            isOn: rule.secondEnabled,
+            target: relay,
+            action: #selector(DashboardNotificationPageRelay.secondThresholdToggle(_:))
+        )
+        secondSwitch.toolTip = descriptor.unit ?? ""
+        secondSwitch.setAccessibilityValue(descriptor.kind.rawValue)
+        let secondRow = SettingsRowView(
+            title: tr("notifications.second_alert"),
+            detail: tr("notifications.second_threshold"),
+            accessoryView: secondSwitch
+        )
+        let secondField = thresholdField(rule.secondThreshold, key: descriptor.key, kind: descriptor.kind, unit: descriptor.unit, isSecond: true)
+        let secondThresholdRow = SettingsRowView(
+            title: tr("notifications.second_threshold"),
+            detail: thresholdDetail(rule, descriptor: descriptor, second: true),
+            accessoryView: secondField
+        )
+        return [enableRow, firstRow, secondRow, secondThresholdRow]
     }
 
     private func makeResourcePage(_ key: BalanceNotificationResourceKey) -> NSView {
