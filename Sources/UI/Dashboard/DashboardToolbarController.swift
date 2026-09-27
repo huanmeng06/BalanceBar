@@ -8,14 +8,18 @@ import AppKit
 /// configures the public item, forwards Cmd+F / Esc to
 /// `beginSearchInteraction()` / `endSearchInteraction()`, keeps draft text
 /// separate from the committed query, and submits through Return/search.
-final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
+final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate, NSToolbarItemValidation {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
     static let refreshItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardRefresh")
+    static let backItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardBack")
+    static let forwardItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardForward")
     static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
         .flexibleSpace,
         .toggleSidebar,
         .sidebarTrackingSeparator,
+        backItemIdentifier,
+        forwardItemIdentifier,
         .flexibleSpace,
         refreshItemIdentifier,
         searchItemIdentifier
@@ -31,12 +35,26 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     private(set) var isSearchEditing = false
     var onSearchQueryChanged: ((String) -> Void)?
     var onManualRefresh: (() -> Void)?
+    var onGoBack: (() -> Void)?
+    var onGoForward: (() -> Void)?
 
     var isSearchActive: Bool {
         isSearchEditing || !draftQuery.isEmpty || !searchQuery.isEmpty
     }
 
     private let searchItem: NSSearchToolbarItem
+    private lazy var backItem: NSToolbarItem = {
+        let item = NSToolbarItem(itemIdentifier: Self.backItemIdentifier)
+        item.target = self
+        item.action = #selector(goBack(_:))
+        return item
+    }()
+    private lazy var forwardItem: NSToolbarItem = {
+        let item = NSToolbarItem(itemIdentifier: Self.forwardItemIdentifier)
+        item.target = self
+        item.action = #selector(goForward(_:))
+        return item
+    }()
     private lazy var refreshItem: NSToolbarItem = {
         let item = NSToolbarItem(itemIdentifier: Self.refreshItemIdentifier)
         item.target = self
@@ -46,6 +64,8 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     private weak var window: NSWindow?
     private weak var toolbar: NSToolbar?
     private var isEndingSearch = false
+    private var canGoBack = false
+    private var canGoForward = false
 
     override init() {
         searchItem = NSSearchToolbarItem(itemIdentifier: Self.searchItemIdentifier)
@@ -58,6 +78,9 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         self.window = window
         (window as? DashboardSearchWindow)?.searchController = self
         if let toolbar, window.toolbar === toolbar {
+            updateBackItemLabels()
+            updateForwardItemLabels()
+            setNavigationState(canGoBack: canGoBack, canGoForward: canGoForward)
             updateSearchItemLabels()
             updateRefreshItemLabels()
             return
@@ -72,6 +95,27 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         window.toolbarStyle = .unified
         _ = window.toolbar?.items
         window.layoutIfNeeded()
+    }
+
+    /// Updates only the existing native navigation items. The toolbar and its
+    /// item collection remain AppKit-owned so search editing and marked text
+    /// are unaffected by page navigation.
+    func setNavigationState(canGoBack: Bool, canGoForward: Bool) {
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+        backItem.isEnabled = canGoBack
+        forwardItem.isEnabled = canGoForward
+        for item in toolbar?.items ?? [] {
+            switch item.itemIdentifier {
+            case Self.backItemIdentifier:
+                item.isEnabled = canGoBack
+            case Self.forwardItemIdentifier:
+                item.isEnabled = canGoForward
+            default:
+                break
+            }
+        }
+        toolbar?.validateVisibleItems()
     }
 
     func setQuery(_ query: String) {
@@ -99,6 +143,12 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         isSearchEditing = false
         toolbar = nil
         window = nil
+        canGoBack = false
+        canGoForward = false
+        backItem.isEnabled = false
+        forwardItem.isEnabled = false
+        onGoBack = nil
+        onGoForward = nil
     }
 
     func hostsSearchResponder(_ responder: NSResponder?) -> Bool {
@@ -142,6 +192,14 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
+        if itemIdentifier == Self.backItemIdentifier {
+            configureBackItem()
+            return backItem
+        }
+        if itemIdentifier == Self.forwardItemIdentifier {
+            configureForwardItem()
+            return forwardItem
+        }
         if itemIdentifier == Self.refreshItemIdentifier {
             configureRefreshItem()
             return refreshItem
@@ -153,6 +211,27 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
 
     @objc func manualRefresh(_ sender: Any?) {
         onManualRefresh?()
+    }
+
+    @objc func goBack(_ sender: Any?) {
+        guard canGoBack else { return }
+        onGoBack?()
+    }
+
+    @objc func goForward(_ sender: Any?) {
+        guard canGoForward else { return }
+        onGoForward?()
+    }
+
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        switch item.itemIdentifier {
+        case Self.backItemIdentifier:
+            return canGoBack
+        case Self.forwardItemIdentifier:
+            return canGoForward
+        default:
+            return true
+        }
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) {
@@ -232,6 +311,42 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         updateRefreshItemLabels()
         refreshItem.target = self
         refreshItem.action = #selector(manualRefresh(_:))
+    }
+
+    private func configureBackItem() {
+        updateBackItemLabels()
+        backItem.target = self
+        backItem.action = #selector(goBack(_:))
+        backItem.isEnabled = canGoBack
+    }
+
+    private func configureForwardItem() {
+        updateForwardItemLabels()
+        forwardItem.target = self
+        forwardItem.action = #selector(goForward(_:))
+        forwardItem.isEnabled = canGoForward
+    }
+
+    private func updateBackItemLabels() {
+        let label = tr(.keyDashboardNavigationBack)
+        backItem.label = label
+        backItem.paletteLabel = label
+        backItem.toolTip = label
+        backItem.image = NSImage(
+            systemSymbolName: "chevron.backward",
+            accessibilityDescription: label
+        )
+    }
+
+    private func updateForwardItemLabels() {
+        let label = tr(.keyDashboardNavigationForward)
+        forwardItem.label = label
+        forwardItem.paletteLabel = label
+        forwardItem.toolTip = label
+        forwardItem.image = NSImage(
+            systemSymbolName: "chevron.forward",
+            accessibilityDescription: label
+        )
     }
 
     private func updateRefreshItemLabels() {

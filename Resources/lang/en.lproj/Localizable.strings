@@ -129,6 +129,8 @@
 "dashboard.search.placeholder" = "Search";
 "dashboard.search.no_results" = "No Results";
 "dashboard.search.no_results_detail" = "No settings match this search.";
+"dashboard.navigation.back" = "Back";
+"dashboard.navigation.forward" = "Forward";
 "dashboard.about.page.github_repository" = "GitHub repository";
 "dashboard.about.page.version_value" = "Version %1$@";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "View balances and quotas in the menu bar through CC Switch";

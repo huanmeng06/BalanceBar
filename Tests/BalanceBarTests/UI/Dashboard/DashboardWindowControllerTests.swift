@@ -1320,6 +1320,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
+                DashboardToolbarController.backItemIdentifier,
+                DashboardToolbarController.forwardItemIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -1341,6 +1343,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
+                DashboardToolbarController.backItemIdentifier,
+                DashboardToolbarController.forwardItemIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -1353,6 +1357,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             $0 != .flexibleSpace
                 && $0 != .toggleSidebar
                 && $0 != .sidebarTrackingSeparator
+                && $0 != DashboardToolbarController.backItemIdentifier
+                && $0 != DashboardToolbarController.forwardItemIdentifier
                 && $0 != DashboardToolbarController.refreshItemIdentifier
                 && $0 != DashboardToolbarController.searchItemIdentifier
         }

@@ -322,6 +322,9 @@ final class DashboardCompositionController {
     var pageContainerForTesting: DashboardPageContainerViewController {
         pageSession.pageContainer
     }
+    var navigationHistoryForTesting: DashboardNavigationHistory {
+        pageSession.navigationHistory
+    }
     var searchMenuBarPageForTesting: DashboardMenuBarPage {
         dashboardPreferencePages.searchMenuBarPageForTesting
     }
@@ -772,7 +775,7 @@ final class DashboardCompositionController {
                 return
             }
             if pageSession.mountedSection != section {
-                pageSession.showSection(section)
+                pageSession.restoreNavigation(to: .section(section))
                 return
             }
             applyMountedPageSearch()
@@ -1035,9 +1038,9 @@ final class DashboardCompositionController {
         lastAppliedSearchQuery = nil
         lastAppliedSearchRoot = nil
         if let originSection, originSection == section {
-            pageSession.showSection(originSection)
+            pageSession.restoreNavigation(to: .section(originSection))
         } else {
-            pageSession.showSection(section)
+            pageSession.restoreNavigation(to: .section(section))
         }
     }
 

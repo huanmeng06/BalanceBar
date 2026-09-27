@@ -12,6 +12,8 @@ final class DashboardShellTestHarness {
     var contentHost: NSView { pageSession.contentHost }
     var section: DashboardSection { pageSession.section }
     var selectedProviderID: String? { pageSession.selectedProviderID }
+    var navigationHistory: DashboardNavigationHistory { pageSession.navigationHistory }
+    var navigationDestination: DashboardNavigationDestination? { pageSession.navigationDestination }
     var windowCreationCount: Int { windowController.windowCreationCount }
     var appearanceObserverInstallCount: Int { windowController.appearanceObserverInstallCount }
     var mouseMonitorInstallCount: Int { windowController.mouseMonitorInstallCount }
