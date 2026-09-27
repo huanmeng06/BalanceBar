@@ -32,19 +32,19 @@
 "notifications.agent_settings" = "Réglages des Agent";
 "notifications.pause_none" = "Aucune";
 "notifications.pause_status" = "Suspendu jusqu’au %1$@ · Restant : %2$@";
-"notifications.reminder_rules" = "Règles générales de rappel";
+"notifications.reminder_rules" = "Règles par défaut";
 "notifications.global_rules_hint" = "Saisir 0 pour désactiver un rappel";
 "notifications.five_hour_reminder" = "Rappel de 5 heures";
 "notifications.seven_day_reminder" = "Rappel de 7 jours";
 "notifications.balance_reminder" = "Rappel de solde";
 "notifications.first_reminder" = "Premier rappel :";
 "notifications.second_reminder" = "Deuxième rappel :";
-"notifications.agent_follows_global" = "Suit les règles globales";
+"notifications.agent_follows_global" = "Suit les règles par défaut";
 "notifications.agent_customized" = "Adapté séparément";
 
 "notifications.apply_global_rules" = "Appliquer";
-"notifications.apply_global_rules_title" = "Appliquer les règles de rappel générales à tous";
-"notifications.apply_global_rules_detail" = "Appliquer les règles de rappel partagées à tous les Provider";
-"notifications.apply_global_rules_message" = "Appliquer les règles de rappel partagées";
+"notifications.apply_global_rules_title" = "Appliquer les règles par défaut à tous";
+"notifications.apply_global_rules_detail" = "Appliquer les règles par défaut à tous les Provider";
+"notifications.apply_global_rules_message" = "Appliquer les règles par défaut";
 "notifications.apply_global_rules_confirm" = "Appliquer";
 "notifications.apply_global_rules_cancel" = "Annuler";

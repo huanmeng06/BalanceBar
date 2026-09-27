@@ -32,19 +32,19 @@
 "notifications.agent_settings" = "Agent 設定";
 "notifications.pause_none" = "なし";
 "notifications.pause_status" = "%1$@ まで一時停止 · 残り：%2$@";
-"notifications.reminder_rules" = "共通通知ルール";
+"notifications.reminder_rules" = "デフォルトルール";
 "notifications.global_rules_hint" = "0 を入力すると通知しません";
 "notifications.five_hour_reminder" = "5 時間の通知";
 "notifications.seven_day_reminder" = "7 日間の通知";
 "notifications.balance_reminder" = "残高の通知";
 "notifications.first_reminder" = "1 回目の通知：";
 "notifications.second_reminder" = "2 回目の通知：";
-"notifications.agent_follows_global" = "全体のルールに従う";
+"notifications.agent_follows_global" = "デフォルトルールに従う";
 "notifications.agent_customized" = "個別に設定済み";
 
 "notifications.apply_global_rules" = "適用";
-"notifications.apply_global_rules_title" = "すべてに共通の通知ルールを適用";
-"notifications.apply_global_rules_detail" = "すべての Provider に共通の通知ルールを適用します";
-"notifications.apply_global_rules_message" = "共通の通知ルールを適用しますか";
+"notifications.apply_global_rules_title" = "すべてにデフォルトルールを適用";
+"notifications.apply_global_rules_detail" = "すべての Provider にデフォルトルールを適用します";
+"notifications.apply_global_rules_message" = "デフォルトルールを適用しますか";
 "notifications.apply_global_rules_confirm" = "適用";
 "notifications.apply_global_rules_cancel" = "キャンセル";

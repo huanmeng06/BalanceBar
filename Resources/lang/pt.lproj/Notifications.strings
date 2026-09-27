@@ -32,19 +32,19 @@
 "notifications.agent_settings" = "Ajustes do Agent";
 "notifications.pause_none" = "Nenhuma";
 "notifications.pause_status" = "Pausado até %1$@ · Restante: %2$@";
-"notifications.reminder_rules" = "Regras gerais de alerta";
+"notifications.reminder_rules" = "Regras padrão";
 "notifications.global_rules_hint" = "Digite 0 para desativar um alerta";
 "notifications.five_hour_reminder" = "Alerta de 5 horas";
 "notifications.seven_day_reminder" = "Alerta de 7 dias";
 "notifications.balance_reminder" = "Alerta de saldo";
 "notifications.first_reminder" = "Primeiro alerta:";
 "notifications.second_reminder" = "Segundo alerta:";
-"notifications.agent_follows_global" = "Seguindo regras globais";
+"notifications.agent_follows_global" = "Seguindo regras padrão";
 "notifications.agent_customized" = "Adaptado separadamente";
 
 "notifications.apply_global_rules" = "Aplicar";
-"notifications.apply_global_rules_title" = "Aplicar regras gerais de lembrete a todos";
-"notifications.apply_global_rules_detail" = "Aplicar as regras de lembrete partilhadas a todos os Provider";
-"notifications.apply_global_rules_message" = "Aplicar as regras de lembrete partilhadas";
+"notifications.apply_global_rules_title" = "Aplicar regras padrão a todos";
+"notifications.apply_global_rules_detail" = "Aplicar as regras padrão a todos os Provider";
+"notifications.apply_global_rules_message" = "Aplicar regras padrão";
 "notifications.apply_global_rules_confirm" = "Aplicar";
 "notifications.apply_global_rules_cancel" = "Cancelar";

@@ -32,19 +32,19 @@
 "notifications.agent_settings" = "Agent-Einstellungen";
 "notifications.pause_none" = "Keine";
 "notifications.pause_status" = "Pausiert bis %1$@ · Verbleibend: %2$@";
-"notifications.reminder_rules" = "Allgemeine Erinnerungsregeln";
+"notifications.reminder_rules" = "Standardregeln";
 "notifications.global_rules_hint" = "0 eingeben, um eine Erinnerung zu deaktivieren";
 "notifications.five_hour_reminder" = "5-Stunden-Erinnerung";
 "notifications.seven_day_reminder" = "7-Tage-Erinnerung";
 "notifications.balance_reminder" = "Kontostand-Erinnerung";
 "notifications.first_reminder" = "Erste Erinnerung:";
 "notifications.second_reminder" = "Zweite Erinnerung:";
-"notifications.agent_follows_global" = "Globale Regeln verwenden";
+"notifications.agent_follows_global" = "Standardregeln verwenden";
 "notifications.agent_customized" = "Individuell angepasst";
 
 "notifications.apply_global_rules" = "Anwenden";
-"notifications.apply_global_rules_title" = "Allgemeine Erinnerungsregeln auf alle anwenden";
-"notifications.apply_global_rules_detail" = "Die gemeinsamen Erinnerungsregeln auf alle Provider anwenden";
-"notifications.apply_global_rules_message" = "Gemeinsame Erinnerungsregeln anwenden";
+"notifications.apply_global_rules_title" = "Standardregeln auf alle anwenden";
+"notifications.apply_global_rules_detail" = "Die Standardregeln auf alle Provider anwenden";
+"notifications.apply_global_rules_message" = "Standardregeln anwenden";
 "notifications.apply_global_rules_confirm" = "Anwenden";
 "notifications.apply_global_rules_cancel" = "Abbrechen";
