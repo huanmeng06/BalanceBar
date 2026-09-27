@@ -62,6 +62,7 @@ final class DashboardPageSession {
     let actions: DashboardWindowControllerActions
     let pageContainer = DashboardPageContainerViewController()
     let toolbarController = DashboardToolbarController()
+    let navigationHistory = DashboardNavigationHistory()
     let accessoryHost = DashboardAccessoryHost()
     var platformCapabilities = DashboardPlatformCapabilities.current
     var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current
@@ -72,6 +73,10 @@ final class DashboardPageSession {
     private(set) var sourceListController: DashboardSourceListController?
     var shouldPreserveSectionSelection: ((DashboardSection) -> Bool)?
     var onPreservedSectionSelection: ((DashboardSection) -> Void)?
+    /// Feature-owned destinations (such as future notification child pages)
+    /// are rendered by the feature while the history cursor remains owned by
+    /// this session.
+    var onShowExtendedNavigationDestination: ((String) -> Bool)?
     var preparePageForDisplay: (() -> Void)?
     private var showsUpdateAvailableBadge = false
     private var isTornDown = false
@@ -82,10 +87,16 @@ final class DashboardPageSession {
     var scrollablePage: DashboardScrollablePageViewController? {
         pageContainer.currentPage as? DashboardScrollablePageViewController
     }
+    var navigationDestination: DashboardNavigationDestination? {
+        navigationHistory.currentDestination
+    }
 
     init(actions: DashboardWindowControllerActions) {
         self.actions = actions
         toolbarController.onManualRefresh = actions.onManualRefresh
+        toolbarController.onGoBack = { [weak self] in self?.goBack() }
+        toolbarController.onGoForward = { [weak self] in self?.goForward() }
+        updateNavigationToolbarState()
     }
 
     func installShell(on windowController: DashboardWindowController) {
@@ -142,11 +153,14 @@ final class DashboardPageSession {
         let selectedSection = section
         let selectedProviderID = selectedProviderID
         installShell(on: windowController)
-        if let selectedProviderID,
-           actions.providerChoices().contains(where: { $0.id == selectedProviderID }) {
-            showProvider(selectedProviderID)
+        if let destination = navigationHistory.currentDestination,
+           canPresent(destination),
+           restoreCurrentNavigation() {
+        } else if let selectedProviderID,
+                  actions.providerChoices().contains(where: { $0.id == selectedProviderID }) {
+            reconcileAndRestore(to: .provider(selectedProviderID))
         } else {
-            selectSection(selectedSection)
+            reconcileAndRestore(to: .section(selectedSection))
         }
         window.displayIfNeeded()
         DashboardKeyViewLoop.invalidate(window)
@@ -156,10 +170,7 @@ final class DashboardPageSession {
     }
 
     func showSection(_ section: DashboardSection) {
-        guard !isTornDown else { return }
-        DashboardPageInstrumentation.measure(.totalSelectionToReady) {
-            self.showSectionMeasured(section)
-        }
+        navigate(to: .section(section))
     }
 
     private func showSectionMeasured(_ section: DashboardSection) {
@@ -189,6 +200,8 @@ final class DashboardPageSession {
             selectedProviderID = nil
             window?.title = section.title
             sourceListController?.applySelection(section)
+            navigationHistory.push(.section(section))
+            updateNavigationToolbarState()
             onPreservedSectionSelection?(section)
             return
         }
@@ -212,15 +225,97 @@ final class DashboardPageSession {
     }
 
     func showProvider(_ providerID: String) {
-        guard !isTornDown,
-              let choice = actions.providerChoices().first(where: { $0.id == providerID })
-        else { return }
-        selectedProviderID = providerID
-        mountedSection = section
-        window?.title = choice.name
-        sourceListController?.applySelection(nil)
-        replacePage {
-            actions.makeProviderPage(choice)
+        navigate(to: .provider(providerID))
+    }
+
+    /// Re-displays the destination already owned by the history cursor.
+    /// Rebuilds and search projections must never supply an unrelated page.
+    @discardableResult
+    func restoreCurrentNavigation() -> Bool {
+        guard let destination = navigationHistory.currentDestination else { return false }
+        return present(destination)
+    }
+
+    /// Reconciles an unavailable destination discovered during shell rebuild,
+    /// then presents the same reconciled destination. This keeps the page and
+    /// cursor authoritative together without adding a visit.
+    @discardableResult
+    private func reconcileAndRestore(to destination: DashboardNavigationDestination) -> Bool {
+        navigationHistory.replaceCurrent(with: destination)
+        updateNavigationToolbarState()
+        return present(destination)
+    }
+
+    /// Entry point for future Dashboard feature pages. The session records the
+    /// destination, updates toolbar state, and delegates route rendering to
+    /// `onShowExtendedNavigationDestination` when the destination is a route.
+    func navigate(to destination: DashboardNavigationDestination) {
+        navigate(to: destination, recordingHistory: true)
+    }
+
+    private func goBack() {
+        guard let destination = navigationHistory.goBack() else { return }
+        guard canPresent(destination), present(destination) else {
+            _ = navigationHistory.goForward()
+            return
+        }
+        updateNavigationToolbarState()
+    }
+
+    private func goForward() {
+        guard let destination = navigationHistory.goForward() else { return }
+        guard canPresent(destination), present(destination) else {
+            _ = navigationHistory.goBack()
+            return
+        }
+        updateNavigationToolbarState()
+    }
+
+    private func navigate(
+        to destination: DashboardNavigationDestination,
+        recordingHistory: Bool
+    ) {
+        guard !isTornDown, canPresent(destination) else { return }
+        guard present(destination) else { return }
+        if recordingHistory {
+            navigationHistory.push(destination)
+        }
+        updateNavigationToolbarState()
+    }
+
+    private func canPresent(_ destination: DashboardNavigationDestination) -> Bool {
+        switch destination {
+        case .section:
+            return true
+        case .provider(let providerID):
+            return actions.providerChoices().contains { $0.id == providerID }
+        case .route:
+            return onShowExtendedNavigationDestination != nil
+        }
+    }
+
+    @discardableResult
+    private func present(_ destination: DashboardNavigationDestination) -> Bool {
+        switch destination {
+        case .section(let section):
+            DashboardPageInstrumentation.measure(.totalSelectionToReady) {
+                self.showSectionMeasured(section)
+            }
+            return true
+        case .provider(let providerID):
+            guard let choice = actions.providerChoices().first(where: { $0.id == providerID }) else {
+                return false
+            }
+            selectedProviderID = providerID
+            mountedSection = section
+            window?.title = choice.name
+            sourceListController?.applySelection(nil)
+            replacePage {
+                actions.makeProviderPage(choice)
+            }
+            return true
+        case .route(let route):
+            return onShowExtendedNavigationDestination?(route) == true
         }
     }
 
@@ -328,6 +423,13 @@ final class DashboardPageSession {
         }
         actions.invalidateSectionPages()
         cachedSectionPages.removeAll()
+    }
+
+    private func updateNavigationToolbarState() {
+        toolbarController.setNavigationState(
+            canGoBack: navigationHistory.canGoBack,
+            canGoForward: navigationHistory.canGoForward
+        )
     }
 
     private func detachPageContainerFromParent() {

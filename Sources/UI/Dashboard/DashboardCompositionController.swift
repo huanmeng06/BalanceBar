@@ -322,6 +322,9 @@ final class DashboardCompositionController {
     var pageContainerForTesting: DashboardPageContainerViewController {
         pageSession.pageContainer
     }
+    var navigationHistoryForTesting: DashboardNavigationHistory {
+        pageSession.navigationHistory
+    }
     var searchMenuBarPageForTesting: DashboardMenuBarPage {
         dashboardPreferencePages.searchMenuBarPageForTesting
     }
@@ -772,7 +775,7 @@ final class DashboardCompositionController {
                 return
             }
             if pageSession.mountedSection != section {
-                pageSession.showSection(section)
+                _ = pageSession.restoreCurrentNavigation()
                 return
             }
             applyMountedPageSearch()
@@ -1015,7 +1018,6 @@ final class DashboardCompositionController {
     }
 
     private func clearGlobalSettingsSearch() {
-        let originSection = globalSearchOriginSection
         if let current = globalSettingsSearchContent {
             _ = pageSearchFilter.apply(
                 query: "",
@@ -1034,11 +1036,7 @@ final class DashboardCompositionController {
         lastSettledSearchQuery = nil
         lastAppliedSearchQuery = nil
         lastAppliedSearchRoot = nil
-        if let originSection, originSection == section {
-            pageSession.showSection(originSection)
-        } else {
-            pageSession.showSection(section)
-        }
+        _ = pageSession.restoreCurrentNavigation()
     }
 
     private func makeGlobalSettingsSearchContent() -> NSView {

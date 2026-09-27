@@ -129,6 +129,8 @@
 "dashboard.search.placeholder" = "Cerca";
 "dashboard.search.no_results" = "Nessun risultato";
 "dashboard.search.no_results_detail" = "Nessuna impostazione corrisponde a questa ricerca.";
+"dashboard.navigation.back" = "Indietro";
+"dashboard.navigation.forward" = "Avanti";
 "dashboard.about.page.github_repository" = "Repository GitHub";
 "dashboard.about.page.version_value" = "Versione %1$@";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Visualizza saldi e quote nella barra dei menu tramite CC Switch";

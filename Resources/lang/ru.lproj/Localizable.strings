@@ -129,6 +129,8 @@
 "dashboard.search.placeholder" = "Поиск";
 "dashboard.search.no_results" = "Нет результатов";
 "dashboard.search.no_results_detail" = "Нет настроек, соответствующих этому запросу.";
+"dashboard.navigation.back" = "Назад";
+"dashboard.navigation.forward" = "Вперёд";
 "dashboard.about.page.github_repository" = "Репозиторий GitHub";
 "dashboard.about.page.version_value" = "Версия %1$@";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Просматривайте балансы и квоты в строке меню через CC Switch";

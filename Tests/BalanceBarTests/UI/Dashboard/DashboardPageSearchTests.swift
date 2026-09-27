@@ -2084,6 +2084,7 @@ final class DashboardPageSearchTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
+                DashboardToolbarController.navigationItemIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -3198,6 +3199,371 @@ final class DashboardPageSearchTests: XCTestCase {
             XCTAssertTrue(DashboardSearchVisibility.isMutatingSearchVisibility)
         }
         XCTAssertFalse(DashboardSearchVisibility.isMutatingSearchVisibility)
+    }
+
+    func testDashboardNavigationHistoryUsesCursorSemantics() {
+        let history = DashboardNavigationHistory()
+        XCTAssertFalse(history.canGoBack)
+        XCTAssertFalse(history.canGoForward)
+
+        XCTAssertTrue(history.push(.section(.general)))
+        XCTAssertFalse(history.push(.section(.general)))
+        XCTAssertTrue(history.push(.section(.menuBar)))
+        XCTAssertTrue(history.push(.provider("provider-a")))
+        XCTAssertEqual(history.goBack(), .section(.menuBar))
+        XCTAssertTrue(history.canGoForward)
+
+        XCTAssertTrue(history.push(.section(.about)))
+        XCTAssertEqual(
+            history.destinations,
+            [.section(.general), .section(.menuBar), .section(.about)]
+        )
+        XCTAssertFalse(history.canGoForward)
+        XCTAssertEqual(history.cursor, 2)
+    }
+
+    func testDashboardToolbarPlacesNativeNavigationItemsAndStartsDisabled() throws {
+        let harness = makeNavigationHarness()
+        defer { harness.teardown() }
+        harness.open()
+
+        let window = try XCTUnwrap(harness.window)
+        let toolbar = try XCTUnwrap(window.toolbar)
+        XCTAssertEqual(toolbar.items.map(\.itemIdentifier), DashboardToolbarController.defaultItemIdentifiers)
+
+        let navigationItem = try navigationToolbarItem(in: toolbar)
+        let navigationControl = try navigationControl(in: toolbar)
+        XCTAssertFalse(navigationControl.isEnabled(forSegment: 0))
+        XCTAssertFalse(navigationControl.isEnabled(forSegment: 1))
+        XCTAssertTrue(navigationItem.isNavigational)
+        XCTAssertFalse(navigationItem.autovalidates)
+        XCTAssertEqual(navigationControl.segmentCount, 2)
+        let expectedNavigationLabel = "\(tr(.keyDashboardNavigationBack)) / \(tr(.keyDashboardNavigationForward))"
+        XCTAssertEqual(navigationItem.label, expectedNavigationLabel)
+        XCTAssertEqual(navigationItem.paletteLabel, expectedNavigationLabel)
+        XCTAssertEqual(navigationItem.toolTip, expectedNavigationLabel)
+        XCTAssertEqual(navigationControl.label(forSegment: 0), "")
+        XCTAssertEqual(navigationControl.label(forSegment: 1), "")
+        XCTAssertEqual(
+            navigationControl.toolTip(forSegment: 0),
+            tr(.keyDashboardNavigationBack)
+        )
+        XCTAssertEqual(
+            navigationControl.toolTip(forSegment: 1),
+            tr(.keyDashboardNavigationForward)
+        )
+        XCTAssertEqual(
+            toolbar.items.firstIndex { $0.itemIdentifier == DashboardToolbarController.navigationItemIdentifier },
+            3
+        )
+    }
+
+    func testNavigationSegmentStateRemainsManualAfterToolbarValidation() throws {
+        let harness = makeNavigationHarness()
+        defer { harness.teardown() }
+        harness.open()
+        harness.showSection(.menuBar)
+
+        let toolbar = try XCTUnwrap(harness.window?.toolbar)
+        let navigationItem = try navigationToolbarItem(in: toolbar)
+        let navigationControl = try navigationControl(in: toolbar)
+
+        XCTAssertFalse(navigationItem.autovalidates)
+        XCTAssertTrue(navigationControl.isEnabled(forSegment: 0))
+        XCTAssertFalse(navigationControl.isEnabled(forSegment: 1))
+
+        toolbar.validateVisibleItems()
+
+        XCTAssertTrue(navigationControl.isEnabled(forSegment: 0))
+        XCTAssertFalse(navigationControl.isEnabled(forSegment: 1))
+        XCTAssertEqual(harness.navigationDestination, .section(.menuBar))
+    }
+
+    func testMixedSectionProviderHistoryRestoresWithoutDuplicatePushes() throws {
+        let choice = ProviderChoice(id: "provider-a", name: "Provider A", isCurrent: true)
+        let harness = makeNavigationHarness(providerChoices: [choice])
+        defer { harness.teardown() }
+        harness.open()
+        let window = try XCTUnwrap(harness.window)
+
+        harness.showSection(.menuBar)
+        harness.showProvider(choice.id)
+        harness.showSection(.menu)
+        harness.showSection(.menu)
+
+        XCTAssertEqual(
+            harness.navigationHistory.destinations,
+            [.section(.general), .section(.menuBar), .provider(choice.id), .section(.menu)]
+        )
+        try performNavigationSegment(0, in: window)
+        XCTAssertEqual(harness.navigationDestination, .provider(choice.id))
+        XCTAssertEqual(harness.selectedProviderID, choice.id)
+
+        try performNavigationSegment(0, in: window)
+        XCTAssertEqual(harness.navigationDestination, .section(.menuBar))
+        XCTAssertNil(harness.selectedProviderID)
+        try performNavigationSegment(0, in: window)
+        XCTAssertEqual(harness.navigationDestination, .section(.general))
+        XCTAssertFalse(try navigationControl(in: try XCTUnwrap(window.toolbar)).isEnabled(forSegment: 0))
+        try sendNavigationSubitemAction(index: 0, in: window)
+        XCTAssertEqual(harness.navigationDestination, .section(.general))
+
+        try performNavigationSegment(1, in: window)
+        XCTAssertEqual(harness.navigationDestination, .section(.menuBar))
+        try performNavigationSegment(1, in: window)
+        XCTAssertEqual(harness.navigationDestination, .provider(choice.id))
+        try performNavigationSegment(1, in: window)
+        XCTAssertEqual(harness.navigationDestination, .section(.menu))
+        XCTAssertFalse(try navigationControl(in: try XCTUnwrap(window.toolbar)).isEnabled(forSegment: 1))
+        try sendNavigationSubitemAction(index: 1, in: window)
+        XCTAssertEqual(harness.navigationDestination, .section(.menu))
+    }
+
+    func testNewNavigationAfterBackClearsForwardHistory() throws {
+        let harness = makeNavigationHarness()
+        defer { harness.teardown() }
+        harness.open()
+        let window = try XCTUnwrap(harness.window)
+        harness.showSection(.menuBar)
+        harness.showSection(.menu)
+        try performNavigationSegment(0, in: window)
+        XCTAssertTrue(try navigationControl(in: try XCTUnwrap(window.toolbar)).isEnabled(forSegment: 1))
+
+        harness.showSection(.about)
+        XCTAssertEqual(
+            harness.navigationHistory.destinations,
+            [.section(.general), .section(.menuBar), .section(.about)]
+        )
+        XCTAssertFalse(try navigationControl(in: try XCTUnwrap(window.toolbar)).isEnabled(forSegment: 1))
+    }
+
+    func testHistoryTraversalDoesNotMutateDestinationEntries() throws {
+        let harness = makeNavigationHarness()
+        defer { harness.teardown() }
+        harness.open()
+        let window = try XCTUnwrap(harness.window)
+        harness.showSection(.menuBar)
+        harness.showSection(.menu)
+
+        let destinationsBeforeTraversal = harness.navigationHistory.destinations
+        let countBeforeTraversal = destinationsBeforeTraversal.count
+
+        try performNavigationSegment(0, in: window)
+        try performNavigationSegment(0, in: window)
+        try performNavigationSegment(1, in: window)
+        try performNavigationSegment(1, in: window)
+
+        XCTAssertEqual(harness.navigationHistory.destinations, destinationsBeforeTraversal)
+        XCTAssertEqual(harness.navigationHistory.destinations.count, countBeforeTraversal)
+        XCTAssertEqual(harness.navigationHistory.cursor, countBeforeTraversal - 1)
+        XCTAssertEqual(harness.navigationDestination, .section(.menu))
+    }
+
+    func testFailedExtendedRouteDoesNotCommitHistory() throws {
+        let harness = makeNavigationHarness()
+        defer { harness.teardown() }
+        harness.open()
+        var attemptedRoutes: [String] = []
+        harness.setExtendedNavigationHandler { route in
+            attemptedRoutes.append(route)
+            return false
+        }
+
+        harness.navigate(to: .route("failed-route"))
+
+        XCTAssertEqual(attemptedRoutes, ["failed-route"])
+        XCTAssertEqual(harness.navigationHistory.destinations, [.section(.general)])
+        XCTAssertEqual(harness.navigationDestination, .section(.general))
+    }
+
+    func testSearchSidebarSelectionCommitsLogicalDestinationAfterClear() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-481-search-navigation.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+
+        composition.applySearchQueryForTesting("language")
+        composition.showSection(.menu)
+
+        XCTAssertEqual(composition.navigationHistoryForTesting.destinations, [.section(.general), .section(.menu)])
+        XCTAssertEqual(composition.navigationHistoryForTesting.currentDestination, .section(.menu))
+
+        composition.applySearchQueryForTesting("")
+        window.layoutIfNeeded()
+        XCTAssertEqual(composition.section, .menu)
+        XCTAssertEqual(composition.navigationHistoryForTesting.currentDestination, .section(.menu))
+    }
+
+    func testRebuildReconcilesUnavailableProviderHistoryWithCurrentSection() throws {
+        let choice = ProviderChoice(id: "provider-a", name: "Provider A", isCurrent: true)
+        var choices = [choice]
+        let harness = DashboardShellTestHarness(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { choices },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { harness.teardown() }
+        harness.open()
+        harness.showProvider(choice.id)
+        choices.removeAll()
+
+        harness.rebuild()
+
+        XCTAssertEqual(harness.section, .general)
+        XCTAssertNil(harness.selectedProviderID)
+        XCTAssertEqual(harness.navigationDestination, .section(.general))
+        XCTAssertEqual(harness.navigationHistory.destinations, [.section(.general)])
+    }
+
+    func testRebuildRefreshAndSearchProjectionDoNotChangeNavigationCursor() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-481-history-isolation.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        composition.showSection(.menuBar)
+        let history = composition.navigationHistoryForTesting
+        let destinations = history.destinations
+        let cursor = history.cursor
+
+        composition.refreshMountedPage(snapshot: .placeholder, refreshDate: nil, revision: 1)
+        composition.rebuild()
+        composition.applySearchQueryForTesting("language")
+        composition.applySearchQueryForTesting("")
+        window.layoutIfNeeded()
+
+        XCTAssertEqual(history.destinations, destinations)
+        XCTAssertEqual(history.cursor, cursor)
+        XCTAssertEqual(composition.navigationHistoryForTesting.currentDestination, .section(.menuBar))
+    }
+
+    func testNavigationStateUpdatesPreserveSearchEditorAndToolbarIdentity() throws {
+        let controller = DashboardToolbarController()
+        let window = DashboardSearchWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 600),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        defer {
+            controller.detach()
+            window.close()
+        }
+        controller.install(on: window)
+        controller.beginSearch()
+        let toolbar = try XCTUnwrap(window.toolbar)
+        let searchItem = try XCTUnwrap(toolbar.items.last)
+        let field = try XCTUnwrap(DashboardSearchToolbarProbe.searchField(in: searchItem))
+        if field.currentEditor() == nil {
+            _ = window.makeFirstResponder(field)
+        }
+        let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+        editor.setMarkedText(
+            "pin",
+            selectedRange: NSRange(location: 3, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        XCTAssertTrue(editor.hasMarkedText())
+
+        controller.setNavigationState(canGoBack: true, canGoForward: false)
+
+        XCTAssertTrue(window.toolbar === toolbar)
+        XCTAssertTrue(field.currentEditor() === editor)
+        XCTAssertTrue(editor.hasMarkedText())
+        XCTAssertTrue(try navigationControl(in: toolbar).isEnabled(forSegment: 0))
+        XCTAssertFalse(try navigationControl(in: toolbar).isEnabled(forSegment: 1))
+    }
+
+    func testNavigationHistoryAndToolbarAreScopedToEachSession() throws {
+        let first = makeNavigationHarness()
+        let second = makeNavigationHarness()
+        defer {
+            first.teardown()
+            second.teardown()
+        }
+        first.open()
+        first.showSection(.menuBar)
+        second.open()
+
+        XCTAssertEqual(first.navigationHistory.destinations, [.section(.general), .section(.menuBar)])
+        XCTAssertEqual(second.navigationHistory.destinations, [.section(.general)])
+        XCTAssertFalse(first.navigationHistory === second.navigationHistory)
+        XCTAssertFalse(
+            try navigationControl(in: try XCTUnwrap(second.window?.toolbar)).isEnabled(forSegment: 0)
+        )
+    }
+
+    private func makeNavigationHarness(
+        providerChoices: [ProviderChoice] = []
+    ) -> DashboardShellTestHarness {
+        DashboardShellTestHarness(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { providerChoices },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+    }
+
+    private func toolbarItem(
+        _ identifier: NSToolbarItem.Identifier,
+        in toolbar: NSToolbar
+    ) throws -> NSToolbarItem {
+        return try XCTUnwrap(toolbar.items.first { $0.itemIdentifier == identifier })
+    }
+
+    private func navigationToolbarItem(in toolbar: NSToolbar) throws -> NSToolbarItem {
+        try toolbarItem(DashboardToolbarController.navigationItemIdentifier, in: toolbar)
+    }
+
+    private func navigationControl(in toolbar: NSToolbar) throws -> NSSegmentedControl {
+        try XCTUnwrap(navigationToolbarItem(in: toolbar).view as? NSSegmentedControl)
+    }
+
+    private func performNavigationSegment(_ segment: Int, in window: NSWindow) throws {
+        let control = try navigationControl(in: try XCTUnwrap(window.toolbar))
+        XCTAssertTrue(control.isEnabled(forSegment: segment))
+        let originalTrackingMode = control.trackingMode
+        control.trackingMode = .selectOne
+        defer { control.trackingMode = originalTrackingMode }
+        control.selectedSegment = segment
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(control.action), to: control.target, from: control))
+    }
+
+    private func performToolbarAction(
+        _ identifier: NSToolbarItem.Identifier,
+        in window: NSWindow
+    ) throws {
+        let toolbar = try XCTUnwrap(window.toolbar)
+        let item = try toolbarItem(identifier, in: toolbar)
+        XCTAssertTrue(item.isEnabled)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item))
+    }
+
+    private func sendNavigationSubitemAction(index: Int, in window: NSWindow) throws {
+        let control = try navigationControl(in: try XCTUnwrap(window.toolbar))
+        let originalTrackingMode = control.trackingMode
+        control.trackingMode = .selectOne
+        defer { control.trackingMode = originalTrackingMode }
+        control.selectedSegment = index
+        _ = NSApp.sendAction(try XCTUnwrap(control.action), to: control.target, from: control)
     }
 }
 

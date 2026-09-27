@@ -12,6 +12,8 @@ final class DashboardShellTestHarness {
     var contentHost: NSView { pageSession.contentHost }
     var section: DashboardSection { pageSession.section }
     var selectedProviderID: String? { pageSession.selectedProviderID }
+    var navigationHistory: DashboardNavigationHistory { pageSession.navigationHistory }
+    var navigationDestination: DashboardNavigationDestination? { pageSession.navigationDestination }
     var windowCreationCount: Int { windowController.windowCreationCount }
     var appearanceObserverInstallCount: Int { windowController.appearanceObserverInstallCount }
     var mouseMonitorInstallCount: Int { windowController.mouseMonitorInstallCount }
@@ -94,6 +96,14 @@ final class DashboardShellTestHarness {
 
     func showProvider(_ providerID: String) {
         pageSession.showProvider(providerID)
+    }
+
+    func navigate(to destination: DashboardNavigationDestination) {
+        pageSession.navigate(to: destination)
+    }
+
+    func setExtendedNavigationHandler(_ handler: ((String) -> Bool)?) {
+        pageSession.onShowExtendedNavigationDestination = handler
     }
 
     func setShowsUpdateAvailableBadge(_ visible: Bool) {
