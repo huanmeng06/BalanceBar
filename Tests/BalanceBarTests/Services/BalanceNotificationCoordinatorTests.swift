@@ -52,6 +52,44 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(reloaded.rule(for: key)?.firstThreshold, 25)
     }
 
+    func testSettingsChangesWaitForNextSnapshotBeforeDelivering() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.SettingsChanges.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        let snapshot = Snapshot.official(
+            "Provider",
+            10,
+            "Weekly",
+            nil,
+            Date(),
+            windows: [
+                OfficialQuotaWindow(
+                    kind: .fiveHour,
+                    remaining: 18,
+                    label: "5h",
+                    daysText: "5h",
+                    reset: nil,
+                    durationSeconds: nil
+                )
+            ]
+        )
+
+        // Store a low snapshot while notifications are not configured yet.
+        coordinator.process(snapshot: snapshot, agent: .gpt, providerID: "openai")
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .gpt)
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
+
+        XCTAssertTrue(client.deliveries.isEmpty)
+
+        // A real refresh is the first point at which the new settings may alert.
+        coordinator.process(snapshot: snapshot, agent: .gpt, providerID: "openai")
+        XCTAssertEqual(client.deliveries.count, 1)
+    }
+
     func testPermissionDenialKeepsConfigurationAndCoalescesAgentResources() {
         let client = FakeBalanceNotificationClient(status: .unknown, requestResult: false)
         let suiteName = "BalanceNotificationCoordinatorTests.\(UUID().uuidString)"

@@ -188,7 +188,6 @@ final class BalanceNotificationCoordinator {
                     case .authorized:
                         self.permissionStateStorage = .authorized
                         self.notifyPermissionStateChanged(.authorized)
-                        self.processStoredSnapshotsOnQueue()
                     case .denied:
                         self.permissionStateStorage = .denied
                         self.notifyPermissionStateChanged(.denied)
@@ -199,7 +198,6 @@ final class BalanceNotificationCoordinator {
                                 let next: BalanceNotificationPermissionState = granted ? .authorized : .denied
                                 self.permissionStateStorage = next
                                 self.notifyPermissionStateChanged(next)
-                                if granted { self.processStoredSnapshotsOnQueue() }
                             }
                         }
                     }
@@ -215,7 +213,6 @@ final class BalanceNotificationCoordinator {
     func setAgentEnabled(_ enabled: Bool, agent: BalanceNotificationAgent) {
         onQueue {
             self.store.update { $0.setAgentEnabled(enabled, for: agent) }
-            if enabled { self.processStoredSnapshotsOnQueue(agent: agent) }
         }
     }
 
@@ -226,7 +223,6 @@ final class BalanceNotificationCoordinator {
     ) {
         onQueue {
             self.store.update { $0.setProviderEnabled(enabled, for: agent, providerID: providerID) }
-            if enabled { self.processStoredSnapshotsOnQueue(agent: agent, providerID: providerID) }
         }
     }
 
@@ -266,7 +262,6 @@ final class BalanceNotificationCoordinator {
                     settings.resourceRules[index] = rule
                 }
             }
-            self.processStoredSnapshotsOnQueue()
         }
     }
 
@@ -310,7 +305,6 @@ final class BalanceNotificationCoordinator {
                 }
                 settings.upsert(rule)
             }
-            self.processStoredSnapshotsOnQueue(agent: key.agent, providerID: key.providerID)
         }
     }
 
@@ -335,7 +329,6 @@ final class BalanceNotificationCoordinator {
 
     func resume() {
         onQueue { self.store.update { $0.pauseUntil = nil } }
-        processStoredSnapshots()
     }
 
     func resourceDescriptors(
@@ -381,10 +374,6 @@ final class BalanceNotificationCoordinator {
         for (key, snapshot) in snapshots where (agent == nil || key.agent == agent) && (providerID == nil || key.providerID == providerID) {
             processSnapshotOnQueue(snapshot, agent: key.agent, providerID: key.providerID)
         }
-    }
-
-    private func processStoredSnapshots() {
-        onQueue { self.processStoredSnapshotsOnQueue() }
     }
 
     private func processSnapshotOnQueue(
