@@ -214,6 +214,7 @@ final class DashboardNotificationPages {
     private weak var agentSettingsView: NSView?
     private weak var detailsStack: NSStackView?
     private var agentRows: [BalanceNotificationAgent: SettingsRowView] = [:]
+    private var providerRows: [String: SettingsRowView] = [:]
     private var pauseTimer: Timer?
 
     private enum NotificationPagePath: Equatable {
@@ -258,6 +259,7 @@ final class DashboardNotificationPages {
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
+            self.updateProviderDetail(agent, providerID: providerID, enabled: enabled)
             coordinator.performAsync { coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID) }
         }
         relay.onResourceToggle = { [weak self] key, kind, unit, enabled in
@@ -903,6 +905,7 @@ final class DashboardNotificationPages {
     private func makeAgentPage(_ agent: BalanceNotificationAgent) -> NSView {
         let providers = configuration.providerChoices(agent)
         let settings = configuration.coordinator.settings
+        providerRows.removeAll(keepingCapacity: true)
         var rows: [NSView] = []
         if providers.isEmpty {
             rows.append(SettingsRowView(
@@ -911,7 +914,9 @@ final class DashboardNotificationPages {
             ))
         } else {
             rows.append(contentsOf: providers.map { provider in
-                makeProviderRow(agent: agent, provider: provider, settings: settings)
+                let row = makeProviderRow(agent: agent, provider: provider, settings: settings)
+                providerRows[providerRowKey(agent, providerID: provider.id)] = row
+                return row
             })
         }
         return DashboardSettingsComponents.makeSettingsPageContent([
@@ -923,7 +928,7 @@ final class DashboardNotificationPages {
         agent: BalanceNotificationAgent,
         provider: ProviderChoice,
         settings: BalanceNotificationSettings
-    ) -> NSView {
+    ) -> SettingsRowView {
         let toggle = DashboardSettingsComponents.makeSwitch(
             identifier: "provider:\(agent.rawValue):\(provider.id)",
             isOn: settings.isProviderEnabled(agent, providerID: provider.id),
@@ -943,6 +948,19 @@ final class DashboardNotificationPages {
             ? tr("notifications.agent_enabled")
             : tr("notifications.agent_disabled")
         return SettingsRowView(title: provider.name, detail: detail, accessoryView: controls)
+    }
+
+    private func providerRowKey(_ agent: BalanceNotificationAgent, providerID: String) -> String {
+        "\(agent.rawValue):\(providerID)"
+    }
+
+    private func updateProviderDetail(
+        _ agent: BalanceNotificationAgent,
+        providerID: String,
+        enabled: Bool
+    ) {
+        guard let row = providerRows[providerRowKey(agent, providerID: providerID)] else { return }
+        row.updateDetail(enabled ? tr("notifications.agent_enabled") : tr("notifications.agent_disabled"))
     }
 
     private func makeProviderPage(_ agent: BalanceNotificationAgent, providerID: String) -> NSView {
