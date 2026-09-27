@@ -215,6 +215,7 @@ final class DashboardNotificationPages {
     private weak var detailsStack: NSStackView?
     private var agentRows: [BalanceNotificationAgent: SettingsRowView] = [:]
     private var providerRows: [String: SettingsRowView] = [:]
+    private var resourceRuleRows: [BalanceNotificationResourceKey: ResourceRuleRows] = [:]
     private var pauseTimer: Timer?
 
     private enum NotificationPagePath: Equatable {
@@ -236,6 +237,38 @@ final class DashboardNotificationPages {
 
         var groupWidth: CGFloat {
             labelWidth + valueSpacing + valueAreaWidth
+        }
+    }
+
+    private final class ResourceRuleRows {
+        let enableRow: SettingsRowView
+        let firstThresholdRow: SettingsRowView
+        let secondToggleRow: SettingsRowView
+        let secondThresholdRow: SettingsRowView
+        weak var section: SettingsSectionView?
+        private(set) var resourceEnabled = false
+        private(set) var secondEnabled = false
+
+        init(
+            enableRow: SettingsRowView,
+            firstThresholdRow: SettingsRowView,
+            secondToggleRow: SettingsRowView,
+            secondThresholdRow: SettingsRowView
+        ) {
+            self.enableRow = enableRow
+            self.firstThresholdRow = firstThresholdRow
+            self.secondToggleRow = secondToggleRow
+            self.secondThresholdRow = secondThresholdRow
+        }
+
+        func updateVisibility(resourceEnabled: Bool, secondEnabled: Bool) {
+            self.resourceEnabled = resourceEnabled
+            self.secondEnabled = secondEnabled
+            enableRow.isHidden = false
+            firstThresholdRow.isHidden = !resourceEnabled
+            secondToggleRow.isHidden = !resourceEnabled
+            secondThresholdRow.isHidden = !resourceEnabled || !secondEnabled
+            section?.reconcileSeparators()
         }
     }
 
@@ -271,6 +304,7 @@ final class DashboardNotificationPages {
         relay.onResourceToggle = { [weak self] key, kind, unit, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
+            self.updateResourceVisibility(key: key, resourceEnabled: enabled)
             coordinator.performAsync {
                 coordinator.setResourceEnabled(enabled, key: key, kind: kind, unit: unit)
             }
@@ -288,6 +322,7 @@ final class DashboardNotificationPages {
         relay.onSecondThresholdToggle = { [weak self] key, kind, unit, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
+            self.updateSecondThresholdVisibility(key: key, enabled: enabled)
             coordinator.performAsync {
                 coordinator.updateRule(key: key, kind: kind, unit: unit) { $0.secondEnabled = enabled }
             }
@@ -972,6 +1007,7 @@ final class DashboardNotificationPages {
     private func makeProviderPage(_ agent: BalanceNotificationAgent, providerID: String) -> NSView {
         let descriptors = configuration.coordinator.resourceDescriptors(agent: agent, providerID: providerID)
         let settings = configuration.coordinator.settings
+        resourceRuleRows.removeAll(keepingCapacity: true)
         var rows: [NSView] = []
         if descriptors.isEmpty {
             rows.append(SettingsRowView(title: tr("notifications.resource_rules"), detail: tr("notifications.no_providers")))
@@ -981,8 +1017,13 @@ final class DashboardNotificationPages {
             }
         }
         let providerName = configuration.providerChoices(agent).first { $0.id == providerID }?.name ?? providerID
+        let section = SettingsSectionView(title: "\(agent.title) · \(providerName)", contentViews: rows)
+        resourceRuleRows.values.forEach { resourceRows in
+            resourceRows.section = section
+            resourceRows.section?.reconcileSeparators()
+        }
         return DashboardSettingsComponents.makeSettingsPageContent([
-            SettingsSectionView(title: "\(agent.title) · \(providerName)", contentViews: rows)
+            section
         ])
     }
 
@@ -1032,7 +1073,31 @@ final class DashboardNotificationPages {
             detail: thresholdDetail(rule, descriptor: descriptor, second: true),
             accessoryView: secondField
         )
+        let resourceRows = ResourceRuleRows(
+            enableRow: enableRow,
+            firstThresholdRow: firstRow,
+            secondToggleRow: secondRow,
+            secondThresholdRow: secondThresholdRow
+        )
+        resourceRuleRows[descriptor.key] = resourceRows
+        resourceRows.updateVisibility(resourceEnabled: rule.enabled, secondEnabled: rule.secondEnabled)
         return [enableRow, firstRow, secondRow, secondThresholdRow]
+    }
+
+    private func updateResourceVisibility(
+        key: BalanceNotificationResourceKey,
+        resourceEnabled: Bool
+    ) {
+        guard let resourceRows = resourceRuleRows[key] else { return }
+        resourceRows.updateVisibility(resourceEnabled: resourceEnabled, secondEnabled: resourceRows.secondEnabled)
+    }
+
+    private func updateSecondThresholdVisibility(
+        key: BalanceNotificationResourceKey,
+        enabled: Bool
+    ) {
+        guard let resourceRows = resourceRuleRows[key] else { return }
+        resourceRows.updateVisibility(resourceEnabled: resourceRows.resourceEnabled, secondEnabled: enabled)
     }
 
     private func thresholdField(

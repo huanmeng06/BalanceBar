@@ -6,8 +6,142 @@ private final class NumericTextFieldTestTarget: NSObject {
     @objc func commit(_ sender: Any?) {}
 }
 
+private final class DashboardNotificationTestClient: BalanceNotificationClient {
+    var onResponse: (([AnyHashable: Any]) -> Void)?
+    let status: BalanceNotificationPermissionState
+
+    init(status: BalanceNotificationPermissionState = .authorized) {
+        self.status = status
+    }
+
+    func authorizationStatus(completion: @escaping (BalanceNotificationPermissionState) -> Void) {
+        completion(status)
+    }
+
+    func requestAuthorization(completion: @escaping (Bool) -> Void) {
+        completion(status == .authorized)
+    }
+
+    func deliver(title _: String, body _: String, userInfo _: [AnyHashable: Any]) {}
+    func openSettings() {}
+}
+
 @MainActor
 final class DashboardPreferencePagesTests: XCTestCase {
+    func testNotificationResourceRowsAreIndependentAndConditionallyVisible() throws {
+        let suiteName = "DashboardPreferencePagesTests.NotificationResourceRows.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: DashboardNotificationTestClient()
+        )
+        coordinator.process(
+            snapshot: Snapshot.official(
+                "Provider",
+                10,
+                "Weekly",
+                nil,
+                Date(),
+                windows: [
+                    OfficialQuotaWindow(
+                        kind: .fiveHour,
+                        remaining: 18,
+                        label: "5h",
+                        daysText: "5h",
+                        reset: nil,
+                        durationSeconds: nil
+                    ),
+                    OfficialQuotaWindow(
+                        kind: .sevenDay,
+                        remaining: 70,
+                        label: "7d",
+                        daysText: "7d",
+                        reset: nil,
+                        durationSeconds: nil
+                    )
+                ]
+            ),
+            agent: .gpt,
+            providerID: "openai"
+        )
+
+        let weeklyKey = BalanceNotificationResourceKey(
+            agent: .gpt,
+            providerID: "openai",
+            resourceID: "weekly"
+        )
+        coordinator.setResourceEnabled(
+            false,
+            key: weeklyKey,
+            kind: .quotaPercent,
+            unit: "%"
+        )
+
+        let pages = DashboardNotificationPages(configuration: .init(
+            coordinator: coordinator,
+            providerChoices: { agent in
+                agent == .gpt
+                    ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)]
+                    : []
+            }
+        ))
+        let page = pages.make()
+        XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
+
+        let section = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? SettingsSectionView }
+                .last
+        )
+        let rows = section.contentViews.compactMap { $0 as? SettingsRowView }
+        func resourceRows(titled title: String) throws -> [SettingsRowView] {
+            let index = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == title })
+            return Array(rows[index ..< min(index + 4, rows.count)])
+        }
+        func `switch`(in row: SettingsRowView) throws -> NSSwitch {
+            try XCTUnwrap(descendants(of: row).compactMap { $0 as? NSSwitch }.first)
+        }
+        func setSwitch(_ row: SettingsRowView, on: Bool) throws {
+            let control = try `switch`(in: row)
+            control.state = on ? .on : .off
+            XCTAssertTrue(NSApp.sendAction(
+                try XCTUnwrap(control.action),
+                to: control.target,
+                from: control
+            ))
+        }
+
+        let fiveHour = try resourceRows(titled: "5h")
+        let weekly = try resourceRows(titled: "7d")
+        XCTAssertEqual(fiveHour.count, 4)
+        XCTAssertEqual(weekly.count, 4)
+        XCTAssertFalse(fiveHour[1].isHidden)
+        XCTAssertFalse(fiveHour[2].isHidden)
+        XCTAssertFalse(fiveHour[3].isHidden)
+        XCTAssertTrue(weekly[1].isHidden)
+        XCTAssertTrue(weekly[2].isHidden)
+        XCTAssertTrue(weekly[3].isHidden)
+
+        try setSwitch(weekly[0], on: true)
+        XCTAssertFalse(weekly[1].isHidden)
+        XCTAssertFalse(weekly[2].isHidden)
+        XCTAssertFalse(weekly[3].isHidden)
+        XCTAssertFalse(fiveHour[1].isHidden)
+        XCTAssertFalse(fiveHour[2].isHidden)
+        XCTAssertFalse(fiveHour[3].isHidden)
+
+        try setSwitch(fiveHour[2], on: false)
+        XCTAssertTrue(fiveHour[3].isHidden)
+        XCTAssertFalse(weekly[3].isHidden)
+
+        try setSwitch(weekly[2], on: false)
+        XCTAssertTrue(weekly[3].isHidden)
+        XCTAssertTrue(fiveHour[3].isHidden)
+    }
+
     func testSharedNumericTextFieldUsesNativeCompactConfiguration() {
         let target = NumericTextFieldTestTarget()
         let compactFont = NSFont.monospacedDigitSystemFont(
