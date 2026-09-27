@@ -213,6 +213,7 @@ final class DashboardNotificationPages {
     private weak var reminderRulesView: NSView?
     private weak var agentSettingsView: NSView?
     private weak var detailsStack: NSStackView?
+    private var agentRows: [BalanceNotificationAgent: SettingsRowView] = [:]
     private var pauseTimer: Timer?
 
     private enum NotificationPagePath: Equatable {
@@ -251,6 +252,7 @@ final class DashboardNotificationPages {
         relay.onAgentToggle = { [weak self] agent, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
+            self.updateAgentDetail(agent, enabled: enabled)
             coordinator.performAsync { coordinator.setAgentEnabled(enabled, agent: agent) }
         }
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
@@ -824,10 +826,13 @@ final class DashboardNotificationPages {
         let heading = NSTextField(labelWithString: tr("notifications.agent_settings"))
         heading.font = SettingsSectionView.headingFont
         heading.translatesAutoresizingMaskIntoConstraints = false
+        agentRows.removeAll(keepingCapacity: true)
         let cards = NSStackView(views: BalanceNotificationAgent.dashboardCases.map {
-            SettingsSectionView(
+            let row = makeAgentRow($0, settings: settings)
+            agentRows[$0] = row
+            return SettingsSectionView(
                 title: "",
-                contentViews: [makeAgentRow($0, settings: settings)]
+                contentViews: [row]
             )
         })
         cards.orientation = .vertical
@@ -855,7 +860,7 @@ final class DashboardNotificationPages {
     private func makeAgentRow(
         _ agent: BalanceNotificationAgent,
         settings: BalanceNotificationSettings
-    ) -> NSView {
+    ) -> SettingsRowView {
         let agentSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: "agent:\(agent.rawValue)",
             isOn: settings.isAgentEnabled(agent),
@@ -871,15 +876,28 @@ final class DashboardNotificationPages {
         let controls = NSStackView(views: [agentSwitch, button])
         controls.orientation = .horizontal
         controls.spacing = 8
-        let detail: String
-        if !settings.isAgentEnabled(agent) {
-            detail = tr("notifications.agent_disabled")
-        } else if settings.hasCustomRules(for: agent) {
-            detail = tr("notifications.agent_customized")
-        } else {
-            detail = tr("notifications.agent_follows_global")
-        }
+        let detail = agentDetail(agent, enabled: settings.isAgentEnabled(agent), settings: settings)
         return SettingsRowView(title: agent.title, detail: detail, accessoryView: controls)
+    }
+
+    private func agentDetail(
+        _ agent: BalanceNotificationAgent,
+        enabled: Bool,
+        settings: BalanceNotificationSettings
+    ) -> String {
+        if !enabled {
+            return tr("notifications.agent_disabled")
+        }
+        if settings.hasCustomRules(for: agent) {
+            return tr("notifications.agent_customized")
+        }
+        return tr("notifications.agent_follows_global")
+    }
+
+    private func updateAgentDetail(_ agent: BalanceNotificationAgent, enabled: Bool) {
+        guard let row = agentRows[agent] else { return }
+        let settings = configuration.coordinator.settings
+        row.updateDetail(agentDetail(agent, enabled: enabled, settings: settings))
     }
 
     private func makeAgentPage(_ agent: BalanceNotificationAgent) -> NSView {
