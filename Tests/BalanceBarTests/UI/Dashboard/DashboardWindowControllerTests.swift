@@ -102,7 +102,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains("allowsUserCustomization = false"))
         XCTAssertTrue(source.contains("autosavesConfiguration = false"))
         XCTAssertFalse(source.contains("toolbarNavigationalItemIdentifiers"))
-        XCTAssertFalse(source.contains("isNavigational"))
+        XCTAssertTrue(source.contains("isNavigational = true"))
         XCTAssertFalse(source.contains("item.isHidden"))
         XCTAssertFalse(source.contains("sidebarCollapseObservation"))
         XCTAssertFalse(source.contains("toolbarWillAddItem"))
@@ -1320,7 +1320,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
-                DashboardToolbarController.navigationItemGroupIdentifier,
+                DashboardToolbarController.backItemIdentifier,
+                DashboardToolbarController.forwardItemIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -1342,7 +1343,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
-                DashboardToolbarController.navigationItemGroupIdentifier,
+                DashboardToolbarController.backItemIdentifier,
+                DashboardToolbarController.forwardItemIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -1355,7 +1357,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             $0 != .flexibleSpace
                 && $0 != .toggleSidebar
                 && $0 != .sidebarTrackingSeparator
-                && $0 != DashboardToolbarController.navigationItemGroupIdentifier
+                && $0 != DashboardToolbarController.backItemIdentifier
+                && $0 != DashboardToolbarController.forwardItemIdentifier
                 && $0 != DashboardToolbarController.refreshItemIdentifier
                 && $0 != DashboardToolbarController.searchItemIdentifier
         }
@@ -1365,32 +1368,22 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
-        let navigationGroup = try XCTUnwrap(
-            toolbar.items.first { $0.itemIdentifier == DashboardToolbarController.navigationItemGroupIdentifier }
-                as? NSToolbarItemGroup,
+        let backItem = try XCTUnwrap(
+            toolbar.items.first { $0.itemIdentifier == DashboardToolbarController.backItemIdentifier },
             file: file,
             line: line
         )
-        XCTAssertEqual(navigationGroup.subitems.count, 2, file: file, line: line)
-        XCTAssertNil(navigationGroup.target, file: file, line: line)
-        XCTAssertNil(navigationGroup.action, file: file, line: line)
-        XCTAssertFalse(navigationGroup.autovalidates, file: file, line: line)
-        XCTAssertFalse(navigationGroup.subitems[0].autovalidates, file: file, line: line)
-        XCTAssertFalse(navigationGroup.subitems[1].autovalidates, file: file, line: line)
-        XCTAssertEqual(
-            navigationGroup.subitems[0].itemIdentifier,
-            DashboardToolbarController.backItemIdentifier,
+        let forwardItem = try XCTUnwrap(
+            toolbar.items.first { $0.itemIdentifier == DashboardToolbarController.forwardItemIdentifier },
             file: file,
             line: line
         )
-        XCTAssertEqual(
-            navigationGroup.subitems[1].itemIdentifier,
-            DashboardToolbarController.forwardItemIdentifier,
-            file: file,
-            line: line
-        )
-        XCTAssertNotNil(navigationGroup.subitems[0].image, file: file, line: line)
-        XCTAssertNotNil(navigationGroup.subitems[1].image, file: file, line: line)
+        XCTAssertTrue(backItem.isNavigational, file: file, line: line)
+        XCTAssertTrue(forwardItem.isNavigational, file: file, line: line)
+        XCTAssertFalse(backItem.autovalidates, file: file, line: line)
+        XCTAssertFalse(forwardItem.autovalidates, file: file, line: line)
+        XCTAssertNotNil(backItem.image, file: file, line: line)
+        XCTAssertNotNil(forwardItem.image, file: file, line: line)
         XCTAssertTrue(
             toolbar.items.contains { $0.itemIdentifier == .sidebarTrackingSeparator && $0 is NSTrackingSeparatorToolbarItem },
             "Tracking separator must be NSTrackingSeparatorToolbarItem, not a fake NSView spacer",

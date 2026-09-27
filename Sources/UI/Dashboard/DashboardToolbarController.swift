@@ -8,18 +8,18 @@ import AppKit
 /// configures the public item, forwards Cmd+F / Esc to
 /// `beginSearchInteraction()` / `endSearchInteraction()`, keeps draft text
 /// separate from the committed query, and submits through Return/search.
-final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
+final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate, NSToolbarItemValidation {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
     static let refreshItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardRefresh")
-    static let navigationItemGroupIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardNavigation")
     static let backItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardBack")
     static let forwardItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardForward")
     static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
         .flexibleSpace,
         .toggleSidebar,
         .sidebarTrackingSeparator,
-        navigationItemGroupIdentifier,
+        backItemIdentifier,
+        forwardItemIdentifier,
         .flexibleSpace,
         refreshItemIdentifier,
         searchItemIdentifier
@@ -47,6 +47,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         let item = NSToolbarItem(itemIdentifier: Self.backItemIdentifier)
         item.target = self
         item.action = #selector(goBack(_:))
+        item.isNavigational = true
         item.autovalidates = false
         return item
     }()
@@ -54,16 +55,9 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         let item = NSToolbarItem(itemIdentifier: Self.forwardItemIdentifier)
         item.target = self
         item.action = #selector(goForward(_:))
+        item.isNavigational = true
         item.autovalidates = false
         return item
-    }()
-    private lazy var navigationItemGroup: NSToolbarItemGroup = {
-        let group = NSToolbarItemGroup(itemIdentifier: Self.navigationItemGroupIdentifier)
-        group.subitems = [backItem, forwardItem]
-        group.controlRepresentation = .expanded
-        group.selectionMode = .momentary
-        group.autovalidates = false
-        return group
     }()
     private lazy var refreshItem: NSToolbarItem = {
         let item = NSToolbarItem(itemIdentifier: Self.refreshItemIdentifier)
@@ -113,7 +107,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     func setNavigationState(canGoBack: Bool, canGoForward: Bool) {
         self.canGoBack = canGoBack
         self.canGoForward = canGoForward
-        navigationItemGroup.autovalidates = false
         backItem.autovalidates = false
         forwardItem.autovalidates = false
         backItem.isEnabled = canGoBack
@@ -194,9 +187,13 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
-        if itemIdentifier == Self.navigationItemGroupIdentifier {
-            configureNavigationItemGroup()
-            return navigationItemGroup
+        if itemIdentifier == Self.backItemIdentifier {
+            updateBackItemLabels()
+            return backItem
+        }
+        if itemIdentifier == Self.forwardItemIdentifier {
+            updateForwardItemLabels()
+            return forwardItem
         }
         if itemIdentifier == Self.refreshItemIdentifier {
             configureRefreshItem()
@@ -219,6 +216,16 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     @objc func goForward(_ sender: Any?) {
         guard canGoForward else { return }
         onGoForward?()
+    }
+
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        if item === backItem {
+            return canGoBack
+        }
+        if item === forwardItem {
+            return canGoForward
+        }
+        return true
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) {
@@ -298,18 +305,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         updateRefreshItemLabels()
         refreshItem.target = self
         refreshItem.action = #selector(manualRefresh(_:))
-    }
-
-    private func configureNavigationItemGroup() {
-        updateBackItemLabels()
-        updateForwardItemLabels()
-        navigationItemGroup.controlRepresentation = .expanded
-        navigationItemGroup.selectionMode = .momentary
-        navigationItemGroup.autovalidates = false
-        backItem.autovalidates = false
-        forwardItem.autovalidates = false
-        backItem.isEnabled = canGoBack
-        forwardItem.isEnabled = canGoForward
     }
 
     private func updateBackItemLabels() {

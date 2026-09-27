@@ -2084,7 +2084,8 @@ final class DashboardPageSearchTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
-                DashboardToolbarController.navigationItemGroupIdentifier,
+                DashboardToolbarController.backItemIdentifier,
+                DashboardToolbarController.forwardItemIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -3231,21 +3232,25 @@ final class DashboardPageSearchTests: XCTestCase {
         let toolbar = try XCTUnwrap(window.toolbar)
         XCTAssertEqual(toolbar.items.map(\.itemIdentifier), DashboardToolbarController.defaultItemIdentifiers)
 
-        let navigationGroup = try navigationItemGroup(in: toolbar)
         let back = try toolbarItem(DashboardToolbarController.backItemIdentifier, in: toolbar)
         let forward = try toolbarItem(DashboardToolbarController.forwardItemIdentifier, in: toolbar)
         XCTAssertFalse(back.isEnabled)
         XCTAssertFalse(forward.isEnabled)
-        XCTAssertEqual(navigationGroup.subitems.count, 2)
-        XCTAssertNil(navigationGroup.target)
-        XCTAssertNil(navigationGroup.action)
         XCTAssertEqual(back.action, #selector(DashboardToolbarController.goBack(_:)))
         XCTAssertEqual(forward.action, #selector(DashboardToolbarController.goForward(_:)))
+        XCTAssertTrue(back.isNavigational)
+        XCTAssertTrue(forward.isNavigational)
+        XCTAssertFalse(back.autovalidates)
+        XCTAssertFalse(forward.autovalidates)
         XCTAssertNotNil(back.image)
         XCTAssertNotNil(forward.image)
         XCTAssertEqual(
-            toolbar.items.firstIndex { $0.itemIdentifier == DashboardToolbarController.navigationItemGroupIdentifier },
+            toolbar.items.firstIndex { $0.itemIdentifier == DashboardToolbarController.backItemIdentifier },
             3
+        )
+        XCTAssertEqual(
+            toolbar.items.firstIndex { $0.itemIdentifier == DashboardToolbarController.forwardItemIdentifier },
+            4
         )
     }
 
@@ -3256,14 +3261,11 @@ final class DashboardPageSearchTests: XCTestCase {
         harness.showSection(.menuBar)
 
         let toolbar = try XCTUnwrap(harness.window?.toolbar)
-        let group = try navigationItemGroup(in: toolbar)
         let back = try toolbarItem(DashboardToolbarController.backItemIdentifier, in: toolbar)
         let forward = try toolbarItem(DashboardToolbarController.forwardItemIdentifier, in: toolbar)
 
-        XCTAssertFalse(group.autovalidates)
         XCTAssertFalse(back.autovalidates)
         XCTAssertFalse(forward.autovalidates)
-        XCTAssertTrue(group.isEnabled)
         XCTAssertTrue(back.isEnabled)
         XCTAssertFalse(forward.isEnabled)
 
@@ -3541,20 +3543,7 @@ final class DashboardPageSearchTests: XCTestCase {
         _ identifier: NSToolbarItem.Identifier,
         in toolbar: NSToolbar
     ) throws -> NSToolbarItem {
-        if identifier == DashboardToolbarController.backItemIdentifier
-            || identifier == DashboardToolbarController.forwardItemIdentifier {
-            return try XCTUnwrap(
-                navigationItemGroup(in: toolbar).subitems.first { $0.itemIdentifier == identifier }
-            )
-        }
         return try XCTUnwrap(toolbar.items.first { $0.itemIdentifier == identifier })
-    }
-
-    private func navigationItemGroup(in toolbar: NSToolbar) throws -> NSToolbarItemGroup {
-        try XCTUnwrap(
-            toolbar.items.first { $0.itemIdentifier == DashboardToolbarController.navigationItemGroupIdentifier }
-                as? NSToolbarItemGroup
-        )
     }
 
     private func performToolbarAction(
@@ -3568,8 +3557,10 @@ final class DashboardPageSearchTests: XCTestCase {
     }
 
     private func sendNavigationSubitemAction(index: Int, in window: NSWindow) throws {
-        let group = try navigationItemGroup(in: try XCTUnwrap(window.toolbar))
-        let item = group.subitems[index]
+        let identifier = index == 0
+            ? DashboardToolbarController.backItemIdentifier
+            : DashboardToolbarController.forwardItemIdentifier
+        let item = try toolbarItem(identifier, in: try XCTUnwrap(window.toolbar))
         _ = NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item)
     }
 }
