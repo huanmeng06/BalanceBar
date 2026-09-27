@@ -1372,6 +1372,8 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             line: line
         )
         XCTAssertEqual(navigationGroup.subitems.count, 2, file: file, line: line)
+        XCTAssertNil(navigationGroup.target, file: file, line: line)
+        XCTAssertNil(navigationGroup.action, file: file, line: line)
         XCTAssertNotNil(navigationGroup.subitems[0].image, file: file, line: line)
         XCTAssertNotNil(navigationGroup.subitems[1].image, file: file, line: line)
         XCTAssertTrue(

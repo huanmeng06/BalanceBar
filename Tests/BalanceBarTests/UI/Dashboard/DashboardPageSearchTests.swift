@@ -3237,6 +3237,8 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(back.isEnabled)
         XCTAssertFalse(forward.isEnabled)
         XCTAssertEqual(navigationGroup.subitems.count, 2)
+        XCTAssertNil(navigationGroup.target)
+        XCTAssertNil(navigationGroup.action)
         XCTAssertEqual(back.action, #selector(DashboardToolbarController.goBack(_:)))
         XCTAssertEqual(forward.action, #selector(DashboardToolbarController.goForward(_:)))
         XCTAssertNotNil(back.image)
@@ -3290,7 +3292,7 @@ final class DashboardPageSearchTests: XCTestCase {
             to: disabledBack.target,
             from: disabledBack
         )
-        try sendNavigationGroupAction(index: 0, in: window)
+        try sendNavigationSubitemAction(index: 0, in: window)
         XCTAssertEqual(harness.navigationDestination, .section(.general))
 
         try performToolbarAction(DashboardToolbarController.forwardItemIdentifier, in: window)
@@ -3300,7 +3302,7 @@ final class DashboardPageSearchTests: XCTestCase {
         try performToolbarAction(DashboardToolbarController.forwardItemIdentifier, in: window)
         XCTAssertEqual(harness.navigationDestination, .section(.menu))
         XCTAssertFalse(try toolbarItem(DashboardToolbarController.forwardItemIdentifier, in: try XCTUnwrap(window.toolbar)).isEnabled)
-        try sendNavigationGroupAction(index: 1, in: window)
+        try sendNavigationSubitemAction(index: 1, in: window)
         XCTAssertEqual(harness.navigationDestination, .section(.menu))
     }
 
@@ -3320,6 +3322,28 @@ final class DashboardPageSearchTests: XCTestCase {
             [.section(.general), .section(.menuBar), .section(.about)]
         )
         XCTAssertFalse(try toolbarItem(DashboardToolbarController.forwardItemIdentifier, in: try XCTUnwrap(window.toolbar)).isEnabled)
+    }
+
+    func testHistoryTraversalDoesNotMutateDestinationEntries() throws {
+        let harness = makeNavigationHarness()
+        defer { harness.teardown() }
+        harness.open()
+        let window = try XCTUnwrap(harness.window)
+        harness.showSection(.menuBar)
+        harness.showSection(.menu)
+
+        let destinationsBeforeTraversal = harness.navigationHistory.destinations
+        let countBeforeTraversal = destinationsBeforeTraversal.count
+
+        try performToolbarAction(DashboardToolbarController.backItemIdentifier, in: window)
+        try performToolbarAction(DashboardToolbarController.backItemIdentifier, in: window)
+        try performToolbarAction(DashboardToolbarController.forwardItemIdentifier, in: window)
+        try performToolbarAction(DashboardToolbarController.forwardItemIdentifier, in: window)
+
+        XCTAssertEqual(harness.navigationHistory.destinations, destinationsBeforeTraversal)
+        XCTAssertEqual(harness.navigationHistory.destinations.count, countBeforeTraversal)
+        XCTAssertEqual(harness.navigationHistory.cursor, countBeforeTraversal - 1)
+        XCTAssertEqual(harness.navigationDestination, .section(.menu))
     }
 
     func testRebuildRefreshAndSearchProjectionDoNotChangeNavigationCursor() throws {
@@ -3447,29 +3471,15 @@ final class DashboardPageSearchTests: XCTestCase {
         in window: NSWindow
     ) throws {
         let toolbar = try XCTUnwrap(window.toolbar)
-        let group = try navigationItemGroup(in: toolbar)
-        let index: Int
-        switch identifier {
-        case DashboardToolbarController.backItemIdentifier:
-            index = 0
-        case DashboardToolbarController.forwardItemIdentifier:
-            index = 1
-        default:
-            let item = try toolbarItem(identifier, in: toolbar)
-            XCTAssertTrue(item.isEnabled)
-            XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item))
-            return
-        }
-        let item = group.subitems[index]
+        let item = try toolbarItem(identifier, in: toolbar)
         XCTAssertTrue(item.isEnabled)
-        group.setSelected(true, at: index)
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(group.action), to: group.target, from: group))
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item))
     }
 
-    private func sendNavigationGroupAction(index: Int, in window: NSWindow) throws {
+    private func sendNavigationSubitemAction(index: Int, in window: NSWindow) throws {
         let group = try navigationItemGroup(in: try XCTUnwrap(window.toolbar))
-        group.setSelected(true, at: index)
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(group.action), to: group.target, from: group))
+        let item = group.subitems[index]
+        _ = NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item)
     }
 }
 

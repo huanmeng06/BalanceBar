@@ -50,16 +50,13 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
                 Self.navigationImage(symbolName: "chevron.backward"),
                 Self.navigationImage(symbolName: "chevron.forward")
             ],
-            // Reset the selected segment after the action below. Using
-            // selectAny lets AppKit expose the pressed segment reliably to
-            // the group action while preserving Finder's momentary behavior.
-            selectionMode: .selectAny,
+            selectionMode: .momentary,
             labels: [
                 tr(.keyDashboardNavigationBack),
                 tr(.keyDashboardNavigationForward)
             ],
-            target: self,
-            action: #selector(navigationItemSelected(_:))
+            target: nil,
+            action: nil
         )
         group.controlRepresentation = .expanded
         return group
@@ -230,27 +227,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         onGoForward?()
     }
 
-    @objc private func navigationItemSelected(_ sender: NSToolbarItemGroup) {
-        let selectedIndex = sender.selectedIndex
-        guard selectedIndex == 0 || selectedIndex == 1 else { return }
-        let isEnabled = selectedIndex == 0 ? canGoBack : canGoForward
-        guard isEnabled,
-              sender.subitems.indices.contains(selectedIndex),
-              sender.subitems[selectedIndex].isEnabled else {
-            sender.setSelected(false, at: selectedIndex)
-            return
-        }
-        switch selectedIndex {
-        case 0:
-            goBack(sender)
-        case 1:
-            goForward(sender)
-        default:
-            return
-        }
-        sender.setSelected(false, at: selectedIndex)
-    }
-
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         if item === backItem {
             return canGoBack
@@ -348,8 +324,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     private func configureNavigationItemGroup() {
         updateBackItemLabels()
         updateForwardItemLabels()
-        navigationItemGroup.target = self
-        navigationItemGroup.action = #selector(navigationItemSelected(_:))
         navigationItemGroup.controlRepresentation = .expanded
         navigationItemGroup.isEnabled = canGoBack || canGoForward
         backItem.isEnabled = canGoBack
