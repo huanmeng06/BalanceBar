@@ -131,8 +131,6 @@
     case keyDashboardSearchPlaceholder = "dashboard.search.placeholder"
     case keyDashboardSearchNoResults = "dashboard.search.no_results"
     case keyDashboardSearchNoResultsDetail = "dashboard.search.no_results_detail"
-    case keyDashboardNavigationBack = "dashboard.navigation.back"
-    case keyDashboardNavigationForward = "dashboard.navigation.forward"
     case keyDashboardAboutPageGithubRepository = "dashboard.about.page.github_repository"
     case keyDashboardAboutPageVersionValue = "dashboard.about.page.version_value"
     case keyDashboardAboutPageACcSwitchBasedMenuBarBalanceViewer = "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer"

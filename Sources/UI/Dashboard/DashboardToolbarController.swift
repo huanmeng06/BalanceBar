@@ -309,10 +309,10 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     private func updateNavigationItemLabels() {
-        let backLabel = tr(.keyDashboardNavigationBack)
-        let forwardLabel = tr(.keyDashboardNavigationForward)
-        navigationControl.setLabel(backLabel, forSegment: 0)
-        navigationControl.setLabel(forwardLabel, forSegment: 1)
+        let backLabel = "Back"
+        let forwardLabel = "Forward"
+        navigationControl.setLabel("", forSegment: 0)
+        navigationControl.setLabel("", forSegment: 1)
         navigationControl.setToolTip(backLabel, forSegment: 0)
         navigationControl.setToolTip(forwardLabel, forSegment: 1)
         navigationControl.setImage(
