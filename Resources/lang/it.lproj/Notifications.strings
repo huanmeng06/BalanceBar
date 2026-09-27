@@ -5,7 +5,7 @@
 "notifications.permission_disabled" = "Le notifiche di sistema sono disattivate e BalanceBar non può inviare avvisi";
 "notifications.permission_pending" = "Notification permission has not been granted yet";
 "notifications.open_system_settings" = "Apri Impostazioni di Sistema";
-"notifications.advanced_settings" = "Impostazioni avanzate";
+"notifications.advanced_settings" = "Dettagli…";
 "notifications.agent_enabled" = "Avvisi attivati";
 "notifications.agent_disabled" = "Avvisi disattivati";
 "notifications.provider_rules" = "Provider";
@@ -33,7 +33,7 @@
 "notifications.pause_none" = "Nessuna";
 "notifications.pause_status" = "In pausa fino al %1$@ · Restante: %2$@";
 "notifications.reminder_rules" = "Regole predefinite";
-"notifications.global_rules_hint" = "Inserisci 0 per disattivare un promemoria";
+"notifications.global_rules_hint" = "Si applica ad Agent e Provider senza regole personalizzate";
 "notifications.five_hour_reminder" = "Promemoria di 5 ore";
 "notifications.seven_day_reminder" = "Promemoria di 7 giorni";
 "notifications.balance_reminder" = "Promemoria saldo";
@@ -41,6 +41,30 @@
 "notifications.second_reminder" = "Secondo promemoria:";
 "notifications.agent_follows_global" = "Segue le regole predefinite";
 "notifications.agent_customized" = "Personalizzato";
+
+"notifications.permission_state" = "Notifiche di sistema";
+"notifications.agent_page_description" = "Configura Provider e relative regole di avviso";
+"notifications.details" = "Dettagli…";
+"notifications.edit" = "Modifica…";
+"notifications.done" = "Fine";
+"notifications.default_rules" = "Regole predefinite";
+"notifications.default_rules_edit_hint" = "Questi valori si applicano ad Agent e Provider senza regole personalizzate";
+"notifications.second_alert_enabled" = "Invia un secondo avviso al superamento della soglia inferiore";
+"notifications.second_disabled" = "Secondo avviso disattivato";
+"notifications.first_disabled" = "Primo avviso disattivato";
+"notifications.rule_summary" = "Primo %1$@ · Secondo %2$@";
+"notifications.threshold_input_hint" = "Valore della soglia";
+"notifications.rule_source" = "Origine della regola";
+"notifications.use_default_rules" = "Usa regole predefinite";
+"notifications.custom_rules" = "Personalizzato";
+"notifications.inherited_rule_detail" = "Valore di sola lettura dalle regole predefinite";
+"notifications.custom_rule_detail" = "Valore modificabile per questo Provider";
+"notifications.restore_default_rules" = "Ripristina regole predefinite…";
+"notifications.restore_default_rules_title" = "Ripristina regole predefinite";
+"notifications.restore_default_rules_detail" = "Rimuovi le regole personalizzate dei Provider di questo Agent per seguire le regole predefinite.";
+"notifications.restore_default_rules_message" = "Ripristinare le regole predefinite di %1$@?";
+"notifications.restore_default_rules_confirm" = "Ripristina regole predefinite";
+"notifications.restore_default_rules_cancel" = "Annulla";
 
 "notifications.apply_global_rules" = "Applica";
 "notifications.apply_global_rules_title" = "Applica le regole predefinite a tutti";

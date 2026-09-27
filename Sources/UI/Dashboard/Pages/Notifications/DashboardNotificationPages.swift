@@ -15,10 +15,14 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
     var onOpenSettings: (() -> Void)?
     var onPauseSelection: ((String) -> Void)?
     var onGlobalRuleThreshold: ((String, Bool, Double, NSTextField) -> Void)?
+    var onGlobalSecondToggle: ((String, Bool) -> Void)?
     var onResume: (() -> Void)?
     var onAgent: ((BalanceNotificationAgent) -> Void)?
     var onProvider: ((BalanceNotificationAgent, String) -> Void)?
-    var onApplyGlobalRules: ((BalanceNotificationAgent) -> Void)?
+    var onEditDefaultRules: (() -> Void)?
+    var onFinishDefaultRules: (() -> Void)?
+    var onRuleSource: ((BalanceNotificationResourceKey, BalanceNotificationResourceKind, String?, Bool) -> Void)?
+    var onRestoreDefaultRules: ((BalanceNotificationAgent) -> Void)?
 
     @objc func globalToggle(_ sender: NSSwitch) { onGlobalToggle?(sender.state == .on) }
 
@@ -61,6 +65,23 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
     }
     @objc func resume(_ sender: NSButton) { onResume?() }
 
+    @objc func editDefaultRules(_ sender: NSButton) { onEditDefaultRules?() }
+
+    @objc func finishDefaultRules(_ sender: NSButton) { onFinishDefaultRules?() }
+
+    @objc func globalSecondToggle(_ sender: NSSwitch) {
+        guard let raw = sender.identifier?.rawValue,
+              raw.hasPrefix("global-second:") else { return }
+        onGlobalSecondToggle?(String(raw.dropFirst("global-second:".count)), sender.state == .on)
+    }
+
+    @objc func ruleSource(_ sender: NSPopUpButton) {
+        guard let key = resourceKey(from: sender, prefixes: ["source"]),
+              let kind = kind(from: sender),
+              let selected = sender.selectedItem?.representedObject as? NSNumber else { return }
+        onRuleSource?(key, kind, sender.toolTip?.isEmpty == true ? nil : sender.toolTip, selected.boolValue)
+    }
+
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
         commitGlobalRuleThreshold(field)
@@ -77,10 +98,10 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
         onProvider?(agent, providerID)
     }
 
-    @objc func applyGlobalRules(_ sender: NSButton) {
-        guard let raw = metadata(from: sender, prefix: "apply-global-rules"),
+    @objc func restoreDefaultRules(_ sender: NSButton) {
+        guard let raw = metadata(from: sender, prefix: "restore-default-rules"),
               let agent = BalanceNotificationAgent(rawValue: raw) else { return }
-        onApplyGlobalRules?(agent)
+        onRestoreDefaultRules?(agent)
     }
 
 
@@ -117,11 +138,15 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
     }
 
     private func resourceKey(from sender: NSView) -> BalanceNotificationResourceKey? {
+        resourceKey(from: sender, prefixes: ["resource"])
+    }
+
+    private func resourceKey(from sender: NSView, prefixes: [String]) -> BalanceNotificationResourceKey? {
         guard let raw = sender.identifier?.rawValue,
-              raw.hasPrefix("resource:"),
-              let first = raw.dropFirst("resource:".count).firstIndex(of: ":"),
+              let prefix = prefixes.first(where: { raw.hasPrefix($0 + ":") }),
+              let first = raw.dropFirst(prefix.count + 1).firstIndex(of: ":"),
               let second = raw[raw.index(after: first)...].firstIndex(of: ":") else { return nil }
-        let agentRaw = String(raw.dropFirst("resource:".count).prefix(upTo: first))
+        let agentRaw = String(raw.dropFirst(prefix.count + 1).prefix(upTo: first))
         let providerID = String(raw[raw.index(after: first)..<second])
         let resourceID = String(raw[raw.index(after: second)...])
         let cleanResourceID = resourceID.split(separator: "|", maxSplits: 1).first.map(String.init) ?? resourceID
@@ -216,17 +241,21 @@ final class DashboardNotificationPages {
     private weak var pauseDetailLabel: NSTextField?
     private weak var pauseMenu: NSPopUpButton?
     private weak var pauseRow: NSView?
+    private weak var globalSwitch: NSSwitch?
     private weak var notificationSection: SettingsSectionView?
     private weak var reminderRulesView: NSView?
     private weak var agentSettingsView: NSView?
     private weak var detailsStack: NSStackView?
     private var agentRows: [BalanceNotificationAgent: SettingsRowView] = [:]
-    private var agentAdvancedButtons: [BalanceNotificationAgent: NSButton] = [:]
+    private var agentDetailButtons: [BalanceNotificationAgent: NSButton] = [:]
     private var providerRows: [String: SettingsRowView] = [:]
-    private var providerAdvancedButtons: [String: NSButton] = [:]
+    private var providerDetailButtons: [String: NSButton] = [:]
     private var resourceRuleRows: [BalanceNotificationResourceKey: ResourceRuleRows] = [:]
+    private var globalSecondThresholdRows: [String: SettingsRowView] = [:]
+    private var globalSecondThresholdFields: [String: NSTextField] = [:]
     private var pauseTimer: Timer?
     private var applyGlobalRulesAlert: NSAlert?
+    private var editingDefaultRules = false
 
     var applyGlobalRulesAlertForTesting: NSAlert? {
         applyGlobalRulesAlert
@@ -256,33 +285,62 @@ final class DashboardNotificationPages {
 
     private final class ResourceRuleRows {
         let enableRow: SettingsRowView
+        let sourceRow: SettingsRowView
         let firstThresholdRow: SettingsRowView
         let secondToggleRow: SettingsRowView
         let secondThresholdRow: SettingsRowView
+        let firstField: NSTextField
+        let secondField: NSTextField
+        let secondSwitch: NSSwitch
         weak var section: SettingsSectionView?
         private(set) var resourceEnabled = false
         private(set) var secondEnabled = false
+        private(set) var usesGlobalDefaults = true
 
         init(
             enableRow: SettingsRowView,
+            sourceRow: SettingsRowView,
             firstThresholdRow: SettingsRowView,
             secondToggleRow: SettingsRowView,
-            secondThresholdRow: SettingsRowView
+            secondThresholdRow: SettingsRowView,
+            firstField: NSTextField,
+            secondField: NSTextField,
+            secondSwitch: NSSwitch
         ) {
             self.enableRow = enableRow
+            self.sourceRow = sourceRow
             self.firstThresholdRow = firstThresholdRow
             self.secondToggleRow = secondToggleRow
             self.secondThresholdRow = secondThresholdRow
+            self.firstField = firstField
+            self.secondField = secondField
+            self.secondSwitch = secondSwitch
         }
 
-        func updateVisibility(resourceEnabled: Bool, secondEnabled: Bool) {
+        func updateVisibility(resourceEnabled: Bool, secondEnabled: Bool, usesGlobalDefaults: Bool? = nil) {
             self.resourceEnabled = resourceEnabled
             self.secondEnabled = secondEnabled
+            if let usesGlobalDefaults { self.usesGlobalDefaults = usesGlobalDefaults }
             enableRow.isHidden = false
+            sourceRow.isHidden = false
             firstThresholdRow.isHidden = !resourceEnabled
             secondToggleRow.isHidden = !resourceEnabled
             secondThresholdRow.isHidden = !resourceEnabled || !secondEnabled
+            firstField.isEditable = !self.usesGlobalDefaults
+            firstField.isEnabled = !self.usesGlobalDefaults
+            secondField.isEditable = !self.usesGlobalDefaults
+            secondField.isEnabled = !self.usesGlobalDefaults
+            secondSwitch.isEnabled = !self.usesGlobalDefaults
             section?.reconcileSeparators()
+        }
+
+        func updateInheritance(_ usesGlobalDefaults: Bool) {
+            self.usesGlobalDefaults = usesGlobalDefaults
+            firstField.isEditable = !usesGlobalDefaults
+            firstField.isEnabled = !usesGlobalDefaults
+            secondField.isEditable = !usesGlobalDefaults
+            secondField.isEnabled = !usesGlobalDefaults
+            secondSwitch.isEnabled = !usesGlobalDefaults
         }
     }
 
@@ -301,13 +359,7 @@ final class DashboardNotificationPages {
             guard let self else { return }
             let coordinator = self.configuration.coordinator
             self.updateAgentDetail(agent, enabled: enabled)
-            let providerIDs = self.configuration.providerChoices(agent).map(\.id)
-            coordinator.performAsync {
-                coordinator.setAgentEnabled(enabled, agent: agent)
-                providerIDs.forEach { providerID in
-                    coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID)
-                }
-            }
+            coordinator.performAsync { coordinator.setAgentEnabled(enabled, agent: agent) }
         }
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
             guard let self else { return }
@@ -339,6 +391,21 @@ final class DashboardNotificationPages {
             self.updateSecondThresholdVisibility(key: key, enabled: enabled)
             coordinator.performAsync {
                 coordinator.updateRule(key: key, kind: kind, unit: unit) { $0.secondEnabled = enabled }
+            }
+        }
+        relay.onRuleSource = { [weak self] key, kind, unit, usesDefault in
+            guard let self else { return }
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync {
+                coordinator.setRuleUsesGlobalDefaults(
+                    usesDefault,
+                    key: key,
+                    kind: kind,
+                    unit: unit
+                )
+                DispatchQueue.main.async { [weak self] in
+                    self?.updateResourceInheritance(key: key, usesGlobalDefaults: usesDefault)
+                }
             }
         }
         relay.onOpenSettings = { [weak self] in self?.configuration.coordinator.openSystemSettings() }
@@ -393,6 +460,34 @@ final class DashboardNotificationPages {
                 }
             }
         }
+        relay.onGlobalSecondToggle = { [weak self] resourceID, enabled in
+            guard let self else { return }
+            let coordinator = self.configuration.coordinator
+            coordinator.performAsync {
+                let key = BalanceNotificationResourceKey(agent: .gpt, providerID: "global", resourceID: resourceID)
+                let kind: BalanceNotificationResourceKind = resourceID == "balance" ? .balance : .quotaPercent
+                let current = coordinator.settings.globalThresholds(for: key, kind: kind)
+                let second = enabled
+                    ? (current.second > 0 ? current.second : max(kind == .balance ? 0.01 : 1, current.first / 2))
+                    : 0
+                coordinator.updateGlobalRule(
+                    resourceID: resourceID,
+                    kind: kind,
+                    firstThreshold: current.first,
+                    secondThreshold: second
+                )
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.globalSecondThresholdRows[resourceID]?.isHidden = !enabled
+                    if let field = self.globalSecondThresholdFields[resourceID] {
+                        field.stringValue = enabled
+                            ? self.formatted(second, kind: kind)
+                            : ""
+                    }
+                    self.globalSecondThresholdRows[resourceID]?.superview?.needsLayout = true
+                }
+            }
+        }
         relay.onResume = { [weak self] in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
@@ -400,6 +495,16 @@ final class DashboardNotificationPages {
                 coordinator.resume()
                 DispatchQueue.main.async { [weak self] in self?.updatePausePresentation() }
             }
+        }
+        relay.onEditDefaultRules = { [weak self] in
+            guard let self else { return }
+            self.editingDefaultRules = true
+            self.replaceReminderRulesView()
+        }
+        relay.onFinishDefaultRules = { [weak self] in
+            guard let self else { return }
+            self.editingDefaultRules = false
+            self.replaceReminderRulesView()
         }
         relay.onAgent = { [weak self] agent in
             guard let self else { return }
@@ -423,8 +528,8 @@ final class DashboardNotificationPages {
             self.path.append(.provider(agent, providerID))
             self.rebuild()
         }
-        relay.onApplyGlobalRules = { [weak self] agent in
-            self?.presentApplyGlobalRulesConfirmation(for: agent)
+        relay.onRestoreDefaultRules = { [weak self] agent in
+            self?.presentRestoreDefaultRulesConfirmation(for: agent)
         }
         container.translatesAutoresizingMaskIntoConstraints = false
     }
@@ -517,26 +622,14 @@ final class DashboardNotificationPages {
             target: relay,
             action: #selector(DashboardNotificationPageRelay.globalToggle(_:))
         )
-        var globalControls: [NSView] = []
-        if permission == .denied {
-            let systemSettings = NSButton(
-                title: tr("notifications.system_settings"),
-                target: relay,
-                action: #selector(DashboardNotificationPageRelay.openSettings(_:))
-            )
-            globalControls.append(systemSettings)
-        }
-        if permission != .denied {
-            globalControls.append(globalSwitch)
-        }
+        self.globalSwitch = globalSwitch
+        let globalControls: [NSView] = [globalSwitch]
         let globalAccessory = NSStackView(views: globalControls)
         globalAccessory.orientation = .horizontal
         globalAccessory.spacing = 8
         let global = SettingsRowView(
             title: tr("notifications.quota_reminders"),
-            detail: permission == .denied
-                ? tr("notifications.permission_disabled")
-                : tr("notifications.global_description"),
+            detail: tr("notifications.global_description"),
             accessoryView: globalAccessory
         )
 
@@ -557,9 +650,23 @@ final class DashboardNotificationPages {
         )
         pauseDetailLabel = pauseRow.detailLabel
         self.pauseRow = pauseRow
+        var globalRows: [NSView] = [global, pauseRow]
+        if permission == .denied {
+            let systemSettings = NSButton(
+                title: tr("notifications.open_system_settings"),
+                target: relay,
+                action: #selector(DashboardNotificationPageRelay.openSettings(_:))
+            )
+            let permissionRow = SettingsRowView(
+                title: tr("notifications.permission_state"),
+                detail: tr("notifications.permission_disabled"),
+                accessoryView: systemSettings
+            )
+            globalRows.append(permissionRow)
+        }
         let notificationSection = SettingsSectionView(
             title: tr("notifications.page.title"),
-            contentViews: [global, pauseRow]
+            contentViews: globalRows
         )
         self.notificationSection = notificationSection
         let reminderRules = makeReminderRulesSection(settings: settings)
@@ -574,7 +681,6 @@ final class DashboardNotificationPages {
         details.translatesAutoresizingMaskIntoConstraints = false
         agentSettings.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
         detailsStack = details
-        updateGlobalVisibility()
         updatePausePresentation()
         startPauseTimer()
         reminderRules.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
@@ -585,14 +691,11 @@ final class DashboardNotificationPages {
     }
 
     private func updateGlobalVisibility() {
-        let settings = configuration.coordinator.settings
-        let permission = configuration.coordinator.permissionState
-        let active = settings.globalEnabled && permission != .denied
-        pauseRow?.isHidden = !active
+        // The app switch and its saved rules remain visible when macOS denies
+        // permission or the user pauses reminders. Permission is an independent
+        // system state; it must never erase or hide BalanceBar configuration.
+        globalSwitch?.state = configuration.coordinator.settings.globalEnabled ? .on : .off
         notificationSection?.reconcileSeparators()
-        reminderRulesView?.isHidden = !active
-        agentSettingsView?.isHidden = !active
-        detailsStack?.isHidden = !active
         updatePausePresentation()
     }
 
@@ -661,261 +764,156 @@ final class DashboardNotificationPages {
         return formatter
     }()
 
+    private func replaceReminderRulesView() {
+        guard (path.last ?? .root) == .root,
+              let oldView = reminderRulesView,
+              let detailsStack,
+              let index = detailsStack.arrangedSubviews.firstIndex(where: { $0 === oldView }) else { return }
+        let newView = makeReminderRulesSection(settings: configuration.coordinator.settings)
+        detailsStack.removeArrangedSubview(oldView)
+        oldView.removeFromSuperview()
+        detailsStack.insertView(newView, at: index, in: .top)
+        newView.widthAnchor.constraint(equalTo: detailsStack.widthAnchor).isActive = true
+        reminderRulesView = newView
+        detailsStack.needsLayout = true
+        detailsStack.superview?.needsLayout = true
+    }
+
     private func makeReminderRulesSection(settings: BalanceNotificationSettings) -> NSView {
-        let heading = NSTextField(labelWithString: tr("notifications.reminder_rules"))
-        heading.font = SettingsSectionView.headingFont
-        heading.setContentHuggingPriority(.required, for: .vertical)
-        let subtitle = NSTextField(labelWithString: tr("notifications.global_rules_hint"))
+        globalSecondThresholdRows.removeAll(keepingCapacity: true)
+        globalSecondThresholdFields.removeAll(keepingCapacity: true)
+        let fiveHourKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "global", resourceID: "five-hour")
+        let sevenDayKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "global", resourceID: "weekly")
+        let balanceKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "global", resourceID: "balance")
+        let definitions: [(String, BalanceNotificationResourceKey, BalanceNotificationResourceKind)] = [
+            (tr("notifications.five_hour_reminder"), fiveHourKey, .quotaPercent),
+            (tr("notifications.seven_day_reminder"), sevenDayKey, .quotaPercent),
+            (tr("notifications.balance_reminder"), balanceKey, .balance)
+        ]
+        let rows: [NSView]
+        if editingDefaultRules {
+            rows = definitions.flatMap { title, key, kind in
+                makeDefaultRuleEditorRows(title: title, resourceID: key.resourceID, thresholds: settings.globalThresholds(for: key, kind: kind), kind: kind)
+            } + [makeDoneEditingRow()]
+        } else {
+            rows = definitions.map { title, key, kind in
+                let thresholds = settings.globalThresholds(for: key, kind: kind)
+                let edit = NSButton(
+                    title: tr("notifications.edit"),
+                    target: relay,
+                    action: #selector(DashboardNotificationPageRelay.editDefaultRules(_:))
+                )
+                edit.identifier = NSUserInterfaceItemIdentifier("default-rule-edit:\(key.resourceID)")
+                return SettingsRowView(
+                    title: title,
+                    detail: defaultRuleSummary(thresholds, kind: kind),
+                    accessoryView: edit
+                )
+            }
+        }
+        let subtitle = NSTextField(wrappingLabelWithString: tr("notifications.global_rules_hint"))
         subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = .secondaryLabelColor
-        subtitle.setContentHuggingPriority(.required, for: .vertical)
-        let columnMetrics = makeGlobalRuleColumnMetrics()
-
-        let fiveHourKey = BalanceNotificationResourceKey(
-            agent: .gpt,
-            providerID: "global",
-            resourceID: "five-hour"
+        let section = SettingsSectionView(
+            title: tr("notifications.reminder_rules"),
+            contentViews: [subtitle] + rows
         )
-        let sevenDayKey = BalanceNotificationResourceKey(
-            agent: .gpt,
-            providerID: "global",
-            resourceID: "weekly"
-        )
-        let balanceKey = BalanceNotificationResourceKey(
-            agent: .gpt,
-            providerID: "global",
-            resourceID: "balance"
-        )
-        let fiveHour = SettingsRowView(
-            title: tr("notifications.five_hour_reminder"),
-            accessoryView: makeGlobalRuleAccessory(
-                resourceID: fiveHourKey.resourceID,
-                thresholds: settings.globalThresholds(for: fiveHourKey, kind: .quotaPercent),
-                kind: .quotaPercent,
-                columnMetrics: columnMetrics
-            )
-        )
-        let sevenDay = SettingsRowView(
-            title: tr("notifications.seven_day_reminder"),
-            accessoryView: makeGlobalRuleAccessory(
-                resourceID: sevenDayKey.resourceID,
-                thresholds: settings.globalThresholds(for: sevenDayKey, kind: .quotaPercent),
-                kind: .quotaPercent,
-                columnMetrics: columnMetrics
-            )
-        )
-        let balance = SettingsRowView(
-            title: tr("notifications.balance_reminder"),
-            accessoryView: makeGlobalRuleAccessory(
-                resourceID: balanceKey.resourceID,
-                thresholds: settings.globalThresholds(for: balanceKey, kind: .balance),
-                kind: .balance,
-                columnMetrics: columnMetrics
-            )
-        )
-        let card = SettingsSectionView(title: "", contentViews: [fiveHour, sevenDay, balance])
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.addView(heading, in: .top)
-        stack.addView(subtitle, in: .top)
-        stack.addView(card, in: .top)
-        stack.setCustomSpacing(4, after: heading)
-        stack.setCustomSpacing(SettingsSectionView.headingToCardSpacing, after: subtitle)
-        card.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        ])
-        return container
+        return section
     }
 
-    private func makeGlobalRuleAccessory(
+    private func makeDoneEditingRow() -> SettingsRowView {
+        let done = NSButton(
+            title: tr("notifications.done"),
+            target: relay,
+            action: #selector(DashboardNotificationPageRelay.finishDefaultRules(_:))
+        )
+        done.identifier = NSUserInterfaceItemIdentifier("default-rules-done")
+        return SettingsRowView(
+            title: tr("notifications.default_rules"),
+            detail: tr("notifications.default_rules_edit_hint"),
+            accessoryView: done
+        )
+    }
+
+    private func makeDefaultRuleEditorRows(
+        title: String,
         resourceID: String,
         thresholds: (first: Double, second: Double),
-        kind: BalanceNotificationResourceKind,
-        columnMetrics: GlobalRuleColumnMetrics
-    ) -> ReminderRuleAccessoryView {
-        let firstLabel = makeGlobalRuleLabel(tr("notifications.first_reminder"))
-        let secondLabel = makeGlobalRuleLabel(tr("notifications.second_reminder"))
-        [firstLabel, secondLabel].forEach {
-            $0.widthAnchor.constraint(equalToConstant: columnMetrics.labelWidth).isActive = true
-        }
-        let second = makeGlobalRuleField(
-            resourceID: resourceID,
-            isSecond: true,
-            value: thresholds.second,
-            kind: kind
+        kind: BalanceNotificationResourceKind
+    ) -> [SettingsRowView] {
+        let firstField = makeGlobalRuleField(resourceID: resourceID, isSecond: false, value: thresholds.first, kind: kind)
+        let firstRow = SettingsRowView(
+            title: title,
+            detail: tr("notifications.first_reminder"),
+            accessoryView: firstField
         )
-        let firstWithUnit = makeGlobalRuleField(
-            resourceID: resourceID,
-            isSecond: false,
-            value: thresholds.first,
-            kind: kind
+        let secondSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: "global-second:\(resourceID)",
+            isOn: thresholds.second > 0,
+            target: relay,
+            action: #selector(DashboardNotificationPageRelay.globalSecondToggle(_:))
         )
-        let firstGroup = makeGlobalRuleGroup(
-            label: firstLabel,
-            field: firstWithUnit,
-            unitText: kind == .quotaPercent ? "%" : nil,
-            columnMetrics: columnMetrics
+        secondSwitch.setAccessibilityValue(kind.rawValue)
+        secondSwitch.toolTip = kind == .balance ? "USD" : "%"
+        let secondToggleRow = SettingsRowView(
+            title: tr("notifications.second_alert"),
+            detail: tr("notifications.second_alert_enabled"),
+            accessoryView: secondSwitch
         )
-        let secondGroup = makeGlobalRuleGroup(
-            label: secondLabel,
-            field: second,
-            unitText: kind == .quotaPercent ? "%" : nil,
-            columnMetrics: columnMetrics
+        let secondField = makeGlobalRuleField(resourceID: resourceID, isSecond: true, value: thresholds.second, kind: kind)
+        let secondRow = SettingsRowView(
+            title: tr("notifications.second_threshold"),
+            detail: thresholdDetail(thresholds.second, kind: kind, unit: kind == .balance ? "USD" : nil),
+            accessoryView: secondField
         )
-        let accessory = ReminderRuleAccessoryView(
-            views: [firstGroup, secondGroup],
-            groupWidth: columnMetrics.groupWidth,
-            groupSpacing: columnMetrics.groupSpacing
-        )
-        accessory.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
-        return accessory
+        globalSecondThresholdRows[resourceID] = secondRow
+        globalSecondThresholdFields[resourceID] = secondField.field
+        secondRow.isHidden = thresholds.second <= 0
+        return [firstRow, secondToggleRow, secondRow]
     }
 
-    private func makeGlobalRuleColumnMetrics() -> GlobalRuleColumnMetrics {
-        let firstLabel = makeGlobalRuleLabel(tr("notifications.first_reminder"))
-        let secondLabel = makeGlobalRuleLabel(tr("notifications.second_reminder"))
-        let quotaField = makeGlobalRuleField(
-            resourceID: "column-metrics-quota",
-            isSecond: false,
-            value: 0,
-            kind: .quotaPercent
-        )
-        let unit = makeGlobalRuleUnitSlot(nil)
-        let quotaNaturalWidth = ceil(quotaField.fittingSize.width)
-        let unitWidth = unit.fittingSize.width
-        return GlobalRuleColumnMetrics(
-            labelWidth: ceil(max(firstLabel.fittingSize.width, secondLabel.fittingSize.width)),
-            percentFieldWidth: quotaNaturalWidth,
-            unitWidth: unitWidth
-        )
-    }
-
-    private func makeGlobalRuleLabel(_ text: String) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
-        label.alignment = .left
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.setContentHuggingPriority(.required, for: .horizontal)
-        label.setContentCompressionResistancePriority(.required, for: .horizontal)
-        return label
-    }
-
-    private func makeGlobalRuleGroup(
-        label: NSTextField,
-        field: DashboardSettingsComponents.CompactNumericFieldAccessory,
-        unitText: String?,
-        columnMetrics: GlobalRuleColumnMetrics
-    ) -> NSStackView {
-        field.translatesAutoresizingMaskIntoConstraints = false
-        field.setContentHuggingPriority(.required, for: .horizontal)
-        field.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let valueWidth = unitText == nil ? columnMetrics.valueAreaWidth : columnMetrics.percentFieldWidth
-        field.setFieldWidth(valueWidth)
-        let fieldColumn = NSView()
-        fieldColumn.translatesAutoresizingMaskIntoConstraints = false
-        fieldColumn.addSubview(field)
-        fieldColumn.widthAnchor.constraint(equalToConstant: valueWidth).isActive = true
-        NSLayoutConstraint.activate([
-            field.trailingAnchor.constraint(equalTo: fieldColumn.trailingAnchor),
-            field.topAnchor.constraint(equalTo: fieldColumn.topAnchor),
-            field.bottomAnchor.constraint(equalTo: fieldColumn.bottomAnchor)
-        ])
-        var views: [NSView] = [label, fieldColumn]
-        if let unitText {
-            views.append(makeGlobalRuleUnitSlot(unitText, width: columnMetrics.unitWidth))
-        }
-        let group = NSStackView(views: views)
-        group.orientation = .horizontal
-        group.alignment = .centerY
-        group.spacing = columnMetrics.valueSpacing
-        group.widthAnchor.constraint(equalToConstant: columnMetrics.groupWidth).isActive = true
-        group.setContentHuggingPriority(.required, for: .horizontal)
-        group.setContentCompressionResistancePriority(.required, for: .horizontal)
-        return group
-    }
-
-    private func makeGlobalRuleUnitSlot(_ text: String?, width: CGFloat? = nil) -> NSTextField {
-        let unit = NSTextField(labelWithString: text ?? "")
-        unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
-        let percentWidth = ceil(("%" as NSString).size(withAttributes: [.font: unit.font as Any]).width)
-        unit.widthAnchor.constraint(equalToConstant: width ?? percentWidth).isActive = true
-        unit.setContentHuggingPriority(.required, for: .horizontal)
-        unit.setContentCompressionResistancePriority(.required, for: .horizontal)
-        return unit
+    private func defaultRuleSummary(
+        _ thresholds: (first: Double, second: Double),
+        kind: BalanceNotificationResourceKind
+    ) -> String {
+        let unit = kind == .quotaPercent ? "%" : " USD"
+        let first = "\(formatted(thresholds.first, kind: kind))\(unit)"
+        let firstSummary = thresholds.first > 0 ? first : tr("notifications.first_disabled")
+        let second = thresholds.second > 0
+            ? "\(formatted(thresholds.second, kind: kind))\(unit)"
+            : tr("notifications.second_disabled")
+        return tr("notifications.rule_summary", arguments: [firstSummary, second])
     }
 
     private func makeGlobalRuleField(
         resourceID: String,
         isSecond: Bool,
         value: Double,
-        kind: BalanceNotificationResourceKind,
-        trailingViews: [NSView] = []
-    ) -> DashboardSettingsComponents.CompactNumericFieldAccessory {
-        let identifier = "global-rule:" + resourceID + ":" + (isSecond ? "second" : "first")
-        let field = DashboardSettingsComponents.makeNumericTextField(
-            identifier: identifier,
-            value: formattedGlobalRuleValue(value, kind: kind),
-            placeholder: "0",
-            capacityTemplate: kind == .quotaPercent ? "000" : DashboardSettingsComponents.amountCapacityTemplate,
-            trailingViews: trailingViews,
-            delegate: relay,
-            toolTip: tr("notifications.global_rules_hint")
-        )
-        return field
-    }
-
-    private func formattedGlobalRuleValue(
-        _ value: Double,
         kind: BalanceNotificationResourceKind
-    ) -> String {
-        kind == .quotaPercent ? String(format: "%.0f", value) : String(format: "%.2f", value)
+    ) -> DashboardSettingsComponents.CompactNumericFieldAccessory {
+        let identifier = "global-rule:\(resourceID):\(isSecond ? "second" : "first")"
+        return DashboardSettingsComponents.makeNumericTextField(
+            identifier: identifier,
+            value: value > 0 ? formatted(value, kind: kind) : "",
+            placeholder: kind == .quotaPercent ? "20" : "0.50",
+            capacityTemplate: kind == .quotaPercent ? "000" : DashboardSettingsComponents.amountCapacityTemplate,
+            delegate: relay,
+            toolTip: tr("notifications.threshold_input_hint")
+        )
     }
 
     private func makeAgentSettingsSection(settings: BalanceNotificationSettings) -> NSView {
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        let heading = NSTextField(labelWithString: tr("notifications.agent_settings"))
-        heading.font = SettingsSectionView.headingFont
-        heading.translatesAutoresizingMaskIntoConstraints = false
         agentRows.removeAll(keepingCapacity: true)
-        agentAdvancedButtons.removeAll(keepingCapacity: true)
-        let cards = NSStackView(views: BalanceNotificationAgent.dashboardCases.map {
+        agentDetailButtons.removeAll(keepingCapacity: true)
+        let rows = BalanceNotificationAgent.dashboardCases.map {
             let row = makeAgentRow($0, settings: settings)
             agentRows[$0] = row
-            return SettingsSectionView(
-                title: "",
-                contentViews: [row]
-            )
-        })
-        cards.orientation = .vertical
-        cards.alignment = .leading
-        cards.spacing = 12
-        cards.detachesHiddenViews = true
-        cards.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(heading)
-        container.addSubview(cards)
-        NSLayoutConstraint.activate([
-            heading.topAnchor.constraint(equalTo: container.topAnchor),
-            heading.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            heading.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            cards.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: SettingsSectionView.headingToCardSpacing),
-            cards.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            cards.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            cards.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        ])
-        for card in cards.arrangedSubviews {
-            card.widthAnchor.constraint(equalTo: cards.widthAnchor).isActive = true
+            return row
         }
-        return container
+        return SettingsSectionView(
+            title: tr("notifications.agent_settings"),
+            contentViews: rows
+        )
     }
 
     private func makeAgentRow(
@@ -929,13 +927,12 @@ final class DashboardNotificationPages {
             action: #selector(DashboardNotificationPageRelay.agentToggle(_:))
         )
         let button = NSButton(
-            title: tr("notifications.advanced_settings"),
+            title: tr("notifications.details"),
             target: relay,
             action: #selector(DashboardNotificationPageRelay.agent(_:))
         )
         button.identifier = NSUserInterfaceItemIdentifier("agent:\(agent.rawValue)")
-        button.isHidden = !settings.isAgentEnabled(agent)
-        agentAdvancedButtons[agent] = button
+        agentDetailButtons[agent] = button
         let controls = NSStackView(views: [button, agentSwitch])
         controls.orientation = .horizontal
         controls.spacing = 8
@@ -949,9 +946,6 @@ final class DashboardNotificationPages {
         enabled: Bool,
         settings: BalanceNotificationSettings
     ) -> String {
-        if !enabled {
-            return tr("notifications.agent_disabled")
-        }
         if settings.hasCustomRules(for: agent) {
             return tr("notifications.agent_customized")
         }
@@ -961,8 +955,6 @@ final class DashboardNotificationPages {
     private func updateAgentDetail(_ agent: BalanceNotificationAgent, enabled: Bool) {
         guard let row = agentRows[agent] else { return }
         let settings = configuration.coordinator.settings
-        agentAdvancedButtons[agent]?.isHidden = !enabled
-        agentAdvancedButtons[agent]?.superview?.needsLayout = true
         row.updateDetail(agentDetail(agent, enabled: enabled, settings: settings))
     }
 
@@ -970,7 +962,7 @@ final class DashboardNotificationPages {
         let providers = configuration.providerChoices(agent)
         let settings = configuration.coordinator.settings
         providerRows.removeAll(keepingCapacity: true)
-        providerAdvancedButtons.removeAll(keepingCapacity: true)
+        providerDetailButtons.removeAll(keepingCapacity: true)
         var providerViews: [NSView] = []
         if providers.isEmpty {
             providerViews.append(SettingsRowView(
@@ -984,26 +976,30 @@ final class DashboardNotificationPages {
                 return row
             })
         }
-        let applyButton = NSButton(
-            title: tr("notifications.apply_global_rules"),
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.applyGlobalRules(_:))
+        let providerSection = SettingsSectionView(
+            title: tr("notifications.provider_rules"),
+            contentViews: providerViews
         )
-        applyButton.identifier = NSUserInterfaceItemIdentifier("apply-global-rules:\(agent.rawValue)")
-        let applyRow = SettingsRowView(
-            title: tr("notifications.apply_global_rules_title"),
-            detail: tr("notifications.apply_global_rules_detail"),
-            accessoryView: applyButton
+        var sections: [NSView] = [providerSection]
+        if settings.hasCustomRules(for: agent) {
+            let restoreButton = NSButton(
+                title: tr("notifications.restore_default_rules"),
+                target: relay,
+                action: #selector(DashboardNotificationPageRelay.restoreDefaultRules(_:))
+            )
+            restoreButton.identifier = NSUserInterfaceItemIdentifier("restore-default-rules:\(agent.rawValue)")
+            let restoreRow = SettingsRowView(
+                title: tr("notifications.restore_default_rules_title"),
+                detail: tr("notifications.restore_default_rules_detail"),
+                accessoryView: restoreButton
+            )
+            sections.append(SettingsSectionView(title: "", contentViews: [restoreRow]))
+        }
+        let header = DashboardSettingsComponents.makePageHeader(
+            agent.title,
+            subtitle: tr("notifications.agent_page_description")
         )
-        let applySection = SettingsSectionView(
-            title: "\(agent.title) · \(tr("notifications.advanced_settings"))",
-            contentViews: [applyRow]
-        )
-        let providerSection = SettingsSectionView(title: "", contentViews: providerViews)
-        return DashboardSettingsComponents.makeSettingsPageContent([
-            applySection,
-            providerSection
-        ])
+        return DashboardSettingsComponents.makeSettingsPageContent([header] + sections)
     }
 
     private func makeProviderRow(
@@ -1018,20 +1014,19 @@ final class DashboardNotificationPages {
             action: #selector(DashboardNotificationPageRelay.providerToggle(_:))
         )
         let button = NSButton(
-            title: tr("notifications.advanced_settings"),
+            title: tr("notifications.details"),
             target: relay,
             action: #selector(DashboardNotificationPageRelay.provider(_:))
         )
         button.identifier = NSUserInterfaceItemIdentifier("provider:\(agent.rawValue):\(provider.id)")
-        button.isHidden = !settings.isProviderEnabled(agent, providerID: provider.id)
-        providerAdvancedButtons[providerRowKey(agent, providerID: provider.id)] = button
+        providerDetailButtons[providerRowKey(agent, providerID: provider.id)] = button
         let controls = NSStackView(views: [button, toggle])
         controls.orientation = .horizontal
         controls.spacing = 8
         controls.detachesHiddenViews = true
-        let detail = settings.isProviderEnabled(agent, providerID: provider.id)
-            ? tr("notifications.agent_enabled")
-            : tr("notifications.agent_disabled")
+        let detail = providerUsesCustomRules(settings, agent: agent, providerID: provider.id)
+            ? tr("notifications.agent_customized")
+            : tr("notifications.agent_follows_global")
         return SettingsRowView(title: provider.name, detail: detail, accessoryView: controls)
     }
 
@@ -1046,21 +1041,34 @@ final class DashboardNotificationPages {
     ) {
         let key = providerRowKey(agent, providerID: providerID)
         guard let row = providerRows[key] else { return }
-        providerAdvancedButtons[key]?.isHidden = !enabled
-        providerAdvancedButtons[key]?.superview?.needsLayout = true
-        row.updateDetail(enabled ? tr("notifications.agent_enabled") : tr("notifications.agent_disabled"))
+        let settings = configuration.coordinator.settings
+        row.updateDetail(
+            providerUsesCustomRules(settings, agent: agent, providerID: providerID)
+                ? tr("notifications.agent_customized")
+                : tr("notifications.agent_follows_global")
+        )
     }
 
-    private func presentApplyGlobalRulesConfirmation(for agent: BalanceNotificationAgent) {
+    private func providerUsesCustomRules(
+        _ settings: BalanceNotificationSettings,
+        agent: BalanceNotificationAgent,
+        providerID: String
+    ) -> Bool {
+        settings.resourceRules.contains {
+            $0.key.agent == agent && $0.key.providerID == providerID && !$0.usesGlobalDefaults
+        }
+    }
+
+    private func presentRestoreDefaultRulesConfirmation(for agent: BalanceNotificationAgent) {
         if applyGlobalRulesAlert?.window.sheetParent != nil { return }
         guard let hostWindow = currentPage?.window ?? container.window else { return }
 
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = tr("notifications.apply_global_rules_message")
-        alert.informativeText = tr("notifications.apply_global_rules_detail")
-        alert.addButton(withTitle: tr("notifications.apply_global_rules_confirm"))
-        alert.addButton(withTitle: tr("notifications.apply_global_rules_cancel"))
+        alert.messageText = tr("notifications.restore_default_rules_message", arguments: [agent.title])
+        alert.informativeText = tr("notifications.restore_default_rules_detail")
+        alert.addButton(withTitle: tr("notifications.restore_default_rules_confirm"))
+        alert.addButton(withTitle: tr("notifications.restore_default_rules_cancel"))
         alert.buttons[0].keyEquivalent = "\r"
         alert.buttons[1].keyEquivalent = "\u{1b}"
         alert.buttons[1].keyEquivalentModifierMask = []
@@ -1070,7 +1078,13 @@ final class DashboardNotificationPages {
             self.applyGlobalRulesAlert = nil
             guard response == .alertFirstButtonReturn else { return }
             let providerIDs = self.configuration.providerChoices(agent).map(\.id)
-            self.configuration.coordinator.applyGlobalRules(to: agent, providerIDs: providerIDs)
+            self.configuration.coordinator.performAsync { [weak self] in
+                guard let self else { return }
+                self.configuration.coordinator.applyGlobalRules(to: agent, providerIDs: providerIDs)
+                DispatchQueue.main.async { [weak self] in
+                    self?.rebuild()
+                }
+            }
         }
     }
 
@@ -1079,37 +1093,38 @@ final class DashboardNotificationPages {
         let settings = configuration.coordinator.settings
         resourceRuleRows.removeAll(keepingCapacity: true)
         let providerName = configuration.providerChoices(agent).first { $0.id == providerID }?.name ?? providerID
-        let pageTitle = "\(agent.title) · \(providerName)"
-        var sections: [NSView] = []
+        var content: [NSView] = []
         if descriptors.isEmpty {
-            sections.append(SettingsSectionView(
-                title: pageTitle,
-                contentViews: [SettingsRowView(
-                    title: tr("notifications.resource_rules"),
-                    detail: tr("notifications.no_providers")
-                )]
+            content.append(SettingsRowView(
+                title: tr("notifications.resource_rules"),
+                detail: tr("notifications.no_providers")
             ))
         } else {
-            for (index, descriptor) in descriptors.enumerated() {
-                let rows = makeResourceSettingsRows(descriptor, settings: settings)
-                let section = SettingsSectionView(
-                    title: index == 0 ? pageTitle : "",
-                    contentViews: rows
-                )
-                resourceRuleRows[descriptor.key]?.section = section
-                resourceRuleRows[descriptor.key]?.section?.reconcileSeparators()
-                sections.append(section)
+            for descriptor in descriptors {
+                content.append(contentsOf: makeResourceSettingsRows(descriptor, settings: settings))
             }
         }
-        return DashboardSettingsComponents.makeSettingsPageContent(sections)
+        let section = SettingsSectionView(title: tr("notifications.resource_rules"), contentViews: content)
+        for descriptor in descriptors {
+            resourceRuleRows[descriptor.key]?.section = section
+        }
+        section.reconcileSeparators()
+        let header = DashboardSettingsComponents.makePageHeader(providerName, subtitle: agent.title)
+        return DashboardSettingsComponents.makeSettingsPageContent([header, section])
     }
 
     private func makeResourceSettingsRows(
         _ descriptor: BalanceNotificationResourceDescriptor,
         settings: BalanceNotificationSettings
     ) -> [NSView] {
-        let rule = settings.rule(for: descriptor.key)
-            ?? settings.defaultRule(for: descriptor.key, kind: descriptor.kind, unit: descriptor.unit)
+        let storedRule = settings.rule(for: descriptor.key)
+        let usesGlobalDefaults = storedRule?.usesGlobalDefaults ?? true
+        var rule = usesGlobalDefaults
+            ? settings.defaultRule(for: descriptor.key, kind: descriptor.kind, unit: descriptor.unit)
+            : (storedRule ?? settings.defaultRule(for: descriptor.key, kind: descriptor.kind, unit: descriptor.unit))
+        if let storedRule {
+            rule.enabled = storedRule.enabled
+        }
         let enabled = DashboardSettingsComponents.makeSwitch(
             identifier: "resource:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
             isOn: rule.enabled,
@@ -1122,14 +1137,50 @@ final class DashboardNotificationPages {
             title: descriptor.title,
             detail: descriptor.unit == "%"
                 ? tr("notifications.quota_value", arguments: [descriptor.title, formatted(descriptor.value ?? 0, kind: .quotaPercent)])
-                : tr("notifications.balance_value", arguments: [descriptor.title, formatted(descriptor.value ?? 0, kind: .balance)]),
+                : tr("notifications.balance_value", arguments: [
+                    descriptor.title,
+                    balanceText(descriptor.value ?? 0, unit: descriptor.unit)
+                ]),
             accessoryView: enabled
         )
-        let firstField = thresholdField(rule.firstThreshold, key: descriptor.key, kind: descriptor.kind, unit: descriptor.unit, isSecond: false)
+        let firstField = thresholdField(
+            rule.firstThreshold,
+            key: descriptor.key,
+            kind: descriptor.kind,
+            unit: descriptor.unit,
+            isSecond: false,
+            editable: !usesGlobalDefaults
+        )
         let firstRow = SettingsRowView(
             title: tr("notifications.first_threshold"),
             detail: thresholdDetail(rule, descriptor: descriptor, second: false),
             accessoryView: firstField
+        )
+        let source = DashboardSettingsComponents.makePopUpButton(
+            identifier: "source:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
+            items: [
+                DashboardSettingsComponents.PopUpItem(
+                    title: tr("notifications.use_default_rules"),
+                    representedObject: NSNumber(value: true)
+                ),
+                DashboardSettingsComponents.PopUpItem(
+                    title: tr("notifications.custom_rules"),
+                    representedObject: NSNumber(value: false)
+                )
+            ],
+            selectedIndex: usesGlobalDefaults ? 0 : 1,
+            target: relay,
+            action: #selector(DashboardNotificationPageRelay.ruleSource(_:)),
+            ignoresScrollWheel: true
+        )
+        source.toolTip = descriptor.unit ?? ""
+        source.setAccessibilityValue(descriptor.kind.rawValue)
+        let sourceRow = SettingsRowView(
+            title: tr("notifications.rule_source"),
+            detail: usesGlobalDefaults
+                ? tr("notifications.inherited_rule_detail")
+                : tr("notifications.custom_rule_detail"),
+            accessoryView: source
         )
         let secondSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: "resource:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
@@ -1144,7 +1195,14 @@ final class DashboardNotificationPages {
             detail: tr("notifications.second_threshold"),
             accessoryView: secondSwitch
         )
-        let secondField = thresholdField(rule.secondThreshold, key: descriptor.key, kind: descriptor.kind, unit: descriptor.unit, isSecond: true)
+        let secondField = thresholdField(
+            rule.secondThreshold,
+            key: descriptor.key,
+            kind: descriptor.kind,
+            unit: descriptor.unit,
+            isSecond: true,
+            editable: !usesGlobalDefaults
+        )
         let secondThresholdRow = SettingsRowView(
             title: tr("notifications.second_threshold"),
             detail: thresholdDetail(rule, descriptor: descriptor, second: true),
@@ -1152,13 +1210,21 @@ final class DashboardNotificationPages {
         )
         let resourceRows = ResourceRuleRows(
             enableRow: enableRow,
+            sourceRow: sourceRow,
             firstThresholdRow: firstRow,
             secondToggleRow: secondRow,
-            secondThresholdRow: secondThresholdRow
+            secondThresholdRow: secondThresholdRow,
+            firstField: firstField,
+            secondField: secondField,
+            secondSwitch: secondSwitch
         )
         resourceRuleRows[descriptor.key] = resourceRows
-        resourceRows.updateVisibility(resourceEnabled: rule.enabled, secondEnabled: rule.secondEnabled)
-        return [enableRow, firstRow, secondRow, secondThresholdRow]
+        resourceRows.updateVisibility(
+            resourceEnabled: rule.enabled,
+            secondEnabled: rule.secondEnabled,
+            usesGlobalDefaults: usesGlobalDefaults
+        )
+        return [enableRow, sourceRow, firstRow, secondRow, secondThresholdRow]
     }
 
     private func updateResourceVisibility(
@@ -1167,6 +1233,41 @@ final class DashboardNotificationPages {
     ) {
         guard let resourceRows = resourceRuleRows[key] else { return }
         resourceRows.updateVisibility(resourceEnabled: resourceEnabled, secondEnabled: resourceRows.secondEnabled)
+    }
+
+    private func updateResourceInheritance(
+        key: BalanceNotificationResourceKey,
+        usesGlobalDefaults: Bool
+    ) {
+        guard let rows = resourceRuleRows[key] else { return }
+        let descriptors = configuration.coordinator.resourceDescriptors(
+            agent: key.agent,
+            providerID: key.providerID
+        )
+        guard let descriptor = descriptors.first(where: { $0.key == key }) else { return }
+        let settings = configuration.coordinator.settings
+        let stored = settings.rule(for: key)
+        var rule = usesGlobalDefaults
+            ? settings.defaultRule(for: key, kind: descriptor.kind, unit: descriptor.unit)
+            : (stored ?? settings.defaultRule(for: key, kind: descriptor.kind, unit: descriptor.unit))
+        if let stored { rule.enabled = stored.enabled }
+        rows.firstField.stringValue = rule.firstThreshold > 0
+            ? formatted(rule.firstThreshold, kind: descriptor.kind)
+            : ""
+        rows.secondField.stringValue = rule.secondThreshold > 0
+            ? formatted(rule.secondThreshold, kind: descriptor.kind)
+            : ""
+        rows.secondSwitch.state = rule.secondEnabled ? .on : .off
+        rows.sourceRow.updateDetail(
+            usesGlobalDefaults
+                ? tr("notifications.inherited_rule_detail")
+                : tr("notifications.custom_rule_detail")
+        )
+        rows.updateVisibility(
+            resourceEnabled: rule.enabled,
+            secondEnabled: rule.secondEnabled,
+            usesGlobalDefaults: usesGlobalDefaults
+        )
     }
 
     private func updateSecondThresholdVisibility(
@@ -1182,20 +1283,21 @@ final class DashboardNotificationPages {
         key: BalanceNotificationResourceKey,
         kind: BalanceNotificationResourceKind,
         unit: String?,
-        isSecond: Bool
+        isSecond: Bool,
+        editable: Bool = true
     ) -> NSTextField {
-        let field = NSTextField(string: formatted(value, kind: kind))
-        field.identifier = NSUserInterfaceItemIdentifier("resource:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)")
+        let field = NSTextField(string: value > 0 ? formatted(value, kind: kind) : "")
         field.toolTip = unit ?? ""
         field.setAccessibilityValue(kind.rawValue)
         field.identifier = NSUserInterfaceItemIdentifier(
             "resource:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)|\(isSecond ? "second" : "first")"
         )
         field.alignment = .right
-        field.isEditable = true
+        field.isEditable = editable
+        field.isEnabled = editable
         field.widthAnchor.constraint(equalToConstant: 90).isActive = true
-        field.target = relay
-        field.action = #selector(DashboardNotificationPageRelay.thresholdChanged(_:))
+        field.target = editable ? relay : nil
+        field.action = editable ? #selector(DashboardNotificationPageRelay.thresholdChanged(_:)) : nil
         return field
     }
 
@@ -1205,9 +1307,31 @@ final class DashboardNotificationPages {
         second: Bool
     ) -> String {
         let value = second ? rule.secondThreshold : rule.firstThreshold
+        if value <= 0 {
+            return second ? tr("notifications.second_disabled") : tr("notifications.first_disabled")
+        }
         return descriptor.kind == .quotaPercent
             ? "\(formatted(value, kind: .quotaPercent))%"
-            : "\(descriptor.unit ?? "")\(formatted(value, kind: .balance))"
+            : balanceText(value, unit: descriptor.unit)
+    }
+
+    private func thresholdDetail(
+        _ value: Double,
+        kind: BalanceNotificationResourceKind,
+        unit: String?
+    ) -> String {
+        kind == .quotaPercent
+            ? "\(formatted(value, kind: kind))%"
+            : balanceText(value, unit: unit)
+    }
+
+    private func balanceText(_ value: Double, unit: String?) -> String {
+        let number = formatted(value, kind: .balance)
+        guard let unit, !unit.isEmpty else { return "\(number) USD" }
+        if ["$", "€", "£", "¥"].contains(unit) {
+            return "\(unit)\(number)"
+        }
+        return "\(number) \(unit)"
     }
 
     private func formatted(_ value: Double, kind: BalanceNotificationResourceKind) -> String {

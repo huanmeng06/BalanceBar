@@ -28,7 +28,56 @@ private final class DashboardNotificationTestClient: BalanceNotificationClient {
 
 @MainActor
 final class DashboardPreferencePagesTests: XCTestCase {
-    func testNotificationResourceRowsAreIndependentAndConditionallyVisible() throws {
+    func testNotificationRootUsesSummaryAndKeepsSettingsWhenPermissionIsDenied() throws {
+        let suiteName = "DashboardPreferencePagesTests.NotificationRoot.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: DashboardNotificationTestClient(status: .denied)
+        )
+        coordinator.setGlobalEnabled(true)
+        let pages = DashboardNotificationPages(configuration: .init(
+            coordinator: coordinator,
+            providerChoices: { _ in [] }
+        ))
+        let page = pages.make()
+
+        let globalSwitch = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "notification-global" }
+        )
+        XCTAssertEqual(globalSwitch.state, .on)
+        XCTAssertFalse(globalSwitch.isHidden)
+        XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSTextField }.contains {
+            $0.stringValue == tr("notifications.permission_state")
+        })
+        XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSButton }.contains {
+            $0.title == tr("notifications.open_system_settings")
+        })
+
+        let edit = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "default-rule-edit:five-hour" }
+        )
+        XCTAssertEqual(edit.title, tr("notifications.edit"))
+        XCTAssertFalse(descendants(of: page).compactMap { $0 as? NSTextField }.contains {
+            $0.identifier?.rawValue.hasPrefix("global-rule:") == true
+        })
+        XCTAssertFalse(tr("notifications.global_rules_hint").contains("0"))
+
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(edit.action), to: edit.target, from: edit))
+        XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
+            $0.identifier?.rawValue == "global-second:five-hour"
+        })
+        XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
+            $0.identifier?.rawValue == "notification-global"
+        })
+    }
+
+    func testNotificationResourceRowsExposeInheritanceAndIndependentVisibility() throws {
         let suiteName = "DashboardPreferencePagesTests.NotificationResourceRows.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
@@ -40,214 +89,89 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         coordinator.process(
             snapshot: Snapshot.official(
-                "Provider",
-                10,
-                "Weekly",
-                nil,
-                Date(),
+                "Provider", 10, "Weekly", nil, Date(),
                 windows: [
-                    OfficialQuotaWindow(
-                        kind: .fiveHour,
-                        remaining: 18,
-                        label: "5h",
-                        daysText: "5h",
-                        reset: nil,
-                        durationSeconds: nil
-                    ),
-                    OfficialQuotaWindow(
-                        kind: .sevenDay,
-                        remaining: 70,
-                        label: "7d",
-                        daysText: "7d",
-                        reset: nil,
-                        durationSeconds: nil
-                    )
+                    OfficialQuotaWindow(kind: .fiveHour, remaining: 18, label: "5h", daysText: "5h", reset: nil, durationSeconds: nil),
+                    OfficialQuotaWindow(kind: .sevenDay, remaining: 70, label: "7d", daysText: "7d", reset: nil, durationSeconds: nil)
                 ]
             ),
             agent: .gpt,
             providerID: "openai"
         )
-
-        let weeklyKey = BalanceNotificationResourceKey(
-            agent: .gpt,
-            providerID: "openai",
-            resourceID: "weekly"
-        )
-        coordinator.setResourceEnabled(
-            false,
-            key: weeklyKey,
-            kind: .quotaPercent,
-            unit: "%"
-        )
+        let weeklyKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "weekly")
+        coordinator.setResourceEnabled(false, key: weeklyKey, kind: .quotaPercent, unit: "%")
 
         let pages = DashboardNotificationPages(configuration: .init(
             coordinator: coordinator,
             providerChoices: { agent in
-                agent == .gpt
-                    ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)]
-                    : []
+                agent == .gpt ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)] : []
             }
         ))
         let page = pages.make()
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
-
         let sections = descendants(of: page).compactMap { $0 as? SettingsSectionView }
-        XCTAssertEqual(sections.count, 2)
-        let rows = sections.flatMap { section in
-            section.contentViews.compactMap { $0 as? SettingsRowView }
-        }
-        func resourceRows(titled title: String) throws -> [SettingsRowView] {
-            let index = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == title })
-            return Array(rows[index ..< min(index + 4, rows.count)])
-        }
-        func `switch`(in row: SettingsRowView) throws -> NSSwitch {
-            try XCTUnwrap(descendants(of: row).compactMap { $0 as? NSSwitch }.first)
-        }
-        func setSwitch(_ row: SettingsRowView, on: Bool) throws {
-            let control = try `switch`(in: row)
-            control.state = on ? .on : .off
-            XCTAssertTrue(NSApp.sendAction(
-                try XCTUnwrap(control.action),
-                to: control.target,
-                from: control
-            ))
-        }
+        XCTAssertEqual(sections.count, 1)
+        let rows = sections[0].contentViews.compactMap { $0 as? SettingsRowView }
+        let weeklyIndex = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == "7d" })
+        XCTAssertTrue(rows[weeklyIndex + 2].isHidden)
+        XCTAssertTrue(rows[weeklyIndex + 3].isHidden)
+        XCTAssertTrue(rows[weeklyIndex + 4].isHidden)
 
-        let fiveHour = try resourceRows(titled: "5h")
-        let weekly = try resourceRows(titled: "7d")
-        XCTAssertEqual(fiveHour.count, 4)
-        XCTAssertEqual(weekly.count, 4)
-        XCTAssertFalse(fiveHour[1].isHidden)
-        XCTAssertFalse(fiveHour[2].isHidden)
-        XCTAssertFalse(fiveHour[3].isHidden)
-        XCTAssertTrue(weekly[1].isHidden)
-        XCTAssertTrue(weekly[2].isHidden)
-        XCTAssertTrue(weekly[3].isHidden)
+        let firstField = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour|first" }
+        )
+        XCTAssertFalse(firstField.isEditable)
+        let source = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "source:gpt:openai:five-hour" }
+        )
+        XCTAssertEqual(source.indexOfSelectedItem, 0)
 
-        try setSwitch(weekly[0], on: true)
-        XCTAssertFalse(weekly[1].isHidden)
-        XCTAssertFalse(weekly[2].isHidden)
-        XCTAssertFalse(weekly[3].isHidden)
-        XCTAssertFalse(fiveHour[1].isHidden)
-        XCTAssertFalse(fiveHour[2].isHidden)
-        XCTAssertFalse(fiveHour[3].isHidden)
-
-        try setSwitch(fiveHour[2], on: false)
-        XCTAssertTrue(fiveHour[3].isHidden)
-        XCTAssertFalse(weekly[3].isHidden)
-
-        try setSwitch(weekly[2], on: false)
-        XCTAssertTrue(weekly[3].isHidden)
-        XCTAssertTrue(fiveHour[3].isHidden)
+        source.selectItem(at: 1)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(source.action), to: source.target, from: source))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertTrue(coordinator.settings.rule(for: BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour"))?.usesGlobalDefaults == false)
+        XCTAssertTrue(firstField.isEditable)
     }
 
-    func testAgentAdvancedButtonFollowsSwitchAndSitsBeforeIt() throws {
-        let suiteName = "DashboardPreferencePagesTests.AgentAdvancedButton.\(UUID().uuidString)"
+    func testAgentDetailsStayVisibleAndRestoreDefaultsIsConditional() throws {
+        let suiteName = "DashboardPreferencePagesTests.AgentDetails.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let coordinator = BalanceNotificationCoordinator(
-            defaults: defaults,
-            client: DashboardNotificationTestClient()
-        )
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: DashboardNotificationTestClient())
         coordinator.setGlobalEnabled(true)
         coordinator.setAgentEnabled(false, agent: .gpt)
-        coordinator.setAgentEnabled(true, agent: .claude)
-
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
         let pages = DashboardNotificationPages(configuration: .init(
             coordinator: coordinator,
-            providerChoices: { _ in [] }
+            providerChoices: { agent in
+                agent == .gpt ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)] : []
+            }
         ))
         let page = pages.make()
-        func agentRow(_ title: String) throws -> SettingsRowView {
-            try XCTUnwrap(
-                descendants(of: page)
-                    .compactMap { $0 as? SettingsRowView }
-                    .first { $0.titleLabel.stringValue == title }
-            )
-        }
-        func button(in row: SettingsRowView, agent: BalanceNotificationAgent) throws -> NSButton {
-            try XCTUnwrap(
-                descendants(of: row)
-                    .compactMap { $0 as? NSButton }
-                    .first { $0.identifier?.rawValue == "agent:\(agent.rawValue)" }
-            )
-        }
-        func toggle(in row: SettingsRowView, agent: BalanceNotificationAgent) throws -> NSSwitch {
-            try XCTUnwrap(
-                descendants(of: row)
-                    .compactMap { $0 as? NSSwitch }
-                    .first { $0.identifier?.rawValue == "agent:\(agent.rawValue)" }
-            )
-        }
-
-        let gptRow = try agentRow("ChatGPT")
-        let claudeRow = try agentRow("Claude")
-        let gptButton = try button(in: gptRow, agent: .gpt)
-        let claudeButton = try button(in: claudeRow, agent: .claude)
-        XCTAssertTrue(gptButton.isHidden)
-        XCTAssertFalse(claudeButton.isHidden)
-
+        let gptRow = try XCTUnwrap(descendants(of: page).compactMap { $0 as? SettingsRowView }.first { $0.titleLabel.stringValue == "ChatGPT" })
+        let details = try XCTUnwrap(descendants(of: gptRow).compactMap { $0 as? NSButton }.first { $0.identifier?.rawValue == "agent:gpt" })
+        XCTAssertFalse(details.isHidden)
+        XCTAssertEqual(details.title, tr("notifications.details"))
         let controls = try XCTUnwrap(gptRow.accessoryView as? NSStackView)
         XCTAssertTrue(controls.arrangedSubviews.first is NSButton)
         XCTAssertTrue(controls.arrangedSubviews.last is NSSwitch)
 
-        let gptSwitch = try toggle(in: gptRow, agent: .gpt)
-        gptSwitch.state = .on
-        XCTAssertTrue(NSApp.sendAction(
-            try XCTUnwrap(gptSwitch.action),
-            to: gptSwitch.target,
-            from: gptSwitch
-        ))
-        XCTAssertFalse(gptButton.isHidden)
+        let agentSwitch = try XCTUnwrap(descendants(of: gptRow).compactMap { $0 as? NSSwitch }.first { $0.identifier?.rawValue == "agent:gpt" })
+        agentSwitch.state = .on
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(agentSwitch.action), to: agentSwitch.target, from: agentSwitch))
+        agentSwitch.state = .off
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(agentSwitch.action), to: agentSwitch.target, from: agentSwitch))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertTrue(coordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
 
-        gptSwitch.state = .off
-        XCTAssertTrue(NSApp.sendAction(
-            try XCTUnwrap(gptSwitch.action),
-            to: gptSwitch.target,
-            from: gptSwitch
-        ))
-        XCTAssertTrue(gptButton.isHidden)
-    }
-
-    func testAgentPagePlacesApplyGlobalRulesBeforeProviderCards() throws {
-        let suiteName = "DashboardPreferencePagesTests.ApplyGlobalRules.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let coordinator = BalanceNotificationCoordinator(
-            defaults: defaults,
-            client: DashboardNotificationTestClient()
-        )
-        let pages = DashboardNotificationPages(configuration: .init(
-            coordinator: coordinator,
-            providerChoices: { agent in
-                agent == .gpt
-                    ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)]
-                    : []
-            }
-        ))
-        let page = pages.make()
         XCTAssertTrue(pages.showNavigationRoute("notifications/agent/gpt"))
-
-        let sections = descendants(of: page).compactMap { $0 as? SettingsSectionView }
-        XCTAssertEqual(sections.count, 2)
-        let applyButton = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSButton }
-                .first { $0.identifier?.rawValue == "apply-global-rules:gpt" }
-        )
-        XCTAssertEqual(applyButton.title, tr("notifications.apply_global_rules"))
-        let applyRow = try XCTUnwrap(SettingsRowView.enclosing(applyButton))
-        XCTAssertEqual(applyRow.titleLabel.stringValue, tr("notifications.apply_global_rules_title"))
-        XCTAssertTrue(sections[0] === SettingsSectionView.enclosing(applyButton))
-        XCTAssertTrue(
-            sections[1].contentViews.contains {
-                ($0 as? SettingsRowView)?.titleLabel.stringValue == "OpenAI Official"
-            }
-        )
+        let agentPage = pages.make()
+        XCTAssertTrue(descendants(of: agentPage).compactMap { $0 as? NSButton }.contains { $0.identifier?.rawValue == "provider:gpt:openai" })
+        XCTAssertFalse(descendants(of: agentPage).compactMap { $0 as? NSButton }.contains { $0.identifier?.rawValue == "restore-default-rules:gpt" })
     }
 
     func testSharedNumericTextFieldUsesNativeCompactConfiguration() {

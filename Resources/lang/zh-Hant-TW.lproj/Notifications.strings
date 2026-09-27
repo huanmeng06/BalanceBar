@@ -5,7 +5,7 @@
 "notifications.permission_disabled" = "系統通知已關閉，無法傳送額度提醒";
 "notifications.permission_pending" = "Notification permission has not been granted yet";
 "notifications.open_system_settings" = "前往系統設定";
-"notifications.advanced_settings" = "進階設定";
+"notifications.advanced_settings" = "詳細資料…";
 "notifications.agent_enabled" = "提醒已開啟";
 "notifications.agent_disabled" = "提醒未開啟";
 "notifications.provider_rules" = "服務商";
@@ -33,7 +33,7 @@
 "notifications.pause_none" = "無";
 "notifications.pause_status" = "暫停至：%1$@ · 剩餘：%2$@";
 "notifications.reminder_rules" = "預設規則";
-"notifications.global_rules_hint" = "輸入 0 表示不提醒";
+"notifications.global_rules_hint" = "套用於沒有個別自訂的 Agent 與服務商";
 "notifications.five_hour_reminder" = "5 小時提醒";
 "notifications.seven_day_reminder" = "7 日提醒";
 "notifications.balance_reminder" = "餘額提醒";
@@ -41,6 +41,30 @@
 "notifications.second_reminder" = "第二次提醒：";
 "notifications.agent_follows_global" = "遵循預設規則";
 "notifications.agent_customized" = "已單獨調整";
+
+"notifications.permission_state" = "系統通知";
+"notifications.agent_page_description" = "設定服務商及其提醒規則";
+"notifications.details" = "詳細資料…";
+"notifications.edit" = "編輯…";
+"notifications.done" = "完成";
+"notifications.default_rules" = "預設提醒規則";
+"notifications.default_rules_edit_hint" = "套用於沒有個別自訂的 Agent 與服務商";
+"notifications.second_alert_enabled" = "低於第二個門檻時傳送第二次提醒";
+"notifications.second_disabled" = "第二次提醒已關閉";
+"notifications.first_disabled" = "第一次提醒已關閉";
+"notifications.rule_summary" = "第一次 %1$@ · 第二次 %2$@";
+"notifications.threshold_input_hint" = "門檻值";
+"notifications.rule_source" = "規則來源";
+"notifications.use_default_rules" = "使用預設規則";
+"notifications.custom_rules" = "自訂";
+"notifications.inherited_rule_detail" = "來自預設規則的唯讀值";
+"notifications.custom_rule_detail" = "此服務商的可編輯值";
+"notifications.restore_default_rules" = "還原預設提醒規則…";
+"notifications.restore_default_rules_title" = "還原預設提醒規則";
+"notifications.restore_default_rules_detail" = "移除這個 Agent 下服務商的自訂提醒規則，之後遵循預設提醒規則。";
+"notifications.restore_default_rules_message" = "要還原 %1$@ 的預設提醒規則嗎？";
+"notifications.restore_default_rules_confirm" = "還原預設規則";
+"notifications.restore_default_rules_cancel" = "取消";
 
 "notifications.apply_global_rules" = "套用";
 "notifications.apply_global_rules_title" = "全部套用預設規則";

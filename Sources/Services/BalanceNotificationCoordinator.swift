@@ -325,6 +325,32 @@ final class BalanceNotificationCoordinator {
         }
     }
 
+    /// Changes only the source of one resource rule. Inherited rules continue
+    /// to resolve from the shared Default Rules values; custom rules retain
+    /// their saved thresholds and can be edited on the Provider page.
+    func setRuleUsesGlobalDefaults(
+        _ usesGlobalDefaults: Bool,
+        key: BalanceNotificationResourceKey,
+        kind: BalanceNotificationResourceKind,
+        unit: String?
+    ) {
+        onQueue {
+            self.store.update { settings in
+                var rule = settings.rule(for: key, kind: kind, unit: unit)
+                rule.usesGlobalDefaults = usesGlobalDefaults
+                if usesGlobalDefaults {
+                    let thresholds = settings.globalThresholds(for: key, kind: kind)
+                    rule.firstThreshold = thresholds.first
+                    rule.secondThreshold = thresholds.second
+                    rule.secondEnabled = thresholds.second > 0
+                    rule.stage = .normal
+                    rule.lastValue = nil
+                }
+                settings.upsert(rule)
+            }
+        }
+    }
+
     func setResourceEnabled(
         _ enabled: Bool,
         key: BalanceNotificationResourceKey,

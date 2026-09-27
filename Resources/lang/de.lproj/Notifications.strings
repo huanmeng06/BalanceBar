@@ -5,7 +5,7 @@
 "notifications.permission_disabled" = "Systemmitteilungen sind deaktiviert und BalanceBar kann keine Warnungen senden";
 "notifications.permission_pending" = "Notification permission has not been granted yet";
 "notifications.open_system_settings" = "Systemeinstellungen öffnen";
-"notifications.advanced_settings" = "Erweiterte Einstellungen";
+"notifications.advanced_settings" = "Details…";
 "notifications.agent_enabled" = "Warnungen aktiviert";
 "notifications.agent_disabled" = "Warnungen deaktiviert";
 "notifications.provider_rules" = "Anbieter";
@@ -33,7 +33,7 @@
 "notifications.pause_none" = "Keine";
 "notifications.pause_status" = "Pausiert bis %1$@ · Verbleibend: %2$@";
 "notifications.reminder_rules" = "Standardregeln";
-"notifications.global_rules_hint" = "0 eingeben, um eine Erinnerung zu deaktivieren";
+"notifications.global_rules_hint" = "Gilt für Agents und Provider ohne eigene Regeln";
 "notifications.five_hour_reminder" = "5-Stunden-Erinnerung";
 "notifications.seven_day_reminder" = "7-Tage-Erinnerung";
 "notifications.balance_reminder" = "Kontostand-Erinnerung";
@@ -41,6 +41,30 @@
 "notifications.second_reminder" = "Zweite Erinnerung:";
 "notifications.agent_follows_global" = "Standardregeln verwenden";
 "notifications.agent_customized" = "Individuell angepasst";
+
+"notifications.permission_state" = "Systemmitteilungen";
+"notifications.agent_page_description" = "Provider und ihre Warnregeln konfigurieren";
+"notifications.details" = "Details…";
+"notifications.edit" = "Bearbeiten…";
+"notifications.done" = "Fertig";
+"notifications.default_rules" = "Standardregeln";
+"notifications.default_rules_edit_hint" = "Diese Werte gelten für Agents und Provider ohne eigene Regeln";
+"notifications.second_alert_enabled" = "Eine zweite Warnung beim unteren Schwellenwert senden";
+"notifications.second_disabled" = "Zweite Warnung aus";
+"notifications.first_disabled" = "Erste Warnung aus";
+"notifications.rule_summary" = "Erste %1$@ · Zweite %2$@";
+"notifications.threshold_input_hint" = "Schwellenwert";
+"notifications.rule_source" = "Regelquelle";
+"notifications.use_default_rules" = "Standardregeln verwenden";
+"notifications.custom_rules" = "Individuell";
+"notifications.inherited_rule_detail" = "Schreibgeschützter Wert aus den Standardregeln";
+"notifications.custom_rule_detail" = "Bearbeitbarer Wert für diesen Provider";
+"notifications.restore_default_rules" = "Standardregeln wiederherstellen…";
+"notifications.restore_default_rules_title" = "Standardregeln wiederherstellen";
+"notifications.restore_default_rules_detail" = "Eigene Provider-Regeln dieses Agents entfernen und den Standardregeln folgen.";
+"notifications.restore_default_rules_message" = "Standardregeln für %1$@ wiederherstellen?";
+"notifications.restore_default_rules_confirm" = "Standardregeln wiederherstellen";
+"notifications.restore_default_rules_cancel" = "Abbrechen";
 
 "notifications.apply_global_rules" = "Anwenden";
 "notifications.apply_global_rules_title" = "Standardregeln auf alle anwenden";

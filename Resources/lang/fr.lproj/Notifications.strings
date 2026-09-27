@@ -5,7 +5,7 @@
 "notifications.permission_disabled" = "Les notifications système sont désactivées et BalanceBar ne peut pas envoyer d’alertes";
 "notifications.permission_pending" = "Notification permission has not been granted yet";
 "notifications.open_system_settings" = "Ouvrir les réglages système";
-"notifications.advanced_settings" = "Réglages avancés";
+"notifications.advanced_settings" = "Détails…";
 "notifications.agent_enabled" = "Alertes activées";
 "notifications.agent_disabled" = "Alertes désactivées";
 "notifications.provider_rules" = "Fournisseurs";
@@ -33,7 +33,7 @@
 "notifications.pause_none" = "Aucune";
 "notifications.pause_status" = "Suspendu jusqu’au %1$@ · Restant : %2$@";
 "notifications.reminder_rules" = "Règles par défaut";
-"notifications.global_rules_hint" = "Saisir 0 pour désactiver un rappel";
+"notifications.global_rules_hint" = "S’applique aux Agents et fournisseurs sans règle personnalisée";
 "notifications.five_hour_reminder" = "Rappel de 5 heures";
 "notifications.seven_day_reminder" = "Rappel de 7 jours";
 "notifications.balance_reminder" = "Rappel de solde";
@@ -41,6 +41,30 @@
 "notifications.second_reminder" = "Deuxième rappel :";
 "notifications.agent_follows_global" = "Suit les règles par défaut";
 "notifications.agent_customized" = "Adapté séparément";
+
+"notifications.permission_state" = "Notifications système";
+"notifications.agent_page_description" = "Configurer les fournisseurs et leurs règles d’alerte";
+"notifications.details" = "Détails…";
+"notifications.edit" = "Modifier…";
+"notifications.done" = "Terminé";
+"notifications.default_rules" = "Règles par défaut";
+"notifications.default_rules_edit_hint" = "Ces valeurs s’appliquent aux Agents et fournisseurs sans règle personnalisée";
+"notifications.second_alert_enabled" = "Envoyer une deuxième alerte au seuil inférieur";
+"notifications.second_disabled" = "Deuxième alerte désactivée";
+"notifications.first_disabled" = "Première alerte désactivée";
+"notifications.rule_summary" = "Premier %1$@ · Deuxième %2$@";
+"notifications.threshold_input_hint" = "Valeur du seuil";
+"notifications.rule_source" = "Source de la règle";
+"notifications.use_default_rules" = "Utiliser les règles par défaut";
+"notifications.custom_rules" = "Personnalisé";
+"notifications.inherited_rule_detail" = "Valeur en lecture seule issue des règles par défaut";
+"notifications.custom_rule_detail" = "Valeur modifiable pour ce fournisseur";
+"notifications.restore_default_rules" = "Rétablir les règles par défaut…";
+"notifications.restore_default_rules_title" = "Rétablir les règles par défaut";
+"notifications.restore_default_rules_detail" = "Supprimer les règles personnalisées des fournisseurs de cet Agent pour suivre les règles par défaut.";
+"notifications.restore_default_rules_message" = "Rétablir les règles par défaut de %1$@ ?";
+"notifications.restore_default_rules_confirm" = "Rétablir les règles par défaut";
+"notifications.restore_default_rules_cancel" = "Annuler";
 
 "notifications.apply_global_rules" = "Appliquer";
 "notifications.apply_global_rules_title" = "Appliquer les règles par défaut à tous";

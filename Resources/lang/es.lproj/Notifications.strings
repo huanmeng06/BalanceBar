@@ -5,7 +5,7 @@
 "notifications.permission_disabled" = "Las notificaciones del sistema están desactivadas y BalanceBar no puede enviar avisos";
 "notifications.permission_pending" = "Notification permission has not been granted yet";
 "notifications.open_system_settings" = "Abrir Ajustes del Sistema";
-"notifications.advanced_settings" = "Ajustes avanzados";
+"notifications.advanced_settings" = "Detalles…";
 "notifications.agent_enabled" = "Avisos activados";
 "notifications.agent_disabled" = "Avisos desactivados";
 "notifications.provider_rules" = "Proveedores";
@@ -33,7 +33,7 @@
 "notifications.pause_none" = "Ninguna";
 "notifications.pause_status" = "Pausado hasta %1$@ · Restante: %2$@";
 "notifications.reminder_rules" = "Reglas predeterminadas";
-"notifications.global_rules_hint" = "Introduce 0 para desactivar un aviso";
+"notifications.global_rules_hint" = "Se aplica a Agents y proveedores sin reglas personalizadas";
 "notifications.five_hour_reminder" = "Aviso de 5 horas";
 "notifications.seven_day_reminder" = "Aviso de 7 días";
 "notifications.balance_reminder" = "Aviso de saldo";
@@ -41,6 +41,30 @@
 "notifications.second_reminder" = "Segundo aviso:";
 "notifications.agent_follows_global" = "Usa las reglas predeterminadas";
 "notifications.agent_customized" = "Adaptado por separado";
+
+"notifications.permission_state" = "Notificaciones del sistema";
+"notifications.agent_page_description" = "Configura los proveedores y sus reglas de aviso";
+"notifications.details" = "Detalles…";
+"notifications.edit" = "Editar…";
+"notifications.done" = "Listo";
+"notifications.default_rules" = "Reglas predeterminadas";
+"notifications.default_rules_edit_hint" = "Estos valores se aplican a Agents y proveedores sin reglas personalizadas";
+"notifications.second_alert_enabled" = "Enviar un segundo aviso al cruzar el umbral inferior";
+"notifications.second_disabled" = "Segundo aviso desactivado";
+"notifications.first_disabled" = "Primer aviso desactivado";
+"notifications.rule_summary" = "Primero %1$@ · Segundo %2$@";
+"notifications.threshold_input_hint" = "Valor del umbral";
+"notifications.rule_source" = "Origen de la regla";
+"notifications.use_default_rules" = "Usar reglas predeterminadas";
+"notifications.custom_rules" = "Personalizado";
+"notifications.inherited_rule_detail" = "Valor de solo lectura de las reglas predeterminadas";
+"notifications.custom_rule_detail" = "Valor editable para este proveedor";
+"notifications.restore_default_rules" = "Restaurar reglas predeterminadas…";
+"notifications.restore_default_rules_title" = "Restaurar reglas predeterminadas";
+"notifications.restore_default_rules_detail" = "Eliminar las reglas personalizadas de los proveedores de este Agent para seguir las reglas predeterminadas.";
+"notifications.restore_default_rules_message" = "¿Restaurar las reglas predeterminadas de %1$@?";
+"notifications.restore_default_rules_confirm" = "Restaurar reglas predeterminadas";
+"notifications.restore_default_rules_cancel" = "Cancelar";
 
 "notifications.apply_global_rules" = "Aplicar";
 "notifications.apply_global_rules_title" = "Aplicar reglas predeterminadas a todos";
