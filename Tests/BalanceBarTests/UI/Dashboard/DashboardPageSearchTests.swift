@@ -3238,6 +3238,20 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(navigationItem.isNavigational)
         XCTAssertFalse(navigationItem.autovalidates)
         XCTAssertEqual(navigationControl.segmentCount, 2)
+        let expectedNavigationLabel = "\(tr(.keyDashboardNavigationBack)) / \(tr(.keyDashboardNavigationForward))"
+        XCTAssertEqual(navigationItem.label, expectedNavigationLabel)
+        XCTAssertEqual(navigationItem.paletteLabel, expectedNavigationLabel)
+        XCTAssertEqual(navigationItem.toolTip, expectedNavigationLabel)
+        XCTAssertEqual(navigationControl.label(forSegment: 0), "")
+        XCTAssertEqual(navigationControl.label(forSegment: 1), "")
+        XCTAssertEqual(
+            navigationControl.toolTip(forSegment: 0),
+            tr(.keyDashboardNavigationBack)
+        )
+        XCTAssertEqual(
+            navigationControl.toolTip(forSegment: 1),
+            tr(.keyDashboardNavigationForward)
+        )
         XCTAssertEqual(
             toolbar.items.firstIndex { $0.itemIdentifier == DashboardToolbarController.navigationItemIdentifier },
             3

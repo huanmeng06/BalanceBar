@@ -129,6 +129,8 @@
 "dashboard.search.placeholder" = "Pesquisar";
 "dashboard.search.no_results" = "Nenhum resultado";
 "dashboard.search.no_results_detail" = "Nenhuma definição corresponde a esta pesquisa.";
+"dashboard.navigation.back" = "Voltar";
+"dashboard.navigation.forward" = "Avançar";
 "dashboard.about.page.github_repository" = "Repositório no GitHub";
 "dashboard.about.page.version_value" = "Versão %1$@";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Veja saldos e cotas na barra de menus por meio do CC Switch";

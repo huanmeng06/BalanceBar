@@ -309,8 +309,8 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     private func updateNavigationItemLabels() {
-        let backLabel = "Back"
-        let forwardLabel = "Forward"
+        let backLabel = tr(.keyDashboardNavigationBack)
+        let forwardLabel = tr(.keyDashboardNavigationForward)
         navigationControl.setLabel("", forSegment: 0)
         navigationControl.setLabel("", forSegment: 1)
         navigationControl.setToolTip(backLabel, forSegment: 0)
@@ -323,7 +323,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
             NSImage(systemSymbolName: "chevron.forward", accessibilityDescription: forwardLabel),
             forSegment: 1
         )
-        navigationItem.label = "(backLabel) / (forwardLabel)"
+        navigationItem.label = "\(backLabel) / \(forwardLabel)"
         navigationItem.paletteLabel = navigationItem.label
         navigationItem.toolTip = navigationItem.label
         navigationItem.isNavigational = true
