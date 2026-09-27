@@ -456,8 +456,9 @@ final class DashboardNotificationPages {
         return formatter
     }()
 
-    private static let globalRuleTabWidth: CGFloat = 260
-    private static let globalRuleTabSpacing: CGFloat = 24
+    private static let globalRuleTabWidth: CGFloat = 220
+    private static let globalRuleTabSpacing: CGFloat = 16
+    private static let globalRuleLabelWidth: CGFloat = 94
 
     private func makeReminderRulesSection(settings: BalanceNotificationSettings) -> NSView {
         let heading = NSTextField(labelWithString: tr("notifications.reminder_rules"))
@@ -590,11 +591,12 @@ final class DashboardNotificationPages {
         tab.addSubview(labelView)
         tab.addSubview(field)
         NSLayoutConstraint.activate([
-            field.trailingAnchor.constraint(equalTo: tab.trailingAnchor),
             field.topAnchor.constraint(equalTo: tab.topAnchor),
             field.bottomAnchor.constraint(equalTo: tab.bottomAnchor),
-            labelView.trailingAnchor.constraint(equalTo: field.leadingAnchor, constant: -8),
-            labelView.leadingAnchor.constraint(greaterThanOrEqualTo: tab.leadingAnchor),
+            labelView.leadingAnchor.constraint(equalTo: tab.leadingAnchor),
+            labelView.widthAnchor.constraint(equalToConstant: Self.globalRuleLabelWidth),
+            field.leadingAnchor.constraint(equalTo: labelView.trailingAnchor, constant: 8),
+            field.trailingAnchor.constraint(lessThanOrEqualTo: tab.trailingAnchor),
             labelView.centerYAnchor.constraint(equalTo: tab.centerYAnchor)
         ])
         return tab
@@ -620,7 +622,7 @@ final class DashboardNotificationPages {
             identifier: identifier,
             value: formattedGlobalRuleValue(value, kind: kind),
             placeholder: "0",
-            capacityTemplate: kind == .quotaPercent ? "0000" : DashboardSettingsComponents.amountCapacityTemplate,
+            capacityTemplate: "0000.00",
             trailingViews: trailingViews,
             delegate: relay,
             target: relay,
