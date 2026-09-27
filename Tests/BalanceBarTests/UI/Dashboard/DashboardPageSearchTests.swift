@@ -3249,6 +3249,31 @@ final class DashboardPageSearchTests: XCTestCase {
         )
     }
 
+    func testNavigationSegmentStateRemainsManualAfterToolbarValidation() throws {
+        let harness = makeNavigationHarness()
+        defer { harness.teardown() }
+        harness.open()
+        harness.showSection(.menuBar)
+
+        let toolbar = try XCTUnwrap(harness.window?.toolbar)
+        let group = try navigationItemGroup(in: toolbar)
+        let back = try toolbarItem(DashboardToolbarController.backItemIdentifier, in: toolbar)
+        let forward = try toolbarItem(DashboardToolbarController.forwardItemIdentifier, in: toolbar)
+
+        XCTAssertFalse(group.autovalidates)
+        XCTAssertFalse(back.autovalidates)
+        XCTAssertFalse(forward.autovalidates)
+        XCTAssertTrue(group.isEnabled)
+        XCTAssertTrue(back.isEnabled)
+        XCTAssertFalse(forward.isEnabled)
+
+        toolbar.validateVisibleItems()
+
+        XCTAssertTrue(back.isEnabled)
+        XCTAssertFalse(forward.isEnabled)
+        XCTAssertEqual(harness.navigationDestination, .section(.menuBar))
+    }
+
     func testMixedSectionProviderHistoryRestoresWithoutDuplicatePushes() throws {
         let choice = ProviderChoice(id: "provider-a", name: "Provider A", isCurrent: true)
         let harness = makeNavigationHarness(providerChoices: [choice])
