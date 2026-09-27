@@ -43,6 +43,23 @@ final class DashboardNavigationHistory {
         return true
     }
 
+    /// Reconciles the current cursor with a destination that was restored by
+    /// the shell after the original destination became unavailable. This does
+    /// not create a new visit or alter the forward branch.
+    @discardableResult
+    func replaceCurrent(with destination: DashboardNavigationDestination) -> Bool {
+        guard destinations.indices.contains(cursor) else {
+            return push(destination)
+        }
+        if cursor > 0, destinations[cursor - 1] == destination {
+            destinations.remove(at: cursor)
+            cursor -= 1
+        } else {
+            destinations[cursor] = destination
+        }
+        return true
+    }
+
     func goBack() -> DashboardNavigationDestination? {
         guard canGoBack else { return nil }
         cursor -= 1

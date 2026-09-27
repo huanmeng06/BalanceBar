@@ -1377,6 +1377,18 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertFalse(navigationGroup.autovalidates, file: file, line: line)
         XCTAssertFalse(navigationGroup.subitems[0].autovalidates, file: file, line: line)
         XCTAssertFalse(navigationGroup.subitems[1].autovalidates, file: file, line: line)
+        XCTAssertEqual(
+            navigationGroup.subitems[0].itemIdentifier,
+            DashboardToolbarController.backItemIdentifier,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            navigationGroup.subitems[1].itemIdentifier,
+            DashboardToolbarController.forwardItemIdentifier,
+            file: file,
+            line: line
+        )
         XCTAssertNotNil(navigationGroup.subitems[0].image, file: file, line: line)
         XCTAssertNotNil(navigationGroup.subitems[1].image, file: file, line: line)
         XCTAssertTrue(

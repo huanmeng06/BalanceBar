@@ -154,13 +154,13 @@ final class DashboardPageSession {
         let selectedProviderID = selectedProviderID
         installShell(on: windowController)
         if let destination = navigationHistory.currentDestination,
-           canPresent(destination) {
-            restoreNavigation(to: destination)
+           canPresent(destination),
+           restoreCurrentNavigation() {
         } else if let selectedProviderID,
                   actions.providerChoices().contains(where: { $0.id == selectedProviderID }) {
-            restoreNavigation(to: .provider(selectedProviderID))
+            reconcileAndRestore(to: .provider(selectedProviderID))
         } else {
-            restoreNavigation(to: .section(selectedSection))
+            reconcileAndRestore(to: .section(selectedSection))
         }
         window.displayIfNeeded()
         DashboardKeyViewLoop.invalidate(window)
@@ -200,6 +200,8 @@ final class DashboardPageSession {
             selectedProviderID = nil
             window?.title = section.title
             sourceListController?.applySelection(section)
+            navigationHistory.push(.section(section))
+            updateNavigationToolbarState()
             onPreservedSectionSelection?(section)
             return
         }
@@ -226,11 +228,22 @@ final class DashboardPageSession {
         navigate(to: .provider(providerID))
     }
 
-    /// Re-displays a destination without changing the history cursor. Shell
-    /// rebuilds and search projections use this entry point so they cannot
-    /// manufacture navigation entries while restoring the current page.
-    func restoreNavigation(to destination: DashboardNavigationDestination) {
-        navigate(to: destination, recordingHistory: false)
+    /// Re-displays the destination already owned by the history cursor.
+    /// Rebuilds and search projections must never supply an unrelated page.
+    @discardableResult
+    func restoreCurrentNavigation() -> Bool {
+        guard let destination = navigationHistory.currentDestination else { return false }
+        return present(destination)
+    }
+
+    /// Reconciles an unavailable destination discovered during shell rebuild,
+    /// then presents the same reconciled destination. This keeps the page and
+    /// cursor authoritative together without adding a visit.
+    @discardableResult
+    private func reconcileAndRestore(to destination: DashboardNavigationDestination) -> Bool {
+        navigationHistory.replaceCurrent(with: destination)
+        updateNavigationToolbarState()
+        return present(destination)
     }
 
     /// Entry point for future Dashboard feature pages. The session records the
@@ -242,22 +255,20 @@ final class DashboardPageSession {
 
     private func goBack() {
         guard let destination = navigationHistory.goBack() else { return }
-        guard canPresent(destination) else {
+        guard canPresent(destination), present(destination) else {
             _ = navigationHistory.goForward()
             return
         }
         updateNavigationToolbarState()
-        present(destination)
     }
 
     private func goForward() {
         guard let destination = navigationHistory.goForward() else { return }
-        guard canPresent(destination) else {
+        guard canPresent(destination), present(destination) else {
             _ = navigationHistory.goBack()
             return
         }
         updateNavigationToolbarState()
-        present(destination)
     }
 
     private func navigate(
@@ -265,11 +276,11 @@ final class DashboardPageSession {
         recordingHistory: Bool
     ) {
         guard !isTornDown, canPresent(destination) else { return }
+        guard present(destination) else { return }
         if recordingHistory {
             navigationHistory.push(destination)
         }
         updateNavigationToolbarState()
-        present(destination)
     }
 
     private func canPresent(_ destination: DashboardNavigationDestination) -> Bool {
@@ -283,15 +294,17 @@ final class DashboardPageSession {
         }
     }
 
-    private func present(_ destination: DashboardNavigationDestination) {
+    @discardableResult
+    private func present(_ destination: DashboardNavigationDestination) -> Bool {
         switch destination {
         case .section(let section):
             DashboardPageInstrumentation.measure(.totalSelectionToReady) {
                 self.showSectionMeasured(section)
             }
+            return true
         case .provider(let providerID):
             guard let choice = actions.providerChoices().first(where: { $0.id == providerID }) else {
-                return
+                return false
             }
             selectedProviderID = providerID
             mountedSection = section
@@ -300,8 +313,9 @@ final class DashboardPageSession {
             replacePage {
                 actions.makeProviderPage(choice)
             }
+            return true
         case .route(let route):
-            _ = onShowExtendedNavigationDestination?(route)
+            return onShowExtendedNavigationDestination?(route) == true
         }
     }
 

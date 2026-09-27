@@ -3371,6 +3371,72 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(harness.navigationDestination, .section(.menu))
     }
 
+    func testFailedExtendedRouteDoesNotCommitHistory() throws {
+        let harness = makeNavigationHarness()
+        defer { harness.teardown() }
+        harness.open()
+        var attemptedRoutes: [String] = []
+        harness.setExtendedNavigationHandler { route in
+            attemptedRoutes.append(route)
+            return false
+        }
+
+        harness.navigate(to: .route("failed-route"))
+
+        XCTAssertEqual(attemptedRoutes, ["failed-route"])
+        XCTAssertEqual(harness.navigationHistory.destinations, [.section(.general)])
+        XCTAssertEqual(harness.navigationDestination, .section(.general))
+    }
+
+    func testSearchSidebarSelectionCommitsLogicalDestinationAfterClear() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-481-search-navigation.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+
+        composition.applySearchQueryForTesting("language")
+        composition.showSection(.menu)
+
+        XCTAssertEqual(composition.navigationHistoryForTesting.destinations, [.section(.general), .section(.menu)])
+        XCTAssertEqual(composition.navigationHistoryForTesting.currentDestination, .section(.menu))
+
+        composition.applySearchQueryForTesting("")
+        window.layoutIfNeeded()
+        XCTAssertEqual(composition.section, .menu)
+        XCTAssertEqual(composition.navigationHistoryForTesting.currentDestination, .section(.menu))
+    }
+
+    func testRebuildReconcilesUnavailableProviderHistoryWithCurrentSection() throws {
+        let choice = ProviderChoice(id: "provider-a", name: "Provider A", isCurrent: true)
+        var choices = [choice]
+        let harness = DashboardShellTestHarness(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { choices },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { harness.teardown() }
+        harness.open()
+        harness.showProvider(choice.id)
+        choices.removeAll()
+
+        harness.rebuild()
+
+        XCTAssertEqual(harness.section, .general)
+        XCTAssertNil(harness.selectedProviderID)
+        XCTAssertEqual(harness.navigationDestination, .section(.general))
+        XCTAssertEqual(harness.navigationHistory.destinations, [.section(.general)])
+    }
+
     func testRebuildRefreshAndSearchProjectionDoNotChangeNavigationCursor() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(

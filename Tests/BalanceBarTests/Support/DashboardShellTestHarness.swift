@@ -98,6 +98,14 @@ final class DashboardShellTestHarness {
         pageSession.showProvider(providerID)
     }
 
+    func navigate(to destination: DashboardNavigationDestination) {
+        pageSession.navigate(to: destination)
+    }
+
+    func setExtendedNavigationHandler(_ handler: ((String) -> Bool)?) {
+        pageSession.onShowExtendedNavigationDestination = handler
+    }
+
     func setShowsUpdateAvailableBadge(_ visible: Bool) {
         pageSession.setShowsUpdateAvailableBadge(visible)
     }
