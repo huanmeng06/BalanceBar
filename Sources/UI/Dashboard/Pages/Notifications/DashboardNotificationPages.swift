@@ -532,32 +532,32 @@ final class DashboardNotificationPages {
         thresholds: (first: Double, second: Double),
         kind: BalanceNotificationResourceKind
     ) -> NSView {
-        let first = makeGlobalRuleField(
-            resourceID: resourceID,
-            isSecond: false,
-            value: thresholds.first,
-            kind: kind
-        )
         let second = makeGlobalRuleField(
             resourceID: resourceID,
             isSecond: true,
             value: thresholds.second,
-            kind: kind
+            kind: kind,
+            trailingViews: kind == .quotaPercent ? [makeGlobalRuleUnitLabel("%")] : []
+        )
+        let firstWithUnit = makeGlobalRuleField(
+            resourceID: resourceID,
+            isSecond: false,
+            value: thresholds.first,
+            kind: kind,
+            trailingViews: kind == .quotaPercent ? [makeGlobalRuleUnitLabel("%")] : []
         )
         let firstGroup = makeGlobalRuleInputGroup(
             label: tr("notifications.first_reminder"),
-            field: first,
-            showsPercent: kind == .quotaPercent
+            field: firstWithUnit
         )
         let secondGroup = makeGlobalRuleInputGroup(
             label: tr("notifications.second_reminder"),
-            field: second,
-            showsPercent: kind == .quotaPercent
+            field: second
         )
         let accessory = NSStackView(views: [firstGroup, secondGroup])
         accessory.orientation = .horizontal
         accessory.alignment = .centerY
-        accessory.spacing = 20
+        accessory.spacing = 24
         accessory.setContentHuggingPriority(.required, for: .horizontal)
         accessory.setContentCompressionResistancePriority(.required, for: .horizontal)
         return accessory
@@ -565,13 +565,11 @@ final class DashboardNotificationPages {
 
     private func makeGlobalRuleInputGroup(
         label: String,
-        field: DashboardSettingsComponents.CompactNumericFieldAccessory,
-        showsPercent: Bool
+        field: DashboardSettingsComponents.CompactNumericFieldAccessory
     ) -> NSView {
-        var views: [NSView] = [NSTextField(labelWithString: label), field]
-        if showsPercent {
-            views.append(NSTextField(labelWithString: "%"))
-        }
+        let labelView = NSTextField(labelWithString: label)
+        labelView.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
+        let views: [NSView] = [labelView, field]
         let group = NSStackView(views: views)
         group.orientation = .horizontal
         group.alignment = .centerY
@@ -585,18 +583,28 @@ final class DashboardNotificationPages {
         return group
     }
 
+    private func makeGlobalRuleUnitLabel(_ text: String) -> NSTextField {
+        let unit = NSTextField(labelWithString: text)
+        unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
+        unit.setContentHuggingPriority(.required, for: .horizontal)
+        unit.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return unit
+    }
+
     private func makeGlobalRuleField(
         resourceID: String,
         isSecond: Bool,
         value: Double,
-        kind: BalanceNotificationResourceKind
+        kind: BalanceNotificationResourceKind,
+        trailingViews: [NSView] = []
     ) -> DashboardSettingsComponents.CompactNumericFieldAccessory {
         let identifier = "global-rule:" + resourceID + ":" + (isSecond ? "second" : "first")
         let field = DashboardSettingsComponents.makeNumericTextField(
             identifier: identifier,
             value: formattedGlobalRuleValue(value, kind: kind),
             placeholder: "0",
-            capacityTemplate: kind == .quotaPercent ? "000" : DashboardSettingsComponents.amountCapacityTemplate,
+            capacityTemplate: kind == .quotaPercent ? "0000" : DashboardSettingsComponents.amountCapacityTemplate,
+            trailingViews: trailingViews,
             delegate: relay,
             target: relay,
             action: #selector(DashboardNotificationPageRelay.globalRuleThreshold(_:)),
