@@ -163,6 +163,7 @@ final class DashboardPreferencePages {
                 includeLogViewer: !forSearch
             ))
         case .notifications:
+            notificationsPage?.showRoot()
             return notificationsPage?.make() ?? DashboardSettingsComponents.makeSettingsPageContent([])
         case .about:
             return DashboardAboutPage.make(
@@ -223,6 +224,15 @@ final class DashboardPreferencePages {
 
     func showNotificationAgent(_ agent: BalanceNotificationAgent) {
         notificationsPage?.showAgent(agent)
+    }
+
+    func setNotificationNavigationHandler(_ handler: @escaping (String) -> Void) {
+        notificationsPage?.onNavigateRoute = handler
+    }
+
+    @discardableResult
+    func showNotificationRoute(_ route: String) -> Bool {
+        notificationsPage?.showNavigationRoute(route) ?? false
     }
 
     func suspend(_ section: DashboardSection) {

@@ -175,6 +175,9 @@ final class DashboardPageSession {
 
     private func showSectionMeasured(_ section: DashboardSection) {
         guard !isTornDown else { return }
+        if section == .notifications {
+            _ = onShowExtendedNavigationDestination?("notifications/root")
+        }
         DashboardPageInstrumentation.measure(.sidebarSelectionCallback) {
             self.section = section
             self.selectedProviderID = nil

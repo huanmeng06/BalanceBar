@@ -16,10 +16,8 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
     var onPauseSelection: ((String) -> Void)?
     var onGlobalRuleThreshold: ((String, Bool, Double, NSTextField) -> Void)?
     var onResume: (() -> Void)?
-    var onBack: (() -> Void)?
     var onAgent: ((BalanceNotificationAgent) -> Void)?
     var onProvider: ((BalanceNotificationAgent, String) -> Void)?
-    var onResource: ((BalanceNotificationResourceKey) -> Void)?
 
     @objc func globalToggle(_ sender: NSSwitch) { onGlobalToggle?(sender.state == .on) }
 
@@ -61,7 +59,6 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
         onPauseSelection?(selection)
     }
     @objc func resume(_ sender: NSButton) { onResume?() }
-    @objc func back(_ sender: NSButton) { onBack?() }
 
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
@@ -79,10 +76,6 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
         onProvider?(agent, providerID)
     }
 
-    @objc func resource(_ sender: NSButton) {
-        guard let key = resourceKey(from: sender) else { return }
-        onResource?(key)
-    }
 
     private func metadata(from sender: NSView, prefix: String) -> String? {
         guard let raw = sender.identifier?.rawValue,
@@ -206,6 +199,8 @@ private final class ReminderRuleAccessoryView: NSStackView, SettingsRowAccessory
 /// inside the content pane so the existing Dashboard sidebar geometry and
 /// search behavior remain unchanged.
 final class DashboardNotificationPages {
+    var onNavigateRoute: ((String) -> Void)?
+
     private let configuration: DashboardNotificationPageConfiguration
     private let relay = DashboardNotificationPageRelay()
     private let container = NSView()
@@ -224,7 +219,6 @@ final class DashboardNotificationPages {
         case root
         case agent(BalanceNotificationAgent)
         case provider(BalanceNotificationAgent, String)
-        case resource(BalanceNotificationResourceKey)
     }
 
     private struct GlobalRuleColumnMetrics {
@@ -348,24 +342,26 @@ final class DashboardNotificationPages {
                 DispatchQueue.main.async { [weak self] in self?.updatePausePresentation() }
             }
         }
-        relay.onBack = { [weak self] in self?.goBack() }
         relay.onAgent = { [weak self] agent in
             guard let self else { return }
+            if let onNavigateRoute {
+                onNavigateRoute(Self.agentRoute(for: agent))
+                return
+            }
             self.path = [.agent(agent)]
             self.rebuild()
         }
         relay.onProvider = { [weak self] agent, providerID in
             guard let self else { return }
+            if let onNavigateRoute {
+                onNavigateRoute(Self.providerRoute(for: agent, providerID: providerID))
+                return
+            }
             self.path = self.path.filter {
                 if case .agent = $0 { return true }
                 return false
             }
             self.path.append(.provider(agent, providerID))
-            self.rebuild()
-        }
-        relay.onResource = { [weak self] key in
-            guard let self else { return }
-            self.path.append(.resource(key))
             self.rebuild()
         }
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -380,6 +376,11 @@ final class DashboardNotificationPages {
         return container
     }
 
+    func showRoot() {
+        path = []
+        rebuild()
+    }
+
     func refresh() {
         guard currentPage != nil else { return }
         rebuild()
@@ -390,13 +391,48 @@ final class DashboardNotificationPages {
         rebuild()
     }
 
+    @discardableResult
+    func showNavigationRoute(_ route: String) -> Bool {
+        let components = route.split(separator: "/").map(String.init)
+        guard components.first == "notifications",
+              components.count >= 2 else { return false }
+        if components[1] == "root" {
+            showRoot()
+            return true
+        }
+        guard components.count >= 3 else { return false }
+        switch components[1] {
+        case "agent":
+            guard let agent = BalanceNotificationAgent(rawValue: components[2]) else { return false }
+            path = [.agent(agent)]
+        case "provider":
+            guard components.count >= 4,
+                  let agent = BalanceNotificationAgent(rawValue: components[2]) else { return false }
+            path = [.agent(agent), .provider(agent, components[3])]
+        default:
+            return false
+        }
+        rebuild()
+        return true
+    }
+
+    private static func agentRoute(for agent: BalanceNotificationAgent) -> String {
+        "notifications/agent/\(agent.rawValue)"
+    }
+
+    private static func providerRoute(
+        for agent: BalanceNotificationAgent,
+        providerID: String
+    ) -> String {
+        "notifications/provider/\(agent.rawValue)/\(providerID)"
+    }
+
     private func rebuild() {
         let page: NSView
         switch path.last ?? .root {
         case .root: page = makeRootPage()
         case .agent(let agent): page = makeAgentPage(agent)
         case .provider(let agent, let providerID): page = makeProviderPage(agent, providerID: providerID)
-        case .resource(let key): page = makeResourcePage(key)
         }
         currentPage?.removeFromSuperview()
         currentPage = page
@@ -849,7 +885,7 @@ final class DashboardNotificationPages {
     private func makeAgentPage(_ agent: BalanceNotificationAgent) -> NSView {
         let providers = configuration.providerChoices(agent)
         let settings = configuration.coordinator.settings
-        var rows: [NSView] = [backButton()]
+        var rows: [NSView] = []
         if providers.isEmpty {
             rows.append(SettingsRowView(
                 title: agent.title,
@@ -894,7 +930,7 @@ final class DashboardNotificationPages {
     private func makeProviderPage(_ agent: BalanceNotificationAgent, providerID: String) -> NSView {
         let descriptors = configuration.coordinator.resourceDescriptors(agent: agent, providerID: providerID)
         let settings = configuration.coordinator.settings
-        var rows: [NSView] = [backButton()]
+        var rows: [NSView] = []
         if descriptors.isEmpty {
             rows.append(SettingsRowView(title: tr("notifications.resource_rules"), detail: tr("notifications.no_providers")))
         } else {
@@ -957,85 +993,6 @@ final class DashboardNotificationPages {
         return [enableRow, firstRow, secondRow, secondThresholdRow]
     }
 
-    private func makeResourcePage(_ key: BalanceNotificationResourceKey) -> NSView {
-        let descriptor = configuration.coordinator.resourceDescriptors(
-            agent: key.agent,
-            providerID: key.providerID
-        ).first { $0.key == key }
-        guard let descriptor else {
-            return DashboardSettingsComponents.makeSettingsPageContent([SettingsSectionView(title: tr("notifications.resource_rules"), contentViews: [backButton()])])
-        }
-        let settings = configuration.coordinator.settings
-        let rule = settings.rule(for: key) ?? settings.defaultRule(for: key, kind: descriptor.kind, unit: descriptor.unit)
-        let enabled = DashboardSettingsComponents.makeSwitch(
-            identifier: "resource:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)",
-            isOn: rule.enabled,
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.resourceToggle(_:))
-        )
-        enabled.toolTip = descriptor.unit ?? ""
-        enabled.setAccessibilityValue(descriptor.kind.rawValue)
-
-        let firstField = thresholdField(rule.firstThreshold, key: key, kind: descriptor.kind, unit: descriptor.unit, isSecond: false)
-        let firstRow = SettingsRowView(
-            title: tr("notifications.first_threshold"),
-            detail: thresholdDetail(rule, descriptor: descriptor, second: false),
-            accessoryView: firstField
-        )
-        let secondSwitch = DashboardSettingsComponents.makeSwitch(
-            identifier: "resource:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)",
-            isOn: rule.secondEnabled,
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.secondThresholdToggle(_:))
-        )
-        secondSwitch.toolTip = descriptor.unit ?? ""
-        secondSwitch.setAccessibilityValue(descriptor.kind.rawValue)
-        let secondRow = SettingsRowView(
-            title: tr("notifications.second_alert"),
-            detail: tr("notifications.second_threshold"),
-            accessoryView: secondSwitch
-        )
-        let secondField = thresholdField(rule.secondThreshold, key: key, kind: descriptor.kind, unit: descriptor.unit, isSecond: true)
-        let secondThresholdRow = SettingsRowView(
-            title: tr("notifications.second_threshold"),
-            detail: thresholdDetail(rule, descriptor: descriptor, second: true),
-            accessoryView: secondField
-        )
-        let enableRow = SettingsRowView(
-            title: descriptor.title,
-            detail: descriptor.unit == "%" ? tr("notifications.quota_value", arguments: [descriptor.title, formatted(descriptor.value ?? 0, kind: .quotaPercent)]) : tr("notifications.balance_value", arguments: [descriptor.title, formatted(descriptor.value ?? 0, kind: .balance)]),
-            accessoryView: enabled
-        )
-        return DashboardSettingsComponents.makeSettingsPageContent([
-            SettingsSectionView(title: "\(tr("notifications.resource_rules")) · \(descriptor.title)", contentViews: [backButton(), enableRow, firstRow, secondRow, secondThresholdRow])
-        ])
-    }
-
-    private func makeResourceRow(
-        _ descriptor: BalanceNotificationResourceDescriptor,
-        settings: BalanceNotificationSettings
-    ) -> NSView {
-        let rule = settings.rule(for: descriptor.key) ?? settings.defaultRule(for: descriptor.key, kind: descriptor.kind, unit: descriptor.unit)
-        let button = NSButton(
-            title: tr("notifications.advanced_settings"),
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.resource(_:))
-        )
-        button.identifier = NSUserInterfaceItemIdentifier("resource:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)")
-        let toggle = DashboardSettingsComponents.makeSwitch(
-            identifier: button.identifier!.rawValue,
-            isOn: rule.enabled,
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.resourceToggle(_:))
-        )
-        toggle.toolTip = descriptor.unit ?? ""
-        toggle.setAccessibilityValue(descriptor.kind.rawValue)
-        let controls = NSStackView(views: [toggle, button])
-        controls.orientation = .horizontal
-        controls.spacing = 8
-        return SettingsRowView(title: descriptor.title, detail: thresholdDetail(rule, descriptor: descriptor, second: false), accessoryView: controls)
-    }
-
     private func thresholdField(
         _ value: Double,
         key: BalanceNotificationResourceKey,
@@ -1073,13 +1030,4 @@ final class DashboardNotificationPages {
         kind == .quotaPercent ? String(format: "%.0f", value) : String(format: "%.2f", value)
     }
 
-    private func backButton() -> NSButton {
-        NSButton(title: tr("notifications.back"), target: relay, action: #selector(DashboardNotificationPageRelay.back(_:)))
-    }
-
-    private func goBack() {
-        guard !path.isEmpty else { return }
-        path.removeLast()
-        rebuild()
-    }
 }

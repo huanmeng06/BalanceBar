@@ -291,6 +291,7 @@ final class DashboardCompositionController {
     /// repeat apply of that query does not reset scroll.
     private var lastSettledSearchQuery: String?
     private var synchronousSearchForTesting = false
+    private var notificationNavigationConfigured = false
     private lazy var pageSession = DashboardPageSession(
         actions: DashboardWindowControllerActions(
             makeSectionPage: { [weak self] section in
@@ -376,6 +377,7 @@ final class DashboardCompositionController {
     }
 
     func start() {
+        configureNotificationNavigation()
         bindDashboardSearch()
         windowController.start()
         installMenuBarRestoreSnapshotProvider()
@@ -384,6 +386,7 @@ final class DashboardCompositionController {
         initialSection: DashboardSection = .general,
         scrollOffsetY: CGFloat? = nil
     ) {
+        configureNotificationNavigation()
         bindDashboardSearch()
         installMenuBarRestoreSnapshotProvider()
         let isNewWindow = windowController.window == nil
@@ -407,10 +410,22 @@ final class DashboardCompositionController {
     func showSection(_ section: DashboardSection) { pageSession.selectSection(section) }
 
     func showNotificationAgent(_ agent: BalanceNotificationAgent) {
+        configureNotificationNavigation()
         if section != .notifications {
             pageSession.selectSection(.notifications)
         }
-        dashboardPreferencePages.showNotificationAgent(agent)
+        pageSession.navigate(to: .route("notifications/agent/\(agent.rawValue)"))
+    }
+
+    private func configureNotificationNavigation() {
+        guard !notificationNavigationConfigured else { return }
+        notificationNavigationConfigured = true
+        pageSession.onShowExtendedNavigationDestination = { [weak self] route in
+            self?.dashboardPreferencePages.showNotificationRoute(route) ?? false
+        }
+        dashboardPreferencePages.setNotificationNavigationHandler { [weak self] route in
+            self?.pageSession.navigate(to: .route(route))
+        }
     }
     func showProvider(_ providerID: String) { pageSession.showProvider(providerID) }
     func teardown() {
