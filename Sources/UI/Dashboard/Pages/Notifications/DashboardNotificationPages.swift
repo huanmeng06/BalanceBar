@@ -1008,23 +1008,30 @@ final class DashboardNotificationPages {
         let descriptors = configuration.coordinator.resourceDescriptors(agent: agent, providerID: providerID)
         let settings = configuration.coordinator.settings
         resourceRuleRows.removeAll(keepingCapacity: true)
-        var rows: [NSView] = []
+        let providerName = configuration.providerChoices(agent).first { $0.id == providerID }?.name ?? providerID
+        let pageTitle = "\(agent.title) · \(providerName)"
+        var sections: [NSView] = []
         if descriptors.isEmpty {
-            rows.append(SettingsRowView(title: tr("notifications.resource_rules"), detail: tr("notifications.no_providers")))
+            sections.append(SettingsSectionView(
+                title: pageTitle,
+                contentViews: [SettingsRowView(
+                    title: tr("notifications.resource_rules"),
+                    detail: tr("notifications.no_providers")
+                )]
+            ))
         } else {
-            for descriptor in descriptors {
-                rows.append(contentsOf: makeResourceSettingsRows(descriptor, settings: settings))
+            for (index, descriptor) in descriptors.enumerated() {
+                let rows = makeResourceSettingsRows(descriptor, settings: settings)
+                let section = SettingsSectionView(
+                    title: index == 0 ? pageTitle : "",
+                    contentViews: rows
+                )
+                resourceRuleRows[descriptor.key]?.section = section
+                resourceRuleRows[descriptor.key]?.section?.reconcileSeparators()
+                sections.append(section)
             }
         }
-        let providerName = configuration.providerChoices(agent).first { $0.id == providerID }?.name ?? providerID
-        let section = SettingsSectionView(title: "\(agent.title) · \(providerName)", contentViews: rows)
-        resourceRuleRows.values.forEach { resourceRows in
-            resourceRows.section = section
-            resourceRows.section?.reconcileSeparators()
-        }
-        return DashboardSettingsComponents.makeSettingsPageContent([
-            section
-        ])
+        return DashboardSettingsComponents.makeSettingsPageContent(sections)
     }
 
     private func makeResourceSettingsRows(

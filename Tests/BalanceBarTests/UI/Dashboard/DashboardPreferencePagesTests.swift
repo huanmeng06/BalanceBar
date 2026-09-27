@@ -91,12 +91,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let page = pages.make()
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
 
-        let section = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? SettingsSectionView }
-                .last
-        )
-        let rows = section.contentViews.compactMap { $0 as? SettingsRowView }
+        let sections = descendants(of: page).compactMap { $0 as? SettingsSectionView }
+        XCTAssertEqual(sections.count, 2)
+        let rows = sections.flatMap { section in
+            section.contentViews.compactMap { $0 as? SettingsRowView }
+        }
         func resourceRows(titled title: String) throws -> [SettingsRowView] {
             let index = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == title })
             return Array(rows[index ..< min(index + 4, rows.count)])
