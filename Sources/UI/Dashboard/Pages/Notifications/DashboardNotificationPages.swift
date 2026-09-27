@@ -254,7 +254,13 @@ final class DashboardNotificationPages {
             guard let self else { return }
             let coordinator = self.configuration.coordinator
             self.updateAgentDetail(agent, enabled: enabled)
-            coordinator.performAsync { coordinator.setAgentEnabled(enabled, agent: agent) }
+            let providerIDs = self.configuration.providerChoices(agent).map(\.id)
+            coordinator.performAsync {
+                coordinator.setAgentEnabled(enabled, agent: agent)
+                providerIDs.forEach { providerID in
+                    coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID)
+                }
+            }
         }
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
             guard let self else { return }
