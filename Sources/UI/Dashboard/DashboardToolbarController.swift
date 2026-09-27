@@ -43,30 +43,28 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     private let searchItem: NSSearchToolbarItem
+    private lazy var backItem: NSToolbarItem = {
+        let item = NSToolbarItem(itemIdentifier: Self.backItemIdentifier)
+        item.target = self
+        item.action = #selector(goBack(_:))
+        item.autovalidates = false
+        return item
+    }()
+    private lazy var forwardItem: NSToolbarItem = {
+        let item = NSToolbarItem(itemIdentifier: Self.forwardItemIdentifier)
+        item.target = self
+        item.action = #selector(goForward(_:))
+        item.autovalidates = false
+        return item
+    }()
     private lazy var navigationItemGroup: NSToolbarItemGroup = {
-        let group = NSToolbarItemGroup(
-            itemIdentifier: Self.navigationItemGroupIdentifier,
-            images: [
-                Self.navigationImage(symbolName: "chevron.backward"),
-                Self.navigationImage(symbolName: "chevron.forward")
-            ],
-            selectionMode: .momentary,
-            labels: [
-                tr(.keyDashboardNavigationBack),
-                tr(.keyDashboardNavigationForward)
-            ],
-            target: nil,
-            action: nil
-        )
+        let group = NSToolbarItemGroup(itemIdentifier: Self.navigationItemGroupIdentifier)
+        group.subitems = [backItem, forwardItem]
         group.controlRepresentation = .expanded
+        group.selectionMode = .momentary
         group.autovalidates = false
-        for item in group.subitems {
-            item.autovalidates = false
-        }
         return group
     }()
-    private var backItem: NSToolbarItem { navigationItemGroup.subitems[0] }
-    private var forwardItem: NSToolbarItem { navigationItemGroup.subitems[1] }
     private lazy var refreshItem: NSToolbarItem = {
         let item = NSToolbarItem(itemIdentifier: Self.refreshItemIdentifier)
         item.target = self
@@ -120,15 +118,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         forwardItem.autovalidates = false
         backItem.isEnabled = canGoBack
         forwardItem.isEnabled = canGoForward
-        for item in toolbar?.items ?? [] {
-            switch item.itemIdentifier {
-            case Self.navigationItemGroupIdentifier:
-                item.isEnabled = canGoBack || canGoForward
-            default:
-                break
-            }
-        }
-        navigationItemGroup.isEnabled = canGoBack || canGoForward
     }
 
     func setQuery(_ query: String) {
@@ -158,7 +147,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         window = nil
         canGoBack = false
         canGoForward = false
-        navigationItemGroup.isEnabled = false
         backItem.isEnabled = false
         forwardItem.isEnabled = false
         onGoBack = nil
@@ -316,10 +304,10 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         updateBackItemLabels()
         updateForwardItemLabels()
         navigationItemGroup.controlRepresentation = .expanded
+        navigationItemGroup.selectionMode = .momentary
         navigationItemGroup.autovalidates = false
         backItem.autovalidates = false
         forwardItem.autovalidates = false
-        navigationItemGroup.isEnabled = canGoBack || canGoForward
         backItem.isEnabled = canGoBack
         forwardItem.isEnabled = canGoForward
     }
@@ -350,11 +338,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         forwardItem.target = self
         forwardItem.action = #selector(goForward(_:))
         forwardItem.autovalidates = false
-    }
-
-    private static func navigationImage(symbolName: String) -> NSImage {
-        NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
-            ?? NSImage(size: NSSize(width: 16, height: 16))
     }
 
     private func updateRefreshItemLabels() {

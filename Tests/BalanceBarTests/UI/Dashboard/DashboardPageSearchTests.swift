@@ -3475,11 +3475,11 @@ final class DashboardPageSearchTests: XCTestCase {
         _ identifier: NSToolbarItem.Identifier,
         in toolbar: NSToolbar
     ) throws -> NSToolbarItem {
-        if identifier == DashboardToolbarController.backItemIdentifier {
-            return try XCTUnwrap(navigationItemGroup(in: toolbar).subitems.first)
-        }
-        if identifier == DashboardToolbarController.forwardItemIdentifier {
-            return try XCTUnwrap(navigationItemGroup(in: toolbar).subitems.dropFirst().first)
+        if identifier == DashboardToolbarController.backItemIdentifier
+            || identifier == DashboardToolbarController.forwardItemIdentifier {
+            return try XCTUnwrap(
+                navigationItemGroup(in: toolbar).subitems.first { $0.itemIdentifier == identifier }
+            )
         }
         return try XCTUnwrap(toolbar.items.first { $0.itemIdentifier == identifier })
     }
