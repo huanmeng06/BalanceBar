@@ -1320,8 +1320,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
-                DashboardToolbarController.backItemIdentifier,
-                DashboardToolbarController.forwardItemIdentifier,
+                DashboardToolbarController.navigationItemGroupIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -1343,8 +1342,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
-                DashboardToolbarController.backItemIdentifier,
-                DashboardToolbarController.forwardItemIdentifier,
+                DashboardToolbarController.navigationItemGroupIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -1357,8 +1355,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             $0 != .flexibleSpace
                 && $0 != .toggleSidebar
                 && $0 != .sidebarTrackingSeparator
-                && $0 != DashboardToolbarController.backItemIdentifier
-                && $0 != DashboardToolbarController.forwardItemIdentifier
+                && $0 != DashboardToolbarController.navigationItemGroupIdentifier
                 && $0 != DashboardToolbarController.refreshItemIdentifier
                 && $0 != DashboardToolbarController.searchItemIdentifier
         }
@@ -1368,6 +1365,15 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
+        let navigationGroup = try XCTUnwrap(
+            toolbar.items.first { $0.itemIdentifier == DashboardToolbarController.navigationItemGroupIdentifier }
+                as? NSToolbarItemGroup,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(navigationGroup.subitems.count, 2, file: file, line: line)
+        XCTAssertNotNil(navigationGroup.subitems[0].image, file: file, line: line)
+        XCTAssertNotNil(navigationGroup.subitems[1].image, file: file, line: line)
         XCTAssertTrue(
             toolbar.items.contains { $0.itemIdentifier == .sidebarTrackingSeparator && $0 is NSTrackingSeparatorToolbarItem },
             "Tracking separator must be NSTrackingSeparatorToolbarItem, not a fake NSView spacer",
