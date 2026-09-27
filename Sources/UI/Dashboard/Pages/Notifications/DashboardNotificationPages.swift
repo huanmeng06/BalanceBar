@@ -456,6 +456,9 @@ final class DashboardNotificationPages {
         return formatter
     }()
 
+    private static let globalRuleTabWidth: CGFloat = 260
+    private static let globalRuleTabSpacing: CGFloat = 24
+
     private func makeReminderRulesSection(settings: BalanceNotificationSettings) -> NSView {
         let heading = NSTextField(labelWithString: tr("notifications.reminder_rules"))
         heading.font = SettingsSectionView.headingFont
@@ -546,41 +549,55 @@ final class DashboardNotificationPages {
             kind: kind,
             trailingViews: kind == .quotaPercent ? [makeGlobalRuleUnitLabel("%")] : []
         )
-        let firstGroup = makeGlobalRuleInputGroup(
+        let firstTab = makeGlobalRuleTab(
             label: tr("notifications.first_reminder"),
             field: firstWithUnit
         )
-        let secondGroup = makeGlobalRuleInputGroup(
+        let secondTab = makeGlobalRuleTab(
             label: tr("notifications.second_reminder"),
             field: second
         )
-        let accessory = NSStackView(views: [firstGroup, secondGroup])
+        let accessory = NSStackView(views: [firstTab, secondTab])
         accessory.orientation = .horizontal
         accessory.alignment = .centerY
-        accessory.spacing = 24
+        accessory.spacing = Self.globalRuleTabSpacing
+        accessory.distribution = .fill
+        let accessoryWidth = Self.globalRuleTabWidth * 2 + Self.globalRuleTabSpacing
+        let accessoryWidthConstraint = accessory.widthAnchor.constraint(equalToConstant: accessoryWidth)
+        accessoryWidthConstraint.priority = NSLayoutConstraint.Priority(999)
+        accessoryWidthConstraint.isActive = true
         accessory.setContentHuggingPriority(.required, for: .horizontal)
         accessory.setContentCompressionResistancePriority(.required, for: .horizontal)
+        firstTab.widthAnchor.constraint(equalToConstant: Self.globalRuleTabWidth).isActive = true
+        secondTab.widthAnchor.constraint(equalToConstant: Self.globalRuleTabWidth).isActive = true
         return accessory
     }
 
-    private func makeGlobalRuleInputGroup(
+    private func makeGlobalRuleTab(
         label: String,
         field: DashboardSettingsComponents.CompactNumericFieldAccessory
     ) -> NSView {
         let labelView = NSTextField(labelWithString: label)
         labelView.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
-        let views: [NSView] = [labelView, field]
-        let group = NSStackView(views: views)
-        group.orientation = .horizontal
-        group.alignment = .centerY
-        group.spacing = 6
-        group.setContentHuggingPriority(.required, for: .horizontal)
-        group.setContentCompressionResistancePriority(.required, for: .horizontal)
-        for view in group.arrangedSubviews where view is NSTextField {
-            view.setContentHuggingPriority(.required, for: .horizontal)
-            view.setContentCompressionResistancePriority(.required, for: .horizontal)
-        }
-        return group
+        labelView.translatesAutoresizingMaskIntoConstraints = false
+        field.translatesAutoresizingMaskIntoConstraints = false
+        labelView.setContentHuggingPriority(.required, for: .horizontal)
+        labelView.setContentCompressionResistancePriority(.required, for: .horizontal)
+        field.setContentHuggingPriority(.required, for: .horizontal)
+        field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let tab = NSView()
+        tab.translatesAutoresizingMaskIntoConstraints = false
+        tab.addSubview(labelView)
+        tab.addSubview(field)
+        NSLayoutConstraint.activate([
+            field.trailingAnchor.constraint(equalTo: tab.trailingAnchor),
+            field.topAnchor.constraint(equalTo: tab.topAnchor),
+            field.bottomAnchor.constraint(equalTo: tab.bottomAnchor),
+            labelView.trailingAnchor.constraint(equalTo: field.leadingAnchor, constant: -8),
+            labelView.leadingAnchor.constraint(greaterThanOrEqualTo: tab.leadingAnchor),
+            labelView.centerYAnchor.constraint(equalTo: tab.centerYAnchor)
+        ])
+        return tab
     }
 
     private func makeGlobalRuleUnitLabel(_ text: String) -> NSTextField {
