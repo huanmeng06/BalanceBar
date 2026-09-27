@@ -456,8 +456,8 @@ final class DashboardNotificationPages {
         return formatter
     }()
 
-    private static let globalRuleTabWidth: CGFloat = 220
-    private static let globalRuleTabSpacing: CGFloat = 16
+    private static let globalRuleTabWidth: CGFloat = 204
+    private static let globalRuleTabSpacing: CGFloat = 12
     private static let globalRuleLabelWidth: CGFloat = 94
 
     private func makeReminderRulesSection(settings: BalanceNotificationSettings) -> NSView {
