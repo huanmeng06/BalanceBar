@@ -3290,6 +3290,7 @@ final class DashboardPageSearchTests: XCTestCase {
             to: disabledBack.target,
             from: disabledBack
         )
+        try sendNavigationGroupAction(index: 0, in: window)
         XCTAssertEqual(harness.navigationDestination, .section(.general))
 
         try performToolbarAction(DashboardToolbarController.forwardItemIdentifier, in: window)
@@ -3299,6 +3300,8 @@ final class DashboardPageSearchTests: XCTestCase {
         try performToolbarAction(DashboardToolbarController.forwardItemIdentifier, in: window)
         XCTAssertEqual(harness.navigationDestination, .section(.menu))
         XCTAssertFalse(try toolbarItem(DashboardToolbarController.forwardItemIdentifier, in: try XCTUnwrap(window.toolbar)).isEnabled)
+        try sendNavigationGroupAction(index: 1, in: window)
+        XCTAssertEqual(harness.navigationDestination, .section(.menu))
     }
 
     func testNewNavigationAfterBackClearsForwardHistory() throws {
@@ -3459,6 +3462,12 @@ final class DashboardPageSearchTests: XCTestCase {
         }
         let item = group.subitems[index]
         XCTAssertTrue(item.isEnabled)
+        group.setSelected(true, at: index)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(group.action), to: group.target, from: group))
+    }
+
+    private func sendNavigationGroupAction(index: Int, in window: NSWindow) throws {
+        let group = try navigationItemGroup(in: try XCTUnwrap(window.toolbar))
         group.setSelected(true, at: index)
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(group.action), to: group.target, from: group))
     }

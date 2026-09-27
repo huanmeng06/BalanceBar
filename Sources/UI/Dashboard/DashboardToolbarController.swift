@@ -232,17 +232,23 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
 
     @objc private func navigationItemSelected(_ sender: NSToolbarItemGroup) {
         let selectedIndex = sender.selectedIndex
+        guard selectedIndex == 0 || selectedIndex == 1 else { return }
+        let isEnabled = selectedIndex == 0 ? canGoBack : canGoForward
+        guard isEnabled,
+              sender.subitems.indices.contains(selectedIndex),
+              sender.subitems[selectedIndex].isEnabled else {
+            sender.setSelected(false, at: selectedIndex)
+            return
+        }
         switch selectedIndex {
         case 0:
             goBack(sender)
         case 1:
             goForward(sender)
         default:
-            break
+            return
         }
-        if selectedIndex >= 0 {
-            sender.setSelected(false, at: selectedIndex)
-        }
+        sender.setSelected(false, at: selectedIndex)
     }
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
