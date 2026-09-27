@@ -151,7 +151,8 @@ private final class ReminderRuleAccessoryView: NSStackView, SettingsRowAccessory
     init(views: [NSView], groupWidth: CGFloat, groupSpacing: CGFloat) {
         self.groupWidth = groupWidth
         self.groupSpacing = groupSpacing
-        super.init(views: views)
+        super.init(frame: .zero)
+        views.forEach(addArrangedSubview)
         orientation = .horizontal
         alignment = .centerY
         spacing = groupSpacing
