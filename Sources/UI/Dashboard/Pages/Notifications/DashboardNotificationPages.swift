@@ -214,7 +214,9 @@ final class DashboardNotificationPages {
     private weak var agentSettingsView: NSView?
     private weak var detailsStack: NSStackView?
     private var agentRows: [BalanceNotificationAgent: SettingsRowView] = [:]
+    private var agentAdvancedButtons: [BalanceNotificationAgent: NSButton] = [:]
     private var providerRows: [String: SettingsRowView] = [:]
+    private var providerAdvancedButtons: [String: NSButton] = [:]
     private var resourceRuleRows: [BalanceNotificationResourceKey: ResourceRuleRows] = [:]
     private var pauseTimer: Timer?
 
@@ -870,6 +872,7 @@ final class DashboardNotificationPages {
         heading.font = SettingsSectionView.headingFont
         heading.translatesAutoresizingMaskIntoConstraints = false
         agentRows.removeAll(keepingCapacity: true)
+        agentAdvancedButtons.removeAll(keepingCapacity: true)
         let cards = NSStackView(views: BalanceNotificationAgent.dashboardCases.map {
             let row = makeAgentRow($0, settings: settings)
             agentRows[$0] = row
@@ -916,9 +919,12 @@ final class DashboardNotificationPages {
             action: #selector(DashboardNotificationPageRelay.agent(_:))
         )
         button.identifier = NSUserInterfaceItemIdentifier("agent:\(agent.rawValue)")
-        let controls = NSStackView(views: [agentSwitch, button])
+        button.isHidden = !settings.isAgentEnabled(agent)
+        agentAdvancedButtons[agent] = button
+        let controls = NSStackView(views: [button, agentSwitch])
         controls.orientation = .horizontal
         controls.spacing = 8
+        controls.detachesHiddenViews = true
         let detail = agentDetail(agent, enabled: settings.isAgentEnabled(agent), settings: settings)
         return SettingsRowView(title: agent.title, detail: detail, accessoryView: controls)
     }
@@ -940,6 +946,8 @@ final class DashboardNotificationPages {
     private func updateAgentDetail(_ agent: BalanceNotificationAgent, enabled: Bool) {
         guard let row = agentRows[agent] else { return }
         let settings = configuration.coordinator.settings
+        agentAdvancedButtons[agent]?.isHidden = !enabled
+        agentAdvancedButtons[agent]?.superview?.needsLayout = true
         row.updateDetail(agentDetail(agent, enabled: enabled, settings: settings))
     }
 
@@ -947,6 +955,7 @@ final class DashboardNotificationPages {
         let providers = configuration.providerChoices(agent)
         let settings = configuration.coordinator.settings
         providerRows.removeAll(keepingCapacity: true)
+        providerAdvancedButtons.removeAll(keepingCapacity: true)
         var rows: [NSView] = []
         if providers.isEmpty {
             rows.append(SettingsRowView(
@@ -982,9 +991,12 @@ final class DashboardNotificationPages {
             action: #selector(DashboardNotificationPageRelay.provider(_:))
         )
         button.identifier = NSUserInterfaceItemIdentifier("provider:\(agent.rawValue):\(provider.id)")
-        let controls = NSStackView(views: [toggle, button])
+        button.isHidden = !settings.isProviderEnabled(agent, providerID: provider.id)
+        providerAdvancedButtons[providerRowKey(agent, providerID: provider.id)] = button
+        let controls = NSStackView(views: [button, toggle])
         controls.orientation = .horizontal
         controls.spacing = 8
+        controls.detachesHiddenViews = true
         let detail = settings.isProviderEnabled(agent, providerID: provider.id)
             ? tr("notifications.agent_enabled")
             : tr("notifications.agent_disabled")
@@ -1000,7 +1012,10 @@ final class DashboardNotificationPages {
         providerID: String,
         enabled: Bool
     ) {
-        guard let row = providerRows[providerRowKey(agent, providerID: providerID)] else { return }
+        let key = providerRowKey(agent, providerID: providerID)
+        guard let row = providerRows[key] else { return }
+        providerAdvancedButtons[key]?.isHidden = !enabled
+        providerAdvancedButtons[key]?.superview?.needsLayout = true
         row.updateDetail(enabled ? tr("notifications.agent_enabled") : tr("notifications.agent_disabled"))
     }
 

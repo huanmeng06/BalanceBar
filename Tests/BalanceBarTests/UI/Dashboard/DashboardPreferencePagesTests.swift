@@ -141,6 +141,76 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(fiveHour[3].isHidden)
     }
 
+    func testAgentAdvancedButtonFollowsSwitchAndSitsBeforeIt() throws {
+        let suiteName = "DashboardPreferencePagesTests.AgentAdvancedButton.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: DashboardNotificationTestClient()
+        )
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(false, agent: .gpt)
+        coordinator.setAgentEnabled(true, agent: .claude)
+
+        let pages = DashboardNotificationPages(configuration: .init(
+            coordinator: coordinator,
+            providerChoices: { _ in [] }
+        ))
+        let page = pages.make()
+        func agentRow(_ title: String) throws -> SettingsRowView {
+            try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? SettingsRowView }
+                    .first { $0.titleLabel.stringValue == title }
+            )
+        }
+        func button(in row: SettingsRowView, agent: BalanceNotificationAgent) throws -> NSButton {
+            try XCTUnwrap(
+                descendants(of: row)
+                    .compactMap { $0 as? NSButton }
+                    .first { $0.identifier?.rawValue == "agent:\(agent.rawValue)" }
+            )
+        }
+        func toggle(in row: SettingsRowView, agent: BalanceNotificationAgent) throws -> NSSwitch {
+            try XCTUnwrap(
+                descendants(of: row)
+                    .compactMap { $0 as? NSSwitch }
+                    .first { $0.identifier?.rawValue == "agent:\(agent.rawValue)" }
+            )
+        }
+
+        let gptRow = try agentRow("ChatGPT")
+        let claudeRow = try agentRow("Claude")
+        let gptButton = try button(in: gptRow, agent: .gpt)
+        let claudeButton = try button(in: claudeRow, agent: .claude)
+        XCTAssertTrue(gptButton.isHidden)
+        XCTAssertFalse(claudeButton.isHidden)
+
+        let controls = try XCTUnwrap(gptRow.accessoryView as? NSStackView)
+        XCTAssertTrue(controls.arrangedSubviews.first is NSButton)
+        XCTAssertTrue(controls.arrangedSubviews.last is NSSwitch)
+
+        let gptSwitch = try toggle(in: gptRow, agent: .gpt)
+        gptSwitch.state = .on
+        XCTAssertTrue(NSApp.sendAction(
+            try XCTUnwrap(gptSwitch.action),
+            to: gptSwitch.target,
+            from: gptSwitch
+        ))
+        XCTAssertFalse(gptButton.isHidden)
+
+        gptSwitch.state = .off
+        XCTAssertTrue(NSApp.sendAction(
+            try XCTUnwrap(gptSwitch.action),
+            to: gptSwitch.target,
+            from: gptSwitch
+        ))
+        XCTAssertTrue(gptButton.isHidden)
+    }
+
     func testSharedNumericTextFieldUsesNativeCompactConfiguration() {
         let target = NumericTextFieldTestTarget()
         let compactFont = NSFont.monospacedDigitSystemFont(
