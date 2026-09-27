@@ -162,12 +162,17 @@ final class DashboardNotificationPages {
 
     private struct GlobalRuleColumnMetrics {
         let labelWidth: CGFloat
-        let fieldWidth: CGFloat
+        let percentFieldWidth: CGFloat
         let unitWidth: CGFloat
-        let groupSpacing: CGFloat = 7
+        let valueSpacing: CGFloat = 7
+        let groupSpacing: CGFloat = 12
 
         var valueAreaWidth: CGFloat {
-            fieldWidth + groupSpacing + unitWidth
+            percentFieldWidth + valueSpacing + unitWidth
+        }
+
+        var groupWidth: CGFloat {
+            labelWidth + valueSpacing + valueAreaWidth
         }
     }
 
@@ -588,8 +593,8 @@ final class DashboardNotificationPages {
         let accessory = DashboardAdaptiveControlsStackView(views: [firstGroup, secondGroup])
         accessory.orientation = .horizontal
         accessory.alignment = .centerY
-        accessory.spacing = 12
-        accessory.minimumInlineLabelWidth = 0
+        accessory.spacing = columnMetrics.groupSpacing
+        accessory.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         return accessory
     }
 
@@ -609,17 +614,21 @@ final class DashboardNotificationPages {
             kind: .balance
         )
         let unit = makeGlobalRuleUnitSlot(nil)
+        let quotaNaturalWidth = ceil(quotaField.fittingSize.width)
+        let balanceNaturalWidth = ceil(balanceField.fittingSize.width)
+        let unitWidth = unit.fittingSize.width
+        let valueSpacing: CGFloat = 7
         return GlobalRuleColumnMetrics(
             labelWidth: ceil(max(firstLabel.fittingSize.width, secondLabel.fittingSize.width)),
-            fieldWidth: ceil(max(quotaField.fittingSize.width, balanceField.fittingSize.width)),
-            unitWidth: unit.fittingSize.width
+            percentFieldWidth: max(quotaNaturalWidth, balanceNaturalWidth - valueSpacing - unitWidth),
+            unitWidth: unitWidth
         )
     }
 
     private func makeGlobalRuleLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
-        label.alignment = .right
+        label.alignment = .left
         label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -635,10 +644,8 @@ final class DashboardNotificationPages {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.setContentHuggingPriority(.required, for: .horizontal)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let valueWidth = unitText == nil ? columnMetrics.valueAreaWidth : columnMetrics.fieldWidth
-        if unitText == nil {
-            field.setFieldWidth(valueWidth)
-        }
+        let valueWidth = unitText == nil ? columnMetrics.valueAreaWidth : columnMetrics.percentFieldWidth
+        field.setFieldWidth(valueWidth)
         let fieldColumn = NSView()
         fieldColumn.translatesAutoresizingMaskIntoConstraints = false
         fieldColumn.addSubview(field)
@@ -655,7 +662,8 @@ final class DashboardNotificationPages {
         let group = NSStackView(views: views)
         group.orientation = .horizontal
         group.alignment = .centerY
-        group.spacing = columnMetrics.groupSpacing
+        group.spacing = columnMetrics.valueSpacing
+        group.widthAnchor.constraint(equalToConstant: columnMetrics.groupWidth).isActive = true
         group.setContentHuggingPriority(.required, for: .horizontal)
         group.setContentCompressionResistancePriority(.required, for: .horizontal)
         return group
