@@ -90,6 +90,51 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(client.deliveries.count, 1)
     }
 
+    func testApplyGlobalRulesClearsProviderOverrides() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.ApplyGlobalRules.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let key = BalanceNotificationResourceKey(
+            agent: .gpt,
+            providerID: "provider-a",
+            resourceID: "five-hour"
+        )
+        let otherKey = BalanceNotificationResourceKey(
+            agent: .gpt,
+            providerID: "provider-b",
+            resourceID: "five-hour"
+        )
+        let store = BalanceNotificationSettingsStore(defaults: defaults)
+        store.update { settings in
+            settings.upsert(BalanceNotificationResourceRule(
+                key: key,
+                kind: .quotaPercent,
+                enabled: false,
+                firstThreshold: 5,
+                secondEnabled: true,
+                secondThreshold: 2,
+                usesGlobalDefaults: false
+            ))
+            settings.upsert(BalanceNotificationResourceRule(
+                key: otherKey,
+                kind: .quotaPercent,
+                enabled: false,
+                firstThreshold: 5,
+                secondEnabled: true,
+                secondThreshold: 2,
+                usesGlobalDefaults: false
+            ))
+        }
+
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        coordinator.applyGlobalRules(to: .gpt, providerIDs: ["provider-a"])
+
+        XCTAssertNil(coordinator.settings.rule(for: key))
+        XCTAssertNotNil(coordinator.settings.rule(for: otherKey))
+    }
+
     func testPermissionDenialKeepsConfigurationAndCoalescesAgentResources() {
         let client = FakeBalanceNotificationClient(status: .unknown, requestResult: false)
         let suiteName = "BalanceNotificationCoordinatorTests.\(UUID().uuidString)"

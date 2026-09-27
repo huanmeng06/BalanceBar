@@ -41,3 +41,10 @@
 "notifications.second_reminder" = "Segundo aviso:";
 "notifications.agent_follows_global" = "Usa las reglas globales";
 "notifications.agent_customized" = "Adaptado por separado";
+
+"notifications.apply_global_rules" = "Aplicar";
+"notifications.apply_global_rules_title" = "Aplicar reglas generales de recordatorio a todos";
+"notifications.apply_global_rules_detail" = "Aplicar las reglas de recordatorio compartidas a todos los Provider";
+"notifications.apply_global_rules_message" = "Aplicar las reglas de recordatorio compartidas";
+"notifications.apply_global_rules_confirm" = "Aplicar";
+"notifications.apply_global_rules_cancel" = "Cancelar";

@@ -41,3 +41,10 @@
 "notifications.second_reminder" = "두 번째 알림:";
 "notifications.agent_follows_global" = "전역 규칙 따름";
 "notifications.agent_customized" = "개별 설정됨";
+
+"notifications.apply_global_rules" = "적용";
+"notifications.apply_global_rules_title" = "모든 항목에 공통 알림 규칙 적용";
+"notifications.apply_global_rules_detail" = "모든 Provider에 공통 알림 규칙을 적용합니다";
+"notifications.apply_global_rules_message" = "공통 알림 규칙을 적용할까요";
+"notifications.apply_global_rules_confirm" = "적용";
+"notifications.apply_global_rules_cancel" = "취소";

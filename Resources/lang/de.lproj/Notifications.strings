@@ -41,3 +41,10 @@
 "notifications.second_reminder" = "Zweite Erinnerung:";
 "notifications.agent_follows_global" = "Globale Regeln verwenden";
 "notifications.agent_customized" = "Individuell angepasst";
+
+"notifications.apply_global_rules" = "Anwenden";
+"notifications.apply_global_rules_title" = "Allgemeine Erinnerungsregeln auf alle anwenden";
+"notifications.apply_global_rules_detail" = "Die gemeinsamen Erinnerungsregeln auf alle Provider anwenden";
+"notifications.apply_global_rules_message" = "Gemeinsame Erinnerungsregeln anwenden";
+"notifications.apply_global_rules_confirm" = "Anwenden";
+"notifications.apply_global_rules_cancel" = "Abbrechen";

@@ -41,3 +41,10 @@
 "notifications.second_reminder" = "Second reminder:";
 "notifications.agent_follows_global" = "Following global rules";
 "notifications.agent_customized" = "Customized";
+
+"notifications.apply_global_rules" = "Apply";
+"notifications.apply_global_rules_title" = "Apply general reminder rules to all";
+"notifications.apply_global_rules_detail" = "Apply the shared reminder rules to every Provider";
+"notifications.apply_global_rules_message" = "Apply the shared reminder rules";
+"notifications.apply_global_rules_confirm" = "Apply";
+"notifications.apply_global_rules_cancel" = "Cancel";

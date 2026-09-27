@@ -41,3 +41,10 @@
 "notifications.second_reminder" = "Secondo promemoria:";
 "notifications.agent_follows_global" = "Segue le regole globali";
 "notifications.agent_customized" = "Personalizzato";
+
+"notifications.apply_global_rules" = "Applica";
+"notifications.apply_global_rules_title" = "Applica le regole di promemoria generali a tutti";
+"notifications.apply_global_rules_detail" = "Applica le regole di promemoria condivise a tutti i Provider";
+"notifications.apply_global_rules_message" = "Applicare le regole di promemoria condivise";
+"notifications.apply_global_rules_confirm" = "Applica";
+"notifications.apply_global_rules_cancel" = "Annulla";

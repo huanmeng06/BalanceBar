@@ -41,3 +41,10 @@
 "notifications.second_reminder" = "2 回目の通知：";
 "notifications.agent_follows_global" = "全体のルールに従う";
 "notifications.agent_customized" = "個別に設定済み";
+
+"notifications.apply_global_rules" = "適用";
+"notifications.apply_global_rules_title" = "すべてに共通の通知ルールを適用";
+"notifications.apply_global_rules_detail" = "すべての Provider に共通の通知ルールを適用します";
+"notifications.apply_global_rules_message" = "共通の通知ルールを適用しますか";
+"notifications.apply_global_rules_confirm" = "適用";
+"notifications.apply_global_rules_cancel" = "キャンセル";

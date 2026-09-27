@@ -18,6 +18,7 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
     var onResume: (() -> Void)?
     var onAgent: ((BalanceNotificationAgent) -> Void)?
     var onProvider: ((BalanceNotificationAgent, String) -> Void)?
+    var onApplyGlobalRules: ((BalanceNotificationAgent) -> Void)?
 
     @objc func globalToggle(_ sender: NSSwitch) { onGlobalToggle?(sender.state == .on) }
 
@@ -74,6 +75,12 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
     @objc func provider(_ sender: NSButton) {
         guard let (agent, providerID) = provider(from: sender) else { return }
         onProvider?(agent, providerID)
+    }
+
+    @objc func applyGlobalRules(_ sender: NSButton) {
+        guard let raw = metadata(from: sender, prefix: "apply-global-rules"),
+              let agent = BalanceNotificationAgent(rawValue: raw) else { return }
+        onApplyGlobalRules?(agent)
     }
 
 
@@ -219,6 +226,11 @@ final class DashboardNotificationPages {
     private var providerAdvancedButtons: [String: NSButton] = [:]
     private var resourceRuleRows: [BalanceNotificationResourceKey: ResourceRuleRows] = [:]
     private var pauseTimer: Timer?
+    private var applyGlobalRulesAlert: NSAlert?
+
+    var applyGlobalRulesAlertForTesting: NSAlert? {
+        applyGlobalRulesAlert
+    }
 
     private enum NotificationPagePath: Equatable {
         case root
@@ -410,6 +422,9 @@ final class DashboardNotificationPages {
             }
             self.path.append(.provider(agent, providerID))
             self.rebuild()
+        }
+        relay.onApplyGlobalRules = { [weak self] agent in
+            self?.presentApplyGlobalRulesConfirmation(for: agent)
         }
         container.translatesAutoresizingMaskIntoConstraints = false
     }
@@ -956,21 +971,38 @@ final class DashboardNotificationPages {
         let settings = configuration.coordinator.settings
         providerRows.removeAll(keepingCapacity: true)
         providerAdvancedButtons.removeAll(keepingCapacity: true)
-        var rows: [NSView] = []
+        var providerViews: [NSView] = []
         if providers.isEmpty {
-            rows.append(SettingsRowView(
+            providerViews.append(SettingsRowView(
                 title: agent.title,
                 detail: tr("notifications.no_providers")
             ))
         } else {
-            rows.append(contentsOf: providers.map { provider in
+            providerViews.append(contentsOf: providers.map { provider in
                 let row = makeProviderRow(agent: agent, provider: provider, settings: settings)
                 providerRows[providerRowKey(agent, providerID: provider.id)] = row
                 return row
             })
         }
+        let applyButton = NSButton(
+            title: tr("notifications.apply_global_rules"),
+            target: relay,
+            action: #selector(DashboardNotificationPageRelay.applyGlobalRules(_:))
+        )
+        applyButton.identifier = NSUserInterfaceItemIdentifier("apply-global-rules:\(agent.rawValue)")
+        let applyRow = SettingsRowView(
+            title: tr("notifications.apply_global_rules_title"),
+            detail: tr("notifications.apply_global_rules_detail"),
+            accessoryView: applyButton
+        )
+        let applySection = SettingsSectionView(
+            title: "\(agent.title) · \(tr("notifications.advanced_settings"))",
+            contentViews: [applyRow]
+        )
+        let providerSection = SettingsSectionView(title: "", contentViews: providerViews)
         return DashboardSettingsComponents.makeSettingsPageContent([
-            SettingsSectionView(title: "\(agent.title) · \(tr("notifications.advanced_settings"))", contentViews: rows)
+            applySection,
+            providerSection
         ])
     }
 
@@ -1017,6 +1049,29 @@ final class DashboardNotificationPages {
         providerAdvancedButtons[key]?.isHidden = !enabled
         providerAdvancedButtons[key]?.superview?.needsLayout = true
         row.updateDetail(enabled ? tr("notifications.agent_enabled") : tr("notifications.agent_disabled"))
+    }
+
+    private func presentApplyGlobalRulesConfirmation(for agent: BalanceNotificationAgent) {
+        if applyGlobalRulesAlert?.window.sheetParent != nil { return }
+        guard let hostWindow = currentPage?.window ?? container.window else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = tr("notifications.apply_global_rules_message")
+        alert.informativeText = tr("notifications.apply_global_rules_detail")
+        alert.addButton(withTitle: tr("notifications.apply_global_rules_confirm"))
+        alert.addButton(withTitle: tr("notifications.apply_global_rules_cancel"))
+        alert.buttons[0].keyEquivalent = "\r"
+        alert.buttons[1].keyEquivalent = "\u{1b}"
+        alert.buttons[1].keyEquivalentModifierMask = []
+        applyGlobalRulesAlert = alert
+        alert.beginSheetModal(for: hostWindow) { [weak self] response in
+            guard let self else { return }
+            self.applyGlobalRulesAlert = nil
+            guard response == .alertFirstButtonReturn else { return }
+            let providerIDs = self.configuration.providerChoices(agent).map(\.id)
+            self.configuration.coordinator.applyGlobalRules(to: agent, providerIDs: providerIDs)
+        }
     }
 
     private func makeProviderPage(_ agent: BalanceNotificationAgent, providerID: String) -> NSView {

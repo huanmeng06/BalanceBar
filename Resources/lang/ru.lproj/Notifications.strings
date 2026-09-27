@@ -41,3 +41,10 @@
 "notifications.second_reminder" = "Второе оповещение:";
 "notifications.agent_follows_global" = "Следует глобальным правилам";
 "notifications.agent_customized" = "Настроено отдельно";
+
+"notifications.apply_global_rules" = "Применить";
+"notifications.apply_global_rules_title" = "Применить общие правила напоминаний ко всем";
+"notifications.apply_global_rules_detail" = "Применить общие правила напоминаний ко всем Provider";
+"notifications.apply_global_rules_message" = "Применить общие правила напоминаний";
+"notifications.apply_global_rules_confirm" = "Применить";
+"notifications.apply_global_rules_cancel" = "Отмена";

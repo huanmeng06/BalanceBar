@@ -211,6 +211,45 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(gptButton.isHidden)
     }
 
+    func testAgentPagePlacesApplyGlobalRulesBeforeProviderCards() throws {
+        let suiteName = "DashboardPreferencePagesTests.ApplyGlobalRules.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: DashboardNotificationTestClient()
+        )
+        let pages = DashboardNotificationPages(configuration: .init(
+            coordinator: coordinator,
+            providerChoices: { agent in
+                agent == .gpt
+                    ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)]
+                    : []
+            }
+        ))
+        let page = pages.make()
+        XCTAssertTrue(pages.showNavigationRoute("notifications/agent/gpt"))
+
+        let sections = descendants(of: page).compactMap { $0 as? SettingsSectionView }
+        XCTAssertEqual(sections.count, 2)
+        let applyButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "apply-global-rules:gpt" }
+        )
+        XCTAssertEqual(applyButton.title, tr("notifications.apply_global_rules"))
+        let applyRow = try XCTUnwrap(SettingsRowView.enclosing(applyButton))
+        XCTAssertEqual(applyRow.titleLabel.stringValue, tr("notifications.apply_global_rules_title"))
+        XCTAssertTrue(sections[0] === SettingsSectionView.enclosing(applyButton))
+        XCTAssertTrue(
+            sections[1].contentViews.contains {
+                ($0 as? SettingsRowView)?.titleLabel.stringValue == "OpenAI Official"
+            }
+        )
+    }
+
     func testSharedNumericTextFieldUsesNativeCompactConfiguration() {
         let target = NumericTextFieldTestTarget()
         let compactFont = NSFont.monospacedDigitSystemFont(

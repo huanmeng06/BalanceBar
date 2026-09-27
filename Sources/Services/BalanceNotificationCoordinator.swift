@@ -265,6 +265,23 @@ final class BalanceNotificationCoordinator {
         }
     }
 
+    /// Clears every local rule for the selected Agent's providers. Providers
+    /// then resolve through `defaultRule`, which makes their thresholds,
+    /// enabled state, and second-alert state follow the shared configuration.
+    func applyGlobalRules(
+        to agent: BalanceNotificationAgent,
+        providerIDs: [String]
+    ) {
+        let providerSet = Set(providerIDs)
+        onQueue {
+            self.store.update { settings in
+                settings.resourceRules.removeAll { rule in
+                    rule.key.agent == agent && providerSet.contains(rule.key.providerID)
+                }
+            }
+        }
+    }
+
     func updateRule(
         key: BalanceNotificationResourceKey,
         kind: BalanceNotificationResourceKind,
