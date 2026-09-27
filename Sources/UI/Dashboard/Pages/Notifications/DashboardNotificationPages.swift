@@ -469,7 +469,7 @@ final class DashboardNotificationPages {
         heading.font = SettingsSectionView.headingFont
         heading.setContentHuggingPriority(.required, for: .vertical)
         let subtitle = NSTextField(labelWithString: tr("notifications.global_rules_hint"))
-        subtitle.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
+        subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = .secondaryLabelColor
         subtitle.setContentHuggingPriority(.required, for: .vertical)
 
