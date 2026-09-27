@@ -565,7 +565,6 @@ final class DashboardNotificationPages {
         accessory.distribution = .fill
         let accessoryWidth = Self.globalRuleTabWidth * 2 + Self.globalRuleTabSpacing
         let accessoryWidthConstraint = accessory.widthAnchor.constraint(equalToConstant: accessoryWidth)
-        accessoryWidthConstraint.priority = NSLayoutConstraint.Priority(999)
         accessoryWidthConstraint.isActive = true
         accessory.setContentHuggingPriority(.required, for: .horizontal)
         accessory.setContentCompressionResistancePriority(.required, for: .horizontal)
