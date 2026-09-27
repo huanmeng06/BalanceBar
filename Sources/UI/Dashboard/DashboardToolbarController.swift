@@ -8,18 +8,16 @@ import AppKit
 /// configures the public item, forwards Cmd+F / Esc to
 /// `beginSearchInteraction()` / `endSearchInteraction()`, keeps draft text
 /// separate from the committed query, and submits through Return/search.
-final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate, NSToolbarItemValidation {
+final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
     static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
     static let refreshItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardRefresh")
-    static let backItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardBack")
-    static let forwardItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardForward")
+    static let navigationItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardNavigation")
     static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
         .flexibleSpace,
         .toggleSidebar,
         .sidebarTrackingSeparator,
-        backItemIdentifier,
-        forwardItemIdentifier,
+        navigationItemIdentifier,
         .flexibleSpace,
         refreshItemIdentifier,
         searchItemIdentifier
@@ -43,18 +41,26 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     private let searchItem: NSSearchToolbarItem
-    private lazy var backItem: NSToolbarItem = {
-        let item = NSToolbarItem(itemIdentifier: Self.backItemIdentifier)
-        item.target = self
-        item.action = #selector(goBack(_:))
-        item.isNavigational = true
-        item.autovalidates = false
-        return item
+    private lazy var navigationControl: NSSegmentedControl = {
+        let control = NSSegmentedControl(
+            images: [
+                NSImage(systemSymbolName: "chevron.backward", accessibilityDescription: nil)
+                    ?? NSImage(size: NSSize(width: 16, height: 16)),
+                NSImage(systemSymbolName: "chevron.forward", accessibilityDescription: nil)
+                    ?? NSImage(size: NSSize(width: 16, height: 16))
+            ],
+            trackingMode: .momentary,
+            target: self,
+            action: #selector(navigationSegmentPressed(_:))
+        )
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.setEnabled(canGoBack, forSegment: 0)
+        control.setEnabled(canGoForward, forSegment: 1)
+        return control
     }()
-    private lazy var forwardItem: NSToolbarItem = {
-        let item = NSToolbarItem(itemIdentifier: Self.forwardItemIdentifier)
-        item.target = self
-        item.action = #selector(goForward(_:))
+    private lazy var navigationItem: NSToolbarItem = {
+        let item = NSToolbarItem(itemIdentifier: Self.navigationItemIdentifier)
+        item.view = navigationControl
         item.isNavigational = true
         item.autovalidates = false
         return item
@@ -82,8 +88,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         self.window = window
         (window as? DashboardSearchWindow)?.searchController = self
         if let toolbar, window.toolbar === toolbar {
-            updateBackItemLabels()
-            updateForwardItemLabels()
+            updateNavigationItemLabels()
             setNavigationState(canGoBack: canGoBack, canGoForward: canGoForward)
             updateSearchItemLabels()
             updateRefreshItemLabels()
@@ -107,10 +112,9 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     func setNavigationState(canGoBack: Bool, canGoForward: Bool) {
         self.canGoBack = canGoBack
         self.canGoForward = canGoForward
-        backItem.autovalidates = false
-        forwardItem.autovalidates = false
-        backItem.isEnabled = canGoBack
-        forwardItem.isEnabled = canGoForward
+        navigationItem.autovalidates = false
+        navigationControl.setEnabled(canGoBack, forSegment: 0)
+        navigationControl.setEnabled(canGoForward, forSegment: 1)
     }
 
     func setQuery(_ query: String) {
@@ -140,8 +144,8 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         window = nil
         canGoBack = false
         canGoForward = false
-        backItem.isEnabled = false
-        forwardItem.isEnabled = false
+        navigationControl.setEnabled(false, forSegment: 0)
+        navigationControl.setEnabled(false, forSegment: 1)
         onGoBack = nil
         onGoForward = nil
     }
@@ -187,13 +191,9 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
-        if itemIdentifier == Self.backItemIdentifier {
-            updateBackItemLabels()
-            return backItem
-        }
-        if itemIdentifier == Self.forwardItemIdentifier {
-            updateForwardItemLabels()
-            return forwardItem
+        if itemIdentifier == Self.navigationItemIdentifier {
+            updateNavigationItemLabels()
+            return navigationItem
         }
         if itemIdentifier == Self.refreshItemIdentifier {
             configureRefreshItem()
@@ -218,14 +218,15 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         onGoForward?()
     }
 
-    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-        if item === backItem {
-            return canGoBack
+    @objc private func navigationSegmentPressed(_ sender: NSSegmentedControl) {
+        switch sender.selectedSegment {
+        case 0:
+            goBack(sender)
+        case 1:
+            goForward(sender)
+        default:
+            break
         }
-        if item === forwardItem {
-            return canGoForward
-        }
-        return true
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) {
@@ -307,32 +308,26 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         refreshItem.action = #selector(manualRefresh(_:))
     }
 
-    private func updateBackItemLabels() {
-        let label = tr(.keyDashboardNavigationBack)
-        backItem.label = label
-        backItem.paletteLabel = label
-        backItem.toolTip = label
-        backItem.image = NSImage(
-            systemSymbolName: "chevron.backward",
-            accessibilityDescription: label
+    private func updateNavigationItemLabels() {
+        let backLabel = tr(.keyDashboardNavigationBack)
+        let forwardLabel = tr(.keyDashboardNavigationForward)
+        navigationControl.setLabel(backLabel, forSegment: 0)
+        navigationControl.setLabel(forwardLabel, forSegment: 1)
+        navigationControl.setToolTip(backLabel, forSegment: 0)
+        navigationControl.setToolTip(forwardLabel, forSegment: 1)
+        navigationControl.setImage(
+            NSImage(systemSymbolName: "chevron.backward", accessibilityDescription: backLabel),
+            forSegment: 0
         )
-        backItem.target = self
-        backItem.action = #selector(goBack(_:))
-        backItem.autovalidates = false
-    }
-
-    private func updateForwardItemLabels() {
-        let label = tr(.keyDashboardNavigationForward)
-        forwardItem.label = label
-        forwardItem.paletteLabel = label
-        forwardItem.toolTip = label
-        forwardItem.image = NSImage(
-            systemSymbolName: "chevron.forward",
-            accessibilityDescription: label
+        navigationControl.setImage(
+            NSImage(systemSymbolName: "chevron.forward", accessibilityDescription: forwardLabel),
+            forSegment: 1
         )
-        forwardItem.target = self
-        forwardItem.action = #selector(goForward(_:))
-        forwardItem.autovalidates = false
+        navigationItem.label = "(backLabel) / (forwardLabel)"
+        navigationItem.paletteLabel = navigationItem.label
+        navigationItem.toolTip = navigationItem.label
+        navigationItem.isNavigational = true
+        navigationItem.autovalidates = false
     }
 
     private func updateRefreshItemLabels() {

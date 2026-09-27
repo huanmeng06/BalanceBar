@@ -1320,8 +1320,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
-                DashboardToolbarController.backItemIdentifier,
-                DashboardToolbarController.forwardItemIdentifier,
+                DashboardToolbarController.navigationItemIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -1343,8 +1342,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
-                DashboardToolbarController.backItemIdentifier,
-                DashboardToolbarController.forwardItemIdentifier,
+                DashboardToolbarController.navigationItemIdentifier,
                 .flexibleSpace,
                 DashboardToolbarController.refreshItemIdentifier,
                 DashboardToolbarController.searchItemIdentifier
@@ -1357,8 +1355,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             $0 != .flexibleSpace
                 && $0 != .toggleSidebar
                 && $0 != .sidebarTrackingSeparator
-                && $0 != DashboardToolbarController.backItemIdentifier
-                && $0 != DashboardToolbarController.forwardItemIdentifier
+                && $0 != DashboardToolbarController.navigationItemIdentifier
                 && $0 != DashboardToolbarController.refreshItemIdentifier
                 && $0 != DashboardToolbarController.searchItemIdentifier
         }
@@ -1368,22 +1365,17 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
-        let backItem = try XCTUnwrap(
-            toolbar.items.first { $0.itemIdentifier == DashboardToolbarController.backItemIdentifier },
+        let navigationItem = try XCTUnwrap(
+            toolbar.items.first { $0.itemIdentifier == DashboardToolbarController.navigationItemIdentifier },
             file: file,
             line: line
         )
-        let forwardItem = try XCTUnwrap(
-            toolbar.items.first { $0.itemIdentifier == DashboardToolbarController.forwardItemIdentifier },
-            file: file,
-            line: line
-        )
-        XCTAssertTrue(backItem.isNavigational, file: file, line: line)
-        XCTAssertTrue(forwardItem.isNavigational, file: file, line: line)
-        XCTAssertFalse(backItem.autovalidates, file: file, line: line)
-        XCTAssertFalse(forwardItem.autovalidates, file: file, line: line)
-        XCTAssertNotNil(backItem.image, file: file, line: line)
-        XCTAssertNotNil(forwardItem.image, file: file, line: line)
+        let navigationControl = try XCTUnwrap(navigationItem.view as? NSSegmentedControl, file: file, line: line)
+        XCTAssertTrue(navigationItem.isNavigational, file: file, line: line)
+        XCTAssertFalse(navigationItem.autovalidates, file: file, line: line)
+        XCTAssertEqual(navigationControl.segmentCount, 2, file: file, line: line)
+        XCTAssertNotNil(navigationControl.image(forSegment: 0), file: file, line: line)
+        XCTAssertNotNil(navigationControl.image(forSegment: 1), file: file, line: line)
         XCTAssertTrue(
             toolbar.items.contains { $0.itemIdentifier == .sidebarTrackingSeparator && $0 is NSTrackingSeparatorToolbarItem },
             "Tracking separator must be NSTrackingSeparatorToolbarItem, not a fake NSView spacer",
