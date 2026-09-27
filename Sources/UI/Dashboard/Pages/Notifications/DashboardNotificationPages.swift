@@ -160,6 +160,12 @@ final class DashboardNotificationPages {
         case resource(BalanceNotificationResourceKey)
     }
 
+    private struct GlobalRuleColumnMetrics {
+        let labelWidth: CGFloat
+        let fieldWidth: CGFloat
+        let unitWidth: CGFloat
+    }
+
     init(configuration: DashboardNotificationPageConfiguration) {
         self.configuration = configuration
         relay.onGlobalToggle = { [weak self] enabled in
@@ -472,6 +478,7 @@ final class DashboardNotificationPages {
         subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = .secondaryLabelColor
         subtitle.setContentHuggingPriority(.required, for: .vertical)
+        let columnMetrics = makeGlobalRuleColumnMetrics()
 
         let fiveHourKey = BalanceNotificationResourceKey(
             agent: .gpt,
@@ -493,7 +500,8 @@ final class DashboardNotificationPages {
             accessoryView: makeGlobalRuleAccessory(
                 resourceID: fiveHourKey.resourceID,
                 thresholds: settings.globalThresholds(for: fiveHourKey, kind: .quotaPercent),
-                kind: .quotaPercent
+                kind: .quotaPercent,
+                columnMetrics: columnMetrics
             )
         )
         let sevenDay = SettingsRowView(
@@ -501,7 +509,8 @@ final class DashboardNotificationPages {
             accessoryView: makeGlobalRuleAccessory(
                 resourceID: sevenDayKey.resourceID,
                 thresholds: settings.globalThresholds(for: sevenDayKey, kind: .quotaPercent),
-                kind: .quotaPercent
+                kind: .quotaPercent,
+                columnMetrics: columnMetrics
             )
         )
         let balance = SettingsRowView(
@@ -509,7 +518,8 @@ final class DashboardNotificationPages {
             accessoryView: makeGlobalRuleAccessory(
                 resourceID: balanceKey.resourceID,
                 thresholds: settings.globalThresholds(for: balanceKey, kind: .balance),
-                kind: .balance
+                kind: .balance,
+                columnMetrics: columnMetrics
             )
         )
         let card = SettingsSectionView(title: "", contentViews: [fiveHour, sevenDay, balance])
@@ -538,30 +548,38 @@ final class DashboardNotificationPages {
     private func makeGlobalRuleAccessory(
         resourceID: String,
         thresholds: (first: Double, second: Double),
-        kind: BalanceNotificationResourceKind
+        kind: BalanceNotificationResourceKind,
+        columnMetrics: GlobalRuleColumnMetrics
     ) -> DashboardAdaptiveControlsStackView {
         let firstLabel = makeGlobalRuleLabel(tr("notifications.first_reminder"))
         let secondLabel = makeGlobalRuleLabel(tr("notifications.second_reminder"))
-        let sharedLabelWidth = ceil(max(firstLabel.fittingSize.width, secondLabel.fittingSize.width))
         [firstLabel, secondLabel].forEach {
-            $0.widthAnchor.constraint(equalToConstant: sharedLabelWidth).isActive = true
+            $0.widthAnchor.constraint(equalToConstant: columnMetrics.labelWidth).isActive = true
         }
         let second = makeGlobalRuleField(
             resourceID: resourceID,
             isSecond: true,
             value: thresholds.second,
-            kind: kind,
-            trailingViews: kind == .quotaPercent ? [makeGlobalRuleUnitLabel("%")] : []
+            kind: kind
         )
         let firstWithUnit = makeGlobalRuleField(
             resourceID: resourceID,
             isSecond: false,
             value: thresholds.first,
-            kind: kind,
-            trailingViews: kind == .quotaPercent ? [makeGlobalRuleUnitLabel("%")] : []
+            kind: kind
         )
-        let firstGroup = makeGlobalRuleGroup(label: firstLabel, field: firstWithUnit)
-        let secondGroup = makeGlobalRuleGroup(label: secondLabel, field: second)
+        let firstGroup = makeGlobalRuleGroup(
+            label: firstLabel,
+            field: firstWithUnit,
+            unitText: kind == .quotaPercent ? "%" : nil,
+            columnMetrics: columnMetrics
+        )
+        let secondGroup = makeGlobalRuleGroup(
+            label: secondLabel,
+            field: second,
+            unitText: kind == .quotaPercent ? "%" : nil,
+            columnMetrics: columnMetrics
+        )
         let accessory = DashboardAdaptiveControlsStackView(views: [firstGroup, secondGroup])
         accessory.orientation = .horizontal
         accessory.alignment = .centerY
@@ -569,6 +587,29 @@ final class DashboardNotificationPages {
         accessory.allowsTextDrivenDedicatedRow = true
         accessory.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         return accessory
+    }
+
+    private func makeGlobalRuleColumnMetrics() -> GlobalRuleColumnMetrics {
+        let firstLabel = makeGlobalRuleLabel(tr("notifications.first_reminder"))
+        let secondLabel = makeGlobalRuleLabel(tr("notifications.second_reminder"))
+        let quotaField = makeGlobalRuleField(
+            resourceID: "column-metrics-quota",
+            isSecond: false,
+            value: 0,
+            kind: .quotaPercent
+        )
+        let balanceField = makeGlobalRuleField(
+            resourceID: "column-metrics-balance",
+            isSecond: false,
+            value: 0,
+            kind: .balance
+        )
+        let unit = makeGlobalRuleUnitSlot(nil)
+        return GlobalRuleColumnMetrics(
+            labelWidth: ceil(max(firstLabel.fittingSize.width, secondLabel.fittingSize.width)),
+            fieldWidth: ceil(max(quotaField.fittingSize.width, balanceField.fittingSize.width)),
+            unitWidth: unit.fittingSize.width
+        )
     }
 
     private func makeGlobalRuleLabel(_ text: String) -> NSTextField {
@@ -583,12 +624,24 @@ final class DashboardNotificationPages {
 
     private func makeGlobalRuleGroup(
         label: NSTextField,
-        field: DashboardSettingsComponents.CompactNumericFieldAccessory
+        field: DashboardSettingsComponents.CompactNumericFieldAccessory,
+        unitText: String?,
+        columnMetrics: GlobalRuleColumnMetrics
     ) -> NSStackView {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.setContentHuggingPriority(.required, for: .horizontal)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let group = NSStackView(views: [label, field])
+        let fieldColumn = NSView()
+        fieldColumn.translatesAutoresizingMaskIntoConstraints = false
+        fieldColumn.addSubview(field)
+        fieldColumn.widthAnchor.constraint(equalToConstant: columnMetrics.fieldWidth).isActive = true
+        NSLayoutConstraint.activate([
+            field.trailingAnchor.constraint(equalTo: fieldColumn.trailingAnchor),
+            field.topAnchor.constraint(equalTo: fieldColumn.topAnchor),
+            field.bottomAnchor.constraint(equalTo: fieldColumn.bottomAnchor)
+        ])
+        let unit = makeGlobalRuleUnitSlot(unitText, width: columnMetrics.unitWidth)
+        let group = NSStackView(views: [label, fieldColumn, unit])
         group.orientation = .horizontal
         group.alignment = .centerY
         group.spacing = 7
@@ -597,9 +650,11 @@ final class DashboardNotificationPages {
         return group
     }
 
-    private func makeGlobalRuleUnitLabel(_ text: String) -> NSTextField {
-        let unit = NSTextField(labelWithString: text)
+    private func makeGlobalRuleUnitSlot(_ text: String?, width: CGFloat? = nil) -> NSTextField {
+        let unit = NSTextField(labelWithString: text ?? "")
         unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
+        let percentWidth = ceil(("%" as NSString).size(withAttributes: [.font: unit.font as Any]).width)
+        unit.widthAnchor.constraint(equalToConstant: width ?? percentWidth).isActive = true
         unit.setContentHuggingPriority(.required, for: .horizontal)
         unit.setContentCompressionResistancePriority(.required, for: .horizontal)
         return unit
