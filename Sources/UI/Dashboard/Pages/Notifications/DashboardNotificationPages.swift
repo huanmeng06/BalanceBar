@@ -135,6 +135,72 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
     }
 }
 
+/// The reminder editor has two equal groups and therefore needs a deterministic
+/// natural width. It uses the same native AppKit stack behavior as the shared
+/// Dashboard controls, but does not remeasure different inner view trees for
+/// each row.
+private final class ReminderRuleAccessoryView: NSStackView, SettingsRowAccessoryLayout {
+    let groupWidth: CGFloat
+    let groupSpacing: CGFloat
+    var allowsTextDrivenDedicatedRow = false
+    var minimumInlineLabelWidth: CGFloat = 0
+
+    private var availableRowWidth = CGFloat.greatestFiniteMagnitude
+    private(set) var stacksControlsVertically = false
+
+    init(views: [NSView], groupWidth: CGFloat, groupSpacing: CGFloat) {
+        self.groupWidth = groupWidth
+        self.groupSpacing = groupSpacing
+        super.init(views: views)
+        orientation = .horizontal
+        alignment = .centerY
+        spacing = groupSpacing
+        translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    var naturalAccessoryWidth: CGFloat {
+        stacksControlsVertically ? groupWidth : groupWidth * 2 + groupSpacing
+    }
+
+    func updateAvailableRowWidth(_ width: CGFloat) {
+        availableRowWidth = max(0, width)
+        updateOrientationIfNeeded()
+    }
+
+    override func layout() {
+        updateOrientationIfNeeded()
+        super.layout()
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let visible = arrangedSubviews.filter { !$0.isHidden }
+        let heights = visible.map { $0.fittingSize.height }
+        let height: CGFloat
+        if stacksControlsVertically {
+            height = heights.reduce(0, +) + max(0, CGFloat(heights.count - 1)) * spacing
+        } else {
+            height = heights.max() ?? 0
+        }
+        return NSSize(width: naturalAccessoryWidth, height: height)
+    }
+
+    private func updateOrientationIfNeeded() {
+        let horizontalWidth = groupWidth * 2 + groupSpacing
+        let wantsVertical = availableRowWidth > 0 && availableRowWidth + 0.5 < horizontalWidth
+        guard wantsVertical != stacksControlsVertically else { return }
+        stacksControlsVertically = wantsVertical
+        orientation = wantsVertical ? .vertical : .horizontal
+        alignment = wantsVertical ? .trailing : .centerY
+        invalidateIntrinsicContentSize()
+        superview?.needsLayout = true
+        superview?.superview?.needsLayout = true
+    }
+}
+
 /// Native Dashboard pages for the notification hierarchy. Navigation stays
 /// inside the content pane so the existing Dashboard sidebar geometry and
 /// search behavior remain unchanged.
@@ -560,7 +626,7 @@ final class DashboardNotificationPages {
         thresholds: (first: Double, second: Double),
         kind: BalanceNotificationResourceKind,
         columnMetrics: GlobalRuleColumnMetrics
-    ) -> DashboardAdaptiveControlsStackView {
+    ) -> ReminderRuleAccessoryView {
         let firstLabel = makeGlobalRuleLabel(tr("notifications.first_reminder"))
         let secondLabel = makeGlobalRuleLabel(tr("notifications.second_reminder"))
         [firstLabel, secondLabel].forEach {
@@ -590,10 +656,11 @@ final class DashboardNotificationPages {
             unitText: kind == .quotaPercent ? "%" : nil,
             columnMetrics: columnMetrics
         )
-        let accessory = DashboardAdaptiveControlsStackView(views: [firstGroup, secondGroup])
-        accessory.orientation = .horizontal
-        accessory.alignment = .centerY
-        accessory.spacing = columnMetrics.groupSpacing
+        let accessory = ReminderRuleAccessoryView(
+            views: [firstGroup, secondGroup],
+            groupWidth: columnMetrics.groupWidth,
+            groupSpacing: columnMetrics.groupSpacing
+        )
         accessory.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         return accessory
     }
@@ -607,20 +674,12 @@ final class DashboardNotificationPages {
             value: 0,
             kind: .quotaPercent
         )
-        let balanceField = makeGlobalRuleField(
-            resourceID: "column-metrics-balance",
-            isSecond: false,
-            value: 0,
-            kind: .balance
-        )
         let unit = makeGlobalRuleUnitSlot(nil)
         let quotaNaturalWidth = ceil(quotaField.fittingSize.width)
-        let balanceNaturalWidth = ceil(balanceField.fittingSize.width)
         let unitWidth = unit.fittingSize.width
-        let valueSpacing: CGFloat = 7
         return GlobalRuleColumnMetrics(
             labelWidth: ceil(max(firstLabel.fittingSize.width, secondLabel.fittingSize.width)),
-            percentFieldWidth: max(quotaNaturalWidth, balanceNaturalWidth - valueSpacing - unitWidth),
+            percentFieldWidth: quotaNaturalWidth,
             unitWidth: unitWidth
         )
     }
