@@ -164,6 +164,11 @@ final class DashboardNotificationPages {
         let labelWidth: CGFloat
         let fieldWidth: CGFloat
         let unitWidth: CGFloat
+        let groupSpacing: CGFloat = 7
+
+        var valueAreaWidth: CGFloat {
+            fieldWidth + groupSpacing + unitWidth
+        }
     }
 
     init(configuration: DashboardNotificationPageConfiguration) {
@@ -584,8 +589,7 @@ final class DashboardNotificationPages {
         accessory.orientation = .horizontal
         accessory.alignment = .centerY
         accessory.spacing = 12
-        accessory.allowsTextDrivenDedicatedRow = true
-        accessory.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        accessory.minimumInlineLabelWidth = 0
         return accessory
     }
 
@@ -631,20 +635,27 @@ final class DashboardNotificationPages {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.setContentHuggingPriority(.required, for: .horizontal)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let valueWidth = unitText == nil ? columnMetrics.valueAreaWidth : columnMetrics.fieldWidth
+        if unitText == nil {
+            field.setFieldWidth(valueWidth)
+        }
         let fieldColumn = NSView()
         fieldColumn.translatesAutoresizingMaskIntoConstraints = false
         fieldColumn.addSubview(field)
-        fieldColumn.widthAnchor.constraint(equalToConstant: columnMetrics.fieldWidth).isActive = true
+        fieldColumn.widthAnchor.constraint(equalToConstant: valueWidth).isActive = true
         NSLayoutConstraint.activate([
             field.trailingAnchor.constraint(equalTo: fieldColumn.trailingAnchor),
             field.topAnchor.constraint(equalTo: fieldColumn.topAnchor),
             field.bottomAnchor.constraint(equalTo: fieldColumn.bottomAnchor)
         ])
-        let unit = makeGlobalRuleUnitSlot(unitText, width: columnMetrics.unitWidth)
-        let group = NSStackView(views: [label, fieldColumn, unit])
+        var views: [NSView] = [label, fieldColumn]
+        if let unitText {
+            views.append(makeGlobalRuleUnitSlot(unitText, width: columnMetrics.unitWidth))
+        }
+        let group = NSStackView(views: views)
         group.orientation = .horizontal
         group.alignment = .centerY
-        group.spacing = 7
+        group.spacing = columnMetrics.groupSpacing
         group.setContentHuggingPriority(.required, for: .horizontal)
         group.setContentCompressionResistancePriority(.required, for: .horizontal)
         return group
