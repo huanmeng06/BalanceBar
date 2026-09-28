@@ -223,6 +223,15 @@ final class UsageScriptRequestParserTests: XCTestCase {
         )
     }
 
+    func testFallsBackToURLKeyInsideStringWhenNoCodeKeyExists() {
+        // Legacy fixture from scripts/probes/balance-query-probe.sh.
+        let code = "const u = `url: \"{{baseUrl}}/v1/usage\"`;"
+        XCTAssertEqual(
+            UsageScriptRequestParser.parseRequest(from: code)?.urlTemplate,
+            "{{baseUrl}}/v1/usage"
+        )
+    }
+
     func testExtractsHeadersAndDropsUnevaluableValues() {
         let code = """
         ({ request: {

@@ -172,24 +172,29 @@ private struct UsageScriptExpressionEvaluator {
     // MARK: - Locating keys and declarations
 
     /// Matches `url:`, `"url":` and `'url':`, but not `baseUrl:` or `response.url`.
+    /// Keys in live code come first; keys inside strings or comments are kept as a fallback
+    /// because the legacy regex matched them (e.g. ``const u = `url: "…"` ``).
     private func valueStarts(forKey key: String) -> [Int] {
         let escaped = NSRegularExpression.escapedPattern(for: key)
-        return matchEnds(of: "(?<![A-Za-z0-9_$.])([\"']?)\(escaped)\\1\\s*:")
+        let matches = matches(of: "(?<![A-Za-z0-9_$.])([\"']?)\(escaped)\\1\\s*:")
+        return matches.filter(\.inCode).map(\.end) + matches.filter { !$0.inCode }.map(\.end)
     }
 
     private func declarationStarts(of name: String) -> [Int] {
         let escaped = NSRegularExpression.escapedPattern(for: name)
-        return matchEnds(of: "(?<![A-Za-z0-9_$.])(?:const|let|var)\\s+\(escaped)\\s*=(?!=)")
+        return matches(of: "(?<![A-Za-z0-9_$.])(?:const|let|var)\\s+\(escaped)\\s*=(?!=)")
+            .filter(\.inCode)
+            .map(\.end)
     }
 
-    private func matchEnds(of pattern: String) -> [Int] {
+    private func matches(of pattern: String) -> [(end: Int, inCode: Bool)] {
         let text = String(source)
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
             guard let range = Range($0.range, in: text) else { return nil }
             let start = text.distance(from: text.startIndex, to: range.lowerBound)
-            guard start < isCode.count, isCode[start] else { return nil }
-            return text.distance(from: text.startIndex, to: range.upperBound)
+            let end = text.distance(from: text.startIndex, to: range.upperBound)
+            return (end, start < isCode.count && isCode[start])
         }
     }
 
