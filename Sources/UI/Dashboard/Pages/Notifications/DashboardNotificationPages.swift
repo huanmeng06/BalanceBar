@@ -363,6 +363,8 @@ final class DashboardNotificationPages {
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
+            // The Provider master gates delivery only. Resource switches and
+            // thresholds remain independently configured and reachable.
             self.updateProviderDetail(agent, providerID: providerID, enabled: enabled)
             self.updateProviderMasterRow(agent, providerID: providerID, enabled: enabled)
             coordinator.performAsync { coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID) }

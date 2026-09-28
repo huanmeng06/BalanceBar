@@ -139,12 +139,34 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let sections = descendants(of: page).compactMap { $0 as? SettingsSectionView }
         XCTAssertEqual(sections.count, 3)
         XCTAssertTrue(sections.contains { $0.headingLabel.stringValue == tr("notifications.provider_rules") })
+        let fiveHourSection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "5h" })
         let weeklySection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "7d" })
         let weeklyRows = weeklySection.contentViews.compactMap { $0 as? SettingsRowView }
         XCTAssertEqual(weeklyRows.count, 5)
         XCTAssertTrue(weeklyRows[2].isHidden)
         XCTAssertTrue(weeklyRows[3].isHidden)
         XCTAssertTrue(weeklyRows[4].isHidden)
+
+        let providerMaster = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "provider:gpt:openai" }
+        )
+        let fiveHourSwitch = try XCTUnwrap(
+            descendants(of: fiveHourSection).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour" }
+        )
+        let weeklySwitch = try XCTUnwrap(
+            descendants(of: weeklySection).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "resource:gpt:openai:weekly" }
+        )
+        XCTAssertEqual(fiveHourSwitch.state, .on)
+        XCTAssertEqual(weeklySwitch.state, .off)
+        providerMaster.state = .off
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(providerMaster.action), to: providerMaster.target, from: providerMaster))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(fiveHourSwitch.state, .on)
+        XCTAssertEqual(weeklySwitch.state, .off)
+        XCTAssertFalse(coordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
 
         let firstField = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSTextField }
