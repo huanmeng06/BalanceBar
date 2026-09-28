@@ -6,9 +6,11 @@ import Foundation
 /// `+` concatenation, parentheses, `const` / `let` / `var` identifiers, and
 /// `.replace` / `.replaceAll` / `.trim*` / case-conversion calls. `{{placeholder}}` tokens in
 /// literals are substituted before evaluation, matching CC Switch's own template injection.
-/// `method` is read the same way. `headers` and `extractor` are not interpreted:
-/// BalanceAPIClient still sends its own Bearer headers and BalanceResponseParser reads the
-/// response body.
+/// When the URL expression can't be fully evaluated, the leading literal is used instead.
+/// `method` and `headers` entries are read the same way; `headers` values that don't
+/// evaluate are dropped. The parsed method and headers are informational: BalanceAPIClient
+/// still sends GET with its own Bearer headers. `extractor` is not interpreted;
+/// BalanceResponseParser reads the response body.
 enum UsageScriptRequestParser {
     struct ParsedRequest: Equatable {
         let urlTemplate: String
@@ -24,9 +26,12 @@ enum UsageScriptRequestParser {
             source: Array(code),
             placeholders: placeholders
         )
-        guard let url = evaluator.firstValue(forKey: "url"), !url.isEmpty else { return nil }
+        // Fall back to the leading literal when the full expression can't be evaluated
+        // (e.g. `"{{baseUrl}}/self?id=" + userId`), matching the pre-evaluator behavior.
+        guard let url = evaluator.firstValue(forKey: "url") ?? evaluator.firstLiteralPrefix(forKey: "url"),
+              !url.isEmpty else { return nil }
         let method = evaluator.firstValue(forKey: "method").map { $0.uppercased() }
-        return ParsedRequest(urlTemplate: url, method: method, headers: [:])
+        return ParsedRequest(urlTemplate: url, method: method, headers: evaluator.firstObject(forKey: "headers"))
     }
 }
 
@@ -91,6 +96,77 @@ private struct UsageScriptExpressionEvaluator {
             if let value = concatenation(at: &index, depth: 0) { return value }
         }
         return nil
+    }
+
+    /// Raw body of the first string/template literal after `key:`, with `{{placeholder}}`
+    /// substitution but no `${}` evaluation.
+    func firstLiteralPrefix(forKey key: String) -> String? {
+        for start in valueStarts(forKey: key) {
+            var index = start
+            skipTrivia(&index)
+            guard index < source.count, ["\"", "'", "`"].contains(source[index]) else { continue }
+            let quote = source[index]
+            var cursor = index + 1
+            while cursor < source.count, source[cursor] != quote, quote == "`" || !source[cursor].isNewline {
+                cursor += 1
+            }
+            return substitutePlaceholders(in: String(source[(index + 1)..<cursor]))
+        }
+        return nil
+    }
+
+    /// Reads `key: { name: expr, "name": expr }`, keeping only entries whose values evaluate.
+    func firstObject(forKey key: String) -> [String: String] {
+        for start in valueStarts(forKey: key) {
+            var cursor = start
+            skipTrivia(&cursor)
+            guard cursor < source.count, source[cursor] == "{" else { continue }
+            cursor += 1
+            var result: [String: String] = [:]
+            while true {
+                skipTrivia(&cursor)
+                guard cursor < source.count else { return result }
+                if source[cursor] == "}" { return result }
+                let name: String?
+                if source[cursor] == "\"" || source[cursor] == "'" {
+                    name = stringLiteral(at: &cursor)
+                } else {
+                    name = identifier(at: &cursor)
+                }
+                skipTrivia(&cursor)
+                guard let name, cursor < source.count, source[cursor] == ":" else { return result }
+                cursor += 1
+                var valueEnd = cursor
+                if let value = concatenation(at: &valueEnd, depth: 0) {
+                    result[name] = value
+                    cursor = valueEnd
+                } else if !skipValue(&cursor) {
+                    return result
+                }
+                skipTrivia(&cursor)
+                guard cursor < source.count, source[cursor] == "," else { return result }
+                cursor += 1
+            }
+        }
+        return [:]
+    }
+
+    /// Advances past an unevaluable value to the next top-level `,` or `}`.
+    private func skipValue(_ index: inout Int) -> Bool {
+        var depth = 0
+        while index < source.count {
+            if isCode[index] {
+                switch source[index] {
+                case "(", "[", "{": depth += 1
+                case ")", "]": depth -= 1
+                case "}" where depth == 0, "," where depth == 0: return true
+                case "}": depth -= 1
+                default: break
+                }
+            }
+            index += 1
+        }
+        return false
     }
 
     // MARK: - Locating keys and declarations
@@ -221,6 +297,7 @@ private struct UsageScriptExpressionEvaluator {
             if flags.contains("m") { options.insert(.anchorsMatchLines) }
             if flags.contains("s") { options.insert(.dotMatchesLineSeparators) }
             guard let regex = try? NSRegularExpression(pattern: body, options: options) else { return nil }
+            let replacement = Self.nsTemplate(fromJavaScript: replacement)
             let fullRange = NSRange(value.startIndex..., in: value)
             if all || flags.contains("g") {
                 return regex.stringByReplacingMatches(in: value, range: fullRange, withTemplate: replacement)
@@ -398,6 +475,14 @@ private struct UsageScriptExpressionEvaluator {
         }
         index = cursor
         return .regex(pattern: body, flags: flags)
+    }
+
+    /// Maps JS replacement syntax (`$&`, `$$`, literal `\`) onto NSRegularExpression templates.
+    private static func nsTemplate(fromJavaScript replacement: String) -> String {
+        replacement
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "$$", with: "\\$")
+            .replacingOccurrences(of: "$&", with: "$0")
     }
 
     private func substitutePlaceholders(in text: String) -> String {

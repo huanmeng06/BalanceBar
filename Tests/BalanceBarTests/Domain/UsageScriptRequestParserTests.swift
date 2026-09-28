@@ -209,4 +209,44 @@ final class UsageScriptRequestParserTests: XCTestCase {
         XCTAssertEqual(result?.urlTemplate, "{{baseUrl}}/balance")
         XCTAssertEqual(result?.method, "POST")
     }
+
+    func testFallsBackToLeadingLiteralWhenExpressionIsNotEvaluable() {
+        let concatenated = #"({ request: { url: "{{baseUrl}}/api/user/self?id=" + userId } })"#
+        XCTAssertEqual(
+            UsageScriptRequestParser.parseRequest(from: concatenated)?.urlTemplate,
+            "{{baseUrl}}/api/user/self?id="
+        )
+        let interpolated = "({ request: { url: `{{baseUrl}}/users/${userId}/balance` } })"
+        XCTAssertEqual(
+            UsageScriptRequestParser.parseRequest(from: interpolated)?.urlTemplate,
+            "{{baseUrl}}/users/${userId}/balance"
+        )
+    }
+
+    func testExtractsHeadersAndDropsUnevaluableValues() {
+        let code = """
+        ({ request: {
+          url: "{{baseUrl}}/u",
+          headers: {
+            "Authorization": "Bearer {{apiKey}}",
+            "New-Api-User": readUserId(),
+            Accept: 'application/json',
+          }
+        } })
+        """
+        let result = UsageScriptRequestParser.parseRequest(from: code)
+        XCTAssertEqual(result?.headers, [
+            "Authorization": "Bearer {{apiKey}}",
+            "Accept": "application/json"
+        ])
+    }
+
+    func testRegexReplaceSupportsJavaScriptReplacementTokens() {
+        let code = #"({ url: "{{baseUrl}}".replace(/v1/, "[$&]$$") })"#
+        let result = UsageScriptRequestParser.parseRequest(
+            from: code,
+            placeholders: ["baseUrl": "https://a.test/v1"]
+        )
+        XCTAssertEqual(result?.urlTemplate, "https://a.test/[v1]$")
+    }
 }
