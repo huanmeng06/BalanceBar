@@ -19,8 +19,6 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
     var onResume: (() -> Void)?
     var onAgent: ((BalanceNotificationAgent) -> Void)?
     var onProvider: ((BalanceNotificationAgent, String) -> Void)?
-    var onEditDefaultRules: (() -> Void)?
-    var onFinishDefaultRules: (() -> Void)?
     var onRuleSource: ((BalanceNotificationResourceKey, BalanceNotificationResourceKind, String?, Bool) -> Void)?
     var onRestoreDefaultRules: ((BalanceNotificationAgent) -> Void)?
 
@@ -64,10 +62,6 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
         onPauseSelection?(selection)
     }
     @objc func resume(_ sender: NSButton) { onResume?() }
-
-    @objc func editDefaultRules(_ sender: NSButton) { onEditDefaultRules?() }
-
-    @objc func finishDefaultRules(_ sender: NSButton) { onFinishDefaultRules?() }
 
     @objc func globalSecondToggle(_ sender: NSSwitch) {
         guard let raw = sender.identifier?.rawValue,
@@ -243,19 +237,18 @@ final class DashboardNotificationPages {
     private weak var pauseRow: NSView?
     private weak var globalSwitch: NSSwitch?
     private weak var notificationSection: SettingsSectionView?
-    private weak var reminderRulesView: NSView?
     private weak var agentSettingsView: NSView?
-    private weak var detailsStack: NSStackView?
     private var agentRows: [BalanceNotificationAgent: SettingsRowView] = [:]
     private var agentDetailButtons: [BalanceNotificationAgent: NSButton] = [:]
+    private var agentMasterRows: [BalanceNotificationAgent: SettingsRowView] = [:]
     private var providerRows: [String: SettingsRowView] = [:]
     private var providerDetailButtons: [String: NSButton] = [:]
+    private var providerMasterRows: [String: SettingsRowView] = [:]
     private var resourceRuleRows: [BalanceNotificationResourceKey: ResourceRuleRows] = [:]
     private var globalSecondThresholdRows: [String: SettingsRowView] = [:]
     private var globalSecondThresholdFields: [String: NSTextField] = [:]
     private var pauseTimer: Timer?
     private var applyGlobalRulesAlert: NSAlert?
-    private var editingDefaultRules = false
 
     var applyGlobalRulesAlertForTesting: NSAlert? {
         applyGlobalRulesAlert
@@ -291,6 +284,8 @@ final class DashboardNotificationPages {
         let secondThresholdRow: SettingsRowView
         let firstField: NSTextField
         let secondField: NSTextField
+        let firstValueLabel: NSTextField
+        let secondValueLabel: NSTextField
         let secondSwitch: NSSwitch
         weak var section: SettingsSectionView?
         private(set) var resourceEnabled = false
@@ -305,6 +300,8 @@ final class DashboardNotificationPages {
             secondThresholdRow: SettingsRowView,
             firstField: NSTextField,
             secondField: NSTextField,
+            firstValueLabel: NSTextField,
+            secondValueLabel: NSTextField,
             secondSwitch: NSSwitch
         ) {
             self.enableRow = enableRow
@@ -314,6 +311,8 @@ final class DashboardNotificationPages {
             self.secondThresholdRow = secondThresholdRow
             self.firstField = firstField
             self.secondField = secondField
+            self.firstValueLabel = firstValueLabel
+            self.secondValueLabel = secondValueLabel
             self.secondSwitch = secondSwitch
         }
 
@@ -330,6 +329,10 @@ final class DashboardNotificationPages {
             firstField.isEnabled = !self.usesGlobalDefaults
             secondField.isEditable = !self.usesGlobalDefaults
             secondField.isEnabled = !self.usesGlobalDefaults
+            firstValueLabel.isHidden = !self.usesGlobalDefaults
+            secondValueLabel.isHidden = !self.usesGlobalDefaults
+            firstField.isHidden = self.usesGlobalDefaults
+            secondField.isHidden = self.usesGlobalDefaults
             secondSwitch.isEnabled = !self.usesGlobalDefaults
             section?.reconcileSeparators()
         }
@@ -340,6 +343,10 @@ final class DashboardNotificationPages {
             firstField.isEnabled = !usesGlobalDefaults
             secondField.isEditable = !usesGlobalDefaults
             secondField.isEnabled = !usesGlobalDefaults
+            firstValueLabel.isHidden = !usesGlobalDefaults
+            secondValueLabel.isHidden = !usesGlobalDefaults
+            firstField.isHidden = usesGlobalDefaults
+            secondField.isHidden = usesGlobalDefaults
             secondSwitch.isEnabled = !usesGlobalDefaults
         }
     }
@@ -359,12 +366,14 @@ final class DashboardNotificationPages {
             guard let self else { return }
             let coordinator = self.configuration.coordinator
             self.updateAgentDetail(agent, enabled: enabled)
+            self.updateAgentMasterRow(agent, enabled: enabled)
             coordinator.performAsync { coordinator.setAgentEnabled(enabled, agent: agent) }
         }
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
             self.updateProviderDetail(agent, providerID: providerID, enabled: enabled)
+            self.updateProviderMasterRow(agent, providerID: providerID, enabled: enabled)
             coordinator.performAsync { coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID) }
         }
         relay.onResourceToggle = { [weak self] key, kind, unit, enabled in
@@ -495,16 +504,6 @@ final class DashboardNotificationPages {
                 coordinator.resume()
                 DispatchQueue.main.async { [weak self] in self?.updatePausePresentation() }
             }
-        }
-        relay.onEditDefaultRules = { [weak self] in
-            guard let self else { return }
-            self.editingDefaultRules = true
-            self.replaceReminderRulesView()
-        }
-        relay.onFinishDefaultRules = { [weak self] in
-            guard let self else { return }
-            self.editingDefaultRules = false
-            self.replaceReminderRulesView()
         }
         relay.onAgent = { [weak self] agent in
             guard let self else { return }
@@ -670,7 +669,6 @@ final class DashboardNotificationPages {
         )
         self.notificationSection = notificationSection
         let reminderRules = makeReminderRulesSection(settings: settings)
-        self.reminderRulesView = reminderRules
         let agentSettings = makeAgentSettingsSection(settings: settings)
         self.agentSettingsView = agentSettings
         let details = NSStackView(views: [reminderRules, agentSettings])
@@ -680,7 +678,6 @@ final class DashboardNotificationPages {
         details.detachesHiddenViews = true
         details.translatesAutoresizingMaskIntoConstraints = false
         agentSettings.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
-        detailsStack = details
         updatePausePresentation()
         startPauseTimer()
         reminderRules.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
@@ -764,21 +761,6 @@ final class DashboardNotificationPages {
         return formatter
     }()
 
-    private func replaceReminderRulesView() {
-        guard (path.last ?? .root) == .root,
-              let oldView = reminderRulesView,
-              let detailsStack,
-              let index = detailsStack.arrangedSubviews.firstIndex(where: { $0 === oldView }) else { return }
-        let newView = makeReminderRulesSection(settings: configuration.coordinator.settings)
-        detailsStack.removeArrangedSubview(oldView)
-        oldView.removeFromSuperview()
-        detailsStack.insertView(newView, at: index, in: .top)
-        newView.widthAnchor.constraint(equalTo: detailsStack.widthAnchor).isActive = true
-        reminderRulesView = newView
-        detailsStack.needsLayout = true
-        detailsStack.superview?.needsLayout = true
-    }
-
     private func makeReminderRulesSection(settings: BalanceNotificationSettings) -> NSView {
         globalSecondThresholdRows.removeAll(keepingCapacity: true)
         globalSecondThresholdFields.removeAll(keepingCapacity: true)
@@ -790,26 +772,13 @@ final class DashboardNotificationPages {
             (tr("notifications.seven_day_reminder"), sevenDayKey, .quotaPercent),
             (tr("notifications.balance_reminder"), balanceKey, .balance)
         ]
-        let rows: [NSView]
-        if editingDefaultRules {
-            rows = definitions.flatMap { title, key, kind in
-                makeDefaultRuleEditorRows(title: title, resourceID: key.resourceID, thresholds: settings.globalThresholds(for: key, kind: kind), kind: kind)
-            } + [makeDoneEditingRow()]
-        } else {
-            rows = definitions.map { title, key, kind in
-                let thresholds = settings.globalThresholds(for: key, kind: kind)
-                let edit = NSButton(
-                    title: tr("notifications.edit"),
-                    target: relay,
-                    action: #selector(DashboardNotificationPageRelay.editDefaultRules(_:))
-                )
-                edit.identifier = NSUserInterfaceItemIdentifier("default-rule-edit:\(key.resourceID)")
-                return SettingsRowView(
-                    title: title,
-                    detail: defaultRuleSummary(thresholds, kind: kind),
-                    accessoryView: edit
-                )
-            }
+        let rows = definitions.flatMap { title, key, kind in
+            makeDefaultRuleEditorRows(
+                title: title,
+                resourceID: key.resourceID,
+                thresholds: settings.globalThresholds(for: key, kind: kind),
+                kind: kind
+            )
         }
         let subtitle = NSTextField(wrappingLabelWithString: tr("notifications.global_rules_hint"))
         subtitle.font = .systemFont(ofSize: 12)
@@ -819,20 +788,6 @@ final class DashboardNotificationPages {
             contentViews: [subtitle] + rows
         )
         return section
-    }
-
-    private func makeDoneEditingRow() -> SettingsRowView {
-        let done = NSButton(
-            title: tr("notifications.done"),
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.finishDefaultRules(_:))
-        )
-        done.identifier = NSUserInterfaceItemIdentifier("default-rules-done")
-        return SettingsRowView(
-            title: tr("notifications.default_rules"),
-            detail: tr("notifications.default_rules_edit_hint"),
-            accessoryView: done
-        )
     }
 
     private func makeDefaultRuleEditorRows(
@@ -870,19 +825,6 @@ final class DashboardNotificationPages {
         globalSecondThresholdFields[resourceID] = secondField.field
         secondRow.isHidden = thresholds.second <= 0
         return [firstRow, secondToggleRow, secondRow]
-    }
-
-    private func defaultRuleSummary(
-        _ thresholds: (first: Double, second: Double),
-        kind: BalanceNotificationResourceKind
-    ) -> String {
-        let unit = kind == .quotaPercent ? "%" : " USD"
-        let first = "\(formatted(thresholds.first, kind: kind))\(unit)"
-        let firstSummary = thresholds.first > 0 ? first : tr("notifications.first_disabled")
-        let second = thresholds.second > 0
-            ? "\(formatted(thresholds.second, kind: kind))\(unit)"
-            : tr("notifications.second_disabled")
-        return tr("notifications.rule_summary", arguments: [firstSummary, second])
     }
 
     private func makeGlobalRuleField(
@@ -963,6 +905,21 @@ final class DashboardNotificationPages {
         let settings = configuration.coordinator.settings
         providerRows.removeAll(keepingCapacity: true)
         providerDetailButtons.removeAll(keepingCapacity: true)
+        agentMasterRows.removeAll(keepingCapacity: true)
+        let agentSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: "agent:\(agent.rawValue)",
+            isOn: settings.isAgentEnabled(agent),
+            target: relay,
+            action: #selector(DashboardNotificationPageRelay.agentToggle(_:))
+        )
+        let agentMasterRow = SettingsRowView(
+            title: "\(agent.title) \(tr("notifications.quota_reminders"))",
+            detail: settings.isAgentEnabled(agent)
+                ? tr("notifications.agent_enabled")
+                : tr("notifications.agent_disabled"),
+            accessoryView: agentSwitch
+        )
+        agentMasterRows[agent] = agentMasterRow
         var providerViews: [NSView] = []
         if providers.isEmpty {
             providerViews.append(SettingsRowView(
@@ -980,7 +937,10 @@ final class DashboardNotificationPages {
             title: tr("notifications.provider_rules"),
             contentViews: providerViews
         )
-        var sections: [NSView] = [providerSection]
+        var sections: [NSView] = [
+            SettingsSectionView(title: tr("notifications.agent_settings"), contentViews: [agentMasterRow]),
+            providerSection
+        ]
         if settings.hasCustomRules(for: agent) {
             let restoreButton = NSButton(
                 title: tr("notifications.restore_default_rules"),
@@ -1000,6 +960,12 @@ final class DashboardNotificationPages {
             subtitle: tr("notifications.agent_page_description")
         )
         return DashboardSettingsComponents.makeSettingsPageContent([header] + sections)
+    }
+
+    private func updateAgentMasterRow(_ agent: BalanceNotificationAgent, enabled: Bool) {
+        agentMasterRows[agent]?.updateDetail(
+            enabled ? tr("notifications.agent_enabled") : tr("notifications.agent_disabled")
+        )
     }
 
     private func makeProviderRow(
@@ -1049,6 +1015,16 @@ final class DashboardNotificationPages {
         )
     }
 
+    private func updateProviderMasterRow(
+        _ agent: BalanceNotificationAgent,
+        providerID: String,
+        enabled: Bool
+    ) {
+        providerMasterRows[providerRowKey(agent, providerID: providerID)]?.updateDetail(
+            enabled ? tr("notifications.agent_enabled") : tr("notifications.agent_disabled")
+        )
+    }
+
     private func providerUsesCustomRules(
         _ settings: BalanceNotificationSettings,
         agent: BalanceNotificationAgent,
@@ -1092,25 +1068,46 @@ final class DashboardNotificationPages {
         let descriptors = configuration.coordinator.resourceDescriptors(agent: agent, providerID: providerID)
         let settings = configuration.coordinator.settings
         resourceRuleRows.removeAll(keepingCapacity: true)
+        providerMasterRows.removeAll(keepingCapacity: true)
         let providerName = configuration.providerChoices(agent).first { $0.id == providerID }?.name ?? providerID
-        var content: [NSView] = []
+        let providerSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: "provider:\(agent.rawValue):\(providerID)",
+            isOn: settings.isProviderEnabled(agent, providerID: providerID),
+            target: relay,
+            action: #selector(DashboardNotificationPageRelay.providerToggle(_:))
+        )
+        let providerMasterRow = SettingsRowView(
+            title: "\(providerName) \(tr("notifications.quota_reminders"))",
+            detail: settings.isProviderEnabled(agent, providerID: providerID)
+                ? tr("notifications.agent_enabled")
+                : tr("notifications.agent_disabled"),
+            accessoryView: providerSwitch
+        )
+        providerMasterRows[providerRowKey(agent, providerID: providerID)] = providerMasterRow
+        var sections: [NSView] = [
+            SettingsSectionView(title: tr("notifications.provider_rules"), contentViews: [providerMasterRow])
+        ]
         if descriptors.isEmpty {
-            content.append(SettingsRowView(
+            sections.append(SettingsSectionView(
                 title: tr("notifications.resource_rules"),
-                detail: tr("notifications.no_providers")
+                contentViews: [SettingsRowView(
+                    title: tr("notifications.resource_rules"),
+                    detail: tr("notifications.no_providers")
+                )]
             ))
         } else {
             for descriptor in descriptors {
-                content.append(contentsOf: makeResourceSettingsRows(descriptor, settings: settings))
+                let section = SettingsSectionView(
+                    title: descriptor.title,
+                    contentViews: makeResourceSettingsRows(descriptor, settings: settings)
+                )
+                resourceRuleRows[descriptor.key]?.section = section
+                section.reconcileSeparators()
+                sections.append(section)
             }
         }
-        let section = SettingsSectionView(title: tr("notifications.resource_rules"), contentViews: content)
-        for descriptor in descriptors {
-            resourceRuleRows[descriptor.key]?.section = section
-        }
-        section.reconcileSeparators()
         let header = DashboardSettingsComponents.makePageHeader(providerName, subtitle: agent.title)
-        return DashboardSettingsComponents.makeSettingsPageContent([header, section])
+        return DashboardSettingsComponents.makeSettingsPageContent([header] + sections)
     }
 
     private func makeResourceSettingsRows(
@@ -1151,10 +1148,17 @@ final class DashboardNotificationPages {
             isSecond: false,
             editable: !usesGlobalDefaults
         )
+        let firstValueLabel = thresholdValueLabel(
+            rule.firstThreshold,
+            key: descriptor.key,
+            kind: descriptor.kind,
+            unit: descriptor.unit,
+            isSecond: false
+        )
         let firstRow = SettingsRowView(
             title: tr("notifications.first_threshold"),
-            detail: thresholdDetail(rule, descriptor: descriptor, second: false),
-            accessoryView: firstField
+            detail: nil,
+            accessoryView: thresholdAccessory(display: firstValueLabel, field: firstField)
         )
         let source = DashboardSettingsComponents.makePopUpButton(
             identifier: "source:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
@@ -1203,10 +1207,17 @@ final class DashboardNotificationPages {
             isSecond: true,
             editable: !usesGlobalDefaults
         )
+        let secondValueLabel = thresholdValueLabel(
+            rule.secondThreshold,
+            key: descriptor.key,
+            kind: descriptor.kind,
+            unit: descriptor.unit,
+            isSecond: true
+        )
         let secondThresholdRow = SettingsRowView(
             title: tr("notifications.second_threshold"),
-            detail: thresholdDetail(rule, descriptor: descriptor, second: true),
-            accessoryView: secondField
+            detail: nil,
+            accessoryView: thresholdAccessory(display: secondValueLabel, field: secondField)
         )
         let resourceRows = ResourceRuleRows(
             enableRow: enableRow,
@@ -1216,6 +1227,8 @@ final class DashboardNotificationPages {
             secondThresholdRow: secondThresholdRow,
             firstField: firstField,
             secondField: secondField,
+            firstValueLabel: firstValueLabel,
+            secondValueLabel: secondValueLabel,
             secondSwitch: secondSwitch
         )
         resourceRuleRows[descriptor.key] = resourceRows
@@ -1257,6 +1270,18 @@ final class DashboardNotificationPages {
         rows.secondField.stringValue = rule.secondThreshold > 0
             ? formatted(rule.secondThreshold, kind: descriptor.kind)
             : ""
+        rows.firstValueLabel.stringValue = thresholdDisplayText(
+            rule.firstThreshold,
+            kind: descriptor.kind,
+            unit: descriptor.unit,
+            second: false
+        )
+        rows.secondValueLabel.stringValue = thresholdDisplayText(
+            rule.secondThreshold,
+            kind: descriptor.kind,
+            unit: descriptor.unit,
+            second: true
+        )
         rows.secondSwitch.state = rule.secondEnabled ? .on : .off
         rows.sourceRow.updateDetail(
             usesGlobalDefaults
@@ -1299,6 +1324,47 @@ final class DashboardNotificationPages {
         field.target = editable ? relay : nil
         field.action = editable ? #selector(DashboardNotificationPageRelay.thresholdChanged(_:)) : nil
         return field
+    }
+
+    private func thresholdValueLabel(
+        _ value: Double,
+        key: BalanceNotificationResourceKey,
+        kind: BalanceNotificationResourceKind,
+        unit: String?,
+        isSecond: Bool
+    ) -> NSTextField {
+        let label = NSTextField(labelWithString: thresholdDisplayText(value, kind: kind, unit: unit, second: isSecond))
+        label.identifier = NSUserInterfaceItemIdentifier(
+            "resource:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)|\(isSecond ? "second" : "first")|display"
+        )
+        label.alignment = .right
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.widthAnchor.constraint(greaterThanOrEqualToConstant: 90).isActive = true
+        return label
+    }
+
+    private func thresholdAccessory(display: NSTextField, field: NSTextField) -> NSStackView {
+        let stack = NSStackView(views: [display, field])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }
+
+    private func thresholdDisplayText(
+        _ value: Double,
+        kind: BalanceNotificationResourceKind,
+        unit: String?,
+        second: Bool
+    ) -> String {
+        if value <= 0 {
+            return second ? tr("notifications.second_disabled") : tr("notifications.first_disabled")
+        }
+        return kind == .quotaPercent
+            ? "\(formatted(value, kind: kind))%"
+            : balanceText(value, unit: unit)
     }
 
     private func thresholdDetail(

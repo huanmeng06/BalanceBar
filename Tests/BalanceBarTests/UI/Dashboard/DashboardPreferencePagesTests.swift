@@ -28,7 +28,7 @@ private final class DashboardNotificationTestClient: BalanceNotificationClient {
 
 @MainActor
 final class DashboardPreferencePagesTests: XCTestCase {
-    func testNotificationRootUsesSummaryAndKeepsSettingsWhenPermissionIsDenied() throws {
+    func testNotificationRootEditsDefaultRulesDirectlyAndKeepsSettingsWhenPermissionIsDenied() throws {
         let suiteName = "DashboardPreferencePagesTests.NotificationRoot.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
@@ -58,20 +58,38 @@ final class DashboardPreferencePagesTests: XCTestCase {
             $0.title == tr("notifications.open_system_settings")
         })
 
-        let edit = try XCTUnwrap(
-            descendants(of: page).compactMap { $0 as? NSButton }
-                .first { $0.identifier?.rawValue == "default-rule-edit:five-hour" }
+        let firstField = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "global-rule:five-hour:first" }
         )
-        XCTAssertEqual(edit.title, tr("notifications.edit"))
-        XCTAssertFalse(descendants(of: page).compactMap { $0 as? NSTextField }.contains {
-            $0.identifier?.rawValue.hasPrefix("global-rule:") == true
+        XCTAssertTrue(firstField.isEditable)
+        let secondSwitch = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "global-second:five-hour" }
+        )
+        let secondField = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "global-rule:five-hour:second" }
+        )
+        let secondRow = try XCTUnwrap(SettingsRowView.enclosing(secondField))
+        XCTAssertFalse(secondRow.isHidden)
+        XCTAssertFalse(descendants(of: page).compactMap { $0 as? NSButton }.contains {
+            $0.identifier?.rawValue.hasPrefix("default-rule-edit:") == true
+                || $0.identifier?.rawValue == "default-rules-done"
         })
         XCTAssertFalse(tr("notifications.global_rules_hint").contains("0"))
 
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(edit.action), to: edit.target, from: edit))
-        XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
-            $0.identifier?.rawValue == "global-second:five-hour"
-        })
+        firstField.stringValue = "55"
+        firstField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: firstField)
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(coordinator.settings.globalFiveHourFirstThreshold, 55)
+
+        secondSwitch.state = .off
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondSwitch.action), to: secondSwitch.target, from: secondSwitch))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertTrue(secondRow.isHidden)
         XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
             $0.identifier?.rawValue == "notification-global"
         })
@@ -110,18 +128,24 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let page = pages.make()
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
         let sections = descendants(of: page).compactMap { $0 as? SettingsSectionView }
-        XCTAssertEqual(sections.count, 1)
-        let rows = sections[0].contentViews.compactMap { $0 as? SettingsRowView }
-        let weeklyIndex = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == "7d" })
-        XCTAssertTrue(rows[weeklyIndex + 2].isHidden)
-        XCTAssertTrue(rows[weeklyIndex + 3].isHidden)
-        XCTAssertTrue(rows[weeklyIndex + 4].isHidden)
+        XCTAssertEqual(sections.count, 3)
+        XCTAssertTrue(sections.contains { $0.headingLabel.stringValue == tr("notifications.provider_rules") })
+        let weeklySection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "7d" })
+        let weeklyRows = weeklySection.contentViews.compactMap { $0 as? SettingsRowView }
+        XCTAssertEqual(weeklyRows.count, 5)
+        XCTAssertTrue(weeklyRows[2].isHidden)
+        XCTAssertTrue(weeklyRows[3].isHidden)
+        XCTAssertTrue(weeklyRows[4].isHidden)
 
         let firstField = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSTextField }
                 .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour|first" }
         )
         XCTAssertFalse(firstField.isEditable)
+        XCTAssertTrue(firstField.isHidden)
+        XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSTextField }.contains {
+            $0.identifier?.rawValue == "resource:gpt:openai:five-hour|first|display" && !$0.isHidden
+        })
         let source = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == "source:gpt:openai:five-hour" }
@@ -133,6 +157,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         XCTAssertTrue(coordinator.settings.rule(for: BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour"))?.usesGlobalDefaults == false)
         XCTAssertTrue(firstField.isEditable)
+        XCTAssertFalse(firstField.isHidden)
     }
 
     func testAgentDetailsStayVisibleAndRestoreDefaultsIsConditional() throws {
@@ -170,8 +195,72 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         XCTAssertTrue(pages.showNavigationRoute("notifications/agent/gpt"))
         let agentPage = pages.make()
+        let agentMasterSwitch = try XCTUnwrap(
+            descendants(of: agentPage).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "agent:gpt" }
+        )
+        XCTAssertEqual(SettingsRowView.enclosing(agentMasterSwitch)?.titleLabel.stringValue, "ChatGPT \(tr("notifications.quota_reminders"))")
         XCTAssertTrue(descendants(of: agentPage).compactMap { $0 as? NSButton }.contains { $0.identifier?.rawValue == "provider:gpt:openai" })
         XCTAssertFalse(descendants(of: agentPage).compactMap { $0 as? NSButton }.contains { $0.identifier?.rawValue == "restore-default-rules:gpt" })
+
+        XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
+        let providerPage = pages.make()
+        let providerMasterSwitch = try XCTUnwrap(
+            descendants(of: providerPage).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "provider:gpt:openai" }
+        )
+        XCTAssertEqual(SettingsRowView.enclosing(providerMasterSwitch)?.titleLabel.stringValue, "OpenAI Official \(tr("notifications.quota_reminders"))")
+    }
+
+    func testRestoreDefaultRulesAppearsForOverrideAndShowsConfirmation() throws {
+        let suiteName = "DashboardPreferencePagesTests.RestoreDefaults.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: DashboardNotificationTestClient())
+        coordinator.process(
+            snapshot: Snapshot.official(
+                "Provider", 10, "Weekly", nil, Date(),
+                windows: [
+                    OfficialQuotaWindow(kind: .fiveHour, remaining: 60, label: "5h", daysText: "5h", reset: nil, durationSeconds: nil)
+                ]
+            ),
+            agent: .gpt,
+            providerID: "openai"
+        )
+        coordinator.updateRule(
+            key: BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour"),
+            kind: .quotaPercent,
+            unit: "%"
+        ) { $0.firstThreshold = 10 }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+
+        let pages = DashboardNotificationPages(configuration: .init(
+            coordinator: coordinator,
+            providerChoices: { agent in
+                agent == .gpt ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)] : []
+            }
+        ))
+        let page = pages.make()
+        XCTAssertTrue(pages.showNavigationRoute("notifications/agent/gpt"))
+        let restore = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "restore-default-rules:gpt" }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 900),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer { window.orderOut(nil) }
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(restore.action), to: restore.target, from: restore))
+        XCTAssertEqual(
+            pages.applyGlobalRulesAlertForTesting?.messageText,
+            tr("notifications.restore_default_rules_message", arguments: ["ChatGPT"])
+        )
     }
 
     func testSharedNumericTextFieldUsesNativeCompactConfiguration() {

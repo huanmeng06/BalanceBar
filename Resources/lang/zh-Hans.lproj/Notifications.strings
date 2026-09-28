@@ -23,8 +23,8 @@
 "notifications.second_alert_title" = "%1$@ %2$@ is very low";
 "notifications.batch_title" = "%1$@ has %2$@ low resources";
 "notifications.recovered_title" = "%1$@ resources restored";
-"notifications.quota_value" = "%1$@ remaining %2$@%%";
-"notifications.balance_value" = "%1$@ remaining %2$@";
+"notifications.quota_value" = "%1$@ 当前 %2$@%%";
+"notifications.balance_value" = "%1$@ 当前 %2$@";
 "notifications.system_settings" = "系统设置";
 "notifications.pause_notifications" = "暂停通知";
 "notifications.pause_duration" = "选择暂停通知的时长";
