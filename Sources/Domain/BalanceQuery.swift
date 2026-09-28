@@ -222,14 +222,14 @@ struct BalanceQuery {
             onFailure?(.requestCodeMissing)
             return nil
         }
-        guard let parsedRequest = UsageScriptRequestParser.parseRequest(from: code) else {
+        guard let parsedRequest = UsageScriptRequestParser.parseRequest(
+            from: code,
+            placeholders: ["baseUrl": baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))]
+        ) else {
             onFailure?(.requestEndpointMissing)
             return nil
         }
-        let url = parsedRequest.urlTemplate.replacingOccurrences(
-            of: "{{baseUrl}}",
-            with: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        )
+        let url = parsedRequest.urlTemplate
         var additionalHeaders: [String: String] = [:]
         if templateType == "newapi" {
             guard let userID = findString(

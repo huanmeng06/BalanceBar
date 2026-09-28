@@ -2340,6 +2340,42 @@ final class DomainModelsTests: XCTestCase {
         }
     }
 
+    func testBalanceQueryEvaluatesComputedURLFromIIFEScript() throws {
+        let code = """
+        ({
+            request: (() => {
+              const base = "{{baseUrl}}".replace(/\\/+$/, "").replace(/\\/v1$/i, "");
+              return {
+                url: base + "/v1/usage",
+                method: "GET",
+                headers: { "Authorization": "Bearer {{apiKey}}" }
+              };
+            })(),
+            extractor: function(response) {
+              return { isValid: true, remaining: response?.remaining, unit: "USD" };
+            }
+          })
+        """
+        let metaObject: [String: Any] = [
+            "usage_script": ["enabled": true, "code": code, "templateType": ""]
+        ]
+        let metaText = String(
+            data: try JSONSerialization.data(withJSONObject: metaObject),
+            encoding: .utf8
+        )
+        let settingsText = #"{"env":{"ANTHROPIC_AUTH_TOKEN":"test-key","ANTHROPIC_BASE_URL":"https://api.example.test/v1/"}}"#
+
+        let query = BalanceQuery.make(
+            settingsText: settingsText,
+            metaText: try XCTUnwrap(metaText),
+            websiteText: nil,
+            appType: "claude"
+        )
+
+        XCTAssertEqual(query?.url, "https://api.example.test/v1/usage")
+        XCTAssertEqual(query?.apiKey, "test-key")
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let suiteName = "BalanceBarTests.ProviderBalanceProgress.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

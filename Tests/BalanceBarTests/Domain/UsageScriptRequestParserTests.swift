@@ -128,4 +128,85 @@ final class UsageScriptRequestParserTests: XCTestCase {
         let result = UsageScriptRequestParser.parseRequest(from: code)
         XCTAssertEqual(result?.urlTemplate, "https://api.example.com/balance")
     }
+
+    // MARK: - Computed URLs (issue #484 follow-up)
+
+    private let iifeScript = """
+    ({
+        request: (() => {
+          const base = "{{baseUrl}}".replace(/\\/+$/, "").replace(/\\/v1$/i, "");
+          return {
+            url: base + "/v1/usage",
+            method: "GET",
+            headers: { "Authorization": "Bearer {{apiKey}}" }
+          };
+        })(),
+        extractor: function(response) {
+          const remaining = response?.remaining ?? response?.quota?.remaining ?? response?.balance;
+          return { isValid: true, remaining, unit: "USD" };
+        }
+      })
+    """
+
+    func testEvaluatesIIFEWithReplacedBaseVariable() {
+        let result = UsageScriptRequestParser.parseRequest(
+            from: iifeScript,
+            placeholders: ["baseUrl": "https://api.example.test/v1"]
+        )
+        XCTAssertEqual(result?.urlTemplate, "https://api.example.test/v1/usage")
+        XCTAssertEqual(result?.method, "GET")
+    }
+
+    func testEvaluatesIIFEWithoutV1Suffix() {
+        let result = UsageScriptRequestParser.parseRequest(
+            from: iifeScript,
+            placeholders: ["baseUrl": "https://api.example.test"]
+        )
+        XCTAssertEqual(result?.urlTemplate, "https://api.example.test/v1/usage")
+    }
+
+    func testEvaluatesTemplateLiteralInterpolation() {
+        let code = """
+        const base = "{{baseUrl}}";
+        ({ request: { url: `${base}/api/usage?unit=${"usd"}` } })
+        """
+        let result = UsageScriptRequestParser.parseRequest(
+            from: code,
+            placeholders: ["baseUrl": "https://api.example.test"]
+        )
+        XCTAssertEqual(result?.urlTemplate, "https://api.example.test/api/usage?unit=usd")
+    }
+
+    func testEvaluatesStringReplaceAndParentheses() {
+        let code = #"({ request: { url: ("{{baseUrl}}".replace("/api", "") + '/balance').trim() } })"#
+        let result = UsageScriptRequestParser.parseRequest(
+            from: code,
+            placeholders: ["baseUrl": "https://example.test/api"]
+        )
+        XCTAssertEqual(result?.urlTemplate, "https://example.test/balance")
+    }
+
+    func testReturnsNilForUnresolvableIdentifier() {
+        let code = #"({ request: { url: unknownBase + "/usage" } })"#
+        XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code))
+    }
+
+    func testDoesNotTreatBaseUrlKeyAsURL() {
+        let code = #"({ request: { baseUrl: "https://wrong.example", url: "{{baseUrl}}/ok" } })"#
+        let result = UsageScriptRequestParser.parseRequest(from: code)
+        XCTAssertEqual(result?.urlTemplate, "{{baseUrl}}/ok")
+    }
+
+    func testIgnoresCommentsAroundURL() {
+        let code = """
+        ({ request: {
+          // url: "https://commented.example"
+          url: /* inline */ "{{baseUrl}}/balance",
+          method: 'post'
+        } })
+        """
+        let result = UsageScriptRequestParser.parseRequest(from: code)
+        XCTAssertEqual(result?.urlTemplate, "{{baseUrl}}/balance")
+        XCTAssertEqual(result?.method, "POST")
+    }
 }
