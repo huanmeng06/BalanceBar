@@ -33,7 +33,7 @@
 "notifications.pause_none" = "None";
 "notifications.pause_status" = "Paused until %1$@ · Remaining: %2$@";
 "notifications.reminder_rules" = "Default Rules";
-"notifications.global_rules_hint" = "Applied to Agents and Providers without custom rules";
+"notifications.global_rules_hint" = "Enter 0 to disable a reminder";
 "notifications.five_hour_reminder" = "5-hour reminder";
 "notifications.seven_day_reminder" = "7-day reminder";
 "notifications.balance_reminder" = "Balance reminder";

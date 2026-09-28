@@ -58,26 +58,34 @@ final class DashboardPreferencePagesTests: XCTestCase {
             $0.title == tr("notifications.open_system_settings")
         })
 
+        let defaultSection = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? SettingsSectionView }
+                .first { $0.headingLabel.stringValue == tr("notifications.reminder_rules") }
+        )
+        let defaultRows = defaultSection.contentViews.compactMap { $0 as? SettingsRowView }
+        XCTAssertEqual(defaultRows.count, 3)
+        let accessory = try XCTUnwrap(defaultRows[0].accessoryView as? NSStackView)
+        XCTAssertEqual(accessory.arrangedSubviews.count, 2)
+        (accessory as? SettingsRowAccessoryLayout)?.updateAvailableRowWidth(100)
+        XCTAssertEqual(accessory.orientation, .vertical)
         let firstField = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSTextField }
                 .first { $0.identifier?.rawValue == "global-rule:five-hour:first" }
         )
         XCTAssertTrue(firstField.isEditable)
-        let secondSwitch = try XCTUnwrap(
-            descendants(of: page).compactMap { $0 as? NSSwitch }
-                .first { $0.identifier?.rawValue == "global-second:five-hour" }
-        )
         let secondField = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSTextField }
                 .first { $0.identifier?.rawValue == "global-rule:five-hour:second" }
         )
-        let secondRow = try XCTUnwrap(SettingsRowView.enclosing(secondField))
-        XCTAssertFalse(secondRow.isHidden)
+        XCTAssertTrue(secondField.isEditable)
         XCTAssertFalse(descendants(of: page).compactMap { $0 as? NSButton }.contains {
             $0.identifier?.rawValue.hasPrefix("default-rule-edit:") == true
                 || $0.identifier?.rawValue == "default-rules-done"
         })
-        XCTAssertFalse(tr("notifications.global_rules_hint").contains("0"))
+        XCTAssertTrue(tr("notifications.global_rules_hint").contains("0"))
+        XCTAssertFalse(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
+            $0.identifier?.rawValue.hasPrefix("global-second:") == true
+        })
 
         firstField.stringValue = "55"
         firstField.delegate?.controlTextDidEndEditing?(
@@ -85,11 +93,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(coordinator.settings.globalFiveHourFirstThreshold, 55)
-
-        secondSwitch.state = .off
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondSwitch.action), to: secondSwitch.target, from: secondSwitch))
+        secondField.stringValue = "0"
+        secondField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: secondField)
+        )
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        XCTAssertTrue(secondRow.isHidden)
+        XCTAssertEqual(coordinator.settings.globalFiveHourSecondThreshold, 0)
         XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
             $0.identifier?.rawValue == "notification-global"
         })
