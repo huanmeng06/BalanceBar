@@ -222,14 +222,11 @@ struct BalanceQuery {
             onFailure?(.requestCodeMissing)
             return nil
         }
-        guard let template = capture(
-            "url\\s*:\\s*[\\x60\\\"]([^\\x60\\\"]+)",
-            in: code
-        ) else {
+        guard let parsedRequest = UsageScriptRequestParser.parseRequest(from: code) else {
             onFailure?(.requestEndpointMissing)
             return nil
         }
-        let url = template.replacingOccurrences(
+        let url = parsedRequest.urlTemplate.replacingOccurrences(
             of: "{{baseUrl}}",
             with: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         )

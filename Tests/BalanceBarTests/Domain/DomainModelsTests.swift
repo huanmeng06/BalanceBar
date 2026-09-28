@@ -2210,6 +2210,136 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(failure, .credentialMissing)
     }
 
+    func testBalanceQueryParsesCCSwitchGenericTemplate() throws {
+        // Issue #484: CC Switch generic template for third-party providers
+        let ccswitchCode = """
+        ({
+          request: {
+            url: "{{baseUrl}}/user/balance",
+            method: "GET",
+            headers: {
+              "Authorization": "Bearer {{apiKey}}",
+              "User-Agent": "cc-switch/1.0"
+            }
+          },
+          extractor: function(response) {
+            return {
+              isValid: response.is_active || true,
+              remaining: response.balance,
+              unit: "USD"
+            };
+          }
+        })
+        """
+        let metaObject: [String: Any] = [
+            "usage_script": [
+                "enabled": true,
+                "code": ccswitchCode,
+                "autoQueryInterval": 30,
+                "timeout": 15
+            ]
+        ]
+        let metaText = String(
+            data: try JSONSerialization.data(withJSONObject: metaObject),
+            encoding: .utf8
+        )
+        let settingsText = #"{"apiKey":"test-key","baseUrl":"https://api.huanling.example"}"#
+
+        var failure: BalanceQueryFailure?
+        let query = BalanceQuery.make(
+            settingsText: settingsText,
+            metaText: try XCTUnwrap(metaText),
+            websiteText: nil,
+            appType: "claude",
+            onFailure: { failure = $0 }
+        )
+
+        XCTAssertNil(failure, "Should not fail with: \(failure?.diagnostic ?? "none")")
+        XCTAssertEqual(query?.url, "https://api.huanling.example/user/balance")
+        XCTAssertEqual(query?.apiKey, "test-key")
+        XCTAssertEqual(query?.intervalMinutes, 30)
+        XCTAssertEqual(query?.timeoutSeconds, 15)
+    }
+
+    func testBalanceQueryHandlesQuotedKeyVariations() throws {
+        let variations: [(String, String)] = [
+            (#""url": "{{baseUrl}}/balance""#, "double-quoted key and value"),
+            (#"'url': '{{baseUrl}}/balance'"#, "single-quoted key and value"),
+            (#""url": '{{baseUrl}}/balance'"#, "double-quoted key, single-quoted value"),
+            (#"'url': "{{baseUrl}}/balance""#, "single-quoted key, double-quoted value"),
+            ("url: `{{baseUrl}}/balance`", "unquoted key, backtick value"),
+        ]
+
+        for (urlSnippet, description) in variations {
+            let code = "({ request: { \(urlSnippet) } })"
+            let metaObject: [String: Any] = [
+                "usage_script": [
+                    "enabled": true,
+                    "code": code
+                ]
+            ]
+            let metaText = String(
+                data: try JSONSerialization.data(withJSONObject: metaObject),
+                encoding: .utf8
+            )
+            let settingsText = #"{"apiKey":"test-key","baseUrl":"https://api.example.test"}"#
+
+            var failure: BalanceQueryFailure?
+            let query = BalanceQuery.make(
+                settingsText: settingsText,
+                metaText: try XCTUnwrap(metaText),
+                websiteText: nil,
+                appType: "claude",
+                onFailure: { failure = $0 }
+            )
+
+            XCTAssertNil(failure, "[\(description)] Should not fail")
+            XCTAssertEqual(
+                query?.url,
+                "https://api.example.test/balance",
+                "[\(description)] URL should be correctly extracted and substituted"
+            )
+        }
+    }
+
+    func testBalanceQueryHandlesWhitespaceVariations() throws {
+        let variations = [
+            #"url:"{{baseUrl}}/balance""#,
+            #"url :"{{baseUrl}}/balance""#,
+            #"url: "{{baseUrl}}/balance""#,
+            #"url : "{{baseUrl}}/balance""#,
+            #"url  :  "{{baseUrl}}/balance""#,
+        ]
+
+        for urlSnippet in variations {
+            let code = "({ request: { \(urlSnippet) } })"
+            let metaObject: [String: Any] = [
+                "usage_script": [
+                    "enabled": true,
+                    "code": code
+                ]
+            ]
+            let metaText = String(
+                data: try JSONSerialization.data(withJSONObject: metaObject),
+                encoding: .utf8
+            )
+            let settingsText = #"{"apiKey":"test-key","baseUrl":"https://api.example.test"}"#
+
+            let query = BalanceQuery.make(
+                settingsText: settingsText,
+                metaText: try XCTUnwrap(metaText),
+                websiteText: nil,
+                appType: "claude"
+            )
+
+            XCTAssertEqual(
+                query?.url,
+                "https://api.example.test/balance",
+                "Whitespace variation [\(urlSnippet)] should work"
+            )
+        }
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let suiteName = "BalanceBarTests.ProviderBalanceProgress.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

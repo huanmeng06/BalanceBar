@@ -34,6 +34,7 @@
 		A10000000000000000000031 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002F /* XCTest.framework */; };
 		A10000000000000000000048 /* AssistantClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000004E /* AssistantClient.swift */; };
 		A10000000000000000000049 /* BalanceQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000004F /* BalanceQuery.swift */; };
+		E42F1EAD6178A2E4AADA325E /* UsageScriptRequestParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB23284B93924D64DD4F7339 /* UsageScriptRequestParser.swift */; };
 		A1000000000000000000004A /* ProviderModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000050 /* ProviderModels.swift */; };
 		A1000000000000000000004B /* Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000051 /* Snapshot.swift */; };
 		A1000000000000000000004C /* StatusLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000052 /* StatusLink.swift */; };
@@ -85,6 +86,7 @@
 		A10000000000000000000094 /* DashboardComponentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000095 /* DashboardComponentsTests.swift */; };
 		A10000000000000000000096 /* StatusLinksEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000097 /* StatusLinksEditor.swift */; };
 		A1000000000000000000009A /* StatusLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009B /* StatusLinksTests.swift */; };
+		40553B8214484039881EED35 /* UsageScriptRequestParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B3F77855DB8D8115FFD39A5 /* UsageScriptRequestParserTests.swift */; };
 		A1000000000000000000009D /* DashboardWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009E /* DashboardWindowController.swift */; };
 		A40300000000000000000002 /* DashboardSplitViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40300000000000000000001 /* DashboardSplitViewController.swift */; };
 		A40300000000000000000004 /* DashboardPageSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40300000000000000000003 /* DashboardPageSession.swift */; };
@@ -221,10 +223,12 @@
 		A10000000000000000000047 /* AppPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferencesTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000004E /* AssistantClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantClient.swift; sourceTree = "<group>"; };
 		A1000000000000000000004F /* BalanceQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceQuery.swift; sourceTree = "<group>"; };
+		AB23284B93924D64DD4F7339 /* UsageScriptRequestParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScriptRequestParser.swift; sourceTree = "<group>"; };
 		A10000000000000000000050 /* ProviderModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderModels.swift; sourceTree = "<group>"; };
 		A10000000000000000000051 /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
 		A10000000000000000000052 /* StatusLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLink.swift; sourceTree = "<group>"; };
 		A10000000000000000000053 /* DomainModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainModelsTests.swift; sourceTree = "<group>"; };
+		6B3F77855DB8D8115FFD39A5 /* UsageScriptRequestParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageScriptRequestParserTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000056 /* ResponseParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseParsers.swift; sourceTree = "<group>"; };
 		A10000000000000000000058 /* ResponseParsersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseParsersTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000005E /* CCSwitchRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchRepository.swift; sourceTree = "<group>"; };
@@ -543,6 +547,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000053 /* DomainModelsTests.swift */,
+				6B3F77855DB8D8115FFD39A5 /* UsageScriptRequestParserTests.swift */,
 				A1000000000000000000006A /* OpenCodexCardLayoutTests.swift */,
 			);
 			path = Domain;
@@ -627,6 +632,7 @@
 			children = (
 				A1000000000000000000004E /* AssistantClient.swift */,
 				A1000000000000000000004F /* BalanceQuery.swift */,
+				AB23284B93924D64DD4F7339 /* UsageScriptRequestParser.swift */,
 				A10000000000000000000050 /* ProviderModels.swift */,
 				A10000000000000000000051 /* Snapshot.swift */,
 				A10000000000000000000052 /* StatusLink.swift */,
@@ -1035,6 +1041,7 @@
 				A100000000000000000000F8 /* LocalizationKeys.swift in Sources */,
 				A10000000000000000000048 /* AssistantClient.swift in Sources */,
 				A10000000000000000000049 /* BalanceQuery.swift in Sources */,
+				E42F1EAD6178A2E4AADA325E /* UsageScriptRequestParser.swift in Sources */,
 				A1000000000000000000004A /* ProviderModels.swift in Sources */,
 				A1000000000000000000004B /* Snapshot.swift in Sources */,
 				A1000000000000000000004C /* StatusLink.swift in Sources */,
@@ -1157,6 +1164,7 @@
 				A10000000000000000000046 /* AppPreferencesTests.swift in Sources */,
 				A26400000000000000000003 /* QuotaProgressColorConfigurationTests.swift in Sources */,
 				A1000000000000000000004D /* DomainModelsTests.swift in Sources */,
+				40553B8214484039881EED35 /* UsageScriptRequestParserTests.swift in Sources */,
 				A10000000000000000000057 /* ResponseParsersTests.swift in Sources */,
 				A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */,
 				A10000000000000000000062 /* CredentialReaderTests.swift in Sources */,
