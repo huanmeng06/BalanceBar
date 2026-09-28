@@ -764,14 +764,6 @@ final class DashboardNotificationPages {
             title: tr("notifications.reminder_rules"),
             contentViews: rows
         )
-        let subtitle = NSTextField(wrappingLabelWithString: tr("notifications.global_rules_hint"))
-        subtitle.font = .systemFont(ofSize: 12)
-        subtitle.textColor = .secondaryLabelColor
-        subtitle.translatesAutoresizingMaskIntoConstraints = false
-        section.contentStack.insertView(subtitle, at: 1, in: .top)
-        section.contentStack.setCustomSpacing(4, after: section.headingLabel)
-        section.contentStack.setCustomSpacing(SettingsSectionView.headingToCardSpacing, after: subtitle)
-        subtitle.widthAnchor.constraint(equalTo: section.cardView.widthAnchor).isActive = true
         return section
     }
 
@@ -893,7 +885,7 @@ final class DashboardNotificationPages {
             placeholder: "0",
             capacityTemplate: kind == .quotaPercent ? "000" : DashboardSettingsComponents.amountCapacityTemplate,
             delegate: relay,
-            toolTip: tr("notifications.global_rules_hint")
+            toolTip: tr("notifications.threshold_input_hint")
         )
     }
 

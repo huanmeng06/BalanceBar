@@ -82,7 +82,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             $0.identifier?.rawValue.hasPrefix("default-rule-edit:") == true
                 || $0.identifier?.rawValue == "default-rules-done"
         })
-        XCTAssertTrue(tr("notifications.global_rules_hint").contains("0"))
+        XCTAssertFalse(descendants(of: defaultSection).compactMap { $0 as? NSTextField }.contains {
+            $0.stringValue == tr("notifications.global_rules_hint")
+        })
         XCTAssertFalse(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
             $0.identifier?.rawValue.hasPrefix("global-second:") == true
         })
