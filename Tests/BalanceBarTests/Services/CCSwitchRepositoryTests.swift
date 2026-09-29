@@ -127,7 +127,7 @@ final class CCSwitchRepositoryTests: XCTestCase {
                     'codex-custom',
                     'Fixture Custom',
                     '{"api_key":"fixture-key","base_url":"https://provider.example"}',
-                    '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://provider.example","code":"url: `{{baseUrl}}/usage`"}}',
+                    '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://provider.example","code":"({ request: { url: `{{baseUrl}}/usage` } })"}}',
                     'custom',
                     'https://provider.example',
                     'codex',

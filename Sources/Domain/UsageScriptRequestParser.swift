@@ -2,15 +2,18 @@ import Foundation
 
 /// Extracts the request contract from a CC Switch usage script without running JavaScript.
 ///
-/// `request.url` is evaluated with a small JavaScript subset: string and template literals,
-/// `+` concatenation, parentheses, `const` / `let` / `var` identifiers, and
-/// `.replace` / `.replaceAll` / `.trim*` / case-conversion calls. `{{placeholder}}` tokens in
-/// literals are substituted before evaluation, matching CC Switch's own template injection.
-/// When the URL expression can't be fully evaluated, the leading literal is used instead.
-/// `method` and `headers` entries are read the same way; `headers` values that don't
-/// evaluate are dropped. The parsed method and headers are informational: BalanceAPIClient
-/// still sends GET with its own Bearer headers. `extractor` is not interpreted;
-/// BalanceResponseParser reads the response body.
+/// Only the script's own request object is read: the value of its single `request:` property
+/// (an object literal, or an IIFE returning one), or the object passed to a single legacy
+/// `fetch({ ... })` call. Other objects, comments and strings are never consulted, and anything
+/// ambiguous returns `nil`, because BalanceAPIClient sends the provider API key to this URL.
+///
+/// `url` must evaluate completely with a small JavaScript subset: string and template literals,
+/// `+`, parentheses, `const` / `let` / `var` identifiers (lexically scoped, declared before use,
+/// never reassigned), and `.replace` / `.replaceAll` / `.trim*` / case-conversion calls.
+/// `{{placeholder}}` tokens in literals are substituted first, matching CC Switch's template
+/// injection. `method` and `headers` come from the same object; `headers` entries that don't
+/// evaluate are dropped. Both are informational: BalanceAPIClient still sends GET with its own
+/// Bearer headers. `extractor` is not interpreted; BalanceResponseParser reads the response body.
 enum UsageScriptRequestParser {
     struct ParsedRequest: Equatable {
         let urlTemplate: String
@@ -22,36 +25,54 @@ enum UsageScriptRequestParser {
         from code: String,
         placeholders: [String: String] = [:]
     ) -> ParsedRequest? {
-        let evaluator = UsageScriptExpressionEvaluator(
-            source: Array(code),
-            placeholders: placeholders
-        )
-        // Fall back to the leading literal when the full expression can't be evaluated
-        // (e.g. `"{{baseUrl}}/self?id=" + userId`), matching the pre-evaluator behavior.
-        guard let url = evaluator.firstValue(forKey: "url") ?? evaluator.firstLiteralPrefix(forKey: "url"),
-              !url.isEmpty else { return nil }
-        let method = evaluator.firstValue(forKey: "method").map { $0.uppercased() }
-        return ParsedRequest(urlTemplate: url, method: method, headers: evaluator.firstObject(forKey: "headers"))
+        guard let script = UsageScriptSource(source: Array(code), placeholders: placeholders),
+              let object = script.requestObject(),
+              let properties = script.properties(ofObjectAt: object) else { return nil }
+        func single(_ name: String) -> Range<Int>? {
+            let matches = properties.filter { $0.name == name }
+            return matches.count == 1 ? matches[0].value : nil
+        }
+        guard let urlValue = single("url"),
+              let url = script.evaluate(urlValue), !url.isEmpty else { return nil }
+        let method = single("method").flatMap { script.evaluate($0) }?.uppercased()
+        let headers = single("headers").map { script.headers(in: $0) } ?? [:]
+        return ParsedRequest(urlTemplate: url, method: method, headers: headers)
     }
 }
 
-private struct UsageScriptExpressionEvaluator {
+private struct UsageScriptSource {
+    struct Property {
+        let name: String
+        /// Source range of the value, up to the `,` or `}`; for shorthand `{ url }`, the key.
+        let value: Range<Int>
+    }
+
     private enum Argument {
         case string(String)
         case regex(pattern: String, flags: String)
     }
 
     private static let maxResolutionDepth = 8
+    /// Rejects matches preceded by an identifier character or `.` (`baseUrl`, `response.url`).
+    private static let boundary = "(?<![A-Za-z0-9_$.])"
 
     let source: [Character]
     let placeholders: [String: String]
-    /// `false` for characters inside comments or string/template literal bodies.
+    private let text: String
+    /// `false` for characters inside comments, string/template literal bodies and regex literals.
     private let isCode: [Bool]
+    /// Matching bracket positions for `(`, `[`, `{` in code, in both directions.
+    private let partner: [Int: Int]
 
-    init(source: [Character], placeholders: [String: String]) {
+    /// Fails when brackets are unbalanced, since scope and object boundaries would be unreliable.
+    init?(source: [Character], placeholders: [String: String]) {
         self.source = source
         self.placeholders = placeholders
-        self.isCode = Self.codeMask(for: source)
+        self.text = String(source)
+        let mask = Self.codeMask(for: source)
+        guard let partner = Self.bracketPartners(in: source, isCode: mask) else { return nil }
+        self.isCode = mask
+        self.partner = partner
     }
 
     private static func codeMask(for source: [Character]) -> [Bool] {
@@ -83,6 +104,22 @@ private struct UsageScriptExpressionEvaluator {
                 }
                 blank(start..<index)
                 index += 1
+            } else if character == "/", regexCanStart(at: index, in: source, mask: mask) {
+                let start = index + 1
+                index += 1
+                var inClass = false
+                while index < source.count, !source[index].isNewline {
+                    if source[index] == "\\" {
+                        index += 2
+                        continue
+                    }
+                    if source[index] == "[" { inClass = true }
+                    if source[index] == "]" { inClass = false }
+                    if source[index] == "/", !inClass { break }
+                    index += 1
+                }
+                blank(start..<min(index, source.count))
+                index += 1
             } else {
                 index += 1
             }
@@ -90,112 +127,243 @@ private struct UsageScriptExpressionEvaluator {
         return mask
     }
 
-    func firstValue(forKey key: String) -> String? {
-        for start in valueStarts(forKey: key) {
-            var index = start
-            if let value = concatenation(at: &index, depth: 0) { return value }
+    /// A `/` starts a regex literal unless it follows a value (identifier, number, `)`, `]`,
+    /// `}` or a closing quote), in which case it is division.
+    private static func regexCanStart(at index: Int, in source: [Character], mask: [Bool]) -> Bool {
+        var cursor = index - 1
+        while cursor >= 0, source[cursor].isWhitespace { cursor -= 1 }
+        guard cursor >= 0 else { return true }
+        let previous = source[cursor]
+        guard mask[cursor] else { return false }
+        if isIdentifierPart(previous) {
+            var start = cursor
+            while start > 0, mask[start - 1], isIdentifierPart(source[start - 1]) { start -= 1 }
+            let word = String(source[start...cursor])
+            return ["return", "typeof", "case", "do", "else", "in", "of", "new", "delete", "void", "throw", "yield", "await"]
+                .contains(word)
         }
-        return nil
+        return ![")", "]", "}", "\"", "'", "`"].contains(previous)
     }
 
-    /// Raw body of the first string/template literal after `key:`, with `{{placeholder}}`
-    /// substitution but no `${}` evaluation.
-    func firstLiteralPrefix(forKey key: String) -> String? {
-        for start in valueStarts(forKey: key) {
-            var index = start
-            skipTrivia(&index)
-            guard index < source.count, ["\"", "'", "`"].contains(source[index]) else { continue }
-            let quote = source[index]
-            var cursor = index + 1
-            while cursor < source.count, source[cursor] != quote, quote == "`" || !source[cursor].isNewline {
-                cursor += 1
-            }
-            return substitutePlaceholders(in: String(source[(index + 1)..<cursor]))
-        }
-        return nil
+    private static func isIdentifierPart(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber || character == "_" || character == "$"
     }
 
-    /// Reads `key: { name: expr, "name": expr }`, keeping only entries whose values evaluate.
-    func firstObject(forKey key: String) -> [String: String] {
-        for start in valueStarts(forKey: key) {
-            var cursor = start
-            skipTrivia(&cursor)
-            guard cursor < source.count, source[cursor] == "{" else { continue }
-            cursor += 1
-            var result: [String: String] = [:]
-            while true {
-                skipTrivia(&cursor)
-                guard cursor < source.count else { return result }
-                if source[cursor] == "}" { return result }
-                let name: String?
-                if source[cursor] == "\"" || source[cursor] == "'" {
-                    name = stringLiteral(at: &cursor)
-                } else {
-                    name = identifier(at: &cursor)
-                }
-                skipTrivia(&cursor)
-                guard let name, cursor < source.count, source[cursor] == ":" else { return result }
-                cursor += 1
-                var valueEnd = cursor
-                if let value = concatenation(at: &valueEnd, depth: 0) {
-                    result[name] = value
-                    cursor = valueEnd
-                } else if !skipValue(&cursor) {
-                    return result
-                }
-                skipTrivia(&cursor)
-                guard cursor < source.count, source[cursor] == "," else { return result }
-                cursor += 1
+    private static func bracketPartners(in source: [Character], isCode: [Bool]) -> [Int: Int]? {
+        let closers: [Character: Character] = [")": "(", "]": "[", "}": "{"]
+        var stack: [Int] = []
+        var partner: [Int: Int] = [:]
+        for index in source.indices where isCode[index] {
+            let character = source[index]
+            if character == "(" || character == "[" || character == "{" {
+                stack.append(index)
+            } else if let opener = closers[character] {
+                guard let open = stack.popLast(), source[open] == opener else { return nil }
+                partner[open] = index
+                partner[index] = open
             }
         }
-        return [:]
+        return stack.isEmpty ? partner : nil
     }
 
-    /// Advances past an unevaluable value to the next top-level `,` or `}`.
-    private func skipValue(_ index: inout Int) -> Bool {
-        var depth = 0
-        while index < source.count {
-            if isCode[index] {
-                switch source[index] {
-                case "(", "[", "{": depth += 1
-                case ")", "]": depth -= 1
-                case "}" where depth == 0, "," where depth == 0: return true
-                case "}": depth -= 1
-                default: break
-                }
-            }
-            index += 1
+    // MARK: - Locating the request object
+
+    /// Position of the `{` of the request object: the value of the single `request:` property,
+    /// or the argument of the single `fetch(...)` call. Any other count is ambiguous.
+    func requestObject() -> Int? {
+        let requestKeys = codeMatches(of: "\(Self.boundary)([\"']?)request\\1\\s*:")
+            .filter { isPreceded(by: ["{", ","], at: $0.lowerBound) }
+        let fetchCalls = codeMatches(of: "\(Self.boundary)fetch\\s*\\(")
+        guard requestKeys.count + fetchCalls.count == 1 else { return nil }
+        if let key = requestKeys.first {
+            guard let (object, end) = objectValue(at: key.upperBound),
+                  let next = nextSignificant(from: end), next == "," || next == "}" else { return nil }
+            return object
         }
-        return false
+        let open = fetchCalls[0].upperBound - 1
+        var cursor = open + 1
+        skipTrivia(&cursor)
+        guard cursor < source.count, source[cursor] == "{", let close = partner[cursor],
+              let next = nextSignificant(from: close + 1), next == ")" || next == "," else { return nil }
+        return cursor
     }
 
-    // MARK: - Locating keys and declarations
+    /// Reads `{ ... }` or an IIFE returning one: `(() => { ...; return { ... }; })()`,
+    /// `(function () { ... })()` or `(() => ({ ... }))()`. Returns the object's `{` and the
+    /// index just past the whole value.
+    private func objectValue(at start: Int) -> (object: Int, end: Int)? {
+        var cursor = start
+        skipTrivia(&cursor)
+        guard cursor < source.count, let groupClose = partner[cursor] else { return nil }
+        if source[cursor] == "{" { return (cursor, groupClose + 1) }
+        guard source[cursor] == "(" else { return nil }
 
-    /// Matches `url:`, `"url":` and `'url':`, but not `baseUrl:` or `response.url`.
-    /// Keys in live code come first; keys inside strings or comments are kept as a fallback
-    /// because the legacy regex matched them (e.g. ``const u = `url: "…"` ``).
-    private func valueStarts(forKey key: String) -> [Int] {
-        let escaped = NSRegularExpression.escapedPattern(for: key)
-        let matches = matches(of: "(?<![A-Za-z0-9_$.])([\"']?)\(escaped)\\1\\s*:")
-        return matches.filter(\.inCode).map(\.end) + matches.filter { !$0.inCode }.map(\.end)
+        var head = cursor + 1
+        skipTrivia(&head)
+        let isFunction = identifier(at: &head) == "function"
+        if !isFunction { head = cursor + 1 }
+        // Parameters must be empty so no name in the body is shadowed by an argument.
+        guard var body = emptyParens(at: head) else { return nil }
+        skipTrivia(&body)
+        if !isFunction {
+            guard body + 1 < source.count, source[body] == "=", source[body + 1] == ">" else { return nil }
+            body += 2
+            skipTrivia(&body)
+        }
+        guard body < source.count, let bodyClose = partner[body] else { return nil }
+
+        let object: Int
+        if source[body] == "{" {
+            guard let returned = returnedObject(inBody: body) else { return nil }
+            object = returned
+        } else if !isFunction, source[body] == "(" {
+            guard let literal = significantIndex(from: body + 1), source[literal] == "{",
+                  let literalClose = partner[literal],
+                  significantIndex(from: literalClose + 1) == bodyClose else { return nil }
+            object = literal
+        } else {
+            return nil
+        }
+        guard significantIndex(from: bodyClose + 1) == groupClose,
+              let end = emptyParens(at: groupClose + 1) else { return nil }
+        return (object, end)
     }
 
-    private func declarationStarts(of name: String) -> [Int] {
-        let escaped = NSRegularExpression.escapedPattern(for: name)
-        return matches(of: "(?<![A-Za-z0-9_$.])(?:const|let|var)\\s+\(escaped)\\s*=(?!=)")
-            .filter(\.inCode)
-            .map(\.end)
+    /// Index just past `()` (whitespace and comments allowed) starting at `start`.
+    private func emptyParens(at start: Int) -> Int? {
+        guard let open = significantIndex(from: start), source[open] == "(",
+              let close = partner[open], significantIndex(from: open + 1) == close else { return nil }
+        return close + 1
     }
 
-    private func matches(of pattern: String) -> [(end: Int, inCode: Bool)] {
-        let text = String(source)
+    /// The `{` of the object in the body's only `return { ... }` statement.
+    private func returnedObject(inBody open: Int) -> Int? {
+        guard let close = partner[open] else { return nil }
+        let returns = codeMatches(of: "\(Self.boundary)return(?![A-Za-z0-9_$])")
+            .filter { $0.lowerBound > open && $0.lowerBound < close }
+        guard returns.count == 1, innermostBracket(enclosing: returns[0].lowerBound) == open else { return nil }
+        // `return` followed by a newline returns undefined (ASI), so the `{` must be on the same line.
+        var cursor = returns[0].upperBound
+        while cursor < source.count, source[cursor] == " " || source[cursor] == "\t" { cursor += 1 }
+        guard cursor < source.count, source[cursor] == "{", let objectClose = partner[cursor],
+              let after = significantIndex(from: objectClose + 1),
+              source[after] == ";" || after == close else { return nil }
+        return cursor
+    }
+
+    /// Whether the closest code character before `index` is one of `characters`.
+    private func isPreceded(by characters: Set<Character>, at index: Int) -> Bool {
+        var cursor = index - 1
+        while cursor >= 0, !isCode[cursor] || source[cursor].isWhitespace { cursor -= 1 }
+        return cursor >= 0 && characters.contains(source[cursor])
+    }
+
+    private func significantIndex(from start: Int) -> Int? {
+        var cursor = start
+        skipTrivia(&cursor)
+        return cursor < source.count ? cursor : nil
+    }
+
+    private func nextSignificant(from start: Int) -> Character? {
+        significantIndex(from: start).map { source[$0] }
+    }
+
+    /// Character ranges of regex matches that start in code.
+    private func codeMatches(of pattern: String) -> [Range<Int>] {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
             guard let range = Range($0.range, in: text) else { return nil }
             let start = text.distance(from: text.startIndex, to: range.lowerBound)
             let end = text.distance(from: text.startIndex, to: range.upperBound)
-            return (end, start < isCode.count && isCode[start])
+            guard start < isCode.count, isCode[start] else { return nil }
+            return start..<end
         }
+    }
+
+    private func innermostBracket(enclosing index: Int) -> Int? {
+        var best: Int?
+        for (open, close) in partner where open < index && close > index && open < close {
+            if best.map({ open > $0 }) ?? true { best = open }
+        }
+        return best
+    }
+
+    /// Opening `{` of every brace pair enclosing `index`, innermost first.
+    private func enclosingBraces(of index: Int) -> [Int] {
+        partner.filter { $0.key < index && $0.value > index && source[$0.key] == "{" }
+            .map(\.key)
+            .sorted(by: >)
+    }
+
+    // MARK: - Objects
+
+    /// Properties of the object literal at `open`. Fails on anything but `key: value` and
+    /// shorthand `key` entries (spread, computed keys, methods, getters/setters).
+    func properties(ofObjectAt open: Int) -> [Property]? {
+        guard let close = partner[open], source[open] == "{" else { return nil }
+        var properties: [Property] = []
+        var cursor = open + 1
+        while true {
+            skipTrivia(&cursor)
+            guard cursor < close else { return properties }
+            let keyStart = cursor
+            let name: String?
+            let isQuoted = source[cursor] == "\"" || source[cursor] == "'"
+            name = isQuoted ? stringLiteral(at: &cursor) : identifier(at: &cursor)
+            guard let name, cursor <= close else { return nil }
+            skipTrivia(&cursor)
+            guard cursor <= close else { return nil }
+            if source[cursor] == ":" {
+                let valueStart = cursor + 1
+                guard let valueEnd = valueEnd(from: valueStart, limit: close) else { return nil }
+                properties.append(Property(name: name, value: valueStart..<valueEnd))
+                cursor = valueEnd
+            } else if !isQuoted, source[cursor] == "," || cursor == close {
+                properties.append(Property(name: name, value: keyStart..<cursor))
+            } else {
+                return nil
+            }
+            if cursor < close {
+                guard source[cursor] == "," else { return nil }
+                cursor += 1
+            }
+        }
+    }
+
+    /// Index of the top-level `,` or `limit` that ends a value starting at `start`.
+    private func valueEnd(from start: Int, limit: Int) -> Int? {
+        var cursor = start
+        while cursor < limit {
+            if isCode[cursor] {
+                if source[cursor] == "," { return cursor }
+                if let close = partner[cursor], close > cursor {
+                    cursor = close + 1
+                    continue
+                }
+            }
+            cursor += 1
+        }
+        return cursor == limit ? limit : nil
+    }
+
+    /// Reads `headers: { name: expr, "name": expr }`, keeping entries whose values evaluate.
+    func headers(in range: Range<Int>) -> [String: String] {
+        guard let open = significantIndex(from: range.lowerBound), source[open] == "{",
+              let close = partner[open], significantIndex(from: close + 1).map({ $0 >= range.upperBound }) ?? true,
+              let properties = properties(ofObjectAt: open) else { return [:] }
+        var result: [String: String] = [:]
+        for property in properties {
+            if let value = evaluate(property.value) { result[property.name] = value }
+        }
+        return result
+    }
+
+    /// Fully evaluates the expression in `range`; any unparsed remainder fails.
+    func evaluate(_ range: Range<Int>) -> String? {
+        var cursor = range.lowerBound
+        guard let value = concatenation(at: &cursor, depth: 0) else { return nil }
+        skipTrivia(&cursor)
+        return cursor == range.upperBound ? value : nil
     }
 
     // MARK: - Expressions
@@ -232,20 +400,130 @@ private struct UsageScriptExpressionEvaluator {
             index = cursor + 1
             value = inner
         default:
+            let reference = index
             guard let name = identifier(at: &index),
-                  let resolved = resolve(identifier: name, depth: depth) else { return nil }
+                  let resolved = resolve(name, at: reference, depth: depth) else { return nil }
             value = resolved
         }
         return methodChain(on: value, at: &index)
     }
 
-    private func resolve(identifier name: String, depth: Int) -> String? {
+    // MARK: - Scope
+
+    /// Value of the `const` / `let` / `var` declaration that `name` at `reference` refers to.
+    ///
+    /// A declaration counts only when it precedes the reference and sits directly in the
+    /// top level or in a `{}` block enclosing the reference; the innermost one wins. Anything
+    /// that could make the binding differ at runtime fails: reassignment, parameters, function
+    /// or class names, destructuring, loop headers, redeclaration, or multiple `var`s.
+    private func resolve(_ name: String, at reference: Int, depth: Int) -> String? {
         guard depth < Self.maxResolutionDepth else { return nil }
-        for start in declarationStarts(of: name) {
-            var cursor = start
-            if let value = concatenation(at: &cursor, depth: depth + 1) { return value }
+        let escaped = NSRegularExpression.escapedPattern(for: name)
+        let declarations = codeMatches(of: "\(Self.boundary)(const|let|var)\\s+\(escaped)\\s*=(?!=)")
+        let assignments = codeMatches(
+            of: "\(Self.boundary)\(escaped)\\s*(?:=(?![=>])|[-+*/%&|^]=|\\*\\*=|<<=|>>>?=|&&=|\\|\\|=|\\?\\?=|\\+\\+|--)"
+        ) + codeMatches(of: "(?:\\+\\+|--)\\s*\(escaped)(?![A-Za-z0-9_$])")
+        guard assignments.count == declarations.count,
+              !hasOtherBinding(of: name, declarations: declarations) else { return nil }
+        let isVar = { (declaration: Range<Int>) in self.source[declaration.lowerBound] == "v" }
+        if declarations.contains(where: isVar), declarations.count > 1 { return nil }
+
+        let referenceBlocks = enclosingBraces(of: reference)
+        // Scope key: the enclosing `{` position, or -1 for top level. Larger is more inner.
+        var visible: [(scope: Int, valueStart: Int)] = []
+        for declaration in declarations {
+            let block = innermostBracket(enclosing: declaration.lowerBound)
+            // Declarations inside `(...)` or `[...]` (for-loop headers, arguments) are not modeled.
+            if let block, source[block] != "{" { return nil }
+            if let block, !referenceBlocks.contains(block) {
+                // `var` hoists out of blocks, so an unrelated block's `var` is still ambiguous.
+                if isVar(declaration) { return nil }
+                continue
+            }
+            // A later declaration in scope shadows or redeclares the name (TDZ at runtime).
+            guard declaration.upperBound <= reference else { return nil }
+            visible.append((block ?? -1, declaration.upperBound))
         }
-        return nil
+        guard let innermost = visible.map(\.scope).max(),
+              visible.filter({ $0.scope == innermost }).count == 1,
+              let chosen = visible.first(where: { $0.scope == innermost }) else { return nil }
+        var cursor = chosen.valueStart
+        guard let value = concatenation(at: &cursor, depth: depth + 1),
+              endsDeclaration(at: cursor) else { return nil }
+        return value
+    }
+
+    /// Whether `name` is bound anywhere other than the given plain declarations.
+    private func hasOtherBinding(of name: String, declarations: [Range<Int>]) -> Bool {
+        let declaredNames = Set(declarations.map { declaration -> Int in
+            var cursor = declaration.lowerBound
+            _ = identifier(at: &cursor)
+            while cursor < source.count, source[cursor].isWhitespace { cursor += 1 }
+            return cursor
+        })
+        let escaped = NSRegularExpression.escapedPattern(for: name)
+        for occurrence in codeMatches(of: "\(Self.boundary)\(escaped)(?![A-Za-z0-9_$])")
+        where !declaredNames.contains(occurrence.lowerBound) {
+            if ["function", "class", "const", "let", "var"].contains(previousWord(before: occurrence.lowerBound)) {
+                return true
+            }
+            // Single-parameter arrow function: `name => ...`.
+            if let next = significantIndex(from: occurrence.upperBound), next + 1 < source.count,
+               source[next] == "=", source[next + 1] == ">" {
+                return true
+            }
+            if enclosingBrackets(of: occurrence.lowerBound).contains(where: isBindingPattern) { return true }
+        }
+        return false
+    }
+
+    /// Brackets whose contents bind names: parameter lists, `catch` / `for` headers and
+    /// destructuring patterns.
+    private func isBindingPattern(open: Int) -> Bool {
+        guard let close = partner[open] else { return false }
+        let after = significantIndex(from: close + 1)
+        let isFollowedByAssignment = after.map { index in
+            index + 1 < source.count && source[index] == "=" && source[index + 1] != "="
+        } ?? false
+        if source[open] == "(" {
+            let keyword = previousWord(before: open)
+            if ["if", "while", "switch", "with"].contains(keyword) { return false }
+            if ["for", "catch", "function"].contains(keyword) { return true }
+            guard let after else { return false }
+            // `(a, b) => ...`, `name(a) { ... }`, `function name(a) { ... }`.
+            return isFollowedByAssignment && source[after + 1] == ">"
+                || source[after] == "{" && !isPreceded(by: ["(", ",", "=", ":", "?", "[", "!", "&", "|"], at: open)
+        }
+        return isFollowedByAssignment
+            || ["const", "let", "var"].contains(previousWord(before: open))
+    }
+
+    private func enclosingBrackets(of index: Int) -> [Int] {
+        partner.filter { $0.key < index && $0.value > index }.map(\.key)
+    }
+
+    private func previousWord(before index: Int) -> String? {
+        var end = index - 1
+        while end >= 0, !isCode[end] || source[end].isWhitespace { end -= 1 }
+        guard end >= 0, Self.isIdentifierPart(source[end]) else { return nil }
+        var start = end
+        while start > 0, isCode[start - 1], Self.isIdentifierPart(source[start - 1]) { start -= 1 }
+        return String(source[start...end])
+    }
+
+    /// A declaration's initializer must end at `;`, `,`, `}`, `)`, end of input, or a line
+    /// break before the next statement, so e.g. `const base = "x" || other` fails.
+    private func endsDeclaration(at start: Int) -> Bool {
+        var cursor = start
+        var sawNewline = false
+        while cursor < source.count, source[cursor].isWhitespace || !isCode[cursor] {
+            if source[cursor].isNewline { sawNewline = true }
+            cursor += 1
+        }
+        guard cursor < source.count else { return true }
+        let character = source[cursor]
+        if [";", ",", "}", ")"].contains(character) { return true }
+        return sawNewline && Self.isIdentifierPart(character) && !character.isNumber
     }
 
     private func methodChain(on initial: String, at index: inout Int) -> String? {

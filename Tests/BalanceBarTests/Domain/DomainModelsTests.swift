@@ -2376,6 +2376,29 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(query?.apiKey, "test-key")
     }
 
+    func testBalanceQueryRejectsUnevaluableURLInsteadOfSendingKeyToTruncatedURL() throws {
+        let code = """
+        const docs = { url: "https://docs.example.com" };
+        ({ request: { url: "{{baseUrl}}/api/user/self?id=" + userId } })
+        """
+        let metaText = String(
+            data: try JSONSerialization.data(withJSONObject: ["usage_script": ["enabled": true, "code": code]]),
+            encoding: .utf8
+        )
+
+        var failure: BalanceQueryFailure?
+        let query = BalanceQuery.make(
+            settingsText: #"{"apiKey":"test-key","baseUrl":"https://api.example.test"}"#,
+            metaText: try XCTUnwrap(metaText),
+            websiteText: nil,
+            appType: "claude",
+            onFailure: { failure = $0 }
+        )
+
+        XCTAssertNil(query)
+        XCTAssertEqual(failure, .requestEndpointMissing)
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let suiteName = "BalanceBarTests.ProviderBalanceProgress.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
