@@ -239,8 +239,40 @@ final class UsageScriptRequestParserTests: XCTestCase {
         XCTAssertNil(UsageScriptRequestParser.parseRequest(from: unevaluable))
     }
 
-    func testRequiresRequestObjectOrFetchCall() {
-        XCTAssertNil(UsageScriptRequestParser.parseRequest(from: #"url: "https://api.example.com/balance""#))
+    func testPreservesLegacyTopLevelURLSyntax() {
+        let cases = [
+            #"url: "{{baseUrl}}/balance""#,
+            #"url: '{{baseUrl}}/balance'"#,
+            #""url": "{{baseUrl}}/balance""#,
+            #"'url': '{{baseUrl}}/balance'"#
+        ]
+        for code in cases {
+            XCTAssertEqual(
+                UsageScriptRequestParser.parseRequest(
+                    from: code,
+                    placeholders: ["baseUrl": "https://api.example.com"]
+                )?.urlTemplate,
+                "https://api.example.com/balance",
+                code
+            )
+        }
+    }
+
+    func testPreservesLegacyTopLevelComputedURLSyntax() {
+        let code = """
+        const base = "{{baseUrl}}";
+        url: base + "/v1/usage";
+        """
+        XCTAssertEqual(
+            UsageScriptRequestParser.parseRequest(
+                from: code,
+                placeholders: ["baseUrl": "https://api.example.com"]
+            )?.urlTemplate,
+            "https://api.example.com/v1/usage"
+        )
+    }
+
+    func testRequiresStructuredRequestOrTopLevelLegacyURL() {
         XCTAssertNil(UsageScriptRequestParser.parseRequest(from: #"{ "url": "https://api.example.com/balance" }"#))
     }
 

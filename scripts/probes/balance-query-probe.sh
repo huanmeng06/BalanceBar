@@ -74,7 +74,7 @@ private func resolve(
     return (query, failure)
 }
 
-let usageCode = "({ request: { url: `{{baseUrl}}/v1/usage` } })"
+let usageCode = "url: `{{baseUrl}}/v1/usage`"
 
 let tokenshopConfig = """
 [general]

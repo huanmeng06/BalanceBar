@@ -1232,7 +1232,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 INSERT INTO providers VALUES (
                     'codex-custom', 'Codex Custom',
                     '{"api_key":"fixture-key","base_url":"https://codex.provider.test"}',
-                    '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://codex.provider.test","code":"({ request: { url: `{{baseUrl}}/usage` } })"}}',
+                    '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://codex.provider.test","code":"url: `{{baseUrl}}/usage`"}}',
                     'custom', 'https://codex.provider.test', 'codex', 1, 1, 1
                 );
                 INSERT INTO providers VALUES (
@@ -1242,7 +1242,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 INSERT INTO providers VALUES (
                     'claude-custom', 'Claude Custom',
                     '{"api_key":"fixture-key","base_url":"https://claude.provider.test"}',
-                    '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://claude.provider.test","code":"({ request: { url: `{{baseUrl}}/usage` } })"}}',
+                    '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://claude.provider.test","code":"url: `{{baseUrl}}/usage`"}}',
                     'custom', 'https://claude.provider.test', 'claude', 1, 1, 1
                 );
                 """

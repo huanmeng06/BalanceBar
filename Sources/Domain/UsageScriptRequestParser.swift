@@ -2,10 +2,10 @@ import Foundation
 
 /// Extracts the request contract from a CC Switch usage script without running JavaScript.
 ///
-/// Only the script's own request object is read: the value of its single `request:` property
-/// (an object literal, or an IIFE returning one), or the object passed to a single legacy
-/// `fetch({ ... })` call. Other objects, comments and strings are never consulted, and anything
-/// ambiguous returns `nil`, because BalanceAPIClient sends the provider API key to this URL.
+/// Reads the single structured request object (`request:` or legacy `fetch({ ... })`) or one
+/// top-level legacy `url:` property. Nested objects, comments, and strings are never consulted,
+/// and anything ambiguous returns `nil`, because BalanceAPIClient sends the provider API key to
+/// this URL.
 ///
 /// `url` must evaluate completely with a small JavaScript subset: string and template literals,
 /// `+`, parentheses, `const` / `let` / `var` identifiers (lexically scoped, declared before use,
@@ -25,18 +25,26 @@ enum UsageScriptRequestParser {
         from code: String,
         placeholders: [String: String] = [:]
     ) -> ParsedRequest? {
-        guard let script = UsageScriptSource(source: Array(code), placeholders: placeholders),
-              let object = script.requestObject(),
-              let properties = script.properties(ofObjectAt: object) else { return nil }
-        func single(_ name: String) -> Range<Int>? {
-            let matches = properties.filter { $0.name == name }
-            return matches.count == 1 ? matches[0].value : nil
+        guard let script = UsageScriptSource(source: Array(code), placeholders: placeholders) else {
+            return nil
         }
-        guard let urlValue = single("url"),
+        if let object = script.requestObject(),
+           let properties = script.properties(ofObjectAt: object) {
+            func single(_ name: String) -> Range<Int>? {
+                let matches = properties.filter { $0.name == name }
+                return matches.count == 1 ? matches[0].value : nil
+            }
+            guard let urlValue = single("url"),
+                  let url = script.evaluate(urlValue), !url.isEmpty else { return nil }
+            let method = single("method").flatMap { script.evaluate($0) }?.uppercased()
+            let headers = single("headers").map { script.headers(in: $0) } ?? [:]
+            return ParsedRequest(urlTemplate: url, method: method, headers: headers)
+        }
+        // Preserve the legacy CC Switch form used by existing providers:
+        // `url: "…"`, `url: '…'`, or `url: `…`` at script top level.
+        guard let urlValue = script.legacyURLValue(),
               let url = script.evaluate(urlValue), !url.isEmpty else { return nil }
-        let method = single("method").flatMap { script.evaluate($0) }?.uppercased()
-        let headers = single("headers").map { script.headers(in: $0) } ?? [:]
-        return ParsedRequest(urlTemplate: url, method: method, headers: headers)
+        return ParsedRequest(urlTemplate: url, method: nil, headers: [:])
     }
 }
 
@@ -186,6 +194,50 @@ private struct UsageScriptSource {
         guard cursor < source.count, source[cursor] == "{", let close = partner[cursor],
               let next = nextSignificant(from: close + 1), next == ")" || next == "," else { return nil }
         return cursor
+    }
+
+    /// Finds one legacy top-level `url:` property when no structured request exists.
+    /// Nested object properties, comments, and string contents are deliberately excluded.
+    func legacyURLValue() -> Range<Int>? {
+        let requestKeys = codeMatches(of: "\(Self.boundary)([\"']?)request\\1\\s*:")
+        let fetchCalls = codeMatches(of: "\(Self.boundary)fetch\\s*\\(")
+        guard requestKeys.isEmpty, fetchCalls.isEmpty else { return nil }
+        let urlKeys = codeMatches(of: "\(Self.boundary)([\"']?)url\\1\\s*:")
+            .filter { enclosingBrackets(of: $0.lowerBound).isEmpty }
+        guard urlKeys.count == 1,
+              let end = legacyValueEnd(from: urlKeys[0].upperBound) else { return nil }
+        return urlKeys[0].upperBound..<end
+    }
+
+    /// Ends a legacy expression at a top-level semicolon, comma, or statement newline.
+    private func legacyValueEnd(from start: Int) -> Int? {
+        var cursor = start
+        var expressionStarted = false
+        while cursor < source.count {
+            if isCode[cursor] {
+                let character = source[cursor]
+                if character == ";" || character == "," { return cursor }
+                if character.isNewline {
+                    if !expressionStarted { cursor += 1; continue }
+                    var previous = cursor - 1
+                    while previous >= start, source[previous].isWhitespace || !isCode[previous] { previous -= 1 }
+                    if previous >= start, ["+", "-", "(", "[", ".", "?", ":", "=", "&", "|"].contains(source[previous]) {
+                        cursor += 1
+                        continue
+                    }
+                    return cursor
+                }
+                if character == "(" || character == "[" || character == "{" {
+                    guard let close = partner[cursor] else { return nil }
+                    expressionStarted = true
+                    cursor = close + 1
+                    continue
+                }
+                if !character.isWhitespace { expressionStarted = true }
+            }
+            cursor += 1
+        }
+        return source.count
     }
 
     /// Reads `{ ... }` or an IIFE returning one: `(() => { ...; return { ... }; })()`,
