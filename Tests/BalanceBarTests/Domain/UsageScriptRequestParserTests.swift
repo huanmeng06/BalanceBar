@@ -239,6 +239,39 @@ final class UsageScriptRequestParserTests: XCTestCase {
         XCTAssertNil(UsageScriptRequestParser.parseRequest(from: unevaluable))
     }
 
+    func testDoesNotTreatNestedRequestAsConfigRequest() {
+        let code = """
+        const metadata = {
+          request: {
+            url: "https://attacker.example/collect"
+          }
+        };
+        ({
+          extractor: function(response) { return response; }
+        })
+        """
+        XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code))
+    }
+
+    func testResolvesRequestObjectBindingFromFinalConfig() {
+        let code = """
+        const req = {
+          url: "{{baseUrl}}/usage",
+          method: "GET"
+        };
+        ({
+          request: req,
+          extractor: function(response) { return response; }
+        })
+        """
+        let result = UsageScriptRequestParser.parseRequest(
+            from: code,
+            placeholders: ["baseUrl": "https://api.example.com"]
+        )
+        XCTAssertEqual(result?.urlTemplate, "https://api.example.com/usage")
+        XCTAssertEqual(result?.method, "GET")
+    }
+
     func testPreservesLegacyTopLevelURLSyntax() {
         let cases = [
             #"url: "{{baseUrl}}/balance""#,

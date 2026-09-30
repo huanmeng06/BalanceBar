@@ -176,24 +176,72 @@ private struct UsageScriptSource {
 
     // MARK: - Locating the request object
 
-    /// Position of the `{` of the request object: the value of the single `request:` property,
-    /// or the argument of the single `fetch(...)` call. Any other count is ambiguous.
+    /// Position of the request object's opening brace: the direct request property of the final
+    /// configuration object, or the argument of one top-level legacy fetch call.
     func requestObject() -> Int? {
         let requestKeys = codeMatches(of: "\(Self.boundary)([\"']?)request\\1\\s*:")
             .filter { isPreceded(by: ["{", ","], at: $0.lowerBound) }
         let fetchCalls = codeMatches(of: "\(Self.boundary)fetch\\s*\\(")
-        guard requestKeys.count + fetchCalls.count == 1 else { return nil }
-        if let key = requestKeys.first {
-            guard let (object, end) = objectValue(at: key.upperBound),
-                  let next = nextSignificant(from: end), next == "," || next == "}" else { return nil }
+            .filter { enclosingBrackets(of: $0.lowerBound).isEmpty }
+        guard fetchCalls.isEmpty || requestKeys.isEmpty else { return nil }
+        if fetchCalls.count == 1 {
+            let open = fetchCalls[0].upperBound - 1
+            var cursor = open + 1
+            skipTrivia(&cursor)
+            guard cursor < source.count, source[cursor] == "{", let close = partner[cursor],
+                  let next = nextSignificant(from: close + 1), next == ")" || next == "," else { return nil }
+            return cursor
+        }
+        guard fetchCalls.isEmpty else { return nil }
+        let configContainers = requestKeys.compactMap { key -> Int? in
+            guard let container = enclosingBraces(of: key.lowerBound).first,
+                  isParenthesizedObject(at: container) else { return nil }
+            return container
+        }
+        guard configContainers.count == 1 else { return nil }
+        let candidates = requestKeys.compactMap { key -> Int? in
+            guard let container = enclosingBraces(of: key.lowerBound).first,
+                  isFinalConfigObject(at: container),
+                  let (object, end) = objectValue(at: key.upperBound),
+                  let next = nextSignificant(from: end), next == "," || next == "}" else {
+                return nil
+            }
             return object
         }
-        let open = fetchCalls[0].upperBound - 1
-        var cursor = open + 1
+        return candidates.count == 1 ? candidates[0] : nil
+    }
+
+    private func isParenthesizedObject(at open: Int) -> Bool {
+        var previous = open - 1
+        while previous >= 0, !isCode[previous] || source[previous].isWhitespace { previous -= 1 }
+        guard previous >= 0, source[previous] == "(", let close = partner[previous],
+              let objectClose = partner[open], close == objectClose + 1 else { return false }
+        var before = previous - 1
+        while before >= 0, !isCode[before] || source[before].isWhitespace { before -= 1 }
+        return before < 0 || source[before] == ";" || source[before] == "}"
+    }
+
+    /// The CC Switch result is a parenthesized object expression at the end of the script.
+    /// Requiring this shape prevents request properties in assigned/helper objects from
+    /// becoming the credential-bearing request by accident.
+    private func isFinalConfigObject(at open: Int) -> Bool {
+        guard let close = partner[open] else { return false }
+        guard isParenthesizedObject(at: open) else { return false }
+        var cursor = close + 1
         skipTrivia(&cursor)
-        guard cursor < source.count, source[cursor] == "{", let close = partner[cursor],
-              let next = nextSignificant(from: close + 1), next == ")" || next == "," else { return nil }
-        return cursor
+        if cursor < source.count, source[cursor] == ")" {
+            cursor += 1
+        } else if cursor < source.count, source[cursor] == ";" {
+            cursor += 1
+        } else if cursor != source.count {
+            return false
+        }
+        skipTrivia(&cursor)
+        if cursor < source.count, source[cursor] == ";" {
+            cursor += 1
+            skipTrivia(&cursor)
+        }
+        return cursor == source.count
     }
 
     /// Finds one legacy top-level `url:` property when no structured request exists.
@@ -246,9 +294,18 @@ private struct UsageScriptSource {
     private func objectValue(at start: Int) -> (object: Int, end: Int)? {
         var cursor = start
         skipTrivia(&cursor)
-        guard cursor < source.count, let groupClose = partner[cursor] else { return nil }
-        if source[cursor] == "{" { return (cursor, groupClose + 1) }
-        guard source[cursor] == "(" else { return nil }
+        guard cursor < source.count else { return nil }
+        if source[cursor] == "{" {
+            guard let close = partner[cursor] else { return nil }
+            return (cursor, close + 1)
+        }
+        if source[cursor] != "(" {
+            let reference = cursor
+            guard let name = identifier(at: &cursor) else { return nil }
+            guard let value = objectBindingValue(named: name, reference: reference) else { return nil }
+            return (value.object, cursor)
+        }
+        guard let groupClose = partner[cursor] else { return nil }
 
         var head = cursor + 1
         skipTrivia(&head)
@@ -279,6 +336,27 @@ private struct UsageScriptSource {
         guard significantIndex(from: bodyClose + 1) == groupClose,
               let end = emptyParens(at: groupClose + 1) else { return nil }
         return (object, end)
+    }
+
+    private func objectBindingValue(named name: String, reference: Int) -> (object: Int, end: Int)? {
+        let escaped = NSRegularExpression.escapedPattern(for: name)
+        let declarations = codeMatches(of: "\(Self.boundary)(const|let|var)\\s+\(escaped)\\s*=(?!=)")
+            .filter { $0.lowerBound < reference }
+        guard declarations.count == 1 else { return nil }
+        let assignments = codeMatches(
+            of: "\(Self.boundary)\(escaped)\\s*(?:=(?![=>])|[-+*/%&|^]=|\\*\\*=|<<=|>>>?=|&&=|\\|\\|=|\\?\\?=|\\+\\+|--)"
+        ) + codeMatches(of: "(?:\\+\\+|--)\\s*\(escaped)(?![A-Za-z0-9_$])")
+        guard assignments.count == declarations.count,
+              !hasOtherBinding(of: name, declarations: declarations) else { return nil }
+        let declaration = declarations[0]
+        let declarationBlock = innermostBracket(enclosing: declaration.lowerBound)
+        if let declarationBlock {
+            guard source[declarationBlock] == "{",
+                  enclosingBraces(of: reference).contains(declarationBlock) else { return nil }
+        }
+        var valueStart = declaration.upperBound
+        skipTrivia(&valueStart)
+        return objectValue(at: valueStart)
     }
 
     /// Index just past `()` (whitespace and comments allowed) starting at `start`.

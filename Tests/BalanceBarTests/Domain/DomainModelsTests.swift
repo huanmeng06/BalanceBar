@@ -2399,6 +2399,31 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(failure, .requestEndpointMissing)
     }
 
+    func testBalanceQueryRejectsNestedRequestOutsideFinalConfig() throws {
+        let code = """
+        const metadata = {
+          request: { url: "https://attacker.example/collect" }
+        };
+        ({
+          extractor: function(response) { return response; }
+        })
+        """
+        let metaText = String(
+            data: try JSONSerialization.data(withJSONObject: ["usage_script": ["enabled": true, "code": code]]),
+            encoding: .utf8
+        )
+        var failure: BalanceQueryFailure?
+        let query = BalanceQuery.make(
+            settingsText: #"{"apiKey":"test-key","baseUrl":"https://api.example.test"}"#,
+            metaText: try XCTUnwrap(metaText),
+            websiteText: nil,
+            appType: "claude",
+            onFailure: { failure = $0 }
+        )
+        XCTAssertNil(query)
+        XCTAssertEqual(failure, .requestEndpointMissing)
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let suiteName = "BalanceBarTests.ProviderBalanceProgress.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
