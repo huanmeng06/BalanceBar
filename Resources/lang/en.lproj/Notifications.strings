@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "Second reminder";
 "notifications.remaining_below" = "When remaining is below";
 "notifications.second_off" = "Off";
-"notifications.default_readonly_hint" = "These values come from Default Rules.";
+"notifications.default_readonly_hint" = "Thresholds cannot be edited while using Default rules.";
 "notifications.edit_defaults" = "Edit Default Rules…";
 "notifications.current_remaining" = "%1$@%% remaining";
 "notifications.status_on" = "On";
 "notifications.status_off" = "Off";
+"notifications.no_reminder" = "None";
+"notifications.second_empty_hint" = "Leave the second reminder empty or 0 to turn it off.";

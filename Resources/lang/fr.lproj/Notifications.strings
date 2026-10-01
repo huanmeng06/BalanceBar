@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "Second rappel";
 "notifications.remaining_below" = "Lorsque le restant passe sous";
 "notifications.second_off" = "Désactivé";
-"notifications.default_readonly_hint" = "Ces valeurs proviennent des règles par défaut.";
+"notifications.default_readonly_hint" = "Les seuils ne peuvent pas être modifiés avec les règles par défaut.";
 "notifications.edit_defaults" = "Modifier les règles par défaut…";
 "notifications.current_remaining" = "%1$@%% restant";
 "notifications.status_on" = "Activé";
 "notifications.status_off" = "Désactivé";
+"notifications.no_reminder" = "Aucun";
+"notifications.second_empty_hint" = "Laissez le second rappel vide ou à 0 pour le désactiver.";

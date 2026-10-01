@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "Segundo aviso";
 "notifications.remaining_below" = "Cuando el restante baje de";
 "notifications.second_off" = "Desactivado";
-"notifications.default_readonly_hint" = "Estos valores vienen de las reglas predeterminadas.";
+"notifications.default_readonly_hint" = "Los umbrales no se pueden editar con las reglas predeterminadas.";
 "notifications.edit_defaults" = "Editar reglas predeterminadas…";
 "notifications.current_remaining" = "%1$@%% restante";
 "notifications.status_on" = "Activado";
 "notifications.status_off" = "Desactivado";
+"notifications.no_reminder" = "Ninguno";
+"notifications.second_empty_hint" = "Deja el segundo aviso vacío o en 0 para desactivarlo.";

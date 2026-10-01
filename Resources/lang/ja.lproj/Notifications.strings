@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "2回目の通知";
 "notifications.remaining_below" = "残量が次を下回ったとき";
 "notifications.second_off" = "オフ";
-"notifications.default_readonly_hint" = "これらの値はデフォルトルールから来ています。";
+"notifications.default_readonly_hint" = "デフォルトルール使用中はしきい値を編集できません。";
 "notifications.edit_defaults" = "デフォルトルールを編集…";
 "notifications.current_remaining" = "残り %1$@%%";
 "notifications.status_on" = "オン";
 "notifications.status_off" = "オフ";
+"notifications.no_reminder" = "なし";
+"notifications.second_empty_hint" = "2回目の通知は空または0でオフになります。";

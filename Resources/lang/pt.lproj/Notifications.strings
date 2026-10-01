@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "Segundo aviso";
 "notifications.remaining_below" = "Quando o restante ficar abaixo de";
 "notifications.second_off" = "Desativado";
-"notifications.default_readonly_hint" = "Esses valores vêm das regras padrão.";
+"notifications.default_readonly_hint" = "Os limites não podem ser editados ao usar as regras padrão.";
 "notifications.edit_defaults" = "Editar regras padrão…";
 "notifications.current_remaining" = "%1$@%% restante";
 "notifications.status_on" = "Ativado";
 "notifications.status_off" = "Desativado";
+"notifications.no_reminder" = "Nenhum";
+"notifications.second_empty_hint" = "Deixe o segundo aviso vazio ou 0 para desativá-lo.";

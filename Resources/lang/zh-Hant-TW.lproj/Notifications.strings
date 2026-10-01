@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "第二次提醒";
 "notifications.remaining_below" = "剩餘額度低於";
 "notifications.second_off" = "已關閉";
-"notifications.default_readonly_hint" = "這些值來自預設規則。";
+"notifications.default_readonly_hint" = "使用預設規則時閾值不可修改";
 "notifications.edit_defaults" = "編輯預設規則…";
 "notifications.current_remaining" = "目前剩餘 %1$@%%";
 "notifications.status_on" = "已開啟";
 "notifications.status_off" = "已關閉";
+"notifications.no_reminder" = "不提醒";
+"notifications.second_empty_hint" = "第二次提醒留空或填 0 表示不提醒";

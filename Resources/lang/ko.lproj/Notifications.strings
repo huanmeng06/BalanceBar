@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "두 번째 알림";
 "notifications.remaining_below" = "남은 양이 다음보다 낮을 때";
 "notifications.second_off" = "꺼짐";
-"notifications.default_readonly_hint" = "이 값은 기본 규칙에서 가져옵니다.";
+"notifications.default_readonly_hint" = "기본 규칙을 사용하는 동안에는 임계값을 수정할 수 없습니다.";
 "notifications.edit_defaults" = "기본 규칙 편집…";
 "notifications.current_remaining" = "남은 양 %1$@%%";
 "notifications.status_on" = "켜짐";
 "notifications.status_off" = "꺼짐";
+"notifications.no_reminder" = "없음";
+"notifications.second_empty_hint" = "두 번째 알림은 비우거나 0이면 꺼집니다.";

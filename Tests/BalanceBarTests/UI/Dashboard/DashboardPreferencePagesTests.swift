@@ -302,13 +302,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         quotaPage.layoutSubtreeIfNeeded()
         XCTAssertFalse(quotaField.isHidden)
         XCTAssertEqual(unitLabels(beside: quotaField), ["%"])
-        XCTAssertTrue(quotaCard.footerHiddenForTesting)
-        XCTAssertFalse(quotaCard.secondThresholdRowHiddenForTesting)
-        assertTrailingMaxX(
-            of: quotaCard.secondToggleForTesting,
-            matches: quotaCard.resourceSwitchForTesting,
-            in: quotaPage
-        )
+        XCTAssertFalse(quotaCard.footerHiddenForTesting)
+        XCTAssertEqual(quotaCard.footerHintForTesting, tr("notifications.second_empty_hint"))
+        XCTAssertFalse(quotaCard.secondFieldForTesting.isHidden)
+        XCTAssertEqual(unitLabels(beside: quotaCard.secondFieldForTesting), ["%"])
 
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/claude/claude-1"))
         let balancePage = pages.make()
@@ -336,41 +333,50 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let firstField = balanceCard.firstFieldForTesting
         let secondField = balanceCard.secondFieldForTesting
         let balanceSource = balanceCard.sourcePopUpForTesting
-        XCTAssertTrue(balanceCard.secondThresholdRowHiddenForTesting)
+        XCTAssertEqual(balanceCard.secondValueLabelForTesting.stringValue, tr("notifications.status_off"))
+        XCTAssertTrue(secondField.isHidden)
         balanceSource.selectItem(at: 1)
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(balanceSource.action), to: balanceSource.target, from: balanceSource))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         balancePage.layoutSubtreeIfNeeded()
         XCTAssertFalse(firstField.isHidden)
         XCTAssertEqual(unitLabels(beside: firstField), ["USD"])
-        XCTAssertTrue(balanceCard.secondThresholdRowHiddenForTesting)
-        assertTrailingMaxX(
-            of: balanceCard.secondToggleForTesting,
-            matches: balanceCard.resourceSwitchForTesting,
-            in: balancePage
-        )
-        let secondToggle = balanceCard.secondToggleForTesting
-        secondToggle.state = .on
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondToggle.action), to: secondToggle.target, from: secondToggle))
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertFalse(secondField.isHidden)
+        XCTAssertEqual(secondField.placeholderString, tr("notifications.no_reminder"))
+        XCTAssertTrue(balanceCard.secondUnitLabelForTesting.isHidden)
+        XCTAssertFalse(balanceCard.footerHiddenForTesting)
+        XCTAssertEqual(balanceCard.footerHintForTesting, tr("notifications.second_empty_hint"))
+        secondField.doubleValue = 0.20
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondField.action), to: secondField.target, from: secondField))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         balancePage.layoutSubtreeIfNeeded()
-        XCTAssertFalse(balanceCard.secondThresholdRowHiddenForTesting)
         XCTAssertFalse(secondField.isHidden)
         XCTAssertEqual(unitLabels(beside: secondField), ["USD"])
-        assertTrailingMaxX(
-            of: balanceCard.secondToggleForTesting,
-            matches: balanceCard.resourceSwitchForTesting,
-            in: balancePage
+        XCTAssertEqual(
+            coordinator.settings.rule(
+                for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
+            )?.secondEnabled,
+            true
         )
-        secondToggle.state = .off
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondToggle.action), to: secondToggle.target, from: secondToggle))
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        secondField.doubleValue = 0
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondField.action), to: secondField.target, from: secondField))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         balancePage.layoutSubtreeIfNeeded()
-        XCTAssertTrue(balanceCard.secondThresholdRowHiddenForTesting)
-        assertTrailingMaxX(
-            of: balanceCard.secondToggleForTesting,
-            matches: balanceCard.resourceSwitchForTesting,
-            in: balancePage
+        XCTAssertTrue(balanceCard.secondUnitLabelForTesting.isHidden)
+        XCTAssertEqual(
+            coordinator.settings.rule(
+                for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
+            )?.secondEnabled,
+            false
+        )
+        firstField.doubleValue = 0
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(firstField.action), to: firstField.target, from: firstField))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertGreaterThan(
+            coordinator.settings.rule(
+                for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
+            )?.firstThreshold ?? 0,
+            0
         )
     }
 

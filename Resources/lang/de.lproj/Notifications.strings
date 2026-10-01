@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "Zweite Erinnerung";
 "notifications.remaining_below" = "Wenn der Rest unter";
 "notifications.second_off" = "Aus";
-"notifications.default_readonly_hint" = "Diese Werte stammen aus den Standardregeln.";
+"notifications.default_readonly_hint" = "Schwellenwerte können bei Standardregeln nicht geändert werden.";
 "notifications.edit_defaults" = "Standardregeln bearbeiten …";
 "notifications.current_remaining" = "%1$@%% verbleibend";
 "notifications.status_on" = "Ein";
 "notifications.status_off" = "Aus";
+"notifications.no_reminder" = "Keine";
+"notifications.second_empty_hint" = "Zweites Erinnern leer oder 0 lassen, um es auszuschalten.";

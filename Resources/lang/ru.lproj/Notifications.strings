@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "Второе напоминание";
 "notifications.remaining_below" = "Когда остаток ниже";
 "notifications.second_off" = "Выкл.";
-"notifications.default_readonly_hint" = "Эти значения берутся из правил по умолчанию.";
+"notifications.default_readonly_hint" = "Пороги нельзя менять при использовании правил по умолчанию.";
 "notifications.edit_defaults" = "Изменить правила по умолчанию…";
 "notifications.current_remaining" = "осталось %1$@%%";
 "notifications.status_on" = "Вкл.";
 "notifications.status_off" = "Выкл.";
+"notifications.no_reminder" = "Нет";
+"notifications.second_empty_hint" = "Оставьте второе напоминание пустым или 0, чтобы выключить его.";

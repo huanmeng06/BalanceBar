@@ -1181,13 +1181,13 @@ final class DashboardNotificationPages {
         if let storedRule {
             rule.enabled = storedRule.enabled
         }
+        let secondThreshold = rule.secondEnabled ? rule.secondThreshold : 0
         return ResourceRuleState(
             resourceEnabled: rule.enabled,
             usesGlobalDefaults: usesGlobalDefaults,
             currentRemaining: descriptor.value ?? 0,
             firstThreshold: rule.firstThreshold,
-            secondThreshold: rule.secondThreshold,
-            secondEnabled: rule.secondEnabled
+            secondThreshold: secondThreshold
         )
     }
 
@@ -1220,27 +1220,31 @@ final class DashboardNotificationPages {
                 )
                 DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
             }
-        case .secondToggled(let enabled):
-            next.secondEnabled = enabled
-            card.apply(next)
-            coordinator.performAsync {
-                coordinator.updateRule(key: key, kind: kind, unit: unit) { $0.secondEnabled = enabled }
-                DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
-            }
         case .thresholdEdited(index: let index, value: let value):
             if index == 0 {
+                guard value > 0 else {
+                    card.apply(next, animated: false)
+                    return
+                }
                 next.firstThreshold = value
+                if next.secondThreshold > 0 {
+                    let step: Double = kind == .quotaPercent ? 1 : 0.01
+                    let cap = max(0, value - step)
+                    if next.secondThreshold >= value {
+                        next.secondThreshold = cap
+                    }
+                }
             } else {
-                next.secondThreshold = value
+                next.secondThreshold = max(0, value)
             }
             card.apply(next)
+            let first = next.firstThreshold
+            let second = next.secondThreshold
             coordinator.performAsync {
                 coordinator.updateRule(key: key, kind: kind, unit: unit) { rule in
-                    if index == 0 {
-                        rule.firstThreshold = value
-                    } else {
-                        rule.secondThreshold = value
-                    }
+                    rule.firstThreshold = first
+                    rule.secondThreshold = second
+                    rule.secondEnabled = second > 0
                 }
                 DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
             }

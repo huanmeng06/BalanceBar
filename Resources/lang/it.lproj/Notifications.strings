@@ -79,8 +79,10 @@
 "notifications.resource_second_reminder" = "Secondo avviso";
 "notifications.remaining_below" = "Quando il rimanente scende sotto";
 "notifications.second_off" = "Disattivato";
-"notifications.default_readonly_hint" = "Questi valori arrivano dalle regole predefinite.";
+"notifications.default_readonly_hint" = "Le soglie non si possono modificare con le regole predefinite.";
 "notifications.edit_defaults" = "Modifica regole predefinite…";
 "notifications.current_remaining" = "%1$@%% rimanente";
 "notifications.status_on" = "Attivato";
 "notifications.status_off" = "Disattivato";
+"notifications.no_reminder" = "Nessuno";
+"notifications.second_empty_hint" = "Lascia vuoto o 0 il secondo avviso per disattivarlo.";
