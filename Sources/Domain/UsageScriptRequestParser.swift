@@ -51,6 +51,142 @@ enum UsageScriptRequestParser {
     }
 }
 
+
+private enum UsageScriptLexing {
+    static func templateInterpolationRanges(in source: [Character]) -> [Range<Int>]? {
+        var ranges: [Range<Int>] = []
+        guard scanCode(source, from: 0, to: source.count, ranges: &ranges) else { return nil }
+        return ranges
+    }
+
+    private static func scanCode(_ source: [Character], from start: Int, to end: Int, ranges: inout [Range<Int>]) -> Bool {
+        var index = start
+        while index < end {
+            let character = source[index]
+            if character == "\"" || character == "'" {
+                guard let next = scanQuoted(source, from: index, quote: character, to: end) else { return false }
+                index = next
+            } else if character == "/", index + 1 < end, source[index + 1] == "/" {
+                index += 2
+                while index < end, !source[index].isNewline { index += 1 }
+            } else if character == "/", index + 1 < end, source[index + 1] == "*" {
+                guard let next = scanBlockComment(source, from: index, to: end) else { return false }
+                index = next
+            } else if character == "`" {
+                guard let next = scanTemplate(source, from: index, to: end, ranges: &ranges) else { return false }
+                index = next
+            } else if character == "/", regexCanStart(source, at: index) {
+                guard let next = scanRegex(source, from: index, to: end) else { return false }
+                index = next
+            } else {
+                index += 1
+            }
+        }
+        return true
+    }
+
+    private static func scanTemplate(_ source: [Character], from start: Int, to end: Int, ranges: inout [Range<Int>]) -> Int? {
+        var index = start + 1
+        while index < end {
+            if source[index] == "\\" { index += 2; continue }
+            if source[index] == "`" { return index + 1 }
+            if source[index] == "$", index + 1 < end, source[index + 1] == "{" {
+                let expressionStart = index + 2
+                guard let close = scanExpression(source, from: expressionStart, to: end, ranges: &ranges) else { return nil }
+                ranges.append(expressionStart..<close)
+                index = close + 1
+            } else {
+                index += 1
+            }
+        }
+        return nil
+    }
+
+    private static func scanExpression(_ source: [Character], from start: Int, to end: Int, ranges: inout [Range<Int>]) -> Int? {
+        var index = start
+        var depth = 1
+        while index < end {
+            let character = source[index]
+            if character == "\"" || character == "'" {
+                guard let next = scanQuoted(source, from: index, quote: character, to: end) else { return nil }
+                index = next
+            } else if character == "/", index + 1 < end, source[index + 1] == "/" {
+                index += 2
+                while index < end, !source[index].isNewline { index += 1 }
+            } else if character == "/", index + 1 < end, source[index + 1] == "*" {
+                guard let next = scanBlockComment(source, from: index, to: end) else { return nil }
+                index = next
+            } else if character == "`" {
+                guard let next = scanTemplate(source, from: index, to: end, ranges: &ranges) else { return nil }
+                index = next
+            } else if character == "/", regexCanStart(source, at: index) {
+                guard let next = scanRegex(source, from: index, to: end) else { return nil }
+                index = next
+            } else if character == "{" {
+                depth += 1; index += 1
+            } else if character == "}" {
+                depth -= 1
+                if depth == 0 { return index }
+                index += 1
+            } else {
+                index += 1
+            }
+        }
+        return nil
+    }
+
+    private static func scanQuoted(_ source: [Character], from start: Int, quote: Character, to end: Int) -> Int? {
+        var index = start + 1
+        while index < end {
+            if source[index].isNewline { return nil }
+            if source[index] == "\\" { index += 2; continue }
+            if source[index] == quote { return index + 1 }
+            index += 1
+        }
+        return nil
+    }
+
+    private static func scanBlockComment(_ source: [Character], from start: Int, to end: Int) -> Int? {
+        var index = start + 2
+        while index + 1 < end {
+            if source[index] == "*" && source[index + 1] == "/" { return index + 2 }
+            index += 1
+        }
+        return nil
+    }
+
+    private static func scanRegex(_ source: [Character], from start: Int, to end: Int) -> Int? {
+        var index = start + 1
+        var inClass = false
+        while index < end {
+            if source[index].isNewline { return nil }
+            if source[index] == "\\" { index += 2; continue }
+            if source[index] == "[" { inClass = true }
+            if source[index] == "]" { inClass = false }
+            if source[index] == "/", !inClass {
+                index += 1
+                while index < end, source[index].isLetter { index += 1 }
+                return index
+            }
+            index += 1
+        }
+        return nil
+    }
+
+    private static func regexCanStart(_ source: [Character], at index: Int) -> Bool {
+        var cursor = index - 1
+        while cursor >= 0, source[cursor].isWhitespace { cursor -= 1 }
+        guard cursor >= 0 else { return true }
+        let previous = source[cursor]
+        if previous.isLetter || previous.isNumber || previous == "_" || previous == "$" {
+            var start = cursor
+            while start > 0, source[start - 1].isLetter || source[start - 1].isNumber || source[start - 1] == "_" || source[start - 1] == "$" { start -= 1 }
+            return ["return", "case", "throw", "else", "typeof", "void", "delete", "new", "in", "of", "yield", "await"].contains(String(source[start...cursor]))
+        }
+        return ![")", "]", "}", "\"", "'", "`"].contains(previous)
+    }
+}
+
 private struct UsageScriptSource {
     struct Property {
         let name: String
@@ -80,7 +216,7 @@ private struct UsageScriptSource {
         self.source = source
         self.placeholders = placeholders
         self.text = String(source)
-        guard !Self.hasUnterminatedBlockComment(in: source) else { return nil }
+        guard UsageScriptLexing.templateInterpolationRanges(in: source) != nil else { return nil }
         let mask = Self.codeMask(for: source)
         guard let partner = Self.bracketPartners(in: source, isCode: mask) else { return nil }
         self.isCode = mask
@@ -620,10 +756,14 @@ private struct UsageScriptSource {
     }
 
     private func templateInterpolationMutates(_ name: String) -> Bool {
+        guard let ranges = UsageScriptLexing.templateInterpolationRanges(in: source) else { return true }
         let escaped = NSRegularExpression.escapedPattern(for: name)
-        let pattern = "\\$\\{[^}]*?(?<![A-Za-z0-9_$])" + escaped + "\\s*(?:=(?![=>])|[-+*/%&|^]=|\\+\\+|--|\\.[A-Za-z_$])"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else { return true }
-        return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+        let pattern = "(?<![A-Za-z0-9_$])" + escaped + "\\s*(?:=(?![=>])|&&=|\\|\\|=|\\?\\?=|[-+*/%&|^]=|\\+\\+|--|\\.|\\[)"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return true }
+        return ranges.contains { range in
+            let expression = String(source[range])
+            return regex.firstMatch(in: expression, range: NSRange(expression.startIndex..., in: expression)) != nil
+        }
     }
 
     /// Whether `name` is bound anywhere other than the given plain declarations.
