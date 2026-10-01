@@ -860,12 +860,6 @@ final class DashboardNotificationPages {
             delegate: relay,
             toolTip: tr("notifications.threshold_input_hint")
         )
-        accessory.field.formatter = ThresholdFormat.formatter(kind: kind)
-        if kind == .quotaPercent {
-            accessory.field.integerValue = Int(value.rounded())
-        } else {
-            accessory.field.doubleValue = value
-        }
         return accessory
     }
 

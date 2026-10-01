@@ -118,6 +118,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(coordinator.settings.globalFiveHourFirstThreshold, 0)
         XCTAssertEqual(coordinator.settings.globalFiveHourSecondThreshold, 5)
+        firstField.stringValue = "20"
+        firstField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: firstField)
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(coordinator.settings.globalFiveHourFirstThreshold, 20)
+        XCTAssertEqual(firstField.stringValue, "20")
+        XCTAssertEqual(coordinator.settings.globalFiveHourSecondThreshold, 5)
         XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
             $0.identifier?.rawValue == "notification-global"
         })
@@ -411,6 +419,35 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )?.secondThreshold,
             0.20
         )
+        firstField.stringValue = "1.50"
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(firstField.action), to: firstField.target, from: firstField))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(
+            coordinator.settings.rule(
+                for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
+            )?.firstThreshold,
+            1.50
+        )
+        XCTAssertEqual(firstField.stringValue, "1.50")
+        secondField.stringValue = ""
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondField.action), to: secondField.target, from: secondField))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(
+            coordinator.settings.rule(
+                for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
+            )?.secondThreshold,
+            0
+        )
+        secondField.stringValue = "0.20"
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondField.action), to: secondField.target, from: secondField))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(
+            coordinator.settings.rule(
+                for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
+            )?.secondThreshold,
+            0.20
+        )
+        XCTAssertEqual(secondField.stringValue, "0.20")
     }
 
     func testProviderMasterKeepsResourceStateAfterPersistenceRebuild() throws {

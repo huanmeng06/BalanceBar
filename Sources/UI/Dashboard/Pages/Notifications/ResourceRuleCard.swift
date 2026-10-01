@@ -1,40 +1,36 @@
 import AppKit
 
 enum ThresholdFormat {
-    static func formatter(kind: BalanceNotificationResourceKind) -> NumberFormatter {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.locale = .autoupdatingCurrent
-        formatter.minimum = 0
-        formatter.zeroSymbol = ""
-        switch kind {
-        case .quotaPercent:
-            formatter.allowsFloats = false
-            formatter.minimumFractionDigits = 0
-            formatter.maximumFractionDigits = 0
-            formatter.maximum = 100
-        case .balance:
-            formatter.allowsFloats = true
-            formatter.minimumFractionDigits = 2
-            formatter.maximumFractionDigits = 2
-        }
-        return formatter
-    }
-
+    /// Display/parse helper only. Do not attach this to `NSTextField.formatter`:
+    /// `zeroSymbol = ""` makes AppKit reject the next typed number after a
+    /// field has been cleared back to "no reminder".
     static var placeholder: String { tr("notifications.no_reminder") }
 
     static func parsedValue(_ raw: String, kind: BalanceNotificationResourceKind) -> Double? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty || trimmed == placeholder { return 0 }
-        if let number = formatter(kind: kind).number(from: trimmed) {
+        let formatter = NumberFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.numberStyle = .decimal
+        formatter.isLenient = true
+        if let number = formatter.number(from: trimmed) {
             return number.doubleValue
         }
-        return Double(trimmed)
+        return Double(trimmed.replacingOccurrences(of: ",", with: "."))
     }
 
     static func displayString(_ value: Double, kind: BalanceNotificationResourceKind) -> String {
         guard value > 0 else { return "" }
-        return formatter(kind: kind).string(from: NSNumber(value: value)) ?? ""
+        switch kind {
+        case .quotaPercent:
+            return String(format: "%.0f", value)
+        case .balance:
+            return String(format: "%.2f", value)
+        }
+    }
+
+    static func committedValue(from field: NSTextField, kind: BalanceNotificationResourceKind) -> Double {
+        parsedValue(field.currentEditor()?.string ?? field.stringValue, kind: kind) ?? 0
     }
 }
 
@@ -90,7 +86,6 @@ final class ThresholdAccessory: NSStackView {
         setContentCompressionResistancePriority(.required, for: .horizontal)
         clipsToBounds = false
 
-        field.formatter = ThresholdFormat.formatter(kind: kind)
         field.placeholderString = ThresholdFormat.placeholder
         field.alignment = .right
         field.controlSize = .regular
@@ -133,13 +128,13 @@ final class ThresholdAccessory: NSStackView {
         field.isHidden = !editable
         unitLabel.isHidden = !editable
         field.isEnabled = editable
-        if kind == .quotaPercent {
-            field.integerValue = Int(value.rounded())
-        } else {
-            field.doubleValue = value
-        }
+        field.stringValue = ThresholdFormat.displayString(value, kind: kind)
         valueLabel.isHidden = editable
         valueLabel.stringValue = value > 0 ? displayText : ThresholdFormat.placeholder
+    }
+
+    func committedValue() -> Double {
+        ThresholdFormat.committedValue(from: field, kind: kind)
     }
 }
 
@@ -369,11 +364,11 @@ final class ResourceRuleCard: NSStackView {
     }
 
     @objc private func firstEdited() {
-        onEvent?(.thresholdEdited(index: 0, value: max(0, firstAccessory.field.doubleValue)))
+        onEvent?(.thresholdEdited(index: 0, value: max(0, firstAccessory.committedValue())))
     }
 
     @objc private func secondEdited() {
-        var value = max(0, secondAccessory.field.doubleValue)
+        var value = max(0, secondAccessory.committedValue())
         if value > 0, state.firstThreshold > 0, value >= state.firstThreshold {
             let step: Double = kind == .quotaPercent ? 1 : 0.01
             value = max(0, state.firstThreshold - step)
