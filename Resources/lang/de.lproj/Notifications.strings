@@ -33,7 +33,7 @@
 "notifications.pause_none" = "Keine";
 "notifications.pause_status" = "Pausiert bis %1$@ · Verbleibend: %2$@";
 "notifications.reminder_rules" = "Standardregeln";
-"notifications.global_rules_hint" = "0 eingeben, um eine Erinnerung zu deaktivieren";
+"notifications.global_rules_hint" = "Leer lassen oder 0 eingeben, um nicht zu erinnern";
 "notifications.five_hour_reminder" = "5-Stunden-Erinnerung";
 "notifications.seven_day_reminder" = "7-Tage-Erinnerung";
 "notifications.balance_reminder" = "Kontostand-Erinnerung";

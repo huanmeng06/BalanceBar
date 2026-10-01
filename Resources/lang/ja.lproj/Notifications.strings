@@ -33,7 +33,7 @@
 "notifications.pause_none" = "なし";
 "notifications.pause_status" = "%1$@ まで一時停止 · 残り：%2$@";
 "notifications.reminder_rules" = "デフォルトルール";
-"notifications.global_rules_hint" = "0 を入力すると通知しません";
+"notifications.global_rules_hint" = "空欄または 0 で通知しません";
 "notifications.five_hour_reminder" = "5 時間の通知";
 "notifications.seven_day_reminder" = "7 日間の通知";
 "notifications.balance_reminder" = "残高の通知";

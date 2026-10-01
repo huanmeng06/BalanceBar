@@ -82,9 +82,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             $0.identifier?.rawValue.hasPrefix("default-rule-edit:") == true
                 || $0.identifier?.rawValue == "default-rules-done"
         })
-        XCTAssertFalse(descendants(of: defaultSection).compactMap { $0 as? NSTextField }.contains {
+        XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSTextField }.contains {
             $0.stringValue == tr("notifications.global_rules_hint")
         })
+        XCTAssertEqual(firstField.placeholderString, tr("notifications.no_reminder"))
+        XCTAssertEqual(secondField.placeholderString, tr("notifications.no_reminder"))
         XCTAssertFalse(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
             $0.identifier?.rawValue.hasPrefix("global-second:") == true
         })
@@ -101,6 +103,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(coordinator.settings.globalFiveHourSecondThreshold, 0)
+        XCTAssertEqual(secondField.stringValue, "")
+        firstField.stringValue = ""
+        firstField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: firstField)
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(coordinator.settings.globalFiveHourFirstThreshold, 0)
+        XCTAssertEqual(firstField.stringValue, "")
+        secondField.stringValue = "5"
+        secondField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: secondField)
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(coordinator.settings.globalFiveHourFirstThreshold, 0)
+        XCTAssertEqual(coordinator.settings.globalFiveHourSecondThreshold, 5)
         XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
             $0.identifier?.rawValue == "notification-global"
         })
@@ -303,7 +320,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(quotaField.isHidden)
         XCTAssertEqual(unitLabels(beside: quotaField), ["%"])
         XCTAssertFalse(quotaCard.footerHiddenForTesting)
-        XCTAssertEqual(quotaCard.footerHintForTesting, tr("notifications.second_empty_hint"))
+        XCTAssertEqual(quotaCard.footerHintForTesting, tr("notifications.global_rules_hint"))
         XCTAssertFalse(quotaCard.secondFieldForTesting.isHidden)
         XCTAssertEqual(unitLabels(beside: quotaCard.secondFieldForTesting), ["%"])
 
@@ -333,19 +350,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let firstField = balanceCard.firstFieldForTesting
         let secondField = balanceCard.secondFieldForTesting
         let balanceSource = balanceCard.sourcePopUpForTesting
-        XCTAssertEqual(balanceCard.secondValueLabelForTesting.stringValue, tr("notifications.status_off"))
+        XCTAssertEqual(balanceCard.secondValueLabelForTesting.stringValue, tr("notifications.no_reminder"))
         XCTAssertTrue(secondField.isHidden)
         balanceSource.selectItem(at: 1)
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(balanceSource.action), to: balanceSource.target, from: balanceSource))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         balancePage.layoutSubtreeIfNeeded()
         XCTAssertFalse(firstField.isHidden)
+        XCTAssertEqual(firstField.placeholderString, tr("notifications.no_reminder"))
         XCTAssertEqual(unitLabels(beside: firstField), ["USD"])
         XCTAssertFalse(secondField.isHidden)
         XCTAssertEqual(secondField.placeholderString, tr("notifications.no_reminder"))
-        XCTAssertTrue(balanceCard.secondUnitLabelForTesting.isHidden)
+        XCTAssertFalse(balanceCard.secondUnitLabelForTesting.isHidden)
         XCTAssertFalse(balanceCard.footerHiddenForTesting)
-        XCTAssertEqual(balanceCard.footerHintForTesting, tr("notifications.second_empty_hint"))
+        XCTAssertEqual(balanceCard.footerHintForTesting, tr("notifications.global_rules_hint"))
         secondField.doubleValue = 0.20
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondField.action), to: secondField.target, from: secondField))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
@@ -362,7 +380,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondField.action), to: secondField.target, from: secondField))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         balancePage.layoutSubtreeIfNeeded()
-        XCTAssertTrue(balanceCard.secondUnitLabelForTesting.isHidden)
+        XCTAssertFalse(balanceCard.secondUnitLabelForTesting.isHidden)
         XCTAssertEqual(
             coordinator.settings.rule(
                 for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
@@ -372,11 +390,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
         firstField.doubleValue = 0
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(firstField.action), to: firstField.target, from: firstField))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
-        XCTAssertGreaterThan(
+        XCTAssertEqual(
             coordinator.settings.rule(
                 for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
-            )?.firstThreshold ?? 0,
+            )?.firstThreshold,
             0
+        )
+        secondField.doubleValue = 0.20
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondField.action), to: secondField.target, from: secondField))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(
+            coordinator.settings.rule(
+                for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
+            )?.firstThreshold,
+            0
+        )
+        XCTAssertEqual(
+            coordinator.settings.rule(
+                for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
+            )?.secondThreshold,
+            0.20
         )
     }
 

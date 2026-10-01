@@ -735,13 +735,16 @@ enum DashboardSettingsComponents {
 
         /// An empty numeric field shows a gray placeholder. Tab / focus loss
         /// should commit that placeholder, not restore the previous value.
+        /// Non-numeric placeholders such as "不提醒" stay gray; pages parse
+        /// empty as zero themselves.
         private func acceptPlaceholderIfFieldIsEmpty(_ field: NSTextField) {
             let current = (field.currentEditor()?.string ?? field.stringValue)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard current.isEmpty,
                   let placeholder = field.placeholderString?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
-                  !placeholder.isEmpty else {
+                  !placeholder.isEmpty,
+                  Double(placeholder) != nil else {
                 return
             }
             field.currentEditor()?.string = placeholder

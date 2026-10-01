@@ -168,7 +168,11 @@ struct BalanceNotificationResourceRule: Codable, Equatable {
         case .balance:
             normalized = max(0, (value * 100).rounded() / 100)
         }
-        return min(normalized, max(0, firstThreshold - (kind == .quotaPercent ? 1 : 0.01)))
+        // Empty/0 means "no reminder" on every threshold. Only clamp the
+        // second value below the first when both reminders are active.
+        guard normalized > 0, firstThreshold > 0 else { return normalized }
+        let step: Double = kind == .quotaPercent ? 1 : 0.01
+        return min(normalized, max(0, firstThreshold - step))
     }
 
     mutating func update(
@@ -257,29 +261,50 @@ enum BalanceNotificationThresholdEvaluator {
         rule.lastValue = value
         // A zero threshold is the shared UI's explicit "do not remind"
         // value. It must short-circuit before the crossing comparison so a
-        // resource sitting exactly at zero does not emit an alert.
-        guard rule.enabled, rule.firstThreshold > 0 else {
+        // resource sitting exactly at zero does not emit an alert. First and
+        // second are independent: either can be empty while the other still
+        // fires once.
+        let firstActive = rule.firstThreshold > 0
+        let secondActive = rule.secondEnabled && rule.secondThreshold > 0
+        guard rule.enabled, firstActive || secondActive else {
             return BalanceNotificationEvaluation(rule: rule, alert: nil, recovered: false)
         }
 
         switch rule.stage {
         case .normal:
-            guard value <= rule.firstThreshold,
-                  previous.map({ $0 > rule.firstThreshold }) ?? true else {
-                return BalanceNotificationEvaluation(rule: rule, alert: nil, recovered: false)
+            if firstActive,
+               value <= rule.firstThreshold,
+               previous.map({ $0 > rule.firstThreshold }) ?? true {
+                rule.stage = .first
+                return BalanceNotificationEvaluation(
+                    rule: rule,
+                    alert: BalanceNotificationAlert(
+                        key: rule.key,
+                        stage: .first,
+                        value: value,
+                        unit: rule.unit,
+                        resourceTitle: resourceTitle
+                    ),
+                    recovered: false
+                )
             }
-            rule.stage = .first
-            return BalanceNotificationEvaluation(
-                rule: rule,
-                alert: BalanceNotificationAlert(
-                    key: rule.key,
-                    stage: .first,
-                    value: value,
-                    unit: rule.unit,
-                    resourceTitle: resourceTitle
-                ),
-                recovered: false
-            )
+            if secondActive,
+               value <= rule.secondThreshold,
+               previous.map({ $0 > rule.secondThreshold }) ?? true {
+                rule.stage = .second
+                return BalanceNotificationEvaluation(
+                    rule: rule,
+                    alert: BalanceNotificationAlert(
+                        key: rule.key,
+                        stage: .second,
+                        value: value,
+                        unit: rule.unit,
+                        resourceTitle: resourceTitle
+                    ),
+                    recovered: false
+                )
+            }
+            return BalanceNotificationEvaluation(rule: rule, alert: nil, recovered: false)
         case .first:
             guard rule.secondEnabled,
                   rule.secondThreshold > 0,
@@ -305,11 +330,14 @@ enum BalanceNotificationThresholdEvaluator {
     }
 
     static func recoveryThreshold(for rule: BalanceNotificationResourceRule) -> Double {
+        let base = rule.firstThreshold > 0
+            ? rule.firstThreshold
+            : (rule.secondEnabled && rule.secondThreshold > 0 ? rule.secondThreshold : 0)
         switch rule.kind {
         case .quotaPercent:
-            return min(100, rule.firstThreshold + max(1, rule.firstThreshold * 0.05))
+            return min(100, base + max(1, base * 0.05))
         case .balance:
-            return rule.firstThreshold + max(0.01, rule.firstThreshold * 0.05)
+            return base + max(0.01, base * 0.05)
         }
     }
 }

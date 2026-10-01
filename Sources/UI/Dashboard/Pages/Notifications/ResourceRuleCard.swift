@@ -1,5 +1,43 @@
 import AppKit
 
+enum ThresholdFormat {
+    static func formatter(kind: BalanceNotificationResourceKind) -> NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = .autoupdatingCurrent
+        formatter.minimum = 0
+        formatter.zeroSymbol = ""
+        switch kind {
+        case .quotaPercent:
+            formatter.allowsFloats = false
+            formatter.minimumFractionDigits = 0
+            formatter.maximumFractionDigits = 0
+            formatter.maximum = 100
+        case .balance:
+            formatter.allowsFloats = true
+            formatter.minimumFractionDigits = 2
+            formatter.maximumFractionDigits = 2
+        }
+        return formatter
+    }
+
+    static var placeholder: String { tr("notifications.no_reminder") }
+
+    static func parsedValue(_ raw: String, kind: BalanceNotificationResourceKind) -> Double? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == placeholder { return 0 }
+        if let number = formatter(kind: kind).number(from: trimmed) {
+            return number.doubleValue
+        }
+        return Double(trimmed)
+    }
+
+    static func displayString(_ value: Double, kind: BalanceNotificationResourceKind) -> String {
+        guard value > 0 else { return "" }
+        return formatter(kind: kind).string(from: NSNumber(value: value)) ?? ""
+    }
+}
+
 struct ResourceRuleState: Equatable {
     var resourceEnabled: Bool
     var usesGlobalDefaults: Bool
@@ -32,18 +70,15 @@ final class ThresholdAccessory: NSStackView {
     private let valueLabel = OpticalTrailingLabel(labelWithString: "")
     private let unitLabel: OpticalTrailingLabel
     private let kind: BalanceNotificationResourceKind
-    private let allowsEmpty: Bool
 
     var unitLabelForTesting: NSTextField { unitLabel }
     var valueLabelForTesting: NSTextField { valueLabel }
 
     init(
         kind: BalanceNotificationResourceKind,
-        unitText: String,
-        allowsEmpty: Bool
+        unitText: String
     ) {
         self.kind = kind
-        self.allowsEmpty = allowsEmpty
         self.unitLabel = OpticalTrailingLabel(labelWithString: unitText)
         super.init(frame: .zero)
         orientation = .horizontal
@@ -55,24 +90,8 @@ final class ThresholdAccessory: NSStackView {
         setContentCompressionResistancePriority(.required, for: .horizontal)
         clipsToBounds = false
 
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        if kind == .quotaPercent {
-            formatter.allowsFloats = false
-            formatter.maximumFractionDigits = 0
-            formatter.maximum = 100
-            formatter.minimum = allowsEmpty ? 0 : 1
-        } else {
-            formatter.allowsFloats = true
-            formatter.minimumFractionDigits = 0
-            formatter.maximumFractionDigits = 2
-            formatter.minimum = allowsEmpty ? 0 : 0.01
-        }
-        if allowsEmpty {
-            formatter.zeroSymbol = ""
-        }
-        field.formatter = formatter
-        field.placeholderString = allowsEmpty ? tr("notifications.no_reminder") : "0"
+        field.formatter = ThresholdFormat.formatter(kind: kind)
+        field.placeholderString = ThresholdFormat.placeholder
         field.alignment = .right
         field.controlSize = .regular
         field.cell?.controlSize = .regular
@@ -111,9 +130,8 @@ final class ThresholdAccessory: NSStackView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func apply(value: Double, displayText: String, editable: Bool) {
-        let isEmpty = allowsEmpty && value <= 0
         field.isHidden = !editable
-        unitLabel.isHidden = !editable || isEmpty
+        unitLabel.isHidden = !editable
         field.isEnabled = editable
         if kind == .quotaPercent {
             field.integerValue = Int(value.rounded())
@@ -121,7 +139,7 @@ final class ThresholdAccessory: NSStackView {
             field.doubleValue = value
         }
         valueLabel.isHidden = editable
-        valueLabel.stringValue = isEmpty ? tr("notifications.status_off") : displayText
+        valueLabel.stringValue = value > 0 ? displayText : ThresholdFormat.placeholder
     }
 }
 
@@ -148,6 +166,7 @@ final class ResourceRuleCard: NSStackView {
     var sourcePopUpForTesting: NSPopUpButton { sourcePopUp }
     var firstFieldForTesting: NSTextField { firstAccessory.field }
     var firstUnitLabelForTesting: NSTextField { firstAccessory.unitLabelForTesting }
+    var firstValueLabelForTesting: NSTextField { firstAccessory.valueLabelForTesting }
     var secondFieldForTesting: NSTextField { secondAccessory.field }
     var secondUnitLabelForTesting: NSTextField { secondAccessory.unitLabelForTesting }
     var secondValueLabelForTesting: NSTextField { secondAccessory.valueLabelForTesting }
@@ -169,13 +188,11 @@ final class ResourceRuleCard: NSStackView {
         let unitText = Self.unitText(kind: kind, unit: unit)
         self.firstAccessory = ThresholdAccessory(
             kind: kind,
-            unitText: unitText,
-            allowsEmpty: false
+            unitText: unitText
         )
         self.secondAccessory = ThresholdAccessory(
             kind: kind,
-            unitText: unitText,
-            allowsEmpty: true
+            unitText: unitText
         )
         self.sourcePopUp = DashboardSettingsComponents.makePopUpButton(
             identifier: "source:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)",
@@ -325,7 +342,7 @@ final class ResourceRuleCard: NSStackView {
 
         footerLabel.stringValue = new.usesGlobalDefaults
             ? tr("notifications.default_readonly_hint")
-            : tr("notifications.second_empty_hint")
+            : tr("notifications.global_rules_hint")
         editButton.isHidden = !new.usesGlobalDefaults
 
         let updates = {
@@ -352,22 +369,14 @@ final class ResourceRuleCard: NSStackView {
     }
 
     @objc private func firstEdited() {
-        let value = firstAccessory.field.doubleValue
-        guard value > 0 else {
-            apply(state, animated: false)
-            return
-        }
-        onEvent?(.thresholdEdited(index: 0, value: value))
+        onEvent?(.thresholdEdited(index: 0, value: max(0, firstAccessory.field.doubleValue)))
     }
 
     @objc private func secondEdited() {
         var value = max(0, secondAccessory.field.doubleValue)
-        if value > 0 {
+        if value > 0, state.firstThreshold > 0, value >= state.firstThreshold {
             let step: Double = kind == .quotaPercent ? 1 : 0.01
-            let cap = max(0, state.firstThreshold - step)
-            if value >= state.firstThreshold {
-                value = cap
-            }
+            value = max(0, state.firstThreshold - step)
         }
         onEvent?(.thresholdEdited(index: 1, value: value))
     }

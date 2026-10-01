@@ -33,7 +33,7 @@
 "notifications.pause_none" = "Nenhuma";
 "notifications.pause_status" = "Pausado até %1$@ · Restante: %2$@";
 "notifications.reminder_rules" = "Regras padrão";
-"notifications.global_rules_hint" = "Digite 0 para desativar um alerta";
+"notifications.global_rules_hint" = "Deixe vazio ou digite 0 para não lembrar";
 "notifications.five_hour_reminder" = "Alerta de 5 horas";
 "notifications.seven_day_reminder" = "Alerta de 7 dias";
 "notifications.balance_reminder" = "Alerta de saldo";

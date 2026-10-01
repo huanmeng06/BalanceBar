@@ -32,6 +32,48 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(evaluation.alert?.stage, .first)
     }
 
+    func testZeroFirstThresholdKeepsSecondReminderAndRearmsFromSecond() {
+        XCTAssertEqual(
+            BalanceNotificationResourceRule.normalizedSecondThreshold(
+                5,
+                firstThreshold: 0,
+                kind: .quotaPercent
+            ),
+            5
+        )
+        XCTAssertEqual(
+            BalanceNotificationResourceRule.normalizedSecondThreshold(
+                25,
+                firstThreshold: 20,
+                kind: .quotaPercent
+            ),
+            19
+        )
+
+        let key = BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "weekly")
+        var rule = BalanceNotificationResourceRule(
+            key: key,
+            kind: .quotaPercent,
+            firstThreshold: 0,
+            secondEnabled: true,
+            secondThreshold: 5
+        )
+        var evaluation = BalanceNotificationThresholdEvaluator.evaluate(rule: rule, value: 21, resourceTitle: "Weekly")
+        XCTAssertNil(evaluation.alert)
+        rule = evaluation.rule
+        evaluation = BalanceNotificationThresholdEvaluator.evaluate(rule: rule, value: 4, resourceTitle: "Weekly")
+        XCTAssertEqual(evaluation.alert?.stage, .second)
+        rule = evaluation.rule
+        evaluation = BalanceNotificationThresholdEvaluator.evaluate(rule: rule, value: 4.5, resourceTitle: "Weekly")
+        XCTAssertNil(evaluation.alert)
+        rule = evaluation.rule
+        evaluation = BalanceNotificationThresholdEvaluator.evaluate(rule: rule, value: 100, resourceTitle: "Weekly")
+        XCTAssertTrue(evaluation.recovered)
+        rule = evaluation.rule
+        evaluation = BalanceNotificationThresholdEvaluator.evaluate(rule: rule, value: 4, resourceTitle: "Weekly")
+        XCTAssertEqual(evaluation.alert?.stage, .second)
+    }
+
     func testSettingsStorePersistsGlobalAgentProviderAndRules() {
         let suiteName = "BalanceNotificationCoordinatorTests.\(UUID().uuidString)"
         let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))

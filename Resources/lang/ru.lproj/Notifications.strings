@@ -33,7 +33,7 @@
 "notifications.pause_none" = "Нет";
 "notifications.pause_status" = "Пауза до %1$@ · Осталось: %2$@";
 "notifications.reminder_rules" = "Правила по умолчанию";
-"notifications.global_rules_hint" = "Введите 0, чтобы отключить оповещение";
+"notifications.global_rules_hint" = "Оставьте пустым или введите 0, чтобы не напоминать";
 "notifications.five_hour_reminder" = "Оповещение за 5 часов";
 "notifications.seven_day_reminder" = "Оповещение за 7 дней";
 "notifications.balance_reminder" = "Оповещение о балансе";

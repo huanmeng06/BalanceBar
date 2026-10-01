@@ -101,12 +101,13 @@ private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegat
     private func commitGlobalRuleThreshold(_ sender: NSTextField) {
         guard let raw = sender.identifier?.rawValue,
               raw.hasPrefix("global-rule:"),
-              let separator = raw.lastIndex(of: ":"),
-              let value = Double(sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+              let separator = raw.lastIndex(of: ":") else {
             return
         }
         let resourceID = String(raw[raw.index(raw.startIndex, offsetBy: "global-rule:".count)..<separator])
         let isSecond = String(raw[raw.index(after: separator)...]) == "second"
+        let kind: BalanceNotificationResourceKind = resourceID == "balance" ? .balance : .quotaPercent
+        guard let value = ThresholdFormat.parsedValue(sender.stringValue, kind: kind) else { return }
         onGlobalRuleThreshold?(resourceID, isSecond, value, sender)
     }
 
@@ -394,9 +395,7 @@ final class DashboardNotificationPages {
                 )
                 DispatchQueue.main.async { [weak field] in
                     let displayed = isSecond ? normalizedSecond : normalizedFirst
-                    field?.stringValue = kind == .quotaPercent
-                        ? String(format: "%.0f", displayed)
-                        : String(format: "%.2f", displayed)
+                    field?.stringValue = ThresholdFormat.displayString(displayed, kind: kind)
                 }
             }
         }
@@ -702,7 +701,29 @@ final class DashboardNotificationPages {
             title: tr("notifications.reminder_rules"),
             contentViews: rows
         )
-        return section
+        let hint = NSTextField(wrappingLabelWithString: tr("notifications.global_rules_hint"))
+        hint.identifier = NSUserInterfaceItemIdentifier("global-rules-hint")
+        hint.font = .systemFont(ofSize: 12)
+        hint.textColor = .secondaryLabelColor
+        hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let hintRow = NSStackView(views: [hint])
+        hintRow.orientation = .horizontal
+        hintRow.alignment = .firstBaseline
+        hintRow.translatesAutoresizingMaskIntoConstraints = false
+        hintRow.edgeInsets = NSEdgeInsets(
+            top: 0,
+            left: SettingsLayout.rowHorizontalInset,
+            bottom: 0,
+            right: SettingsLayout.rowHorizontalInset
+        )
+        let stack = NSStackView(views: [section, hintRow])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        section.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        hintRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return stack
     }
 
     private func makeGlobalRuleAccessory(
@@ -831,21 +852,21 @@ final class DashboardNotificationPages {
         kind: BalanceNotificationResourceKind
     ) -> DashboardSettingsComponents.CompactNumericFieldAccessory {
         let identifier = "global-rule:\(resourceID):\(isSecond ? "second" : "first")"
-        return DashboardSettingsComponents.makeNumericTextField(
+        let accessory = DashboardSettingsComponents.makeNumericTextField(
             identifier: identifier,
-            value: formattedGlobalRuleValue(value, kind: kind),
-            placeholder: "0",
+            value: ThresholdFormat.displayString(value, kind: kind),
+            placeholder: ThresholdFormat.placeholder,
             capacityTemplate: kind == .quotaPercent ? "000" : DashboardSettingsComponents.amountCapacityTemplate,
             delegate: relay,
             toolTip: tr("notifications.threshold_input_hint")
         )
-    }
-
-    private func formattedGlobalRuleValue(
-        _ value: Double,
-        kind: BalanceNotificationResourceKind
-    ) -> String {
-        kind == .quotaPercent ? String(format: "%.0f", value) : String(format: "%.2f", value)
+        accessory.field.formatter = ThresholdFormat.formatter(kind: kind)
+        if kind == .quotaPercent {
+            accessory.field.integerValue = Int(value.rounded())
+        } else {
+            accessory.field.doubleValue = value
+        }
+        return accessory
     }
 
     private func makeAgentSettingsSection(settings: BalanceNotificationSettings) -> NSView {
@@ -1222,20 +1243,20 @@ final class DashboardNotificationPages {
             }
         case .thresholdEdited(index: let index, value: let value):
             if index == 0 {
-                guard value > 0 else {
-                    card.apply(next, animated: false)
-                    return
-                }
-                next.firstThreshold = value
-                if next.secondThreshold > 0 {
+                next.firstThreshold = max(0, value)
+                if next.firstThreshold > 0, next.secondThreshold > 0 {
                     let step: Double = kind == .quotaPercent ? 1 : 0.01
-                    let cap = max(0, value - step)
-                    if next.secondThreshold >= value {
-                        next.secondThreshold = cap
+                    if next.secondThreshold >= next.firstThreshold {
+                        next.secondThreshold = max(0, next.firstThreshold - step)
                     }
                 }
             } else {
                 next.secondThreshold = max(0, value)
+                if next.firstThreshold > 0, next.secondThreshold > 0,
+                   next.secondThreshold >= next.firstThreshold {
+                    let step: Double = kind == .quotaPercent ? 1 : 0.01
+                    next.secondThreshold = max(0, next.firstThreshold - step)
+                }
             }
             card.apply(next)
             let first = next.firstThreshold
