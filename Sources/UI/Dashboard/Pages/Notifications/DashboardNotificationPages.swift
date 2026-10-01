@@ -1062,15 +1062,15 @@ final class DashboardNotificationPages {
         enabled: Bool
     ) {
         let key = providerRowKey(agent, providerID: providerID)
-        guard let row = providerRows[key] else { return }
         let settings = configuration.coordinator.settings
-        row.updateDetail(
+        providerRows[key]?.updateDetail(
             providerUsesCustomRules(settings, agent: agent, providerID: providerID)
                 ? tr("notifications.agent_customized")
                 : tr("notifications.agent_follows_global")
         )
         for (resourceKey, resourceRows) in resourceRuleRows where
             resourceKey.agent == agent && resourceKey.providerID == providerID {
+            resourceRows.section?.isHidden = !enabled
             if enabled, let rule = settings.rule(for: resourceKey) {
                 resourceRows.enableSwitch.state = rule.enabled ? .on : .off
                 resourceRows.updateVisibility(
@@ -1172,6 +1172,7 @@ final class DashboardNotificationPages {
                     contentViews: makeResourceSettingsRows(descriptor, settings: settings)
                 )
                 resourceRuleRows[descriptor.key]?.section = section
+                section.isHidden = !settings.isProviderEnabled(agent, providerID: providerID)
                 section.reconcileSeparators()
                 sections.append(section)
             }
