@@ -1388,7 +1388,14 @@ final class DashboardNotificationPages {
         field.alignment = .right
         field.isEditable = editable
         field.isEnabled = editable
-        field.widthAnchor.constraint(equalToConstant: 90).isActive = true
+        // Provider detail fields used to be locked to 90pt. That makes the
+        // editor visibly narrower than the other numeric controls, especially
+        // for decimal balance values. Give the native rounded field the same
+        // comfortable editing width used by the settings controls and keep
+        // it from being compressed by the accessory stack.
+        field.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        field.setContentHuggingPriority(.required, for: .horizontal)
+        field.setContentCompressionResistancePriority(.required, for: .horizontal)
         field.target = editable ? relay : nil
         field.action = editable ? #selector(DashboardNotificationPageRelay.thresholdChanged(_:)) : nil
         return field
