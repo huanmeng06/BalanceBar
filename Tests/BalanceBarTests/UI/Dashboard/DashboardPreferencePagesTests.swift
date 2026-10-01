@@ -255,6 +255,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         ))
 
         let root = pages.make()
+        root.frame = NSRect(x: 0, y: 0, width: 720, height: 640)
+        root.layoutSubtreeIfNeeded()
         let defaultSection = try XCTUnwrap(
             descendants(of: root).compactMap { $0 as? SettingsSectionView }
                 .first { $0.headingLabel.stringValue == tr("notifications.reminder_rules") }
@@ -263,7 +265,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(defaultRows.count, 3)
         XCTAssertTrue(descendants(of: defaultRows[0]).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "%" })
         XCTAssertTrue(descendants(of: defaultRows[1]).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "%" })
-        XCTAssertTrue(descendants(of: defaultRows[2]).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "USD" })
+        let usdLabels = descendants(of: defaultRows[2]).compactMap { $0 as? NSTextField }
+            .filter { $0.stringValue == "USD" }
+        XCTAssertEqual(usdLabels.count, 2)
+        for label in usdLabels {
+            let needed = ceil((label.stringValue as NSString).size(withAttributes: [.font: label.font as Any]).width)
+            let reserved = label.constraints
+                .filter { $0.firstAttribute == .width && $0.secondItem == nil }
+                .map(\.constant)
+                .max() ?? max(label.bounds.width, label.fittingSize.width)
+            XCTAssertGreaterThanOrEqual(
+                reserved,
+                needed,
+                "Default Rules balance unit should reserve the full USD width, not clip to US"
+            )
+        }
 
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
         let quotaPage = pages.make()

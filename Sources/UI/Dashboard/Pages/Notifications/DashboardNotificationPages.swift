@@ -825,12 +825,12 @@ final class DashboardNotificationPages {
             value: 0,
             kind: .balance
         )
-        let percentUnit = makeGlobalRuleUnitSlot(thresholdEditorUnitText(kind: .quotaPercent, unit: nil))
-        let balanceUnit = makeGlobalRuleUnitSlot(thresholdEditorUnitText(kind: .balance, unit: nil))
+        let percentUnitText = thresholdEditorUnitText(kind: .quotaPercent, unit: nil)
+        let balanceUnitText = thresholdEditorUnitText(kind: .balance, unit: nil)
         return GlobalRuleColumnMetrics(
             labelWidth: ceil(max(firstLabel.fittingSize.width, secondLabel.fittingSize.width)),
             percentFieldWidth: ceil(max(quotaField.fittingSize.width, balanceField.fittingSize.width)),
-            unitWidth: ceil(max(percentUnit.fittingSize.width, balanceUnit.fittingSize.width))
+            unitWidth: max(globalRuleUnitTextWidth(percentUnitText), globalRuleUnitTextWidth(balanceUnitText))
         )
     }
 
@@ -876,11 +876,19 @@ final class DashboardNotificationPages {
         return group
     }
 
-    private func makeGlobalRuleUnitSlot(_ text: String, width: CGFloat? = nil) -> NSTextField {
+    private func globalRuleUnitTextWidth(_ text: String) -> CGFloat {
         let unit = NSTextField(labelWithString: text)
         unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
-        let percentWidth = ceil(("%" as NSString).size(withAttributes: [.font: unit.font as Any]).width)
-        unit.widthAnchor.constraint(equalToConstant: width ?? percentWidth).isActive = true
+        return ceil(unit.fittingSize.width)
+    }
+
+    private func makeGlobalRuleUnitSlot(_ text: String, width: CGFloat) -> NSTextField {
+        let unit = NSTextField(labelWithString: text)
+        unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
+        unit.lineBreakMode = .byClipping
+        unit.usesSingleLineMode = true
+        unit.cell?.truncatesLastVisibleLine = false
+        unit.widthAnchor.constraint(equalToConstant: width).isActive = true
         unit.setContentHuggingPriority(.required, for: .horizontal)
         unit.setContentCompressionResistancePriority(.required, for: .horizontal)
         return unit
