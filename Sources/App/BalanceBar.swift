@@ -458,7 +458,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         notificationCoordinator.onOpenAgent = { [weak self] agent in
             guard let self else { return }
             DispatchQueue.main.async {
-                self.openNotificationAgentWindow(agent)
+                if let client = agent.assistantClient {
+                    self.currentAgentOpener.open(client: client)
+                }
             }
         }
         reloadCurrentProviderNameCache()
@@ -486,7 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self.refreshStatusItemMenuInput()
                 }
                 self?.refresh(reason: .configurationChanged)
-                self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: self?.activeClient ?? .codex)
+                self?.refreshMonitoredQuickSwitchSummaries(force: true)
             }
         )
         providerRefreshCoordinator = ProviderRefreshCoordinator(
@@ -830,8 +832,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "database"
         )
         refresh(reason: .initial)
-        providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
-        providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+        refreshMonitoredQuickSwitchSummaries(force: true, extraClients: [.claude])
         providerRefreshCoordinator.prefetchCurrentBalance(for: .claude)
         activityCoordinator.start(interval: activityPollInterval)
         activityCoordinator.pollNow()
@@ -1426,12 +1427,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
-    private func openNotificationAgentWindow(_ agent: BalanceNotificationAgent) {
-        dashboardComposition.open(initialSection: .notifications)
-        dashboardComposition.showNotificationAgent(agent)
-        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
-    }
-
     var dashboardCompositionForTesting: DashboardCompositionController { dashboardComposition }
     var manualRefreshActionForTesting: (() -> Void)?
 
@@ -1525,13 +1520,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
+    private func refreshMonitoredQuickSwitchSummaries(
+        force: Bool,
+        extraClients: [AssistantClient] = []
+    ) {
+        var clients: [AssistantClient] = [activeClient]
+        clients.append(contentsOf: extraClients)
+        clients.append(contentsOf: notificationCoordinator.monitoredAssistantClients())
+        var seen = Set<AssistantClient>()
+        for client in clients where seen.insert(client).inserted {
+            providerRefreshCoordinator.refreshQuickSwitchSummaries(force: force, for: client)
+        }
+    }
+
     private func configureRefreshTimers() {
         timer?.invalidate()
 
         let providerTimer = Timer(timeInterval: providerPollInterval, repeats: true) { [weak self] _ in
             self?.refreshStatusItemMenuInput()
             self?.refresh(reason: .scheduled)
-            self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: false, for: self?.activeClient ?? .codex)
+            self?.refreshMonitoredQuickSwitchSummaries(force: false)
         }
         timer = providerTimer
         RunLoop.main.add(providerTimer, forMode: .common)

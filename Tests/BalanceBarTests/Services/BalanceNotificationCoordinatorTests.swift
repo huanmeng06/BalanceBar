@@ -243,8 +243,106 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         )
         live.process(snapshot: snapshot, agent: .claude, providerID: "provider-a")
         XCTAssertEqual(authorized.deliveries.count, 1, "same-agent resources should be coalesced")
-        XCTAssertFalse(authorized.deliveries[0].body.isEmpty)
-        XCTAssertTrue(authorized.deliveries[0].title.contains("Claude"))
+        XCTAssertEqual(
+            authorized.deliveries[0].title,
+            tr("notifications.batch_title", arguments: ["Claude", "2"])
+        )
+        XCTAssertEqual(
+            authorized.deliveries[0].body,
+            [
+                tr("notifications.quota_value", arguments: ["18"]),
+                tr("notifications.quota_value", arguments: ["17"])
+            ].joined(separator: "\n")
+        )
+        XCTAssertFalse(authorized.deliveries[0].body.contains("⟦"))
+    }
+
+    func testDeliveredNotificationBodiesUseExactLocalizedValuesAndBalanceFormat() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.Bodies.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .gpt)
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
+        coordinator.process(
+            snapshot: Snapshot.official(
+                "OpenAI",
+                18,
+                "5h",
+                nil,
+                Date(),
+                windows: [
+                    OfficialQuotaWindow(
+                        kind: .fiveHour,
+                        remaining: 18,
+                        label: "5h",
+                        daysText: "5h",
+                        reset: nil,
+                        durationSeconds: nil
+                    )
+                ]
+            ),
+            agent: .gpt,
+            providerID: "openai"
+        )
+        XCTAssertEqual(client.deliveries.count, 1)
+        XCTAssertEqual(
+            client.deliveries[0].title,
+            tr("notifications.first_alert_title", arguments: ["ChatGPT", "5h"])
+        )
+        XCTAssertEqual(
+            client.deliveries[0].body,
+            tr("notifications.quota_value", arguments: ["18"])
+        )
+        XCTAssertFalse(client.deliveries[0].body.contains("⟦"))
+        XCTAssertFalse(client.deliveries[0].body.contains("5h"))
+
+        coordinator.setAgentEnabled(true, agent: .grok)
+        coordinator.setProviderEnabled(true, agent: .grok, providerID: "grok-1")
+        coordinator.process(
+            snapshot: Snapshot.balance("Grok Custom", 1.23, "USD", nil, Date()),
+            agent: .grok,
+            providerID: "grok-1"
+        )
+        XCTAssertEqual(client.deliveries.count, 2)
+        XCTAssertEqual(
+            client.deliveries[1].title,
+            tr("notifications.first_alert_title", arguments: ["Grok", tr("notifications.balance_resource")])
+        )
+        XCTAssertEqual(
+            client.deliveries[1].body,
+            tr("notifications.balance_value", arguments: ["1.23 USD"])
+        )
+        XCTAssertTrue(client.deliveries[1].body.contains("1.23 USD"))
+        XCTAssertFalse(client.deliveries[1].body.contains("USD1.23"))
+        XCTAssertFalse(client.deliveries[1].body.contains("⟦"))
+        XCTAssertEqual(
+            tr("notifications.first_alert_title", arguments: ["Claude", "5h"], language: .simplifiedChinese),
+            "Claude 的 5h 偏低"
+        )
+        XCTAssertEqual(
+            tr("notifications.second_alert_title", arguments: ["Claude", "Weekly"], language: .traditionalChineseTaiwan),
+            "Claude 的 Weekly 過低"
+        )
+    }
+
+    func testMonitoredAssistantClientsFollowGlobalAndAgentGates() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.Monitored.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        XCTAssertEqual(coordinator.monitoredAssistantClients(), [])
+
+        coordinator.setGlobalEnabled(true)
+        XCTAssertEqual(coordinator.monitoredAssistantClients(), [])
+
+        coordinator.setAgentEnabled(true, agent: .claude)
+        coordinator.setAgentEnabled(true, agent: .grok)
+        coordinator.setAgentEnabled(true, agent: .gemini)
+        XCTAssertEqual(Set(coordinator.monitoredAssistantClients()), [.claude, .grok])
     }
 
     func testNotificationClickRoutesOnlyToAgentCallback() {

@@ -19,10 +19,10 @@
 "notifications.pause_one_hour" = "1시간 일시 정지";
 "notifications.resume" = "알림 재개";
 "notifications.balance_resource" = "API Balance";
-"notifications.first_alert_title" = "%1$@ %2$@ is low";
-"notifications.second_alert_title" = "%1$@ %2$@ is very low";
-"notifications.batch_title" = "%1$@ has %2$@ low resources";
-"notifications.recovered_title" = "%1$@ resources restored";
+"notifications.first_alert_title" = "%1$@ %2$@가 부족합니다";
+"notifications.second_alert_title" = "%1$@ %2$@가 매우 부족합니다";
+"notifications.batch_title" = "%1$@에 부족한 리소스가 %2$@개 있습니다";
+"notifications.recovered_title" = "%1$@ 리소스가 회복되었습니다";
 "notifications.quota_value" = "현재 %1$@%%";
 "notifications.balance_value" = "현재 %1$@";
 "notifications.system_settings" = "시스템 설정";

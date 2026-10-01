@@ -985,6 +985,68 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 
+    func testQuickSwitchCadenceIsTrackedPerClientAndFeedsNotificationSnapshots() throws {
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let summaryUpdated = DispatchSemaphore(value: 0)
+        let snapshotLock = NSLock()
+        var snapshotClients: [AssistantClient] = []
+        let responseCounter = IncrementingCounter()
+        DelayedBalanceURLProtocol.setHandler { _ in
+            let amount = responseCounter.next()
+            return DelayedBalanceURLProtocol.success(amount: "\(amount).00")
+        }
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] client in
+                repository?.loadCurrent(appType: client.appType)
+            },
+            isActiveClient: { client in
+                client == .codex
+            },
+            render: { _ in },
+            storeClientSnapshot: { _, _, _ in },
+            quickSwitchSummaryChanged: { _ in summaryUpdated.signal() },
+            notificationSnapshot: { client, _, _ in
+                snapshotLock.lock()
+                snapshotClients.append(client)
+                snapshotLock.unlock()
+            }
+        )
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-quick-switch-per-client"),
+            actions: actions,
+            now: { clock.now }
+        )
+
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .grok)
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+
+        clock.advance(by: 60)
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 4)
+
+        snapshotLock.lock()
+        let clients = Set(snapshotClients)
+        snapshotLock.unlock()
+        XCTAssertEqual(clients, [.codex, .claude, .grok])
+    }
+
     func testOfficialQuickSwitchSummaryReformatsCachedWindowsForPreferenceWithoutRefetching() throws {
         try setCurrentProvider("codex-replacement")
         DelayedBalanceURLProtocol.setHandler { _ in
@@ -1244,6 +1306,12 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                     '{"api_key":"fixture-key","base_url":"https://claude.provider.test"}',
                     '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://claude.provider.test","code":"url: `{{baseUrl}}/usage`"}}',
                     'custom', 'https://claude.provider.test', 'claude', 1, 1, 1
+                );
+                INSERT INTO providers VALUES (
+                    'grok-custom', 'Grok Custom',
+                    '{"api_key":"fixture-key","base_url":"https://grok.provider.test"}',
+                    '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://grok.provider.test","code":"url: `{{baseUrl}}/usage`"}}',
+                    'custom', 'https://grok.provider.test', 'grokbuild', 1, 1, 1
                 );
                 """
             )

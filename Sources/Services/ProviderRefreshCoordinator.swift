@@ -230,7 +230,7 @@ final class ProviderRefreshCoordinator {
     // or write them until their work reaches that serial boundary.
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
-    private var lastQuickSwitchFetch: Date?
+    private var lastQuickSwitchFetch: [AssistantClient: Date] = [:]
     private var quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaryPayloads: [String: QuickSwitchSummaryPayload] = [:]
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
@@ -294,7 +294,7 @@ final class ProviderRefreshCoordinator {
             guard let self else { return }
             self.lastBalanceFetch = nil
             self.lastOfficialFetch = nil
-            self.lastQuickSwitchFetch = nil
+            self.lastQuickSwitchFetch = [:]
         }
     }
 
@@ -378,9 +378,9 @@ final class ProviderRefreshCoordinator {
         queue.async { [weak self] in
             guard let self else { return }
             let currentDate = self.now()
-            let due = self.lastQuickSwitchFetch.map { currentDate.timeIntervalSince($0) >= 60 } ?? true
+            let due = self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
             guard force || due else { return }
-            self.lastQuickSwitchFetch = currentDate
+            self.lastQuickSwitchFetch[client] = currentDate
             for source in self.repository.loadSummarySources(appType: client.appType) {
                 if source.isOfficial {
                     if client != .codex { continue }

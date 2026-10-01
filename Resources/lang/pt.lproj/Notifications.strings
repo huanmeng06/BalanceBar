@@ -19,10 +19,10 @@
 "notifications.pause_one_hour" = "Pausar por 1 hora";
 "notifications.resume" = "Retomar alertas";
 "notifications.balance_resource" = "API Balance";
-"notifications.first_alert_title" = "%1$@ %2$@ is low";
-"notifications.second_alert_title" = "%1$@ %2$@ is very low";
-"notifications.batch_title" = "%1$@ has %2$@ low resources";
-"notifications.recovered_title" = "%1$@ resources restored";
+"notifications.first_alert_title" = "%1$@: %2$@ está baixo";
+"notifications.second_alert_title" = "%1$@: %2$@ está muito baixo";
+"notifications.batch_title" = "%1$@ tem %2$@ recursos baixos";
+"notifications.recovered_title" = "Recursos de %1$@ restaurados";
 "notifications.quota_value" = "atual %1$@%%";
 "notifications.balance_value" = "atual %1$@";
 "notifications.system_settings" = "Ajustes do Sistema";

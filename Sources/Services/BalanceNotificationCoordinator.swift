@@ -154,6 +154,19 @@ final class BalanceNotificationCoordinator {
         onQueue { store.settings }
     }
 
+    /// Agents whose notification master is on. The AppDelegate reuses the
+    /// existing provider timer to keep their snapshots current even when they
+    /// are not `activeClient`.
+    func monitoredAssistantClients() -> [AssistantClient] {
+        onQueue {
+            guard store.settings.globalEnabled else { return [] }
+            return BalanceNotificationAgent.dashboardCases.compactMap { agent in
+                guard store.settings.isAgentEnabled(agent) else { return nil }
+                return agent.assistantClient
+            }
+        }
+    }
+
     /// UI actions enqueue persistence/evaluation work so a native switch or
     /// popup can finish its AppKit animation without waiting on the serial
     /// notification state queue.
@@ -538,19 +551,23 @@ final class BalanceNotificationCoordinator {
             if alert.unit == "%" || alert.unit == nil {
                 return tr(
                     "notifications.quota_value",
-                    arguments: [alert.resourceTitle, String(format: "%.0f", alert.value)]
+                    arguments: [String(format: "%.0f", alert.value)]
                 )
             }
             return tr(
                 "notifications.balance_value",
-                arguments: [alert.resourceTitle, formatBalance(alert.value, unit: alert.unit)]
+                arguments: [formatBalance(alert.value, unit: alert.unit)]
             )
         }
     }
 
     private func formatBalance(_ value: Double, unit: String?) -> String {
         let number = String(format: "%.2f", value)
-        return "\(unit ?? "")\(number)"
+        guard let unit, !unit.isEmpty else { return "\(number) USD" }
+        if ["$", "€", "£", "¥"].contains(unit) {
+            return "\(unit)\(number)"
+        }
+        return "\(number) \(unit)"
     }
 
     private func notifyPermissionStateChanged(_ state: BalanceNotificationPermissionState) {
