@@ -129,6 +129,7 @@ final class BalanceNotificationCoordinator {
 
     var onPermissionStateChanged: ((BalanceNotificationPermissionState) -> Void)?
     var onOpenAgent: ((BalanceNotificationAgent) -> Void)?
+    var onResourceDescriptorsChanged: ((BalanceNotificationAgent, String) -> Void)?
 
     init(
         defaults: UserDefaults = .standard,
@@ -154,15 +155,35 @@ final class BalanceNotificationCoordinator {
         onQueue { store.settings }
     }
 
-    /// Agents whose notification master is on. The AppDelegate reuses the
-    /// existing provider timer to keep their snapshots current even when they
-    /// are not `activeClient`.
+    struct MonitoredNotificationTarget: Equatable {
+        let client: AssistantClient
+        let providerIDs: Set<String>
+    }
+
+    /// Agents whose notification master is on *and* that have at least one
+    /// Provider reminder enabled. The AppDelegate reuses the existing provider
+    /// timer to keep those snapshots current even when they are not
+    /// `activeClient`.
     func monitoredAssistantClients() -> [AssistantClient] {
+        monitoredNotificationTargets().map(\.client)
+    }
+
+    /// Provider IDs that should receive notification-driven refreshes. Agents
+    /// with no enabled Provider are omitted so a parent master cannot fan out
+    /// extra requests to every CC Switch source.
+    func monitoredNotificationTargets() -> [MonitoredNotificationTarget] {
         onQueue {
             guard store.settings.globalEnabled else { return [] }
             return BalanceNotificationAgent.dashboardCases.compactMap { agent in
-                guard store.settings.isAgentEnabled(agent) else { return nil }
-                return agent.assistantClient
+                guard store.settings.isAgentEnabled(agent),
+                      let client = agent.assistantClient else { return nil }
+                let providerIDs = Set(
+                    store.settings.providerPreferences
+                        .filter { $0.agent == agent && $0.enabled }
+                        .map(\.providerID)
+                )
+                guard !providerIDs.isEmpty else { return nil }
+                return MonitoredNotificationTarget(client: client, providerIDs: providerIDs)
             }
         }
     }
@@ -436,12 +457,17 @@ final class BalanceNotificationCoordinator {
         providerID: String
     ) {
         let key = SnapshotKey(agent: agent, providerID: providerID)
+        let hadResources = !(resourceDescriptors[key] ?? []).isEmpty
         snapshots[key] = snapshot
-        resourceDescriptors[key] = Self.descriptors(
+        let descriptors = Self.descriptors(
             from: snapshot,
             agent: agent,
             providerID: providerID
         )
+        resourceDescriptors[key] = descriptors
+        if !hadResources && !descriptors.isEmpty {
+            notifyResourceDescriptorsChanged(agent, providerID: providerID)
+        }
     }
 
     private func processStoredSnapshotsOnQueue(
@@ -576,6 +602,18 @@ final class BalanceNotificationCoordinator {
             callback?(state)
         } else {
             DispatchQueue.main.async { callback?(state) }
+        }
+    }
+
+    private func notifyResourceDescriptorsChanged(
+        _ agent: BalanceNotificationAgent,
+        providerID: String
+    ) {
+        let callback = onResourceDescriptorsChanged
+        if Thread.isMainThread {
+            callback?(agent, providerID)
+        } else {
+            DispatchQueue.main.async { callback?(agent, providerID) }
         }
     }
 

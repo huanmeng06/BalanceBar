@@ -1047,6 +1047,72 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(clients, [.codex, .claude, .grok])
     }
 
+    func testNotificationRefreshRequestsOnlyEnabledProviders() throws {
+        try withDatabase { database in
+            try execute(
+                database,
+                sql: """
+                INSERT INTO providers VALUES (
+                    'claude-extra', 'Claude Extra',
+                    '{"api_key":"fixture-key","base_url":"https://claude-extra.provider.test"}',
+                    '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://claude-extra.provider.test","code":"url: `{{baseUrl}}/usage`"}}',
+                    'custom', 'https://claude-extra.provider.test', 'claude', 0, 2, 2
+                );
+                """
+            )
+        }
+        let responseCounter = IncrementingCounter()
+        DelayedBalanceURLProtocol.setHandler { _ in
+            let amount = responseCounter.next()
+            return DelayedBalanceURLProtocol.success(amount: "\(amount).00")
+        }
+        let summaryUpdated = DispatchSemaphore(value: 0)
+        let snapshotLock = NSLock()
+        var snapshotProviderIDs: [String] = []
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] client in
+                repository?.loadCurrent(appType: client.appType)
+            },
+            isActiveClient: { client in
+                client == .codex
+            },
+            render: { _ in },
+            storeClientSnapshot: { _, _, _ in },
+            quickSwitchSummaryChanged: { _ in summaryUpdated.signal() },
+            notificationSnapshot: { _, providerID, _ in
+                snapshotLock.lock()
+                snapshotProviderIDs.append(providerID)
+                snapshotLock.unlock()
+            }
+        )
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-notification-enabled-providers"),
+            actions: actions
+        )
+
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+        waitForEvent(summaryUpdated)
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        snapshotLock.lock()
+        XCTAssertEqual(Set(snapshotProviderIDs), ["claude-custom", "claude-extra"])
+        snapshotLock.unlock()
+
+        coordinator.refreshQuickSwitchSummaries(
+            force: true,
+            for: .claude,
+            providerIDs: ["claude-custom"]
+        )
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+        snapshotLock.lock()
+        XCTAssertEqual(snapshotProviderIDs.last, "claude-custom")
+        snapshotLock.unlock()
+    }
+
     func testOfficialQuickSwitchSummaryReformatsCachedWindowsForPreferenceWithoutRefetching() throws {
         try setCurrentProvider("codex-replacement")
         DelayedBalanceURLProtocol.setHandler { _ in

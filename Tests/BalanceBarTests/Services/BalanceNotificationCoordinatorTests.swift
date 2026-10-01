@@ -384,7 +384,16 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         coordinator.setAgentEnabled(true, agent: .claude)
         coordinator.setAgentEnabled(true, agent: .grok)
         coordinator.setAgentEnabled(true, agent: .gemini)
+        XCTAssertEqual(coordinator.monitoredAssistantClients(), [])
+
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-1")
+        coordinator.setProviderEnabled(false, agent: .claude, providerID: "claude-2")
+        coordinator.setProviderEnabled(true, agent: .grok, providerID: "grok-1")
         XCTAssertEqual(Set(coordinator.monitoredAssistantClients()), [.claude, .grok])
+        let claudeTarget = coordinator.monitoredNotificationTargets().first { $0.client == .claude }
+        XCTAssertEqual(claudeTarget?.providerIDs, ["claude-1"])
+        let grokTarget = coordinator.monitoredNotificationTargets().first { $0.client == .grok }
+        XCTAssertEqual(grokTarget?.providerIDs, ["grok-1"])
     }
 
     func testNotificationClickRoutesOnlyToAgentCallback() {

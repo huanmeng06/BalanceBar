@@ -241,6 +241,7 @@ final class DashboardNotificationPages {
     private var providerDetailButtons: [String: NSButton] = [:]
     private var providerMasterRows: [String: SettingsRowView] = [:]
     private var resourceCards: [BalanceNotificationResourceKey: ResourceRuleCard] = [:]
+    private var globalRuleFields: [String: (first: NSTextField, second: NSTextField)] = [:]
     private var pauseTimer: Timer?
     private var applyGlobalRulesAlert: NSAlert?
 
@@ -368,7 +369,7 @@ final class DashboardNotificationPages {
                 DispatchQueue.main.async { [weak self] in self?.updatePausePresentation() }
             }
         }
-        relay.onGlobalRuleThreshold = { [weak self] resourceID, isSecond, value, field in
+        relay.onGlobalRuleThreshold = { [weak self] resourceID, isSecond, value, _ in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
             let kind: BalanceNotificationResourceKind = resourceID == "balance" ? .balance : .quotaPercent
@@ -393,9 +394,11 @@ final class DashboardNotificationPages {
                     firstThreshold: normalizedFirst,
                     secondThreshold: normalizedSecond
                 )
-                DispatchQueue.main.async { [weak field] in
-                    let displayed = isSecond ? normalizedSecond : normalizedFirst
-                    field?.stringValue = ThresholdFormat.displayString(displayed, kind: kind)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    let fields = self.globalRuleFields[resourceID]
+                    fields?.first.stringValue = ThresholdFormat.displayString(normalizedFirst, kind: kind)
+                    fields?.second.stringValue = ThresholdFormat.displayString(normalizedSecond, kind: kind)
                 }
             }
         }
@@ -432,6 +435,9 @@ final class DashboardNotificationPages {
         relay.onRestoreDefaultRules = { [weak self] agent in
             self?.presentRestoreDefaultRulesConfirmation(for: agent)
         }
+        configuration.coordinator.onResourceDescriptorsChanged = { [weak self] agent, providerID in
+            self?.refreshProviderIfVisible(agent: agent, providerID: providerID)
+        }
         container.translatesAutoresizingMaskIntoConstraints = false
     }
 
@@ -452,6 +458,15 @@ final class DashboardNotificationPages {
     func refresh() {
         guard currentPage != nil else { return }
         rebuild()
+    }
+
+    func refreshProviderIfVisible(agent: BalanceNotificationAgent, providerID: String) {
+        guard currentPage != nil else { return }
+        if case .provider(let currentAgent, let currentID) = path.last,
+           currentAgent == agent,
+           currentID == providerID {
+            rebuild()
+        }
     }
 
     func showAgent(_ agent: BalanceNotificationAgent) {
@@ -515,6 +530,7 @@ final class DashboardNotificationPages {
     }
 
     private func makeRootPage() -> NSView {
+        globalRuleFields.removeAll(keepingCapacity: true)
         let settings = configuration.coordinator.settings
         let permission = configuration.coordinator.permissionState
         let globalSwitch = DashboardSettingsComponents.makeSwitch(
@@ -754,6 +770,7 @@ final class DashboardNotificationPages {
             groupSpacing: columnMetrics.groupSpacing
         )
         accessory.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        globalRuleFields[resourceID] = (first.field, second.field)
         return accessory
     }
 

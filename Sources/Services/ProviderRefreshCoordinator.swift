@@ -373,7 +373,11 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    func refreshQuickSwitchSummaries(force: Bool, for requestedClient: AssistantClient? = nil) {
+    func refreshQuickSwitchSummaries(
+        force: Bool,
+        for requestedClient: AssistantClient? = nil,
+        providerIDs: Set<String>? = nil
+    ) {
         let client = requestedClient ?? .codex
         queue.async { [weak self] in
             guard let self else { return }
@@ -382,6 +386,7 @@ final class ProviderRefreshCoordinator {
             guard force || due else { return }
             self.lastQuickSwitchFetch[client] = currentDate
             for source in self.repository.loadSummarySources(appType: client.appType) {
+                if let providerIDs, !providerIDs.contains(source.id) { continue }
                 if source.isOfficial {
                     if client != .codex { continue }
                     self.officialQuotaClient.fetchQuota(

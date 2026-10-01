@@ -1524,12 +1524,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         force: Bool,
         extraClients: [AssistantClient] = []
     ) {
-        var clients: [AssistantClient] = [activeClient]
-        clients.append(contentsOf: extraClients)
-        clients.append(contentsOf: notificationCoordinator.monitoredAssistantClients())
         var seen = Set<AssistantClient>()
-        for client in clients where seen.insert(client).inserted {
+        for client in [activeClient] + extraClients where seen.insert(client).inserted {
             providerRefreshCoordinator.refreshQuickSwitchSummaries(force: force, for: client)
+        }
+        for target in notificationCoordinator.monitoredNotificationTargets()
+        where seen.insert(target.client).inserted {
+            providerRefreshCoordinator.refreshQuickSwitchSummaries(
+                force: force,
+                for: target.client,
+                providerIDs: target.providerIDs
+            )
         }
     }
 

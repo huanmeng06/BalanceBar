@@ -140,8 +140,63 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(coordinator.settings.globalFiveHourFirstThreshold, 20)
         XCTAssertEqual(firstField.stringValue, "20")
         XCTAssertEqual(coordinator.settings.globalFiveHourSecondThreshold, 5)
+        firstField.stringValue = "3"
+        firstField.delegate?.controlTextDidEndEditing?(
+            Notification(name: NSControl.textDidEndEditingNotification, object: firstField)
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(coordinator.settings.globalFiveHourFirstThreshold, 3)
+        XCTAssertEqual(coordinator.settings.globalFiveHourSecondThreshold, 2)
+        XCTAssertEqual(firstField.stringValue, "3")
+        XCTAssertEqual(secondField.stringValue, "2")
         XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
             $0.identifier?.rawValue == "notification-global"
+        })
+    }
+
+    func testProviderPageRebuildsWhenSnapshotArrivesAfterOpen() throws {
+        let suiteName = "DashboardPreferencePagesTests.NotificationSnapshotArrival.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: DashboardNotificationTestClient()
+        )
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
+        let pages = DashboardNotificationPages(configuration: .init(
+            coordinator: coordinator,
+            providerChoices: { agent in
+                agent == .gpt ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)] : []
+            }
+        ))
+        let page = pages.make()
+        XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
+        let fiveHourKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour")
+        XCTAssertNil(pages.resourceCardForTesting(fiveHourKey))
+        XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSTextField }.contains {
+            $0.stringValue == tr("notifications.no_providers")
+        })
+
+        coordinator.process(
+            snapshot: Snapshot.official(
+                "Provider", 10, "Weekly", nil, Date(),
+                windows: [
+                    OfficialQuotaWindow(kind: .fiveHour, remaining: 18, label: "5h", daysText: "5h", reset: nil, durationSeconds: nil),
+                    OfficialQuotaWindow(kind: .sevenDay, remaining: 70, label: "7d", daysText: "7d", reset: nil, durationSeconds: nil)
+                ]
+            ),
+            agent: .gpt,
+            providerID: "openai"
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertNotNil(pages.resourceCardForTesting(fiveHourKey))
+        XCTAssertNotNil(pages.resourceCardForTesting(
+            BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "weekly")
+        ))
+        XCTAssertFalse(descendants(of: page).compactMap { $0 as? NSTextField }.contains {
+            $0.stringValue == tr("notifications.no_providers")
         })
     }
 

@@ -2566,8 +2566,9 @@ final class AppDelegateCompositionTests: XCTestCase {
 
         let helperStart = try XCTUnwrap(source.range(of: "private func refreshMonitoredQuickSwitchSummaries("))
         let helper = String(source[helperStart.lowerBound..<timerStart.lowerBound])
-        XCTAssertTrue(helper.contains("notificationCoordinator.monitoredAssistantClients()"))
+        XCTAssertTrue(helper.contains("notificationCoordinator.monitoredNotificationTargets()"))
         XCTAssertTrue(helper.contains("seen.insert(client).inserted"))
+        XCTAssertTrue(helper.contains("providerIDs: target.providerIDs"))
         XCTAssertTrue(helper.contains("[activeClient]"))
 
         let launchStart = try XCTUnwrap(source.range(of: "func applicationDidFinishLaunching"))
