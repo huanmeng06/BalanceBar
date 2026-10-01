@@ -85,6 +85,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSTextField }.contains {
             $0.stringValue == tr("notifications.global_rules_hint")
         })
+        let defaultHint = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "global-rules-hint" }
+        )
+        XCTAssertEqual(defaultHint.font?.pointSize ?? 0, SettingsLayout.secondaryFont.pointSize, accuracy: 0.01)
+        XCTAssertEqual(defaultHint.maximumNumberOfLines, 0)
+        XCTAssertEqual(defaultHint.lineBreakMode, .byWordWrapping)
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 640)
+        page.layoutSubtreeIfNeeded()
+        assertLeadingMinX(
+            of: defaultSection.headingLabel,
+            matches: defaultHint,
+            in: page
+        )
         XCTAssertEqual(firstField.placeholderString, tr("notifications.no_reminder"))
         XCTAssertEqual(secondField.placeholderString, tr("notifications.no_reminder"))
         XCTAssertFalse(descendants(of: page).compactMap { $0 as? NSSwitch }.contains {
@@ -329,8 +343,36 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(unitLabels(beside: quotaField), ["%"])
         XCTAssertFalse(quotaCard.footerHiddenForTesting)
         XCTAssertEqual(quotaCard.footerHintForTesting, tr("notifications.global_rules_hint"))
+        XCTAssertEqual(
+            quotaCard.currentLabelForTesting.font?.pointSize ?? 0,
+            SettingsLayout.secondaryFont.pointSize,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            quotaCard.footerLabelForTesting.font?.pointSize ?? 0,
+            SettingsLayout.secondaryFont.pointSize,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            quotaCard.editButtonForTesting.font?.pointSize ?? 0,
+            SettingsLayout.secondaryFont.pointSize,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(quotaCard.footerLabelForTesting.maximumNumberOfLines, 0)
+        XCTAssertEqual(quotaCard.footerLabelForTesting.lineBreakMode, .byWordWrapping)
+        assertLeadingMinX(
+            of: quotaCard.titleLabelForTesting,
+            matches: quotaCard.footerLabelForTesting,
+            in: quotaPage
+        )
         XCTAssertFalse(quotaCard.secondFieldForTesting.isHidden)
+        XCTAssertFalse(quotaCard.secondUnitLabelForTesting.isHidden)
         XCTAssertEqual(unitLabels(beside: quotaCard.secondFieldForTesting), ["%"])
+        assertTrailingMaxX(
+            of: quotaCard.firstFieldForTesting,
+            matches: quotaCard.secondFieldForTesting,
+            in: quotaPage
+        )
 
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/claude/claude-1"))
         let balancePage = pages.make()
@@ -389,6 +431,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         balancePage.layoutSubtreeIfNeeded()
         XCTAssertFalse(balanceCard.secondUnitLabelForTesting.isHidden)
+        XCTAssertEqual(unitLabels(beside: secondField), ["USD"])
+        assertTrailingMaxX(
+            of: firstField,
+            matches: secondField,
+            in: balancePage
+        )
         XCTAssertEqual(
             coordinator.settings.rule(
                 for: BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
@@ -9340,6 +9388,28 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
     private func trailingMaxX(of view: NSView, in space: NSView) -> CGFloat {
         view.convert(view.bounds, to: space).maxX
+    }
+
+    private func leadingMinX(of view: NSView, in space: NSView) -> CGFloat {
+        view.convert(view.bounds, to: space).minX
+    }
+
+    private func assertLeadingMinX(
+        of view: NSView,
+        matches other: NSView,
+        in space: NSView,
+        accuracy: CGFloat = 1.5,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(
+            leadingMinX(of: view, in: space),
+            leadingMinX(of: other, in: space),
+            accuracy: accuracy,
+            "Secondary copy should share the section title leading edge",
+            file: file,
+            line: line
+        )
     }
 
     private func assertTrailingMaxX(

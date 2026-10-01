@@ -101,9 +101,18 @@ final class ThresholdAccessory: NSStackView {
         field.cell?.wraps = false
         field.cell?.isScrollable = true
         field.cell?.sendsActionOnEndEditing = true
-        field.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        let numericTemplate = kind == .quotaPercent
+            ? "000"
+            : DashboardSettingsComponents.amountCapacityTemplate
+        let fieldWidth = max(
+            DashboardSettingsComponents.compactNumericWidth(for: field, capacityTemplate: numericTemplate),
+            DashboardSettingsComponents.compactNumericWidth(for: field, capacityTemplate: ThresholdFormat.placeholder)
+        )
+        field.widthAnchor.constraint(equalToConstant: fieldWidth).isActive = true
         field.setContentHuggingPriority(.required, for: .horizontal)
-        field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // Keep the explicit width in charge when the placeholder is wider than
+        // the current digits, otherwise the empty "不提醒" field jumps right.
+        field.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         field.setContentHuggingPriority(.required, for: .vertical)
         field.setContentCompressionResistancePriority(.required, for: .vertical)
         let nativeHeight = ceil(field.cell?.cellSize.height ?? 0)
@@ -118,6 +127,10 @@ final class ThresholdAccessory: NSStackView {
         unitLabel.textColor = .secondaryLabelColor
         unitLabel.setContentHuggingPriority(.required, for: .horizontal)
         unitLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let unitWidth = ceil(unitLabel.fittingSize.width)
+        if unitWidth > 0 {
+            unitLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: unitWidth).isActive = true
+        }
 
         [field, unitLabel, valueLabel].forEach(addArrangedSubview)
     }
@@ -126,9 +139,11 @@ final class ThresholdAccessory: NSStackView {
 
     func apply(value: Double, displayText: String, editable: Bool) {
         field.isHidden = !editable
-        unitLabel.isHidden = !editable
         field.isEnabled = editable
         field.stringValue = ThresholdFormat.displayString(value, kind: kind)
+        // Empty custom values still show a gray unit so first/second fields
+        // share one trailing column instead of the empty field jumping right.
+        unitLabel.isHidden = !editable
         valueLabel.isHidden = editable
         valueLabel.stringValue = value > 0 ? displayText : ThresholdFormat.placeholder
     }
@@ -154,7 +169,7 @@ final class ResourceRuleCard: NSStackView {
     private let secondAccessory: ThresholdAccessory
     private let section: SettingsSectionView
     private let footer = NSStackView()
-    private let footerLabel = NSTextField(labelWithString: "")
+    private let footerLabel = NSTextField(wrappingLabelWithString: "")
     private let editButton: NSButton
 
     var resourceSwitchForTesting: NSSwitch { resourceSwitch }
@@ -169,6 +184,10 @@ final class ResourceRuleCard: NSStackView {
     var footerHiddenForTesting: Bool { footer.isHidden }
     var footerHintForTesting: String { footerLabel.stringValue }
     var titleForTesting: String { titleLabel.stringValue }
+    var titleLabelForTesting: NSTextField { titleLabel }
+    var currentLabelForTesting: NSTextField { currentLabel }
+    var footerLabelForTesting: NSTextField { footerLabel }
+    var editButtonForTesting: NSButton { editButton }
 
     init(
         title: String,
@@ -258,7 +277,7 @@ final class ResourceRuleCard: NSStackView {
         titleLabel.stringValue = title
         titleLabel.font = SettingsSectionView.headingFont
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        currentLabel.font = .systemFont(ofSize: 13)
+        currentLabel.font = SettingsLayout.secondaryFont
         currentLabel.textColor = .secondaryLabelColor
         currentLabel.setContentHuggingPriority(.required, for: .horizontal)
         let spacer = NSView()
@@ -275,25 +294,23 @@ final class ResourceRuleCard: NSStackView {
             right: SettingsLayout.rowHorizontalInset
         )
 
-        footerLabel.font = .systemFont(ofSize: 12)
+        footerLabel.font = SettingsLayout.secondaryFont
         footerLabel.textColor = .secondaryLabelColor
+        footerLabel.lineBreakMode = .byWordWrapping
+        footerLabel.maximumNumberOfLines = 0
+        footerLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         footerLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         editButton.target = self
         editButton.action = #selector(editDefaultsTapped)
         editButton.isBordered = false
-        editButton.font = .systemFont(ofSize: 12)
+        editButton.font = SettingsLayout.secondaryFont
         editButton.contentTintColor = .controlAccentColor
+        editButton.setContentHuggingPriority(.required, for: .horizontal)
         footer.orientation = .horizontal
-        footer.alignment = .centerY
+        footer.alignment = .firstBaseline
         footer.spacing = 6
         footer.detachesHiddenViews = true
         footer.translatesAutoresizingMaskIntoConstraints = false
-        footer.edgeInsets = NSEdgeInsets(
-            top: 0,
-            left: SettingsLayout.rowHorizontalInset,
-            bottom: 0,
-            right: 0
-        )
         footer.setViews([footerLabel, editButton], in: .leading)
 
         [header, section, footer].forEach { view in

@@ -254,6 +254,8 @@ enum SettingsLayout {
     /// NSTextField labels keep a few points of optical padding. Pull the
     /// trailing unit/value out so `%` / `USD` meet the control column.
     static let trailingLabelOpticalCompensation: CGFloat = 9
+    /// Remaining-value copy, resource-card footnotes, and Default Rules hints.
+    static let secondaryFont = NSFont.systemFont(ofSize: 13)
 }
 
 /// Native Auto Layout settings row: title, optional detail, trailing control.

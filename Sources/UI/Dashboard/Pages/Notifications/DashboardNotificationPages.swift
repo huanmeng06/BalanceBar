@@ -703,19 +703,15 @@ final class DashboardNotificationPages {
         )
         let hint = NSTextField(wrappingLabelWithString: tr("notifications.global_rules_hint"))
         hint.identifier = NSUserInterfaceItemIdentifier("global-rules-hint")
-        hint.font = .systemFont(ofSize: 12)
+        hint.font = SettingsLayout.secondaryFont
         hint.textColor = .secondaryLabelColor
+        hint.lineBreakMode = .byWordWrapping
+        hint.maximumNumberOfLines = 0
         hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let hintRow = NSStackView(views: [hint])
         hintRow.orientation = .horizontal
         hintRow.alignment = .firstBaseline
         hintRow.translatesAutoresizingMaskIntoConstraints = false
-        hintRow.edgeInsets = NSEdgeInsets(
-            top: 0,
-            left: SettingsLayout.rowHorizontalInset,
-            bottom: 0,
-            right: SettingsLayout.rowHorizontalInset
-        )
         let stack = NSStackView(views: [section, hintRow])
         stack.orientation = .vertical
         stack.alignment = .leading
