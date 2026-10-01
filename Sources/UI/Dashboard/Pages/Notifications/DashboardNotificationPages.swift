@@ -269,6 +269,7 @@ final class DashboardNotificationPages {
 
     private final class ResourceRuleRows {
         let enableRow: SettingsRowView
+        let enableSwitch: NSSwitch
         let sourceRow: SettingsRowView
         let firstThresholdRow: SettingsRowView
         let secondToggleRow: SettingsRowView
@@ -285,6 +286,7 @@ final class DashboardNotificationPages {
 
         init(
             enableRow: SettingsRowView,
+            enableSwitch: NSSwitch,
             sourceRow: SettingsRowView,
             firstThresholdRow: SettingsRowView,
             secondToggleRow: SettingsRowView,
@@ -296,6 +298,7 @@ final class DashboardNotificationPages {
             secondSwitch: NSSwitch
         ) {
             self.enableRow = enableRow
+            self.enableSwitch = enableSwitch
             self.sourceRow = sourceRow
             self.firstThresholdRow = firstThresholdRow
             self.secondToggleRow = secondToggleRow
@@ -366,8 +369,6 @@ final class DashboardNotificationPages {
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
-            // The Provider master gates delivery only. Resource switches and
-            // thresholds remain independently configured and reachable.
             self.updateProviderDetail(agent, providerID: providerID, enabled: enabled)
             self.updateProviderMasterRow(agent, providerID: providerID, enabled: enabled)
             coordinator.performAsync { coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID) }
@@ -1068,6 +1069,13 @@ final class DashboardNotificationPages {
                 ? tr("notifications.agent_customized")
                 : tr("notifications.agent_follows_global")
         )
+        if !enabled {
+            for (resourceKey, resourceRows) in resourceRuleRows where
+                resourceKey.agent == agent && resourceKey.providerID == providerID {
+                resourceRows.enableSwitch.state = .off
+                resourceRows.updateVisibility(resourceEnabled: false, secondEnabled: false)
+            }
+        }
     }
 
     private func updateProviderMasterRow(
@@ -1177,6 +1185,11 @@ final class DashboardNotificationPages {
         if let storedRule {
             rule.enabled = storedRule.enabled
         }
+        let providerEnabled = settings.isProviderEnabled(
+            descriptor.key.agent,
+            providerID: descriptor.key.providerID
+        )
+        rule.enabled = providerEnabled && rule.enabled
         let enabled = DashboardSettingsComponents.makeSwitch(
             identifier: "resource:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
             isOn: rule.enabled,
@@ -1275,6 +1288,7 @@ final class DashboardNotificationPages {
         )
         let resourceRows = ResourceRuleRows(
             enableRow: enableRow,
+            enableSwitch: enabled,
             sourceRow: sourceRow,
             firstThresholdRow: firstRow,
             secondToggleRow: secondRow,
