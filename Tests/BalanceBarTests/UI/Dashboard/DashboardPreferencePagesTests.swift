@@ -457,8 +457,31 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.identifier?.rawValue == "agent:gpt" }
         )
         XCTAssertEqual(SettingsRowView.enclosing(agentMasterSwitch)?.titleLabel.stringValue, "ChatGPT \(tr("notifications.quota_reminders"))")
+        XCTAssertEqual(agentMasterSwitch.state, .off)
+        XCTAssertEqual(pages.agentChildStackHiddenForTesting, true)
+        XCTAssertFalse(
+            descendants(of: agentPage).compactMap { $0 as? SettingsSectionView }
+                .contains { $0.headingLabel.stringValue == tr("notifications.provider_rules") && !isEffectivelyHidden($0) }
+        )
+
+        agentMasterSwitch.state = .on
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(agentMasterSwitch.action), to: agentMasterSwitch.target, from: agentMasterSwitch))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(pages.agentChildStackHiddenForTesting, false)
+        let providerSection = try XCTUnwrap(
+            descendants(of: agentPage).compactMap { $0 as? SettingsSectionView }
+                .first { $0.headingLabel.stringValue == tr("notifications.provider_rules") }
+        )
+        XCTAssertFalse(isEffectivelyHidden(providerSection))
         XCTAssertTrue(descendants(of: agentPage).compactMap { $0 as? NSButton }.contains { $0.identifier?.rawValue == "provider:gpt:openai" })
         XCTAssertFalse(descendants(of: agentPage).compactMap { $0 as? NSButton }.contains { $0.identifier?.rawValue == "restore-default-rules:gpt" })
+
+        agentMasterSwitch.state = .off
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(agentMasterSwitch.action), to: agentMasterSwitch.target, from: agentMasterSwitch))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(pages.agentChildStackHiddenForTesting, true)
+        XCTAssertTrue(isEffectivelyHidden(providerSection))
+        XCTAssertTrue(coordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
 
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
         let providerPage = pages.make()
@@ -486,6 +509,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             agent: .gpt,
             providerID: "openai"
         )
+        coordinator.setAgentEnabled(true, agent: .gpt)
         coordinator.updateRule(
             key: BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour"),
             kind: .quotaPercent,
@@ -9175,6 +9199,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertNotNil(SettingsRowView.enclosing(reloadButton))
             XCTAssertNotNil(SettingsSectionView.enclosing(reloadButton))
         }
+    }
+
+    private func isEffectivelyHidden(_ view: NSView) -> Bool {
+        var current: NSView? = view
+        while let node = current {
+            if node.isHidden { return true }
+            current = node.superview
+        }
+        return false
     }
 
     private func unitLabels(beside field: NSTextField) -> [String] {

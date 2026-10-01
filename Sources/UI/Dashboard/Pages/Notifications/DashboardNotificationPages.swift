@@ -234,6 +234,7 @@ final class DashboardNotificationPages {
     private var agentRows: [BalanceNotificationAgent: SettingsRowView] = [:]
     private var agentDetailButtons: [BalanceNotificationAgent: NSButton] = [:]
     private var agentMasterRows: [BalanceNotificationAgent: SettingsRowView] = [:]
+    private weak var agentChildStack: NSStackView?
     private var providerRows: [String: SettingsRowView] = [:]
     private var providerDetailButtons: [String: NSButton] = [:]
     private var providerMasterRows: [String: SettingsRowView] = [:]
@@ -243,6 +244,10 @@ final class DashboardNotificationPages {
 
     var applyGlobalRulesAlertForTesting: NSAlert? {
         applyGlobalRulesAlert
+    }
+
+    var agentChildStackHiddenForTesting: Bool? {
+        agentChildStack?.isHidden
     }
 
     private enum NotificationPagePath: Equatable {
@@ -368,6 +373,7 @@ final class DashboardNotificationPages {
             let coordinator = self.configuration.coordinator
             self.updateAgentDetail(agent, enabled: enabled)
             self.updateAgentMasterRow(agent, enabled: enabled)
+            self.updateAgentChildVisibility(enabled: enabled)
             coordinator.performAsync { coordinator.setAgentEnabled(enabled, agent: agent) }
         }
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
@@ -1011,10 +1017,7 @@ final class DashboardNotificationPages {
             title: tr("notifications.provider_rules"),
             contentViews: providerViews
         )
-        var sections: [NSView] = [
-            SettingsSectionView(title: tr("notifications.agent_settings"), contentViews: [agentMasterRow]),
-            providerSection
-        ]
+        var childViews: [NSView] = [providerSection]
         if settings.hasCustomRules(for: agent) {
             let restoreButton = NSButton(
                 title: tr("notifications.restore_default_rules"),
@@ -1028,13 +1031,35 @@ final class DashboardNotificationPages {
                 accessoryView: restoreButton
             )
             restoreRow.titleLabel.textColor = .systemRed
-            sections.append(SettingsSectionView(title: "", contentViews: [restoreRow]))
+            childViews.append(SettingsSectionView(title: "", contentViews: [restoreRow]))
         }
+        let childStack = NSStackView(views: childViews)
+        childStack.orientation = .vertical
+        childStack.alignment = .leading
+        childStack.spacing = DashboardSettingsComponents.settingsSectionSpacing
+        childStack.detachesHiddenViews = true
+        childStack.translatesAutoresizingMaskIntoConstraints = false
+        childViews.forEach { view in
+            view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            view.setContentCompressionResistancePriority(.required, for: .horizontal)
+            view.widthAnchor.constraint(equalTo: childStack.widthAnchor).isActive = true
+        }
+        agentChildStack = childStack
         let header = DashboardSettingsComponents.makePageHeader(
             agent.title,
             subtitle: tr("notifications.agent_page_description")
         )
-        return DashboardSettingsComponents.makeSettingsPageContent([header] + sections)
+        let page = DashboardSettingsComponents.makeSettingsPageContent([
+            header,
+            SettingsSectionView(title: tr("notifications.agent_settings"), contentViews: [agentMasterRow]),
+            childStack
+        ])
+        updateAgentChildVisibility(enabled: settings.isAgentEnabled(agent))
+        return page
+    }
+
+    private func updateAgentChildVisibility(enabled: Bool) {
+        agentChildStack?.isHidden = !enabled
     }
 
     private func updateAgentMasterRow(_ agent: BalanceNotificationAgent, enabled: Bool) {
