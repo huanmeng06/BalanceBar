@@ -408,13 +408,6 @@ struct BalanceNotificationSettings: Codable, Equatable {
                 )
             )
         }
-        if !enabled {
-            for index in resourceRules.indices where
-                resourceRules[index].key.agent == agent &&
-                resourceRules[index].key.providerID == providerID {
-                resourceRules[index].enabled = false
-            }
-        }
     }
 
     func rule(for key: BalanceNotificationResourceKey) -> BalanceNotificationResourceRule? {

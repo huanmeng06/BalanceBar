@@ -1069,9 +1069,16 @@ final class DashboardNotificationPages {
                 ? tr("notifications.agent_customized")
                 : tr("notifications.agent_follows_global")
         )
-        if !enabled {
-            for (resourceKey, resourceRows) in resourceRuleRows where
-                resourceKey.agent == agent && resourceKey.providerID == providerID {
+        for (resourceKey, resourceRows) in resourceRuleRows where
+            resourceKey.agent == agent && resourceKey.providerID == providerID {
+            if enabled, let rule = settings.rule(for: resourceKey) {
+                resourceRows.enableSwitch.state = rule.enabled ? .on : .off
+                resourceRows.updateVisibility(
+                    resourceEnabled: rule.enabled,
+                    secondEnabled: rule.secondEnabled,
+                    usesGlobalDefaults: rule.usesGlobalDefaults
+                )
+            } else {
                 resourceRows.enableSwitch.state = .off
                 resourceRows.updateVisibility(resourceEnabled: false, secondEnabled: false)
             }
