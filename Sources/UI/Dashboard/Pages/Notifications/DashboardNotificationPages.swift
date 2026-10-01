@@ -312,7 +312,10 @@ final class DashboardNotificationPages {
             self.secondEnabled = secondEnabled
             if let usesGlobalDefaults { self.usesGlobalDefaults = usesGlobalDefaults }
             enableRow.isHidden = false
-            sourceRow.isHidden = false
+            // The resource switch controls the complete rule editor. Keep the
+            // enable row visible so it can be turned back on, while hiding
+            // the source selector and all threshold rows together.
+            sourceRow.isHidden = !resourceEnabled
             firstThresholdRow.isHidden = !resourceEnabled
             secondToggleRow.isHidden = !resourceEnabled
             secondThresholdRow.isHidden = !resourceEnabled || !secondEnabled
@@ -1184,10 +1187,9 @@ final class DashboardNotificationPages {
         enabled.setAccessibilityValue(descriptor.kind.rawValue)
         let enableRow = SettingsRowView(
             title: descriptor.title,
-            detail: descriptor.unit == "%"
-                ? tr("notifications.quota_value", arguments: [descriptor.title, formatted(descriptor.value ?? 0, kind: .quotaPercent)])
+                detail: descriptor.unit == "%"
+                ? tr("notifications.quota_value", arguments: [formatted(descriptor.value ?? 0, kind: .quotaPercent)])
                 : tr("notifications.balance_value", arguments: [
-                    descriptor.title,
                     balanceText(descriptor.value ?? 0, unit: descriptor.unit)
                 ]),
             accessoryView: enabled
@@ -1248,7 +1250,7 @@ final class DashboardNotificationPages {
         secondSwitch.setAccessibilityValue(descriptor.kind.rawValue)
         let secondRow = SettingsRowView(
             title: tr("notifications.second_alert"),
-            detail: tr("notifications.second_threshold"),
+            detail: nil,
             accessoryView: secondSwitch
         )
         let secondField = thresholdField(
@@ -1364,6 +1366,20 @@ final class DashboardNotificationPages {
         editable: Bool = true
     ) -> NSTextField {
         let field = NSTextField(string: value > 0 ? formatted(value, kind: kind) : "")
+        field.placeholderString = "0"
+        field.controlSize = .regular
+        field.cell?.controlSize = .regular
+        field.isBezeled = true
+        field.bezelStyle = .roundedBezel
+        field.font = .monospacedDigitSystemFont(
+            ofSize: NSFont.systemFontSize(for: .regular),
+            weight: .regular
+        )
+        field.usesSingleLineMode = true
+        field.maximumNumberOfLines = 1
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
+        field.focusRingType = .default
         field.toolTip = unit ?? ""
         field.setAccessibilityValue(kind.rawValue)
         field.identifier = NSUserInterfaceItemIdentifier(

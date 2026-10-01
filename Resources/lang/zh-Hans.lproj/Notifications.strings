@@ -12,7 +12,7 @@
 "notifications.resource_rules" = "资源";
 "notifications.no_providers" = "此 Agent 没有可用服务商";
 "notifications.back" = "返回";
-"notifications.first_threshold" = "低于此值提醒";
+"notifications.first_threshold" = "第一次提醒低于";
 "notifications.second_alert" = "第二次提醒";
 "notifications.second_threshold" = "第二次提醒低于";
 "notifications.recovery_alert" = "Alert when restored";
@@ -23,8 +23,8 @@
 "notifications.second_alert_title" = "%1$@ %2$@ is very low";
 "notifications.batch_title" = "%1$@ has %2$@ low resources";
 "notifications.recovered_title" = "%1$@ resources restored";
-"notifications.quota_value" = "%1$@ 当前 %2$@%%";
-"notifications.balance_value" = "%1$@ 当前 %2$@";
+"notifications.quota_value" = "当前 %1$@%%";
+"notifications.balance_value" = "当前 %1$@";
 "notifications.system_settings" = "系统设置";
 "notifications.pause_notifications" = "暂停通知";
 "notifications.pause_duration" = "选择暂停通知的时长";

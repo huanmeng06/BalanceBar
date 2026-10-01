@@ -23,8 +23,8 @@
 "notifications.second_alert_title" = "%1$@ %2$@ is very low";
 "notifications.batch_title" = "%1$@ has %2$@ low resources";
 "notifications.recovered_title" = "%1$@ resources restored";
-"notifications.quota_value" = "%1$@ actual %2$@%%";
-"notifications.balance_value" = "%1$@ actual %2$@";
+"notifications.quota_value" = "actual %1$@%%";
+"notifications.balance_value" = "actual %1$@";
 "notifications.system_settings" = "Ajustes del Sistema";
 "notifications.pause_notifications" = "Pausar notificaciones";
 "notifications.pause_duration" = "Elegir cuánto pausar las notificaciones";
