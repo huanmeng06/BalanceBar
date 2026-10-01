@@ -39,6 +39,18 @@ final class SettingsSectionView: NSView {
         configure(title: title, separatorIndices: separatorIndices)
     }
 
+    convenience init(
+        title: String?,
+        contentViews: [NSView],
+        separatorIndices: Set<Int>? = nil
+    ) {
+        self.init(
+            title: title ?? "",
+            contentViews: contentViews,
+            separatorIndices: separatorIndices
+        )
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }

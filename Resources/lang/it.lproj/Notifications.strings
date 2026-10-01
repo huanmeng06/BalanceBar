@@ -72,3 +72,13 @@
 "notifications.apply_global_rules_message" = "Applicare le regole predefinite";
 "notifications.apply_global_rules_confirm" = "Applica";
 "notifications.apply_global_rules_cancel" = "Annulla";
+
+"notifications.five_hour_quota" = "Quota 5 ore";
+"notifications.seven_day_quota" = "Quota 7 giorni";
+"notifications.resource_first_reminder" = "Primo avviso";
+"notifications.resource_second_reminder" = "Secondo avviso";
+"notifications.remaining_below" = "Quando il rimanente scende sotto";
+"notifications.second_off" = "Disattivato";
+"notifications.default_readonly_hint" = "Questi valori arrivano dalle regole predefinite.";
+"notifications.edit_defaults" = "Modifica regole predefinite…";
+"notifications.current_remaining" = "%1$@%% rimanente";

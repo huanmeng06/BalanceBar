@@ -248,6 +248,14 @@ protocol SettingsRowHeightInvalidating: AnyObject {
     func invalidateHostedSettingsRowHeight()
 }
 
+enum SettingsLayout {
+    /// Shared inset for settings-row accessories and ResourceRuleCard headers.
+    static let rowHorizontalInset: CGFloat = 20
+    /// NSTextField labels keep a few points of optical padding. Pull the
+    /// trailing unit/value out so `%` / `USD` meet the control column.
+    static let trailingLabelOpticalCompensation: CGFloat = 4
+}
+
 /// Native Auto Layout settings row: title, optional detail, trailing control.
 ///
 /// The row itself is an `NSView` so the 62pt floor can live on the outer view
@@ -260,7 +268,7 @@ protocol SettingsRowHeightInvalidating: AnyObject {
 /// stretch either child across the cross-axis.
 final class SettingsRowView: NSView {
     static var minimumHeight: CGFloat { DashboardSettingsComponents.standardRowHeight }
-    static let horizontalPadding: CGFloat = 20
+    static let horizontalPadding: CGFloat = SettingsLayout.rowHorizontalInset
     static let verticalPadding: CGFloat = 11
     static let contentSpacing: CGFloat = 20
     static let labelSpacing: CGFloat = 2

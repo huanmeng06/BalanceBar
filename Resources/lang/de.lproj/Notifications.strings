@@ -72,3 +72,13 @@
 "notifications.apply_global_rules_message" = "Standardregeln anwenden";
 "notifications.apply_global_rules_confirm" = "Anwenden";
 "notifications.apply_global_rules_cancel" = "Abbrechen";
+
+"notifications.five_hour_quota" = "5-Stunden-Kontingent";
+"notifications.seven_day_quota" = "7-Tage-Kontingent";
+"notifications.resource_first_reminder" = "Erste Erinnerung";
+"notifications.resource_second_reminder" = "Zweite Erinnerung";
+"notifications.remaining_below" = "Wenn der Rest unter";
+"notifications.second_off" = "Aus";
+"notifications.default_readonly_hint" = "Diese Werte stammen aus den Standardregeln.";
+"notifications.edit_defaults" = "Standardregeln bearbeiten …";
+"notifications.current_remaining" = "%1$@%% verbleibend";

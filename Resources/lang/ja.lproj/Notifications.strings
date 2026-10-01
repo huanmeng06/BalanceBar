@@ -72,3 +72,13 @@
 "notifications.apply_global_rules_message" = "デフォルトルールを適用しますか";
 "notifications.apply_global_rules_confirm" = "適用";
 "notifications.apply_global_rules_cancel" = "キャンセル";
+
+"notifications.five_hour_quota" = "5時間クォータ";
+"notifications.seven_day_quota" = "7日クォータ";
+"notifications.resource_first_reminder" = "1回目の通知";
+"notifications.resource_second_reminder" = "2回目の通知";
+"notifications.remaining_below" = "残量が次を下回ったとき";
+"notifications.second_off" = "オフ";
+"notifications.default_readonly_hint" = "これらの値はデフォルトルールから来ています。";
+"notifications.edit_defaults" = "デフォルトルールを編集…";
+"notifications.current_remaining" = "残り %1$@%%";

@@ -239,7 +239,7 @@ final class DashboardNotificationPages {
     private var providerRows: [String: SettingsRowView] = [:]
     private var providerDetailButtons: [String: NSButton] = [:]
     private var providerMasterRows: [String: SettingsRowView] = [:]
-    private var resourceRuleRows: [BalanceNotificationResourceKey: ResourceRuleRows] = [:]
+    private var resourceCards: [BalanceNotificationResourceKey: ResourceRuleCard] = [:]
     private var pauseTimer: Timer?
     private var applyGlobalRulesAlert: NSAlert?
 
@@ -253,6 +253,10 @@ final class DashboardNotificationPages {
 
     var providerChildStackHiddenForTesting: Bool? {
         providerChildStack?.isHidden
+    }
+
+    func resourceCardForTesting(_ key: BalanceNotificationResourceKey) -> ResourceRuleCard? {
+        resourceCards[key]
     }
 
     private enum NotificationPagePath: Equatable {
@@ -274,91 +278,6 @@ final class DashboardNotificationPages {
 
         var groupWidth: CGFloat {
             labelWidth + valueSpacing + valueAreaWidth
-        }
-    }
-
-    private final class ResourceRuleRows {
-        let enableRow: SettingsRowView
-        let enableSwitch: NSSwitch
-        let sourceRow: SettingsRowView
-        let firstThresholdRow: SettingsRowView
-        let secondToggleRow: SettingsRowView
-        let secondThresholdRow: SettingsRowView
-        let firstField: NSTextField
-        let secondField: NSTextField
-        let firstValueLabel: NSTextField
-        let secondValueLabel: NSTextField
-        let secondSwitch: NSSwitch
-        weak var section: SettingsSectionView?
-        private(set) var resourceEnabled = false
-        private(set) var secondEnabled = false
-        private(set) var usesGlobalDefaults = true
-
-        init(
-            enableRow: SettingsRowView,
-            enableSwitch: NSSwitch,
-            sourceRow: SettingsRowView,
-            firstThresholdRow: SettingsRowView,
-            secondToggleRow: SettingsRowView,
-            secondThresholdRow: SettingsRowView,
-            firstField: NSTextField,
-            secondField: NSTextField,
-            firstValueLabel: NSTextField,
-            secondValueLabel: NSTextField,
-            secondSwitch: NSSwitch
-        ) {
-            self.enableRow = enableRow
-            self.enableSwitch = enableSwitch
-            self.sourceRow = sourceRow
-            self.firstThresholdRow = firstThresholdRow
-            self.secondToggleRow = secondToggleRow
-            self.secondThresholdRow = secondThresholdRow
-            self.firstField = firstField
-            self.secondField = secondField
-            self.firstValueLabel = firstValueLabel
-            self.secondValueLabel = secondValueLabel
-            self.secondSwitch = secondSwitch
-        }
-
-        func updateVisibility(resourceEnabled: Bool, secondEnabled: Bool, usesGlobalDefaults: Bool? = nil) {
-            self.resourceEnabled = resourceEnabled
-            self.secondEnabled = secondEnabled
-            if let usesGlobalDefaults { self.usesGlobalDefaults = usesGlobalDefaults }
-            enableRow.isHidden = false
-            // The resource switch controls the complete rule editor. Keep the
-            // enable row visible so it can be turned back on, while hiding
-            // the source selector and all threshold rows together.
-            sourceRow.isHidden = !resourceEnabled
-            firstThresholdRow.isHidden = !resourceEnabled
-            secondToggleRow.isHidden = !resourceEnabled
-            secondThresholdRow.isHidden = !resourceEnabled || !secondEnabled
-            firstField.isEditable = !self.usesGlobalDefaults
-            firstField.isEnabled = !self.usesGlobalDefaults
-            secondField.isEditable = !self.usesGlobalDefaults
-            secondField.isEnabled = !self.usesGlobalDefaults
-            firstValueLabel.isHidden = !self.usesGlobalDefaults
-            secondValueLabel.isHidden = !self.usesGlobalDefaults
-            firstField.isHidden = self.usesGlobalDefaults
-            firstField.superview?.isHidden = self.usesGlobalDefaults
-            secondField.isHidden = self.usesGlobalDefaults
-            secondField.superview?.isHidden = self.usesGlobalDefaults
-            secondSwitch.isEnabled = !self.usesGlobalDefaults
-            section?.reconcileSeparators()
-        }
-
-        func updateInheritance(_ usesGlobalDefaults: Bool) {
-            self.usesGlobalDefaults = usesGlobalDefaults
-            firstField.isEditable = !usesGlobalDefaults
-            firstField.isEnabled = !usesGlobalDefaults
-            secondField.isEditable = !usesGlobalDefaults
-            secondField.isEnabled = !usesGlobalDefaults
-            firstValueLabel.isHidden = !usesGlobalDefaults
-            secondValueLabel.isHidden = !usesGlobalDefaults
-            firstField.isHidden = usesGlobalDefaults
-            firstField.superview?.isHidden = usesGlobalDefaults
-            secondField.isHidden = usesGlobalDefaults
-            secondField.superview?.isHidden = usesGlobalDefaults
-            secondSwitch.isEnabled = !usesGlobalDefaults
         }
     }
 
@@ -392,9 +311,9 @@ final class DashboardNotificationPages {
         relay.onResourceToggle = { [weak self] key, kind, unit, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
-            self.updateResourceVisibility(key: key, resourceEnabled: enabled)
             coordinator.performAsync {
                 coordinator.setResourceEnabled(enabled, key: key, kind: kind, unit: unit)
+                DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
             }
         }
         relay.onThreshold = { [weak self] key, kind, unit, isSecond, value in
@@ -405,14 +324,15 @@ final class DashboardNotificationPages {
                     if isSecond { rule.secondThreshold = BalanceNotificationResourceRule.normalizedSecondThreshold(value, firstThreshold: rule.firstThreshold, kind: kind) }
                     else { rule.firstThreshold = BalanceNotificationResourceRule.normalizedFirstThreshold(value, kind: kind) }
                 }
+                DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
             }
         }
         relay.onSecondThresholdToggle = { [weak self] key, kind, unit, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
-            self.updateSecondThresholdVisibility(key: key, enabled: enabled)
             coordinator.performAsync {
                 coordinator.updateRule(key: key, kind: kind, unit: unit) { $0.secondEnabled = enabled }
+                DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
             }
         }
         relay.onRuleSource = { [weak self] key, kind, unit, usesDefault in
@@ -425,9 +345,7 @@ final class DashboardNotificationPages {
                     kind: kind,
                     unit: unit
                 )
-                DispatchQueue.main.async { [weak self] in
-                    self?.updateResourceInheritance(key: key, usesGlobalDefaults: usesDefault)
-                }
+                DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
             }
         }
         relay.onOpenSettings = { [weak self] in self?.configuration.coordinator.openSystemSettings() }
@@ -1174,7 +1092,7 @@ final class DashboardNotificationPages {
     private func makeProviderPage(_ agent: BalanceNotificationAgent, providerID: String) -> NSView {
         let descriptors = configuration.coordinator.resourceDescriptors(agent: agent, providerID: providerID)
         let settings = configuration.coordinator.settings
-        resourceRuleRows.removeAll(keepingCapacity: true)
+        resourceCards.removeAll(keepingCapacity: true)
         providerMasterRows.removeAll(keepingCapacity: true)
         let providerName = configuration.providerChoices(agent).first { $0.id == providerID }?.name ?? providerID
         let providerSwitch = DashboardSettingsComponents.makeSwitch(
@@ -1202,13 +1120,9 @@ final class DashboardNotificationPages {
             ))
         } else {
             for descriptor in descriptors {
-                let section = SettingsSectionView(
-                    title: descriptor.title,
-                    contentViews: makeResourceSettingsRows(descriptor, settings: settings)
-                )
-                resourceRuleRows[descriptor.key]?.section = section
-                section.reconcileSeparators()
-                childViews.append(section)
+                let card = makeResourceCard(descriptor, settings: settings)
+                resourceCards[descriptor.key] = card
+                childViews.append(card)
             }
         }
         let childStack = NSStackView(views: childViews)
@@ -1234,10 +1148,31 @@ final class DashboardNotificationPages {
         ])
     }
 
-    private func makeResourceSettingsRows(
+    private func makeResourceCard(
         _ descriptor: BalanceNotificationResourceDescriptor,
         settings: BalanceNotificationSettings
-    ) -> [NSView] {
+    ) -> ResourceRuleCard {
+        let card = ResourceRuleCard(
+            title: ResourceRuleCard.localizedTitle(
+                resourceID: descriptor.key.resourceID,
+                fallback: descriptor.title
+            ),
+            key: descriptor.key,
+            kind: descriptor.kind,
+            unit: descriptor.unit,
+            initial: resourceState(for: descriptor, settings: settings)
+        )
+        card.onEvent = { [weak self, weak card] event in
+            guard let self, let card else { return }
+            self.handleResourceEvent(event, descriptor: descriptor, card: card)
+        }
+        return card
+    }
+
+    private func resourceState(
+        for descriptor: BalanceNotificationResourceDescriptor,
+        settings: BalanceNotificationSettings
+    ) -> ResourceRuleState {
         let storedRule = settings.rule(for: descriptor.key)
         let usesGlobalDefaults = storedRule?.usesGlobalDefaults ?? true
         var rule = usesGlobalDefaults
@@ -1246,285 +1181,83 @@ final class DashboardNotificationPages {
         if let storedRule {
             rule.enabled = storedRule.enabled
         }
-        let enabled = DashboardSettingsComponents.makeSwitch(
-            identifier: "resource:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
-            isOn: rule.enabled,
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.resourceToggle(_:))
-        )
-        enabled.toolTip = descriptor.unit ?? ""
-        enabled.setAccessibilityValue(descriptor.kind.rawValue)
-        let enableRow = SettingsRowView(
-            title: descriptor.title,
-                detail: descriptor.unit == "%"
-                ? tr("notifications.quota_value", arguments: [formatted(descriptor.value ?? 0, kind: .quotaPercent)])
-                : tr("notifications.balance_value", arguments: [
-                    balanceText(descriptor.value ?? 0, unit: descriptor.unit)
-                ]),
-            accessoryView: enabled
-        )
-        let firstField = thresholdField(
-            rule.firstThreshold,
-            key: descriptor.key,
-            kind: descriptor.kind,
-            unit: descriptor.unit,
-            isSecond: false,
-            editable: !usesGlobalDefaults
-        )
-        let firstValueLabel = thresholdValueLabel(
-            rule.firstThreshold,
-            key: descriptor.key,
-            kind: descriptor.kind,
-            unit: descriptor.unit,
-            isSecond: false
-        )
-        let firstRow = SettingsRowView(
-            title: tr("notifications.first_threshold"),
-            detail: nil,
-            accessoryView: thresholdAccessory(
-                display: firstValueLabel,
-                field: firstField,
-                kind: descriptor.kind,
-                unit: descriptor.unit
-            )
-        )
-        let source = DashboardSettingsComponents.makePopUpButton(
-            identifier: "source:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
-            items: [
-                DashboardSettingsComponents.PopUpItem(
-                    title: tr("notifications.use_default_rules"),
-                    representedObject: NSNumber(value: true)
-                ),
-                DashboardSettingsComponents.PopUpItem(
-                    title: tr("notifications.custom_rules"),
-                    representedObject: NSNumber(value: false)
-                )
-            ],
-            selectedIndex: usesGlobalDefaults ? 0 : 1,
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.ruleSource(_:)),
-            ignoresScrollWheel: true
-        )
-        source.toolTip = descriptor.unit ?? ""
-        source.setAccessibilityValue(descriptor.kind.rawValue)
-        let sourceRow = SettingsRowView(
-            title: tr("notifications.rule_source"),
-            detail: usesGlobalDefaults
-                ? tr("notifications.inherited_rule_detail")
-                : tr("notifications.custom_rule_detail"),
-            accessoryView: source
-        )
-        let secondSwitch = DashboardSettingsComponents.makeSwitch(
-            identifier: "resource:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
-            isOn: rule.secondEnabled,
-            target: relay,
-            action: #selector(DashboardNotificationPageRelay.secondThresholdToggle(_:))
-        )
-        secondSwitch.toolTip = descriptor.unit ?? ""
-        secondSwitch.setAccessibilityValue(descriptor.kind.rawValue)
-        let secondRow = SettingsRowView(
-            title: tr("notifications.second_alert"),
-            detail: nil,
-            accessoryView: secondSwitch
-        )
-        let secondField = thresholdField(
-            rule.secondThreshold,
-            key: descriptor.key,
-            kind: descriptor.kind,
-            unit: descriptor.unit,
-            isSecond: true,
-            editable: !usesGlobalDefaults
-        )
-        let secondValueLabel = thresholdValueLabel(
-            rule.secondThreshold,
-            key: descriptor.key,
-            kind: descriptor.kind,
-            unit: descriptor.unit,
-            isSecond: true
-        )
-        let secondThresholdRow = SettingsRowView(
-            title: tr("notifications.second_threshold"),
-            detail: nil,
-            accessoryView: thresholdAccessory(
-                display: secondValueLabel,
-                field: secondField,
-                kind: descriptor.kind,
-                unit: descriptor.unit
-            )
-        )
-        let resourceRows = ResourceRuleRows(
-            enableRow: enableRow,
-            enableSwitch: enabled,
-            sourceRow: sourceRow,
-            firstThresholdRow: firstRow,
-            secondToggleRow: secondRow,
-            secondThresholdRow: secondThresholdRow,
-            firstField: firstField,
-            secondField: secondField,
-            firstValueLabel: firstValueLabel,
-            secondValueLabel: secondValueLabel,
-            secondSwitch: secondSwitch
-        )
-        resourceRuleRows[descriptor.key] = resourceRows
-        resourceRows.updateVisibility(
+        return ResourceRuleState(
             resourceEnabled: rule.enabled,
-            secondEnabled: rule.secondEnabled,
-            usesGlobalDefaults: usesGlobalDefaults
+            usesGlobalDefaults: usesGlobalDefaults,
+            currentRemaining: descriptor.value ?? 0,
+            firstThreshold: rule.firstThreshold,
+            secondThreshold: rule.secondThreshold,
+            secondEnabled: rule.secondEnabled
         )
-        return [enableRow, sourceRow, firstRow, secondRow, secondThresholdRow]
     }
 
-    private func updateResourceVisibility(
-        key: BalanceNotificationResourceKey,
-        resourceEnabled: Bool
+    private func handleResourceEvent(
+        _ event: ResourceRuleEvent,
+        descriptor: BalanceNotificationResourceDescriptor,
+        card: ResourceRuleCard
     ) {
-        guard let resourceRows = resourceRuleRows[key] else { return }
-        resourceRows.updateVisibility(resourceEnabled: resourceEnabled, secondEnabled: resourceRows.secondEnabled)
+        let key = descriptor.key
+        let kind = descriptor.kind
+        let unit = descriptor.unit
+        let coordinator = configuration.coordinator
+        var next = card.state
+        switch event {
+        case .resourceToggled(let enabled):
+            next.resourceEnabled = enabled
+            card.apply(next)
+            coordinator.performAsync {
+                coordinator.setResourceEnabled(enabled, key: key, kind: kind, unit: unit)
+            }
+        case .sourceChanged(let usesGlobalDefaults):
+            next.usesGlobalDefaults = usesGlobalDefaults
+            card.apply(next)
+            coordinator.performAsync {
+                coordinator.setRuleUsesGlobalDefaults(
+                    usesGlobalDefaults,
+                    key: key,
+                    kind: kind,
+                    unit: unit
+                )
+                DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
+            }
+        case .secondToggled(let enabled):
+            next.secondEnabled = enabled
+            card.apply(next)
+            coordinator.performAsync {
+                coordinator.updateRule(key: key, kind: kind, unit: unit) { $0.secondEnabled = enabled }
+                DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
+            }
+        case .thresholdEdited(index: let index, value: let value):
+            if index == 0 {
+                next.firstThreshold = value
+            } else {
+                next.secondThreshold = value
+            }
+            card.apply(next)
+            coordinator.performAsync {
+                coordinator.updateRule(key: key, kind: kind, unit: unit) { rule in
+                    if index == 0 {
+                        rule.firstThreshold = value
+                    } else {
+                        rule.secondThreshold = value
+                    }
+                }
+                DispatchQueue.main.async { [weak self] in self?.applyResourceCard(key: key) }
+            }
+        case .editDefaultsTapped:
+            showRoot()
+        }
     }
 
-    private func updateResourceInheritance(
-        key: BalanceNotificationResourceKey,
-        usesGlobalDefaults: Bool
-    ) {
-        guard let rows = resourceRuleRows[key] else { return }
+    private func applyResourceCard(key: BalanceNotificationResourceKey) {
+        guard let card = resourceCards[key] else { return }
+        let settings = configuration.coordinator.settings
         let descriptors = configuration.coordinator.resourceDescriptors(
             agent: key.agent,
             providerID: key.providerID
         )
         guard let descriptor = descriptors.first(where: { $0.key == key }) else { return }
-        let settings = configuration.coordinator.settings
-        let stored = settings.rule(for: key)
-        var rule = usesGlobalDefaults
-            ? settings.defaultRule(for: key, kind: descriptor.kind, unit: descriptor.unit)
-            : (stored ?? settings.defaultRule(for: key, kind: descriptor.kind, unit: descriptor.unit))
-        if let stored { rule.enabled = stored.enabled }
-        rows.firstField.stringValue = rule.firstThreshold > 0
-            ? formatted(rule.firstThreshold, kind: descriptor.kind)
-            : ""
-        rows.secondField.stringValue = rule.secondThreshold > 0
-            ? formatted(rule.secondThreshold, kind: descriptor.kind)
-            : ""
-        rows.firstValueLabel.stringValue = thresholdDisplayText(
-            rule.firstThreshold,
-            kind: descriptor.kind,
-            unit: descriptor.unit,
-            second: false
-        )
-        rows.secondValueLabel.stringValue = thresholdDisplayText(
-            rule.secondThreshold,
-            kind: descriptor.kind,
-            unit: descriptor.unit,
-            second: true
-        )
-        rows.secondSwitch.state = rule.secondEnabled ? .on : .off
-        rows.sourceRow.updateDetail(
-            usesGlobalDefaults
-                ? tr("notifications.inherited_rule_detail")
-                : tr("notifications.custom_rule_detail")
-        )
-        rows.updateVisibility(
-            resourceEnabled: rule.enabled,
-            secondEnabled: rule.secondEnabled,
-            usesGlobalDefaults: usesGlobalDefaults
-        )
-    }
-
-    private func updateSecondThresholdVisibility(
-        key: BalanceNotificationResourceKey,
-        enabled: Bool
-    ) {
-        guard let resourceRows = resourceRuleRows[key] else { return }
-        resourceRows.updateVisibility(resourceEnabled: resourceRows.resourceEnabled, secondEnabled: enabled)
-    }
-
-    private func thresholdField(
-        _ value: Double,
-        key: BalanceNotificationResourceKey,
-        kind: BalanceNotificationResourceKind,
-        unit: String?,
-        isSecond: Bool,
-        editable: Bool = true
-    ) -> NSTextField {
-        let field = NSTextField(string: value > 0 ? formatted(value, kind: kind) : "")
-        field.placeholderString = "0"
-        field.controlSize = .regular
-        field.cell?.controlSize = .regular
-        field.isBezeled = true
-        field.bezelStyle = .roundedBezel
-        field.font = .monospacedDigitSystemFont(
-            ofSize: NSFont.systemFontSize(for: .regular),
-            weight: .regular
-        )
-        field.usesSingleLineMode = true
-        field.maximumNumberOfLines = 1
-        field.cell?.wraps = false
-        field.cell?.isScrollable = true
-        field.focusRingType = .default
-        field.toolTip = unit ?? ""
-        field.setAccessibilityValue(kind.rawValue)
-        field.identifier = NSUserInterfaceItemIdentifier(
-            "resource:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)|\(isSecond ? "second" : "first")"
-        )
-        field.alignment = .right
-        field.isEditable = editable
-        field.isEnabled = editable
-        field.widthAnchor.constraint(equalToConstant: 90).isActive = true
-        field.setContentHuggingPriority(.required, for: .horizontal)
-        field.setContentCompressionResistancePriority(.required, for: .horizontal)
-        // Settings rows are taller than the native field. Keep the field at
-        // its regular control height instead of letting the accessory stack
-        // stretch it vertically.
-        field.setContentHuggingPriority(.required, for: .vertical)
-        field.setContentCompressionResistancePriority(.required, for: .vertical)
-        let nativeHeight = ceil(field.cell?.cellSize.height ?? 0)
-        if nativeHeight > 0 {
-            field.heightAnchor.constraint(equalToConstant: nativeHeight).isActive = true
-        }
-        field.target = editable ? relay : nil
-        field.action = editable ? #selector(DashboardNotificationPageRelay.thresholdChanged(_:)) : nil
-        return field
-    }
-
-    private func thresholdValueLabel(
-        _ value: Double,
-        key: BalanceNotificationResourceKey,
-        kind: BalanceNotificationResourceKind,
-        unit: String?,
-        isSecond: Bool
-    ) -> NSTextField {
-        let label = NSTextField(labelWithString: thresholdDisplayText(value, kind: kind, unit: unit, second: isSecond))
-        label.identifier = NSUserInterfaceItemIdentifier(
-            "resource:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)|\(isSecond ? "second" : "first")|display"
-        )
-        label.alignment = .right
-        label.setContentHuggingPriority(.required, for: .horizontal)
-        label.setContentCompressionResistancePriority(.required, for: .horizontal)
-        label.widthAnchor.constraint(greaterThanOrEqualToConstant: 90).isActive = true
-        return label
-    }
-
-    private func thresholdAccessory(
-        display: NSTextField,
-        field: NSTextField,
-        kind: BalanceNotificationResourceKind,
-        unit: String?
-    ) -> NSStackView {
-        var editorViews: [NSView] = [field]
-        let unitLabel = NSTextField(labelWithString: thresholdEditorUnitText(kind: kind, unit: unit))
-        unitLabel.setContentHuggingPriority(.required, for: .horizontal)
-        unitLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-        editorViews.append(unitLabel)
-        let editor = NSStackView(views: editorViews)
-        editor.orientation = .horizontal
-        editor.alignment = .centerY
-        editor.spacing = 6
-        editor.isHidden = field.isHidden
-        let stack = NSStackView(views: [display, editor])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 6
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
+        card.apply(resourceState(for: descriptor, settings: settings))
     }
 
     private func thresholdEditorUnitText(
@@ -1536,44 +1269,6 @@ final class DashboardNotificationPages {
         }
         let raw = unit?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return raw.isEmpty ? "USD" : raw
-    }
-
-    private func thresholdDisplayText(
-        _ value: Double,
-        kind: BalanceNotificationResourceKind,
-        unit: String?,
-        second: Bool
-    ) -> String {
-        if value <= 0 {
-            return second ? tr("notifications.second_disabled") : tr("notifications.first_disabled")
-        }
-        return kind == .quotaPercent
-            ? "\(formatted(value, kind: kind))%"
-            : balanceText(value, unit: unit)
-    }
-
-    private func thresholdDetail(
-        _ rule: BalanceNotificationResourceRule,
-        descriptor: BalanceNotificationResourceDescriptor,
-        second: Bool
-    ) -> String {
-        let value = second ? rule.secondThreshold : rule.firstThreshold
-        if value <= 0 {
-            return second ? tr("notifications.second_disabled") : tr("notifications.first_disabled")
-        }
-        return descriptor.kind == .quotaPercent
-            ? "\(formatted(value, kind: .quotaPercent))%"
-            : balanceText(value, unit: descriptor.unit)
-    }
-
-    private func thresholdDetail(
-        _ value: Double,
-        kind: BalanceNotificationResourceKind,
-        unit: String?
-    ) -> String {
-        kind == .quotaPercent
-            ? "\(formatted(value, kind: kind))%"
-            : balanceText(value, unit: unit)
     }
 
     private func balanceText(_ value: Double, unit: String?) -> String {

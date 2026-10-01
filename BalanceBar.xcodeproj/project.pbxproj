@@ -12,6 +12,7 @@
 		A47000000000000000000002 /* BalanceNotificationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47000000000000000000001 /* BalanceNotificationModels.swift */; };
 		A47000000000000000000004 /* BalanceNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47000000000000000000003 /* BalanceNotificationCoordinator.swift */; };
 		A47000000000000000000006 /* DashboardNotificationPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47000000000000000000005 /* DashboardNotificationPages.swift */; };
+		A47600000000000000000008 /* ResourceRuleCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47600000000000000000007 /* ResourceRuleCard.swift */; };
 		A47000000000000000000008 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A47000000000000000000007 /* UserNotifications.framework */; };
 		A4700000000000000000000E /* Notifications.strings in Resources */ = {isa = PBXBuildFile; fileRef = A4700000000000000000000D /* Notifications.strings */; };
 		A4700000000000000000000F /* Notifications.strings in Test Resources */ = {isa = PBXBuildFile; fileRef = A4700000000000000000000D /* Notifications.strings */; };
@@ -230,6 +231,7 @@
 		A47000000000000000000001 /* BalanceNotificationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceNotificationModels.swift; sourceTree = "<group>"; };
 		A47000000000000000000003 /* BalanceNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceNotificationCoordinator.swift; sourceTree = "<group>"; };
 		A47000000000000000000005 /* DashboardNotificationPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardNotificationPages.swift; sourceTree = "<group>"; };
+		A47600000000000000000007 /* ResourceRuleCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceRuleCard.swift; sourceTree = "<group>"; };
 		A47000000000000000000007 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 		A47000000000000000000010 /* Notifications.strings (en) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = en.lproj/Notifications.strings; sourceTree = "<group>"; };
 		A47000000000000000000011 /* Notifications.strings (zh-Hans) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Notifications.strings; path = zh-Hans.lproj/Notifications.strings; sourceTree = "<group>"; };
@@ -818,6 +820,7 @@
 			isa = PBXGroup;
 			children = (
 				A47000000000000000000005 /* DashboardNotificationPages.swift */,
+				A47600000000000000000007 /* ResourceRuleCard.swift */,
 			);
 			path = Pages/Notifications;
 			sourceTree = "<group>";
@@ -1160,6 +1163,7 @@
 				A100000000000000000000BC /* DashboardPreferencePageRelay.swift in Sources */,
 				A100000000000000000000BE /* DashboardPreferencePages.swift in Sources */,
 				A47000000000000000000006 /* DashboardNotificationPages.swift in Sources */,
+				A47600000000000000000008 /* ResourceRuleCard.swift in Sources */,
 				A100000000000000000000C3 /* DashboardProviderPages.swift in Sources */,
 				A100000000000000000000D2 /* ActivityCoordinator.swift in Sources */,
 				A100000000000000000000D4 /* CCSwitchDatabaseWatcher.swift in Sources */,

@@ -72,3 +72,13 @@
 "notifications.apply_global_rules_message" = "Appliquer les règles par défaut";
 "notifications.apply_global_rules_confirm" = "Appliquer";
 "notifications.apply_global_rules_cancel" = "Annuler";
+
+"notifications.five_hour_quota" = "Quota 5 heures";
+"notifications.seven_day_quota" = "Quota 7 jours";
+"notifications.resource_first_reminder" = "Premier rappel";
+"notifications.resource_second_reminder" = "Second rappel";
+"notifications.remaining_below" = "Lorsque le restant passe sous";
+"notifications.second_off" = "Désactivé";
+"notifications.default_readonly_hint" = "Ces valeurs proviennent des règles par défaut.";
+"notifications.edit_defaults" = "Modifier les règles par défaut…";
+"notifications.current_remaining" = "%1$@%% restant";

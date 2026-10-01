@@ -72,3 +72,13 @@
 "notifications.apply_global_rules_message" = "Aplicar regras padrão";
 "notifications.apply_global_rules_confirm" = "Aplicar";
 "notifications.apply_global_rules_cancel" = "Cancelar";
+
+"notifications.five_hour_quota" = "Cota de 5 horas";
+"notifications.seven_day_quota" = "Cota de 7 dias";
+"notifications.resource_first_reminder" = "Primeiro aviso";
+"notifications.resource_second_reminder" = "Segundo aviso";
+"notifications.remaining_below" = "Quando o restante ficar abaixo de";
+"notifications.second_off" = "Desativado";
+"notifications.default_readonly_hint" = "Esses valores vêm das regras padrão.";
+"notifications.edit_defaults" = "Editar regras padrão…";
+"notifications.current_remaining" = "%1$@%% restante";

@@ -72,3 +72,13 @@
 "notifications.apply_global_rules_message" = "Aplicar reglas predeterminadas";
 "notifications.apply_global_rules_confirm" = "Aplicar";
 "notifications.apply_global_rules_cancel" = "Cancelar";
+
+"notifications.five_hour_quota" = "Cuota de 5 horas";
+"notifications.seven_day_quota" = "Cuota de 7 días";
+"notifications.resource_first_reminder" = "Primer aviso";
+"notifications.resource_second_reminder" = "Segundo aviso";
+"notifications.remaining_below" = "Cuando el restante baje de";
+"notifications.second_off" = "Desactivado";
+"notifications.default_readonly_hint" = "Estos valores vienen de las reglas predeterminadas.";
+"notifications.edit_defaults" = "Editar reglas predeterminadas…";
+"notifications.current_remaining" = "%1$@%% restante";

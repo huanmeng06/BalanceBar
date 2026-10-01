@@ -139,29 +139,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         ))
         let page = pages.make()
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
-        let sections = descendants(of: page).compactMap { $0 as? SettingsSectionView }
-        XCTAssertEqual(sections.count, 3)
-        XCTAssertTrue(sections.contains { $0.headingLabel.stringValue == tr("notifications.provider_rules") })
-        let fiveHourSection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "5h" })
-        let weeklySection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "7d" })
-        let weeklyRows = weeklySection.contentViews.compactMap { $0 as? SettingsRowView }
-        XCTAssertEqual(weeklyRows.count, 5)
-        XCTAssertTrue(weeklyRows[2].isHidden)
-        XCTAssertTrue(weeklyRows[3].isHidden)
-        XCTAssertTrue(weeklyRows[4].isHidden)
+        let fiveHourKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour")
+        let fiveHourCard = try XCTUnwrap(pages.resourceCardForTesting(fiveHourKey))
+        let weeklyCard = try XCTUnwrap(pages.resourceCardForTesting(weeklyKey))
+        XCTAssertEqual(fiveHourCard.titleForTesting, tr("notifications.five_hour_quota"))
+        XCTAssertEqual(weeklyCard.titleForTesting, tr("notifications.seven_day_quota"))
+        XCTAssertFalse(fiveHourCard.sectionHiddenForTesting)
+        XCTAssertTrue(weeklyCard.sectionHiddenForTesting)
+        XCTAssertTrue(weeklyCard.footerHiddenForTesting)
 
         let providerMaster = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == "provider:gpt:openai" }
         )
-        let fiveHourSwitch = try XCTUnwrap(
-            descendants(of: fiveHourSection).compactMap { $0 as? NSSwitch }
-                .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour" }
-        )
-        let weeklySwitch = try XCTUnwrap(
-            descendants(of: weeklySection).compactMap { $0 as? NSSwitch }
-                .first { $0.identifier?.rawValue == "resource:gpt:openai:weekly" }
-        )
+        let fiveHourSwitch = fiveHourCard.resourceSwitchForTesting
+        let weeklySwitch = weeklyCard.resourceSwitchForTesting
         XCTAssertEqual(fiveHourSwitch.state, .on)
         XCTAssertEqual(weeklySwitch.state, .off)
         providerMaster.state = .off
@@ -170,8 +162,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(fiveHourSwitch.state, .on)
         XCTAssertEqual(weeklySwitch.state, .off)
         XCTAssertEqual(pages.providerChildStackHiddenForTesting, true)
-        XCTAssertTrue(isEffectivelyHidden(fiveHourSection))
-        XCTAssertTrue(isEffectivelyHidden(weeklySection))
+        XCTAssertTrue(isEffectivelyHidden(fiveHourCard))
+        XCTAssertTrue(isEffectivelyHidden(weeklyCard))
         XCTAssertFalse(coordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
         XCTAssertEqual(
             coordinator.settings.rule(for: weeklyKey)?.enabled,
@@ -184,22 +176,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(fiveHourSwitch.state, .on)
         XCTAssertEqual(weeklySwitch.state, .off)
         XCTAssertEqual(pages.providerChildStackHiddenForTesting, false)
-        XCTAssertFalse(isEffectivelyHidden(fiveHourSection))
-        XCTAssertFalse(isEffectivelyHidden(weeklySection))
+        XCTAssertFalse(isEffectivelyHidden(fiveHourCard))
+        XCTAssertFalse(isEffectivelyHidden(weeklyCard))
+        XCTAssertFalse(fiveHourCard.sectionHiddenForTesting)
+        XCTAssertTrue(weeklyCard.sectionHiddenForTesting)
 
-        let firstField = try XCTUnwrap(
-            descendants(of: page).compactMap { $0 as? NSTextField }
-                .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour|first" }
-        )
-        XCTAssertFalse(firstField.isEditable)
+        let firstField = fiveHourCard.firstFieldForTesting
         XCTAssertTrue(firstField.isHidden)
-        XCTAssertTrue(descendants(of: page).compactMap { $0 as? NSTextField }.contains {
-            $0.identifier?.rawValue == "resource:gpt:openai:five-hour|first|display" && !$0.isHidden
-        })
-        let source = try XCTUnwrap(
-            descendants(of: page).compactMap { $0 as? NSPopUpButton }
-                .first { $0.identifier?.rawValue == "source:gpt:openai:five-hour" }
-        )
+        XCTAssertFalse(fiveHourCard.footerHiddenForTesting)
+        let source = fiveHourCard.sourcePopUpForTesting
         XCTAssertEqual(source.indexOfSelectedItem, 0)
 
         source.selectItem(at: 1)
@@ -288,39 +273,72 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
         let quotaPage = pages.make()
-        let quotaField = try XCTUnwrap(
-            descendants(of: quotaPage).compactMap { $0 as? NSTextField }
-                .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour|first" }
+        quotaPage.frame = NSRect(x: 0, y: 0, width: 720, height: 640)
+        quotaPage.layoutSubtreeIfNeeded()
+        let quotaCard = try XCTUnwrap(
+            pages.resourceCardForTesting(
+                BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour")
+            )
         )
-        let quotaSource = try XCTUnwrap(
-            descendants(of: quotaPage).compactMap { $0 as? NSPopUpButton }
-                .first { $0.identifier?.rawValue == "source:gpt:openai:five-hour" }
+        let quotaProviderSwitch = try XCTUnwrap(
+            descendants(of: quotaPage).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "provider:gpt:openai" }
+        )
+        let quotaField = quotaCard.firstFieldForTesting
+        let quotaSource = quotaCard.sourcePopUpForTesting
+        assertTrailingMaxX(
+            of: quotaCard.resourceSwitchForTesting,
+            matches: quotaProviderSwitch,
+            in: quotaPage
+        )
+        assertTrailingMaxX(
+            of: quotaCard.resourceSwitchForTesting,
+            matches: quotaSource,
+            in: quotaPage
         )
         quotaSource.selectItem(at: 1)
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(quotaSource.action), to: quotaSource.target, from: quotaSource))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         XCTAssertFalse(quotaField.isHidden)
         XCTAssertEqual(unitLabels(beside: quotaField), ["%"])
+        XCTAssertTrue(quotaCard.footerHiddenForTesting)
 
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/claude/claude-1"))
         let balancePage = pages.make()
-        let firstField = try XCTUnwrap(
-            descendants(of: balancePage).compactMap { $0 as? NSTextField }
-                .first { $0.identifier?.rawValue == "resource:claude:claude-1:balance|first" }
+        balancePage.frame = NSRect(x: 0, y: 0, width: 720, height: 640)
+        balancePage.layoutSubtreeIfNeeded()
+        let balanceCard = try XCTUnwrap(
+            pages.resourceCardForTesting(
+                BalanceNotificationResourceKey(agent: .claude, providerID: "claude-1", resourceID: "balance")
+            )
         )
-        let secondField = try XCTUnwrap(
-            descendants(of: balancePage).compactMap { $0 as? NSTextField }
-                .first { $0.identifier?.rawValue == "resource:claude:claude-1:balance|second" }
+        let balanceProviderSwitch = try XCTUnwrap(
+            descendants(of: balancePage).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "provider:claude:claude-1" }
         )
-        let balanceSource = try XCTUnwrap(
-            descendants(of: balancePage).compactMap { $0 as? NSPopUpButton }
-                .first { $0.identifier?.rawValue == "source:claude:claude-1:balance" }
+        assertTrailingMaxX(
+            of: balanceCard.resourceSwitchForTesting,
+            matches: balanceProviderSwitch,
+            in: balancePage
         )
+        assertTrailingMaxX(
+            of: balanceCard.resourceSwitchForTesting,
+            matches: balanceCard.sourcePopUpForTesting,
+            in: balancePage
+        )
+        let firstField = balanceCard.firstFieldForTesting
+        let secondField = balanceCard.secondFieldForTesting
+        let balanceSource = balanceCard.sourcePopUpForTesting
         balanceSource.selectItem(at: 1)
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(balanceSource.action), to: balanceSource.target, from: balanceSource))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         XCTAssertFalse(firstField.isHidden)
         XCTAssertEqual(unitLabels(beside: firstField), ["USD"])
+        let secondToggle = try XCTUnwrap(balanceCard.secondToggleForTesting)
+        secondToggle.state = .on
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(secondToggle.action), to: secondToggle.target, from: secondToggle))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertFalse(secondField.isHidden)
         XCTAssertEqual(unitLabels(beside: secondField), ["USD"])
     }
 
@@ -394,12 +412,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let rebuiltPage = rebuiltPages.make()
         XCTAssertEqual(rebuiltPages.providerChildStackHiddenForTesting, true)
         XCTAssertFalse(
-            descendants(of: rebuiltPage).compactMap { $0 as? SettingsSectionView }
-                .contains { $0.headingLabel.stringValue == "5h" && !isEffectivelyHidden($0) }
-        )
-        XCTAssertFalse(
-            descendants(of: rebuiltPage).compactMap { $0 as? SettingsSectionView }
-                .contains { $0.headingLabel.stringValue == "7d" && !isEffectivelyHidden($0) }
+            descendants(of: rebuiltPage).compactMap { $0 as? ResourceRuleCard }
+                .contains { !$0.sectionHiddenForTesting && !isEffectivelyHidden($0) }
         )
         XCTAssertFalse(rebuiltCoordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
         XCTAssertEqual(
@@ -422,21 +436,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(rebuiltMaster.action), to: rebuiltMaster.target, from: rebuiltMaster))
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(rebuiltPages.providerChildStackHiddenForTesting, false)
-        let sections = descendants(of: rebuiltPage).compactMap { $0 as? SettingsSectionView }
-        let fiveHourSection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "5h" })
-        let weeklySection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "7d" })
-        XCTAssertFalse(isEffectivelyHidden(fiveHourSection))
-        XCTAssertFalse(isEffectivelyHidden(weeklySection))
-        let fiveHourSwitch = try XCTUnwrap(
-            descendants(of: fiveHourSection).compactMap { $0 as? NSSwitch }
-                .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour" }
-        )
-        let weeklySwitch = try XCTUnwrap(
-            descendants(of: weeklySection).compactMap { $0 as? NSSwitch }
-                .first { $0.identifier?.rawValue == "resource:gpt:openai:weekly" }
-        )
-        XCTAssertEqual(fiveHourSwitch.state, .on)
-        XCTAssertEqual(weeklySwitch.state, .off)
+        let fiveHourCard = try XCTUnwrap(rebuiltPages.resourceCardForTesting(fiveHourKey))
+        let weeklyCard = try XCTUnwrap(rebuiltPages.resourceCardForTesting(weeklyKey))
+        XCTAssertFalse(isEffectivelyHidden(fiveHourCard))
+        XCTAssertFalse(isEffectivelyHidden(weeklyCard))
+        XCTAssertFalse(fiveHourCard.sectionHiddenForTesting)
+        XCTAssertTrue(weeklyCard.sectionHiddenForTesting)
+        XCTAssertEqual(fiveHourCard.resourceSwitchForTesting.state, .on)
+        XCTAssertEqual(weeklyCard.resourceSwitchForTesting.state, .off)
     }
 
     func testAgentDetailsStayVisibleAndRestoreDefaultsIsConditional() throws {
@@ -9223,6 +9230,28 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    private func trailingMaxX(of view: NSView, in space: NSView) -> CGFloat {
+        view.convert(view.bounds, to: space).maxX
+    }
+
+    private func assertTrailingMaxX(
+        of view: NSView,
+        matches other: NSView,
+        in space: NSView,
+        accuracy: CGFloat = 1.5,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(
+            trailingMaxX(of: view, in: space),
+            trailingMaxX(of: other, in: space),
+            accuracy: accuracy,
+            "Trailing controls should share the settings accessory column",
+            file: file,
+            line: line
+        )
+    }
+
     private func isEffectivelyHidden(_ view: NSView) -> Bool {
         var current: NSView? = view
         while let node = current {
@@ -9235,7 +9264,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
     private func unitLabels(beside field: NSTextField) -> [String] {
         guard let stack = field.superview as? NSStackView else { return [] }
         return stack.arrangedSubviews.compactMap { view in
-            guard let label = view as? NSTextField, label !== field else { return nil }
+            guard let label = view as? NSTextField, label !== field, !label.isHidden else { return nil }
             let value = label.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             return value.isEmpty ? nil : value
         }

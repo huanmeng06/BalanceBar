@@ -72,3 +72,13 @@
 "notifications.apply_global_rules_message" = "기본 규칙을 적용할까요";
 "notifications.apply_global_rules_confirm" = "적용";
 "notifications.apply_global_rules_cancel" = "취소";
+
+"notifications.five_hour_quota" = "5시간 할당량";
+"notifications.seven_day_quota" = "7일 할당량";
+"notifications.resource_first_reminder" = "첫 번째 알림";
+"notifications.resource_second_reminder" = "두 번째 알림";
+"notifications.remaining_below" = "남은 양이 다음보다 낮을 때";
+"notifications.second_off" = "꺼짐";
+"notifications.default_readonly_hint" = "이 값은 기본 규칙에서 가져옵니다.";
+"notifications.edit_defaults" = "기본 규칙 편집…";
+"notifications.current_remaining" = "남은 양 %1$@%%";

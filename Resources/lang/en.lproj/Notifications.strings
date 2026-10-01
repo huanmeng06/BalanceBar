@@ -72,3 +72,13 @@
 "notifications.apply_global_rules_message" = "Restore default reminder rules?";
 "notifications.apply_global_rules_confirm" = "Restore Default Rules";
 "notifications.apply_global_rules_cancel" = "Cancel";
+
+"notifications.five_hour_quota" = "5-hour quota";
+"notifications.seven_day_quota" = "7-day quota";
+"notifications.resource_first_reminder" = "First reminder";
+"notifications.resource_second_reminder" = "Second reminder";
+"notifications.remaining_below" = "When remaining is below";
+"notifications.second_off" = "Off";
+"notifications.default_readonly_hint" = "These values come from Default Rules.";
+"notifications.edit_defaults" = "Edit Default Rules…";
+"notifications.current_remaining" = "%1$@%% remaining";

@@ -72,3 +72,13 @@
 "notifications.apply_global_rules_message" = "Применить правила по умолчанию";
 "notifications.apply_global_rules_confirm" = "Применить";
 "notifications.apply_global_rules_cancel" = "Отмена";
+
+"notifications.five_hour_quota" = "Квота 5 часов";
+"notifications.seven_day_quota" = "Квота 7 дней";
+"notifications.resource_first_reminder" = "Первое напоминание";
+"notifications.resource_second_reminder" = "Второе напоминание";
+"notifications.remaining_below" = "Когда остаток ниже";
+"notifications.second_off" = "Выкл.";
+"notifications.default_readonly_hint" = "Эти значения берутся из правил по умолчанию.";
+"notifications.edit_defaults" = "Изменить правила по умолчанию…";
+"notifications.current_remaining" = "осталось %1$@%%";
