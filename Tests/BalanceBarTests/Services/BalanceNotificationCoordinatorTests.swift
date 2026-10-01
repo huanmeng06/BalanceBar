@@ -394,6 +394,10 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(claudeTarget?.providerIDs, ["claude-1"])
         let grokTarget = coordinator.monitoredNotificationTargets().first { $0.client == .grok }
         XCTAssertEqual(grokTarget?.providerIDs, ["grok-1"])
+
+        coordinator.setAgentEnabled(false, agent: .claude)
+        XCTAssertEqual(Set(coordinator.monitoredAssistantClients()), [.grok])
+        XCTAssertNil(coordinator.monitoredNotificationTargets().first { $0.client == .claude })
     }
 
     func testMonitoredTargetsKeepDisabledProvidersUntilRecovery() {
@@ -461,6 +465,75 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
             coordinator.monitoredNotificationTargets().first { $0.client == .claude },
             nil
         )
+    }
+
+    func testMonitoredTargetsKeepPendingProvidersWhenAgentIsOff() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.AgentPendingRearm.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .claude)
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-1")
+        coordinator.setProviderEnabled(false, agent: .claude, providerID: "claude-2")
+        let weeklyKey = BalanceNotificationResourceKey(
+            agent: .claude,
+            providerID: "claude-1",
+            resourceID: "weekly"
+        )
+        coordinator.updateRule(key: weeklyKey, kind: .quotaPercent, unit: "%") { rule in
+            rule.firstThreshold = 20
+            rule.secondEnabled = true
+            rule.secondThreshold = 5
+        }
+
+        func snapshot(_ weekly: Double) -> Snapshot {
+            Snapshot.official(
+                "Claude",
+                weekly,
+                "Weekly",
+                nil,
+                Date(),
+                windows: [
+                    OfficialQuotaWindow(
+                        kind: .fiveHour,
+                        remaining: 80,
+                        label: "5h",
+                        daysText: "5h",
+                        reset: nil,
+                        durationSeconds: nil
+                    ),
+                    OfficialQuotaWindow(
+                        kind: .sevenDay,
+                        remaining: weekly,
+                        label: "Weekly",
+                        daysText: "Weekly",
+                        reset: nil,
+                        durationSeconds: nil
+                    )
+                ]
+            )
+        }
+
+        coordinator.process(snapshot: snapshot(21), agent: .claude, providerID: "claude-1")
+        coordinator.process(snapshot: snapshot(19), agent: .claude, providerID: "claude-1")
+        coordinator.process(snapshot: snapshot(4), agent: .claude, providerID: "claude-1")
+        XCTAssertEqual(coordinator.settings.rule(for: weeklyKey)?.stage, .second)
+
+        coordinator.setAgentEnabled(false, agent: .claude)
+        let pending = coordinator.monitoredNotificationTargets().first { $0.client == .claude }
+        XCTAssertEqual(pending?.providerIDs, ["claude-1"])
+        XCTAssertFalse(pending?.providerIDs.contains("claude-2") ?? true)
+
+        coordinator.process(snapshot: snapshot(100), agent: .claude, providerID: "claude-1")
+        XCTAssertEqual(coordinator.settings.rule(for: weeklyKey)?.stage, .normal)
+        XCTAssertEqual(client.deliveries.count, 2, "Agent OFF must not deliver during reset")
+        XCTAssertEqual(
+            coordinator.monitoredNotificationTargets().first { $0.client == .claude },
+            nil
+        )
+        XCTAssertFalse(coordinator.settings.isAgentEnabled(.claude))
     }
 
     func testNotificationClickRoutesOnlyToAgentCallback() {

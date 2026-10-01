@@ -168,21 +168,26 @@ final class BalanceNotificationCoordinator {
     }
 
     /// Provider IDs that should receive notification-driven refreshes.
-    /// Enabled providers are delivery targets. A disabled Provider is included
-    /// only while any of its resources still has `stage != .normal`, so a
-    /// reset during Provider OFF can re-arm the crossing cycle without
-    /// polling every CC Switch source.
+    /// Enabled providers are delivery targets. Agent and Provider masters are
+    /// delivery gates: a Provider is included while off only if any of its
+    /// resources still has `stage != .normal`. That keeps reset/re-arm
+    /// snapshots flowing without polling every CC Switch source, including
+    /// when the parent Agent master is off.
     func monitoredNotificationTargets() -> [MonitoredNotificationTarget] {
         onQueue {
             guard store.settings.globalEnabled else { return [] }
             return BalanceNotificationAgent.dashboardCases.compactMap { agent in
-                guard store.settings.isAgentEnabled(agent),
-                      let client = agent.assistantClient else { return nil }
-                let enabledIDs = Set(
-                    store.settings.providerPreferences
-                        .filter { $0.agent == agent && $0.enabled }
-                        .map(\.providerID)
-                )
+                guard let client = agent.assistantClient else { return nil }
+                let enabledIDs: Set<String>
+                if store.settings.isAgentEnabled(agent) {
+                    enabledIDs = Set(
+                        store.settings.providerPreferences
+                            .filter { $0.agent == agent && $0.enabled }
+                            .map(\.providerID)
+                    )
+                } else {
+                    enabledIDs = []
+                }
                 let pendingIDs = Set(
                     store.settings.resourceRules
                         .filter { $0.key.agent == agent && $0.stage != .normal }
