@@ -59,11 +59,11 @@
 "notifications.custom_rules" = "自定义";
 "notifications.inherited_rule_detail" = "来自默认规则的只读值";
 "notifications.custom_rule_detail" = "此服务商的可编辑值";
-"notifications.restore_default_rules" = "恢复默认提醒规则…";
-"notifications.restore_default_rules_title" = "恢复默认提醒规则";
+"notifications.restore_default_rules" = "恢复默认…";
+"notifications.restore_default_rules_title" = "恢复默认";
 "notifications.restore_default_rules_detail" = "移除此 Agent 下服务商的自定义提醒规则，之后跟随默认提醒规则。";
 "notifications.restore_default_rules_message" = "恢复 %1$@ 的默认提醒规则？";
-"notifications.restore_default_rules_confirm" = "恢复默认规则";
+"notifications.restore_default_rules_confirm" = "恢复默认";
 "notifications.restore_default_rules_cancel" = "取消";
 
 "notifications.apply_global_rules" = "应用";

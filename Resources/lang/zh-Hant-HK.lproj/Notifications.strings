@@ -59,11 +59,11 @@
 "notifications.custom_rules" = "自訂";
 "notifications.inherited_rule_detail" = "來自預設規則的唯讀值";
 "notifications.custom_rule_detail" = "此服務商的可編輯值";
-"notifications.restore_default_rules" = "還原預設提醒規則…";
-"notifications.restore_default_rules_title" = "還原預設提醒規則";
+"notifications.restore_default_rules" = "還原預設…";
+"notifications.restore_default_rules_title" = "還原預設";
 "notifications.restore_default_rules_detail" = "移除這個 Agent 下服務商的自訂提醒規則，之後遵循預設提醒規則。";
 "notifications.restore_default_rules_message" = "要還原 %1$@ 的預設提醒規則嗎？";
-"notifications.restore_default_rules_confirm" = "還原預設規則";
+"notifications.restore_default_rules_confirm" = "還原預設";
 "notifications.restore_default_rules_cancel" = "取消";
 
 "notifications.apply_global_rules" = "套用";
