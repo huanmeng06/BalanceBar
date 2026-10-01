@@ -1198,11 +1198,6 @@ final class DashboardNotificationPages {
         if let storedRule {
             rule.enabled = storedRule.enabled
         }
-        let providerEnabled = settings.isProviderEnabled(
-            descriptor.key.agent,
-            providerID: descriptor.key.providerID
-        )
-        rule.enabled = providerEnabled && rule.enabled
         let enabled = DashboardSettingsComponents.makeSwitch(
             identifier: "resource:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
             isOn: rule.enabled,

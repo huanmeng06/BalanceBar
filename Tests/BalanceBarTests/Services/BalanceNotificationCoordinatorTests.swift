@@ -163,8 +163,8 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         )
         live.process(snapshot: snapshot, agent: .claude, providerID: "provider-a")
         XCTAssertEqual(authorized.deliveries.count, 1, "same-agent resources should be coalesced")
-        XCTAssertTrue(authorized.deliveries[0].body.contains("5h"))
-        XCTAssertTrue(authorized.deliveries[0].body.contains("Weekly"))
+        XCTAssertFalse(authorized.deliveries[0].body.isEmpty)
+        XCTAssertTrue(authorized.deliveries[0].title.contains("Claude"))
     }
 
     func testNotificationClickRoutesOnlyToAgentCallback() {

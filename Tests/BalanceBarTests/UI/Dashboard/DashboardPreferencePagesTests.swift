@@ -166,9 +166,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
         providerMaster.state = .off
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(providerMaster.action), to: providerMaster.target, from: providerMaster))
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        XCTAssertEqual(fiveHourSwitch.state, .on)
+        XCTAssertEqual(fiveHourSwitch.state, .off)
         XCTAssertEqual(weeklySwitch.state, .off)
         XCTAssertFalse(coordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
+
+        providerMaster.state = .on
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(providerMaster.action), to: providerMaster.target, from: providerMaster))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(fiveHourSwitch.state, .on)
+        XCTAssertEqual(weeklySwitch.state, .off)
 
         let firstField = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSTextField }
