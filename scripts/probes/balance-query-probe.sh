@@ -15,6 +15,7 @@ trap 'rm -rf "$probe_dir"' EXIT
     cat "$sources_dir/AppCore/LocalizationKeys.swift"
     cat "$sources_dir/AppCore/Localization.swift"
     cat "$sources_dir/Domain/BalanceQuery.swift"
+    cat "$sources_dir/Domain/UsageScriptRequestParser.swift"
     printf '%s\n' 'LocalizationRuntime.configure(resourceRoot: URL(fileURLWithPath: ProcessInfo.processInfo.environment["BALANCEBAR_LOCALIZATION_ROOT"]!))'
     cat <<'SWIFT'
 
@@ -73,7 +74,7 @@ private func resolve(
     return (query, failure)
 }
 
-let usageCode = "const u = `url: \"{{baseUrl}}/v1/usage\"`;"
+let usageCode = "url: `{{baseUrl}}/v1/usage`"
 
 let tokenshopConfig = """
 [general]
