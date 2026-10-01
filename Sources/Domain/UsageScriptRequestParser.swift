@@ -5,7 +5,10 @@ import Foundation
 /// Reads the single structured request object (`request:` or legacy `fetch({ ... })`) or one
 /// top-level legacy `url:` property. Nested objects, comments, and strings are never consulted,
 /// and anything ambiguous returns `nil`, because BalanceAPIClient sends the provider API key to
-/// this URL.
+/// this URL. Object bindings require a top-level `const name = { ... };` with no other
+/// references besides the declaration and final request value (including shorthand request).
+/// Config variables, mutable bindings, aliases and complex object initializers are unsupported.
+/// Unsupported string escapes and regex flags fail closed rather than approximating JavaScript.
 ///
 /// `url` must evaluate completely with a small JavaScript subset: string and template literals,
 /// `+`, parentheses, `const` / `let` / `var` identifiers (lexically scoped, declared before use,
@@ -179,43 +182,37 @@ private struct UsageScriptSource {
     /// Position of the request object's opening brace: the direct request property of the final
     /// configuration object, or the argument of one top-level legacy fetch call.
     func requestObject() -> Int? {
-        let requestKeys = codeMatches(of: "\(Self.boundary)([\"']?)request\\1\\s*:")
-            .filter { isPreceded(by: ["{", ","], at: $0.lowerBound) }
+        // Locate configuration objects structurally, before examining their direct properties.
+        let configs = partner.keys.filter {
+            source[$0] == "{" && isParenthesizedObject(at: $0)
+        }
         let fetchCalls = codeMatches(of: "\(Self.boundary)fetch\\s*\\(")
             .filter { enclosingBrackets(of: $0.lowerBound).isEmpty }
-        guard fetchCalls.isEmpty || requestKeys.isEmpty else { return nil }
-        if fetchCalls.count == 1 {
-            let open = fetchCalls[0].upperBound - 1
-            var cursor = open + 1
-            skipTrivia(&cursor)
-            guard cursor < source.count, source[cursor] == "{", let close = partner[cursor],
-                  let next = nextSignificant(from: close + 1), next == ")" || next == "," else { return nil }
-            return cursor
+        if !configs.isEmpty {
+            guard configs.count == 1, fetchCalls.isEmpty,
+                  isFinalConfigObject(at: configs[0]),
+                  let properties = properties(ofObjectAt: configs[0]) else { return nil }
+            let requests = properties.filter { $0.name == "request" }
+            guard requests.count == 1,
+                  let value = objectValue(at: requests[0].value.lowerBound),
+                  significantIndex(from: value.end) == significantIndex(from: requests[0].value.upperBound)
+            else { return nil }
+            return value.object
         }
-        guard fetchCalls.isEmpty else { return nil }
-        let configContainers = requestKeys.compactMap { key -> Int? in
-            guard let container = enclosingBraces(of: key.lowerBound).first,
-                  isParenthesizedObject(at: container) else { return nil }
-            return container
-        }
-        guard configContainers.count == 1 else { return nil }
-        let candidates = requestKeys.compactMap { key -> Int? in
-            guard let container = enclosingBraces(of: key.lowerBound).first,
-                  isFinalConfigObject(at: container),
-                  let (object, end) = objectValue(at: key.upperBound),
-                  let next = nextSignificant(from: end), next == "," || next == "}" else {
-                return nil
-            }
-            return object
-        }
-        return candidates.count == 1 ? candidates[0] : nil
+        guard fetchCalls.count == 1 else { return nil }
+        let open = fetchCalls[0].upperBound - 1
+        var cursor = open + 1
+        skipTrivia(&cursor)
+        guard cursor < source.count, source[cursor] == "{", let close = partner[cursor],
+              let next = nextSignificant(from: close + 1), next == ")" || next == "," else { return nil }
+        return cursor
     }
 
     private func isParenthesizedObject(at open: Int) -> Bool {
         var previous = open - 1
         while previous >= 0, !isCode[previous] || source[previous].isWhitespace { previous -= 1 }
-        guard previous >= 0, source[previous] == "(", let close = partner[previous],
-              let objectClose = partner[open], close == objectClose + 1 else { return false }
+        guard previous >= 0, source[previous] == "(", enclosingBrackets(of: previous).isEmpty, let close = partner[previous],
+              let objectClose = partner[open], significantIndex(from: objectClose + 1) == close else { return false }
         var before = previous - 1
         while before >= 0, !isCode[before] || source[before].isWhitespace { before -= 1 }
         return before < 0 || source[before] == ";" || source[before] == "}"
@@ -249,7 +246,8 @@ private struct UsageScriptSource {
     func legacyURLValue() -> Range<Int>? {
         let requestKeys = codeMatches(of: "\(Self.boundary)([\"']?)request\\1\\s*:")
         let fetchCalls = codeMatches(of: "\(Self.boundary)fetch\\s*\\(")
-        guard requestKeys.isEmpty, fetchCalls.isEmpty else { return nil }
+        guard requestKeys.isEmpty, fetchCalls.isEmpty,
+              !partner.keys.contains(where: { source[$0] == "{" && isParenthesizedObject(at: $0) }) else { return nil }
         let urlKeys = codeMatches(of: "\(Self.boundary)([\"']?)url\\1\\s*:")
             .filter { enclosingBrackets(of: $0.lowerBound).isEmpty }
         guard urlKeys.count == 1,
@@ -338,25 +336,30 @@ private struct UsageScriptSource {
         return (object, end)
     }
 
+    /// Only a top-level const object with exactly its declaration and request reference is safe.
+    /// Reject aliases, property mutations, calls, and complex initializers instead of modeling them.
     private func objectBindingValue(named name: String, reference: Int) -> (object: Int, end: Int)? {
         let escaped = NSRegularExpression.escapedPattern(for: name)
-        let declarations = codeMatches(of: "\(Self.boundary)(const|let|var)\\s+\(escaped)\\s*=(?!=)")
-            .filter { $0.lowerBound < reference }
-        guard declarations.count == 1 else { return nil }
-        let assignments = codeMatches(
-            of: "\(Self.boundary)\(escaped)\\s*(?:=(?![=>])|[-+*/%&|^]=|\\*\\*=|<<=|>>>?=|&&=|\\|\\|=|\\?\\?=|\\+\\+|--)"
-        ) + codeMatches(of: "(?:\\+\\+|--)\\s*\(escaped)(?![A-Za-z0-9_$])")
-        guard assignments.count == declarations.count,
-              !hasOtherBinding(of: name, declarations: declarations) else { return nil }
-        let declaration = declarations[0]
-        let declarationBlock = innermostBracket(enclosing: declaration.lowerBound)
-        if let declarationBlock {
-            guard source[declarationBlock] == "{",
-                  enclosingBraces(of: reference).contains(declarationBlock) else { return nil }
+        let declarations = codeMatches(of: "\(Self.boundary)const\\s+\(escaped)\\s*=(?!=)")
+        guard declarations.count == 1, let declaration = declarations.first,
+              declaration.upperBound < reference,
+              enclosingBrackets(of: declaration.lowerBound).isEmpty else { return nil }
+        var nameStart = declaration.lowerBound
+        _ = identifier(at: &nameStart)
+        skipTrivia(&nameStart)
+        // Include masked text too: a template interpolation can mutate the object at runtime.
+        guard let regex = try? NSRegularExpression(pattern: "(?<![A-Za-z0-9_$])\(escaped)(?![A-Za-z0-9_$])") else { return nil }
+        let occurrences = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        let offsets = occurrences.compactMap { match -> Int? in
+            guard let range = Range(match.range, in: text) else { return nil }
+            return text.distance(from: text.startIndex, to: range.lowerBound)
         }
-        var valueStart = declaration.upperBound
-        skipTrivia(&valueStart)
-        return objectValue(at: valueStart)
+        guard offsets.sorted() == [nameStart, reference].sorted() else { return nil }
+        var open = declaration.upperBound
+        skipTrivia(&open)
+        guard open < source.count, source[open] == "{", let close = partner[open],
+              let end = significantIndex(from: close + 1), source[end] == ";" else { return nil }
+        return (open, close + 1)
     }
 
     /// Index just past `()` (whitespace and comments allowed) starting at `start`.
@@ -705,6 +708,8 @@ private struct UsageScriptSource {
             guard let range = value.range(of: needle) else { return value }
             return value.replacingCharacters(in: range, with: replacement)
         case .regex(let body, let flags):
+            guard (!all || flags.contains("g")), Set(flags).count == flags.count,
+                  flags.allSatisfy({ "gims".contains($0) }) else { return nil }
             var options: NSRegularExpression.Options = []
             if flags.contains("i") { options.insert(.caseInsensitive) }
             if flags.contains("m") { options.insert(.anchorsMatchLines) }
@@ -757,8 +762,8 @@ private struct UsageScriptSource {
             if character.isNewline { return nil }
             if character == "\\" {
                 cursor += 1
-                guard cursor < source.count else { return nil }
-                result.append(unescaped(source[cursor]))
+                guard cursor < source.count, let escaped = unescaped(source[cursor]) else { return nil }
+                result.append(escaped)
             } else {
                 result.append(character)
             }
@@ -779,8 +784,8 @@ private struct UsageScriptSource {
             }
             if character == "\\" {
                 cursor += 1
-                guard cursor < source.count else { return nil }
-                chunk.append(unescaped(source[cursor]))
+                guard cursor < source.count, let escaped = unescaped(source[cursor]) else { return nil }
+                chunk.append(escaped)
                 cursor += 1
             } else if character == "$", cursor + 1 < source.count, source[cursor + 1] == "{" {
                 result += substitutePlaceholders(in: chunk)
@@ -799,12 +804,13 @@ private struct UsageScriptSource {
         return nil
     }
 
-    private func unescaped(_ character: Character) -> Character {
+    private func unescaped(_ character: Character) -> Character? {
         switch character {
         case "n": return "\n"
         case "t": return "\t"
         case "r": return "\r"
-        default: return character
+        case "\\", "\"", "'", "`", "/", "$": return character
+        default: return nil
         }
     }
 
