@@ -207,6 +207,102 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(firstField.isHidden)
     }
 
+    func testNotificationThresholdFieldsShowMatchingUnits() throws {
+        let suiteName = "DashboardPreferencePagesTests.NotificationThresholdUnits.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: DashboardNotificationTestClient()
+        )
+        coordinator.process(
+            snapshot: Snapshot.official(
+                "Provider", 10, "Weekly", nil, Date(),
+                windows: [
+                    OfficialQuotaWindow(
+                        kind: .fiveHour,
+                        remaining: 18,
+                        label: "5h",
+                        daysText: "5h",
+                        reset: nil,
+                        durationSeconds: nil
+                    )
+                ]
+            ),
+            agent: .gpt,
+            providerID: "openai"
+        )
+        coordinator.process(
+            snapshot: Snapshot.balance("Provider", 1.00, "USD", nil, Date()),
+            agent: .claude,
+            providerID: "claude-1"
+        )
+
+        let pages = DashboardNotificationPages(configuration: .init(
+            coordinator: coordinator,
+            providerChoices: { agent in
+                switch agent {
+                case .gpt:
+                    return [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)]
+                case .claude:
+                    return [ProviderChoice(id: "claude-1", name: "Claude Custom", isCurrent: true)]
+                default:
+                    return []
+                }
+            }
+        ))
+
+        let root = pages.make()
+        let defaultSection = try XCTUnwrap(
+            descendants(of: root).compactMap { $0 as? SettingsSectionView }
+                .first { $0.headingLabel.stringValue == tr("notifications.reminder_rules") }
+        )
+        let defaultRows = defaultSection.contentViews.compactMap { $0 as? SettingsRowView }
+        XCTAssertEqual(defaultRows.count, 3)
+        XCTAssertTrue(descendants(of: defaultRows[0]).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "%" })
+        XCTAssertTrue(descendants(of: defaultRows[1]).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "%" })
+        XCTAssertTrue(descendants(of: defaultRows[2]).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "USD" })
+
+        XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
+        let quotaPage = pages.make()
+        let quotaField = try XCTUnwrap(
+            descendants(of: quotaPage).compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour|first" }
+        )
+        let quotaSource = try XCTUnwrap(
+            descendants(of: quotaPage).compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "source:gpt:openai:five-hour" }
+        )
+        quotaSource.selectItem(at: 1)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(quotaSource.action), to: quotaSource.target, from: quotaSource))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertFalse(quotaField.isHidden)
+        XCTAssertEqual(unitLabels(beside: quotaField), ["%"])
+
+        XCTAssertTrue(pages.showNavigationRoute("notifications/provider/claude/claude-1"))
+        let balancePage = pages.make()
+        let firstField = try XCTUnwrap(
+            descendants(of: balancePage).compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "resource:claude:claude-1:balance|first" }
+        )
+        let secondField = try XCTUnwrap(
+            descendants(of: balancePage).compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "resource:claude:claude-1:balance|second" }
+        )
+        let balanceSource = try XCTUnwrap(
+            descendants(of: balancePage).compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "source:claude:claude-1:balance" }
+        )
+        balanceSource.selectItem(at: 1)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(balanceSource.action), to: balanceSource.target, from: balanceSource))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertFalse(firstField.isHidden)
+        XCTAssertEqual(unitLabels(beside: firstField), ["USD"])
+        XCTAssertEqual(unitLabels(beside: secondField), ["USD"])
+    }
+
     func testProviderMasterKeepsResourceStateAfterPersistenceRebuild() throws {
         let suiteName = "DashboardPreferencePagesTests.ProviderMasterPersist.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -9062,6 +9158,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             XCTAssertNotNil(SettingsRowView.enclosing(reloadButton))
             XCTAssertNotNil(SettingsSectionView.enclosing(reloadButton))
+        }
+    }
+
+    private func unitLabels(beside field: NSTextField) -> [String] {
+        guard let stack = field.superview as? NSStackView else { return [] }
+        return stack.arrangedSubviews.compactMap { view in
+            guard let label = view as? NSTextField, label !== field else { return nil }
+            let value = label.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
         }
     }
 

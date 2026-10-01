@@ -788,16 +788,17 @@ final class DashboardNotificationPages {
         }
         let first = makeGlobalRuleField(resourceID: resourceID, isSecond: false, value: thresholds.first, kind: kind)
         let second = makeGlobalRuleField(resourceID: resourceID, isSecond: true, value: thresholds.second, kind: kind)
+        let unitText = thresholdEditorUnitText(kind: kind, unit: nil)
         let firstGroup = makeGlobalRuleGroup(
             label: firstLabel,
             field: first,
-            unitText: kind == .quotaPercent ? "%" : nil,
+            unitText: unitText,
             columnMetrics: columnMetrics
         )
         let secondGroup = makeGlobalRuleGroup(
             label: secondLabel,
             field: second,
-            unitText: kind == .quotaPercent ? "%" : nil,
+            unitText: unitText,
             columnMetrics: columnMetrics
         )
         let accessory = ReminderRuleAccessoryView(
@@ -818,11 +819,18 @@ final class DashboardNotificationPages {
             value: 0,
             kind: .quotaPercent
         )
-        let unit = makeGlobalRuleUnitSlot(nil)
+        let balanceField = makeGlobalRuleField(
+            resourceID: "column-metrics-balance",
+            isSecond: false,
+            value: 0,
+            kind: .balance
+        )
+        let percentUnit = makeGlobalRuleUnitSlot(thresholdEditorUnitText(kind: .quotaPercent, unit: nil))
+        let balanceUnit = makeGlobalRuleUnitSlot(thresholdEditorUnitText(kind: .balance, unit: nil))
         return GlobalRuleColumnMetrics(
             labelWidth: ceil(max(firstLabel.fittingSize.width, secondLabel.fittingSize.width)),
-            percentFieldWidth: ceil(quotaField.fittingSize.width),
-            unitWidth: unit.fittingSize.width
+            percentFieldWidth: ceil(max(quotaField.fittingSize.width, balanceField.fittingSize.width)),
+            unitWidth: ceil(max(percentUnit.fittingSize.width, balanceUnit.fittingSize.width))
         )
     }
 
@@ -839,13 +847,13 @@ final class DashboardNotificationPages {
     private func makeGlobalRuleGroup(
         label: NSTextField,
         field: DashboardSettingsComponents.CompactNumericFieldAccessory,
-        unitText: String?,
+        unitText: String,
         columnMetrics: GlobalRuleColumnMetrics
     ) -> NSStackView {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.setContentHuggingPriority(.required, for: .horizontal)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let valueWidth = unitText == nil ? columnMetrics.valueAreaWidth : columnMetrics.percentFieldWidth
+        let valueWidth = columnMetrics.percentFieldWidth
         field.setFieldWidth(valueWidth)
         let fieldColumn = NSView()
         fieldColumn.translatesAutoresizingMaskIntoConstraints = false
@@ -857,9 +865,7 @@ final class DashboardNotificationPages {
             field.bottomAnchor.constraint(equalTo: fieldColumn.bottomAnchor)
         ])
         var views: [NSView] = [label, fieldColumn]
-        if let unitText {
-            views.append(makeGlobalRuleUnitSlot(unitText, width: columnMetrics.unitWidth))
-        }
+        views.append(makeGlobalRuleUnitSlot(unitText, width: columnMetrics.unitWidth))
         let group = NSStackView(views: views)
         group.orientation = .horizontal
         group.alignment = .centerY
@@ -870,8 +876,8 @@ final class DashboardNotificationPages {
         return group
     }
 
-    private func makeGlobalRuleUnitSlot(_ text: String?, width: CGFloat? = nil) -> NSTextField {
-        let unit = NSTextField(labelWithString: text ?? "")
+    private func makeGlobalRuleUnitSlot(_ text: String, width: CGFloat? = nil) -> NSTextField {
+        let unit = NSTextField(labelWithString: text)
         unit.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
         let percentWidth = ceil(("%" as NSString).size(withAttributes: [.font: unit.font as Any]).width)
         unit.widthAnchor.constraint(equalToConstant: width ?? percentWidth).isActive = true
@@ -1215,7 +1221,12 @@ final class DashboardNotificationPages {
         let firstRow = SettingsRowView(
             title: tr("notifications.first_threshold"),
             detail: nil,
-            accessoryView: thresholdAccessory(display: firstValueLabel, field: firstField, kind: descriptor.kind)
+            accessoryView: thresholdAccessory(
+                display: firstValueLabel,
+                field: firstField,
+                kind: descriptor.kind,
+                unit: descriptor.unit
+            )
         )
         let source = DashboardSettingsComponents.makePopUpButton(
             identifier: "source:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
@@ -1274,7 +1285,12 @@ final class DashboardNotificationPages {
         let secondThresholdRow = SettingsRowView(
             title: tr("notifications.second_threshold"),
             detail: nil,
-            accessoryView: thresholdAccessory(display: secondValueLabel, field: secondField, kind: descriptor.kind)
+            accessoryView: thresholdAccessory(
+                display: secondValueLabel,
+                field: secondField,
+                kind: descriptor.kind,
+                unit: descriptor.unit
+            )
         )
         let resourceRows = ResourceRuleRows(
             enableRow: enableRow,
@@ -1427,14 +1443,17 @@ final class DashboardNotificationPages {
         return label
     }
 
-    private func thresholdAccessory(display: NSTextField, field: NSTextField, kind: BalanceNotificationResourceKind) -> NSStackView {
+    private func thresholdAccessory(
+        display: NSTextField,
+        field: NSTextField,
+        kind: BalanceNotificationResourceKind,
+        unit: String?
+    ) -> NSStackView {
         var editorViews: [NSView] = [field]
-        if kind == .quotaPercent {
-            let unit = NSTextField(labelWithString: "%")
-            unit.setContentHuggingPriority(.required, for: .horizontal)
-            unit.setContentCompressionResistancePriority(.required, for: .horizontal)
-            editorViews.append(unit)
-        }
+        let unitLabel = NSTextField(labelWithString: thresholdEditorUnitText(kind: kind, unit: unit))
+        unitLabel.setContentHuggingPriority(.required, for: .horizontal)
+        unitLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        editorViews.append(unitLabel)
         let editor = NSStackView(views: editorViews)
         editor.orientation = .horizontal
         editor.alignment = .centerY
@@ -1446,6 +1465,17 @@ final class DashboardNotificationPages {
         stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
+    }
+
+    private func thresholdEditorUnitText(
+        kind: BalanceNotificationResourceKind,
+        unit: String?
+    ) -> String {
+        if kind == .quotaPercent {
+            return "%"
+        }
+        let raw = unit?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return raw.isEmpty ? "USD" : raw
     }
 
     private func thresholdDisplayText(
