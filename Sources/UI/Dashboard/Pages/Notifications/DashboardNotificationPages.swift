@@ -1009,6 +1009,7 @@ final class DashboardNotificationPages {
                 detail: tr("notifications.restore_default_rules_detail"),
                 accessoryView: restoreButton
             )
+            restoreRow.titleLabel.textColor = .systemRed
             sections.append(SettingsSectionView(title: "", contentViews: [restoreRow]))
         }
         let header = DashboardSettingsComponents.makePageHeader(
