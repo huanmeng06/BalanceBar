@@ -265,18 +265,39 @@ final class BalanceNotificationCoordinator {
         }
     }
 
-    /// Clears every local rule for the selected Agent's providers. Providers
-    /// then resolve through `defaultRule`, which makes their thresholds,
-    /// enabled state, and second-alert state follow the shared configuration.
-    func applyGlobalRules(
-        to agent: BalanceNotificationAgent,
-        providerIDs: [String]
-    ) {
-        let providerSet = Set(providerIDs)
+    /// Restores Default Rules inheritance for every persisted override on the
+    /// Agent, including orphan Provider IDs that are no longer in CC Switch.
+    /// Resource `enabled` stays independent: restoring thresholds must not
+    /// reopen a resource the user turned off.
+    func applyGlobalRules(to agent: BalanceNotificationAgent) {
         onQueue {
             self.store.update { settings in
-                settings.resourceRules.removeAll { rule in
-                    rule.key.agent == agent && providerSet.contains(rule.key.providerID)
+                for index in settings.resourceRules.indices where
+                    settings.resourceRules[index].key.agent == agent {
+                    var rule = settings.resourceRules[index]
+                    let defaults = settings.globalThresholds(for: rule.key, kind: rule.kind)
+                    let first = BalanceNotificationResourceRule.normalizedFirstThreshold(
+                        defaults.first,
+                        kind: rule.kind
+                    )
+                    let second = BalanceNotificationResourceRule.normalizedSecondThreshold(
+                        defaults.second,
+                        firstThreshold: first,
+                        kind: rule.kind
+                    )
+                    let secondEnabled = second > 0
+                    let thresholdsChanged = rule.firstThreshold != first
+                        || rule.secondThreshold != second
+                        || rule.secondEnabled != secondEnabled
+                    rule.usesGlobalDefaults = true
+                    rule.firstThreshold = first
+                    rule.secondThreshold = second
+                    rule.secondEnabled = secondEnabled
+                    if thresholdsChanged {
+                        rule.stage = .normal
+                        rule.lastValue = nil
+                    }
+                    settings.resourceRules[index] = rule
                 }
             }
         }
@@ -424,18 +445,17 @@ final class BalanceNotificationCoordinator {
         agent: BalanceNotificationAgent,
         providerID: String
     ) {
-        guard store.settings.globalEnabled,
-              store.settings.isAgentEnabled(agent),
-              store.settings.isProviderEnabled(agent, providerID: providerID),
-              permissionStateStorage == .authorized else { return }
-
-        if let pauseUntil = store.settings.pauseUntil {
-            if pauseUntil > Date() { return }
+        if let pauseUntil = store.settings.pauseUntil, pauseUntil <= Date() {
             store.update { $0.pauseUntil = nil }
         }
 
         let descriptors = Self.descriptors(from: snapshot, agent: agent, providerID: providerID)
         resourceDescriptors[SnapshotKey(agent: agent, providerID: providerID)] = descriptors
+        let canDeliver = store.settings.globalEnabled
+            && store.settings.isAgentEnabled(agent)
+            && store.settings.isProviderEnabled(agent, providerID: providerID)
+            && permissionStateStorage == .authorized
+            && (store.settings.pauseUntil.map { $0 <= Date() } ?? true)
         var pending: [PendingAlert] = []
         store.update { settings in
             for descriptor in descriptors {
@@ -450,25 +470,34 @@ final class BalanceNotificationCoordinator {
                     value: value,
                     resourceTitle: descriptor.title
                 )
-                rule = evaluation.rule
-                settings.upsert(rule)
-                if let alert = evaluation.alert {
-                    pending.append(PendingAlert(alert: alert, recovery: false))
-                } else if evaluation.recovered && rule.recoveryEnabled {
-                    pending.append(PendingAlert(
-                        alert: BalanceNotificationAlert(
-                            key: descriptor.key,
-                            stage: .normal,
-                            value: value,
-                            unit: descriptor.unit,
-                            resourceTitle: descriptor.title
-                        ),
-                        recovery: true
-                    ))
+                if canDeliver {
+                    rule = evaluation.rule
+                    settings.upsert(rule)
+                    if let alert = evaluation.alert {
+                        pending.append(PendingAlert(alert: alert, recovery: false))
+                    } else if evaluation.recovered && rule.recoveryEnabled {
+                        pending.append(PendingAlert(
+                            alert: BalanceNotificationAlert(
+                                key: descriptor.key,
+                                stage: .normal,
+                                value: value,
+                                unit: descriptor.unit,
+                                resourceTitle: descriptor.title
+                            ),
+                            recovery: true
+                        ))
+                    }
+                } else if evaluation.recovered {
+                    // Parent switches are delivery gates. Recovery still has to
+                    // re-arm the crossing cycle while the Provider is off, or a
+                    // reset during that window is lost forever.
+                    settings.upsert(evaluation.rule)
                 }
             }
         }
-        deliver(pending, agent: agent)
+        if canDeliver {
+            deliver(pending, agent: agent)
+        }
     }
 
     private func deliver(_ pending: [PendingAlert], agent: BalanceNotificationAgent) {

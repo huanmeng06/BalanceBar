@@ -90,7 +90,7 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(client.deliveries.count, 1)
     }
 
-    func testApplyGlobalRulesClearsProviderOverrides() {
+    func testApplyGlobalRulesRestoresInheritanceWithoutReenablingResources() {
         let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
         let suiteName = "BalanceNotificationCoordinatorTests.ApplyGlobalRules.\(UUID().uuidString)"
         let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -101,9 +101,9 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
             providerID: "provider-a",
             resourceID: "five-hour"
         )
-        let otherKey = BalanceNotificationResourceKey(
+        let orphanKey = BalanceNotificationResourceKey(
             agent: .gpt,
-            providerID: "provider-b",
+            providerID: "deleted-provider",
             resourceID: "five-hour"
         )
         let store = BalanceNotificationSettingsStore(defaults: defaults)
@@ -112,27 +112,107 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
                 key: key,
                 kind: .quotaPercent,
                 enabled: false,
-                firstThreshold: 5,
+                firstThreshold: 10,
                 secondEnabled: true,
                 secondThreshold: 2,
                 usesGlobalDefaults: false
             ))
             settings.upsert(BalanceNotificationResourceRule(
-                key: otherKey,
+                key: orphanKey,
                 kind: .quotaPercent,
                 enabled: false,
-                firstThreshold: 5,
+                firstThreshold: 8,
                 secondEnabled: true,
-                secondThreshold: 2,
+                secondThreshold: 3,
                 usesGlobalDefaults: false
             ))
         }
 
         let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
-        coordinator.applyGlobalRules(to: .gpt, providerIDs: ["provider-a"])
+        coordinator.applyGlobalRules(to: .gpt)
 
-        XCTAssertNil(coordinator.settings.rule(for: key))
-        XCTAssertNotNil(coordinator.settings.rule(for: otherKey))
+        let restored = try! XCTUnwrap(coordinator.settings.rule(for: key))
+        XCTAssertFalse(restored.enabled)
+        XCTAssertTrue(restored.usesGlobalDefaults)
+        XCTAssertEqual(restored.firstThreshold, coordinator.settings.globalFiveHourFirstThreshold)
+        XCTAssertEqual(restored.secondThreshold, coordinator.settings.globalFiveHourSecondThreshold)
+        XCTAssertEqual(restored.secondEnabled, coordinator.settings.globalFiveHourSecondThreshold > 0)
+
+        let orphan = try! XCTUnwrap(coordinator.settings.rule(for: orphanKey))
+        XCTAssertFalse(orphan.enabled)
+        XCTAssertTrue(orphan.usesGlobalDefaults)
+        XCTAssertEqual(orphan.firstThreshold, coordinator.settings.globalFiveHourFirstThreshold)
+        XCTAssertFalse(coordinator.settings.hasCustomRules(for: .gpt))
+    }
+
+    func testProviderOffDoesNotDeliverAndRearmsAfterReset() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.ProviderGate.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .gpt)
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
+        let weeklyKey = BalanceNotificationResourceKey(
+            agent: .gpt,
+            providerID: "openai",
+            resourceID: "weekly"
+        )
+        coordinator.updateRule(key: weeklyKey, kind: .quotaPercent, unit: "%") { rule in
+            rule.firstThreshold = 20
+            rule.secondEnabled = true
+            rule.secondThreshold = 5
+        }
+
+        func snapshot(_ fiveHour: Double, _ weekly: Double) -> Snapshot {
+            Snapshot.official(
+                "Provider",
+                weekly,
+                "Weekly",
+                nil,
+                Date(),
+                windows: [
+                    OfficialQuotaWindow(
+                        kind: .fiveHour,
+                        remaining: fiveHour,
+                        label: "5h",
+                        daysText: "5h",
+                        reset: nil,
+                        durationSeconds: nil
+                    ),
+                    OfficialQuotaWindow(
+                        kind: .sevenDay,
+                        remaining: weekly,
+                        label: "Weekly",
+                        daysText: "Weekly",
+                        reset: nil,
+                        durationSeconds: nil
+                    )
+                ]
+            )
+        }
+
+        coordinator.process(snapshot: snapshot(80, 21), agent: .gpt, providerID: "openai")
+        coordinator.process(snapshot: snapshot(80, 19), agent: .gpt, providerID: "openai")
+        coordinator.process(snapshot: snapshot(80, 4), agent: .gpt, providerID: "openai")
+        XCTAssertEqual(client.deliveries.count, 2)
+        XCTAssertEqual(coordinator.settings.rule(for: weeklyKey)?.stage, .second)
+
+        coordinator.setProviderEnabled(false, agent: .gpt, providerID: "openai")
+        coordinator.process(snapshot: snapshot(80, 4), agent: .gpt, providerID: "openai")
+        XCTAssertEqual(client.deliveries.count, 2, "Provider OFF must not deliver")
+        XCTAssertEqual(coordinator.settings.rule(for: weeklyKey)?.stage, .second)
+
+        coordinator.process(snapshot: snapshot(80, 100), agent: .gpt, providerID: "openai")
+        XCTAssertEqual(client.deliveries.count, 2, "reset while Provider is OFF must not deliver")
+        XCTAssertEqual(coordinator.settings.rule(for: weeklyKey)?.stage, .normal)
+
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
+        coordinator.process(snapshot: snapshot(80, 15), agent: .gpt, providerID: "openai")
+        XCTAssertEqual(client.deliveries.count, 3, "re-armed cycle should first-alert after Provider ON")
+        XCTAssertEqual(coordinator.settings.rule(for: weeklyKey)?.stage, .first)
     }
 
     func testPermissionDenialKeepsConfigurationAndCoalescesAgentResources() {

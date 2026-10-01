@@ -166,15 +166,23 @@ final class DashboardPreferencePagesTests: XCTestCase {
         providerMaster.state = .off
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(providerMaster.action), to: providerMaster.target, from: providerMaster))
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        XCTAssertEqual(fiveHourSwitch.state, .off)
+        XCTAssertEqual(fiveHourSwitch.state, .on)
         XCTAssertEqual(weeklySwitch.state, .off)
+        XCTAssertFalse(fiveHourSection.isHidden)
+        XCTAssertFalse(weeklySection.isHidden)
         XCTAssertFalse(coordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
+        XCTAssertEqual(
+            coordinator.settings.rule(for: weeklyKey)?.enabled,
+            false
+        )
 
         providerMaster.state = .on
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(providerMaster.action), to: providerMaster.target, from: providerMaster))
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(fiveHourSwitch.state, .on)
         XCTAssertEqual(weeklySwitch.state, .off)
+        XCTAssertFalse(fiveHourSection.isHidden)
+        XCTAssertFalse(weeklySection.isHidden)
 
         let firstField = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSTextField }
@@ -197,6 +205,104 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(coordinator.settings.rule(for: BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour"))?.usesGlobalDefaults == false)
         XCTAssertTrue(firstField.isEditable)
         XCTAssertFalse(firstField.isHidden)
+    }
+
+    func testProviderMasterKeepsResourceStateAfterPersistenceRebuild() throws {
+        let suiteName = "DashboardPreferencePagesTests.ProviderMasterPersist.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: DashboardNotificationTestClient()
+        )
+        coordinator.process(
+            snapshot: Snapshot.official(
+                "Provider", 10, "Weekly", nil, Date(),
+                windows: [
+                    OfficialQuotaWindow(kind: .fiveHour, remaining: 18, label: "5h", daysText: "5h", reset: nil, durationSeconds: nil),
+                    OfficialQuotaWindow(kind: .sevenDay, remaining: 70, label: "7d", daysText: "7d", reset: nil, durationSeconds: nil)
+                ]
+            ),
+            agent: .gpt,
+            providerID: "openai"
+        )
+        let weeklyKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "weekly")
+        let fiveHourKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour")
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
+        coordinator.setResourceEnabled(false, key: weeklyKey, kind: .quotaPercent, unit: "%")
+        coordinator.updateRule(key: fiveHourKey, kind: .quotaPercent, unit: "%") { $0.firstThreshold = 10 }
+
+        let pages = DashboardNotificationPages(configuration: .init(
+            coordinator: coordinator,
+            providerChoices: { agent in
+                agent == .gpt ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)] : []
+            }
+        ))
+        _ = pages.make()
+        XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
+        let providerPage = pages.make()
+        let providerMaster = try XCTUnwrap(
+            descendants(of: providerPage).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "provider:gpt:openai" }
+        )
+        providerMaster.state = .off
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(providerMaster.action), to: providerMaster.target, from: providerMaster))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+
+        let rebuiltCoordinator = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: DashboardNotificationTestClient()
+        )
+        rebuiltCoordinator.process(
+            snapshot: Snapshot.official(
+                "Provider", 10, "Weekly", nil, Date(),
+                windows: [
+                    OfficialQuotaWindow(kind: .fiveHour, remaining: 18, label: "5h", daysText: "5h", reset: nil, durationSeconds: nil),
+                    OfficialQuotaWindow(kind: .sevenDay, remaining: 70, label: "7d", daysText: "7d", reset: nil, durationSeconds: nil)
+                ]
+            ),
+            agent: .gpt,
+            providerID: "openai"
+        )
+        let rebuiltPages = DashboardNotificationPages(configuration: .init(
+            coordinator: rebuiltCoordinator,
+            providerChoices: { agent in
+                agent == .gpt ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)] : []
+            }
+        ))
+        _ = rebuiltPages.make()
+        XCTAssertTrue(rebuiltPages.showNavigationRoute("notifications/provider/gpt/openai"))
+        let rebuiltPage = rebuiltPages.make()
+        let sections = descendants(of: rebuiltPage).compactMap { $0 as? SettingsSectionView }
+        let fiveHourSection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "5h" })
+        let weeklySection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "7d" })
+        XCTAssertFalse(fiveHourSection.isHidden)
+        XCTAssertFalse(weeklySection.isHidden)
+        XCTAssertFalse(rebuiltCoordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
+        XCTAssertEqual(
+            rebuiltCoordinator.settings.rule(for: fiveHourKey)?.enabled,
+            true
+        )
+        XCTAssertEqual(
+            rebuiltCoordinator.settings.rule(for: weeklyKey)?.enabled,
+            false
+        )
+        XCTAssertEqual(
+            rebuiltCoordinator.settings.rule(for: fiveHourKey)?.firstThreshold,
+            10
+        )
+        let fiveHourSwitch = try XCTUnwrap(
+            descendants(of: fiveHourSection).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour" }
+        )
+        let weeklySwitch = try XCTUnwrap(
+            descendants(of: weeklySection).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "resource:gpt:openai:weekly" }
+        )
+        XCTAssertEqual(fiveHourSwitch.state, .on)
+        XCTAssertEqual(weeklySwitch.state, .off)
     }
 
     func testAgentDetailsStayVisibleAndRestoreDefaultsIsConditional() throws {

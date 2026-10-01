@@ -373,7 +373,7 @@ final class DashboardNotificationPages {
         relay.onProviderToggle = { [weak self] agent, providerID, enabled in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
-            self.updateProviderDetail(agent, providerID: providerID, enabled: enabled)
+            self.updateProviderDetail(agent, providerID: providerID)
             self.updateProviderMasterRow(agent, providerID: providerID, enabled: enabled)
             coordinator.performAsync { coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID) }
         }
@@ -1063,8 +1063,7 @@ final class DashboardNotificationPages {
 
     private func updateProviderDetail(
         _ agent: BalanceNotificationAgent,
-        providerID: String,
-        enabled: Bool
+        providerID: String
     ) {
         let key = providerRowKey(agent, providerID: providerID)
         let settings = configuration.coordinator.settings
@@ -1073,26 +1072,6 @@ final class DashboardNotificationPages {
                 ? tr("notifications.agent_customized")
                 : tr("notifications.agent_follows_global")
         )
-        for (resourceKey, resourceRows) in resourceRuleRows where
-            resourceKey.agent == agent && resourceKey.providerID == providerID {
-            resourceRows.section?.isHidden = !enabled
-            if enabled {
-                if let rule = settings.rule(for: resourceKey) {
-                    resourceRows.enableSwitch.state = rule.enabled ? .on : .off
-                    resourceRows.updateVisibility(
-                        resourceEnabled: rule.enabled,
-                        secondEnabled: rule.secondEnabled,
-                        usesGlobalDefaults: rule.usesGlobalDefaults
-                    )
-                } else {
-                    resourceRows.enableSwitch.state = .on
-                    resourceRows.updateVisibility(resourceEnabled: true, secondEnabled: false)
-                }
-            } else {
-                resourceRows.enableSwitch.state = .off
-                resourceRows.updateVisibility(resourceEnabled: false, secondEnabled: false)
-            }
-        }
     }
 
     private func updateProviderMasterRow(
@@ -1133,10 +1112,9 @@ final class DashboardNotificationPages {
             guard let self else { return }
             self.applyGlobalRulesAlert = nil
             guard response == .alertFirstButtonReturn else { return }
-            let providerIDs = self.configuration.providerChoices(agent).map(\.id)
             self.configuration.coordinator.performAsync { [weak self] in
                 guard let self else { return }
-                self.configuration.coordinator.applyGlobalRules(to: agent, providerIDs: providerIDs)
+                self.configuration.coordinator.applyGlobalRules(to: agent)
                 DispatchQueue.main.async { [weak self] in
                     self?.rebuild()
                 }
@@ -1182,7 +1160,6 @@ final class DashboardNotificationPages {
                     contentViews: makeResourceSettingsRows(descriptor, settings: settings)
                 )
                 resourceRuleRows[descriptor.key]?.section = section
-                section.isHidden = !settings.isProviderEnabled(agent, providerID: providerID)
                 section.reconcileSeparators()
                 sections.append(section)
             }
