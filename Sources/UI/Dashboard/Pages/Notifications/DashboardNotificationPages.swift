@@ -235,6 +235,7 @@ final class DashboardNotificationPages {
     private var agentDetailButtons: [BalanceNotificationAgent: NSButton] = [:]
     private var agentMasterRows: [BalanceNotificationAgent: SettingsRowView] = [:]
     private weak var agentChildStack: NSStackView?
+    private weak var providerChildStack: NSStackView?
     private var providerRows: [String: SettingsRowView] = [:]
     private var providerDetailButtons: [String: NSButton] = [:]
     private var providerMasterRows: [String: SettingsRowView] = [:]
@@ -248,6 +249,10 @@ final class DashboardNotificationPages {
 
     var agentChildStackHiddenForTesting: Bool? {
         agentChildStack?.isHidden
+    }
+
+    var providerChildStackHiddenForTesting: Bool? {
+        providerChildStack?.isHidden
     }
 
     private enum NotificationPagePath: Equatable {
@@ -381,6 +386,7 @@ final class DashboardNotificationPages {
             let coordinator = self.configuration.coordinator
             self.updateProviderDetail(agent, providerID: providerID)
             self.updateProviderMasterRow(agent, providerID: providerID, enabled: enabled)
+            self.updateProviderChildVisibility(enabled: enabled)
             coordinator.performAsync { coordinator.setProviderEnabled(enabled, agent: agent, providerID: providerID) }
         }
         relay.onResourceToggle = { [weak self] key, kind, unit, enabled in
@@ -1062,6 +1068,10 @@ final class DashboardNotificationPages {
         agentChildStack?.isHidden = !enabled
     }
 
+    private func updateProviderChildVisibility(enabled: Bool) {
+        providerChildStack?.isHidden = !enabled
+    }
+
     private func updateAgentMasterRow(_ agent: BalanceNotificationAgent, enabled: Bool) {
         agentMasterRows[agent]?.updateDetail(
             enabled ? tr("notifications.agent_enabled") : tr("notifications.agent_disabled")
@@ -1181,11 +1191,9 @@ final class DashboardNotificationPages {
             accessoryView: providerSwitch
         )
         providerMasterRows[providerRowKey(agent, providerID: providerID)] = providerMasterRow
-        var sections: [NSView] = [
-            SettingsSectionView(title: tr("notifications.provider_rules"), contentViews: [providerMasterRow])
-        ]
+        var childViews: [NSView] = []
         if descriptors.isEmpty {
-            sections.append(SettingsSectionView(
+            childViews.append(SettingsSectionView(
                 title: tr("notifications.resource_rules"),
                 contentViews: [SettingsRowView(
                     title: tr("notifications.resource_rules"),
@@ -1200,11 +1208,30 @@ final class DashboardNotificationPages {
                 )
                 resourceRuleRows[descriptor.key]?.section = section
                 section.reconcileSeparators()
-                sections.append(section)
+                childViews.append(section)
             }
         }
+        let childStack = NSStackView(views: childViews)
+        childStack.orientation = .vertical
+        childStack.alignment = .leading
+        childStack.spacing = DashboardSettingsComponents.settingsSectionSpacing
+        childStack.detachesHiddenViews = true
+        childStack.translatesAutoresizingMaskIntoConstraints = false
+        childViews.forEach { view in
+            view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            view.setContentCompressionResistancePriority(.required, for: .horizontal)
+            view.widthAnchor.constraint(equalTo: childStack.widthAnchor).isActive = true
+        }
+        providerChildStack = childStack
+        updateProviderChildVisibility(
+            enabled: settings.isProviderEnabled(agent, providerID: providerID)
+        )
         let header = DashboardSettingsComponents.makePageHeader(providerName, subtitle: agent.title)
-        return DashboardSettingsComponents.makeSettingsPageContent([header] + sections)
+        return DashboardSettingsComponents.makeSettingsPageContent([
+            header,
+            SettingsSectionView(title: tr("notifications.provider_rules"), contentViews: [providerMasterRow]),
+            childStack
+        ])
     }
 
     private func makeResourceSettingsRows(

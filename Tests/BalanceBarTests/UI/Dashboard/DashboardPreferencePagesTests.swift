@@ -128,6 +128,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             providerID: "openai"
         )
         let weeklyKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "weekly")
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
         coordinator.setResourceEnabled(false, key: weeklyKey, kind: .quotaPercent, unit: "%")
 
         let pages = DashboardNotificationPages(configuration: .init(
@@ -168,8 +169,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(fiveHourSwitch.state, .on)
         XCTAssertEqual(weeklySwitch.state, .off)
-        XCTAssertFalse(fiveHourSection.isHidden)
-        XCTAssertFalse(weeklySection.isHidden)
+        XCTAssertEqual(pages.providerChildStackHiddenForTesting, true)
+        XCTAssertTrue(isEffectivelyHidden(fiveHourSection))
+        XCTAssertTrue(isEffectivelyHidden(weeklySection))
         XCTAssertFalse(coordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
         XCTAssertEqual(
             coordinator.settings.rule(for: weeklyKey)?.enabled,
@@ -181,8 +183,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(fiveHourSwitch.state, .on)
         XCTAssertEqual(weeklySwitch.state, .off)
-        XCTAssertFalse(fiveHourSection.isHidden)
-        XCTAssertFalse(weeklySection.isHidden)
+        XCTAssertEqual(pages.providerChildStackHiddenForTesting, false)
+        XCTAssertFalse(isEffectivelyHidden(fiveHourSection))
+        XCTAssertFalse(isEffectivelyHidden(weeklySection))
 
         let firstField = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSTextField }
@@ -239,6 +242,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             agent: .claude,
             providerID: "claude-1"
         )
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-1")
 
         let pages = DashboardNotificationPages(configuration: .init(
             coordinator: coordinator,
@@ -387,11 +392,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
         _ = rebuiltPages.make()
         XCTAssertTrue(rebuiltPages.showNavigationRoute("notifications/provider/gpt/openai"))
         let rebuiltPage = rebuiltPages.make()
-        let sections = descendants(of: rebuiltPage).compactMap { $0 as? SettingsSectionView }
-        let fiveHourSection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "5h" })
-        let weeklySection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "7d" })
-        XCTAssertFalse(fiveHourSection.isHidden)
-        XCTAssertFalse(weeklySection.isHidden)
+        XCTAssertEqual(rebuiltPages.providerChildStackHiddenForTesting, true)
+        XCTAssertFalse(
+            descendants(of: rebuiltPage).compactMap { $0 as? SettingsSectionView }
+                .contains { $0.headingLabel.stringValue == "5h" && !isEffectivelyHidden($0) }
+        )
+        XCTAssertFalse(
+            descendants(of: rebuiltPage).compactMap { $0 as? SettingsSectionView }
+                .contains { $0.headingLabel.stringValue == "7d" && !isEffectivelyHidden($0) }
+        )
         XCTAssertFalse(rebuiltCoordinator.settings.isProviderEnabled(.gpt, providerID: "openai"))
         XCTAssertEqual(
             rebuiltCoordinator.settings.rule(for: fiveHourKey)?.enabled,
@@ -405,6 +414,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
             rebuiltCoordinator.settings.rule(for: fiveHourKey)?.firstThreshold,
             10
         )
+        let rebuiltMaster = try XCTUnwrap(
+            descendants(of: rebuiltPage).compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "provider:gpt:openai" }
+        )
+        rebuiltMaster.state = .on
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(rebuiltMaster.action), to: rebuiltMaster.target, from: rebuiltMaster))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(rebuiltPages.providerChildStackHiddenForTesting, false)
+        let sections = descendants(of: rebuiltPage).compactMap { $0 as? SettingsSectionView }
+        let fiveHourSection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "5h" })
+        let weeklySection = try XCTUnwrap(sections.first { $0.headingLabel.stringValue == "7d" })
+        XCTAssertFalse(isEffectivelyHidden(fiveHourSection))
+        XCTAssertFalse(isEffectivelyHidden(weeklySection))
         let fiveHourSwitch = try XCTUnwrap(
             descendants(of: fiveHourSection).compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == "resource:gpt:openai:five-hour" }
