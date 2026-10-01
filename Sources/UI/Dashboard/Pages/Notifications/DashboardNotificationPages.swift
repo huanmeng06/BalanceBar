@@ -329,7 +329,9 @@ final class DashboardNotificationPages {
             firstValueLabel.isHidden = !self.usesGlobalDefaults
             secondValueLabel.isHidden = !self.usesGlobalDefaults
             firstField.isHidden = self.usesGlobalDefaults
+            firstField.superview?.isHidden = self.usesGlobalDefaults
             secondField.isHidden = self.usesGlobalDefaults
+            secondField.superview?.isHidden = self.usesGlobalDefaults
             secondSwitch.isEnabled = !self.usesGlobalDefaults
             section?.reconcileSeparators()
         }
@@ -343,7 +345,9 @@ final class DashboardNotificationPages {
             firstValueLabel.isHidden = !usesGlobalDefaults
             secondValueLabel.isHidden = !usesGlobalDefaults
             firstField.isHidden = usesGlobalDefaults
+            firstField.superview?.isHidden = usesGlobalDefaults
             secondField.isHidden = usesGlobalDefaults
+            secondField.superview?.isHidden = usesGlobalDefaults
             secondSwitch.isEnabled = !usesGlobalDefaults
         }
     }
@@ -1234,7 +1238,7 @@ final class DashboardNotificationPages {
         let firstRow = SettingsRowView(
             title: tr("notifications.first_threshold"),
             detail: nil,
-            accessoryView: thresholdAccessory(display: firstValueLabel, field: firstField)
+            accessoryView: thresholdAccessory(display: firstValueLabel, field: firstField, kind: descriptor.kind)
         )
         let source = DashboardSettingsComponents.makePopUpButton(
             identifier: "source:\(descriptor.key.agent.rawValue):\(descriptor.key.providerID):\(descriptor.key.resourceID)",
@@ -1293,7 +1297,7 @@ final class DashboardNotificationPages {
         let secondThresholdRow = SettingsRowView(
             title: tr("notifications.second_threshold"),
             detail: nil,
-            accessoryView: thresholdAccessory(display: secondValueLabel, field: secondField)
+            accessoryView: thresholdAccessory(display: secondValueLabel, field: secondField, kind: descriptor.kind)
         )
         let resourceRows = ResourceRuleRows(
             enableRow: enableRow,
@@ -1446,8 +1450,20 @@ final class DashboardNotificationPages {
         return label
     }
 
-    private func thresholdAccessory(display: NSTextField, field: NSTextField) -> NSStackView {
-        let stack = NSStackView(views: [display, field])
+    private func thresholdAccessory(display: NSTextField, field: NSTextField, kind: BalanceNotificationResourceKind) -> NSStackView {
+        var editorViews: [NSView] = [field]
+        if kind == .quotaPercent {
+            let unit = NSTextField(labelWithString: "%")
+            unit.setContentHuggingPriority(.required, for: .horizontal)
+            unit.setContentCompressionResistancePriority(.required, for: .horizontal)
+            editorViews.append(unit)
+        }
+        let editor = NSStackView(views: editorViews)
+        editor.orientation = .horizontal
+        editor.alignment = .centerY
+        editor.spacing = 6
+        editor.isHidden = field.isHidden
+        let stack = NSStackView(views: [display, editor])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 6
