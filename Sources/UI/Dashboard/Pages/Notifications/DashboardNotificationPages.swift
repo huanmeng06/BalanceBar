@@ -1076,13 +1076,18 @@ final class DashboardNotificationPages {
         for (resourceKey, resourceRows) in resourceRuleRows where
             resourceKey.agent == agent && resourceKey.providerID == providerID {
             resourceRows.section?.isHidden = !enabled
-            if enabled, let rule = settings.rule(for: resourceKey) {
-                resourceRows.enableSwitch.state = rule.enabled ? .on : .off
-                resourceRows.updateVisibility(
-                    resourceEnabled: rule.enabled,
-                    secondEnabled: rule.secondEnabled,
-                    usesGlobalDefaults: rule.usesGlobalDefaults
-                )
+            if enabled {
+                if let rule = settings.rule(for: resourceKey) {
+                    resourceRows.enableSwitch.state = rule.enabled ? .on : .off
+                    resourceRows.updateVisibility(
+                        resourceEnabled: rule.enabled,
+                        secondEnabled: rule.secondEnabled,
+                        usesGlobalDefaults: rule.usesGlobalDefaults
+                    )
+                } else {
+                    resourceRows.enableSwitch.state = .on
+                    resourceRows.updateVisibility(resourceEnabled: true, secondEnabled: false)
+                }
             } else {
                 resourceRows.enableSwitch.state = .off
                 resourceRows.updateVisibility(resourceEnabled: false, secondEnabled: false)
