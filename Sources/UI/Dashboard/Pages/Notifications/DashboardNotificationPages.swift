@@ -436,7 +436,7 @@ final class DashboardNotificationPages {
             self?.presentRestoreDefaultRulesConfirmation(for: agent)
         }
         configuration.coordinator.onResourceDescriptorsChanged = { [weak self] agent, providerID in
-            self?.refreshProviderIfVisible(agent: agent, providerID: providerID)
+            self?.applyProviderDescriptorsIfVisible(agent: agent, providerID: providerID)
         }
         container.translatesAutoresizingMaskIntoConstraints = false
     }
@@ -460,12 +460,25 @@ final class DashboardNotificationPages {
         rebuild()
     }
 
-    func refreshProviderIfVisible(agent: BalanceNotificationAgent, providerID: String) {
+    func applyProviderDescriptorsIfVisible(agent: BalanceNotificationAgent, providerID: String) {
         guard currentPage != nil else { return }
-        if case .provider(let currentAgent, let currentID) = path.last,
-           currentAgent == agent,
-           currentID == providerID {
+        guard case .provider(let currentAgent, let currentID) = path.last,
+              currentAgent == agent,
+              currentID == providerID else { return }
+        let descriptors = configuration.coordinator.resourceDescriptors(
+            agent: agent,
+            providerID: providerID
+        )
+        let existingKeys = Set(
+            resourceCards.keys.filter { $0.agent == agent && $0.providerID == providerID }
+        )
+        let nextKeys = Set(descriptors.map(\.key))
+        if existingKeys != nextKeys {
             rebuild()
+            return
+        }
+        for descriptor in descriptors {
+            resourceCards[descriptor.key]?.updateCurrentValue(descriptor.value ?? 0)
         }
     }
 

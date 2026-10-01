@@ -371,6 +371,13 @@ final class ResourceRuleCard: NSStackView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// Snapshot value updates must not rebuild the card or rewrite editors.
+    func updateCurrentValue(_ value: Double) {
+        guard state.currentRemaining != value else { return }
+        state.currentRemaining = value
+        currentLabel.stringValue = remainingText(value)
+    }
+
     func apply(_ new: ResourceRuleState, animated: Bool = true) {
         state = new
         let editable = !new.usesGlobalDefaults

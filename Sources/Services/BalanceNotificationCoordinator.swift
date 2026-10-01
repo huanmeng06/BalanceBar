@@ -160,28 +160,35 @@ final class BalanceNotificationCoordinator {
         let providerIDs: Set<String>
     }
 
-    /// Agents whose notification master is on *and* that have at least one
-    /// Provider reminder enabled. The AppDelegate reuses the existing provider
-    /// timer to keep those snapshots current even when they are not
-    /// `activeClient`.
+    /// Agents that still need notification-driven snapshots. The AppDelegate
+    /// reuses the existing provider timer to keep those snapshots current even
+    /// when they are not `activeClient`.
     func monitoredAssistantClients() -> [AssistantClient] {
         monitoredNotificationTargets().map(\.client)
     }
 
-    /// Provider IDs that should receive notification-driven refreshes. Agents
-    /// with no enabled Provider are omitted so a parent master cannot fan out
-    /// extra requests to every CC Switch source.
+    /// Provider IDs that should receive notification-driven refreshes.
+    /// Enabled providers are delivery targets. A disabled Provider is included
+    /// only while any of its resources still has `stage != .normal`, so a
+    /// reset during Provider OFF can re-arm the crossing cycle without
+    /// polling every CC Switch source.
     func monitoredNotificationTargets() -> [MonitoredNotificationTarget] {
         onQueue {
             guard store.settings.globalEnabled else { return [] }
             return BalanceNotificationAgent.dashboardCases.compactMap { agent in
                 guard store.settings.isAgentEnabled(agent),
                       let client = agent.assistantClient else { return nil }
-                let providerIDs = Set(
+                let enabledIDs = Set(
                     store.settings.providerPreferences
                         .filter { $0.agent == agent && $0.enabled }
                         .map(\.providerID)
                 )
+                let pendingIDs = Set(
+                    store.settings.resourceRules
+                        .filter { $0.key.agent == agent && $0.stage != .normal }
+                        .map(\.key.providerID)
+                )
+                let providerIDs = enabledIDs.union(pendingIDs)
                 guard !providerIDs.isEmpty else { return nil }
                 return MonitoredNotificationTarget(client: client, providerIDs: providerIDs)
             }
@@ -457,7 +464,7 @@ final class BalanceNotificationCoordinator {
         providerID: String
     ) {
         let key = SnapshotKey(agent: agent, providerID: providerID)
-        let hadResources = !(resourceDescriptors[key] ?? []).isEmpty
+        let previous = resourceDescriptors[key] ?? []
         snapshots[key] = snapshot
         let descriptors = Self.descriptors(
             from: snapshot,
@@ -465,7 +472,7 @@ final class BalanceNotificationCoordinator {
             providerID: providerID
         )
         resourceDescriptors[key] = descriptors
-        if !hadResources && !descriptors.isEmpty {
+        if previous != descriptors {
             notifyResourceDescriptorsChanged(agent, providerID: providerID)
         }
     }

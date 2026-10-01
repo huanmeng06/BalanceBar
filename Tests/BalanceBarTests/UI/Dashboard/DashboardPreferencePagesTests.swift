@@ -200,6 +200,87 @@ final class DashboardPreferencePagesTests: XCTestCase {
         })
     }
 
+    func testProviderPageUpdatesCurrentRemainingWithoutRebuildingEditors() throws {
+        let suiteName = "DashboardPreferencePagesTests.NotificationCurrentValue.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let coordinator = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: DashboardNotificationTestClient()
+        )
+        coordinator.setProviderEnabled(true, agent: .gpt, providerID: "openai")
+        let pages = DashboardNotificationPages(configuration: .init(
+            coordinator: coordinator,
+            providerChoices: { agent in
+                agent == .gpt ? [ProviderChoice(id: "openai", name: "OpenAI Official", isCurrent: true)] : []
+            }
+        ))
+        _ = pages.make()
+        XCTAssertTrue(pages.showNavigationRoute("notifications/provider/gpt/openai"))
+
+        func snapshot(fiveHour: Double, weekly: Double?) -> Snapshot {
+            var windows = [
+                OfficialQuotaWindow(
+                    kind: .fiveHour,
+                    remaining: fiveHour,
+                    label: "5h",
+                    daysText: "5h",
+                    reset: nil,
+                    durationSeconds: nil
+                )
+            ]
+            if let weekly {
+                windows.append(
+                    OfficialQuotaWindow(
+                        kind: .sevenDay,
+                        remaining: weekly,
+                        label: "7d",
+                        daysText: "7d",
+                        reset: nil,
+                        durationSeconds: nil
+                    )
+                )
+            }
+            return Snapshot.official("Provider", fiveHour, "Weekly", nil, Date(), windows: windows)
+        }
+
+        coordinator.process(snapshot: snapshot(fiveHour: 80, weekly: nil), agent: .gpt, providerID: "openai")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let fiveHourKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "five-hour")
+        let weeklyKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "openai", resourceID: "weekly")
+        let fiveHourCard = try XCTUnwrap(pages.resourceCardForTesting(fiveHourKey))
+        XCTAssertNil(pages.resourceCardForTesting(weeklyKey))
+        XCTAssertEqual(
+            fiveHourCard.currentLabelForTesting.stringValue,
+            tr("notifications.current_remaining", arguments: ["80"])
+        )
+        fiveHourCard.firstFieldForTesting.stringValue = "55"
+
+        coordinator.process(snapshot: snapshot(fiveHour: 62, weekly: nil), agent: .gpt, providerID: "openai")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertTrue(pages.resourceCardForTesting(fiveHourKey) === fiveHourCard)
+        XCTAssertEqual(
+            fiveHourCard.currentLabelForTesting.stringValue,
+            tr("notifications.current_remaining", arguments: ["62"])
+        )
+        XCTAssertEqual(fiveHourCard.firstFieldForTesting.stringValue, "55")
+        XCTAssertNil(pages.resourceCardForTesting(weeklyKey))
+
+        coordinator.process(snapshot: snapshot(fiveHour: 41, weekly: 70), agent: .gpt, providerID: "openai")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertNotNil(pages.resourceCardForTesting(weeklyKey))
+        XCTAssertEqual(
+            pages.resourceCardForTesting(fiveHourKey)?.currentLabelForTesting.stringValue,
+            tr("notifications.current_remaining", arguments: ["41"])
+        )
+        XCTAssertEqual(
+            pages.resourceCardForTesting(weeklyKey)?.currentLabelForTesting.stringValue,
+            tr("notifications.current_remaining", arguments: ["70"])
+        )
+    }
+
     func testNotificationResourceRowsExposeInheritanceAndIndependentVisibility() throws {
         let suiteName = "DashboardPreferencePagesTests.NotificationResourceRows.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

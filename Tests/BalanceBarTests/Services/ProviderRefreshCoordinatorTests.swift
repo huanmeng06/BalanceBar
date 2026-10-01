@@ -1113,6 +1113,126 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         snapshotLock.unlock()
     }
 
+    func testDisabledProviderWithPendingAlertStillRefreshesUntilRearm() throws {
+        try withDatabase { database in
+            try execute(
+                database,
+                sql: """
+                INSERT INTO providers VALUES (
+                    'claude-extra', 'Claude Extra',
+                    '{"api_key":"fixture-key","base_url":"https://claude-extra.provider.test"}',
+                    '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://claude-extra.provider.test","code":"url: `{{baseUrl}}/usage`"}}',
+                    'custom', 'https://claude-extra.provider.test', 'claude', 0, 2, 2
+                );
+                """
+            )
+        }
+        let notificationClient = RecordingBalanceNotificationClient()
+        let suiteName = "ProviderRefreshCoordinatorTests.PendingRearm.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let notifications = BalanceNotificationCoordinator(
+            defaults: defaults,
+            client: notificationClient
+        )
+        notifications.setGlobalEnabled(true)
+        notifications.setAgentEnabled(true, agent: .claude)
+        notifications.setProviderEnabled(true, agent: .claude, providerID: "claude-custom")
+        notifications.setProviderEnabled(false, agent: .claude, providerID: "claude-extra")
+        let balanceKey = BalanceNotificationResourceKey(
+            agent: .claude,
+            providerID: "claude-custom",
+            resourceID: "balance"
+        )
+        notifications.updateRule(key: balanceKey, kind: .balance, unit: "USD") { rule in
+            rule.firstThreshold = 20
+            rule.secondEnabled = true
+            rule.secondThreshold = 5
+        }
+
+        func balanceSnapshot(_ amount: Double) -> Snapshot {
+            Snapshot.balance("Claude Custom", amount, "USD", nil, Date())
+        }
+        notifications.process(snapshot: balanceSnapshot(21), agent: .claude, providerID: "claude-custom")
+        notifications.process(snapshot: balanceSnapshot(19), agent: .claude, providerID: "claude-custom")
+        notifications.process(snapshot: balanceSnapshot(4), agent: .claude, providerID: "claude-custom")
+        XCTAssertEqual(notificationClient.deliveries.count, 2)
+        XCTAssertEqual(notifications.settings.rule(for: balanceKey)?.stage, .second)
+
+        notifications.setProviderEnabled(false, agent: .claude, providerID: "claude-custom")
+        let pending = notifications.monitoredNotificationTargets().first { $0.client == .claude }
+        XCTAssertEqual(pending?.providerIDs, ["claude-custom"])
+
+        let amounts = AmountQueue(["100.00", "15.00"])
+        DelayedBalanceURLProtocol.setHandler { _ in
+            DelayedBalanceURLProtocol.success(amount: amounts.next())
+        }
+        let processed = DispatchSemaphore(value: 0)
+        let snapshotLock = NSLock()
+        var snapshotProviderIDs: [String] = []
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] client in
+                repository?.loadCurrent(appType: client.appType)
+            },
+            isActiveClient: { client in
+                client == .codex
+            },
+            render: { _ in },
+            storeClientSnapshot: { _, _, _ in },
+            quickSwitchSummaryChanged: { _ in },
+            notificationSnapshot: { _, providerID, snapshot in
+                notifications.process(
+                    snapshot: snapshot,
+                    agent: .claude,
+                    providerID: providerID
+                )
+                snapshotLock.lock()
+                snapshotProviderIDs.append(providerID)
+                snapshotLock.unlock()
+                processed.signal()
+            }
+        )
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-pending-rearm"),
+            actions: actions
+        )
+
+        let target = try XCTUnwrap(notifications.monitoredNotificationTargets().first { $0.client == .claude })
+        coordinator.refreshQuickSwitchSummaries(
+            force: true,
+            for: .claude,
+            providerIDs: target.providerIDs
+        )
+        waitForEvent(processed)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        snapshotLock.lock()
+        XCTAssertEqual(snapshotProviderIDs, ["claude-custom"])
+        snapshotLock.unlock()
+        XCTAssertEqual(notificationClient.deliveries.count, 2, "Provider OFF must not deliver during reset")
+        XCTAssertEqual(notifications.settings.rule(for: balanceKey)?.stage, .normal)
+        XCTAssertEqual(
+            notifications.monitoredNotificationTargets().first { $0.client == .claude },
+            nil
+        )
+
+        notifications.setProviderEnabled(true, agent: .claude, providerID: "claude-custom")
+        let enabled = try XCTUnwrap(notifications.monitoredNotificationTargets().first { $0.client == .claude })
+        XCTAssertEqual(enabled.providerIDs, ["claude-custom"])
+        coordinator.refreshQuickSwitchSummaries(
+            force: true,
+            for: .claude,
+            providerIDs: enabled.providerIDs
+        )
+        waitForEvent(processed)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        XCTAssertEqual(notificationClient.deliveries.count, 3)
+        XCTAssertEqual(notifications.settings.rule(for: balanceKey)?.stage, .first)
+    }
+
     func testOfficialQuickSwitchSummaryReformatsCachedWindowsForPreferenceWithoutRefetching() throws {
         try setCurrentProvider("codex-replacement")
         DelayedBalanceURLProtocol.setHandler { _ in
@@ -1561,6 +1681,42 @@ private final class TestClock {
         lock.lock()
         value.addTimeInterval(interval)
         lock.unlock()
+    }
+}
+
+private final class RecordingBalanceNotificationClient: BalanceNotificationClient {
+    var onResponse: (([AnyHashable: Any]) -> Void)?
+    var status: BalanceNotificationPermissionState = .authorized
+    private(set) var deliveries: [(title: String, body: String, userInfo: [AnyHashable: Any])] = []
+
+    func authorizationStatus(completion: @escaping (BalanceNotificationPermissionState) -> Void) {
+        completion(status)
+    }
+
+    func requestAuthorization(completion: @escaping (Bool) -> Void) {
+        completion(true)
+    }
+
+    func deliver(title: String, body: String, userInfo: [AnyHashable: Any]) {
+        deliveries.append((title, body, userInfo))
+    }
+
+    func openSettings() {}
+}
+
+private final class AmountQueue {
+    private let lock = NSLock()
+    private var amounts: [String]
+
+    init(_ amounts: [String]) {
+        self.amounts = amounts
+    }
+
+    func next() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !amounts.isEmpty else { return "0.00" }
+        return amounts.removeFirst()
     }
 }
 
