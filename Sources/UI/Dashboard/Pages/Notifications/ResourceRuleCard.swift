@@ -61,9 +61,18 @@ private final class OpticalTrailingLabel: NSTextField {
     }
 }
 
+/// Wraps the bezeled field so NSStackView sees the field's alignment size
+/// while the column frame still includes the bezel. Default-rules text and
+/// the Custom field then share one trailing edge for USD/%.
+private final class ThresholdNumberColumn: NSView {
+    var boxedInsets = NSEdgeInsets()
+
+    override var alignmentRectInsets: NSEdgeInsets { boxedInsets }
+}
+
 final class ThresholdAccessory: NSStackView {
     let field = NSTextField()
-    private let valueLabel = OpticalTrailingLabel(labelWithString: "")
+    private let valueLabel = NSTextField(labelWithString: "")
     private let unitLabel: OpticalTrailingLabel
     private let kind: BalanceNotificationResourceKind
 
@@ -122,8 +131,15 @@ final class ThresholdAccessory: NSStackView {
 
         valueLabel.textColor = .secondaryLabelColor
         valueLabel.alignment = .right
+        valueLabel.font = field.font
+        valueLabel.drawsBackground = false
+        valueLabel.isBezeled = false
+        valueLabel.usesSingleLineMode = true
+        valueLabel.maximumNumberOfLines = 1
+        valueLabel.lineBreakMode = .byClipping
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
         valueLabel.setContentHuggingPriority(.required, for: .horizontal)
-        valueLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        valueLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         unitLabel.textColor = .secondaryLabelColor
         unitLabel.setContentHuggingPriority(.required, for: .horizontal)
         unitLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -132,20 +148,43 @@ final class ThresholdAccessory: NSStackView {
             unitLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: unitWidth).isActive = true
         }
 
-        [field, unitLabel, valueLabel].forEach(addArrangedSubview)
+        let numberColumn = ThresholdNumberColumn()
+        numberColumn.boxedInsets = field.alignmentRectInsets
+        numberColumn.translatesAutoresizingMaskIntoConstraints = false
+        numberColumn.setContentHuggingPriority(.required, for: .horizontal)
+        numberColumn.setContentCompressionResistancePriority(.required, for: .horizontal)
+        numberColumn.setContentHuggingPriority(.required, for: .vertical)
+        numberColumn.setContentCompressionResistancePriority(.required, for: .vertical)
+        field.translatesAutoresizingMaskIntoConstraints = false
+        numberColumn.addSubview(field)
+        numberColumn.addSubview(valueLabel)
+        NSLayoutConstraint.activate([
+            numberColumn.widthAnchor.constraint(equalToConstant: fieldWidth),
+            field.leadingAnchor.constraint(equalTo: numberColumn.leadingAnchor),
+            field.trailingAnchor.constraint(equalTo: numberColumn.trailingAnchor),
+            field.topAnchor.constraint(equalTo: numberColumn.topAnchor),
+            field.bottomAnchor.constraint(equalTo: numberColumn.bottomAnchor),
+            valueLabel.leadingAnchor.constraint(equalTo: numberColumn.leadingAnchor),
+            valueLabel.trailingAnchor.constraint(equalTo: numberColumn.trailingAnchor),
+            valueLabel.centerYAnchor.constraint(equalTo: numberColumn.centerYAnchor)
+        ])
+
+        [numberColumn, unitLabel].forEach(addArrangedSubview)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func apply(value: Double, displayText: String, editable: Bool) {
+    func apply(value: Double, editable: Bool) {
         field.isHidden = !editable
         field.isEnabled = editable
         field.stringValue = ThresholdFormat.displayString(value, kind: kind)
-        // Empty custom values still show a gray unit so first/second fields
-        // share one trailing column instead of the empty field jumping right.
-        unitLabel.isHidden = !editable
         valueLabel.isHidden = editable
-        valueLabel.stringValue = value > 0 ? displayText : ThresholdFormat.placeholder
+        valueLabel.stringValue = value > 0
+            ? ThresholdFormat.displayString(value, kind: kind)
+            : ThresholdFormat.placeholder
+        // Keep the unit in the trailing column for Default rules and Custom,
+        // including empty values, so USD/% does not jump sideways.
+        unitLabel.isHidden = false
     }
 
     func committedValue() -> Double {
@@ -341,16 +380,8 @@ final class ResourceRuleCard: NSStackView {
         currentLabel.stringValue = remainingText(new.currentRemaining)
         sourcePopUp.selectItem(at: new.usesGlobalDefaults ? 0 : 1)
 
-        firstAccessory.apply(
-            value: new.firstThreshold,
-            displayText: thresholdText(new.firstThreshold),
-            editable: editable
-        )
-        secondAccessory.apply(
-            value: new.secondThreshold,
-            displayText: thresholdText(new.secondThreshold),
-            editable: editable
-        )
+        firstAccessory.apply(value: new.firstThreshold, editable: editable)
+        secondAccessory.apply(value: new.secondThreshold, editable: editable)
 
         footerLabel.stringValue = new.usesGlobalDefaults
             ? tr("notifications.default_readonly_hint")
@@ -405,13 +436,6 @@ final class ResourceRuleCard: NSStackView {
             )
         }
         return tr("notifications.balance_value", arguments: [Self.balanceText(value, unit: unit)])
-    }
-
-    private func thresholdText(_ value: Double) -> String {
-        if kind == .quotaPercent {
-            return "\(String(format: "%.0f", value))%"
-        }
-        return Self.balanceText(value, unit: unit)
     }
 
     static func localizedTitle(resourceID: String, fallback: String) -> String {

@@ -335,6 +335,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
             matches: quotaSource,
             in: quotaPage
         )
+        XCTAssertTrue(quotaField.isHidden)
+        XCTAssertFalse(quotaCard.firstValueLabelForTesting.isHidden)
+        XCTAssertEqual(quotaCard.firstValueLabelForTesting.stringValue, "20")
+        XCTAssertFalse(quotaCard.firstUnitLabelForTesting.isHidden)
+        XCTAssertFalse(quotaCard.secondUnitLabelForTesting.isHidden)
+        assertTrailingMaxX(
+            of: quotaCard.firstUnitLabelForTesting,
+            matches: quotaCard.secondUnitLabelForTesting,
+            in: quotaPage
+        )
+        let defaultQuotaUnitMaxX = trailingMaxX(of: quotaCard.firstUnitLabelForTesting, in: quotaPage)
         quotaSource.selectItem(at: 1)
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(quotaSource.action), to: quotaSource.target, from: quotaSource))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
@@ -373,6 +384,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
             matches: quotaCard.secondFieldForTesting,
             in: quotaPage
         )
+        assertTrailingMaxX(
+            of: quotaCard.firstUnitLabelForTesting,
+            matches: quotaCard.secondUnitLabelForTesting,
+            in: quotaPage
+        )
+        XCTAssertEqual(
+            trailingMaxX(of: quotaCard.firstUnitLabelForTesting, in: quotaPage),
+            defaultQuotaUnitMaxX,
+            accuracy: 1.5,
+            "Default-rules and Custom USD/% should share one trailing column"
+        )
 
         XCTAssertTrue(pages.showNavigationRoute("notifications/provider/claude/claude-1"))
         let balancePage = pages.make()
@@ -400,8 +422,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let firstField = balanceCard.firstFieldForTesting
         let secondField = balanceCard.secondFieldForTesting
         let balanceSource = balanceCard.sourcePopUpForTesting
+        XCTAssertEqual(balanceCard.firstValueLabelForTesting.stringValue, "5.00")
+        XCTAssertFalse(balanceCard.firstValueLabelForTesting.stringValue.contains("USD"))
         XCTAssertEqual(balanceCard.secondValueLabelForTesting.stringValue, tr("notifications.no_reminder"))
+        XCTAssertTrue(firstField.isHidden)
         XCTAssertTrue(secondField.isHidden)
+        XCTAssertFalse(balanceCard.firstUnitLabelForTesting.isHidden)
+        XCTAssertFalse(balanceCard.secondUnitLabelForTesting.isHidden)
+        assertTrailingMaxX(
+            of: balanceCard.firstUnitLabelForTesting,
+            matches: balanceCard.secondUnitLabelForTesting,
+            in: balancePage
+        )
+        let defaultBalanceUnitMaxX = trailingMaxX(of: balanceCard.firstUnitLabelForTesting, in: balancePage)
         balanceSource.selectItem(at: 1)
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(balanceSource.action), to: balanceSource.target, from: balanceSource))
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
@@ -412,6 +445,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(secondField.isHidden)
         XCTAssertEqual(secondField.placeholderString, tr("notifications.no_reminder"))
         XCTAssertFalse(balanceCard.secondUnitLabelForTesting.isHidden)
+        XCTAssertEqual(
+            trailingMaxX(of: balanceCard.firstUnitLabelForTesting, in: balancePage),
+            defaultBalanceUnitMaxX,
+            accuracy: 1.5,
+            "Default-rules and Custom USD should share one trailing column"
+        )
         XCTAssertFalse(balanceCard.footerHiddenForTesting)
         XCTAssertEqual(balanceCard.footerHintForTesting, tr("notifications.global_rules_hint"))
         secondField.doubleValue = 0.20
@@ -9440,6 +9479,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
     }
 
     private func unitLabels(beside field: NSTextField) -> [String] {
+        var node: NSView? = field
+        while let current = node {
+            if let accessory = current as? ThresholdAccessory {
+                let label = accessory.unitLabelForTesting
+                guard !label.isHidden else { return [] }
+                let value = label.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                return value.isEmpty ? [] : [value]
+            }
+            node = current.superview
+        }
         guard let stack = field.superview as? NSStackView else { return [] }
         return stack.arrangedSubviews.compactMap { view in
             guard let label = view as? NSTextField, label !== field, !label.isHidden else { return nil }
