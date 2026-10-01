@@ -55,7 +55,7 @@
 "notifications.rule_summary" = "첫 번째 %1$@ · 두 번째 %2$@";
 "notifications.threshold_input_hint" = "기준값";
 "notifications.rule_source" = "규칙 출처";
-"notifications.use_default_rules" = "기본 규칙 사용";
+"notifications.use_default_rules" = "기본 규칙";
 "notifications.custom_rules" = "사용자 지정";
 "notifications.inherited_rule_detail" = "기본 규칙에서 가져온 읽기 전용 값";
 "notifications.custom_rule_detail" = "이 공급자에서 편집 가능한 값";

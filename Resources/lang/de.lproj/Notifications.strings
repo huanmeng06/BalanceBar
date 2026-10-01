@@ -55,7 +55,7 @@
 "notifications.rule_summary" = "Erste %1$@ · Zweite %2$@";
 "notifications.threshold_input_hint" = "Schwellenwert";
 "notifications.rule_source" = "Regelquelle";
-"notifications.use_default_rules" = "Standardregeln verwenden";
+"notifications.use_default_rules" = "Standardregeln";
 "notifications.custom_rules" = "Individuell";
 "notifications.inherited_rule_detail" = "Schreibgeschützter Wert aus den Standardregeln";
 "notifications.custom_rule_detail" = "Bearbeitbarer Wert für diesen Provider";

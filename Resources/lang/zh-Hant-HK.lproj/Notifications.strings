@@ -55,7 +55,7 @@
 "notifications.rule_summary" = "第一次 %1$@ · 第二次 %2$@";
 "notifications.threshold_input_hint" = "門檻值";
 "notifications.rule_source" = "規則來源";
-"notifications.use_default_rules" = "使用預設規則";
+"notifications.use_default_rules" = "預設規則";
 "notifications.custom_rules" = "自訂";
 "notifications.inherited_rule_detail" = "來自預設規則的唯讀值";
 "notifications.custom_rule_detail" = "此服務商的可編輯值";

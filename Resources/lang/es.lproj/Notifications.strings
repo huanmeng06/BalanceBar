@@ -55,7 +55,7 @@
 "notifications.rule_summary" = "Primero %1$@ · Segundo %2$@";
 "notifications.threshold_input_hint" = "Valor del umbral";
 "notifications.rule_source" = "Origen de la regla";
-"notifications.use_default_rules" = "Usar reglas predeterminadas";
+"notifications.use_default_rules" = "Reglas predeterminadas";
 "notifications.custom_rules" = "Personalizado";
 "notifications.inherited_rule_detail" = "Valor de solo lectura de las reglas predeterminadas";
 "notifications.custom_rule_detail" = "Valor editable para este proveedor";

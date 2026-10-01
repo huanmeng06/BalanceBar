@@ -55,7 +55,7 @@
 "notifications.rule_summary" = "1 回目 %1$@ · 2 回目 %2$@";
 "notifications.threshold_input_hint" = "しきい値";
 "notifications.rule_source" = "ルールの出所";
-"notifications.use_default_rules" = "デフォルトルールを使用";
+"notifications.use_default_rules" = "デフォルトルール";
 "notifications.custom_rules" = "カスタム";
 "notifications.inherited_rule_detail" = "デフォルトルールの読み取り専用値";
 "notifications.custom_rule_detail" = "このプロバイダで編集できる値";

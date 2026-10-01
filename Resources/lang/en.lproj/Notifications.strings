@@ -55,7 +55,7 @@
 "notifications.rule_summary" = "First %1$@ · Second %2$@";
 "notifications.threshold_input_hint" = "Threshold value";
 "notifications.rule_source" = "Rule source";
-"notifications.use_default_rules" = "Use default rules";
+"notifications.use_default_rules" = "Default rules";
 "notifications.custom_rules" = "Custom";
 "notifications.inherited_rule_detail" = "Read-only value from Default Rules";
 "notifications.custom_rule_detail" = "Editable value for this Provider";

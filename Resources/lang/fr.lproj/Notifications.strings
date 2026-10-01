@@ -55,7 +55,7 @@
 "notifications.rule_summary" = "Premier %1$@ · Deuxième %2$@";
 "notifications.threshold_input_hint" = "Valeur du seuil";
 "notifications.rule_source" = "Source de la règle";
-"notifications.use_default_rules" = "Utiliser les règles par défaut";
+"notifications.use_default_rules" = "Règles par défaut";
 "notifications.custom_rules" = "Personnalisé";
 "notifications.inherited_rule_detail" = "Valeur en lecture seule issue des règles par défaut";
 "notifications.custom_rule_detail" = "Valeur modifiable pour ce fournisseur";

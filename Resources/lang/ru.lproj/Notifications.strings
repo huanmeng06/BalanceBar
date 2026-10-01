@@ -55,7 +55,7 @@
 "notifications.rule_summary" = "Первое %1$@ · Второе %2$@";
 "notifications.threshold_input_hint" = "Значение порога";
 "notifications.rule_source" = "Источник правила";
-"notifications.use_default_rules" = "Использовать правила по умолчанию";
+"notifications.use_default_rules" = "Правила по умолчанию";
 "notifications.custom_rules" = "Собственные";
 "notifications.inherited_rule_detail" = "Значение только для чтения из правил по умолчанию";
 "notifications.custom_rule_detail" = "Редактируемое значение для этого провайдера";

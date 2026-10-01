@@ -55,7 +55,7 @@
 "notifications.rule_summary" = "首次 %1$@ · 第二次 %2$@";
 "notifications.threshold_input_hint" = "阈值";
 "notifications.rule_source" = "规则来源";
-"notifications.use_default_rules" = "使用默认规则";
+"notifications.use_default_rules" = "默认规则";
 "notifications.custom_rules" = "自定义";
 "notifications.inherited_rule_detail" = "来自默认规则的只读值";
 "notifications.custom_rule_detail" = "此服务商的可编辑值";
