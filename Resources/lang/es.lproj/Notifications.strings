@@ -82,3 +82,5 @@
 "notifications.default_readonly_hint" = "Estos valores vienen de las reglas predeterminadas.";
 "notifications.edit_defaults" = "Editar reglas predeterminadas…";
 "notifications.current_remaining" = "%1$@%% restante";
+"notifications.status_on" = "Activado";
+"notifications.status_off" = "Desactivado";

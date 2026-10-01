@@ -82,3 +82,5 @@
 "notifications.default_readonly_hint" = "These values come from Default Rules.";
 "notifications.edit_defaults" = "Edit Default Rules…";
 "notifications.current_remaining" = "%1$@%% remaining";
+"notifications.status_on" = "On";
+"notifications.status_off" = "Off";

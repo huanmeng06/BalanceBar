@@ -253,7 +253,7 @@ enum SettingsLayout {
     static let rowHorizontalInset: CGFloat = 20
     /// NSTextField labels keep a few points of optical padding. Pull the
     /// trailing unit/value out so `%` / `USD` meet the control column.
-    static let trailingLabelOpticalCompensation: CGFloat = 4
+    static let trailingLabelOpticalCompensation: CGFloat = 9
 }
 
 /// Native Auto Layout settings row: title, optional detail, trailing control.

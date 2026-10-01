@@ -82,3 +82,5 @@
 "notifications.default_readonly_hint" = "這些值來自預設規則。";
 "notifications.edit_defaults" = "編輯預設規則…";
 "notifications.current_remaining" = "目前剩餘 %1$@%%";
+"notifications.status_on" = "已開啟";
+"notifications.status_off" = "已關閉";

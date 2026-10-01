@@ -17,24 +17,28 @@ enum ResourceRuleEvent {
     case editDefaultsTapped
 }
 
+private final class OpticalTrailingLabel: NSTextField {
+    var extraTrailing: CGFloat = SettingsLayout.trailingLabelOpticalCompensation
+
+    override var alignmentRectInsets: NSEdgeInsets {
+        var insets = super.alignmentRectInsets
+        insets.right += extraTrailing
+        return insets
+    }
+}
+
 final class ThresholdAccessory: NSStackView {
-    let toggle: NSSwitch?
     let field = NSTextField()
-    private let valueLabel = NSTextField(labelWithString: "")
-    private let unitLabel: NSTextField
-    private let offText: String
+    private let valueLabel = OpticalTrailingLabel(labelWithString: "")
+    private let unitLabel: OpticalTrailingLabel
     private let kind: BalanceNotificationResourceKind
 
-    init(
-        showsToggle: Bool,
-        kind: BalanceNotificationResourceKind,
-        unitText: String,
-        offText: String = ""
-    ) {
-        self.toggle = showsToggle ? NSSwitch() : nil
-        self.offText = offText
+    var unitLabelForTesting: NSTextField { unitLabel }
+    var valueLabelForTesting: NSTextField { valueLabel }
+
+    init(kind: BalanceNotificationResourceKind, unitText: String) {
         self.kind = kind
-        self.unitLabel = NSTextField(labelWithString: unitText)
+        self.unitLabel = OpticalTrailingLabel(labelWithString: unitText)
         super.init(frame: .zero)
         orientation = .horizontal
         alignment = .centerY
@@ -43,12 +47,7 @@ final class ThresholdAccessory: NSStackView {
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.required, for: .horizontal)
         setContentCompressionResistancePriority(.required, for: .horizontal)
-        edgeInsets = NSEdgeInsets(
-            top: 0,
-            left: 0,
-            bottom: 0,
-            right: -SettingsLayout.trailingLabelOpticalCompensation
-        )
+        clipsToBounds = false
 
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
@@ -96,25 +95,54 @@ final class ThresholdAccessory: NSStackView {
         unitLabel.setContentHuggingPriority(.required, for: .horizontal)
         unitLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        [toggle, field, unitLabel, valueLabel].compactMap { $0 }.forEach(addArrangedSubview)
+        [field, unitLabel, valueLabel].forEach(addArrangedSubview)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func apply(value: Double, displayText: String, editable: Bool, isOn: Bool = true) {
-        toggle?.isHidden = !editable
-        toggle?.state = isOn ? .on : .off
-        let showEditor = editable && isOn
-        field.isHidden = !showEditor
-        unitLabel.isHidden = !showEditor
-        field.isEnabled = showEditor
+    func apply(value: Double, displayText: String, editable: Bool) {
+        field.isHidden = !editable
+        unitLabel.isHidden = !editable
+        field.isEnabled = editable
         if kind == .quotaPercent {
             field.integerValue = Int(value.rounded())
         } else {
             field.doubleValue = value
         }
-        valueLabel.isHidden = showEditor
-        valueLabel.stringValue = isOn ? displayText : offText
+        valueLabel.isHidden = editable
+        valueLabel.stringValue = displayText
+    }
+}
+
+final class SwitchAccessory: NSStackView {
+    let toggle = NSSwitch()
+    private let statusLabel = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        orientation = .horizontal
+        alignment = .centerY
+        spacing = 0
+        detachesHiddenViews = true
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.alignment = .right
+        statusLabel.setContentHuggingPriority(.required, for: .horizontal)
+        statusLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        [toggle, statusLabel].forEach(addArrangedSubview)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func apply(isOn: Bool, editable: Bool) {
+        toggle.isHidden = !editable
+        toggle.state = isOn ? .on : .off
+        statusLabel.isHidden = editable
+        statusLabel.stringValue = isOn
+            ? tr("notifications.status_on")
+            : tr("notifications.status_off")
     }
 }
 
@@ -131,17 +159,22 @@ final class ResourceRuleCard: NSStackView {
 
     private let sourcePopUp: NSPopUpButton
     private let firstAccessory: ThresholdAccessory
+    private let secondSwitchAccessory = SwitchAccessory()
     private let secondAccessory: ThresholdAccessory
+    private let secondThresholdRow: SettingsRowView
     private let section: SettingsSectionView
     private let footer = NSStackView()
 
     var resourceSwitchForTesting: NSSwitch { resourceSwitch }
     var sourcePopUpForTesting: NSPopUpButton { sourcePopUp }
     var firstFieldForTesting: NSTextField { firstAccessory.field }
+    var firstUnitLabelForTesting: NSTextField { firstAccessory.unitLabelForTesting }
     var secondFieldForTesting: NSTextField { secondAccessory.field }
-    var secondToggleForTesting: NSSwitch? { secondAccessory.toggle }
+    var secondUnitLabelForTesting: NSTextField { secondAccessory.unitLabelForTesting }
+    var secondToggleForTesting: NSSwitch { secondSwitchAccessory.toggle }
     var sectionHiddenForTesting: Bool { section.isHidden }
     var footerHiddenForTesting: Bool { footer.isHidden }
+    var secondThresholdRowHiddenForTesting: Bool { secondThresholdRow.isHidden }
     var titleForTesting: String { titleLabel.stringValue }
 
     init(
@@ -155,17 +188,8 @@ final class ResourceRuleCard: NSStackView {
         self.kind = kind
         self.unit = unit
         let unitText = Self.unitText(kind: kind, unit: unit)
-        self.firstAccessory = ThresholdAccessory(
-            showsToggle: false,
-            kind: kind,
-            unitText: unitText
-        )
-        self.secondAccessory = ThresholdAccessory(
-            showsToggle: true,
-            kind: kind,
-            unitText: unitText,
-            offText: tr("notifications.second_off")
-        )
+        self.firstAccessory = ThresholdAccessory(kind: kind, unitText: unitText)
+        self.secondAccessory = ThresholdAccessory(kind: kind, unitText: unitText)
         self.sourcePopUp = DashboardSettingsComponents.makePopUpButton(
             identifier: "source:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)",
             items: [
@@ -193,12 +217,20 @@ final class ResourceRuleCard: NSStackView {
             detail: tr("notifications.remaining_below"),
             accessoryView: firstAccessory
         )
-        let secondRow = SettingsRowView(
+        let secondToggleRow = SettingsRowView(
             title: tr("notifications.resource_second_reminder"),
-            detail: tr("notifications.remaining_below"),
+            detail: nil,
+            accessoryView: secondSwitchAccessory
+        )
+        self.secondThresholdRow = SettingsRowView(
+            title: tr("notifications.remaining_below"),
+            detail: nil,
             accessoryView: secondAccessory
         )
-        self.section = SettingsSectionView(title: nil, contentViews: [sourceRow, firstRow, secondRow])
+        self.section = SettingsSectionView(
+            title: nil,
+            contentViews: [sourceRow, firstRow, secondToggleRow, secondThresholdRow]
+        )
         super.init(frame: .zero)
 
         identifier = NSUserInterfaceItemIdentifier(
@@ -212,6 +244,9 @@ final class ResourceRuleCard: NSStackView {
         )
         secondAccessory.field.identifier = NSUserInterfaceItemIdentifier(
             "resource:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)|second"
+        )
+        secondSwitchAccessory.toggle.identifier = NSUserInterfaceItemIdentifier(
+            "resource:\(key.agent.rawValue):\(key.providerID):\(key.resourceID)|second-enabled"
         )
 
         orientation = .vertical
@@ -272,8 +307,8 @@ final class ResourceRuleCard: NSStackView {
         resourceSwitch.action = #selector(resourceToggled)
         sourcePopUp.target = self
         sourcePopUp.action = #selector(sourceChanged)
-        secondAccessory.toggle?.target = self
-        secondAccessory.toggle?.action = #selector(secondToggled)
+        secondSwitchAccessory.toggle.target = self
+        secondSwitchAccessory.toggle.action = #selector(secondToggled)
         firstAccessory.field.target = self
         firstAccessory.field.action = #selector(firstEdited)
         secondAccessory.field.target = self
@@ -299,15 +334,16 @@ final class ResourceRuleCard: NSStackView {
             displayText: thresholdText(new.firstThreshold),
             editable: editable
         )
+        secondSwitchAccessory.apply(isOn: new.secondEnabled, editable: editable)
         secondAccessory.apply(
             value: new.secondThreshold,
             displayText: thresholdText(new.secondThreshold),
-            editable: editable,
-            isOn: new.secondEnabled
+            editable: editable
         )
 
         let updates = {
             self.section.isHidden = !showBody
+            self.secondThresholdRow.isHidden = !new.secondEnabled
             self.footer.isHidden = !showFooter
         }
         if animated {
@@ -330,7 +366,7 @@ final class ResourceRuleCard: NSStackView {
     }
 
     @objc private func secondToggled() {
-        onEvent?(.secondToggled(secondAccessory.toggle?.state == .on))
+        onEvent?(.secondToggled(secondSwitchAccessory.toggle.state == .on))
     }
 
     @objc private func firstEdited() {
