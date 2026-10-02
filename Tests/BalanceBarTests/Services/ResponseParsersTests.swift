@@ -879,7 +879,7 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(relocated.officialSignal?.probability, .unavailable)
         XCTAssertNotEqual(relocated.officialSignal?.probability, .percent(93))
         XCTAssertTrue(relocated.hasAnyValue)
-        XCTAssertNil(relocated.officialSignal?.targetAt)
+        XCTAssertEqual(relocated.officialSignal?.timing, .unavailable)
         XCTAssertEqual(
             relocated.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 暂无具体时间点"
@@ -906,7 +906,7 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(noWindow.officialSignal?.probability, .percent(71))
-        XCTAssertNil(noWindow.officialSignal?.targetAt)
+        XCTAssertEqual(noWindow.officialSignal?.timing, .unavailable)
         XCTAssertEqual(noWindow.officialSignal?.publishedAt, future)
         XCTAssertEqual(noWindow.remainingCountdownSeconds(now: now), nil)
         XCTAssertNil(noWindow.officialCountdownProgressSpan())
@@ -922,7 +922,7 @@ final class ResponseParsersTests: XCTestCase {
             data: Data(#"{"official_signal":{"score":{"value":71}},"probabilities":{"rounded_24h":20}}"#.utf8),
             now: now
         )
-        XCTAssertNil(missingWindow.officialSignal?.targetAt)
+        XCTAssertEqual(missingWindow.officialSignal?.timing, .unavailable)
         XCTAssertNil(missingWindow.officialSignal?.publishedAt)
         XCTAssertEqual(
             missingWindow.officialHintText(language: .simplifiedChinese),
@@ -937,7 +937,7 @@ final class ResponseParsersTests: XCTestCase {
         )
         XCTAssertEqual(isoWindow.remainingCountdownSeconds(now: now), 3_665)
         XCTAssertEqual(isoWindow.officialSignal?.publishedAt, past)
-        XCTAssertEqual(isoWindow.officialSignal?.targetAt, future)
+        XCTAssertEqual(isoWindow.officialSignal?.timing, .exact(future))
         XCTAssertNil(isoWindow.officialHintText())
         XCTAssertEqual(
             try XCTUnwrap(isoWindow.officialCountdownElapsedFraction(now: past)),
@@ -984,7 +984,12 @@ final class ResponseParsersTests: XCTestCase {
             """#.utf8),
             now: now
         )
-        XCTAssertEqual(nestedDeadline.remainingCountdownSeconds(now: now), 3_665)
+        XCTAssertEqual(nestedDeadline.officialSignal?.timing, .deadline(future))
+        XCTAssertNil(nestedDeadline.remainingCountdownSeconds(now: now))
+        XCTAssertEqual(
+            nestedDeadline.officialHintText(language: .english),
+            "Official reset hint · Deadline"
+        )
 
         let nestedTarget = CodexResetForecastParser.parse(
             data: Data(#"""
@@ -1003,7 +1008,7 @@ final class ResponseParsersTests: XCTestCase {
             """#.utf8),
             now: now
         )
-        XCTAssertNil(hourRangeWindow.officialSignal?.targetAt)
+        XCTAssertEqual(hourRangeWindow.officialSignal?.timing, .unavailable)
         XCTAssertEqual(
             hourRangeWindow.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 暂无具体时间点"
@@ -1015,7 +1020,7 @@ final class ResponseParsersTests: XCTestCase {
             """#.utf8),
             now: now
         )
-        XCTAssertNil(pastWindow.officialSignal?.targetAt)
+        XCTAssertEqual(pastWindow.officialSignal?.timing, .unavailable)
         XCTAssertEqual(
             pastWindow.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 暂无具体时间点"
@@ -1032,6 +1037,77 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertNil(ordinary.officialHintText())
         XCTAssertTrue(ordinary.showsOrdinaryForecastMetrics)
         XCTAssertEqual(ordinary.menuPrimaryDisplayText(now: now), "20%")
+    }
+
+    func testCodexResetForecastParserNormalizesObservedOfficialTimingSchemas() {
+        let future = now.addingTimeInterval(3_665)
+        let start = now.addingTimeInterval(-300)
+        let end = now.addingTimeInterval(7_200)
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let futureISO = iso.string(from: future)
+        let startISO = iso.string(from: start)
+        let endISO = iso.string(from: end)
+
+        let production = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"at":"\#(startISO)","score":{"value":93},"window":{"label":"end of Friday","start_at":"\#(startISO)","end_at":"\#(endISO)","target_kind":"deadline","target_at":"\#(endISO)"}},"probabilities":{"rounded_24h":20,"rounded_48h":35}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertEqual(production.officialSignal?.probability, .percent(93))
+        XCTAssertEqual(production.officialSignal?.timing, .deadline(end))
+        XCTAssertNil(production.remainingCountdownSeconds(now: now))
+        XCTAssertEqual(
+            production.officialHintText(language: .english),
+            "Official reset hint · Deadline"
+        )
+
+        let range = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"window":{"start_at":"\#(startISO)","end_at":"\#(endISO)"}},"probabilities":{"signal_percent":74}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertEqual(
+            range.officialSignal?.timing,
+            .window(start: start, end: end)
+        )
+        XCTAssertNil(range.remainingCountdownSeconds(now: now))
+        XCTAssertEqual(
+            range.officialHintText(language: .english),
+            "Official reset hint · Time window"
+        )
+
+        let exact = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{"window":{"target_at":"\#(futureISO)","target_kind":"exact"}},"probabilities":{"signal_percent":74}}"#.utf8),
+            now: now
+        )
+        XCTAssertEqual(exact.officialSignal?.timing, .exact(future))
+        XCTAssertEqual(exact.remainingCountdownSeconds(now: now), 3_665)
+
+        let topLevel = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{"deadline":"\#(futureISO)"},"probabilities":{"signal_percent":74}}"#.utf8),
+            now: now
+        )
+        XCTAssertEqual(topLevel.officialSignal?.timing, .deadline(future))
+        XCTAssertNil(topLevel.remainingCountdownSeconds(now: now))
+
+        let publishOnly = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{"at":"\#(futureISO)"},"last_reset_at":"\#(futureISO)","context":{"reset_at":"\#(futureISO)"},"probabilities":{"signal_percent":74}}"#.utf8),
+            now: now
+        )
+        XCTAssertEqual(publishOnly.officialSignal?.publishedAt, future)
+        XCTAssertEqual(publishOnly.officialSignal?.timing, .unavailable)
+        XCTAssertNil(publishOnly.remainingCountdownSeconds(now: now))
+
+        let malformed = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{"window":{"target_at":"not-a-date","start_at":"also-not-a-date","end_at":"2020-01-01T00:00:00Z"}},"probabilities":{"rounded_24h":20}}"#.utf8),
+            now: now
+        )
+        XCTAssertEqual(malformed.officialSignal?.timing, .unavailable)
+        XCTAssertEqual(malformed.probability24h, .percent(20))
+        XCTAssertNil(malformed.remainingCountdownSeconds(now: now))
     }
 
     func testOfficialQuotaParserRejectsInvalidAndMissingFixtures() throws {

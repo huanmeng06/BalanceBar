@@ -276,18 +276,65 @@ enum CodexResetProbability: Equatable {
     }
 }
 
+/// The semantic timing carried by a codex-reset official signal.
+///
+/// `exact` is the only form that may drive a per-second countdown. A deadline
+/// is a window boundary and a window preserves the absolute range without
+/// pretending that either edge is the reset instant.
+enum CodexResetOfficialTiming: Equatable {
+    case exact(Date)
+    case deadline(Date)
+    case window(start: Date?, end: Date?)
+    case unavailable
+
+    var exactDate: Date? {
+        guard case .exact(let date) = self else { return nil }
+        return date
+    }
+
+    var deadlineDate: Date? {
+        guard case .deadline(let date) = self else { return nil }
+        return date
+    }
+
+    var windowRange: (start: Date?, end: Date?)? {
+        guard case .window(let start, let end) = self else { return nil }
+        return (start, end)
+    }
+}
+
 /// Documented `official_signal` object from the public forecast payload.
 /// Presence of this value, not any nested score, switches the menu into
-/// strong-signal mode. Probability and a future countdown instant are parsed
-/// separately and may be missing.
+/// strong-signal mode. Probability and timing are parsed independently and
+/// may be missing.
 struct CodexResetOfficialSignal: Equatable {
     var probability: CodexResetProbability
-    /// Absolute future instant from `official_signal.window` or an equivalent
-    /// single-instant field. Nil when the payload has no countdown target.
-    var targetAt: Date? = nil
+    var timing: CodexResetOfficialTiming = .unavailable
     /// Tweet/publish instant from `official_signal.at`. Used only as the
     /// progress-bar right endpoint, never as the countdown amount.
     var publishedAt: Date? = nil
+
+    init(
+        probability: CodexResetProbability,
+        timing: CodexResetOfficialTiming = .unavailable,
+        publishedAt: Date? = nil
+    ) {
+        self.probability = probability
+        self.timing = timing
+        self.publishedAt = publishedAt
+    }
+
+    init(
+        probability: CodexResetProbability,
+        targetAt: Date?,
+        publishedAt: Date? = nil
+    ) {
+        self.init(
+            probability: probability,
+            timing: targetAt.map(CodexResetOfficialTiming.exact) ?? .unavailable,
+            publishedAt: publishedAt
+        )
+    }
 
     static let probabilityUnavailable = CodexResetOfficialSignal(probability: .unavailable)
 }
@@ -384,7 +431,7 @@ struct CodexResetForecast: Equatable {
     }
 
     func remainingCountdownSeconds(now: Date = Date()) -> Int? {
-        guard let targetAt = officialSignal?.targetAt else { return nil }
+        guard let targetAt = officialSignal?.timing.exactDate else { return nil }
         return max(0, Int(targetAt.timeIntervalSince(now).rounded(.down)))
     }
 
@@ -395,7 +442,7 @@ struct CodexResetForecast: Equatable {
     /// Publish → reset span for the strong-signal time bar. Requires a future
     /// `targetAt` later than `publishedAt`.
     func officialCountdownProgressSpan() -> (publishedAt: Date, targetAt: Date)? {
-        guard let targetAt = officialSignal?.targetAt,
+        guard let targetAt = officialSignal?.timing.exactDate,
               let publishedAt = officialSignal?.publishedAt,
               targetAt > publishedAt else {
             return nil
@@ -423,8 +470,15 @@ struct CodexResetForecast: Equatable {
         if officialCountdownProgressSpan() != nil {
             return nil
         }
-        if officialSignal?.targetAt != nil {
+        switch officialSignal?.timing {
+        case .deadline:
+            return tr(.keyCodexBankedResetOfficialHintDeadline, language: language)
+        case .window:
+            return tr(.keyCodexBankedResetOfficialHintWindow, language: language)
+        case .exact:
             return tr(.keyCodexBankedResetOfficialHintTime, language: language)
+        case .unavailable, nil:
+            break
         }
         return tr(.keyCodexBankedResetOfficialHintNoTime, language: language)
     }

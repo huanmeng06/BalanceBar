@@ -463,6 +463,8 @@
 "codex.banked_reset.high_probability" = "Alta prob.";
 "codex.banked_reset.official_hint_no_time" = "Aviso oficial · Sem hora específica";
 "codex.banked_reset.official_hint_time" = "Aviso oficial · Hora específica";
+"codex.banked_reset.official_hint_deadline" = "Aviso oficial · Prazo";
+"codex.banked_reset.official_hint_window" = "Aviso oficial · Janela de tempo";
 "codex.banked_reset.confidence_prefix" = "Confiança:";
 "codex.banked_reset.confidence_low" = "Baixa";
 "codex.banked_reset.confidence_medium" = "Média";

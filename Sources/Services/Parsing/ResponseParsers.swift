@@ -666,24 +666,32 @@ enum CodexResetForecastParser {
         default:
             return CodexResetOfficialSignal(
                 probability: signalProbability(from: object),
-                targetAt: officialSignalTargetAt(from: object, now: now),
+                timing: officialSignalTiming(from: object, now: now),
                 publishedAt: officialSignalPublishedAt(from: object)
             )
         }
     }
 
-    /// Single future instant from `official_signal.window` or equivalent
-    /// deadline/target fields. Recurring hour windows, `last_reset_at`, and
-    /// `context.reset_at` are ignored. Tweet time is `publishedAt`.
-    private static func officialSignalTargetAt(
+    /// Normalize the known official-signal time schemas into explicit domain
+    /// semantics. Recurring hour windows, `last_reset_at`, and `context.reset_at`
+    /// are deliberately ignored. Tweet time is `publishedAt`.
+    private static func officialSignalTiming(
         from object: [String: Any],
         now: Date
-    ) -> Date? {
+    ) -> CodexResetOfficialTiming {
         let official = object["official_signal"] as? [String: Any]
-        guard let official else { return nil }
-        return singleFutureInstant(official["window"], now: now)
-            ?? ResponseParsingSupport.resetDate(official["deadline"], now: now)
-            ?? ResponseParsingSupport.resetDate(official["target"], now: now)
+        guard let official else { return .unavailable }
+
+        if let timing = timing(from: official["window"], now: now) {
+            return timing
+        }
+        if let deadline = ResponseParsingSupport.resetDate(official["deadline"], now: now) {
+            return .deadline(deadline)
+        }
+        if let target = ResponseParsingSupport.resetDate(official["target"], now: now) {
+            return .exact(target)
+        }
+        return .unavailable
     }
 
     /// Publish instant from `official_signal.at`. Past timestamps are kept so
@@ -694,17 +702,56 @@ enum CodexResetForecastParser {
         return ResponseParsingSupport.timestampDate(official["at"])
     }
 
-    private static func singleFutureInstant(_ value: Any?, now: Date) -> Date? {
+    private static func timing(from value: Any?, now: Date) -> CodexResetOfficialTiming? {
         switch value {
         case nil, is NSNull:
             return nil
         case let dict as [String: Any]:
-            return ResponseParsingSupport.resetDate(dict["at"], now: now)
-                ?? ResponseParsingSupport.resetDate(dict["deadline"], now: now)
-                ?? ResponseParsingSupport.resetDate(dict["target"], now: now)
+            let targetKind = (dict["target_kind"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+
+            if let targetAt = ResponseParsingSupport.resetDate(dict["target_at"], now: now) {
+                if targetKind == "deadline" || targetKind == "end" || targetKind == "window_end" {
+                    return .deadline(targetAt)
+                }
+                return .exact(targetAt)
+            }
+            if let exact = ResponseParsingSupport.resetDate(dict["at"], now: now) {
+                return .exact(exact)
+            }
+            if let deadline = ResponseParsingSupport.resetDate(dict["deadline"], now: now) {
+                return .deadline(deadline)
+            }
+            if let target = ResponseParsingSupport.resetDate(dict["target"], now: now) {
+                return .exact(target)
+            }
+
+            let start = ResponseParsingSupport.timestampDate(dict["start_at"])
+            let end = ResponseParsingSupport.timestampDate(dict["end_at"])
+            guard let range = usableWindowRange(start: start, end: end, now: now) else {
+                return nil
+            }
+            if targetKind == "deadline" || targetKind == "end" || targetKind == "window_end",
+               let end = range.end {
+                return .deadline(end)
+            }
+            return .window(start: range.start, end: range.end)
         default:
-            return ResponseParsingSupport.resetDate(value, now: now)
+            return ResponseParsingSupport.resetDate(value, now: now).map(CodexResetOfficialTiming.exact)
         }
+    }
+
+    private static func usableWindowRange(
+        start: Date?,
+        end: Date?,
+        now: Date
+    ) -> (start: Date?, end: Date?)? {
+        guard start != nil || end != nil else { return nil }
+        guard end == nil || end! > now else { return nil }
+        guard start == nil || end == nil || start! <= end! else { return nil }
+        guard start == nil || start! > now || end! > now else { return nil }
+        return (start, end)
     }
 
     /// Compatibility reads for the current public schema. UI must not depend
