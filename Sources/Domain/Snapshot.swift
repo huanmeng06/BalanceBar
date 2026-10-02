@@ -278,9 +278,9 @@ enum CodexResetProbability: Equatable {
 
 /// The semantic timing carried by a codex-reset official signal.
 ///
-/// `exact` is the only form that may drive a per-second countdown. A deadline
-/// is a window boundary and a window preserves the absolute range without
-/// pretending that either edge is the reset instant.
+/// `exact` identifies a reset instant. A deadline or window end identifies a
+/// boundary that can still drive a clearly labelled countdown without
+/// pretending that the boundary is the reset instant.
 enum CodexResetOfficialTiming: Equatable {
     case exact(Date)
     case deadline(Date)
@@ -300,6 +300,17 @@ enum CodexResetOfficialTiming: Equatable {
     var windowRange: (start: Date?, end: Date?)? {
         guard case .window(let start, let end) = self else { return nil }
         return (start, end)
+    }
+
+    var countdownDate: Date? {
+        switch self {
+        case .exact(let date), .deadline(let date):
+            return date
+        case .window(_, let end):
+            return end
+        case .unavailable:
+            return nil
+        }
     }
 }
 
@@ -431,18 +442,18 @@ struct CodexResetForecast: Equatable {
     }
 
     func remainingCountdownSeconds(now: Date = Date()) -> Int? {
-        guard let targetAt = officialSignal?.timing.exactDate else { return nil }
-        return max(0, Int(targetAt.timeIntervalSince(now).rounded(.down)))
+        guard let countdownDate = officialSignal?.timing.countdownDate else { return nil }
+        return max(0, Int(countdownDate.timeIntervalSince(now).rounded(.down)))
     }
 
     func remainingCountdownMinutes(now: Date = Date()) -> Int? {
         remainingCountdownSeconds(now: now).map { $0 / 60 }
     }
 
-    /// Publish → reset span for the strong-signal time bar. Requires a future
-    /// `targetAt` later than `publishedAt`.
+    /// Publish → exact-target or window-boundary span for the strong-signal
+    /// time bar. The UI labels the boundary forms separately from a reset.
     func officialCountdownProgressSpan() -> (publishedAt: Date, targetAt: Date)? {
-        guard let targetAt = officialSignal?.timing.exactDate,
+        guard let targetAt = officialSignal?.timing.countdownDate,
               let publishedAt = officialSignal?.publishedAt,
               targetAt > publishedAt else {
             return nil

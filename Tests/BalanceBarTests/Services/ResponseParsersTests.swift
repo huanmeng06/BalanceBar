@@ -985,7 +985,7 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(nestedDeadline.officialSignal?.timing, .deadline(future))
-        XCTAssertNil(nestedDeadline.remainingCountdownSeconds(now: now))
+        XCTAssertEqual(nestedDeadline.remainingCountdownSeconds(now: now), 3_665)
         XCTAssertEqual(
             nestedDeadline.officialHintText(language: .english),
             "Official reset hint · Deadline"
@@ -1057,11 +1057,8 @@ final class ResponseParsersTests: XCTestCase {
         )
         XCTAssertEqual(production.officialSignal?.probability, .percent(93))
         XCTAssertEqual(production.officialSignal?.timing, .deadline(end))
-        XCTAssertNil(production.remainingCountdownSeconds(now: now))
-        XCTAssertEqual(
-            production.officialHintText(language: .english),
-            "Official reset hint · Deadline"
-        )
+        XCTAssertEqual(production.remainingCountdownSeconds(now: now), 7_200)
+        XCTAssertNil(production.officialHintText(language: .english))
 
         let range = CodexResetForecastParser.parse(
             data: Data(#"""
@@ -1073,7 +1070,7 @@ final class ResponseParsersTests: XCTestCase {
             range.officialSignal?.timing,
             .window(start: start, end: end)
         )
-        XCTAssertNil(range.remainingCountdownSeconds(now: now))
+        XCTAssertEqual(range.remainingCountdownSeconds(now: now), 7_200)
         XCTAssertEqual(
             range.officialHintText(language: .english),
             "Official reset hint · Time window"
@@ -1091,7 +1088,7 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(topLevel.officialSignal?.timing, .deadline(future))
-        XCTAssertNil(topLevel.remainingCountdownSeconds(now: now))
+        XCTAssertEqual(topLevel.remainingCountdownSeconds(now: now), 3_665)
 
         let publishOnly = CodexResetForecastParser.parse(
             data: Data(#"{"official_signal":{"at":"\#(futureISO)"},"last_reset_at":"\#(futureISO)","context":{"reset_at":"\#(futureISO)"},"probabilities":{"signal_percent":74}}"#.utf8),

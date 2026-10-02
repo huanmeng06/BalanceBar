@@ -470,6 +470,45 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertNil(countdownForecast.officialCountdownProgressSpan())
 
+        let deadlineForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(93),
+                timing: .deadline(date.addingTimeInterval(3_600))
+            )
+        )
+        XCTAssertEqual(deadlineForecast.remainingCountdownSeconds(now: date), 3_600)
+        XCTAssertEqual(deadlineForecast.menuPrimaryDisplayText(now: date), "1h0m")
+        XCTAssertEqual(
+            deadlineForecast.officialHintText(language: .english),
+            "Official reset hint · Deadline"
+        )
+
+        let rangeForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(93),
+                timing: .window(
+                    start: date.addingTimeInterval(-600),
+                    end: date.addingTimeInterval(7_200)
+                )
+            )
+        )
+        XCTAssertEqual(rangeForecast.remainingCountdownSeconds(now: date), 7_200)
+        XCTAssertEqual(rangeForecast.menuPrimaryDisplayText(now: date), "2h0m")
+        XCTAssertEqual(
+            rangeForecast.officialHintText(language: .english),
+            "Official reset hint · Time window"
+        )
+
         let published = date.addingTimeInterval(-3_600)
         let resetAt = date.addingTimeInterval(3_600)
         let progressForecast = CodexResetForecast(
