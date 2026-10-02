@@ -5462,6 +5462,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             CodexResetForecast,
             String,
             String,
+            Bool,
             Bool
         )] = [
             (
@@ -5476,7 +5477,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 ),
                 "71%",
                 "codex.bankedReset.probabilitySignalAmount",
-                true
+                true,
+                false
             ),
             (
                 "signal-fallback",
@@ -5490,11 +5492,28 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 ),
                 tr(.keyCodexBankedResetHighProbability),
                 "codex.bankedReset.probabilityHighLabel",
+                false,
                 false
+            ),
+            (
+                "confirmed-reset",
+                CodexResetForecast(
+                    probability24h: .percent(20),
+                    probability48h: .percent(35),
+                    confidence: .high,
+                    updatedAt: date,
+                    isCached: false,
+                    officialSignal: CodexResetOfficialSignal(probability: .percent(93)),
+                    officialResetObservation: .observed
+                ),
+                "已重置✅",
+                "codex.bankedReset.probabilityConfirmedLabel",
+                false,
+                true
             )
         ]
 
-        for (name, forecast, largeText, largeIdentifier, usesNumeric) in cases {
+        for (name, forecast, largeText, largeIdentifier, usesNumeric, confirmed) in cases {
             let controller = StatusItemController(
                 actions: StatusItemController.Actions(
                     manualRefresh: {},
@@ -5553,7 +5572,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)), name)
             XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilitySource)), name)
             XCTAssertTrue(labels.contains(largeText), name)
-            XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetOfficialHintNoTime)), name)
+            XCTAssertTrue(
+                labels.contains(
+                    confirmed
+                        ? tr(.keyCodexBankedResetOfficialHintConfirmed)
+                        : tr(.keyCodexBankedResetOfficialHintNoTime)
+                ),
+                name
+            )
             XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetOfficialHintTime)), name)
             XCTAssertFalse(labels.contains("10/5"), name)
             XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)), name)
@@ -5588,7 +5614,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             XCTAssertEqual(
                 officialHint.stringValue,
-                tr(.keyCodexBankedResetOfficialHintNoTime),
+                tr(
+                    confirmed
+                        ? .keyCodexBankedResetOfficialHintConfirmed
+                        : .keyCodexBankedResetOfficialHintNoTime
+                ),
                 name
             )
             XCTAssertEqual(officialHint.textColor, NSColor.secondaryLabelColor, name)

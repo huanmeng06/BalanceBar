@@ -476,3 +476,6 @@
 "dashboard.menu.page.color_yellow" = "黃";
 "dashboard.menu.page.color_green" = "綠";
 "common.restore_defaults" = "回復預設值";
+
+"codex.banked_reset.official_hint_confirmed" = "官方重置提示 · 已重置✅";
+"codex.banked_reset.official_reset_confirmed" = "已重置✅";

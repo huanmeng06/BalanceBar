@@ -6362,7 +6362,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let amount: NSView
         let marqueeAmountText: String
         var reservationFont = amountFont
-        if let minutes = forecast.remainingCountdownMinutes(now: bankedResetCountdownNow()) {
+        if forecast.isOfficialResetConfirmed {
+            let text = forecast.menuPrimaryDisplayText()
+            let labelFont = OpenCodexCardLayout.bankedResetPrimaryLabelFont(for: text)
+            let label = makeOverviewLabel(text, font: labelFont)
+            label.alignment = .right
+            label.frame = row.amount
+            label.identifier = NSUserInterfaceItemIdentifier(
+                "codex.bankedReset.probabilityConfirmedLabel"
+            )
+            amount = label
+            marqueeAmountText = text
+            reservationFont = labelFont
+        } else if let minutes = forecast.remainingCountdownMinutes(now: bankedResetCountdownNow()) {
             let sample = OverviewNumericSample(
                 identity: .bankedResetProbabilityCountdown(provider: provider),
                 format: .remainingMinutes,
