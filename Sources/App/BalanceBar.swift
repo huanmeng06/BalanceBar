@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey]
+    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -205,7 +205,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             updateState: { [weak self] in self?.updateService.state ?? .failed(.invalidCurrentVersion) },
             statusLinks: { [weak self] in self?.statusLinks ?? [] },
             defaultStatusLinks: { [weak self] in self?.defaultStatusLinks ?? [] },
-            setStatusLinks: { [weak self] links in self?.statusLinks = links }
+            setStatusLinks: { [weak self] links in self?.statusLinks = links },
+            notificationConfiguration: DashboardNotificationPageConfiguration(
+                coordinator: notificationCoordinator,
+                providerChoices: { [weak self] agent in
+                    guard let self, let client = agent.assistantClient else { return [] }
+                    return self.ccSwitchRepository.loadChoices(appType: client.appType)
+                }
+            )
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -346,6 +353,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient = BalanceAPIClient()
     private let balanceProgressStore = ProviderBalanceProgressStore()
+    private lazy var notificationCoordinator = BalanceNotificationCoordinator()
+    private var lastNotificationPermissionState: BalanceNotificationPermissionState?
     private var providerRefreshCoordinator: ProviderRefreshCoordinator!
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
@@ -437,6 +446,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore()
         )
         super.init()
+        notificationCoordinator.onPermissionStateChanged = { [weak self] state in
+            guard let self else { return }
+            let previous = self.lastNotificationPermissionState
+            self.lastNotificationPermissionState = state
+            guard state == .denied || previous == .denied else { return }
+            DispatchQueue.main.async {
+                self.dashboardComposition.refreshNotificationsPage()
+            }
+        }
+        notificationCoordinator.onOpenAgent = { [weak self] agent in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                if let client = agent.assistantClient {
+                    self.currentAgentOpener.open(client: client)
+                }
+            }
+        }
         reloadCurrentProviderNameCache()
         self.updateService.onStateChange = { [weak self] _ in
             guard let self else { return }
@@ -462,7 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self.refreshStatusItemMenuInput()
                 }
                 self?.refresh(reason: .configurationChanged)
-                self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: self?.activeClient ?? .codex)
+                self?.refreshMonitoredQuickSwitchSummaries(force: true)
             }
         )
         providerRefreshCoordinator = ProviderRefreshCoordinator(
@@ -484,6 +510,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 quickSwitchSummaryChanged: { [weak self] providerID in
                     self?.publishQuickSwitchSummary(providerID: providerID)
+                },
+                notificationSnapshot: { [weak self] client, providerID, snapshot in
+                    guard let self else { return }
+                    self.notificationCoordinator.process(
+                        snapshot: snapshot,
+                        agent: Self.notificationAgent(for: client),
+                        providerID: providerID
+                    )
                 }
             )
         )
@@ -798,8 +832,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "database"
         )
         refresh(reason: .initial)
-        providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
-        providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+        refreshMonitoredQuickSwitchSummaries(force: true, extraClients: [.claude])
         providerRefreshCoordinator.prefetchCurrentBalance(for: .claude)
         activityCoordinator.start(interval: activityPollInterval)
         activityCoordinator.pollNow()
@@ -826,6 +859,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         dashboardComposition.refreshLaunchAtLogin()
         dashboardComposition.refreshLaunchWithChatGPT()
+        notificationCoordinator.refreshPermission()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -1385,6 +1419,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
 
+    private static func notificationAgent(for client: AssistantClient) -> BalanceNotificationAgent {
+        switch client {
+        case .codex: return .gpt
+        case .claude: return .claude
+        case .grok: return .grok
+        }
+    }
+
     var dashboardCompositionForTesting: DashboardCompositionController { dashboardComposition }
     var manualRefreshActionForTesting: (() -> Void)?
 
@@ -1478,13 +1520,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
+    private func refreshMonitoredQuickSwitchSummaries(
+        force: Bool,
+        extraClients: [AssistantClient] = []
+    ) {
+        var seen = Set<AssistantClient>()
+        for client in [activeClient] + extraClients where seen.insert(client).inserted {
+            providerRefreshCoordinator.refreshQuickSwitchSummaries(force: force, for: client)
+        }
+        for target in notificationCoordinator.monitoredNotificationTargets()
+        where seen.insert(target.client).inserted {
+            providerRefreshCoordinator.refreshQuickSwitchSummaries(
+                force: force,
+                for: target.client,
+                providerIDs: target.providerIDs
+            )
+        }
+    }
+
     private func configureRefreshTimers() {
         timer?.invalidate()
 
         let providerTimer = Timer(timeInterval: providerPollInterval, repeats: true) { [weak self] _ in
             self?.refreshStatusItemMenuInput()
             self?.refresh(reason: .scheduled)
-            self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: false, for: self?.activeClient ?? .codex)
+            self?.refreshMonitoredQuickSwitchSummaries(force: false)
         }
         timer = providerTimer
         RunLoop.main.add(providerTimer, forMode: .common)

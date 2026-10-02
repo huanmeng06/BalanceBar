@@ -2532,6 +2532,58 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(codex.consumeImmediateResume())
     }
 
+    func testNotificationClickOpensCurrentAgentInsteadOfNotificationsSettings() throws {
+        let source = try balanceBarSource()
+        let start = try XCTUnwrap(source.range(of: "notificationCoordinator.onOpenAgent"))
+        let end = try XCTUnwrap(
+            source.range(
+                of: "reloadCurrentProviderNameCache()",
+                range: start.upperBound..<source.endIndex
+            )
+        )
+        let path = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(path.contains("currentAgentOpener.open(client:"))
+        XCTAssertTrue(path.contains("agent.assistantClient"))
+        XCTAssertFalse(path.contains("openNotificationAgentWindow"))
+        XCTAssertFalse(path.contains("initialSection: .notifications"))
+        XCTAssertFalse(path.contains("showNotificationAgent"))
+        XCTAssertFalse(source.contains("private func openNotificationAgentWindow"))
+    }
+
+    func testProviderTimerRefreshesMonitoredAgentsWithoutAddingASecondTimer() throws {
+        let source = try balanceBarSource()
+        let timerStart = try XCTUnwrap(source.range(of: "private func configureRefreshTimers()"))
+        let timerEnd = try XCTUnwrap(
+            source.range(
+                of: "static let backgroundUpdateCheckInterval",
+                range: timerStart.upperBound..<source.endIndex
+            )
+        )
+        let timerPath = String(source[timerStart.lowerBound..<timerEnd.lowerBound])
+        XCTAssertTrue(timerPath.contains("refreshMonitoredQuickSwitchSummaries(force: false)"))
+        XCTAssertFalse(timerPath.contains("refreshQuickSwitchSummaries(force: false, for:"))
+        XCTAssertEqual(timerPath.components(separatedBy: "Timer(").count - 1, 1)
+
+        let helperStart = try XCTUnwrap(source.range(of: "private func refreshMonitoredQuickSwitchSummaries("))
+        let helper = String(source[helperStart.lowerBound..<timerStart.lowerBound])
+        XCTAssertTrue(helper.contains("notificationCoordinator.monitoredNotificationTargets()"))
+        XCTAssertTrue(helper.contains("seen.insert(client).inserted"))
+        XCTAssertTrue(helper.contains("providerIDs: target.providerIDs"))
+        XCTAssertTrue(helper.contains("[activeClient]"))
+
+        let launchStart = try XCTUnwrap(source.range(of: "func applicationDidFinishLaunching"))
+        let launchEnd = try XCTUnwrap(
+            source.range(
+                of: "func applicationWillTerminate",
+                range: launchStart.upperBound..<source.endIndex
+            )
+        )
+        let launchPath = String(source[launchStart.lowerBound..<launchEnd.lowerBound])
+        XCTAssertTrue(launchPath.contains("refreshMonitoredQuickSwitchSummaries(force: true, extraClients: [.claude])"))
+        XCTAssertTrue(launchPath.contains("prefetchCurrentBalance(for: .claude)"))
+        XCTAssertFalse(launchPath.contains("refreshQuickSwitchSummaries(force: true, for: .claude)"))
+    }
+
     private func balanceBarSource(file: StaticString = #filePath) throws -> String {
         let repositoryRoot = try TestRepositoryRoot.locate(from: String(describing: file))
         return try String(contentsOf: repositoryRoot

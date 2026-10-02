@@ -553,14 +553,17 @@ enum DashboardSettingsComponents {
         let field: NSTextField
         let capacityTemplate: String
         fileprivate let numericEditingDelegate: CompactNumericFieldDelegate
+        private let fieldWidthConstraint: NSLayoutConstraint
 
         fileprivate init(
             field: NSTextField,
+            fieldWidthConstraint: NSLayoutConstraint,
             capacityTemplate: String,
             trailingViews: [NSView],
             externalDelegate: NSTextFieldDelegate?
         ) {
             self.field = field
+            self.fieldWidthConstraint = fieldWidthConstraint
             self.capacityTemplate = capacityTemplate
             self.numericEditingDelegate = CompactNumericFieldDelegate(
                 externalDelegate: externalDelegate
@@ -579,6 +582,11 @@ enum DashboardSettingsComponents {
             for view in trailingViews {
                 addArrangedSubview(view)
             }
+        }
+
+        func setFieldWidth(_ width: CGFloat) {
+            fieldWidthConstraint.constant = max(1, width)
+            invalidateIntrinsicContentSize()
         }
 
         required init?(coder: NSCoder) {
@@ -727,13 +735,16 @@ enum DashboardSettingsComponents {
 
         /// An empty numeric field shows a gray placeholder. Tab / focus loss
         /// should commit that placeholder, not restore the previous value.
+        /// Non-numeric placeholders such as "不提醒" stay gray; pages parse
+        /// empty as zero themselves.
         private func acceptPlaceholderIfFieldIsEmpty(_ field: NSTextField) {
             let current = (field.currentEditor()?.string ?? field.stringValue)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard current.isEmpty,
                   let placeholder = field.placeholderString?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
-                  !placeholder.isEmpty else {
+                  !placeholder.isEmpty,
+                  Double(placeholder) != nil else {
                 return
             }
             field.currentEditor()?.string = placeholder
@@ -848,7 +859,8 @@ enum DashboardSettingsComponents {
         field.toolTip = toolTip
         field.translatesAutoresizingMaskIntoConstraints = false
         let compactWidth = compactNumericWidth(for: field, capacityTemplate: capacityTemplate)
-        field.widthAnchor.constraint(equalToConstant: compactWidth).isActive = true
+        let fieldWidthConstraint = field.widthAnchor.constraint(equalToConstant: compactWidth)
+        fieldWidthConstraint.isActive = true
         field.setContentHuggingPriority(.required, for: .horizontal)
         field.setContentHuggingPriority(.required, for: .vertical)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -857,6 +869,7 @@ enum DashboardSettingsComponents {
         field.action = action
         return CompactNumericFieldAccessory(
             field: field,
+            fieldWidthConstraint: fieldWidthConstraint,
             capacityTemplate: capacityTemplate,
             trailingViews: trailingViews,
             externalDelegate: delegate

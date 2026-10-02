@@ -48,6 +48,7 @@ final class DashboardPreferencePages {
     private let menuBarPage = DashboardMenuBarPage()
     private let advancedPage = DashboardAdvancedPage()
     private let logsPage = DashboardLogsPage()
+    private let notificationsPage: DashboardNotificationPages?
     // Global Search projects content into a detached tree. Keep its page
     // models separate from the cached production pages.
     private let searchGeneralPage = DashboardGeneralPage()
@@ -61,13 +62,15 @@ final class DashboardPreferencePages {
         devBundleIdentifier: String,
         actions: DashboardPreferencePageActions,
         launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController(),
-        launchWithChatGPTController: LaunchWithChatGPTController = LaunchWithChatGPTController()
+        launchWithChatGPTController: LaunchWithChatGPTController = LaunchWithChatGPTController(),
+        notificationConfiguration: DashboardNotificationPageConfiguration? = nil
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
         self.actions = actions
         self.launchAtLoginController = launchAtLoginController
         self.launchWithChatGPTController = launchWithChatGPTController
+        notificationsPage = notificationConfiguration.map(DashboardNotificationPages.init(configuration:))
         relay.onToggle = actions.onToggle
         relay.onLaunchAtLogin = actions.onLaunchAtLogin
         relay.onLaunchWithChatGPT = actions.onLaunchWithChatGPT
@@ -159,6 +162,9 @@ final class DashboardPreferencePages {
                 logViewer: forSearch ? nil : logsPage.makeViewer(),
                 includeLogViewer: !forSearch
             ))
+        case .notifications:
+            notificationsPage?.showRoot()
+            return notificationsPage?.make() ?? DashboardSettingsComponents.makeSettingsPageContent([])
         case .about:
             return DashboardAboutPage.make(
                 devBundleIdentifier: devBundleIdentifier
@@ -210,6 +216,23 @@ final class DashboardPreferencePages {
         if isSearchProjectionActive {
             searchMenuPage.refresh(preferences: preferences)
         }
+    }
+
+    func refreshNotifications() {
+        notificationsPage?.refresh()
+    }
+
+    func showNotificationAgent(_ agent: BalanceNotificationAgent) {
+        notificationsPage?.showAgent(agent)
+    }
+
+    func setNotificationNavigationHandler(_ handler: @escaping (String) -> Void) {
+        notificationsPage?.onNavigateRoute = handler
+    }
+
+    @discardableResult
+    func showNotificationRoute(_ route: String) -> Bool {
+        notificationsPage?.showNavigationRoute(route) ?? false
     }
 
     func suspend(_ section: DashboardSection) {

@@ -90,7 +90,7 @@ final class DashboardAccessoryHarnessController {
                     color: .systemBlue
                 )
             )
-        case .general, .advanced, .about:
+        case .general, .advanced, .about, .notifications:
             return .none
         }
     }

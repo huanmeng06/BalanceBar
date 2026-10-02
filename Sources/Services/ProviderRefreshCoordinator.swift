@@ -206,6 +206,7 @@ struct ProviderRefreshActions {
     let render: (Snapshot) -> Void
     let storeClientSnapshot: (AssistantClient, String, Snapshot) -> Void
     let quickSwitchSummaryChanged: (String) -> Void
+    var notificationSnapshot: ((AssistantClient, String, Snapshot) -> Void)? = nil
 }
 
 /// Owns standard Provider balance/quota requests, request cadence, quick
@@ -229,7 +230,7 @@ final class ProviderRefreshCoordinator {
     // or write them until their work reaches that serial boundary.
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
-    private var lastQuickSwitchFetch: Date?
+    private var lastQuickSwitchFetch: [AssistantClient: Date] = [:]
     private var quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaryPayloads: [String: QuickSwitchSummaryPayload] = [:]
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
@@ -293,7 +294,7 @@ final class ProviderRefreshCoordinator {
             guard let self else { return }
             self.lastBalanceFetch = nil
             self.lastOfficialFetch = nil
-            self.lastQuickSwitchFetch = nil
+            self.lastQuickSwitchFetch = [:]
         }
     }
 
@@ -372,15 +373,20 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    func refreshQuickSwitchSummaries(force: Bool, for requestedClient: AssistantClient? = nil) {
+    func refreshQuickSwitchSummaries(
+        force: Bool,
+        for requestedClient: AssistantClient? = nil,
+        providerIDs: Set<String>? = nil
+    ) {
         let client = requestedClient ?? .codex
         queue.async { [weak self] in
             guard let self else { return }
             let currentDate = self.now()
-            let due = self.lastQuickSwitchFetch.map { currentDate.timeIntervalSince($0) >= 60 } ?? true
+            let due = self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
             guard force || due else { return }
-            self.lastQuickSwitchFetch = currentDate
+            self.lastQuickSwitchFetch[client] = currentDate
             for source in self.repository.loadSummarySources(appType: client.appType) {
+                if let providerIDs, !providerIDs.contains(source.id) { continue }
                 if source.isOfficial {
                     if client != .codex { continue }
                     self.officialQuotaClient.fetchQuota(
@@ -392,6 +398,19 @@ final class ProviderRefreshCoordinator {
                         self.updateQuickSwitchSummary(
                             providerID: source.id,
                             payload: .officialWindows(response.output.windows)
+                        )
+                        self.actions.notificationSnapshot?(
+                            client,
+                            source.id,
+                            .official(
+                                source.name,
+                                response.output.remaining,
+                                response.output.label,
+                                response.output.reset,
+                                Date(),
+                                windows: response.output.windows,
+                                lunaReserve: response.output.lunaReserve
+                            )
                         )
                     }
                     continue
@@ -416,6 +435,18 @@ final class ProviderRefreshCoordinator {
                     self.updateQuickSwitchSummary(
                         providerID: source.id,
                         payload: .formatted(Self.formatBalanceSummary(response.output.amount, unit: response.output.unit))
+                    )
+                    self.actions.notificationSnapshot?(
+                        client,
+                        source.id,
+                        .balance(
+                            source.name,
+                            response.output.amount,
+                            response.output.unit,
+                            query.websiteURL,
+                            Date(),
+                            progressPercentage: nil
+                        )
                     )
                 }
             }
@@ -487,15 +518,16 @@ final class ProviderRefreshCoordinator {
                     providerID: providerID,
                     payload: .formatted(Self.formatBalanceSummary(response.output.amount, unit: response.output.unit))
                 )
+                let balanceSnapshot = Snapshot.balance(
+                    providerName,
+                    response.output.amount,
+                    response.output.unit,
+                    query.websiteURL,
+                    Date(),
+                    progressPercentage: progressPercentage
+                )
                 self.renderForCurrentProvider(
-                    .balance(
-                        providerName,
-                        response.output.amount,
-                        response.output.unit,
-                        query.websiteURL,
-                        Date(),
-                        progressPercentage: progressPercentage
-                    ),
+                    balanceSnapshot,
                     providerID: providerID,
                     client: client
                 )
@@ -664,6 +696,9 @@ final class ProviderRefreshCoordinator {
             guard let self, self.repository.loadCurrent(appType: client.appType)?.id == providerID else { return }
             if next.kind == .balance {
                 self.providerBalanceSnapshots.store(next, clientID: client.rawValue, providerID: providerID)
+            }
+            if next.kind == .official || next.kind == .balance {
+                self.actions.notificationSnapshot?(client, providerID, next)
             }
             DispatchQueue.main.async {
                 if next.kind == .official || next.kind == .balance {

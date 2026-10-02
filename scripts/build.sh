@@ -200,6 +200,8 @@ for localization_directory in "${localization_directories[@]}"
 do
     localization_file="$lang_src/$localization_directory/Localizable.strings"
     [[ -f "$localization_file" ]] || die "required localization resource is missing: $localization_file"
+    notifications_file="$lang_src/$localization_directory/Notifications.strings"
+    [[ -f "$notifications_file" ]] || die "required notification localization resource is missing: $notifications_file"
     infoplist_file="$lang_src/$localization_directory/InfoPlist.strings"
     [[ -f "$infoplist_file" ]] || die "required InfoPlist.strings is missing: $infoplist_file"
 done
@@ -309,6 +311,8 @@ do
     mkdir -p "$resources_dir/$localization_directory"
     cp "$lang_src/$localization_directory/Localizable.strings" \
         "$resources_dir/$localization_directory/Localizable.strings"
+    cp "$lang_src/$localization_directory/Notifications.strings" \
+        "$resources_dir/$localization_directory/Notifications.strings"
     cp "$lang_src/$localization_directory/InfoPlist.strings" \
         "$resources_dir/$localization_directory/InfoPlist.strings"
 done

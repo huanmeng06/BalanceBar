@@ -297,6 +297,7 @@ final class AppPreferences {
     static let menuBarAnimationFrameRateKey = "menuBarAnimationFrameRate"
     static let menuBarAnimationFrameRateDefault = MenuBarAnimationTiming.defaultFrameRate
     static let menuBarAnimationFrameRateRange = MenuBarAnimationTiming.validFrameRateRange
+    static let notificationSettingsKey = BalanceNotificationSettingsStore.storageKey
     static let defaultBalanceDisplayThreshold = 0.10
     static let minimumBalanceDisplayThreshold = 0.01
 
@@ -706,6 +707,19 @@ final class AppPreferences {
             return normalized
         }
         set { if let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: "statusLinks") } }
+    }
+
+    /// Persistent notification configuration is kept as one versioned blob so
+    /// adding agents or resource fields remains backwards compatible. Alert
+    /// stage and last-value state live in the same blob to prevent a restart
+    /// from replaying an already delivered low-balance alert.
+    var notificationSettings: BalanceNotificationSettings {
+        get {
+            BalanceNotificationSettingsStore(defaults: defaults).settings
+        }
+        set {
+            BalanceNotificationSettingsStore(defaults: defaults).replace(newValue)
+        }
     }
 
     static func normalizedBalanceDisplayThreshold(_ value: Double) -> Double {
