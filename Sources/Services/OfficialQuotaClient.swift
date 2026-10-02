@@ -291,6 +291,10 @@ final class OfficialQuotaClient {
         request.httpMethod = "GET"
         request.timeoutInterval = 8
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(
+            "BalanceBar (+https://github.com/huanmeng06/BalanceBar)",
+            forHTTPHeaderField: "User-Agent"
+        )
         let task = session.dataTask(with: request) { data, response, error in
             if error != nil {
                 completion(.unavailable)

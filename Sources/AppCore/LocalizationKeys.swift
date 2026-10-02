@@ -476,6 +476,8 @@
     case keyCodexBankedResetOfficialHintTime = "codex.banked_reset.official_hint_time"
     case keyCodexBankedResetOfficialHintDeadline = "codex.banked_reset.official_hint_deadline"
     case keyCodexBankedResetOfficialHintWindow = "codex.banked_reset.official_hint_window"
+    case keyCodexBankedResetOfficialCountdownDeadline = "codex.banked_reset.official_countdown_deadline"
+    case keyCodexBankedResetOfficialCountdownWindow = "codex.banked_reset.official_countdown_window"
     case keyCodexBankedResetConfidencePrefix = "codex.banked_reset.confidence_prefix"
     case keyCodexBankedResetConfidenceLow = "codex.banked_reset.confidence_low"
     case keyCodexBankedResetConfidenceMedium = "codex.banked_reset.confidence_medium"

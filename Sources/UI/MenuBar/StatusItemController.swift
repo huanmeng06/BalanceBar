@@ -6448,7 +6448,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.addSubview(amount)
         view.addSubview(
             makeMarqueeOverviewLabel(
-                tr(.keyCodexBankedResetProbabilityPrefix),
+                forecast.officialCountdownLabel(now: bankedResetCountdownNow())
+                    ?? tr(.keyCodexBankedResetProbabilityPrefix),
                 font: .systemFont(
                     ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                     weight: .medium

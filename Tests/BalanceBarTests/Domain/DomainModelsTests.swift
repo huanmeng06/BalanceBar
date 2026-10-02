@@ -483,6 +483,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(deadlineForecast.remainingCountdownSeconds(now: date), 3_600)
         XCTAssertEqual(deadlineForecast.menuPrimaryDisplayText(now: date), "1h0m")
+        XCTAssertEqual(deadlineForecast.officialCountdownLabel(language: .simplifiedChinese, now: date), "窗口截止倒计时")
         XCTAssertEqual(
             deadlineForecast.officialHintText(language: .english),
             "Official reset hint · Deadline"
@@ -504,6 +505,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(rangeForecast.remainingCountdownSeconds(now: date), 7_200)
         XCTAssertEqual(rangeForecast.menuPrimaryDisplayText(now: date), "2h0m")
+        XCTAssertEqual(rangeForecast.officialCountdownLabel(language: .simplifiedChinese, now: date), "窗口结束倒计时")
         XCTAssertEqual(
             rangeForecast.officialHintText(language: .english),
             "Official reset hint · Time window"

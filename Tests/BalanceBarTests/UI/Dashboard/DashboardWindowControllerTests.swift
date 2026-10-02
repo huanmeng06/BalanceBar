@@ -5958,6 +5958,165 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         controller.menuDidClose(controller.statusMenuForTesting)
     }
 
+    func testOfficialCodexMenuDeadlineUsesCountdownTimerProgressAndBoundaryTitle() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2d0h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "7d0h",
+                durationSeconds: 604_800
+            )
+        ]
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let published = now.addingTimeInterval(-3_600)
+        let target = now.addingTimeInterval(3_665)
+        let bankedReset = CodexBankedReset(cards: [
+            CodexBankedResetCard(
+                id: "card",
+                resetType: "codex_rate_limits",
+                titleText: tr(.keyCodexBankedResetFullResetTitle),
+                windowText: tr(.keyCodexBankedResetFullResetWindow),
+                expiresAt: now.addingTimeInterval(3_600),
+                expiresText: "later",
+                remainingText: "1h",
+                remainingIsWarning: false
+            )
+        ])
+        let forecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: now,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(71),
+                timing: .deadline(target),
+                publishedAt: published
+            )
+        )
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                quit: {},
+                switchProvider: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+        controller.bankedResetCountdownNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        controller.start(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                now,
+                windows: windows,
+                bankedReset: bankedReset,
+                resetForecast: forecast
+            ),
+            refreshDate: now,
+            menuInput: StatusItemController.MenuInput(
+                choices: [],
+                quickSwitchSummaries: [:],
+                activeClient: .codex,
+                openAIAccount: nil,
+                statusLinks: [],
+                showQuickSwitchMenu: false,
+                showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false,
+                showStatusMenu: false
+            ),
+            settings: StatusItemController.MenuBarSettings(
+                showIcon: true,
+                showAmount: true,
+                showReset: true,
+                horizontalPadding: 6,
+                keepMenuOpenAfterRefresh: true,
+                showQuotaProgressBar: false
+            )
+        )
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
+        XCTAssertTrue(labels.contains("窗口截止倒计时"))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetOfficialHintTime)))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetOfficialHintNoTime)))
+        XCTAssertFalse(labels.contains("10/5"))
+        XCTAssertFalse(labels.contains("07:30"))
+        XCTAssertFalse(labels.contains("71%"))
+        XCTAssertFalse(
+            allControls(of: overview, as: NSTextField.self).contains {
+                $0.identifier?.rawValue == "codex.bankedReset.officialHint"
+            }
+        )
+        let countdown = try XCTUnwrap(
+            allControls(of: overview, as: OverviewNumericTextView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probabilityCountdownAmount"
+            }
+        )
+        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        let progressViews = allControls(of: overview, as: QuotaProgressView.self)
+        XCTAssertEqual(progressViews.count, 1)
+        let bar = try XCTUnwrap(progressViews.first)
+        XCTAssertEqual(bar.identifier?.rawValue, "codex.bankedReset.officialCountdownProgress")
+        XCTAssertEqual(bar.fillOrigin, .leading)
+        let expectedRemaining = 3_665.0 / (3_600.0 + 3_665.0) * 100
+        XCTAssertEqual(bar.percentage, expectedRemaining, accuracy: 0.001)
+        let metrics = try XCTUnwrap(
+            OpenCodexCardLayout.frames(
+                for: .quota,
+                officialQuotaWindows: windows,
+                includesQuotaProgress: false,
+                includesBankedReset: true,
+                bankedResetCardCount: 1
+            ).bankedResetForecastMetrics
+        )
+        XCTAssertEqual(bar.frame.height, OpenCodexCardLayout.quotaProgressHeight, accuracy: 0.001)
+        XCTAssertEqual(bar.frame.midY, metrics.midY, accuracy: 0.001)
+        XCTAssertEqual(bar.frame.width, metrics.width, accuracy: 0.001)
+        let source = try XCTUnwrap(
+            allControls(of: overview, as: HoverLinkTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probability"
+            }
+        )
+        XCTAssertEqual(source.stringValue, tr(.keyCodexBankedResetProbabilitySource))
+        XCTAssertEqual(
+            source.hoverHint,
+            StatusItemController.codexResetForecastHint(for: forecast)
+        )
+
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertNotNil(controller.bankedResetCountdownTimerForTesting)
+        controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(1)
+        controller.bankedResetCountdownTimerForTesting?.fire()
+        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        let remainingAfterTick = 3_664.0 / (3_600.0 + 3_665.0) * 100
+        XCTAssertEqual(bar.percentage, remainingAfterTick, accuracy: 0.001)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertNil(controller.bankedResetCountdownTimerForTesting)
+    }
+
     func testOfficialCodexMenuCardHidesBankedResetWhenShowBankedResetIsOff() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

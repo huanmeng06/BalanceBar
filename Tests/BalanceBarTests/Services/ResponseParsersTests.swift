@@ -1107,6 +1107,34 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertNil(malformed.remainingCountdownSeconds(now: now))
     }
 
+    func testOfficialDeadlineUsesAbsoluteAPIInstantAcrossTimeZones() throws {
+        let now = try XCTUnwrap(ResponseParsingSupport.timestampDate("2026-10-02T07:25:00Z"))
+        let expected = try XCTUnwrap(ResponseParsingSupport.timestampDate("2026-10-03T06:59:59.999Z"))
+        let previousTimeZone = NSTimeZone.default
+        defer { NSTimeZone.default = previousTimeZone }
+        for zone in ["America/Los_Angeles", "Asia/Shanghai", "UTC"] {
+            NSTimeZone.default = try XCTUnwrap(TimeZone(identifier: zone))
+            let forecast = CodexResetForecastParser.parse(data: Data(#"""
+            {"mode":"announced","updated_at":"2026-10-02T07:25:00Z","probabilities":{"rounded_24h":17,"rounded_48h":31,"signal_percent":93},"confidence":"low","last_reset_at":"2026-09-26T18:17:54Z","official_signal":{"tweet_id":"2105843926221660585","at":"2026-10-02T02:14:51Z","score":{"value":93},"window":{"label":"end of Friday","start_at":"2026-10-02T02:14:51Z","end_at":"2026-10-03T06:59:59.999Z","time_zone":"America/Los_Angeles","target_kind":"deadline","target_at":"2026-10-03T06:59:59.999Z"}}}
+            """#.utf8), now: now)
+            XCTAssertEqual(forecast.officialSignal?.timing, .deadline(expected), zone)
+            XCTAssertEqual(forecast.menuPrimaryDisplayText(now: now), "23h34m", zone)
+            XCTAssertEqual(forecast.officialSignal?.probability, .percent(93))
+            XCTAssertEqual(forecast.officialCountdownLabel(language: .english, now: now), "Window deadline")
+        }
+    }
+
+    func testOfficialWindowWithOnlyStartSafelyKeepsRangeWithoutCountdown() {
+        for offset in [-60.0, 60.0] {
+            let start = now.addingTimeInterval(offset)
+            let data = Data("{\"official_signal\":{\"window\":{\"start_at\":\(Int(start.timeIntervalSince1970))}}}".utf8)
+            let forecast = CodexResetForecastParser.parse(data: data, now: now)
+            XCTAssertNil(forecast.remainingCountdownSeconds(now: now))
+            XCTAssertEqual(forecast.officialSignal?.timing,
+                           offset > 0 ? .window(start: start, end: nil) : .unavailable)
+        }
+    }
+
     func testOfficialQuotaParserRejectsInvalidAndMissingFixtures() throws {
         XCTAssertThrowsError(
             try OfficialQuotaResponseParser.parse(

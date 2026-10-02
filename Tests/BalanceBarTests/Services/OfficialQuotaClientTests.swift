@@ -239,6 +239,10 @@ final class OfficialQuotaClientTests: XCTestCase {
 
     func testCodexResetForecastParsesScoreWithoutCredentials() throws {
         StubURLProtocol.setHandler { request in
+            XCTAssertEqual(
+                request.value(forHTTPHeaderField: "User-Agent"),
+                "BalanceBar (+https://github.com/huanmeng06/BalanceBar)"
+            )
             XCTAssertEqual(request.url, CodexResetForecastParser.forecastURL)
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))

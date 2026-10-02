@@ -465,6 +465,8 @@
 "codex.banked_reset.official_hint_time" = "公式リセット案内 · 具体的な時刻";
 "codex.banked_reset.official_hint_deadline" = "公式リセット通知 · 締切";
 "codex.banked_reset.official_hint_window" = "公式リセット通知 · 時間枠";
+"codex.banked_reset.official_countdown_deadline" = "期限までの残り時間";
+"codex.banked_reset.official_countdown_window" = "時間枠終了まで";
 "codex.banked_reset.confidence_prefix" = "信頼度：";
 "codex.banked_reset.confidence_low" = "低";
 "codex.banked_reset.confidence_medium" = "中";

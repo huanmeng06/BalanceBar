@@ -748,9 +748,12 @@ enum CodexResetForecastParser {
         now: Date
     ) -> (start: Date?, end: Date?)? {
         guard start != nil || end != nil else { return nil }
-        guard end == nil || end! > now else { return nil }
-        guard start == nil || end == nil || start! <= end! else { return nil }
-        guard start == nil || start! > now || end! > now else { return nil }
+        if let end {
+            guard end > now else { return nil }
+            if let start, start > end { return nil }
+        } else {
+            guard let start, start > now else { return nil }
+        }
         return (start, end)
     }
 

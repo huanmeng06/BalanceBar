@@ -494,6 +494,21 @@ struct CodexResetForecast: Equatable {
         return tr(.keyCodexBankedResetOfficialHintNoTime, language: language)
     }
 
+    func officialCountdownLabel(
+        language: AppLanguage = .selected,
+        now: Date = Date()
+    ) -> String? {
+        guard remainingCountdownSeconds(now: now) != nil else { return nil }
+        switch officialSignal?.timing {
+        case .deadline:
+            return tr(.keyCodexBankedResetOfficialCountdownDeadline, language: language)
+        case .window:
+            return tr(.keyCodexBankedResetOfficialCountdownWindow, language: language)
+        case .exact, .unavailable, nil:
+            return nil
+        }
+    }
+
     func menuPrimaryDisplayText(
         language: AppLanguage = .selected,
         now: Date = Date()
