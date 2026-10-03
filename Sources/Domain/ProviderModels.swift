@@ -851,7 +851,8 @@ enum OpenCodexCardLayout {
         func quotaBandFrames(
             rowY: CGFloat,
             showsReset: Bool,
-            resetY: CGFloat? = nil
+            resetY: CGFloat? = nil,
+            resetWidth: CGFloat = 128
         ) -> OpenCodexQuotaRowFrames {
             OpenCodexQuotaRowFrames(
                 quotaDetail: CGRect(
@@ -864,7 +865,7 @@ enum OpenCodexCardLayout {
                     ? CGRect(
                         x: horizontalInset,
                         y: resetY ?? rowY,
-                        width: 128,
+                        width: resetWidth,
                         height: quotaResetHeight
                     )
                     : .zero,
@@ -885,7 +886,8 @@ enum OpenCodexCardLayout {
             ? quotaBandFrames(
                 rowY: probabilityRowY,
                 showsReset: true,
-                resetY: probabilityBottomY
+                resetY: probabilityBottomY,
+                resetWidth: contentWidth
             )
             : nil
         let bankedResetForecastMetrics = showsForecastMetrics

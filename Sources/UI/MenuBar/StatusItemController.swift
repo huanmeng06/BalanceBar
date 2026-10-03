@@ -6403,16 +6403,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 progressPercentage: nil
             )
             let plan = overviewNumericPlan(for: sample)
-            let numeric = makeOverviewNumericHoverLinkAmount(
-                plan: plan,
-                sample: sample,
-                frame: row.amount,
-                forecast: forecast
-            )
+            let numeric: NSView
+            if case .percent = forecast.probability48h {
+                numeric = makeOverviewNumericHoverLinkAmount(
+                    plan: plan,
+                    sample: sample,
+                    frame: row.amount,
+                    forecast: forecast
+                )
+            } else {
+                numeric = makeOverviewNumericAmount(
+                    plan: plan,
+                    sample: sample,
+                    frame: row.amount
+                )
+            }
             // The subtitle 24h view keeps codex.bankedReset.probability24h.
             numeric.identifier = NSUserInterfaceItemIdentifier(
                 "codex.bankedReset.probability24hAmount"
             )
+            if let numeric = numeric as? OverviewNumericTextView {
+                numeric.textField.identifier = numeric.identifier
+            }
             amount = numeric
             marqueeAmountText = plan.layoutReservationText
         case .strongSignal(.percent(let percent)):
