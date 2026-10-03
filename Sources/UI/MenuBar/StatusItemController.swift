@@ -6747,6 +6747,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let link = OverviewNumericHoverLinkTextField(text: plan.startText)
         link.font = font
         link.alignment = .right
+        link.cell?.alignment = .right
         link.lineBreakMode = .byClipping
         link.usesSingleLineMode = true
         link.restingTextColor = .labelColor
