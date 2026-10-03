@@ -442,21 +442,13 @@ enum OpenCodexCardLayout {
         quotaDetailOffset + quotaDetailHeight - quotaResetOffset
     }
 
-    /// Two-line text band, plus the extra metrics/hint line when that slot
-    /// is visible. `quotaTitleTopInset` keeps the next-block title 17pt below
-    /// the bar or extra line, matching 5h progress → 7-day title.
+    /// The probability section is one two-line band: the primary value spans
+    /// the title and subtitle, while the reset frame carries the forecast
+    /// subtitle or official hint.
     static func bankedResetProbabilityBlockHeight(
         includesForecastMetrics: Bool = true
     ) -> CGFloat {
-        let metricsHeight = includesForecastMetrics
-            ? bankedResetForecastLineGap + bankedResetForecastExtraHeight()
-            : 0
-        // The metrics line occupies the former source row, but the complete
-        // probability block still needs to reserve that line before the next
-        // quota block begins.
-        return quotaTitleTopInset
-            + bankedResetTextBandAmountHeight
-            + metricsHeight
+        bankedResetTextBandAmountHeight
     }
 
     /// Large primary label for the strong-signal fallback. Shrinks just
@@ -692,9 +684,6 @@ enum OpenCodexCardLayout {
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
         let showsForecastMetrics = includesBankedReset && includesBankedResetForecastMetrics
-        let forecastExtraHeight = showsForecastMetrics
-            ? bankedResetForecastLineGap + bankedResetForecastExtraHeight()
-            : 0
         let forecastLineHeight = bankedResetForecastLineHeight()
         let probabilityBlockHeight = includesBankedReset
             ? bankedResetProbabilityBlockHeight(
@@ -848,9 +837,9 @@ enum OpenCodexCardLayout {
             : nil
         let cardSummaryY = bottomInset + bankedDetailBlockHeight
         let probabilityBottomY = cardSummaryY + cardSummaryHeight + probabilityCardGap
-        // Keep the title and primary value above the former source row. The
-        // reset frame of this row is reassigned to that lower metrics line.
-        let probabilityRowY = probabilityBottomY + forecastExtraHeight
+        // The former source row is the probability subtitle. Keep it inside
+        // the same two-line band instead of creating a third forecast row.
+        let probabilityRowY = probabilityBottomY
         // Row origin is the subtitle bottom. Title, subtitle, and amount
         // keep the same two-line relationship; the unused progress-bar
         // slot is not part of the block height.
@@ -892,15 +881,14 @@ enum OpenCodexCardLayout {
             ? quotaBandFrames(
                 rowY: probabilityRowY,
                 showsReset: true,
-                resetY: probabilityBottomY,
-                resetWidth: contentWidth
+                resetY: nil
             )
             : nil
         let bankedResetForecastMetrics = showsForecastMetrics
             ? CGRect(
                 x: horizontalInset,
-                y: probabilityBottomY,
-                width: bankedResetForecastMetricsWidth,
+                y: probabilityRowY,
+                width: 128,
                 height: forecastLineHeight
             )
             : nil
