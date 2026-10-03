@@ -856,7 +856,10 @@ class HoverLinkTextField: NSTextField {
         guard attributedString.length > 0 else { return attributedString }
 
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = cell?.alignment ?? alignment
+        // The attributed string is drawn independently of the cell. Use the
+        // view's current alignment so right-aligned menu amounts do not fall
+        // back to the cell's default leading alignment.
+        paragraphStyle.alignment = alignment
         paragraphStyle.lineBreakMode = cell?.lineBreakMode ?? lineBreakMode
         attributedString.addAttribute(
             .paragraphStyle,
