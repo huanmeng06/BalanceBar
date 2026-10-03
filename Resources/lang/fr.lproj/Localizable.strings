@@ -476,3 +476,6 @@
 "dashboard.menu.page.color_yellow" = "Jaune";
 "dashboard.menu.page.color_green" = "Vert";
 "common.restore_defaults" = "Restaurer les valeurs par défaut";
+
+"codex.banked_reset.official_hint_confirmed" = "Indication officielle · Réinitialisé✅";
+"codex.banked_reset.official_reset_confirmed" = "Réinitialisé✅";

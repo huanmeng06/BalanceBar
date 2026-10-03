@@ -460,12 +460,19 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                     statusCode: 500
                 )
             }
+            if request.url?.path == "/api/forecast" {
+                return DelayedBalanceURLProtocol.Reply(
+                    data: ResponseParsersTests.codexResetIssueJSON,
+                    statusCode: 200
+                )
+            }
             return DelayedBalanceURLProtocol.Reply(
                 data: Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000}}}"#.utf8),
                 statusCode: 200
             )
         }
         let rendered = expectation(description: "official snapshot after list failure")
+        rendered.expectedFulfillmentCount = 2
         var captured: Snapshot?
         let coordinator = ProviderRefreshCoordinator(
             repository: repository,
@@ -504,14 +511,15 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.remaining), [80, 45])
         XCTAssertNil(snapshot.bankedReset)
-        XCTAssertEqual(snapshot.resetForecast, .unavailable)
+        XCTAssertEqual(snapshot.resetForecast.probability24h, .percent(24))
+        XCTAssertEqual(snapshot.resetForecast.probability48h, .percent(42))
         requestLock.lock()
         let paths = requestPaths
         requestLock.unlock()
         XCTAssertTrue(paths.contains { $0.contains("/backend-api/wham/usage") })
         XCTAssertTrue(paths.contains { $0.contains("/backend-api/wham/rate-limit-reset-credits") })
         XCTAssertFalse(paths.contains { $0.contains("consume") })
-        XCTAssertFalse(paths.contains("/api/forecast"))
+        XCTAssertTrue(paths.contains("/api/forecast"))
     }
 
     func testOfficialRefreshDrawsBankedResetDetailsFromReadOnlyCreditList() throws {

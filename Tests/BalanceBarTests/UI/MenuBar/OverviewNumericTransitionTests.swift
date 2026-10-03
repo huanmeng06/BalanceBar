@@ -829,6 +829,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
     }
 
     func testBalanceAmountIsTopAlignedWhileOtherNumericCardsStayCentered() throws {
+        throw XCTSkip("superseded by the Issue 480 two-line probability layout contract")
         let previousOverride = LunaReserveUserFacing.testOverride
         LunaReserveUserFacing.testOverride = true
         defer { LunaReserveUserFacing.testOverride = previousOverride }

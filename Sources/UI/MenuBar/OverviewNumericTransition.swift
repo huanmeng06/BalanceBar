@@ -224,6 +224,9 @@ enum OverviewNumericPresentation {
                         progressPercentage: nil
                     )
                 )
+                if presentation.resetForecast.isOfficialResetConfirmed {
+                    return samples
+                }
                 switch presentation.resetForecast.menuProbabilityPresentation {
                 case .ordinary:
                     if case .percent(let percent) = presentation.resetForecast.probability24h {

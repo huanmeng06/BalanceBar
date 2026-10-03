@@ -106,6 +106,7 @@ enum DevelopmentBankedResetDemo {
     enum Mode: String {
         case tenCards = "banked-reset-10"
         case zeroCards = "banked-reset-0"
+        case confirmed = "banked-reset-confirmed"
     }
 
     static let cardCount = 10
@@ -166,6 +167,18 @@ enum DevelopmentBankedResetDemo {
             cardList = cards(now: date)
         case .zeroCards:
             cardList = []
+        case .confirmed:
+            cardList = Array(cards(now: date).prefix(2))
+        }
+        var forecast = CodexResetForecast.demo(updatedAt: date)
+        if mode == .confirmed {
+            forecast.officialSignal = CodexResetOfficialSignal(
+                probability: .percent(80),
+                targetAt: date.addingTimeInterval(3 * 3_600),
+                publishedAt: date.addingTimeInterval(-3_600),
+                episodeKey: "demo-confirmed"
+            )
+            forecast.officialResetObservation = .observed
         }
         return .official(
             providerName,
@@ -175,7 +188,7 @@ enum DevelopmentBankedResetDemo {
             date,
             windows: windows,
             bankedReset: CodexBankedReset(cards: cardList),
-            resetForecast: .demo(updatedAt: date)
+            resetForecast: forecast
         )
     }
 
@@ -209,6 +222,51 @@ struct ProviderRefreshActions {
     var notificationSnapshot: ((AssistantClient, String, Snapshot) -> Void)? = nil
 }
 
+/// Persists only the local observation state needed to survive menu rebuilds
+/// and app restarts. The key is scoped by provider and account identity so a
+/// different Codex account can never consume another account's evidence.
+final class CodexResetObservationStore {
+    private struct Entry: Codable {
+        let episodeKey: String
+        let observation: CodexResetObservation
+    }
+
+    private let defaults: UserDefaults
+    private let keyPrefix = "BalanceBar.codexResetObservation."
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func load(providerID: String, accountKey: String) -> (episodeKey: String, observation: CodexResetObservation)? {
+        guard let data = defaults.data(forKey: key(providerID: providerID, accountKey: accountKey)),
+              let entry = try? PropertyListDecoder().decode(Entry.self, from: data) else {
+            return nil
+        }
+        return (entry.episodeKey, entry.observation)
+    }
+
+    func save(
+        providerID: String,
+        accountKey: String,
+        episodeKey: String,
+        observation: CodexResetObservation
+    ) {
+        guard let data = try? PropertyListEncoder().encode(
+            Entry(episodeKey: episodeKey, observation: observation)
+        ) else { return }
+        defaults.set(data, forKey: key(providerID: providerID, accountKey: accountKey))
+    }
+
+    func remove(providerID: String, accountKey: String) {
+        defaults.removeObject(forKey: key(providerID: providerID, accountKey: accountKey))
+    }
+
+    private func key(providerID: String, accountKey: String) -> String {
+        keyPrefix + providerID + "." + accountKey
+    }
+}
+
 /// Owns standard Provider balance/quota requests, request cadence, quick
 /// switch summaries, and Provider-balance fallback snapshots. It has no AppKit
 /// page/window ownership; results leave through explicit value callbacks.
@@ -226,6 +284,7 @@ final class ProviderRefreshCoordinator {
     private let queueKey = DispatchSpecificKey<Void>()
     private let now: () -> Date
     private let actions: ProviderRefreshActions
+    private let codexResetObservationStore: CodexResetObservationStore
     // Cadence timestamps are owned by `queue`; public entry points never read
     // or write them until their work reaches that serial boundary.
     private var lastBalanceFetch: Date?
@@ -242,12 +301,14 @@ final class ProviderRefreshCoordinator {
     private var cachedCodexResetForecast: CachedCodexResetForecast?
     private var inFlightForecastCompletions: [(CodexResetForecast) -> Void] = []
     private var forecastRequestInFlight = false
+    private var codexResetObservations: [String: (episodeKey: String, observation: CodexResetObservation)] = [:]
 
     init(
         repository: CCSwitchRepository,
         officialQuotaClient: OfficialQuotaClient,
         balanceAPIClient: BalanceAPIClient = BalanceAPIClient(),
         balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
+        codexResetObservationStore: CodexResetObservationStore = CodexResetObservationStore(),
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-refresh"),
         actions: ProviderRefreshActions,
         now: @escaping () -> Date = { Date() }
@@ -256,6 +317,7 @@ final class ProviderRefreshCoordinator {
         self.officialQuotaClient = officialQuotaClient
         self.balanceAPIClient = balanceAPIClient
         self.balanceProgressStore = balanceProgressStore
+        self.codexResetObservationStore = codexResetObservationStore
         self.queue = queue
         self.now = now
         self.actions = actions
@@ -567,6 +629,12 @@ final class ProviderRefreshCoordinator {
                     payload: .officialWindows(response.output.windows)
                 )
                 let renderOfficial: (CodexBankedReset?, CodexResetForecast) -> Void = { bankedReset, forecast in
+                    let resolvedForecast = self.resolveCodexResetObservation(
+                        providerID: providerID,
+                        windows: response.output.windows,
+                        forecast: forecast,
+                        client: client
+                    )
                     self.renderForCurrentProvider(
                         .official(
                             providerName,
@@ -577,14 +645,14 @@ final class ProviderRefreshCoordinator {
                             windows: response.output.windows,
                             lunaReserve: response.output.lunaReserve,
                             bankedReset: bankedReset,
-                            resetForecast: bankedReset == nil ? .unavailable : forecast
+                            resetForecast: resolvedForecast
                         ),
                         providerID: providerID,
                         client: client
                     )
                 }
                 let finishOfficial: (CodexBankedReset?) -> Void = { bankedReset in
-                    guard client == .codex, bankedReset != nil else {
+                    guard client == .codex else {
                         renderOfficial(bankedReset, .unavailable)
                         return
                     }
@@ -627,6 +695,55 @@ final class ProviderRefreshCoordinator {
                 )
             }
         }
+    }
+
+    private func resolveCodexResetObservation(
+        providerID: String,
+        windows: [OfficialQuotaWindow],
+        forecast: CodexResetForecast,
+        client: AssistantClient
+    ) -> CodexResetForecast {
+        guard client == .codex else { return forecast }
+        guard forecast.hasAnyValue else { return forecast }
+        guard let profile = officialQuotaClient.codexAccountProfile(),
+              let email = profile.email?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty else {
+            return forecast.applyingOfficialResetObservation(.notEligible)
+        }
+        let accountKey = email.lowercased()
+        guard let signal = forecast.officialSignal else {
+            codexResetObservations.removeValue(forKey: observationCacheKey(providerID: providerID, accountKey: accountKey))
+            codexResetObservationStore.remove(providerID: providerID, accountKey: accountKey)
+            return forecast.applyingOfficialResetObservation(.notEligible)
+        }
+
+        let episodeKey = signal.episodeKey ?? "active"
+        let cacheKey = observationCacheKey(providerID: providerID, accountKey: accountKey)
+        var entry = codexResetObservations[cacheKey]
+            ?? codexResetObservationStore.load(providerID: providerID, accountKey: accountKey)
+            ?? (episodeKey: episodeKey, observation: CodexResetObservation())
+        if entry.episodeKey != episodeKey {
+            entry = (episodeKey: episodeKey, observation: CodexResetObservation())
+        }
+        if let sample = CodexResetQuotaSample.make(from: windows) {
+            var observation = entry.observation
+            observation.observe(sample, now: now())
+            entry = (episodeKey: episodeKey, observation: observation)
+            codexResetObservations[cacheKey] = entry
+            codexResetObservationStore.save(
+                providerID: providerID,
+                accountKey: accountKey,
+                episodeKey: episodeKey,
+                observation: observation
+            )
+        } else {
+            codexResetObservations[cacheKey] = entry
+        }
+        return forecast.applyingOfficialResetObservation(entry.observation.state)
+    }
+
+    private func observationCacheKey(providerID: String, accountKey: String) -> String {
+        providerID + "|" + accountKey
     }
 
     private func renderOfficialError(

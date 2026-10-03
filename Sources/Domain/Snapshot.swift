@@ -288,8 +288,86 @@ struct CodexResetOfficialSignal: Equatable {
     /// Tweet/publish instant from `official_signal.at`. Used only as the
     /// progress-bar right endpoint, never as the countdown amount.
     var publishedAt: Date? = nil
+    /// Stable upstream identity for the current official-signal episode.
+    /// When the upstream payload omits an identity, the coordinator treats
+    /// the active signal as one episode and clears it when the signal ends.
+    var episodeKey: String? = nil
 
     static let probabilityUnavailable = CodexResetOfficialSignal(probability: .unavailable)
+}
+
+/// The local evidence state for one official-signal episode. This is kept in
+/// the Domain layer so presentation code never reimplements reset detection.
+enum CodexResetObservationState: String, Codable, Equatable {
+    case notEligible
+    case watching
+    case observed
+}
+
+struct CodexResetQuotaSample: Codable, Equatable {
+    let fiveHourRemaining: Double
+    let sevenDayRemaining: Double
+    let sevenDayResetAt: Date
+
+    static func make(from windows: [OfficialQuotaWindow]) -> CodexResetQuotaSample? {
+        guard let fiveHour = windows.first(where: { $0.kind == .fiveHour }),
+              let sevenDay = windows.first(where: { $0.kind == .sevenDay }),
+              fiveHour.remaining.isFinite,
+              sevenDay.remaining.isFinite,
+              let sevenDayResetAt = sevenDay.resetAt else {
+            return nil
+        }
+        return CodexResetQuotaSample(
+            fiveHourRemaining: max(0, min(100, fiveHour.remaining)),
+            sevenDayRemaining: max(0, min(100, sevenDay.remaining)),
+            sevenDayResetAt: sevenDayResetAt
+        )
+    }
+
+    var hasConsumption: Bool {
+        fiveHourRemaining < 99.999 || sevenDayRemaining < 99.999
+    }
+
+    var isComplete: Bool {
+        fiveHourRemaining >= 99.999 && sevenDayRemaining >= 99.999
+    }
+}
+
+/// Reduces consecutive, complete official quota snapshots into conservative
+/// local evidence. A reset-cycle jump must be materially larger than the
+/// natural countdown drift, and both windows must be full in that same sample.
+struct CodexResetObservation: Codable, Equatable {
+    static let minimumResetCycleJump: TimeInterval = 24 * 60 * 60
+
+    private(set) var state: CodexResetObservationState = .notEligible
+    private(set) var observedConsumption = false
+    private(set) var previousSample: CodexResetQuotaSample?
+    private(set) var detectedAt: Date?
+
+    mutating func observe(_ sample: CodexResetQuotaSample, now: Date) {
+        if sample.hasConsumption {
+            observedConsumption = true
+        }
+
+        if let previousSample {
+            let resetCycleJump = sample.sevenDayResetAt.timeIntervalSince(
+                previousSample.sevenDayResetAt
+            ) >= Self.minimumResetCycleJump
+            if observedConsumption && resetCycleJump && sample.isComplete {
+                state = .observed
+                detectedAt = detectedAt ?? now
+            }
+        }
+
+        if state != .observed {
+            state = observedConsumption ? .watching : .notEligible
+        }
+        previousSample = sample
+    }
+
+    mutating func reset() {
+        self = CodexResetObservation()
+    }
 }
 
 /// Compact remaining-time text for the strong-signal amount slot.
@@ -355,6 +433,9 @@ struct CodexResetForecast: Equatable {
     /// Nil keeps ordinary 24h/48h forecast. Non-nil enters strong-signal mode
     /// even when nested probability fields cannot be read.
     var officialSignal: CodexResetOfficialSignal? = nil
+    /// Local official-quota evidence for the current signal episode. It is
+    /// deliberately separate from the upstream prediction fields.
+    var officialResetObservation: CodexResetObservationState = .notEligible
 
     static let unavailable = CodexResetForecast(
         probability24h: .unavailable,
@@ -383,7 +464,12 @@ struct CodexResetForecast: Equatable {
         menuProbabilityPresentation.showsOrdinaryForecastMetrics
     }
 
+    var isOfficialResetConfirmed: Bool {
+        officialSignal != nil && officialResetObservation == .observed
+    }
+
     func remainingCountdownSeconds(now: Date = Date()) -> Int? {
+        guard !isOfficialResetConfirmed else { return nil }
         guard let targetAt = officialSignal?.targetAt else { return nil }
         return max(0, Int(targetAt.timeIntervalSince(now).rounded(.down)))
     }
@@ -420,6 +506,9 @@ struct CodexResetForecast: Equatable {
 
     func officialHintText(language: AppLanguage = .selected) -> String? {
         guard officialSignal != nil else { return nil }
+        if isOfficialResetConfirmed {
+            return tr(.keyCodexBankedResetOfficialHintConfirmed, language: language)
+        }
         if officialCountdownProgressSpan() != nil {
             return nil
         }
@@ -433,6 +522,9 @@ struct CodexResetForecast: Equatable {
         language: AppLanguage = .selected,
         now: Date = Date()
     ) -> String {
+        if isOfficialResetConfirmed {
+            return tr(.keyCodexBankedResetOfficialResetConfirmed, language: language)
+        }
         switch menuProbabilityPresentation {
         case .ordinary(let probability):
             return probability.displayText
@@ -450,6 +542,14 @@ struct CodexResetForecast: Equatable {
     func markingCached() -> CodexResetForecast {
         var copy = self
         copy.isCached = true
+        return copy
+    }
+
+    func applyingOfficialResetObservation(
+        _ state: CodexResetObservationState
+    ) -> CodexResetForecast {
+        var copy = self
+        copy.officialResetObservation = state
         return copy
     }
 
