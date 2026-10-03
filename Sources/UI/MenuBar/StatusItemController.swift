@@ -6494,16 +6494,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // 48-hour copy is not constrained by the legacy 128pt reset column.
         if let metricsFrame = layout.bankedResetProbabilityRow?.reset
             ?? layout.bankedResetForecastMetrics {
-            if forecast.isOfficialResetConfirmed {
-                addBankedResetSingleForecastMetric(
-                    to: view,
-                    frame: metricsFrame,
-                    probability: forecast.probability24h,
-                    identity: .bankedResetProbability24h(provider: provider),
-                    prefixKey: .keyCodexBankedResetProbability24h,
-                    identifier: "codex.bankedReset.probability24h"
-                )
-            } else if forecast.showsOrdinaryForecastMetrics {
+            if forecast.showsOrdinaryForecastMetrics {
                 addBankedResetForecastMetrics(
                     to: view,
                     frame: metricsFrame,
@@ -6522,47 +6513,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint)
             }
         }
-    }
-
-    private func addBankedResetSingleForecastMetric(
-        to view: MenuHoverLinkHostView,
-        frame: NSRect,
-        probability: CodexResetProbability,
-        identity: OverviewNumericIdentity,
-        prefixKey: LocalizationKey,
-        identifier: String
-    ) {
-        let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
-        let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
-        let prefix = tr(prefixKey)
-        let value = makeBankedResetForecastPercentView(
-            probability: probability,
-            identity: identity,
-            identifier: identifier,
-            font: numericFont
-        )
-        let prefixWidth = OpenCodexCardLayout.forecastTextWidth(prefix, font: subtitleFont)
-        let valueText = bankedResetForecastPercentReservation(
-            probability: probability,
-            identity: identity
-        )
-        let valueWidth = OpenCodexCardLayout.forecastTextWidth(valueText, font: numericFont)
-        let prefixLabel = addBankedResetForecastPrefix(
-            to: view,
-            frame: frame,
-            x: frame.minX,
-            width: prefixWidth,
-            text: prefix,
-            identifier: "(identifier)Prefix",
-            font: subtitleFont
-        )
-        value.frame = CGRect(
-            x: prefixLabel.frame.maxX + 4,
-            y: frame.minY,
-            width: max(valueWidth, frame.maxX - prefixLabel.frame.maxX - 4),
-            height: frame.height
-        )
-        view.addSubview(value)
     }
 
     private func addBankedResetOfficialCountdownProgress(

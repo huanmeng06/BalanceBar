@@ -5265,7 +5265,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     func testOfficialCodexMenuProbabilityBlockSwitchesToOfficialSignalPresentation() throws {
-        throw XCTSkip("superseded by the Issue 480 two-line probability layout contract")
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
