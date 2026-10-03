@@ -5848,17 +5848,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ).bankedResetForecastMetrics
         )
         XCTAssertEqual(bar.frame.height, OpenCodexCardLayout.quotaProgressHeight, accuracy: 0.001)
-        let probabilityRow = try XCTUnwrap(
-            OpenCodexCardLayout.frames(
-                for: .quota,
-                officialQuotaWindows: windows,
-                includesQuotaProgress: false,
-                includesBankedReset: true,
-                bankedResetCardCount: 1
-            ).bankedResetProbabilityRow
-        )
-        XCTAssertEqual(bar.frame.midY, probabilityRow.reset.midY, accuracy: 0.001)
-        XCTAssertEqual(bar.frame.width, probabilityRow.reset.width, accuracy: 0.001)
+        XCTAssertEqual(bar.frame.midY, metrics.midY, accuracy: 0.001)
+        XCTAssertEqual(bar.frame.width, metrics.width, accuracy: 0.001)
         XCTAssertTrue(
             allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).isEmpty
         )

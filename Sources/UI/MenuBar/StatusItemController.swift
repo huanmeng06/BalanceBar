@@ -6413,6 +6413,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 "codex.bankedReset.probability24hAmount"
             )
             numeric.textField.identifier = numeric.identifier
+            // Keep the compact primary value discoverable after the source
+            // label is folded into the row. AppKit presents this on hover
+            // without changing the numeric transition view or its layout.
+            numeric.textField.toolTip = Self.codexResetForecastHint(for: forecast)
             amount = numeric
             marqueeAmountText = plan.layoutReservationText
         case .strongSignal(.percent(let percent)):
@@ -6477,8 +6481,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let link = amount as? OverviewNumericHoverLinkTextField {
             view.track(link)
         }
-        if let metricsFrame = layout.bankedResetProbabilityRow?.reset
-            ?? layout.bankedResetForecastMetrics {
+        // The probability row's reset frame belongs to the title/subtitle
+        // band. Forecast metrics occupy the separate line below that band;
+        // using the reset frame leaves the reserved metrics slot empty and
+        // produces a large visual gap before the reset-card summary.
+        if let metricsFrame = layout.bankedResetForecastMetrics
+            ?? layout.bankedResetProbabilityRow?.reset {
             if forecast.showsOrdinaryForecastMetrics {
                 addBankedResetForecastMetrics(
                     to: view,
