@@ -689,7 +689,7 @@ enum CodexResetForecastParser {
             }
         }
         let publishedAt = officialSignalPublishedAt(from: object)
-        let targetAt = officialSignalTargetAt(from: object, now: now)
+        let targetAt = officialSignalEpisodeTargetAt(from: object)
         if let publishedAt {
             return "published:\(publishedAt.timeIntervalSince1970)"
         }
@@ -697,6 +697,26 @@ enum CodexResetForecastParser {
             return "target:\(targetAt.timeIntervalSince1970)"
         }
         return nil
+    }
+
+    /// Episode identity must remain stable after the countdown target passes;
+    /// unlike the UI countdown parser, this fallback accepts past timestamps.
+    private static func officialSignalEpisodeTargetAt(from object: [String: Any]) -> Date? {
+        guard let official = object["official_signal"] as? [String: Any] else { return nil }
+        return absoluteSignalInstant(official["window"])
+            ?? ResponseParsingSupport.timestampDate(official["deadline"])
+            ?? ResponseParsingSupport.timestampDate(official["target"])
+    }
+
+    private static func absoluteSignalInstant(_ value: Any?) -> Date? {
+        switch value {
+        case let dict as [String: Any]:
+            return ResponseParsingSupport.timestampDate(dict["at"])
+                ?? ResponseParsingSupport.timestampDate(dict["deadline"])
+                ?? ResponseParsingSupport.timestampDate(dict["target"])
+        default:
+            return ResponseParsingSupport.timestampDate(value)
+        }
     }
 
     /// Single future instant from `official_signal.window` or equivalent
