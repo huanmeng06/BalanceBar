@@ -106,6 +106,7 @@ enum DevelopmentBankedResetDemo {
     enum Mode: String {
         case tenCards = "banked-reset-10"
         case zeroCards = "banked-reset-0"
+        case confirmed = "banked-reset-confirmed"
     }
 
     static let cardCount = 10
@@ -166,6 +167,18 @@ enum DevelopmentBankedResetDemo {
             cardList = cards(now: date)
         case .zeroCards:
             cardList = []
+        case .confirmed:
+            cardList = Array(cards(now: date).prefix(2))
+        }
+        var forecast = CodexResetForecast.demo(updatedAt: date)
+        if mode == .confirmed {
+            forecast.officialSignal = CodexResetOfficialSignal(
+                probability: .percent(80),
+                targetAt: date.addingTimeInterval(3 * 3_600),
+                publishedAt: date.addingTimeInterval(-3_600),
+                episodeKey: "demo-confirmed"
+            )
+            forecast.officialResetObservation = .observed
         }
         return .official(
             providerName,
@@ -175,7 +188,7 @@ enum DevelopmentBankedResetDemo {
             date,
             windows: windows,
             bankedReset: CodexBankedReset(cards: cardList),
-            resetForecast: .demo(updatedAt: date)
+            resetForecast: forecast
         )
     }
 
