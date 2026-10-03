@@ -464,6 +464,9 @@ class HoverLinkTextField: NSTextField {
     }
 
     var onActivate: (() -> Void)?
+    var restingTextColor: NSColor = .linkColor {
+        didSet { applyStyle(text: stringValue, underlined: isHovered) }
+    }
     /// Shown while the pointer is over the visible glyphs. Native `toolTip`
     /// is the Dashboard fallback; menu hosts present a popover instead.
     var hoverHint: String = "" {
@@ -866,7 +869,7 @@ class HoverLinkTextField: NSTextField {
     private func applyStyle(text: String, underlined: Bool) {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font ?? NSFont.systemFont(ofSize: 12),
-            .foregroundColor: NSColor.linkColor
+            .foregroundColor: underlined ? NSColor.linkColor : restingTextColor
         ]
         if underlined { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
         isApplyingStyle = true

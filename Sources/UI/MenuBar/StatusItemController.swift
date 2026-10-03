@@ -6423,15 +6423,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 progressPercentage: nil
             )
             let plan = overviewNumericPlan(for: sample)
-            let numeric = makeOverviewNumericAmount(
+            let numeric = makeOverviewNumericHoverLinkAmount(
                 plan: plan,
                 sample: sample,
-                frame: row.amount
+                frame: row.amount,
+                forecast: forecast
             )
             numeric.identifier = NSUserInterfaceItemIdentifier(
                 "codex.bankedReset.probabilitySignalAmount"
             )
-            numeric.textField.identifier = numeric.identifier
             amount = numeric
             marqueeAmountText = plan.layoutReservationText
         case .ordinary:
@@ -6474,19 +6474,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             )
         )
-        if row.reset.width > 0 {
-            addBankedResetProbabilitySourceLink(
-                to: view,
-                frame: overviewMarqueeFrame(
-                    row.reset,
-                    avoidingAmountFrame: amount.frame,
-                    amountText: marqueeAmountText,
-                    amountFont: reservationFont
-                ),
-                forecast: forecast
-            )
+        if let link = amount as? OverviewNumericHoverLinkTextField {
+            view.track(link)
         }
-        if let metricsFrame = layout.bankedResetForecastMetrics {
+        if let metricsFrame = layout.bankedResetProbabilityRow?.reset
+            ?? layout.bankedResetForecastMetrics {
             if forecast.showsOrdinaryForecastMetrics {
                 addBankedResetForecastMetrics(
                     to: view,
@@ -6549,56 +6541,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         label.frame = frame
         view.addSubview(label)
-    }
-
-    private func addBankedResetProbabilitySourceLink(
-        to view: MenuHoverLinkHostView,
-        frame: NSRect,
-        forecast: CodexResetForecast
-    ) {
-        let titleFont = NSFont.systemFont(
-            ofSize: OpenCodexCardLayout.quotaResetPointSize,
-            weight: .regular
-        )
-        let titleText = tr(.keyCodexBankedResetProbabilitySource)
-        let title = HoverLinkTextField(text: titleText)
-        title.font = titleFont
-        title.lineBreakMode = .byClipping
-        title.usesSingleLineMode = true
-        title.sizeToFit()
-        let titleWidth = min(
-            frame.width,
-            max(
-                ceil(title.frame.width) + 4,
-                ceil(title.attributedStringValue.size().width) + 8,
-                ceil(AccountMarqueeView.textWidth(of: titleText, font: titleFont)) + 8
-            )
-        )
-        title.frame = CGRect(
-            x: frame.minX,
-            y: frame.minY,
-            width: titleWidth,
-            height: frame.height
-        )
-        // NSTextField cells can draw glyphs inset of the view frame. Shift
-        // origin.x so the visible text shares the quota subtitle's leading
-        // edge. Leave origin.y on the reset frame; a vertical inset would
-        // push 「数据来源」 off the 5h0m subtitle.
-        let titleTextInset = title.cell?
-            .titleRect(forBounds: title.bounds).minX ?? 0
-        if titleTextInset != 0 {
-            title.frame.origin.x = frame.minX - titleTextInset
-        }
-        title.identifier = NSUserInterfaceItemIdentifier(
-            "codex.bankedReset.probability"
-        )
-        title.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
-        title.hoverHint = Self.codexResetForecastHint(for: forecast)
-        title.onActivate = {
-            NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
-        }
-        view.addSubview(title)
-        view.track(title)
     }
 
     private func addBankedResetForecastMetrics(
@@ -6786,6 +6728,34 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.textField.identifier = view.identifier
         view.configure(plan: plan, sample: sample)
         return view
+    }
+
+    private func makeOverviewNumericHoverLinkAmount(
+        plan: OverviewNumericTransitionPlan,
+        sample: OverviewNumericSample,
+        frame: NSRect,
+        forecast: CodexResetForecast
+    ) -> OverviewNumericHoverLinkTextField {
+        let font = NSFont.monospacedDigitSystemFont(
+            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+            weight: .semibold
+        )
+        let link = OverviewNumericHoverLinkTextField(text: plan.startText)
+        link.font = font
+        link.alignment = .right
+        link.lineBreakMode = .byClipping
+        link.usesSingleLineMode = true
+        link.restingTextColor = .labelColor
+        link.frame = frame
+        link.identifier = OverviewNumericPresentation.amountIdentifier(for: sample.identity)
+        link.textColor = .labelColor
+        link.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
+        link.hoverHint = Self.codexResetForecastHint(for: forecast)
+        link.onActivate = {
+            NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
+        }
+        link.configure(plan: plan, sample: sample)
+        return link
     }
 
     private func makeOverviewNumericProgress(
