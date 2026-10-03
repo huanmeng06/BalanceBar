@@ -445,9 +445,15 @@ enum OpenCodexCardLayout {
     static func bankedResetProbabilityBlockHeight(
         includesForecastMetrics: Bool = true
     ) -> CGFloat {
-        // Forecast metrics occupy the former source-subtitle row inside the
-        // same two-line band; they must not reserve a second block below it.
-        return quotaTitleTopInset + bankedResetTextBandAmountHeight
+        let metricsHeight = includesForecastMetrics
+            ? bankedResetForecastLineGap + bankedResetForecastExtraHeight()
+            : 0
+        // The metrics line occupies the former source row, but the complete
+        // probability block still needs to reserve that line before the next
+        // quota block begins.
+        return quotaTitleTopInset
+            + bankedResetTextBandAmountHeight
+            + metricsHeight
     }
 
     /// Large primary label for the strong-signal fallback. Shrinks just
