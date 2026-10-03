@@ -848,14 +848,13 @@ final class ResponseParsersTests: XCTestCase {
             data: Data(#"{"official_signal":{"tweet_id":"1"},"probabilities":{"rounded_24h":20,"rounded_48h":35,"commitment":0.73}}"#.utf8)
         )
         XCTAssertEqual(commitment.officialSignal?.probability, .percent(73))
+        XCTAssertEqual(commitment.officialSignal?.episodeKey, "tweet_id:1")
 
         let missingProbability = CodexResetForecastParser.parse(
             data: Data(#"{"official_signal":{"tweet_id":"1","summary":"reset"},"probabilities":{"rounded_24h":20,"rounded_48h":35}}"#.utf8)
         )
-        XCTAssertEqual(
-            missingProbability.officialSignal,
-            .probabilityUnavailable
-        )
+        XCTAssertEqual(missingProbability.officialSignal?.probability, .unavailable)
+        XCTAssertEqual(missingProbability.officialSignal?.episodeKey, "tweet_id:1")
         XCTAssertEqual(missingProbability.probability24h, .percent(20))
         XCTAssertEqual(
             missingProbability.menuProbabilityPresentation,

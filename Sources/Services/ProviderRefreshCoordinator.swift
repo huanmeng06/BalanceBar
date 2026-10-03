@@ -645,14 +645,14 @@ final class ProviderRefreshCoordinator {
                             windows: response.output.windows,
                             lunaReserve: response.output.lunaReserve,
                             bankedReset: bankedReset,
-                            resetForecast: bankedReset == nil ? .unavailable : resolvedForecast
+                            resetForecast: resolvedForecast
                         ),
                         providerID: providerID,
                         client: client
                     )
                 }
                 let finishOfficial: (CodexBankedReset?) -> Void = { bankedReset in
-                    guard client == .codex, bankedReset != nil else {
+                    guard client == .codex else {
                         renderOfficial(bankedReset, .unavailable)
                         return
                     }

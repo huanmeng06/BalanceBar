@@ -683,14 +683,13 @@ enum CodexResetForecastParser {
         guard let official = object["official_signal"] as? [String: Any] else {
             return nil
         }
-        let publishedAt = officialSignalPublishedAt(from: object)
-        let targetAt = officialSignalTargetAt(from: object, now: now)
-        guard publishedAt != nil || targetAt != nil else { return nil }
         for key in ["episode_id", "signal_id", "tweet_id", "id"] {
             if let value = ResponseParsingSupport.stringValue(official[key]), !value.isEmpty {
                 return "\(key):\(value)"
             }
         }
+        let publishedAt = officialSignalPublishedAt(from: object)
+        let targetAt = officialSignalTargetAt(from: object, now: now)
         if let publishedAt {
             return "published:\(publishedAt.timeIntervalSince1970)"
         }
