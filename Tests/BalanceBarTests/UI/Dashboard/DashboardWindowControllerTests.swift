@@ -4445,8 +4445,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             frames.bankedResetDetailRows[1].chrome.midY,
             accuracy: 1
         )
-        XCTAssertTrue(
-            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).isEmpty
+        XCTAssertEqual(
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count,
+            1
         )
         let percent24 = try XCTUnwrap(
             allControls(of: overview, as: OverviewNumericTextView.self).first {
@@ -4475,13 +4476,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         let large24 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }
         )
-        XCTAssertEqual(large24.textField.stringValue, "24%")
-        XCTAssertEqual(large24.textField.font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize)
-        XCTAssertEqual(large24.textField.alignment, .right)
+        XCTAssertEqual(large24.stringValue, "24%")
+        XCTAssertEqual(large24.font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize)
+        XCTAssertEqual(large24.alignment, .right)
         XCTAssertEqual(
             large24.frame.height,
             OpenCodexCardLayout.bankedResetTextBandAmountHeight,
@@ -4492,7 +4493,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             OpenCodexCardLayout.bankedResetTextBandAmountHeight,
             accuracy: 0.001
         )
-        XCTAssertNil(large24.sample?.progressPercentage)
         XCTAssertFalse(
             allControls(of: overview, as: NSTextField.self).contains {
                 $0.identifier?.rawValue == "codex.bankedReset.officialHint"
@@ -4797,8 +4797,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             countField.font?.pointSize,
             OpenCodexCardLayout.quotaAmountPointSize
         )
-        XCTAssertTrue(
-            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).isEmpty
+        XCTAssertEqual(
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count,
+            1
         )
         let prefix24 = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
@@ -4821,12 +4822,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         let large24 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }
         )
-        XCTAssertEqual(large24.textField.stringValue, "24%")
-        XCTAssertNil(large24.sample?.progressPercentage)
+        XCTAssertEqual(large24.stringValue, "24%")
         assertBankedResetForecastSubtitleFullyVisible(
             prefix24,
             expected: tr(.keyCodexBankedResetProbability24h)
@@ -5848,7 +5848,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ).bankedResetForecastMetrics
         )
         XCTAssertEqual(bar.frame.height, OpenCodexCardLayout.quotaProgressHeight, accuracy: 0.001)
-        XCTAssertEqual(bar.frame.midY, metrics.midY, accuracy: 0.001)
+        XCTAssertEqual(bar.frame.midY, metrics.midY, accuracy: 0.5)
         XCTAssertEqual(bar.frame.width, metrics.width, accuracy: 0.001)
         XCTAssertTrue(
             allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).isEmpty

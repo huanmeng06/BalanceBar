@@ -6382,15 +6382,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 progressPercentage: nil
             )
             let plan = overviewNumericPlan(for: sample)
-            let numeric = makeOverviewNumericHoverLinkAmount(
+            let numeric = makeOverviewNumericAmount(
                 plan: plan,
                 sample: sample,
-                frame: row.amount,
-                forecast: forecast
+                frame: row.amount
             )
             numeric.identifier = NSUserInterfaceItemIdentifier(
                 "codex.bankedReset.probabilityCountdownAmount"
             )
+            numeric.textField.identifier = numeric.identifier
             amount = numeric
             marqueeAmountText = plan.layoutReservationText
         } else {
