@@ -6481,6 +6481,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let link = amount as? OverviewNumericHoverLinkTextField {
             view.track(link)
         }
+        if row.reset.width > 0 {
+            addBankedResetProbabilitySourceLink(
+                to: view,
+                frame: overviewMarqueeFrame(
+                    row.reset,
+                    avoidingAmountFrame: amount.frame,
+                    amountText: marqueeAmountText,
+                    amountFont: reservationFont
+                ),
+                forecast: forecast
+            )
+        }
         // The probability row's reset frame belongs to the title/subtitle
         // band. Forecast metrics occupy the separate line below that band;
         // using the reset frame leaves the reserved metrics slot empty and
@@ -6506,6 +6518,49 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint)
             }
         }
+    }
+
+    private func addBankedResetProbabilitySourceLink(
+        to view: MenuHoverLinkHostView,
+        frame: NSRect,
+        forecast: CodexResetForecast
+    ) {
+        let titleFont = NSFont.systemFont(
+            ofSize: OpenCodexCardLayout.quotaResetPointSize,
+            weight: .regular
+        )
+        let titleText = tr(.keyCodexBankedResetProbabilitySource)
+        let title = HoverLinkTextField(text: titleText)
+        title.font = titleFont
+        title.lineBreakMode = .byClipping
+        title.usesSingleLineMode = true
+        title.sizeToFit()
+        let titleWidth = min(
+            frame.width,
+            max(
+                ceil(title.frame.width) + 4,
+                ceil(title.attributedStringValue.size().width) + 8,
+                ceil(AccountMarqueeView.textWidth(of: titleText, font: titleFont)) + 8
+            )
+        )
+        title.frame = CGRect(
+            x: frame.minX,
+            y: frame.minY,
+            width: titleWidth,
+            height: frame.height
+        )
+        let titleTextInset = title.cell?.titleRect(forBounds: title.bounds).minX ?? 0
+        if titleTextInset != 0 {
+            title.frame.origin.x = frame.minX - titleTextInset
+        }
+        title.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.probability")
+        title.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
+        title.hoverHint = Self.codexResetForecastHint(for: forecast)
+        title.onActivate = {
+            NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
+        }
+        view.addSubview(title)
+        view.track(title)
     }
 
     private func addBankedResetOfficialCountdownProgress(
