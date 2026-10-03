@@ -415,6 +415,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(probability.amount.height, textBandHeight, accuracy: 0.001)
+        XCTAssertEqual(probability.reset.width, OpenCodexCardLayout.contentWidth, accuracy: 0.001)
         XCTAssertEqual(summary.amount.height, textBandHeight, accuracy: 0.001)
         XCTAssertEqual(probability.amount.minY, probability.reset.minY, accuracy: 0.001)
         XCTAssertEqual(probability.amount.maxY, probability.quotaDetail.maxY, accuracy: 0.001)
@@ -439,7 +440,12 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(sevenDayToProbability, fiveHourToSevenDay, accuracy: 0.001)
-        XCTAssertEqual(metricsToSummary, fiveHourToSevenDay, accuracy: 0.001)
+        XCTAssertEqual(
+            metricsToSummary,
+            OpenCodexCardLayout.quotaTitleTopInset
+                + OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
+            accuracy: 0.001
+        )
 
         let collapsed = OpenCodexCardLayout.frames(
             for: .quota,
@@ -1030,7 +1036,8 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(expirySummary.progress, .zero)
         XCTAssertEqual(
             metrics.minY - summary.quotaDetail.maxY,
-            OpenCodexCardLayout.quotaVisibleBlockGap,
+            OpenCodexCardLayout.quotaTitleTopInset
+                + OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
             accuracy: 0.001
         )
         XCTAssertGreaterThan(metrics.minY, frames.bankedResetDetailRows[0].chrome.maxY)
@@ -1262,7 +1269,8 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertNil(ten.bankedResetForecastConfidence)
         XCTAssertEqual(
             metrics.minY - summary.quotaDetail.maxY,
-            OpenCodexCardLayout.quotaVisibleBlockGap,
+            OpenCodexCardLayout.quotaTitleTopInset
+                + OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
             accuracy: 0.001
         )
         XCTAssertEqual(

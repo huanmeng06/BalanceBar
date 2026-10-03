@@ -6489,10 +6489,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let link = amount as? OverviewNumericHoverLinkTextField {
             view.track(link)
         }
-        // The probability row's reset frame belongs to the title/subtitle
-        // band. Forecast metrics occupy the separate line below that band;
-        // using the reset frame leaves the reserved metrics slot empty and
-        // produces a large visual gap before the reset-card summary.
+        // The forecast subtitle occupies the former source row directly under
+        // the primary probability value. The frame is full-width so the
+        // 48-hour copy is not constrained by the legacy 128pt reset column.
         if let metricsFrame = layout.bankedResetProbabilityRow?.reset
             ?? layout.bankedResetForecastMetrics {
             if forecast.showsOrdinaryForecastMetrics {
@@ -6567,81 +6566,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     ) {
         let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
         let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
-        let prefix24 = tr(.keyCodexBankedResetProbability24h)
         let prefix48 = tr(.keyCodexBankedResetProbability48h)
-        let percent24View = makeBankedResetForecastPercentView(
-            probability: forecast.probability24h,
-            identity: .bankedResetProbability24h(provider: provider),
-            identifier: "codex.bankedReset.probability24h",
-            font: numericFont
-        )
         let percent48View = makeBankedResetForecastPercentView(
             probability: forecast.probability48h,
             identity: .bankedResetProbability48h(provider: provider),
             identifier: "codex.bankedReset.probability48h",
             font: numericFont
         )
-        let packing = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
-            prefix24: prefix24,
-            percent24: bankedResetForecastPercentReservation(
-                probability: forecast.probability24h,
-                identity: .bankedResetProbability24h(provider: provider)
-            ),
-            prefix48: prefix48,
-            percent48: bankedResetForecastPercentReservation(
-                probability: forecast.probability48h,
-                identity: .bankedResetProbability48h(provider: provider)
-            ),
-            availableWidth: frame.width
-        )
-        var x = frame.minX
-        let prefix24Label = addBankedResetForecastPrefix(
-            to: view,
-            frame: frame,
-            x: x,
-            width: packing.prefix24Width,
-            text: prefix24,
-            identifier: "codex.bankedReset.probability24hPrefix",
+        let prefixWidth = OpenCodexCardLayout.forecastTextWidth(
+            prefix48,
             font: subtitleFont
         )
-        x = prefix24Label.frame.maxX + packing.gap
-        percent24View.frame = CGRect(
-            x: x,
-            y: frame.minY,
-            width: packing.percent24Width,
-            height: frame.height
+        let percentText = bankedResetForecastPercentReservation(
+            probability: forecast.probability48h,
+            identity: .bankedResetProbability48h(provider: provider)
         )
-        view.addSubview(percent24View)
-        x = percent24View.frame.maxX
-        let separatorLabel = makeOverviewLabel(packing.separator, font: subtitleFont)
-        separatorLabel.textColor = .secondaryLabelColor
-        separatorLabel.lineBreakMode = .byClipping
-        separatorLabel.usesSingleLineMode = true
-        separatorLabel.identifier = NSUserInterfaceItemIdentifier(
-            "codex.bankedReset.probabilitySeparator"
+        let percentWidth = OpenCodexCardLayout.forecastTextWidth(
+            percentText,
+            font: numericFont
         )
-        separatorLabel.frame = CGRect(
-            x: x,
-            y: frame.minY,
-            width: packing.separatorWidth,
-            height: frame.height
-        )
-        view.addSubview(separatorLabel)
-        x = separatorLabel.frame.maxX
-        let prefix48Label = addBankedResetForecastPrefix(
+        let prefixLabel = addBankedResetForecastPrefix(
             to: view,
             frame: frame,
-            x: x,
-            width: packing.prefix48Width,
+            x: frame.minX,
+            width: prefixWidth,
             text: prefix48,
             identifier: "codex.bankedReset.probability48hPrefix",
             font: subtitleFont
         )
-        x = prefix48Label.frame.maxX + packing.gap
         percent48View.frame = CGRect(
-            x: x,
+            x: prefixLabel.frame.maxX + 4,
             y: frame.minY,
-            width: packing.percent48Width,
+            width: max(percentWidth, frame.maxX - prefixLabel.frame.maxX - 4),
             height: frame.height
         )
         view.addSubview(percent48View)
