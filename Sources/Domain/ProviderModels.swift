@@ -324,9 +324,11 @@ enum OpenCodexCardLayout {
     static let bankedResetChromeCornerRadius: CGFloat = 10
     /// Gap between the reset-card summary and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
-    /// Compact separation between the forecast subtitle and the reset-card
-    /// summary. This relationship is tighter than independent quota rows.
-    static let bankedResetProbabilitySummaryGap: CGFloat = 0
+    /// The probability footer and reset-card summary use the same visible
+    /// section spacing as the standard quota blocks.
+    static var bankedResetProbabilitySummaryGap: CGFloat {
+        quotaVisibleBlockGap
+    }
     /// The second visible row under the title/primary-value band. Ordinary
     /// mode packs 24h+48h; strong-signal mode shows a hint or time progress.
     /// Source attribution is available through the primary value's hover link.
