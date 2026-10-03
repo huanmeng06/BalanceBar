@@ -442,8 +442,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(sevenDayToProbability, fiveHourToSevenDay, accuracy: 0.001)
         XCTAssertEqual(
             metricsToSummary,
-            OpenCodexCardLayout.quotaTitleTopInset
-                + OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
+            OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
             accuracy: 0.001
         )
 
@@ -1036,8 +1035,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(expirySummary.progress, .zero)
         XCTAssertEqual(
             metrics.minY - summary.quotaDetail.maxY,
-            OpenCodexCardLayout.quotaTitleTopInset
-                + OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
+            OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
             accuracy: 0.001
         )
         XCTAssertGreaterThan(metrics.minY, frames.bankedResetDetailRows[0].chrome.maxY)
@@ -1269,8 +1267,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertNil(ten.bankedResetForecastConfidence)
         XCTAssertEqual(
             metrics.minY - summary.quotaDetail.maxY,
-            OpenCodexCardLayout.quotaTitleTopInset
-                + OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
+            OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
             accuracy: 0.001
         )
         XCTAssertEqual(

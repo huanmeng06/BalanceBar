@@ -476,10 +476,11 @@ enum OpenCodexCardLayout {
         return NSFont.systemFont(ofSize: minSize, weight: .semibold)
     }
 
-    /// Reset-card header is the same two-line band plus the 3pt title inset.
-    /// Tickets sit 6pt below the subtitle.
+    /// Reset-card summary follows the probability footer directly. Its own
+    /// quota-style title inset is reserved for standalone quota rows and is
+    /// not part of this compact adjacent stack.
     static func bankedResetSummaryHeight() -> CGFloat {
-        quotaTitleTopInset + bankedResetTextBandAmountHeight
+        bankedResetTextBandAmountHeight
     }
     /// Detailed ticket list shows at most two full rows plus half of a
     /// third so leftover cards remain obvious. 1–2 cards stay unclipped.
