@@ -682,6 +682,9 @@ enum OpenCodexCardLayout {
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
         let showsForecastMetrics = includesBankedReset && includesBankedResetForecastMetrics
+        let forecastExtraHeight = showsForecastMetrics
+            ? bankedResetForecastLineGap + bankedResetForecastExtraHeight()
+            : 0
         let forecastLineHeight = bankedResetForecastLineHeight()
         let probabilityBlockHeight = includesBankedReset
             ? bankedResetProbabilityBlockHeight(
@@ -833,14 +836,17 @@ enum OpenCodexCardLayout {
             : nil
         let cardSummaryY = bottomInset + bankedDetailBlockHeight
         let probabilityBottomY = cardSummaryY + cardSummaryHeight + probabilityCardGap
-        // The former source row is now the forecast metrics row. Keep the
-        // primary probability row at the block boundary so 24h/48h copy can
-        // occupy `reset` directly beneath its title.
-        let probabilityRowY = probabilityBottomY
+        // Keep the title and primary value above the former source row. The
+        // reset frame of this row is reassigned to that lower metrics line.
+        let probabilityRowY = probabilityBottomY + forecastExtraHeight
         // Row origin is the subtitle bottom. Title, subtitle, and amount
         // keep the same two-line relationship; the unused progress-bar
         // slot is not part of the block height.
-        func quotaBandFrames(rowY: CGFloat, showsReset: Bool) -> OpenCodexQuotaRowFrames {
+        func quotaBandFrames(
+            rowY: CGFloat,
+            showsReset: Bool,
+            resetY: CGFloat? = nil
+        ) -> OpenCodexQuotaRowFrames {
             OpenCodexQuotaRowFrames(
                 quotaDetail: CGRect(
                     x: horizontalInset,
@@ -851,7 +857,7 @@ enum OpenCodexCardLayout {
                 reset: showsReset
                     ? CGRect(
                         x: horizontalInset,
-                        y: rowY,
+                        y: resetY ?? rowY,
                         width: 128,
                         height: quotaResetHeight
                     )
@@ -870,7 +876,11 @@ enum OpenCodexCardLayout {
             ? quotaBandFrames(rowY: cardSummaryY, showsReset: summaryShowsExpiry)
             : nil
         let bankedResetProbabilityRow = includesBankedReset
-            ? quotaBandFrames(rowY: probabilityRowY, showsReset: true)
+            ? quotaBandFrames(
+                rowY: probabilityRowY,
+                showsReset: true,
+                resetY: probabilityBottomY
+            )
             : nil
         let bankedResetForecastMetrics = showsForecastMetrics
             ? CGRect(
