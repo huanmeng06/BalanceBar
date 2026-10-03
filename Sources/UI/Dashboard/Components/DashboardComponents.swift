@@ -870,9 +870,13 @@ class HoverLinkTextField: NSTextField {
     }
 
     private func applyStyle(text: String, underlined: Bool) {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = alignment
+        paragraphStyle.lineBreakMode = cell?.lineBreakMode ?? lineBreakMode
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font ?? NSFont.systemFont(ofSize: 12),
-            .foregroundColor: underlined ? NSColor.linkColor : restingTextColor
+            .foregroundColor: underlined ? NSColor.linkColor : restingTextColor,
+            .paragraphStyle: paragraphStyle
         ]
         if underlined { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
         isApplyingStyle = true
