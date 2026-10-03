@@ -445,12 +445,9 @@ enum OpenCodexCardLayout {
     static func bankedResetProbabilityBlockHeight(
         includesForecastMetrics: Bool = true
     ) -> CGFloat {
-        let metricsHeight = includesForecastMetrics
-            ? bankedResetForecastLineGap + bankedResetForecastExtraHeight()
-            : 0
-        return quotaTitleTopInset
-            + bankedResetTextBandAmountHeight
-            + metricsHeight
+        // Forecast metrics occupy the former source-subtitle row inside the
+        // same two-line band; they must not reserve a second block below it.
+        return quotaTitleTopInset + bankedResetTextBandAmountHeight
     }
 
     /// Large primary label for the strong-signal fallback. Shrinks just
@@ -685,9 +682,6 @@ enum OpenCodexCardLayout {
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
         let showsForecastMetrics = includesBankedReset && includesBankedResetForecastMetrics
-        let forecastExtraHeight = showsForecastMetrics
-            ? bankedResetForecastLineGap + bankedResetForecastExtraHeight()
-            : 0
         let forecastLineHeight = bankedResetForecastLineHeight()
         let probabilityBlockHeight = includesBankedReset
             ? bankedResetProbabilityBlockHeight(
@@ -839,7 +833,10 @@ enum OpenCodexCardLayout {
             : nil
         let cardSummaryY = bottomInset + bankedDetailBlockHeight
         let probabilityBottomY = cardSummaryY + cardSummaryHeight + probabilityCardGap
-        let probabilityRowY = probabilityBottomY + forecastExtraHeight
+        // The former source row is now the forecast metrics row. Keep the
+        // primary probability row at the block boundary so 24h/48h copy can
+        // occupy `reset` directly beneath its title.
+        let probabilityRowY = probabilityBottomY
         // Row origin is the subtitle bottom. Title, subtitle, and amount
         // keep the same two-line relationship; the unused progress-bar
         // slot is not part of the block height.

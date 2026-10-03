@@ -883,12 +883,12 @@ class HoverLinkTextField: NSTextField {
 /// It intentionally tracks the card only to forward movement; the link keeps
 /// the glyph-only hit test and activation boundary but not its own hover owner.
 final class MenuHoverLinkHostView: NSView {
-    private var links: [HoverLinkTextField] = []
+    private weak var link: HoverLinkTextField?
     private weak var ticketScrollView: BankedResetTicketScrollView?
     private var trackingAreaReference: NSTrackingArea?
     private var ticketScrollMonitor: Any?
 
-    var trackedLink: HoverLinkTextField? { links.last }
+    var trackedLink: HoverLinkTextField? { link }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -899,9 +899,7 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func track(_ link: HoverLinkTextField) {
-        if !links.contains(where: { $0 === link }) {
-            links.append(link)
-        }
+        self.link = link
         link.setInteractionMode(.menuHosted)
         refreshTrackingArea()
         synchronizeHoverState()
@@ -937,7 +935,7 @@ final class MenuHoverLinkHostView: NSView {
         if newWindow == nil {
             removeTrackingAreaReference()
             removeTicketScrollMonitor()
-            links.forEach { $0.clearHoverState() }
+            link?.clearHoverState()
         }
         super.viewWillMove(toWindow: newWindow)
     }
@@ -951,7 +949,7 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
-        links.forEach { $0.clearHoverState() }
+        link?.clearHoverState()
     }
 
     override func removeFromSuperview() {
@@ -960,11 +958,11 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func forwardHover(atHostPoint point: NSPoint) {
-        links.forEach { $0.updateHover(atHostPoint: point, in: self) }
+        link?.updateHover(atHostPoint: point, in: self)
     }
 
     private func installTrackingArea() {
-        guard !links.isEmpty, !bounds.isEmpty else { return }
+        guard link != nil, !bounds.isEmpty else { return }
         let area = NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
@@ -995,7 +993,7 @@ final class MenuHoverLinkHostView: NSView {
 
     private func synchronizeHoverState() {
         guard let window else {
-            links.forEach { $0.clearHoverState() }
+            link?.clearHoverState()
             return
         }
         let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
@@ -1005,7 +1003,7 @@ final class MenuHoverLinkHostView: NSView {
     private func tearDownWindowTracking() {
         removeTrackingAreaReference()
         removeTicketScrollMonitor()
-            links.forEach { $0.clearHoverState() }
+            link?.clearHoverState()
     }
 
     private func handleTicketScroll(_ event: NSEvent) -> Bool {
