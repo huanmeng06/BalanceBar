@@ -483,3 +483,7 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Terminé pour ce cycle";
 "codex.banked_reset.official_reset_confirmed" = "✅ Réinitialisé";
+
+"codex.reset_signal.tooltip_title" = "Signal officiel de réinitialisation";
+"codex.reset_signal.tooltip_body" = "Probabilité du signal officiel fort actuel, distincte des prévisions ordinaires à 24 / 48 heures.";
+"codex.reset_signal.tooltip_disclaimer" = "Le signal ne confirme pas la réinitialisation de ce compte et ne garantit pas de crédits. Le quota réel provient de l’API officielle.";

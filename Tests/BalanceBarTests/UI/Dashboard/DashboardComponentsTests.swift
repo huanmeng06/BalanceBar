@@ -1549,6 +1549,28 @@ final class DashboardComponentsTests: XCTestCase {
         }
     }
 
+    func testStrongSignalTooltipExplainsSignalSeparatelyInEveryLanguage() throws {
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        var forecast = CodexResetForecast.demo(updatedAt: date)
+        for language in AppLanguage.allCases where language != .system {
+            let ordinary = StatusItemController.codexResetForecastTooltip(for: forecast, language: language, now: date)
+            forecast.officialSignal = CodexResetOfficialSignal(probability: .percent(93))
+            let signal = StatusItemController.codexResetForecastTooltip(for: forecast, language: language, now: date)
+            XCTAssertNotEqual(signal.title, ordinary.title, language.rawValue)
+            XCTAssertNotEqual(signal.body, ordinary.body, language.rawValue)
+            XCTAssertEqual(signal.source, ordinary.source, language.rawValue)
+            if language == .simplifiedChinese { XCTAssertEqual(signal.title, "官方重置信号") }
+            let controller = DashboardForecastTooltipViewController(content: signal)
+            controller.loadViewIfNeeded()
+            for field in controller.view.subviews.compactMap({ $0 as? NSTextField }) {
+                XCTAssertTrue(controller.view.bounds.contains(field.frame), language.rawValue)
+                XCTAssertFalse(field.cell?.truncatesLastVisibleLine ?? true)
+                XCTAssertGreaterThanOrEqual(field.frame.height, try XCTUnwrap(field.cell).cellSize(forBounds: field.bounds).height, language.rawValue)
+            }
+            forecast.officialSignal = nil
+        }
+    }
+
     func testForecastTooltipKeepsYearForOlderUpdatesAndUnknownDate() throws {
         let formatter = ISO8601DateFormatter()
         let date = try XCTUnwrap(formatter.date(from: "2025-10-07T09:21:00Z"))

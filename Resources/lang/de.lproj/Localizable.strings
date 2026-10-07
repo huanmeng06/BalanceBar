@@ -483,3 +483,7 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Diese Runde abgeschlossen";
 "codex.banked_reset.official_reset_confirmed" = "✅ Zurückgesetzt";
+
+"codex.reset_signal.tooltip_title" = "Offizielles Reset-Signal";
+"codex.reset_signal.tooltip_body" = "Wahrscheinlichkeit des aktuellen starken offiziellen Signals, getrennt von der normalen 24-/48-Stunden-Prognose.";
+"codex.reset_signal.tooltip_disclaimer" = "Das Signal bestätigt keinen Reset dieses Kontos und garantiert keine Reset-Guthaben. Das tatsächliche Kontingent stammt aus der offiziellen API.";

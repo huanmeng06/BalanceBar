@@ -6373,11 +6373,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             updatedText = "--"
         }
+        let isSignal = forecast.officialSignal != nil
         return DashboardForecastTooltipContent(
-            title: tr(.keyCodexBankedResetTooltipTitle, language: language),
-            body: tr(.keyCodexBankedResetTooltipBody, language: language),
+            title: tr(isSignal ? .keyCodexResetSignalTooltipTitle : .keyCodexBankedResetTooltipTitle, language: language),
+            body: tr(isSignal ? .keyCodexResetSignalTooltipBody : .keyCodexBankedResetTooltipBody, language: language),
             source: tr(.keyCodexBankedResetTooltipSource, arguments: [updatedText], language: language),
-            disclaimer: tr(.keyCodexBankedResetTooltipDisclaimer, language: language)
+            disclaimer: tr(isSignal ? .keyCodexResetSignalTooltipDisclaimer : .keyCodexBankedResetTooltipDisclaimer, language: language)
         )
     }
 
@@ -6415,15 +6416,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 progressPercentage: nil
             )
             let plan = overviewNumericPlan(for: sample)
-            let numeric = makeOverviewNumericAmount(
+            let numeric = makeOverviewNumericHoverLinkAmount(
                 plan: plan,
                 sample: sample,
-                frame: row.amount
+                frame: row.amount,
+                forecast: forecast
             )
             numeric.identifier = NSUserInterfaceItemIdentifier(
                 "codex.bankedReset.probabilityCountdownAmount"
             )
-            numeric.textField.identifier = numeric.identifier
             amount = numeric
             marqueeAmountText = plan.layoutReservationText
         } else {
@@ -6478,7 +6479,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .strongSignal:
             let text = forecast.menuPrimaryDisplayText()
             let labelFont = OpenCodexCardLayout.bankedResetPrimaryLabelFont(for: text)
-            let label = makeOverviewLabel(text, font: labelFont)
+            let label = HoverLinkTextField(text: text)
+            label.font = labelFont
+            label.restingTextColor = .labelColor
+            label.textColor = .labelColor
+            configureBankedResetSourceLink(label, forecast: forecast)
             label.alignment = .right
             label.frame = row.amount
             label.identifier = NSUserInterfaceItemIdentifier(
@@ -6506,7 +6511,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             )
         )
-        if let link = amount as? OverviewNumericHoverLinkTextField {
+        if let link = amount as? HoverLinkTextField {
             view.track(link)
         }
         // Reuse the source subtitle slot and stop at the primary amount's
@@ -6731,6 +6736,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return view
     }
 
+    private func configureBankedResetSourceLink(_ link: HoverLinkTextField, forecast: CodexResetForecast) {
+        link.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
+        let content = Self.codexResetForecastTooltip(for: forecast)
+        link.forecastTooltipContent = content
+        link.hoverHint = content.plainText
+        link.onActivate = {
+            NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
+        }
+    }
+
     private func makeOverviewNumericHoverLinkAmount(
         plan: OverviewNumericTransitionPlan,
         sample: OverviewNumericSample,
@@ -6751,13 +6766,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         link.frame = frame
         link.identifier = OverviewNumericPresentation.amountIdentifier(for: sample.identity)
         link.textColor = .labelColor
-        link.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
-        let content = Self.codexResetForecastTooltip(for: forecast)
-        link.forecastTooltipContent = content
-        link.hoverHint = content.plainText
-        link.onActivate = {
-            NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
-        }
+        configureBankedResetSourceLink(link, forecast: forecast)
         link.configure(plan: plan, sample: sample)
         return link
     }

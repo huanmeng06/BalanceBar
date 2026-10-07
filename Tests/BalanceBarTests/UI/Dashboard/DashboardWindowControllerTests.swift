@@ -5342,6 +5342,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             let amountLink = allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first
             XCTAssertEqual(amountLink != nil, name == "signal-percent", name)
+            let sourceLink = allControls(of: overview, as: HoverLinkTextField.self).first {
+                $0.identifier?.rawValue == largeIdentifier
+            }
+            XCTAssertEqual(sourceLink != nil, !confirmed, name)
+            if let sourceLink {
+                XCTAssertEqual(sourceLink.forecastTooltipContent?.title, "官方重置信号", name)
+                XCTAssertNotNil(sourceLink.onActivate, name)
+                XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"), name)
+            }
             if let amountLink {
                 XCTAssertEqual(amountLink.stringValue, largeText, name)
                 XCTAssertTrue(amountLink.hoverHint.contains("codex-reset.com"), name)
@@ -5567,11 +5576,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability48h)))
         let countdown = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probabilityCountdownAmount"
             }
         )
-        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.stringValue, "1h1m")
         XCTAssertEqual(countdown.sample?.format, .remainingMinutes)
         XCTAssertEqual(countdown.sample?.value, 61)
         let hint = try XCTUnwrap(
@@ -5587,19 +5596,19 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress"
             }
         )
-        XCTAssertTrue(
-            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).isEmpty
-        )
+        XCTAssertEqual(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count, 1)
+        XCTAssertNotNil(countdown.onActivate)
+        XCTAssertEqual(countdown.forecastTooltipContent?.title, "官方重置信号")
 
         controller.menuWillOpen(controller.statusMenuForTesting)
         XCTAssertNotNil(controller.bankedResetCountdownTimerForTesting)
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(1)
         controller.bankedResetCountdownTimerForTesting?.fire()
-        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.stringValue, "1h1m")
         XCTAssertEqual(countdown.sample?.value, 61)
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(66)
         controller.bankedResetCountdownTimerForTesting?.fire()
-        XCTAssertEqual(countdown.textField.stringValue, "59m")
+        XCTAssertEqual(countdown.stringValue, "59m")
         XCTAssertEqual(countdown.sample?.value, 59)
         XCTAssertEqual(hint.stringValue, "官方重置提示 · 具体时间点")
         controller.menuDidClose(controller.statusMenuForTesting)
@@ -5717,11 +5726,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         let countdown = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probabilityCountdownAmount"
             }
         )
-        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.stringValue, "1h1m")
         let progressViews = allControls(of: overview, as: QuotaProgressView.self)
         XCTAssertEqual(progressViews.count, 1)
         let bar = try XCTUnwrap(progressViews.first)
@@ -5742,18 +5751,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(bar.frame.midY, metrics.midY, accuracy: 0.5)
         XCTAssertEqual(bar.frame.minX, metrics.minX, accuracy: 0.001)
         let amountWidth = AccountMarqueeView.textWidth(
-            of: countdown.textField.stringValue,
-            font: try XCTUnwrap(countdown.textField.font)
+            of: countdown.stringValue,
+            font: try XCTUnwrap(countdown.font)
         )
         XCTAssertLessThanOrEqual(bar.frame.maxX, countdown.frame.maxX - amountWidth + 0.001)
-        XCTAssertTrue(
-            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).isEmpty
-        )
+        XCTAssertEqual(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count, 1)
+        XCTAssertNotNil(countdown.onActivate)
+        XCTAssertEqual(countdown.forecastTooltipContent?.title, "官方重置信号")
 
         controller.menuWillOpen(controller.statusMenuForTesting)
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(1)
         controller.bankedResetCountdownTimerForTesting?.fire()
-        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.stringValue, "1h1m")
         let remainingAfterTick = 3_664.0 / (3_600.0 + 3_665.0) * 100
         XCTAssertEqual(bar.percentage, remainingAfterTick, accuracy: 0.001)
         controller.menuDidClose(controller.statusMenuForTesting)

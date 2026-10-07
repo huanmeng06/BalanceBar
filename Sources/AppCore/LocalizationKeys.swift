@@ -485,5 +485,9 @@
     case keyCodexBankedResetConfidenceMedium = "codex.banked_reset.confidence_medium"
     case keyCodexBankedResetConfidenceHigh = "codex.banked_reset.confidence_high"
 
+    case keyCodexResetSignalTooltipTitle = "codex.reset_signal.tooltip_title"
+    case keyCodexResetSignalTooltipBody = "codex.reset_signal.tooltip_body"
+    case keyCodexResetSignalTooltipDisclaimer = "codex.reset_signal.tooltip_disclaimer"
+
     var rawKey: String { rawValue }
-  }
+}
