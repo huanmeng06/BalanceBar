@@ -1513,6 +1513,57 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(AccountEmailTextField.tooltipDelay, 0.15, accuracy: 0.001)
     }
 
+    func testForecastTooltipHasHierarchyAndFitsEveryLanguage() throws {
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-07T09:21:00Z"))
+        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        for language in AppLanguage.allCases where language != .system {
+            let content = StatusItemController.codexResetForecastTooltip(
+                for: .demo(updatedAt: date), language: language, now: date, timeZone: timeZone
+            )
+            let controller = DashboardForecastTooltipViewController(content: content)
+            controller.loadViewIfNeeded()
+            let fields = controller.view.subviews.compactMap { $0 as? NSTextField }
+            XCTAssertEqual(fields.count, 4)
+            XCTAssertEqual(fields.map(\.stringValue), [content.title, content.body, content.source, content.disclaimer])
+            XCTAssertEqual(fields.map { $0.font?.pointSize }, [13, 12, 12, 11])
+            XCTAssertEqual(fields[0].font, .systemFont(ofSize: 13, weight: .semibold))
+            XCTAssertEqual(fields[2].textColor, .secondaryLabelColor)
+            XCTAssertEqual(fields[3].textColor, .secondaryLabelColor)
+            XCTAssertEqual(fields[0].frame.minY - fields[1].frame.maxY, 5, accuracy: 0.001)
+            XCTAssertEqual(fields[1].frame.minY - fields[2].frame.maxY, 10, accuracy: 0.001)
+            XCTAssertEqual(fields[2].frame.minY - fields[3].frame.maxY, 10, accuracy: 0.001)
+            for field in fields {
+                XCTAssertTrue(controller.view.bounds.contains(field.frame), language.rawValue)
+                let needed = try XCTUnwrap(field.cell).cellSize(forBounds: field.bounds).height
+                XCTAssertGreaterThanOrEqual(field.frame.height, needed, language.rawValue)
+                XCTAssertFalse(field.cell?.truncatesLastVisibleLine ?? true)
+                XCTAssertFalse(field.stringValue.contains("\n"))
+            }
+            XCTAssertLessThanOrEqual(controller.view.frame.width, 386)
+            XCTAssertTrue(content.source.contains("codex-reset.com"))
+            if language == .simplifiedChinese {
+                XCTAssertEqual(content.title, "24 小时内重置概率")
+                XCTAssertEqual(content.source, "来源：codex-reset.com · 更新于 10月7日 09:21")
+                XCTAssertLessThanOrEqual(fields[2].frame.height, 20, "Chinese source must fit one line")
+            }
+        }
+    }
+
+    func testForecastTooltipKeepsYearForOlderUpdatesAndUnknownDate() throws {
+        let formatter = ISO8601DateFormatter()
+        let date = try XCTUnwrap(formatter.date(from: "2025-10-07T09:21:00Z"))
+        let now = try XCTUnwrap(formatter.date(from: "2026-10-07T09:21:00Z"))
+        let zone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let older = StatusItemController.codexResetForecastTooltip(
+            for: .demo(updatedAt: date), language: .simplifiedChinese, now: now, timeZone: zone
+        )
+        XCTAssertTrue(older.source.contains("2025年10月7日 09:21"))
+        let missing = StatusItemController.codexResetForecastTooltip(
+            for: .unavailable, language: .simplifiedChinese, now: now, timeZone: zone
+        )
+        XCTAssertTrue(missing.source.hasSuffix("更新于 --"))
+    }
+
     func testHoverLinkHoverHintSetsNativeTooltip() {
         let link = HoverLinkTextField(text: "24%")
         XCTAssertEqual(link.hoverHint, "")

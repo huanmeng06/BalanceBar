@@ -6330,22 +6330,55 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
     }
 
-    private static let forecastUpdatedFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        formatter.doesRelativeDateFormatting = false
-        return formatter
-    }()
-
     static func codexResetForecastHint(for forecast: CodexResetForecast) -> String {
+        codexResetForecastTooltip(for: forecast).plainText
+    }
+
+    static func codexResetForecastTooltip(
+        for forecast: CodexResetForecast,
+        language: AppLanguage = .resolved,
+        now: Date = Date(),
+        timeZone: TimeZone = .current
+    ) -> DashboardForecastTooltipContent {
         let updatedText: String
         if let updatedAt = forecast.updatedAt {
-            updatedText = forecastUpdatedFormatter.string(from: updatedAt)
+            let localeID: String
+            switch language {
+            case .simplifiedChinese: localeID = "zh_CN"
+            case .traditionalChineseTaiwan: localeID = "zh_TW"
+            case .traditionalChineseHongKong: localeID = "zh_HK"
+            case .japanese: localeID = "ja_JP"
+            case .korean: localeID = "ko_KR"
+            case .spanish: localeID = "es_ES"
+            case .portuguese: localeID = "pt_PT"
+            case .french: localeID = "fr_FR"
+            case .german: localeID = "de_DE"
+            case .russian: localeID = "ru_RU"
+            case .italian: localeID = "it_IT"
+            case .english, .system: localeID = "en_US"
+            }
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: localeID)
+            formatter.timeZone = timeZone
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = timeZone
+            formatter.calendar = calendar
+            let sameYear = calendar.component(.year, from: updatedAt) == calendar.component(.year, from: now)
+            if localeID.hasPrefix("zh") {
+                formatter.dateFormat = sameYear ? "M月d日 HH:mm" : "yyyy年M月d日 HH:mm"
+            } else {
+                formatter.setLocalizedDateFormatFromTemplate(sameYear ? "MMMdHHmm" : "yMMMdHHmm")
+            }
+            updatedText = formatter.string(from: updatedAt)
         } else {
             updatedText = "--"
         }
-        return tr(.keyCodexBankedResetProbabilityHint, arguments: [updatedText])
+        return DashboardForecastTooltipContent(
+            title: tr(.keyCodexBankedResetTooltipTitle, language: language),
+            body: tr(.keyCodexBankedResetTooltipBody, language: language),
+            source: tr(.keyCodexBankedResetTooltipSource, arguments: [updatedText], language: language),
+            disclaimer: tr(.keyCodexBankedResetTooltipDisclaimer, language: language)
+        )
     }
 
     private func addBankedResetProbabilityBlock(
@@ -6723,7 +6756,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         link.identifier = OverviewNumericPresentation.amountIdentifier(for: sample.identity)
         link.textColor = .labelColor
         link.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
-        link.hoverHint = Self.codexResetForecastHint(for: forecast)
+        let content = Self.codexResetForecastTooltip(for: forecast)
+        link.forecastTooltipContent = content
+        link.hoverHint = content.plainText
         link.onActivate = {
             NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
         }

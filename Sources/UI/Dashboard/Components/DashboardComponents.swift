@@ -101,6 +101,70 @@ struct DashboardTextTooltipLayout: Equatable {
 
 /// Source / hint bubble for menu-hosted hover links. Native `toolTip`
 /// often never appears inside an `NSMenu` tracking loop.
+struct DashboardForecastTooltipContent {
+    let title: String
+    let body: String
+    let source: String
+    let disclaimer: String
+
+    var plainText: String { [title, body, source, disclaimer].joined(separator: "\n\n") }
+}
+
+final class DashboardForecastTooltipViewController: NSViewController {
+    private let content: DashboardForecastTooltipContent
+    static let padding: CGFloat = 13
+
+    init(content: DashboardForecastTooltipContent) {
+        self.content = content
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func loadView() {
+        let sourceFont = NSFont.systemFont(ofSize: 12)
+        // Allow the source/date to fit one line in common locales; longer
+        // translations wrap naturally rather than widening indefinitely.
+        let width = min(360, max(264, ceil((content.source as NSString).size(
+            withAttributes: [.font: sourceFont]
+        ).width) + 4))
+        let rows: [(String, String, NSFont, NSColor, CGFloat)] = [
+            ("title", content.title, .systemFont(ofSize: 13, weight: .semibold), .labelColor, 5),
+            ("body", content.body, .systemFont(ofSize: 12), NSColor.labelColor.withAlphaComponent(0.85), 10),
+            ("source", content.source, sourceFont, .secondaryLabelColor, 10),
+            ("disclaimer", content.disclaimer, .systemFont(ofSize: 11), .secondaryLabelColor, 0)
+        ]
+        let root = NSView()
+        var labels: [(NSTextField, CGFloat, CGFloat)] = []
+        for (id, text, font, color, spacing) in rows {
+            let label = NSTextField(wrappingLabelWithString: text)
+            label.identifier = NSUserInterfaceItemIdentifier("forecastTooltip.\(id)")
+            label.font = font
+            label.textColor = color
+            label.lineBreakMode = .byWordWrapping
+            label.usesSingleLineMode = false
+            label.maximumNumberOfLines = 0
+            label.preferredMaxLayoutWidth = width
+            label.cell?.wraps = true
+            label.cell?.truncatesLastVisibleLine = false
+            let measured = label.cell?.cellSize(forBounds: NSRect(
+                x: 0, y: 0, width: width, height: .greatestFiniteMagnitude
+            )).height ?? label.fittingSize.height
+            let height = max(ceil(measured) + 2, ceil(font.ascender - font.descender + 2))
+            labels.append((label, height, spacing))
+            root.addSubview(label)
+        }
+        let totalHeight = labels.reduce(Self.padding * 2) { $0 + $1.1 + $1.2 }
+        root.frame = NSRect(x: 0, y: 0, width: width + Self.padding * 2, height: totalHeight)
+        var top = totalHeight - Self.padding
+        for (label, height, spacing) in labels {
+            label.frame = NSRect(x: Self.padding, y: top - height, width: width, height: height)
+            top -= height + spacing
+        }
+        view = root
+    }
+}
+
 final class DashboardTextTooltipViewController: NSViewController {
     private let text: String
 
@@ -464,6 +528,8 @@ class HoverLinkTextField: NSTextField {
     }
 
     var onActivate: (() -> Void)?
+    /// Structured forecast presentation; plain hints keep their compact layout.
+    var forecastTooltipContent: DashboardForecastTooltipContent?
     var restingTextColor: NSColor = .linkColor {
         didSet { applyStyle(text: stringValue, underlined: isHovered) }
     }
@@ -746,7 +812,12 @@ class HoverLinkTextField: NSTextField {
             return
         }
         let popover = DashboardTextTooltip.makePopover()
-        let controller = DashboardTextTooltipViewController(text: hoverHint)
+        let controller: NSViewController
+        if let content = forecastTooltipContent {
+            controller = DashboardForecastTooltipViewController(content: content)
+        } else {
+            controller = DashboardTextTooltipViewController(text: hoverHint)
+        }
         controller.loadViewIfNeeded()
         popover.contentViewController = controller
         popover.contentSize = controller.view.frame.size

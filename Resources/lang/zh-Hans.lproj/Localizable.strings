@@ -457,7 +457,11 @@
 "codex.banked_reset.remaining_minutes" = "%1$@ 分钟";
 "codex.banked_reset.probability_prefix" = "重置概率";
 "codex.banked_reset.probability_source" = "数据来源";
-"codex.banked_reset.probability_hint" = "24 小时内重置概率\n\n预测未来 24 小时和 48 小时内出现额外全局重置的可能性。\n\n数据来源：codex-reset.com。\n来源更新于 %1$@。\n\n这是第三方对全局额外重置的预测，不是当前账户周额度的确定重置时间，也不保证发放重置卡。\n置信度为模型分类，不代表预测一定准确。";
+"codex.banked_reset.probability_hint" = "24 小时内重置概率\n\n预测未来 24 / 48 小时内的额外全局重置概率。\n\n来源：codex-reset.com · 更新于 %1$@\n\n第三方预测，不代表当前账户的确定重置时间，也不保证发放重置卡；置信度由模型分类得出，仅供参考。";
+"codex.banked_reset.tooltip.title" = "24 小时内重置概率";
+"codex.banked_reset.tooltip.body" = "预测未来 24 / 48 小时内的额外全局重置概率。";
+"codex.banked_reset.tooltip.source" = "来源：codex-reset.com · 更新于 %1$@";
+"codex.banked_reset.tooltip.disclaimer" = "第三方预测，不代表当前账户的确定重置时间，也不保证发放重置卡；置信度由模型分类得出，仅供参考。";
 "codex.banked_reset.probability_24h" = "24 小时内";
 "codex.banked_reset.probability_48h" = "48 小时内";
 "codex.banked_reset.high_probability" = "高概率";

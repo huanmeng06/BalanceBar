@@ -457,7 +457,11 @@
 "codex.banked_reset.remaining_minutes" = "%1$@ Minuten";
 "codex.banked_reset.probability_prefix" = "Reset-Wahrscheinlichkeit";
 "codex.banked_reset.probability_source" = "Datenquelle";
-"codex.banked_reset.probability_hint" = "Reset-Wahrscheinlichkeit innerhalb von 24 Stunden\n\nPrognose für einen zusätzlichen globalen Reset in den nächsten 24 und 48 Stunden.\n\nDatenquelle: codex-reset.com.\nQuelle aktualisiert am %1$@.\n\nDies ist eine Drittprognose für einen zusätzlichen globalen Reset, keine garantierte Reset-Zeit für das wöchentliche Kontingent dieses Kontos, und sie garantiert keine Reset-Karte.\nDie Konfidenz ist eine Modellkategorie, kein Genauigkeitsversprechen.";
+"codex.banked_reset.probability_hint" = "Reset-Wahrscheinlichkeit innerhalb von 24 Stunden\n\nPrognose eines zusätzlichen globalen Resets innerhalb von 24 / 48 Stunden.\n\nQuelle: codex-reset.com · Aktualisiert %1$@\n\nDrittprognose, keine garantierte Reset-Zeit für dieses Konto oder Zusage einer Reset-Karte. Die Konfidenz ist eine Modellkategorie und dient nur zur Orientierung.";
+"codex.banked_reset.tooltip.title" = "Reset-Wahrscheinlichkeit innerhalb von 24 Stunden";
+"codex.banked_reset.tooltip.body" = "Prognose eines zusätzlichen globalen Resets innerhalb von 24 / 48 Stunden.";
+"codex.banked_reset.tooltip.source" = "Quelle: codex-reset.com · Aktualisiert %1$@";
+"codex.banked_reset.tooltip.disclaimer" = "Drittprognose, keine garantierte Reset-Zeit für dieses Konto oder Zusage einer Reset-Karte. Die Konfidenz ist eine Modellkategorie und dient nur zur Orientierung.";
 "codex.banked_reset.probability_24h" = "Innerhalb 24 Std.";
 "codex.banked_reset.probability_48h" = "Innerhalb 48 Std.";
 "codex.banked_reset.high_probability" = "Hohe Prob.";
