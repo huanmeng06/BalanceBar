@@ -1711,7 +1711,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(fixture.forecastRequestCount, 1)
     }
 
-    func testUnavailableAndFailedForecastUseExistingTenMinuteCadence() throws {
+    func testUnavailableAndFailedForecastRetrySoonerThanSuccessfulCacheExpires() throws {
         let fixture = ObservationFixture()
         fixture.update { $0.forecast = Data("{}".utf8) }
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
@@ -1719,18 +1719,42 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
         XCTAssertEqual(fixture.forecastRequestCount, 1)
         _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastRetryInterval - 1)
         _ = try observationRefresh(coordinator, fixture: fixture)
         XCTAssertEqual(fixture.forecastRequestCount, 1)
-        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastTTL + 1)
+        clock.advance(by: 1)
         fixture.update { $0.forecastStatus = 503 }
         _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
         XCTAssertEqual(fixture.forecastRequestCount, 2)
         _ = try observationRefresh(coordinator, fixture: fixture)
         XCTAssertEqual(fixture.forecastRequestCount, 2)
-        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastTTL + 1)
+        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastRetryInterval)
         fixture.update { $0.forecastStatus = 200; $0.forecast = ObservationFixture.forecast(episode: "recovered") }
         XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .watching)
         XCTAssertEqual(fixture.forecastRequestCount, 3)
+        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastRetryInterval)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(fixture.forecastRequestCount, 3, "successful forecast keeps its ten-minute cache")
+    }
+
+    func testForecastRecoveryBeforeResetRetainsConsumptionEvidence() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.forecastStatus = 503 }
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: observationStore(), clock: clock)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast, .unavailable)
+
+        // T+1 minute: signal becomes available while both quotas still show usage.
+        clock.advance(by: 60)
+        fixture.update { $0.forecastStatus = 200 }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .watching)
+        XCTAssertEqual(fixture.forecastRequestCount, 2)
+
+        // T+3 minutes: the same episode resets. The successful cache is sufficient.
+        clock.advance(by: 120)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .observed)
+        XCTAssertEqual(fixture.forecastRequestCount, 2)
     }
 
     private func observationStore() throws -> CodexResetObservationStore {

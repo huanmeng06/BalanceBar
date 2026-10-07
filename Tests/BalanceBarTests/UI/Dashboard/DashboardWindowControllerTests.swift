@@ -5073,13 +5073,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let largeNumeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }
-            XCTAssertEqual(largeNumeric.count, largeAnimates ? 1 : 0, name)
-            if largeAnimates {
-                XCTAssertEqual(largeNumeric[0].textField.font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize, name)
-                XCTAssertNil(largeNumeric[0].sample?.progressPercentage, name)
-            } else {
-                XCTAssertEqual(largeFields[0].font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize, name)
-                XCTAssertEqual(largeFields[0].alignment, .right, name)
+            XCTAssertEqual(largeNumeric.count, 0, name)
+            let primaryLink = allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
+            }
+            XCTAssertEqual(primaryLink != nil, largeAnimates, name)
+            XCTAssertEqual(largeFields[0].font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize, name)
+            XCTAssertEqual(largeFields[0].alignment, .right, name)
+            if let primaryLink {
+                XCTAssertNil(primaryLink.sample?.progressPercentage, name)
+                XCTAssertTrue(primaryLink.hoverHint.contains("codex-reset.com"), name)
+                XCTAssertNotNil(primaryLink.forecastTooltipContent, name)
+                XCTAssertNotNil(primaryLink.onActivate, name)
             }
             let small24Numeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24h"
@@ -5113,8 +5118,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 name
             )
             XCTAssertGreaterThan(prefix48.frame.minY, resetTitle.frame.maxY, name)
-            XCTAssertTrue(
-                allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).isEmpty,
+            XCTAssertEqual(
+                allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count,
+                largeAnimates ? 1 : 0,
                 name
             )
         }

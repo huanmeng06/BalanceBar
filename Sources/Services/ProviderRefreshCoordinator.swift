@@ -298,6 +298,9 @@ final class ProviderRefreshCoordinator {
         let fetchedAt: Date
     }
     static let codexResetForecastTTL: TimeInterval = 10 * 60
+    // Failed/unavailable requests retry on the ordinary quota refresh cadence;
+    // only successful forecasts receive the longer cache lifetime.
+    static let codexResetForecastRetryInterval: TimeInterval = 60
     private var cachedCodexResetForecast: CachedCodexResetForecast?
     private var inFlightForecastCompletions: [(CodexResetForecast) -> Void] = []
     private var forecastRequestInFlight = false
@@ -816,7 +819,7 @@ final class ProviderRefreshCoordinator {
 
             if !self.forecastRequestInFlight,
                let attempted = self.lastForecastAttempt,
-               now.timeIntervalSince(attempted) < Self.codexResetForecastTTL {
+               now.timeIntervalSince(attempted) < Self.codexResetForecastRetryInterval {
                 return
             }
             self.inFlightForecastCompletions.append(completion)
