@@ -6468,7 +6468,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             amount = numeric
             marqueeAmountText = plan.layoutReservationText
         case .ordinary:
-            let label = makeOverviewLabel(forecast.probability24h.displayText, font: amountFont)
+            let label = HoverLinkTextField(text: forecast.probability24h.displayText)
+            label.font = amountFont
+            label.restingTextColor = .labelColor
+            label.textColor = .labelColor
+            configureBankedResetSourceLink(label, forecast: forecast)
             label.alignment = .right
             label.frame = row.amount
             label.identifier = NSUserInterfaceItemIdentifier(

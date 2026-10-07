@@ -5078,6 +5078,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }
             XCTAssertEqual(primaryLink != nil, largeAnimates, name)
+            let sourceLink = try XCTUnwrap(allControls(of: overview, as: HoverLinkTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
+            }, name)
+            XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"), name)
+            XCTAssertNotNil(sourceLink.onActivate, name)
+            XCTAssertNotNil(sourceLink.forecastTooltipContent, name)
             XCTAssertEqual(largeFields[0].font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize, name)
             XCTAssertEqual(largeFields[0].alignment, .right, name)
             if let primaryLink {
