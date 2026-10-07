@@ -5205,7 +5205,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                     officialSignal: CodexResetOfficialSignal(probability: .percent(93)),
                     officialResetObservation: .observed
                 ),
-                "已重置✅",
+                "✅ 已重置",
                 "codex.bankedReset.probabilityConfirmedLabel",
                 false,
                 true

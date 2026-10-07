@@ -617,10 +617,10 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertTrue(forecast.isOfficialResetConfirmed)
         XCTAssertNil(forecast.remainingCountdownSeconds(now: Date(timeIntervalSince1970: 1_700_000_000)))
-        XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .simplifiedChinese), "已重置✅")
+        XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .simplifiedChinese), "✅ 已重置")
         XCTAssertEqual(
             forecast.officialHintText(language: .simplifiedChinese),
-            "官方重置提示 · 已重置✅"
+            "本轮已完成"
         )
     }
 

@@ -481,5 +481,5 @@
 "dashboard.menu.page.color_green" = "Зелёный";
 "common.restore_defaults" = "Восстановить значения по умолчанию";
 
-"codex.banked_reset.official_hint_confirmed" = "Офиц. подсказка · Сброшено✅";
-"codex.banked_reset.official_reset_confirmed" = "Сброшено✅";
+"codex.banked_reset.official_hint_confirmed" = "Этот цикл завершён";
+"codex.banked_reset.official_reset_confirmed" = "✅ Сброшено";
