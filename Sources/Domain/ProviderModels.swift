@@ -521,11 +521,13 @@ enum OpenCodexCardLayout {
         bankedResetCardCount: Int = 0,
         bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
         includesBankedResetNearestExpiry: Bool = false,
-        includesBankedResetForecastMetrics: Bool = true
+        includesBankedResetForecastMetrics: Bool = true,
+        includesResetProbability: Bool? = nil
     ) -> OpenCodexCardFrames {
+        let showsProbability = includesResetProbability ?? includesBankedReset
         let recognizedWindowCount = officialQuotaWindows.filter { $0.kind != .other }.count
         if category == .quota,
-           recognizedWindowCount > 1 || includesLunaReserve || includesBankedReset {
+           recognizedWindowCount > 1 || includesLunaReserve || includesBankedReset || showsProbability {
             return expandedQuotaFrames(
                 windows: officialQuotaWindows,
                 includesAccount: includesAccount,
@@ -539,7 +541,8 @@ enum OpenCodexCardLayout {
                 bankedResetCardCount: bankedResetCardCount,
                 bankedResetDisplayMode: bankedResetDisplayMode,
                 includesBankedResetNearestExpiry: includesBankedResetNearestExpiry,
-                includesBankedResetForecastMetrics: includesBankedResetForecastMetrics
+                includesBankedResetForecastMetrics: includesBankedResetForecastMetrics,
+                includesResetProbability: showsProbability
             )
         }
 
@@ -662,7 +665,8 @@ enum OpenCodexCardLayout {
         bankedResetCardCount: Int,
         bankedResetDisplayMode: CodexBankedResetDisplayMode,
         includesBankedResetNearestExpiry: Bool,
-        includesBankedResetForecastMetrics: Bool
+        includesBankedResetForecastMetrics: Bool,
+        includesResetProbability: Bool
     ) -> OpenCodexCardFrames {
         let windowCount = windows.count
         let rowHeight = includesQuotaProgress ? quotaProgressRowHeight : lunaReserveNoProgressRowHeight
@@ -685,9 +689,9 @@ enum OpenCodexCardLayout {
         let reserveGap = includesLunaReserve && windowCount > 0 ? rowGap : 0
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
-        let showsForecastMetrics = includesBankedReset && includesBankedResetForecastMetrics
+        let showsForecastMetrics = includesResetProbability && includesBankedResetForecastMetrics
         let forecastLineHeight = bankedResetForecastLineHeight()
-        let probabilityBlockHeight = includesBankedReset
+        let probabilityBlockHeight = includesResetProbability
             ? bankedResetProbabilityBlockHeight(
                 includesForecastMetrics: includesBankedResetForecastMetrics
             )
@@ -695,7 +699,7 @@ enum OpenCodexCardLayout {
         let cardSummaryHeight = includesBankedReset
             ? bankedResetSummaryHeight()
             : 0
-        let probabilityCardGap = includesBankedReset
+        let probabilityCardGap = includesBankedReset && includesResetProbability
             ? bankedResetProbabilitySummaryGap
             : 0
         let bankedDetailHeight = bankedResetDetailRowHeight
@@ -710,7 +714,7 @@ enum OpenCodexCardLayout {
             + probabilityCardGap
             + cardSummaryHeight
             + bankedDetailBlockHeight
-        let bankedLeadingGap = includesBankedReset
+        let bankedLeadingGap = (includesBankedReset || includesResetProbability)
             && (windowCount > 0 || includesLunaReserve) ? rowGap : 0
         let quotaLift = bankedBlockHeight + bankedLeadingGap
         let rowAreaHeight = CGFloat(windowCount) * rowHeight
@@ -879,7 +883,7 @@ enum OpenCodexCardLayout {
         let bankedResetSummaryRow = includesBankedReset
             ? quotaBandFrames(rowY: cardSummaryY, showsReset: summaryShowsExpiry)
             : nil
-        let bankedResetProbabilityRow = includesBankedReset
+        let bankedResetProbabilityRow = includesResetProbability
             ? quotaBandFrames(
                 rowY: probabilityRowY,
                 showsReset: true,

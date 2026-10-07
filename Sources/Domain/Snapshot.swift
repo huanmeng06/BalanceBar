@@ -290,7 +290,7 @@ struct CodexResetOfficialSignal: Equatable {
     var publishedAt: Date? = nil
     /// Stable upstream identity for the current official-signal episode.
     /// When the upstream payload omits an identity, the coordinator treats
-    /// the active signal as one episode and clears it when the signal ends.
+    /// the active signal as one in-process episode; it is never restored after restart.
     var episodeKey: String? = nil
 
     static let probabilityUnavailable = CodexResetOfficialSignal(probability: .unavailable)
@@ -999,7 +999,7 @@ struct Snapshot {
             lunaReserve: shouldShowLunaReserve ? lunaReserve : nil,
             lunaReserveInsertionIndex: presentedInsertionIndex,
             bankedReset: presentedBankedReset,
-            resetForecast: presentedBankedReset == nil ? .unavailable : resetForecast
+            resetForecast: resetForecast
         )
     }
 

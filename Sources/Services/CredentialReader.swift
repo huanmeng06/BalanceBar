@@ -74,6 +74,18 @@ struct CredentialReader {
         return Self.codexAccountProfile(from: data)
     }
 
+    /// Bind token and account identity to the same read of auth.json.
+    func codexRequestCredentials() -> CodexRequestCredentials {
+        let authURL = homeDirectoryURL.appendingPathComponent(".codex/auth.json")
+        guard let data = try? fileReader.readData(from: authURL) else {
+            return CodexRequestCredentials(accessToken: nil, accountKey: nil)
+        }
+        return CodexRequestCredentials(
+            accessToken: Self.codexAccessToken(from: data),
+            accountKey: Self.codexAccountProfile(from: data)?.email?.lowercased()
+        )
+    }
+
     func claudeAccessToken() -> String? {
         if let result = try? processRunner.run(arguments: [
             "find-generic-password", "-s", "Claude Code-credentials", "-w"

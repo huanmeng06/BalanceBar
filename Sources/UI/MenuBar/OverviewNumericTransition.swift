@@ -224,6 +224,8 @@ enum OverviewNumericPresentation {
                         progressPercentage: nil
                     )
                 )
+            }
+            if showBankedReset && (presentation.bankedReset != nil || presentation.resetForecast.hasAnyValue) {
                 if presentation.resetForecast.isOfficialResetConfirmed {
                     return samples
                 }
