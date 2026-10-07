@@ -485,5 +485,5 @@
 "codex.banked_reset.official_reset_confirmed" = "✅ 리셋 완료";
 
 "codex.reset_signal.tooltip_title" = "공식 리셋 신호";
-"codex.reset_signal.tooltip_body" = "현재 공식 신호의 강한 신호 확률이며 일반 24 / 48시간 예측과는 별개입니다.";
+"codex.reset_signal.tooltip_body" = "현재 공식 신호의 강한 신호 확률 또는 카운트다운이며 일반 24 / 48시간 예측과는 별개입니다.";
 "codex.reset_signal.tooltip_disclaimer" = "신호는 이 계정의 리셋 완료나 리셋 카드 지급을 보장하지 않습니다. 실제 할당량은 공식 API를 따릅니다.";

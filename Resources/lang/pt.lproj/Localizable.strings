@@ -485,5 +485,5 @@
 "codex.banked_reset.official_reset_confirmed" = "✅ Redefinido";
 
 "codex.reset_signal.tooltip_title" = "Sinal oficial de redefinição";
-"codex.reset_signal.tooltip_body" = "Probabilidade do sinal oficial forte atual, separada da previsão normal de 24 / 48 horas.";
+"codex.reset_signal.tooltip_body" = "Probabilidade do sinal oficial forte atual ou contagem regressiva, separadas da previsão normal de 24 / 48 horas.";
 "codex.reset_signal.tooltip_disclaimer" = "O sinal não confirma a redefinição desta conta nem garante créditos. A cota real vem da API oficial.";

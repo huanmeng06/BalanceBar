@@ -485,5 +485,5 @@
 "codex.banked_reset.official_reset_confirmed" = "✅ 已重置";
 
 "codex.reset_signal.tooltip_title" = "官方重置信号";
-"codex.reset_signal.tooltip_body" = "当前官方信号的强信号概率，与普通 24 / 48 小时预测不同。";
+"codex.reset_signal.tooltip_body" = "当前官方信号的强信号概率或倒计时提示，独立于普通 24 / 48 小时预测。";
 "codex.reset_signal.tooltip_disclaimer" = "信号提示不等于当前账户已完成重置，也不保证发放重置卡；实际额度以官方接口为准。";

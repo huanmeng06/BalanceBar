@@ -485,5 +485,5 @@
 "codex.banked_reset.official_reset_confirmed" = "✅ Restablecido";
 
 "codex.reset_signal.tooltip_title" = "Señal oficial de restablecimiento";
-"codex.reset_signal.tooltip_body" = "Probabilidad de señal fuerte para la señal oficial actual, distinta del pronóstico normal de 24 / 48 horas.";
+"codex.reset_signal.tooltip_body" = "Probabilidad de señal fuerte o cuenta atrás de la señal oficial actual, distinta del pronóstico normal de 24 / 48 horas.";
 "codex.reset_signal.tooltip_disclaimer" = "La señal no confirma un restablecimiento de esta cuenta ni garantiza créditos. La cuota real procede de la API oficial.";
