@@ -665,8 +665,17 @@ final class ProviderRefreshCoordinator {
                         providerID: providerID,
                         payload: .officialWindows(response.output.windows)
                     )
+                    // Check again after credit/forecast transport: a newer quota
+                    // response may already own this account's evidence and UI.
+                    let isCurrentQuota: () -> Bool = {
+                        guard let accountKey,
+                              let sample = CodexResetQuotaSample.make(from: response.output.windows),
+                              let latest = self.codexQuotaEvidence[self.observationCacheKey(providerID: providerID, accountKey: accountKey)]?.previousSample else { return true }
+                        return sample == latest
+                    }
                     let renderOfficial: (CodexBankedReset?, CodexResetForecast) -> Void = { bankedReset, forecast in
-                        guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
+                        guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials,
+                              isCurrentQuota() else { return }
                         let resolvedForecast = self.resolveCodexResetObservation(
                             providerID: providerID,
                             windows: response.output.windows,
@@ -702,7 +711,8 @@ final class ProviderRefreshCoordinator {
                     )
                     let finishOfficial: (CodexBankedReset?) -> Void = { bankedReset in
                         self.performOnQueue {
-                            guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
+                            guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials,
+                                  isCurrentQuota() else { return }
                             guard client == .codex, bankedReset != nil || self.cachedCodexResetForecast != nil else {
                                 renderOfficial(bankedReset, cachedForecast)
                                 return
@@ -795,7 +805,9 @@ final class ProviderRefreshCoordinator {
         guard let signal = forecast.officialSignal else {
             codexResetObservations.removeValue(forKey: observationCacheKey(providerID: providerID, accountKey: accountKey))
             codexResetObservationStore.remove(providerID: providerID, accountKey: accountKey)
-            resetCodexQuotaEvidenceBaseline(providerID: providerID, accountKey: accountKey, windows: windows, clearOnMissingSample: true)
+            if !forecast.isCached {
+                resetCodexQuotaEvidenceBaseline(providerID: providerID, accountKey: accountKey, windows: windows, clearOnMissingSample: true)
+            }
             return forecast.applyingOfficialResetObservation(.notEligible)
         }
 
@@ -807,8 +819,11 @@ final class ProviderRefreshCoordinator {
         let priorEntry = codexResetObservations[cacheKey]
             ?? (durable ? codexResetObservationStore.load(providerID: providerID, accountKey: accountKey) : nil)
         var seed = CodexResetObservation()
-        if durable, priorEntry == nil, let pending = codexQuotaEvidence[cacheKey] {
-            // A previously known episode always wins over unassigned evidence.
+        let canAdoptEvidence = priorEntry == nil
+            || (priorEntry?.episodeKey != episodeKey && signal.publishedAt != nil)
+        if durable, canAdoptEvidence, let pending = codexQuotaEvidence[cacheKey] {
+            // A different known episode requires a publication time to adopt
+            // newly recorded quota evidence; never copy its old observation.
             // Expired quota cycles are discarded when recording; publication time
             // prevents an earlier reset from being attached to a later signal.
             let afterPublication = pending.detectedAt.map { detected in
@@ -818,7 +833,7 @@ final class ProviderRefreshCoordinator {
         }
         var entry = priorEntry ?? (episodeKey: episodeKey, observation: seed)
         if entry.episodeKey != episodeKey {
-            entry = (episodeKey: episodeKey, observation: CodexResetObservation())
+            entry = (episodeKey: episodeKey, observation: seed)
         }
         if let sample = CodexResetQuotaSample.make(from: windows) {
             var observation = entry.observation
@@ -838,7 +853,9 @@ final class ProviderRefreshCoordinator {
         } else {
             codexResetObservations[cacheKey] = entry
         }
-        resetCodexQuotaEvidenceBaseline(providerID: providerID, accountKey: accountKey, windows: windows)
+        if !forecast.isCached {
+            resetCodexQuotaEvidenceBaseline(providerID: providerID, accountKey: accountKey, windows: windows)
+        }
         return forecast.applyingOfficialResetObservation(entry.observation.state)
     }
 
