@@ -490,8 +490,13 @@
 
 // Application display time zone
 "timezone.title" = "時區";
-"timezone.description" = "選擇應用程式內日期和時間使用的城市";
+"timezone.description" = "選擇城市；列表中沒有的城市可按 Enter 查找";
 "timezone.system" = "跟隨系統時區";
 "timezone.regions" = "地區／城市";
 "timezone.offsets" = "UTC 固定偏移";
 "timezone.search" = "搜尋城市或時區";
+
+"timezone.lookup_loading" = "正在查找城市…";
+"timezone.lookup_failed" = "城市查詢暫不可用，按 Enter 重試";
+
+"codex.banked_reset.expired_value" = "%1$@ 已過期";

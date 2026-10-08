@@ -6039,7 +6039,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             ticketHost.addSubview(remaining)
                         }
 
-                        if let expiresText = CodexBankedResetFormatting.expiryText(for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone) ?? card.expiresText, !expiresText.isEmpty {
+                        if let expiresText = CodexBankedResetFormatting.expiryText(for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone) ?? (card.expiresAt == nil ? card.expiresText : nil), !expiresText.isEmpty {
                             let subtitle = makeOverviewLabel(
                                 expiresText,
                                 font: .systemFont(

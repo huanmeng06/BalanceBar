@@ -959,7 +959,25 @@ enum TimeZoneCityCatalog {
     private static let zoneTab = try? String(contentsOfFile: "/usr/share/zoneinfo/zone.tab", encoding: .utf8)
     private static let lock = NSLock()
     private static var cache: [String: [TimeZoneCity]] = [:]
-    private static let aliases = ["Asia/Calcutta": "Asia/Kolkata", "US/Pacific": "America/Los_Angeles", "US/Eastern": "America/New_York", "Europe/Kiev": "Europe/Kyiv"]
+    private static let aliases: [String: String] = {
+        var links = ["Asia/Calcutta": "Asia/Kolkata", "US/Pacific": "America/Los_Angeles", "US/Eastern": "America/New_York", "Europe/Kiev": "Europe/Kyiv"]
+        // Apple's installed tzdb supplies the complete legacy link set. Keep
+        // the common aliases above as a fallback when that file is absent.
+        if let data = try? String(contentsOfFile: "/usr/share/zoneinfo/tzdata.zi", encoding: .utf8) {
+            for line in data.split(separator: "\n") {
+                let fields = line.split(whereSeparator: { $0.isWhitespace })
+                if fields.count >= 3, fields[0] == "L" || fields[0] == "Link" {
+                    links[String(fields[2])] = String(fields[1])
+                }
+            }
+        }
+        return links.mapValues { target in
+            var canonical = target
+            var visited = Set<String>()
+            while let next = links[canonical], visited.insert(canonical).inserted { canonical = next }
+            return canonical
+        }
+    }()
 
     static var locale: Locale {
         if AppLanguage.selected == .system { return .autoupdatingCurrent }
@@ -1009,8 +1027,9 @@ enum TimeZoneCityCatalog {
             let city = localized.isEmpty || localized == unknown ? english : localized
             let country = countryCode.map { locale.localizedString(forRegionCode: $0) ?? $0 }
             let title = country.map { "\(city) - \($0)" } ?? city
+            let legacyNames = aliases.filter { $0.value == identifier }.map(\.key).joined(separator: " ")
             result.append(TimeZoneCity(identifier: identifier, title: title,
-                searchKey: "\(title) \(english) \(identifier) \(identifier.replacingOccurrences(of: "_", with: " "))".lowercased()))
+                searchKey: "\(title) \(english) \(identifier) \(legacyNames) \(identifier.replacingOccurrences(of: "_", with: " "))".lowercased()))
         }
         for line in (zoneTab ?? "").split(separator: "\n") where !line.hasPrefix("#") {
             let columns = line.split(separator: "\t", omittingEmptySubsequences: false)

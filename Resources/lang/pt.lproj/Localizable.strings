@@ -490,8 +490,13 @@
 
 // Application display time zone
 "timezone.title" = "Fuso horário";
-"timezone.description" = "Escolher uma cidade para as datas e horas da aplicação";
+"timezone.description" = "Escolher uma cidade; Return pesquisa cidades fora da lista";
 "timezone.system" = "Usar o fuso horário do sistema";
 "timezone.regions" = "Regiões / Cidades";
 "timezone.offsets" = "Desvios UTC fixos";
 "timezone.search" = "Pesquisar cidades ou fusos horários";
+
+"timezone.lookup_loading" = "A procurar cidade…";
+"timezone.lookup_failed" = "Pesquisa indisponível. Prima Return para tentar novamente.";
+
+"codex.banked_reset.expired_value" = "Expirou em %1$@";

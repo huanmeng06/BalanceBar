@@ -1,5 +1,7 @@
   // Stable typed keys for every bundled Localizable.strings resource.
   enum LocalizationKey: String, CaseIterable {
+    case keyTimeZoneLookupLoading = "timezone.lookup_loading"
+    case keyTimeZoneLookupFailed = "timezone.lookup_failed"
     case keyTimeZoneTitle = "timezone.title"
     case keyTimeZoneDescription = "timezone.description"
     case keyTimeZoneSystem = "timezone.system"
@@ -467,6 +469,7 @@
     case keyCodexBankedResetTitle = "codex.banked_reset.title"
     case keyCodexBankedResetFullResetTitle = "codex.banked_reset.full_reset_title"
     case keyCodexBankedResetFullResetWindow = "codex.banked_reset.full_reset_window"
+    case keyCodexBankedResetExpiredValue = "codex.banked_reset.expired_value"
     case keyCodexBankedResetExpiresValue = "codex.banked_reset.expires_value"
     case keyCodexBankedResetNearestExpiry = "codex.banked_reset.nearest_expiry"
     case keyCodexBankedResetRemainingHours = "codex.banked_reset.remaining_hours"

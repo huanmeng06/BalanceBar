@@ -490,8 +490,13 @@
 
 // Application display time zone
 "timezone.title" = "タイムゾーン";
-"timezone.description" = "アプリ内の日付と時刻に使用する都市を選択";
+"timezone.description" = "都市を選択。リストにない都市は Return で検索";
 "timezone.system" = "システムのタイムゾーンに従う";
 "timezone.regions" = "地域／都市";
 "timezone.offsets" = "UTC 固定オフセット";
 "timezone.search" = "都市またはタイムゾーンを検索";
+
+"timezone.lookup_loading" = "都市を検索中…";
+"timezone.lookup_failed" = "都市検索を利用できません。Return で再試行。";
+
+"codex.banked_reset.expired_value" = "%1$@ に期限切れ";

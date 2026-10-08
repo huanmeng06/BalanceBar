@@ -490,8 +490,13 @@
 
 // Application display time zone
 "timezone.title" = "Часовой пояс";
-"timezone.description" = "Выберите город для дат и времени в приложении";
+"timezone.description" = "Выберите город; Return ищет города вне списка";
 "timezone.system" = "Использовать системный часовой пояс";
 "timezone.regions" = "Регионы / Города";
 "timezone.offsets" = "Фиксированные смещения UTC";
 "timezone.search" = "Поиск городов или часовых поясов";
+
+"timezone.lookup_loading" = "Поиск города…";
+"timezone.lookup_failed" = "Поиск недоступен. Нажмите Return для повтора.";
+
+"codex.banked_reset.expired_value" = "Истекло %1$@";

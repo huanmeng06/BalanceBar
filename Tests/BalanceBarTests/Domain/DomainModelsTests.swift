@@ -2634,3 +2634,20 @@ extension DomainModelsTests {
         XCTAssertEqual(forecast.officialSignal?.targetAt, reset)
     }
 }
+
+extension DomainModelsTests {
+    func testExpiredBankedResetUsesSelectedZoneAndExpiredLabel() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let expired = now.addingTimeInterval(-3600)
+        let locale = Locale(identifier: "en_US")
+        let tokyo = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        let la = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let stamp = try XCTUnwrap(OfficialQuotaResetFormatter.bankedResetString(for: expired, relativeTo: now, locale: locale, timeZone: tokyo, includeExpired: true))
+        let text = try XCTUnwrap(CodexBankedResetFormatting.expiryText(for: expired, relativeTo: now, locale: locale, timeZone: tokyo))
+        XCTAssertEqual(text, tr(.keyCodexBankedResetExpiredValue, arguments: [stamp]))
+        XCTAssertNotEqual(text, CodexBankedResetFormatting.expiryText(for: expired, relativeTo: now, locale: locale, timeZone: la))
+        XCTAssertNil(OfficialQuotaResetFormatter.bankedResetString(for: expired, relativeTo: now))
+        XCTAssertNil(CodexBankedResetFormatting.remaining(until: expired, now: now))
+        XCTAssertNil(CodexBankedResetFormatting.expiryText(for: nil, relativeTo: now))
+    }
+}

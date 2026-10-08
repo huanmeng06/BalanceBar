@@ -490,8 +490,13 @@
 
 // Application display time zone
 "timezone.title" = "Zeitzone";
-"timezone.description" = "Stadt für Datum und Uhrzeit in der App auswählen";
+"timezone.description" = "Stadt auswählen; mit Return weitere Städte suchen";
 "timezone.system" = "Systemzeitzone verwenden";
 "timezone.regions" = "Regionen / Städte";
 "timezone.offsets" = "Feste UTC-Abstände";
 "timezone.search" = "Städte oder Zeitzonen suchen";
+
+"timezone.lookup_loading" = "Stadt wird gesucht…";
+"timezone.lookup_failed" = "Stadtsuche nicht verfügbar. Mit Return erneut versuchen.";
+
+"codex.banked_reset.expired_value" = "Abgelaufen am %1$@";

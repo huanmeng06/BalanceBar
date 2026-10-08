@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A48900000000000000000207 /* CityTimeZoneData.lzfse in Resources */ = {isa = PBXBuildFile; fileRef = A48900000000000000000208 /* CityTimeZoneData.lzfse */; };
+		A48900000000000000000209 /* CityTimeZoneData-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = A4890000000000000000020A /* CityTimeZoneData-LICENSE.txt */; };
+		A48900000000000000000201 /* CityTimeZoneResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48900000000000000000202 /* CityTimeZoneResolver.swift */; };
+		A48900000000000000000203 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A48900000000000000000204 /* MapKit.framework */; };
+		A48900000000000000000205 /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A48900000000000000000206 /* CoreLocation.framework */; };
 		A10000000000000000000020 /* BalanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* BalanceBar.swift */; };
 		A10000000000000000000044 /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000045 /* AppPreferences.swift */; };
 		A47000000000000000000002 /* BalanceNotificationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47000000000000000000001 /* BalanceNotificationModels.swift */; };
@@ -177,6 +182,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A48900000000000000000208 /* CityTimeZoneData.lzfse */ = {isa = PBXFileReference; lastKnownFileType = file; path = CityTimeZoneData.lzfse; sourceTree = "<group>"; };
+		A4890000000000000000020A /* CityTimeZoneData-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CityTimeZoneData-LICENSE.txt"; sourceTree = "<group>"; };
+		A48900000000000000000202 /* CityTimeZoneResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CityTimeZoneResolver.swift; sourceTree = "<group>"; };
+		A48900000000000000000204 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
+		A48900000000000000000206 /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
 		A10000000000000000000010 /* BalanceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceBar.swift; sourceTree = "<group>"; };
 		A10000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000012 /* BalanceBar.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = BalanceBar.icns; sourceTree = "<group>"; };
@@ -378,6 +388,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A48900000000000000000203 /* MapKit.framework in Frameworks */,
+				A48900000000000000000205 /* CoreLocation.framework in Frameworks */,
 				A10000000000000000000025 /* AppKit.framework in Frameworks */,
 				A10000000000000000000026 /* Foundation.framework in Frameworks */,
 				A10000000000000000000027 /* SwiftUI.framework in Frameworks */,
@@ -462,6 +474,8 @@
 		A40000000000000000000004 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				A48900000000000000000208 /* CityTimeZoneData.lzfse */,
+				A4890000000000000000020A /* CityTimeZoneData-LICENSE.txt */,
 				A10000000000000000000011 /* Info.plist */,
 				A40000000000000000000019 /* images */,
 				A4000000000000000000001A /* lang */,
@@ -499,6 +513,8 @@
 		A1000000000000000000001D /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				A48900000000000000000204 /* MapKit.framework */,
+				A48900000000000000000206 /* CoreLocation.framework */,
 				A10000000000000000000017 /* AppKit.framework */,
 				A10000000000000000000018 /* Foundation.framework */,
 				A10000000000000000000019 /* SwiftUI.framework */,
@@ -675,6 +691,7 @@
 		A10000000000000000000059 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A48900000000000000000202 /* CityTimeZoneResolver.swift */,
 				A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */,
 				A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */,
 				A47000000000000000000003 /* BalanceNotificationCoordinator.swift */,
@@ -1027,6 +1044,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A48900000000000000000207 /* CityTimeZoneData.lzfse in Resources */,
+				A48900000000000000000209 /* CityTimeZoneData-LICENSE.txt in Resources */,
 				A10000000000000000000021 /* BalanceBar.icns in Resources */,
 				A10000000000000000000022 /* CodexIcon.svg in Resources */,
 				A10000000000000000000023 /* Claude.svg in Resources */,
@@ -1113,6 +1132,7 @@
 				A1000000000000000000006C /* DashboardScrollClamping.swift in Sources */,
 				A44600000000000000000002 /* DashboardPlatformCapabilities.swift in Sources */,
 				A10000000000000000000055 /* ResponseParsers.swift in Sources */,
+				A48900000000000000000201 /* CityTimeZoneResolver.swift in Sources */,
 				A1000000000000000000005B /* CCSwitchRepository.swift in Sources */,
 				A10000000000000000000060 /* CredentialReader.swift in Sources */,
 				A10000000000000000000064 /* BalanceAPIClient.swift in Sources */,

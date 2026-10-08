@@ -659,7 +659,8 @@ enum OfficialQuotaResetFormatter {
         relativeTo now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent,
         locale: Locale = .autoupdatingCurrent,
-        timeZone: TimeZone = .autoupdatingCurrent
+        timeZone: TimeZone = .autoupdatingCurrent,
+        includeExpired: Bool = false
     ) -> String? {
         localizedString(
             for: resetAt,
@@ -667,7 +668,8 @@ enum OfficialQuotaResetFormatter {
             calendar: calendar,
             locale: locale,
             timeZone: timeZone,
-            includeDate: true
+            includeDate: true,
+            includeExpired: includeExpired
         )
     }
 
@@ -677,9 +679,10 @@ enum OfficialQuotaResetFormatter {
         calendar: Calendar,
         locale: Locale,
         timeZone: TimeZone,
-        includeDate: Bool?
+        includeDate: Bool?,
+        includeExpired: Bool = false
     ) -> String? {
-        guard let resetAt, resetAt > now else { return nil }
+        guard let resetAt, includeExpired || resetAt > now else { return nil }
 
         var localizedCalendar = calendar
         localizedCalendar.locale = locale
@@ -712,11 +715,12 @@ enum CodexBankedResetFormatting {
             relativeTo: now,
             calendar: calendar,
             locale: locale,
-            timeZone: timeZone
+            timeZone: timeZone,
+            includeExpired: true
         ) else {
             return nil
         }
-        return tr(.keyCodexBankedResetExpiresValue, arguments: [formatted])
+        return tr(expiresAt.map { $0 <= now } == true ? .keyCodexBankedResetExpiredValue : .keyCodexBankedResetExpiresValue, arguments: [formatted])
     }
 
     /// Earliest future card expiry, as `最近到期：10/5 07:30`. The argument is
