@@ -841,6 +841,8 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     private weak var relay: DashboardPreferencePageRelay?
     private var rows = TimeZoneCityCatalog.all
     private var applying = false
+    private(set) var candidatesAreVisible = false
+    private var candidatePresentationScheduled = false
 
     init(preferences: AppPreferences, relay: DashboardPreferencePageRelay) {
         self.preferences = preferences
@@ -898,8 +900,47 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         guard !applying else { return }
         applying = true
         defer { applying = false }
-        rows = TimeZoneCityCatalog.all.filter { TimeZoneCityCatalog.matches($0, query: stringValue) }
+        let query = stringValue
+        let editor = currentEditor() as? NSTextView
+        let selectionRange = editor?.selectedRange()
+        // Deselecting a native combo item also clears its text. Preserve the
+        // user's query and caret while removing the stale list selection.
+        if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
+        rows = TimeZoneCityCatalog.all.filter { TimeZoneCityCatalog.matches($0, query: query) }
         reloadData()
+        stringValue = query
+        if let editor, editor.string != query {
+            editor.string = query
+            if let selectionRange {
+                let length = (query as NSString).length
+                let location = min(selectionRange.location, length)
+                editor.setSelectedRange(NSRange(location: location, length: min(selectionRange.length, length - location)))
+            }
+        }
+        scheduleCandidates()
+    }
+
+    private func scheduleCandidates() {
+        guard !candidatePresentationScheduled else { return }
+        candidatePresentationScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.candidatePresentationScheduled = false
+            guard self.isEnabled, self.window != nil, let editor = self.currentEditor() as? NSTextView,
+                  !editor.hasMarkedText(), !self.rows.isEmpty, !self.candidatesAreVisible else { return }
+            // Use AppKit's public expanded-state API, preserving the native
+            // combo list instead of private popUp: selectors or a custom UI.
+            self.cell?.setAccessibilityExpanded(true)
+        }
+    }
+
+    func comboBoxWillPopUp(_ notification: Notification) { candidatesAreVisible = true }
+    func comboBoxWillDismiss(_ notification: Notification) { candidatesAreVisible = false }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
+        commitText()
+        return true
     }
 
     func comboBoxSelectionDidChange(_ notification: Notification) {
@@ -921,8 +962,30 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
 
     @objc func commitText() {
         guard !applying else { return }
-        if let city = rows.first(where: { $0.title == stringValue }) { commit(city.identifier) }
-        apply(preferences.displayTimeZoneSelection)
+        let query = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let city: TimeZoneCity? = {
+            if let exact = rows.first(where: { $0.title.caseInsensitiveCompare(query) == .orderedSame }) { return exact }
+            if candidatesAreVisible, rows.indices.contains(indexOfSelectedItem) { return rows[indexOfSelectedItem] }
+            let exactNames = rows.filter { city in
+                let localizedCity = city.title.components(separatedBy: " - ").first ?? city.title
+                let englishCity = city.identifier.split(separator: "/").last.map(String.init)?.replacingOccurrences(of: "_", with: " ") ?? city.identifier
+                return [localizedCity, englishCity, city.identifier].contains { $0.caseInsensitiveCompare(query) == .orderedSame }
+            }
+            if exactNames.count == 1 { return exactNames[0] }
+            return !query.isEmpty && rows.count == 1 ? rows[0] : nil
+        }()
+        if let city {
+            commit(city.identifier)
+            cell?.setAccessibilityExpanded(false)
+            apply(preferences.displayTimeZoneSelection)
+        } else if !query.isEmpty && !rows.isEmpty {
+            // Keep an ambiguous query available for the user to select a
+            // city; never guess a location or discard their text on Return.
+            scheduleCandidates()
+        } else {
+            cell?.setAccessibilityExpanded(false)
+            apply(preferences.displayTimeZoneSelection)
+        }
     }
 
     private func commit(_ identifier: String) {

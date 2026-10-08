@@ -10289,3 +10289,80 @@ extension DashboardPreferencePagesTests {
         XCTAssertEqual(combo.comboBox(combo, objectValueForItemAt: combo.indexOfSelectedItem) as? String, TimeZoneCityCatalog.title(for: "America/New_York"))
     }
 }
+
+extension DashboardPreferencePagesTests {
+    func testClearingThenTypingCityNameAndReturnCommitsWithoutCountryLabel() throws {
+        let suite = "BalanceBarTests.CityNameReturn.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        for query in ["", "Shanghai"] {
+            combo.stringValue = query
+            combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        }
+        XCTAssertTrue(combo.control(combo, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        XCTAssertEqual(combo.stringValue, TimeZoneCityCatalog.title(for: "Asia/Shanghai"))
+        combo.stringValue = "New York"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        combo.commitText()
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "America/New_York"))
+    }
+
+    func testReturnKeepsAmbiguousCityQueryWithoutChangingPreference() throws {
+        let suite = "BalanceBarTests.CityAmbiguousReturn.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        combo.stringValue = "America"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        combo.commitText()
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "America/New_York"))
+        XCTAssertEqual(combo.stringValue, "America")
+    }
+
+    func testTypingCityOpensAppKitCandidateListAutomatically() throws {
+        let suite = "BalanceBarTests.CityAutomaticList.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 150), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { combo.cell?.setAccessibilityExpanded(false); window.close() }
+        combo.frame = NSRect(x: 20, y: 40, width: 280, height: 26)
+        window.contentView?.addSubview(combo)
+        window.orderFront(nil)
+        window.makeFirstResponder(combo)
+        XCTAssertNotNil(combo.currentEditor())
+        let opened = expectation(description: "native candidate popup opened")
+        var polls = 0
+        let timer = Timer(timeInterval: 0.1, repeats: true) { timer in
+            polls += 1
+            if combo.candidatesAreVisible || polls >= 30 {
+                XCTAssertTrue(combo.candidatesAreVisible)
+                XCTAssertEqual(combo.stringValue, "Shanghai")
+                combo.cell?.setAccessibilityExpanded(false)
+                timer.invalidate()
+                opened.fulfill()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        defer { timer.invalidate() }
+        combo.stringValue = "Shanghai"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        wait(for: [opened], timeout: 5)
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "America/New_York"))
+    }
+}
