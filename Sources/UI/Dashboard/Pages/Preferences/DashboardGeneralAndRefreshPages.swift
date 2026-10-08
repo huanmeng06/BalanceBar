@@ -318,6 +318,9 @@ final class DashboardGeneralPage {
         }
     }
 
+    private weak var timeZoneComboBox: DashboardTimeZoneComboBox?
+    private weak var systemTimeZoneSwitch: NSSwitch?
+
     private var updateSubtitleLabel: NSTextField?
     private var updateButton: NSButton?
     private var updateNotesButton: NSButton?
@@ -578,6 +581,15 @@ final class DashboardGeneralPage {
         self.launchWithChatGPTOpenSettingsButton = launchWithChatGPTOpenSettingsButton
         self.launchWithChatGPTControls = launchWithChatGPTControls
 
+        let timeZoneComboBox = DashboardTimeZoneComboBox(preferences: input.preferences, relay: input.relay)
+        let systemTimeZoneSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.displayTimeZoneKey + ".system",
+            isOn: input.preferences.displayTimeZoneSelection == .system,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.followSystemTimeZone(_:))
+        )
+        self.timeZoneComboBox = timeZoneComboBox
+        self.systemTimeZoneSwitch = systemTimeZoneSwitch
         let app = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesApplication),
             contentViews: [
@@ -587,15 +599,24 @@ final class DashboardGeneralPage {
                     accessoryView: languagePopup
                 ),
                 SettingsRowView(
+                    title: tr(.keyTimeZoneSystem),
+                    accessoryView: systemTimeZoneSwitch
+                ),
+                SettingsRowView(
                     title: tr(.keyTimeZoneTitle),
                     detail: tr(.keyTimeZoneDescription),
-                    accessoryView: DashboardTimeZoneComboBox(preferences: input.preferences, relay: input.relay)
+                    accessoryView: timeZoneComboBox
                 ),
                 updateChannelRow,
                 updateRow
             ]
         )
         return DashboardSettingsComponents.makeSettingsPageContent([system, refreshing, startup, app])
+    }
+
+    func refreshDisplayTimeZone(_ selection: AppTimeZoneSelection) {
+        systemTimeZoneSwitch?.state = selection == .system ? .on : .off
+        timeZoneComboBox?.apply(selection)
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
@@ -813,13 +834,13 @@ enum DashboardRefreshPage {
     }
 }
 
-/// AppKit owns the editable field, disclosure button and popup list. Typed
-/// text only filters known choices; it never becomes a timezone identifier.
+/// AppKit owns the editable field and list. Only catalog choices can commit;
+/// every display update is applied to this same mounted control instance.
 final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSComboBoxDelegate {
     private let preferences: AppPreferences
     private weak var relay: DashboardPreferencePageRelay?
-    private var rows: [DashboardTimeZoneOptions.Row] = []
-    private var synchronizing = false
+    private var rows = TimeZoneCityCatalog.all
+    private var applying = false
 
     init(preferences: AppPreferences, relay: DashboardPreferencePageRelay) {
         self.preferences = preferences
@@ -830,7 +851,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         dataSource = self
         delegate = self
         isEditable = true
-        completes = true
+        completes = false
         hasVerticalScroller = true
         numberOfVisibleItems = 10
         controlSize = .regular
@@ -842,122 +863,71 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         setAccessibilityLabel(tr(.keyTimeZoneTitle))
         target = self
         action = #selector(commitText)
-        restoreSelection()
+        apply(preferences.displayTimeZoneSelection)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    private func restoreSelection() {
-        synchronizing = true
-        defer { synchronizing = false }
-        rows = DashboardTimeZoneOptions.matchingRows(query: "")
+    func apply(_ selection: AppTimeZoneSelection) {
+        applying = true
+        defer { applying = false }
+        isEnabled = selection != .system
+        rows = TimeZoneCityCatalog.all
         reloadData()
-        if let index = rows.firstIndex(where: { $0.selection == preferences.displayTimeZoneSelection }) {
+        if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
+        stringValue = TimeZoneCityCatalog.displayTitle(for: selection)
+        let identifier = selection.resolved().identifier
+        if let index = rows.firstIndex(where: { $0.identifier == identifier || $0.title == stringValue }) {
             selectItem(at: index)
-            stringValue = rows[index].title
+            scrollItemAtIndexToVisible(index)
         }
-        toolTip = preferences.displayTimeZoneSelection.title()
+        toolTip = selection.title()
     }
 
     func numberOfItems(in comboBox: NSComboBox) -> Int { rows.count }
-
     func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any? {
         guard rows.indices.contains(index) else { return nil }
         return rows[index].title
     }
-
     func comboBox(_ comboBox: NSComboBox, indexOfItemWithStringValue string: String) -> Int {
-        rows.firstIndex(where: { $0.selection != nil && $0.title == string }) ?? NSNotFound
-    }
-
-    func comboBox(_ comboBox: NSComboBox, completedString string: String) -> String? {
-        DashboardTimeZoneOptions.matchingRows(query: string).first {
-            $0.selection != nil && $0.title.lowercased().hasPrefix(string.lowercased())
-        }?.title
+        rows.firstIndex { $0.title == string } ?? NSNotFound
     }
 
     func controlTextDidChange(_ notification: Notification) {
-        guard !synchronizing else { return }
-        filterChoices()
-    }
-
-    private func filterChoices() {
-        synchronizing = true
-        defer { synchronizing = false }
-        rows = DashboardTimeZoneOptions.matchingRows(query: stringValue)
+        guard !applying else { return }
+        applying = true
+        defer { applying = false }
+        rows = TimeZoneCityCatalog.all.filter { TimeZoneCityCatalog.matches($0, query: stringValue) }
         reloadData()
     }
 
-    func comboBoxWillPopUp(_ notification: Notification) {
-        if stringValue == preferences.displayTimeZoneSelection.title() {
-            restoreSelection()
-        } else {
-            filterChoices()
-        }
-    }
-
     func comboBoxSelectionDidChange(_ notification: Notification) {
-        guard !synchronizing, rows.indices.contains(indexOfSelectedItem),
-              let selection = rows[indexOfSelectedItem].selection else { return }
-        // Let AppKit finish native list tracking before the preference event
-        // rebuilds the settings/search projection that hosts this control.
+        guard !applying, rows.indices.contains(indexOfSelectedItem) else { return }
+        commit(rows[indexOfSelectedItem].identifier)
         DispatchQueue.main.async { [weak self] in
-            self?.relay?.onTimeZone?(selection)
-            self?.restoreSelection()
+            guard let self else { return }
+            self.apply(self.preferences.displayTimeZoneSelection)
         }
     }
 
-    func comboBoxWillDismiss(_ notification: Notification) {
-        if rows.indices.contains(indexOfSelectedItem), rows[indexOfSelectedItem].selection == nil {
-            DispatchQueue.main.async { [weak self] in self?.restoreSelection() }
+    func controlTextDidEndEditing(_ notification: Notification) {
+        if (notification.userInfo?["NSTextMovement"] as? Int) == NSReturnTextMovement {
+            commitText()
+        } else {
+            apply(preferences.displayTimeZoneSelection)
         }
     }
-
-    func controlTextDidEndEditing(_ notification: Notification) { commitText() }
 
     @objc func commitText() {
-        guard !synchronizing else { return }
-        if let selection = rows.first(where: { $0.title == stringValue })?.selection {
-            relay?.onTimeZone?(selection)
-        }
-        restoreSelection()
-    }
-}
-
-/// Pure typed choices for the native combo box. Group labels carry no value.
-enum DashboardTimeZoneOptions {
-    struct Row {
-        let title: String
-        let selection: AppTimeZoneSelection?
+        guard !applying else { return }
+        if let city = rows.first(where: { $0.title == stringValue }) { commit(city.identifier) }
+        apply(preferences.displayTimeZoneSelection)
     }
 
-    static func matchingRows(query: String, now: Date = Date(), systemTimeZone: TimeZone = .autoupdatingCurrent) -> [Row] {
-        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let matches: (String) -> Bool = { query.isEmpty || $0.localizedCaseInsensitiveContains(query) }
-        var result = [Row(title: AppTimeZoneSelection.system.title(systemTimeZone: systemTimeZone), selection: .system)]
-        let regions = AppTimeZoneSelection.regionIdentifiers.compactMap { identifier -> Row? in
-            let selection = AppTimeZoneSelection.region(identifier: identifier)
-            let localizedName = selection.resolved().localizedName(for: .generic, locale: .autoupdatingCurrent) ?? ""
-            let title = selection.title(now: now)
-            guard matches(title) || matches(localizedName) || matches(identifier.replacingOccurrences(of: "_", with: " ")) else { return nil }
-            return Row(title: title, selection: selection)
-        }
-        if !regions.isEmpty {
-            result.append(Row(title: tr(.keyTimeZoneRegions), selection: nil))
-            result += regions
-        }
-        let offsets = AppTimeZoneSelection.fixedOffsets.compactMap { minutes -> Row? in
-            let selection = AppTimeZoneSelection.fixedOffset(minutes: minutes)
-            let title = selection.title()
-            guard matches(title) || matches(title.replacingOccurrences(of: "−", with: "-")) else { return nil }
-            return Row(title: title, selection: selection)
-        }
-        if !offsets.isEmpty {
-            result.append(Row(title: tr(.keyTimeZoneOffsets), selection: nil))
-            result += offsets
-        }
-        return result
+    private func commit(_ identifier: String) {
+        let selection = AppTimeZoneSelection.region(identifier: identifier)
+        guard selection != preferences.displayTimeZoneSelection else { return }
+        relay?.onTimeZone?(selection)
     }
-
 }

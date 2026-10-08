@@ -221,6 +221,13 @@ final class DashboardPreferencePages {
         }
     }
 
+    func refreshDisplayTimeZone() {
+        let selection = preferences.displayTimeZoneSelection
+        generalPage.refreshDisplayTimeZone(selection)
+        searchGeneralPage.refreshDisplayTimeZone(selection)
+        notificationsPage?.refreshDisplayTimeZone()
+    }
+
     func refreshNotifications() {
         notificationsPage?.refresh()
     }

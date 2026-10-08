@@ -797,7 +797,7 @@ extension AppPreferencesTests {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(preferences.displayTimeZoneSelection, .system)
-        for selection: AppTimeZoneSelection in [.region(identifier: "America/New_York"), .fixedOffset(minutes: -300), .fixedOffset(minutes: 345), .system] {
+        for selection: AppTimeZoneSelection in [.region(identifier: "Asia/Calcutta"), .region(identifier: "Asia/Kolkata"), .region(identifier: "America/New_York"), .fixedOffset(minutes: -300), .fixedOffset(minutes: 345), .system] {
             preferences.displayTimeZoneSelection = selection
             XCTAssertEqual(AppPreferences(defaults: defaults).displayTimeZoneSelection, selection)
         }

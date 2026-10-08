@@ -490,8 +490,8 @@
 
 // Application display time zone
 "timezone.title" = "Fuseau horaire";
-"timezone.description" = "Définir le fuseau horaire des dates et heures dans l’app";
+"timezone.description" = "Choisir une ville pour les dates et heures de l’app";
 "timezone.system" = "Suivre le fuseau horaire du système";
 "timezone.regions" = "Régions / Villes";
 "timezone.offsets" = "Décalages UTC fixes";
-"timezone.search" = "Rechercher des régions, villes ou décalages UTC";
+"timezone.search" = "Rechercher des villes ou fuseaux horaires";

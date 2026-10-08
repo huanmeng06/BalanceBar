@@ -928,7 +928,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let center = NotificationCenter.default
         displayTimeZoneObservers.append(center.addObserver(
             forName: AppPreferences.displayTimeZoneDidChange, object: preferences, queue: .main
-        ) { [weak self] _ in self?.refreshDisplayTimeZone() })
+        ) { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in self?.refreshDisplayTimeZone() }
+        })
         displayTimeZoneObservers.append(center.addObserver(
             forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main
         ) { [weak self] _ in
@@ -939,8 +941,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     /// Reformat the existing data without calling a refresh coordinator.
     private func refreshDisplayTimeZone() {
-        dashboardComposition.rebuild()
-        updateStatusItem(for: snapshot)
+        updateStatusItem(for: snapshot, refreshDashboard: false)
+        dashboardProviderPageRevision &+= 1
+        dashboardComposition.refreshDisplayTimeZone(
+            snapshot: snapshot, refreshDate: refreshDate(for: snapshot), revision: dashboardProviderPageRevision
+        )
     }
 
     private func applyLanguage(_ language: AppLanguage) {

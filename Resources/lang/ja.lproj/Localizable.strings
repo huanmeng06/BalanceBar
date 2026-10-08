@@ -490,8 +490,8 @@
 
 // Application display time zone
 "timezone.title" = "タイムゾーン";
-"timezone.description" = "アプリ内の日付と時刻の表示タイムゾーンを設定";
+"timezone.description" = "アプリ内の日付と時刻に使用する都市を選択";
 "timezone.system" = "システムのタイムゾーンに従う";
 "timezone.regions" = "地域／都市";
 "timezone.offsets" = "UTC 固定オフセット";
-"timezone.search" = "地域、都市、UTC オフセットを検索";
+"timezone.search" = "都市またはタイムゾーンを検索";

@@ -490,8 +490,8 @@
 
 // Application display time zone
 "timezone.title" = "时区";
-"timezone.description" = "设置应用内日期和时间的显示时区";
+"timezone.description" = "选择应用内日期和时间使用的城市";
 "timezone.system" = "跟随系统时区";
 "timezone.regions" = "地区／城市";
 "timezone.offsets" = "UTC 固定偏移";
-"timezone.search" = "搜索地区、城市或 UTC 偏移";
+"timezone.search" = "搜索城市或时区";

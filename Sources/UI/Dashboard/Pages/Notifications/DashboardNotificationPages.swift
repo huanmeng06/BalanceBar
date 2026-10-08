@@ -456,6 +456,8 @@ final class DashboardNotificationPages {
         rebuild()
     }
 
+    func refreshDisplayTimeZone() { updatePausePresentation() }
+
     func refresh() {
         guard currentPage != nil else { return }
         rebuild()

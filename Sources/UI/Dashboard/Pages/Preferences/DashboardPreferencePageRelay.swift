@@ -111,6 +111,10 @@ final class DashboardPreferencePageRelay: NSObject {
         onInterval?(identifier, value.doubleValue)
     }
 
+    @objc func followSystemTimeZone(_ sender: NSSwitch) {
+        onTimeZone?(sender.state == .on ? .system : .region(identifier: TimeZone.autoupdatingCurrent.identifier))
+    }
+
     @objc func language(_ sender: NSPopUpButton) {
         guard let language = DashboardLanguageChange.language(from: sender) else { return }
         onLanguage?(language)

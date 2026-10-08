@@ -443,6 +443,11 @@ final class DashboardCompositionController {
         windowController.teardown()
     }
 
+    func refreshDisplayTimeZone(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
+        dashboardPreferencePages.refreshDisplayTimeZone()
+        refreshMountedPage(snapshot: snapshot, refreshDate: refreshDate, revision: revision)
+    }
+
     func refreshMountedPage(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
         invalidateSearchData()
         _ = dashboardProviderPages.refreshMountedPage(
@@ -1144,7 +1149,7 @@ final class DashboardCompositionController {
             animationFrameRate: preferences.menuBarAnimationFrameRate,
             previewPrimary: presentation.primary,
             previewSecondary: presentation.secondary,
-            timeZoneTitle: state.preferences.displayTimeZoneSelection.title()
+            timeZoneTitle: TimeZoneCityCatalog.displayTitle(for: state.preferences.displayTimeZoneSelection)
         )
         if identity == cachedSearchRuntimeIdentity {
             return cachedSearchRuntimeTexts

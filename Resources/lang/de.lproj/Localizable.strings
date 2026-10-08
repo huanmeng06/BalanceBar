@@ -490,8 +490,8 @@
 
 // Application display time zone
 "timezone.title" = "Zeitzone";
-"timezone.description" = "Zeitzone für Datum und Uhrzeit in der App festlegen";
+"timezone.description" = "Stadt für Datum und Uhrzeit in der App auswählen";
 "timezone.system" = "Systemzeitzone verwenden";
 "timezone.regions" = "Regionen / Städte";
 "timezone.offsets" = "Feste UTC-Abstände";
-"timezone.search" = "Regionen, Städte oder UTC-Abstände suchen";
+"timezone.search" = "Städte oder Zeitzonen suchen";
