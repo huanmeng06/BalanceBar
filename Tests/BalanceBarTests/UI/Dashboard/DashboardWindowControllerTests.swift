@@ -5084,6 +5084,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"), name)
             XCTAssertNotNil(sourceLink.onActivate, name)
             XCTAssertNotNil(sourceLink.forecastTooltipContent, name)
+            let drawingStyle = try XCTUnwrap(sourceLink.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle, name)
+            XCTAssertEqual(drawingStyle.alignment, .right, name)
             XCTAssertEqual(largeFields[0].font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize, name)
             XCTAssertEqual(largeFields[0].alignment, .right, name)
             if let primaryLink {

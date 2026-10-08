@@ -1653,6 +1653,41 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(link.isHoverHintVisible)
     }
 
+    func testHoverLinkAlignmentChangesUpdateDrawingParagraphAndHoverGeometry() throws {
+        let link = HoverLinkTextField(text: "--%")
+        link.font = .monospacedDigitSystemFont(ofSize: 30, weight: .semibold)
+        link.restingTextColor = .labelColor
+        link.frame = NSRect(x: 0, y: 0, width: 212, height: 37)
+        link.alignment = .right
+        link.layout()
+        var paragraph = try XCTUnwrap(link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(paragraph.alignment, .right)
+        XCTAssertGreaterThan(link.visibleTextHitRect.minX, link.bounds.midX)
+        let rightRect = link.visibleTextHitRect
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 240, height: 50))
+        host.addSubview(link)
+        host.track(link)
+        host.forwardHover(atHostPoint: host.convert(rightRect.center, from: link))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertEqual(link.visibleTextHitRect.minX, rightRect.minX, accuracy: 0.001)
+        paragraph = try XCTUnwrap(link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(paragraph.alignment, .right)
+        host.forwardHover(atHostPoint: NSPoint(x: -1, y: -1))
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertEqual(link.visibleTextHitRect.minX, rightRect.minX, accuracy: 0.001)
+
+        link.alignment = .left
+        paragraph = try XCTUnwrap(link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(paragraph.alignment, .left)
+        XCTAssertLessThan(link.visibleTextHitRect.maxX, link.bounds.midX)
+
+        link.alignment = .right
+        link.restingTextColor = .secondaryLabelColor
+        paragraph = try XCTUnwrap(link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(paragraph.alignment, .right)
+        XCTAssertEqual(link.visibleTextHitRect, rightRect)
+    }
+
     func testHoverLinkInvokesActivationCallbackOnMouseDown() {
         let link = HoverLinkTextField(text: "Provider")
         link.frame = NSRect(x: 0, y: 0, width: 120, height: 20)

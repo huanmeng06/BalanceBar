@@ -577,6 +577,16 @@ class HoverLinkTextField: NSTextField {
         }
     }
 
+    override var alignment: NSTextAlignment {
+        didSet {
+            guard !isApplyingStyle else { return }
+            // NSTextField's alignment alone does not update the paragraph
+            // embedded in an already styled attributed value.
+            applyStyle(text: stringValue, underlined: isHovered)
+            updateVisibleTextHitRect()
+        }
+    }
+
     init(text: String) {
         super.init(frame: .zero)
         isEditable = false
