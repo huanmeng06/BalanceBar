@@ -10165,17 +10165,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
 extension DashboardPreferencePagesTests {
     func testTimeZonePickerFiltersTypedRegionsAndQuarterHourOffsets() {
-        let rows = DashboardTimeZonePicker.matchingRows(query: "New York")
+        let rows = DashboardTimeZoneOptions.matchingRows(query: "New York")
         XCTAssertEqual(rows.first?.selection, .system)
         XCTAssertTrue(rows.contains { $0.selection == .region(identifier: "America/New_York") })
         XCTAssertFalse(rows.contains { $0.selection == .region(identifier: "Asia/Shanghai") })
-        let fixed = DashboardTimeZonePicker.matchingRows(query: "UTC+05:45")
+        let fixed = DashboardTimeZoneOptions.matchingRows(query: "UTC+05:45")
         XCTAssertTrue(fixed.contains { $0.selection == .fixedOffset(minutes: 345) })
-        let all = DashboardTimeZonePicker.matchingRows(query: "")
+        let all = DashboardTimeZoneOptions.matchingRows(query: "")
         XCTAssertEqual(all.filter { if case .fixedOffset = $0.selection { return true }; return false }.count, 105)
         XCTAssertEqual(all.filter { $0.selection == nil }.count, 2)
-        let picker = DashboardTimeZonePicker(selection: .fixedOffset(minutes: 345))
-        XCTAssertNotNil(picker.view)
     }
 
     func testGeneralPageHasOneTimeZoneEntryImmediatelyAfterLanguage() throws {
@@ -10185,8 +10183,10 @@ extension DashboardPreferencePagesTests {
         let preferences = AppPreferences(defaults: defaults)
         preferences.displayTimeZoneSelection = .fixedOffset(minutes: 345)
         let page = DashboardGeneralPage().make(.init(preferences: preferences, currentProviderName: "test", relay: DashboardPreferencePageRelay(), updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.6.4")))))
-        let button = try XCTUnwrap(descendants(of: page).compactMap { $0 as? DashboardTimeZoneButton }.first)
-        XCTAssertTrue(button.title.contains("UTC+05:45"))
+        let button = try XCTUnwrap(descendants(of: page).compactMap { $0 as? DashboardTimeZoneComboBox }.first)
+        XCTAssertTrue(button.stringValue.contains("UTC+05:45"))
+        XCTAssertTrue(button.isEditable)
+        XCTAssertTrue(button.usesDataSource)
         let section = try XCTUnwrap(descendants(of: page).compactMap { $0 as? SettingsSectionView }.first { $0.headingLabel.stringValue == tr(.keyDashboardGeneralAndRefreshPagesApplication) })
         let rows = section.contentViews.compactMap { $0 as? SettingsRowView }
         XCTAssertEqual(rows[0].titleLabel.stringValue, tr(.keyDashboardGeneralAndRefreshPagesLanguage))
@@ -10212,5 +10212,47 @@ extension DashboardPreferencePagesTests {
         XCTAssertEqual(try XCTUnwrap(coordinator.settings.pauseUntil).timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.001)
         preferences.displayTimeZoneSelection = .fixedOffset(minutes: -300)
         XCTAssertEqual(coordinator.settings.pauseUntil, expected)
+    }
+}
+
+extension DashboardPreferencePagesTests {
+    func testNativeTimeZoneComboBoxFiltersAndRejectsUncontrolledText() throws {
+        let suite = "BalanceBarTests.NativeZone.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .fixedOffset(minutes: 345)
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        XCTAssertEqual(combo.stringValue, "UTC+05:45")
+        combo.stringValue = "New York"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        let titles = (0..<combo.numberOfItems(in: combo)).compactMap { combo.comboBox(combo, objectValueForItemAt: $0) as? String }
+        XCTAssertTrue(titles.contains { $0.contains("America/New_York") })
+        XCTAssertFalse(titles.contains { $0.contains("Asia/Shanghai") })
+        combo.stringValue = "not a supported zone"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        combo.commitText()
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .fixedOffset(minutes: 345))
+        XCTAssertEqual(combo.stringValue, "UTC+05:45")
+        XCTAssertEqual(combo.comboBox(combo, indexOfItemWithStringValue: "not a supported zone"), NSNotFound)
+        XCTAssertTrue(try XCTUnwrap(combo.comboBox(combo, completedString: "America/New")).hasPrefix("America/New"))
+    }
+
+    func testNativeTimeZoneComboBoxCommitsTypedKnownChoice() throws {
+        let suite = "BalanceBarTests.NativeZoneCommit.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        combo.stringValue = "UTC+05:45"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        combo.commitText()
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .fixedOffset(minutes: 345))
+        XCTAssertGreaterThanOrEqual(combo.indexOfSelectedItem, 0)
+        XCTAssertEqual(combo.comboBox(combo, objectValueForItemAt: combo.indexOfSelectedItem) as? String, "UTC+05:45")
     }
 }

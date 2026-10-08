@@ -1144,7 +1144,7 @@ final class DashboardCompositionController {
             animationFrameRate: preferences.menuBarAnimationFrameRate,
             previewPrimary: presentation.primary,
             previewSecondary: presentation.secondary,
-            timeZoneTitle: state.preferences.displayTimeZoneSelection.title() + " ▾"
+            timeZoneTitle: state.preferences.displayTimeZoneSelection.title()
         )
         if identity == cachedSearchRuntimeIdentity {
             return cachedSearchRuntimeTexts

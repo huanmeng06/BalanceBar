@@ -710,7 +710,7 @@ enum DashboardSettingsSearchRuntime {
         animationFrameRate: Int,
         menuBarPreviewPrimary: String,
         menuBarPreviewSecondary: String,
-        timeZoneTitle: String = AppTimeZoneSelection.system.title() + " ▾"
+        timeZoneTitle: String = AppTimeZoneSelection.system.title()
     ) -> [DashboardSection: [String]] {
         let update = DashboardUpdatePresentation.make(for: updateState)
         let frameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
