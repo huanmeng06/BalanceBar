@@ -1,9 +1,10 @@
 City time-zone lookup data
 
-Source: GeoNames cities15000 gazetteer, https://download.geonames.org/export/dump/cities15000.zip
+Sources: GeoNames admin1 names, https://download.geonames.org/export/dump/admin1CodesASCII.txt
+GeoNames cities15000 gazetteer, https://download.geonames.org/export/dump/cities15000.zip
 Creator: GeoNames, https://www.geonames.org/
 License: Creative Commons Attribution 4.0 International (CC BY 4.0)
 https://creativecommons.org/licenses/by/4.0/
 
-Retrieved 2026-10-08. Derived by retaining city name, ASCII name, alternate names, country code and IANA time-zone identifier; records compressed with LZFSE. Coordinates, population and other fields were removed.
+Retrieved 2026-10-08. Derived by retaining city ID, name, normalized multilingual aliases, country code, administrative division code/name and IANA time-zone identifier; records compressed with LZFSE. Aliases use Foundation case/diacritic folding (en_US_POSIX). Coordinates, population and other fields were removed.
 The source covers cities with more than 15,000 inhabitants and capitals; it is not an exhaustive list of every locality. Data is provided as-is without warranty of accuracy, timeliness or completeness.

@@ -279,6 +279,18 @@ enum AppTimeZoneSelection: Equatable, Codable {
     }()
     static let fixedOffsets = Array(stride(from: -12 * 60, through: 14 * 60, by: 15))
 
+    /// Freeze a supported system region, or its exact supported GMT offset.
+    /// Unrepresentable custom offsets fall back to UTC rather than silently
+    /// returning to system mode or rounding to a different local time.
+    static func manualSelection(systemTimeZone: TimeZone = .autoupdatingCurrent, now: Date = Date()) -> Self {
+        let region = Self.region(identifier: systemTimeZone.identifier)
+        if region.isSupported { return region }
+        let seconds = systemTimeZone.secondsFromGMT(for: now)
+        let offset = Self.fixedOffset(minutes: seconds / 60)
+        if seconds % 60 == 0, offset.isSupported { return offset }
+        return .fixedOffset(minutes: 0)
+    }
+
     var isSupported: Bool {
         switch self {
         case .system: return true
@@ -336,6 +348,7 @@ enum AppDisplayTime {
 final class AppPreferences {
     static let displayTimeZoneKey = "displayTimeZone"
     static let displayTimeZoneDidChange = Notification.Name("BalanceBar.displayTimeZoneDidChange")
+    private(set) var displayTimeZoneRevision: UInt64 = 0
 
     var displayTimeZoneSelection: AppTimeZoneSelection {
         get {
@@ -349,6 +362,7 @@ final class AppPreferences {
             guard selection != displayTimeZoneSelection,
                   let data = try? JSONEncoder().encode(selection) else { return }
             defaults.set(data, forKey: Self.displayTimeZoneKey)
+            displayTimeZoneRevision &+= 1
             NotificationCenter.default.post(name: Self.displayTimeZoneDidChange, object: self)
         }
     }

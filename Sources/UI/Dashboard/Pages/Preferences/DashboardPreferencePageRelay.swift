@@ -112,7 +112,7 @@ final class DashboardPreferencePageRelay: NSObject {
     }
 
     @objc func followSystemTimeZone(_ sender: NSSwitch) {
-        onTimeZone?(sender.state == .on ? .system : .region(identifier: TimeZone.autoupdatingCurrent.identifier))
+        onTimeZone?(sender.state == .on ? .system : AppTimeZoneSelection.manualSelection())
     }
 
     @objc func language(_ sender: NSPopUpButton) {

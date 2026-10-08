@@ -851,3 +851,36 @@ extension AppPreferencesTests {
         XCTAssertFalse(utc === nepal)
     }
 }
+
+extension AppPreferencesTests {
+    func testDisplayTimeZoneRevisionAdvancesSynchronouslyAndDetectsABA() throws {
+        let suite = "BalanceBarTests.ZoneRevision.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let before = preferences.displayTimeZoneRevision
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        XCTAssertEqual(preferences.displayTimeZoneRevision, before + 1)
+        preferences.displayTimeZoneSelection = .system
+        XCTAssertEqual(preferences.displayTimeZoneRevision, before + 2)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        XCTAssertEqual(preferences.displayTimeZoneRevision, before + 3)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        XCTAssertEqual(preferences.displayTimeZoneRevision, before + 3)
+    }
+
+    func testTurningOffSystemModeFreezesSupportedRegionOrOffset() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let region = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        XCTAssertEqual(AppTimeZoneSelection.manualSelection(systemTimeZone: region, now: now), .region(identifier: "America/New_York"))
+        for minutes in [0, 345, -300] {
+            let zone = try XCTUnwrap(TimeZone(secondsFromGMT: minutes * 60))
+            let selection = AppTimeZoneSelection.manualSelection(systemTimeZone: zone, now: now)
+            XCTAssertNotEqual(selection, .system)
+            XCTAssertTrue(selection.isSupported)
+            XCTAssertEqual(selection.resolved().secondsFromGMT(for: now), minutes * 60)
+        }
+        let unusual = try XCTUnwrap(TimeZone(secondsFromGMT: 37 * 60))
+        XCTAssertEqual(AppTimeZoneSelection.manualSelection(systemTimeZone: unusual, now: now), .fixedOffset(minutes: 0))
+    }
+}

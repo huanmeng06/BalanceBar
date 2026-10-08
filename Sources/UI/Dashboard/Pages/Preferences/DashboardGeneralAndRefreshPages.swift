@@ -851,6 +851,14 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     private var navigatingCandidates = false
     private var editingVersion = 0
     private var confirmationScheduled = false
+    private var appliedPreferenceRevision: UInt64 = 0
+    private var appliedPreferenceSelection: AppTimeZoneSelection = .system
+    private var rowsRequireConfirmation = false
+
+    private var preferenceIsCurrent: Bool {
+        appliedPreferenceRevision == preferences.displayTimeZoneRevision
+            && appliedPreferenceSelection == preferences.displayTimeZoneSelection
+    }
     private(set) var candidatesAreVisible = false
     private var candidatePresentationScheduled = false
     private var candidatePresentationVersion = 0
@@ -896,6 +904,9 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     func apply(_ selection: AppTimeZoneSelection) {
         applying = true
         defer { applying = false }
+        appliedPreferenceRevision = preferences.displayTimeZoneRevision
+        appliedPreferenceSelection = selection
+        rowsRequireConfirmation = false
         editingVersion += 1
         confirmationScheduled = false
         cancelCityLookup()
@@ -953,6 +964,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         candidatePresentationScheduled = false
         cancelCityLookup()
         pendingCandidate = nil
+        rowsRequireConfirmation = false
         let query = stringValue
         filteredQuery = query
         let editor = currentEditor() as? NSTextView
@@ -1050,13 +1062,15 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         }
     }
 
-    private func confirmCandidateAfterTracking(_ candidate: TimeZoneCity) {
-        guard !confirmationScheduled else { return }
+    func confirmCandidateAfterTracking(_ candidate: TimeZoneCity) {
+        guard !confirmationScheduled, preferenceIsCurrent else { return }
         pendingCandidate = nil
         confirmationScheduled = true
         let version = editingVersion
+        let preferenceRevision = preferences.displayTimeZoneRevision
         DispatchQueue.main.async { [weak self] in
             guard let self, self.editingVersion == version, self.confirmationScheduled,
+                  self.preferences.displayTimeZoneRevision == preferenceRevision, self.preferenceIsCurrent,
                   self.isEnabled, (self.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
             self.confirmationScheduled = false
             self.commit(candidate.identifier)
@@ -1111,28 +1125,35 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
     @objc func commitText() {
-        guard !applying, !confirmationScheduled,
+        guard !applying, !confirmationScheduled, preferenceIsCurrent,
               (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
         let query = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let identifier = AppTimeZoneSelection.regionIdentifiers.first(where: { $0.caseInsensitiveCompare(query) == .orderedSame }) {
+            commit(identifier)
+            cell?.setAccessibilityExpanded(false)
+            apply(preferences.displayTimeZoneSelection)
+            return
+        }
         let city: TimeZoneCity? = {
             if let pendingCandidate { return pendingCandidate }
             if let exact = rows.first(where: { $0.title.caseInsensitiveCompare(query) == .orderedSame }) { return exact }
+            guard !rowsRequireConfirmation else { return nil }
             let exactNames = rows.filter { city in
                 let localizedCity = city.title.components(separatedBy: " - ").first ?? city.title
                 let englishCity = city.identifier.split(separator: "/").last.map(String.init)?.replacingOccurrences(of: "_", with: " ") ?? city.identifier
                 return [localizedCity, englishCity, city.identifier].contains { $0.caseInsensitiveCompare(query) == .orderedSame }
             }
             if exactNames.count == 1 { return exactNames[0] }
-            return !query.isEmpty && rows.count == 1 ? rows[0] : nil
+            return nil
         }()
         if let city {
             pendingCandidate = nil
             commit(city.identifier)
             cell?.setAccessibilityExpanded(false)
             apply(preferences.displayTimeZoneSelection)
-        } else if !query.isEmpty && !rows.isEmpty {
-            // Keep an ambiguous query available for the user to select a
-            // city; never guess a location or discard their text on Return.
+        } else if rowsRequireConfirmation {
+            // A geocoder suggestion is not the typed city. Return without
+            // explicit navigation must never accept a fuzzy service result.
             scheduleCandidates()
         } else if query.count >= 2 {
             resolveSubmittedCity(query)
@@ -1160,11 +1181,14 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         lookupLoading = true
         filteredQuery = query
         let version = lookupVersion
+        let preferenceRevision = preferences.displayTimeZoneRevision
         refreshLookupRows()
         cityResolver.resolve(city: query, locale: TimeZoneCityCatalog.locale) { [weak self] result in
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.lookupVersion == version,
-                      self.filteredQuery == query, self.isEnabled else { return }
+                      self.filteredQuery == query, self.isEnabled, self.preferenceIsCurrent,
+                      self.preferences.displayTimeZoneRevision == preferenceRevision,
+                      (self.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
                 self.lookupLoading = false
                 switch result {
                 case .success(let matches):
@@ -1184,11 +1208,12 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
 
     private func applyResolvedCities(_ matches: [CityTimeZoneMatch], query: String) {
         lookupFailed = false
-        if matches.count == 1, let match = matches.first {
+        if matches.count == 1, let match = matches.first, match.isExactNameMatch {
             commit(match.identifier)
             cell?.setAccessibilityExpanded(false)
             apply(preferences.displayTimeZoneSelection)
         } else {
+            rowsRequireConfirmation = !matches.isEmpty
             rows = matches.map { TimeZoneCity(identifier: $0.identifier, title: $0.title, searchKey: $0.title.lowercased()) }
             filteredQuery = query
             pendingCandidate = nil
@@ -1207,7 +1232,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
 
     private func commit(_ identifier: String) {
         let selection = AppTimeZoneSelection.region(identifier: identifier)
-        guard selection != preferences.displayTimeZoneSelection else { return }
+        guard preferenceIsCurrent, selection != preferences.displayTimeZoneSelection else { return }
         relay?.onTimeZone?(selection)
     }
 }
