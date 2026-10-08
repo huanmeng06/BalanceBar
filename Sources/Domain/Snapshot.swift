@@ -343,6 +343,8 @@ struct CodexResetObservation: Codable, Equatable {
     private(set) var observedConsumption = false
     private(set) var previousSample: CodexResetQuotaSample?
     private(set) var detectedAt: Date?
+    private(set) var previousSampleAt: Date?
+    private(set) var resetTransitionStartedAt: Date?
 
     mutating func observe(_ sample: CodexResetQuotaSample, now: Date) {
         if sample.hasConsumption {
@@ -355,6 +357,9 @@ struct CodexResetObservation: Codable, Equatable {
             ) >= Self.minimumResetCycleJump
             if observedConsumption && resetCycleJump && sample.isComplete {
                 state = .observed
+                if detectedAt == nil {
+                    resetTransitionStartedAt = previousSample.hasConsumption ? previousSampleAt : nil
+                }
                 detectedAt = detectedAt ?? now
             }
         }
@@ -363,6 +368,7 @@ struct CodexResetObservation: Codable, Equatable {
             state = observedConsumption ? .watching : .notEligible
         }
         previousSample = sample
+        previousSampleAt = now
     }
 
     mutating func reset() {

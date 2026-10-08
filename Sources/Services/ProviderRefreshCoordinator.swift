@@ -315,6 +315,15 @@ final class ProviderRefreshCoordinator {
     private var inFlightForecastCompletions: [(CodexResetForecast) -> Void] = []
     private var forecastRequestInFlight = false
     private var lastForecastAttempt: Date?
+    // Response ownership is independent of quota values. The token is also read
+    // on the main queue, so validity is synchronized instead of reading the map.
+    private final class OfficialResponseGeneration {
+        private let lock = NSLock()
+        private var valid = true
+        func invalidate() { lock.lock(); valid = false; lock.unlock() }
+        func isCurrent() -> Bool { lock.lock(); defer { lock.unlock() }; return valid }
+    }
+    private var officialResponseGenerations: [String: OfficialResponseGeneration] = [:]
     private var codexQuotaEvidence: [String: CodexResetObservation] = [:]
     private var codexResetObservations: [String: (episodeKey: String, observation: CodexResetObservation)] = [:]
 
@@ -665,14 +674,11 @@ final class ProviderRefreshCoordinator {
                         providerID: providerID,
                         payload: .officialWindows(response.output.windows)
                     )
-                    // Check again after credit/forecast transport: a newer quota
-                    // response may already own this account's evidence and UI.
-                    let isCurrentQuota: () -> Bool = {
-                        guard let accountKey,
-                              let sample = CodexResetQuotaSample.make(from: response.output.windows),
-                              let latest = self.codexQuotaEvidence[self.observationCacheKey(providerID: providerID, accountKey: accountKey)]?.previousSample else { return true }
-                        return sample == latest
-                    }
+                    let responseKey = client.rawValue + "|" + providerID + "|" + (credentials?.requestScope ?? "")
+                    self.officialResponseGenerations[responseKey]?.invalidate()
+                    let generation = OfficialResponseGeneration()
+                    self.officialResponseGenerations[responseKey] = generation
+                    let isCurrentQuota = { generation.isCurrent() }
                     let renderOfficial: (CodexBankedReset?, CodexResetForecast) -> Void = { bankedReset, forecast in
                         guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials,
                               isCurrentQuota() else { return }
@@ -697,7 +703,7 @@ final class ProviderRefreshCoordinator {
                             ),
                             providerID: providerID,
                             client: client,
-                            isCurrentRequest: { client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials }
+                            isCurrentRequest: { isCurrentQuota() && (client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials) }
                         )
                     }
                     // Observation consumes successful quota data immediately,
@@ -771,10 +777,16 @@ final class ProviderRefreshCoordinator {
         var evidence = codexQuotaEvidence[key]
             ?? codexResetObservationStore.loadQuotaEvidence(providerID: providerID, accountKey: accountKey)
             ?? CodexResetObservation()
-        if let previous = evidence.previousSample, previous.sevenDayResetAt <= now() {
-            evidence = CodexResetObservation()
+        let timestamp = now()
+        if let previous = evidence.previousSample, previous.sevenDayResetAt <= timestamp {
+            // Preserve the actual rollover comparison. Drop an expired baseline
+            // only when this sample cannot establish a complete cycle transition.
+            let completesTransition = evidence.observedConsumption && sample.isComplete
+                && sample.sevenDayResetAt.timeIntervalSince(previous.sevenDayResetAt) >= CodexResetObservation.minimumResetCycleJump
+                && sample.sevenDayResetAt > timestamp
+            if !completesTransition { evidence = CodexResetObservation() }
         }
-        evidence.observe(sample, now: now())
+        evidence.observe(sample, now: timestamp)
         codexQuotaEvidence[key] = evidence
         codexResetObservationStore.saveQuotaEvidence(providerID: providerID, accountKey: accountKey, evidence: evidence)
     }
@@ -819,17 +831,21 @@ final class ProviderRefreshCoordinator {
         let priorEntry = codexResetObservations[cacheKey]
             ?? (durable ? codexResetObservationStore.load(providerID: providerID, accountKey: accountKey) : nil)
         var seed = CodexResetObservation()
-        let canAdoptEvidence = priorEntry == nil
-            || (priorEntry?.episodeKey != episodeKey && signal.publishedAt != nil)
-        if durable, canAdoptEvidence, let pending = codexQuotaEvidence[cacheKey] {
-            // A different known episode requires a publication time to adopt
-            // newly recorded quota evidence; never copy its old observation.
-            // Expired quota cycles are discarded when recording; publication time
-            // prevents an earlier reset from being attached to a later signal.
-            let afterPublication = pending.detectedAt.map { detected in
-                signal.publishedAt.map { detected >= $0 } ?? true
-            } ?? true
-            if afterPublication { seed = pending }
+        if durable, priorEntry?.episodeKey != episodeKey,
+           let publishedAt = signal.publishedAt,
+           let pending = codexQuotaEvidence[cacheKey],
+           let baselineAt = pending.state == .observed ? pending.resetTransitionStartedAt : pending.previousSampleAt,
+           baselineAt >= publishedAt, baselineAt <= now() {
+            // Both ends of an unassigned transition must belong to this signal's
+            // time window. Undated legacy evidence never confirms a new episode,
+            // and an event already assigned to another episode cannot be reused.
+            if pending.state != .observed, pending.previousSample?.hasConsumption == true {
+                seed = pending
+            } else if let detectedAt = pending.detectedAt,
+                      detectedAt >= baselineAt, detectedAt <= now(),
+                      priorEntry?.observation.detectedAt != detectedAt {
+                seed = pending
+            }
         }
         var entry = priorEntry ?? (episodeKey: episodeKey, observation: seed)
         if entry.episodeKey != episodeKey {
