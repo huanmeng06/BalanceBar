@@ -10162,3 +10162,55 @@ final class DashboardPreferencePagesTests: XCTestCase {
         return lines
     }
 }
+
+extension DashboardPreferencePagesTests {
+    func testTimeZonePickerFiltersTypedRegionsAndQuarterHourOffsets() {
+        let rows = DashboardTimeZonePicker.matchingRows(query: "New York")
+        XCTAssertEqual(rows.first?.selection, .system)
+        XCTAssertTrue(rows.contains { $0.selection == .region(identifier: "America/New_York") })
+        XCTAssertFalse(rows.contains { $0.selection == .region(identifier: "Asia/Shanghai") })
+        let fixed = DashboardTimeZonePicker.matchingRows(query: "UTC+05:45")
+        XCTAssertTrue(fixed.contains { $0.selection == .fixedOffset(minutes: 345) })
+        let all = DashboardTimeZonePicker.matchingRows(query: "")
+        XCTAssertEqual(all.filter { if case .fixedOffset = $0.selection { return true }; return false }.count, 105)
+        XCTAssertEqual(all.filter { $0.selection == nil }.count, 2)
+        let picker = DashboardTimeZonePicker(selection: .fixedOffset(minutes: 345))
+        XCTAssertNotNil(picker.view)
+    }
+
+    func testGeneralPageHasOneTimeZoneEntryImmediatelyAfterLanguage() throws {
+        let suite = "BalanceBarTests.TimeZoneUI.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .fixedOffset(minutes: 345)
+        let page = DashboardGeneralPage().make(.init(preferences: preferences, currentProviderName: "test", relay: DashboardPreferencePageRelay(), updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.6.4")))))
+        let button = try XCTUnwrap(descendants(of: page).compactMap { $0 as? DashboardTimeZoneButton }.first)
+        XCTAssertTrue(button.title.contains("UTC+05:45"))
+        let section = try XCTUnwrap(descendants(of: page).compactMap { $0 as? SettingsSectionView }.first { $0.headingLabel.stringValue == tr(.keyDashboardGeneralAndRefreshPagesApplication) })
+        let rows = section.contentViews.compactMap { $0 as? SettingsRowView }
+        XCTAssertEqual(rows[0].titleLabel.stringValue, tr(.keyDashboardGeneralAndRefreshPagesLanguage))
+        XCTAssertEqual(rows[1].titleLabel.stringValue, tr(.keyTimeZoneTitle))
+    }
+
+    func testPauseTodayUsesDisplayZoneAndKeepsAbsoluteDeadlineOnZoneChange() throws {
+        let suite = "BalanceBarTests.PauseTimeZone.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: DashboardNotificationTestClient())
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .fixedOffset(minutes: 345)
+        let pages = DashboardNotificationPages(configuration: .init(coordinator: coordinator, providerChoices: { _ in [] }, displayTimeZone: { preferences.effectiveDisplayTimeZone }))
+        let page = pages.make()
+        let menu = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }.first { popup in popup.itemArray.contains { ($0.representedObject as? String) == "today" } })
+        menu.select(try XCTUnwrap(menu.itemArray.first { ($0.representedObject as? String) == "today" }))
+        let expected = try XCTUnwrap(AppDisplayTime.nextDayStart(after: Date(), timeZone: preferences.effectiveDisplayTimeZone))
+        XCTAssertTrue(menu.sendAction(menu.action, to: menu.target))
+        let done = expectation(description: "pause applied")
+        coordinator.performAsync { DispatchQueue.main.async { done.fulfill() } }
+        wait(for: [done], timeout: 3)
+        XCTAssertEqual(try XCTUnwrap(coordinator.settings.pauseUntil).timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.001)
+        preferences.displayTimeZoneSelection = .fixedOffset(minutes: -300)
+        XCTAssertEqual(coordinator.settings.pauseUntil, expected)
+    }
+}

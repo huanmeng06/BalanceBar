@@ -60,6 +60,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onLaunchWithChatGPT: ((Bool) -> Void)?
     var onOpenLaunchWithChatGPTSettings: (() -> Void)?
     var onInterval: ((String, TimeInterval) -> Void)?
+    var onTimeZone: ((AppTimeZoneSelection) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
     var onMenuBarFontSizePreset: ((MenuBarFontSizePreset) -> Void)?
     var onMenuBarIconSizePreset: ((MenuBarIconSizePreset) -> Void)?

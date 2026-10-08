@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
+    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -211,7 +211,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 providerChoices: { [weak self] agent in
                     guard let self, let client = agent.assistantClient else { return [] }
                     return self.ccSwitchRepository.loadChoices(appType: client.appType)
-                }
+                },
+                displayTimeZone: { [weak self] in self?.preferences.effectiveDisplayTimeZone ?? .autoupdatingCurrent }
             )
         ),
         actions: DashboardCompositionActions(
@@ -319,6 +320,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     )
     private var dashboardIsVisible: Bool { dashboardComposition.isVisible }
     private var dashboardSection: DashboardSection { dashboardComposition.section }
+    private var displayTimeZoneObservers: [NSObjectProtocol] = []
     private let languageChangeGate = DashboardLanguageChangeGate()
     private var timer: Timer?
     private var updateCheckTimer: Timer?
@@ -742,7 +744,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             quotaProgressColorConfiguration: preferences.quotaProgressColorConfiguration,
             showQuotaProgressBar: preferences.showQuotaProgressBar,
-            showBankedReset: preferences.showBankedReset
+            showBankedReset: preferences.showBankedReset,
+            displayTimeZone: preferences.effectiveDisplayTimeZone
         )
     }
 
@@ -780,6 +783,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
         }
+        observeDisplayTimeZone()
         configureApplicationMenu()
         NSApp.appearance = nil
         dashboardComposition.start()
@@ -843,6 +847,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         guard lifecycle.beginTerminate() else { return }
+        displayTimeZoneObservers.forEach(NotificationCenter.default.removeObserver)
+        displayTimeZoneObservers.removeAll()
         SwitchLog.write("session terminating", category: "lifecycle")
         timer?.invalidate()
         updateCheckTimer?.invalidate()
@@ -911,6 +917,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    deinit {
+        displayTimeZoneObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    private func observeDisplayTimeZone() {
+        guard displayTimeZoneObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        displayTimeZoneObservers.append(center.addObserver(
+            forName: AppPreferences.displayTimeZoneDidChange, object: preferences, queue: .main
+        ) { [weak self] _ in self?.refreshDisplayTimeZone() })
+        displayTimeZoneObservers.append(center.addObserver(
+            forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, self.preferences.displayTimeZoneSelection == .system else { return }
+            self.refreshDisplayTimeZone()
+        })
+    }
+
+    /// Reformat the existing data without calling a refresh coordinator.
+    private func refreshDisplayTimeZone() {
+        dashboardComposition.rebuild()
+        updateStatusItem(for: snapshot)
     }
 
     private func applyLanguage(_ language: AppLanguage) {
@@ -1864,12 +1894,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         return lastSuccessfulRefresh ?? snapshot.date
     }
 
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = .current
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter
-    }()
 }
 
 struct ApplicationMenuConfiguration {

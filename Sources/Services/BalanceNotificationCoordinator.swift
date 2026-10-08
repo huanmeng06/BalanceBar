@@ -437,6 +437,12 @@ final class BalanceNotificationCoordinator {
         }
     }
 
+    /// Store the absolute local-day boundary selected by the UI. Subsequent
+    /// display-zone changes only reformat this instant.
+    func pause(until deadline: Date) {
+        onQueue { self.store.update { $0.pauseUntil = deadline } }
+    }
+
     func resume() {
         onQueue { self.store.update { $0.pauseUntil = nil } }
     }

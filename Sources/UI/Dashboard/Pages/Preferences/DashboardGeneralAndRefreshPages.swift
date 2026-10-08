@@ -586,6 +586,11 @@ final class DashboardGeneralPage {
                     detail: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
                     accessoryView: languagePopup
                 ),
+                SettingsRowView(
+                    title: tr(.keyTimeZoneTitle),
+                    detail: tr(.keyTimeZoneDescription),
+                    accessoryView: DashboardTimeZoneButton(preferences: input.preferences, relay: input.relay)
+                ),
                 updateChannelRow,
                 updateRow
             ]
@@ -805,5 +810,216 @@ enum DashboardRefreshPage {
             note.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
         return root
+    }
+}
+
+/// One settings entry opens a native searchable list. Rows carry typed values;
+/// the search field never accepts an arbitrary zone as a preference.
+final class DashboardTimeZoneButton: NSButton {
+    private let preferences: AppPreferences
+    private weak var relay: DashboardPreferencePageRelay?
+    private var picker: DashboardTimeZonePicker?
+    private let popover = NSPopover()
+
+    init(preferences: AppPreferences, relay: DashboardPreferencePageRelay) {
+        self.preferences = preferences
+        self.relay = relay
+        super.init(frame: .zero)
+        identifier = NSUserInterfaceItemIdentifier(AppPreferences.displayTimeZoneKey)
+        bezelStyle = .rounded
+        lineBreakMode = .byTruncatingMiddle
+        translatesAutoresizingMaskIntoConstraints = false
+        widthAnchor.constraint(equalToConstant: 240).isActive = true
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        setAccessibilityLabel(tr(.keyTimeZoneTitle))
+        target = self
+        action = #selector(openPicker)
+        syncTitle()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private func syncTitle() {
+        let selected = preferences.displayTimeZoneSelection.title()
+        title = selected + " ▾"
+        toolTip = selected
+        setAccessibilityValue(selected)
+    }
+
+    @objc private func openPicker() {
+        syncTitle()
+        let picker = DashboardTimeZonePicker(selection: preferences.displayTimeZoneSelection)
+        picker.onSelect = { [weak self] selection in
+            guard let self else { return }
+            self.popover.close()
+            self.relay?.onTimeZone?(selection)
+            self.syncTitle()
+        }
+        self.picker = picker
+        popover.contentViewController = picker
+        popover.behavior = .transient
+        popover.show(relativeTo: bounds, of: self, preferredEdge: .maxY)
+        picker.view.window?.makeFirstResponder(picker.search)
+    }
+}
+
+private final class DashboardTimeZoneTable: NSTableView {
+    var onCommit: (() -> Void)?
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 76 {
+            onCommit?()
+        } else { super.keyDown(with: event) }
+    }
+}
+
+final class DashboardTimeZonePicker: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
+    struct Row {
+        let title: String
+        let selection: AppTimeZoneSelection?
+    }
+
+    let search = NSSearchField()
+    private let table = DashboardTimeZoneTable()
+    private let selection: AppTimeZoneSelection
+    private var rows: [Row] = []
+    var onSelect: ((AppTimeZoneSelection) -> Void)?
+
+    init(selection: AppTimeZoneSelection) {
+        self.selection = selection
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    static func matchingRows(query: String, now: Date = Date(), systemTimeZone: TimeZone = .autoupdatingCurrent) -> [Row] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches: (String) -> Bool = { query.isEmpty || $0.localizedCaseInsensitiveContains(query) }
+        var result = [Row(title: AppTimeZoneSelection.system.title(systemTimeZone: systemTimeZone), selection: .system)]
+        let regions = AppTimeZoneSelection.regionIdentifiers.compactMap { identifier -> Row? in
+            let selection = AppTimeZoneSelection.region(identifier: identifier)
+            let localizedName = selection.resolved().localizedName(for: .generic, locale: .autoupdatingCurrent) ?? ""
+            let title = selection.title(now: now)
+            guard matches(title) || matches(localizedName) || matches(identifier.replacingOccurrences(of: "_", with: " ")) else { return nil }
+            return Row(title: title, selection: selection)
+        }
+        if !regions.isEmpty {
+            result.append(Row(title: tr(.keyTimeZoneRegions), selection: nil))
+            result += regions
+        }
+        let offsets = AppTimeZoneSelection.fixedOffsets.compactMap { minutes -> Row? in
+            let selection = AppTimeZoneSelection.fixedOffset(minutes: minutes)
+            let title = selection.title()
+            guard matches(title) || matches(title.replacingOccurrences(of: "−", with: "-")) else { return nil }
+            return Row(title: title, selection: selection)
+        }
+        if !offsets.isEmpty {
+            result.append(Row(title: tr(.keyTimeZoneOffsets), selection: nil))
+            result += offsets
+        }
+        return result
+    }
+
+    override func loadView() {
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 430, height: 400))
+        preferredContentSize = view.frame.size
+        search.placeholderString = tr(.keyTimeZoneSearch)
+        search.setAccessibilityLabel(tr(.keyTimeZoneSearch))
+        search.delegate = self
+        search.sendsSearchStringImmediately = true
+        search.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(search)
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("timezone.choice"))
+        column.width = 400
+        table.addTableColumn(column)
+        table.headerView = nil
+        table.rowHeight = 26
+        table.delegate = self
+        table.dataSource = self
+        table.target = self
+        table.action = #selector(commitSelection)
+        table.onCommit = { [weak self] in self?.commitSelection() }
+        table.setAccessibilityLabel(tr(.keyTimeZoneTitle))
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.documentView = table
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            search.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            search.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            search.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            scroll.topAnchor.constraint(equalTo: search.bottomAnchor, constant: 8),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8)
+        ])
+        reloadRows()
+    }
+
+    func controlTextDidChange(_ notification: Notification) { reloadRows() }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.moveDown(_:)) {
+            view.window?.makeFirstResponder(table)
+            let row = rows.firstIndex { $0.selection != nil && $0.selection != .system } ?? 0
+            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            table.scrollRowToVisible(row)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            if !search.stringValue.isEmpty,
+               let row = rows.firstIndex(where: { $0.selection != nil && $0.selection != .system }) {
+                onSelect?(rows[row].selection!)
+            }
+            return true
+        }
+        return false
+    }
+
+    private func reloadRows() {
+        rows = Self.matchingRows(query: search.stringValue)
+        table.reloadData()
+        if let row = rows.firstIndex(where: { $0.selection == selection }) {
+            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            table.scrollRowToVisible(row)
+        }
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { rows[row].selection != nil }
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool { rows[row].selection == nil }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let item = rows[row]
+        let label = NSTextField(labelWithString: item.title)
+        label.lineBreakMode = .byTruncatingMiddle
+        label.font = .systemFont(ofSize: 12, weight: item.selection == nil ? .semibold : .regular)
+        let cell = NSTableCellView()
+        let check = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+        check.state = item.selection == selection ? .on : .off
+        check.isEnabled = false
+        check.isHidden = item.selection == nil
+        check.translatesAutoresizingMaskIntoConstraints = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(check)
+        cell.addSubview(label)
+        cell.textField = label
+        NSLayoutConstraint.activate([
+            check.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            check.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            check.widthAnchor.constraint(equalToConstant: 18),
+            label.leadingAnchor.constraint(equalTo: check.trailingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        ])
+        return cell
+    }
+
+    @objc private func commitSelection() {
+        let row = table.selectedRow
+        guard rows.indices.contains(row), let selection = rows[row].selection else { return }
+        onSelect?(selection)
     }
 }

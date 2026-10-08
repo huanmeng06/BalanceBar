@@ -59,12 +59,14 @@ struct LunaReserveQuota: Equatable {
         "🌙 \(tr(.keyLunaReserveTitle))"
     }
 
-    var menuSubtitleText: String {
+    var menuSubtitleText: String { menuSubtitle(timeZone: .autoupdatingCurrent) }
+
+    func menuSubtitle(timeZone: TimeZone) -> String {
         switch status {
         case .loading:
             return tr(.keyLunaReserveStatusLoading)
         case .available:
-            guard let reset = resetDisplayText() else {
+            guard let reset = resetDisplayText(timeZone: timeZone) else {
                 return tr(.keyLunaReserveResetUnavailable)
             }
             return tr(.keyLunaReserveMenuResetValue, arguments: [reset])
@@ -102,14 +104,16 @@ struct LunaReserveQuota: Equatable {
         }
     }
 
-    var summaryText: String {
+    var summaryText: String { summary(timeZone: .autoupdatingCurrent) }
+
+    func summary(timeZone: TimeZone) -> String {
         tr(
             .keyLunaReserveSummaryValue,
             arguments: [
                 tr(.keyLunaReserveTitle),
                 status.localizedText,
                 remainingText,
-                resetText
+                resetDisplayText(timeZone: timeZone).map { tr(.keyLunaReserveResetValue, arguments: [$0]) } ?? tr(.keyLunaReserveResetUnavailable)
             ]
         )
     }
@@ -1170,9 +1174,11 @@ struct Snapshot {
         return reset ?? "—"
     }
 
-    var menuBarToolTip: String {
+    var menuBarToolTip: String { menuBarToolTip(timeZone: .autoupdatingCurrent) }
+
+    func menuBarToolTip(timeZone: TimeZone) -> String {
         guard kind == .official else { return title }
-        let reset = String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))
+        let reset = String(describing: officialResetDisplayValue(timeZone: timeZone) ?? tr(.keyLocalizationUnknown))
         guard LunaReserveUserFacing.isCurrentlyEnabled, let lunaReserve else {
             return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), reset])
         }
@@ -1180,7 +1186,7 @@ struct Snapshot {
             .keySnapshotValueValue,
             arguments: [
                 tr(.keySnapshotValueResetValue, arguments: [String(describing: title), reset]),
-                lunaReserve.summaryText
+                lunaReserve.summary(timeZone: timeZone)
             ]
         )
     }
@@ -1196,7 +1202,7 @@ struct Snapshot {
     func overviewReset(refreshDate: Date?, formatter: DateFormatter) -> String {
         switch kind {
         case .official:
-            return tr(.keySnapshotResetValue, arguments: [String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))])
+            return tr(.keySnapshotResetValue, arguments: [String(describing: officialResetDisplayValue(timeZone: formatter.timeZone) ?? tr(.keyLocalizationUnknown))])
         case .balance:
             return tr(.keySnapshotLastRefreshedValue, arguments: [String(describing: formatter.string(from: refreshDate ?? date ?? Date()))])
         case .placeholder:
@@ -1277,12 +1283,14 @@ struct Snapshot {
         }
     }
 
-    var detail: String {
+    var detail: String { detail(timeZone: .autoupdatingCurrent) }
+
+    func detail(timeZone: TimeZone) -> String {
         switch kind {
         case .balance:
-            return tr(.keySnapshotUpdatedValueFollowsCcSwitchAutomatically, arguments: [String(describing: date?.formatted(date: .omitted, time: .shortened) ?? tr(.keyLocalizationJustNow))])
+            return tr(.keySnapshotUpdatedValueFollowsCcSwitchAutomatically, arguments: [String(describing: date.map { $0.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: timeZone)) } ?? tr(.keyLocalizationJustNow))])
         case .official:
-            let resetText = officialResetDisplayValue().map {
+            let resetText = officialResetDisplayValue(timeZone: timeZone).map {
                 tr(.keySnapshotResetValue3, arguments: [String(describing: $0)])
             } ?? ""
             return tr(.keySnapshotOfficialQuotaUpdatesEveryMinutevalue, arguments: [String(describing: resetText)])

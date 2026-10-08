@@ -256,7 +256,92 @@ enum MenuBarIconSizePreset: String, CaseIterable, Equatable {
     }
 }
 
+/// Persist the mode, not the region's current offset: Foundation resolves DST
+/// using the date being displayed. Invalid persisted values never become zones.
+enum AppTimeZoneSelection: Equatable, Codable {
+    case system
+    case region(identifier: String)
+    case fixedOffset(minutes: Int)
+
+    static let regionIdentifiers = TimeZone.knownTimeZoneIdentifiers.sorted()
+    static let fixedOffsets = Array(stride(from: -12 * 60, through: 14 * 60, by: 15))
+
+    var isSupported: Bool {
+        switch self {
+        case .system: return true
+        case .region(let identifier): return Self.regionIdentifiers.contains(identifier)
+        case .fixedOffset(let minutes): return Self.fixedOffsets.contains(minutes)
+        }
+    }
+
+    func resolved(systemTimeZone: TimeZone = .autoupdatingCurrent) -> TimeZone {
+        guard isSupported else { return systemTimeZone }
+        switch self {
+        case .system: return systemTimeZone
+        case .region(let identifier): return TimeZone(identifier: identifier) ?? systemTimeZone
+        case .fixedOffset(let minutes): return TimeZone(secondsFromGMT: minutes * 60) ?? systemTimeZone
+        }
+    }
+
+    static func offsetTitle(minutes: Int) -> String {
+        String(format: "UTC%@%02d:%02d", minutes < 0 ? "−" : "+", abs(minutes) / 60, abs(minutes) % 60)
+    }
+
+    func title(now: Date = Date(), systemTimeZone: TimeZone = .autoupdatingCurrent) -> String {
+        switch self {
+        case .system: return "\(tr(.keyTimeZoneSystem)) (\(systemTimeZone.identifier))"
+        case .region(let identifier):
+            return "\(identifier)  \(Self.offsetTitle(minutes: resolved().secondsFromGMT(for: now) / 60))"
+        case .fixedOffset(let minutes): return Self.offsetTitle(minutes: minutes)
+        }
+    }
+}
+
+/// Display-only helpers. Callers pass the effective zone explicitly; API,
+/// logging, scheduling and relative countdowns do not use this policy.
+enum AppDisplayTime {
+    static func calendar(timeZone: TimeZone, base: Calendar = .autoupdatingCurrent) -> Calendar {
+        var calendar = base
+        calendar.timeZone = timeZone
+        return calendar
+    }
+
+    static func nextDayStart(after now: Date, timeZone: TimeZone) -> Date? {
+        calendar(timeZone: timeZone).dateInterval(of: .day, for: now)?.end
+    }
+
+    static func formatter(timeZone: TimeZone, dateFormat: String = "HH:mm:ss") -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = calendar(timeZone: timeZone)
+        formatter.timeZone = timeZone
+        formatter.dateFormat = dateFormat
+        return formatter
+    }
+}
+
 final class AppPreferences {
+    static let displayTimeZoneKey = "displayTimeZone"
+    static let displayTimeZoneDidChange = Notification.Name("BalanceBar.displayTimeZoneDidChange")
+
+    var displayTimeZoneSelection: AppTimeZoneSelection {
+        get {
+            guard let data = defaults.data(forKey: Self.displayTimeZoneKey),
+                  let selection = try? JSONDecoder().decode(AppTimeZoneSelection.self, from: data),
+                  selection.isSupported else { return .system }
+            return selection
+        }
+        set {
+            let selection = newValue.isSupported ? newValue : .system
+            guard selection != displayTimeZoneSelection,
+                  let data = try? JSONEncoder().encode(selection) else { return }
+            defaults.set(data, forKey: Self.displayTimeZoneKey)
+            NotificationCenter.default.post(name: Self.displayTimeZoneDidChange, object: self)
+        }
+    }
+
+    var effectiveDisplayTimeZone: TimeZone { displayTimeZoneSelection.resolved() }
+
     static let quotaProgressEnabledColorsKey = "quotaProgressEnabledColors"
     static let quotaProgressRedUpperBoundKey = "quotaProgressRedUpperBound"
     static let quotaProgressOrangeUpperBoundKey = "quotaProgressOrangeUpperBound"

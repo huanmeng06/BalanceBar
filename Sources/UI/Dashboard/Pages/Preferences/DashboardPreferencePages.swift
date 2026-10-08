@@ -81,6 +81,9 @@ final class DashboardPreferencePages {
         relay.onOffsetValueEnded = actions.onOffsetValueEnded
         relay.onOffsetReset = actions.onOffsetReset
         relay.onLanguage = actions.onLanguage
+        relay.onTimeZone = { [weak preferences] selection in
+            preferences?.displayTimeZoneSelection = selection
+        }
         relay.onMenuBarFontSizePreset = actions.onMenuBarFontSizePreset
         relay.onMenuBarIconSizePreset = actions.onMenuBarIconSizePreset
         relay.onMenuBarIconDisplayModeChanged = actions.onMenuBarIconDisplayModeChanged

@@ -487,3 +487,11 @@
 "codex.reset_signal.tooltip_title" = "Segnale ufficiale di ripristino";
 "codex.reset_signal.tooltip_body" = "Probabilità del segnale ufficiale forte attuale o conto alla rovescia, distinti dalla previsione ordinaria a 24 / 48 ore.";
 "codex.reset_signal.tooltip_disclaimer" = "Il segnale non conferma il ripristino di questo account e non garantisce crediti. La quota effettiva proviene dall’API ufficiale.";
+
+// Application display time zone
+"timezone.title" = "Fuso orario";
+"timezone.description" = "Imposta il fuso orario di date e ore nell’app";
+"timezone.system" = "Segui il fuso orario del sistema";
+"timezone.regions" = "Regioni / Città";
+"timezone.offsets" = "Scostamenti UTC fissi";
+"timezone.search" = "Cerca regioni, città o scostamenti UTC";

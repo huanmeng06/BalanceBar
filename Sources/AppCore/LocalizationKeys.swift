@@ -1,5 +1,12 @@
   // Stable typed keys for every bundled Localizable.strings resource.
   enum LocalizationKey: String, CaseIterable {
+    case keyTimeZoneTitle = "timezone.title"
+    case keyTimeZoneDescription = "timezone.description"
+    case keyTimeZoneSystem = "timezone.system"
+    case keyTimeZoneRegions = "timezone.regions"
+    case keyTimeZoneOffsets = "timezone.offsets"
+    case keyTimeZoneSearch = "timezone.search"
+
     case keyAppPreferencesTiboSUpdates = "app.preferences.tibo_s_updates"
     case keyAppPreferencesOpenaiStatus = "app.preferences.openai_status"
     case keyAppNotFound = "app.not_found"

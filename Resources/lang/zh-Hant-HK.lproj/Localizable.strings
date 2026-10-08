@@ -487,3 +487,11 @@
 "codex.reset_signal.tooltip_title" = "官方重置信號";
 "codex.reset_signal.tooltip_body" = "目前官方訊號的強訊號機率或倒數提示，獨立於一般 24 / 48 小時預測。";
 "codex.reset_signal.tooltip_disclaimer" = "訊號提示不代表目前帳戶已完成重置，也不保證發放重置卡；實際額度以官方介面為準。";
+
+// Application display time zone
+"timezone.title" = "時區";
+"timezone.description" = "設定應用程式內日期和時間的顯示時區";
+"timezone.system" = "跟隨系統時區";
+"timezone.regions" = "地區／城市";
+"timezone.offsets" = "UTC 固定偏移";
+"timezone.search" = "搜尋地區、城市或 UTC 偏移";

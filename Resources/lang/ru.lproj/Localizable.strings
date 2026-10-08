@@ -487,3 +487,11 @@
 "codex.reset_signal.tooltip_title" = "Официальный сигнал сброса";
 "codex.reset_signal.tooltip_body" = "Вероятность текущего сильного официального сигнала или обратный отсчёт, отдельно от обычного прогноза на 24 / 48 часов.";
 "codex.reset_signal.tooltip_disclaimer" = "Сигнал не подтверждает сброс этой учётной записи и не гарантирует кредиты сброса. Фактическую квоту определяет официальный API.";
+
+// Application display time zone
+"timezone.title" = "Часовой пояс";
+"timezone.description" = "Часовой пояс для отображения дат и времени в приложении";
+"timezone.system" = "Использовать системный часовой пояс";
+"timezone.regions" = "Регионы / Города";
+"timezone.offsets" = "Фиксированные смещения UTC";
+"timezone.search" = "Поиск регионов, городов или смещений UTC";

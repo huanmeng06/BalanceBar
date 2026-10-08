@@ -487,3 +487,11 @@
 "codex.reset_signal.tooltip_title" = "Señal oficial de restablecimiento";
 "codex.reset_signal.tooltip_body" = "Probabilidad de señal fuerte o cuenta atrás de la señal oficial actual, distinta del pronóstico normal de 24 / 48 horas.";
 "codex.reset_signal.tooltip_disclaimer" = "La señal no confirma un restablecimiento de esta cuenta ni garantiza créditos. La cuota real procede de la API oficial.";
+
+// Application display time zone
+"timezone.title" = "Zona horaria";
+"timezone.description" = "Configura la zona horaria de las fechas y horas de la app";
+"timezone.system" = "Seguir la zona horaria del sistema";
+"timezone.regions" = "Regiones / Ciudades";
+"timezone.offsets" = "Desplazamientos UTC fijos";
+"timezone.search" = "Buscar regiones, ciudades o desplazamientos UTC";

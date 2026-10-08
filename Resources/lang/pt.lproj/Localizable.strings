@@ -487,3 +487,11 @@
 "codex.reset_signal.tooltip_title" = "Sinal oficial de redefinição";
 "codex.reset_signal.tooltip_body" = "Probabilidade do sinal oficial forte atual ou contagem regressiva, separadas da previsão normal de 24 / 48 horas.";
 "codex.reset_signal.tooltip_disclaimer" = "O sinal não confirma a redefinição desta conta nem garante créditos. A cota real vem da API oficial.";
+
+// Application display time zone
+"timezone.title" = "Fuso horário";
+"timezone.description" = "Definir o fuso horário das datas e horas na aplicação";
+"timezone.system" = "Usar o fuso horário do sistema";
+"timezone.regions" = "Regiões / Cidades";
+"timezone.offsets" = "Desvios UTC fixos";
+"timezone.search" = "Pesquisar regiões, cidades ou desvios UTC";
