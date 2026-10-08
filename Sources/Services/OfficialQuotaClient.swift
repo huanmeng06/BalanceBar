@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Errors surfaced by official OpenAI and Claude quota requests.
 /// Values never include a request URL or credential material.
@@ -42,6 +43,27 @@ protocol OfficialQuotaCredentialReading {
     func codexAccessToken() -> String?
     func codexAccountProfile() -> CodexAccountProfile?
     func claudeAccessToken() -> String?
+    func codexRequestCredentials() -> CodexRequestCredentials
+}
+
+struct CodexRequestCredentials: Equatable {
+    let accessToken: String?
+    let accountKey: String?
+
+    /// An opaque in-memory scope; raw credentials never enter registry keys.
+    var requestScope: String {
+        SHA256.hash(data: Data(((accountKey ?? "") + "\u{0}" + (accessToken ?? "")).utf8))
+            .map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+extension OfficialQuotaCredentialReading {
+    func codexRequestCredentials() -> CodexRequestCredentials {
+        CodexRequestCredentials(
+            accessToken: codexAccessToken(),
+            accountKey: codexAccountProfile()?.email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        )
+    }
 }
 
 extension CredentialReader: OfficialQuotaCredentialReading {}
@@ -154,6 +176,10 @@ final class OfficialQuotaClient {
         credentialReader.codexAccountProfile()
     }
 
+    func codexRequestCredentials() -> CodexRequestCredentials {
+        credentialReader.codexRequestCredentials()
+    }
+
     static func credentialSource(
         client: AssistantClient,
         storedAccessToken: String?
@@ -166,40 +192,52 @@ final class OfficialQuotaClient {
     static func requestKey(
         client: AssistantClient,
         providerID: String,
-        credentialSource: OfficialQuotaCredentialSource = .localReader
+        credentialSource: OfficialQuotaCredentialSource = .localReader,
+        requestCredentials: CodexRequestCredentials? = nil,
+        storedAccessToken: String? = nil
     ) -> String {
-        "official:\(client.rawValue):\(providerID):\(credentialSource.rawValue)"
+        let base = "official:\(client.rawValue):\(providerID):\(credentialSource.rawValue)"
+        let scope = requestCredentials ?? storedAccessToken.map { CodexRequestCredentials(accessToken: $0, accountKey: nil) }
+        return scope.map { base + ":" + $0.requestScope } ?? base
     }
 
     func isRequestInFlight(
         client: AssistantClient,
         providerID: String,
-        credentialSource: OfficialQuotaCredentialSource = .localReader
+        credentialSource: OfficialQuotaCredentialSource = .localReader,
+        requestCredentials: CodexRequestCredentials? = nil,
+        storedAccessToken: String? = nil
     ) -> Bool {
         inFlight.contains(
             key: Self.requestKey(
                 client: client,
                 providerID: providerID,
-                credentialSource: credentialSource
+                credentialSource: credentialSource,
+                requestCredentials: requestCredentials,
+                storedAccessToken: storedAccessToken
             )
         )
     }
 
-    /// Starts one request for a client/provider/credential-source key.
-    /// Duplicate consumers with the same source share the transport and each
-    /// receives its result, matching BalanceAPIClient.
+    /// Duplicate consumers share transport only within the same request scope.
+    /// Frozen Codex credentials isolate overlapping account-switch requests.
     @discardableResult
     func fetchQuota(
         client: AssistantClient,
         providerID: String,
         storedAccessToken: String? = nil,
+        requestCredentials: CodexRequestCredentials? = nil,
         completion: @escaping (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void
     ) -> Bool {
         let credentialSource = Self.credentialSource(
             client: client,
             storedAccessToken: storedAccessToken
         )
-        guard let request = makeRequest(client: client, storedAccessToken: storedAccessToken) else {
+        if client == .codex, let requestCredentials, requestCredentials.accessToken == nil {
+            completion(.failure(.missingCredentials))
+            return true
+        }
+        guard let request = makeRequest(client: client, storedAccessToken: requestCredentials?.accessToken ?? storedAccessToken) else {
             completion(.failure(.missingCredentials))
             return true
         }
@@ -207,7 +245,9 @@ final class OfficialQuotaClient {
         let key = Self.requestKey(
             client: client,
             providerID: providerID,
-            credentialSource: credentialSource
+            credentialSource: credentialSource,
+            requestCredentials: requestCredentials,
+            storedAccessToken: storedAccessToken
         )
         let registry = inFlight
         guard registry.register(key: key, completion: completion) else {
@@ -348,12 +388,16 @@ final class OfficialQuotaClient {
     func cancelQuota(
         client: AssistantClient,
         providerID: String,
-        credentialSource: OfficialQuotaCredentialSource = .localReader
+        credentialSource: OfficialQuotaCredentialSource = .localReader,
+        requestCredentials: CodexRequestCredentials? = nil,
+        storedAccessToken: String? = nil
     ) {
         let key = Self.requestKey(
             client: client,
             providerID: providerID,
-            credentialSource: credentialSource
+            credentialSource: credentialSource,
+            requestCredentials: requestCredentials,
+            storedAccessToken: storedAccessToken
         )
         let completions = inFlight.cancel(key: key)
         let result: Result<OfficialQuotaResult, OfficialQuotaClientError> =

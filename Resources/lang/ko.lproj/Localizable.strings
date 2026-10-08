@@ -457,7 +457,11 @@
 "codex.banked_reset.remaining_minutes" = "%1$@분";
 "codex.banked_reset.probability_prefix" = "리셋 확률";
 "codex.banked_reset.probability_source" = "데이터 출처";
-"codex.banked_reset.probability_hint" = "앞으로 24시간과 48시간 안에 추가 전역 리셋이 발생할 가능성에 대한 예측입니다. 데이터 출처: codex-reset.com. 소스 업데이트: %1$@. 이는 제3자의 전역 추가 리셋 예측이며, 이 계정의 주간 한도에 대한 확정 리셋 시각이 아니고 리셋 카드 지급을 보장하지 않습니다. 신뢰도는 모델 분류이며 예측이 정확하다는 뜻이 아닙니다.";
+"codex.banked_reset.probability_hint" = "24시간 이내 리셋 확률\n\n향후 24 / 48시간 이내 추가 전역 리셋 가능성에 대한 예측입니다.\n\n출처: codex-reset.com · 업데이트 %1$@\n\n제3자 예측으로, 이 계정의 확정 리셋 시각이나 리셋 카드 지급을 보장하지 않습니다. 신뢰도는 모델 분류이며 참고용입니다.";
+"codex.banked_reset.tooltip.title" = "24시간 이내 리셋 확률";
+"codex.banked_reset.tooltip.body" = "향후 24 / 48시간 이내 추가 전역 리셋 가능성에 대한 예측입니다.";
+"codex.banked_reset.tooltip.source" = "출처: codex-reset.com · 업데이트 %1$@";
+"codex.banked_reset.tooltip.disclaimer" = "제3자 예측으로, 이 계정의 확정 리셋 시각이나 리셋 카드 지급을 보장하지 않습니다. 신뢰도는 모델 분류이며 참고용입니다.";
 "codex.banked_reset.probability_24h" = "24시간 이내";
 "codex.banked_reset.probability_48h" = "48시간 이내";
 "codex.banked_reset.high_probability" = "고확률";
@@ -476,3 +480,10 @@
 "dashboard.menu.page.color_yellow" = "노랑";
 "dashboard.menu.page.color_green" = "초록";
 "common.restore_defaults" = "기본값 복원";
+
+"codex.banked_reset.official_hint_confirmed" = "이번 회차 완료";
+"codex.banked_reset.official_reset_confirmed" = "✅ 리셋 완료";
+
+"codex.reset_signal.tooltip_title" = "공식 리셋 신호";
+"codex.reset_signal.tooltip_body" = "현재 공식 신호의 강한 신호 확률 또는 카운트다운이며 일반 24 / 48시간 예측과는 별개입니다.";
+"codex.reset_signal.tooltip_disclaimer" = "신호는 이 계정의 리셋 완료나 리셋 카드 지급을 보장하지 않습니다. 실제 할당량은 공식 API를 따릅니다.";

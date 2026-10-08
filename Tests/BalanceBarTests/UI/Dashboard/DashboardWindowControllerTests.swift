@@ -4363,8 +4363,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertFalse(labels.contains("2%"))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetTitle)))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
-        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilitySource)))
-        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability24h)))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilitySource)))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48h)))
         XCTAssertTrue(labels.contains("24%"))
         XCTAssertTrue(labels.contains("42%"))
@@ -4377,7 +4377,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.confidencePrefix" }
         )
         XCTAssertFalse(labels.contains("--%"))
-        XCTAssertTrue(labels.contains(" · ") || labels.contains("·"))
+        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator" })
         XCTAssertFalse(labels.contains { $0.contains("…") || $0.hasSuffix("...") })
         let largeAmounts = allControls(of: overview, as: NSTextField.self).filter {
             $0.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize
@@ -4445,92 +4445,31 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             frames.bankedResetDetailRows[1].chrome.midY,
             accuracy: 1
         )
-        let probabilityLink = try XCTUnwrap(
-            allControls(of: overview, as: HoverLinkTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability"
-            }
-        )
-        XCTAssertEqual(probabilityLink.stringValue, tr(.keyCodexBankedResetProbabilitySource))
-        XCTAssertFalse(probabilityLink.stringValue.isEmpty)
-        XCTAssertFalse(probabilityLink.stringValue.contains("codex-reset.com"))
-        XCTAssertTrue(probabilityLink.hoverHint.contains("codex-reset.com"))
-        XCTAssertNotEqual(probabilityLink.stringValue, tr(.keyCodexBankedResetProbabilityPrefix))
         XCTAssertEqual(
-            probabilityLink.hoverHintDelay,
-            OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            probabilityLink.hoverHint,
-            StatusItemController.codexResetForecastHint(for: .demo(updatedAt: date))
-        )
-        XCTAssertNil(probabilityLink.toolTip)
-        XCTAssertEqual(
-            probabilityLink.identifier?.rawValue,
-            "codex.bankedReset.probability"
-        )
-        XCTAssertEqual(probabilityLink.lineBreakMode, .byClipping)
-        XCTAssertGreaterThanOrEqual(
-            probabilityLink.frame.width,
-            AccountMarqueeView.textWidth(
-                of: tr(.keyCodexBankedResetProbabilitySource),
-                font: probabilityLink.font ?? .systemFont(ofSize: 12, weight: .medium)
-            ) + 4
-        )
-        XCTAssertEqual(
-            probabilityLink.attributedStringValue.attribute(
-                .foregroundColor,
-                at: 0,
-                effectiveRange: nil
-            ) as? NSColor,
-            NSColor.linkColor
-        )
-        XCTAssertNil(
-            probabilityLink.attributedStringValue.attribute(
-                .underlineStyle,
-                at: 0,
-                effectiveRange: nil
-            )
-        )
-        XCTAssertFalse(
-            allControls(of: overview, as: HoverLinkTextField.self).contains {
-                $0.stringValue.hasSuffix("%")
-            }
-        )
-        let percent24 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability24h"
-            }
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count,
+            1
         )
         let percent48 = try XCTUnwrap(
             allControls(of: overview, as: OverviewNumericTextView.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probability48h"
             }
         )
-        XCTAssertEqual(percent24.textField.stringValue, "24%")
         XCTAssertEqual(percent48.textField.stringValue, "42%")
-        XCTAssertEqual(percent24.textField.textColor, NSColor.secondaryLabelColor)
         XCTAssertEqual(percent48.textField.textColor, NSColor.secondaryLabelColor)
-        XCTAssertEqual(percent24.textField.lineBreakMode, .byClipping)
         XCTAssertEqual(percent48.textField.lineBreakMode, .byClipping)
-        let prefix24 = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability24hPrefix"
-            }
-        )
         let prefix48 = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
             }
         )
         let large24 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }
         )
-        XCTAssertEqual(large24.textField.stringValue, "24%")
-        XCTAssertEqual(large24.textField.font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize)
-        XCTAssertEqual(large24.textField.alignment, .right)
+        XCTAssertEqual(large24.stringValue, "24%")
+        XCTAssertEqual(large24.font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize)
+        XCTAssertEqual(large24.alignment, .right)
         XCTAssertEqual(
             large24.frame.height,
             OpenCodexCardLayout.bankedResetTextBandAmountHeight,
@@ -4541,7 +4480,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             OpenCodexCardLayout.bankedResetTextBandAmountHeight,
             accuracy: 0.001
         )
-        XCTAssertNil(large24.sample?.progressPercentage)
         XCTAssertFalse(
             allControls(of: overview, as: NSTextField.self).contains {
                 $0.identifier?.rawValue == "codex.bankedReset.officialHint"
@@ -4570,49 +4508,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         assertBankedResetForecastSubtitleFullyVisible(
-            prefix24,
-            expected: tr(.keyCodexBankedResetProbability24h)
-        )
-        assertBankedResetForecastSubtitleFullyVisible(
             prefix48,
             expected: tr(.keyCodexBankedResetProbability48h)
         )
-        assertBankedResetForecastSubtitleFullyVisible(
-            probabilityLink,
-            expected: tr(.keyCodexBankedResetProbabilitySource)
-        )
-        XCTAssertEqual(
-            probabilityLink.frame.minY,
-            try XCTUnwrap(frames.bankedResetProbabilityRow).reset.minY,
-            accuracy: 0.001
-        )
         let firstChrome = try XCTUnwrap(chromes.first)
-        XCTAssertGreaterThan(
-            probabilityLink.frame.minY,
-            firstChrome.frame.maxY
-        )
-        XCTAssertGreaterThan(probabilityLink.frame.minY, percent24.frame.minY)
-        XCTAssertEqual(percent24.frame.minY, percent48.frame.minY, accuracy: 0.001)
-        XCTAssertLessThan(percent24.frame.maxX, percent48.frame.minX)
-        let separator = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator"
-            }
-        )
-        XCTAssertTrue(
-            separator.stringValue == " · " || separator.stringValue == "·",
-            "separator should be a middot, got \(separator.stringValue)"
-        )
-        assertBankedResetForecastSubtitleFullyVisible(
-            separator,
-            expected: separator.stringValue
-        )
-        XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
-        XCTAssertEqual(separator.frame.minX, percent24.frame.maxX, accuracy: 0.001)
-        XCTAssertEqual(separator.frame.maxX, prefix48.frame.minX, accuracy: 0.001)
-        XCTAssertGreaterThan(probabilityLink.frame.minY, percent24.frame.maxY)
-        XCTAssertLessThanOrEqual(large24.frame.minY, probabilityLink.frame.minY)
-        XCTAssertGreaterThan(large24.frame.maxY, probabilityLink.frame.maxY)
         let resetTitle = try XCTUnwrap(
             allControls(of: overview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == tr(.keyCodexBankedResetTitle)
@@ -4623,9 +4522,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.accountLabel.stringValue == tr(.keyCodexBankedResetProbabilityPrefix)
             }
         )
-        XCTAssertGreaterThan(percent24.frame.minY, resetTitle.frame.maxY)
         XCTAssertGreaterThan(resetTitle.frame.minY, firstChrome.frame.maxY)
-        XCTAssertLessThan(probabilityLink.frame.maxY, probabilityTitle.frame.minY)
         let nearestExpiry = try XCTUnwrap(
             allControls(of: overview, as: AccountMarqueeView.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.nearestExpiry"
@@ -4649,12 +4546,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertNil(frames.bankedResetForecastConfidence)
         XCTAssertEqual(frames.bankedResetProbabilityRow?.progress, .zero)
-        assertBankedResetProbabilityLeadingAligned(
-            in: overview,
-            title: probabilityTitle,
-            sourceLink: probabilityLink,
-            prefix24: prefix24
-        )
+        assertBankedResetProbabilityLeadingAligned(in: overview, title: probabilityTitle, subtitle: prefix48)
         let tickets = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.ticket"
         }
@@ -4839,15 +4731,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetTitle)))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
-        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilitySource)))
-        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability24h)))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilitySource)))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48h)))
         XCTAssertTrue(labels.contains("24%"))
         XCTAssertTrue(labels.contains("42%"))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidencePrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidenceLow)))
         XCTAssertTrue(labels.contains("2"))
-        XCTAssertTrue(labels.contains(" · ") || labels.contains("·"))
+        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator" })
         XCTAssertFalse(labels.contains { $0.contains("…") || $0.hasSuffix("...") })
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetFullResetTitle)))
         XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.badge" })
@@ -4863,77 +4755,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             countField.font?.pointSize,
             OpenCodexCardLayout.quotaAmountPointSize
         )
-        let probabilityLink = try XCTUnwrap(
-            allControls(of: overview, as: HoverLinkTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability"
-            }
-        )
-        XCTAssertEqual(probabilityLink.stringValue, "数据来源")
-        XCTAssertEqual(probabilityLink.stringValue, tr(.keyCodexBankedResetProbabilitySource))
         XCTAssertEqual(
-            probabilityLink.attributedStringValue.attribute(
-                .foregroundColor,
-                at: 0,
-                effectiveRange: nil
-            ) as? NSColor,
-            NSColor.linkColor
-        )
-        XCTAssertNil(
-            probabilityLink.attributedStringValue.attribute(
-                .underlineStyle,
-                at: 0,
-                effectiveRange: nil
-            )
-        )
-        let sourceHost = try XCTUnwrap(overview as? MenuHoverLinkHostView)
-        let sourceHit = probabilityLink.visibleTextHitRect
-        XCTAssertFalse(sourceHit.isEmpty)
-        sourceHost.forwardHover(
-            atHostPoint: sourceHost.convert(
-                NSPoint(x: sourceHit.midX, y: sourceHit.midY),
-                from: probabilityLink
-            )
-        )
-        XCTAssertNotNil(
-            probabilityLink.attributedStringValue.attribute(
-                .underlineStyle,
-                at: 0,
-                effectiveRange: nil
-            )
-        )
-        sourceHost.forwardHover(
-            atHostPoint: NSPoint(x: sourceHost.bounds.maxX - 1, y: sourceHost.bounds.midY)
-        )
-        XCTAssertNil(
-            probabilityLink.attributedStringValue.attribute(
-                .underlineStyle,
-                at: 0,
-                effectiveRange: nil
-            )
-        )
-        XCTAssertEqual(
-            probabilityLink.hoverHintDelay,
-            OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            probabilityLink.hoverHint,
-            StatusItemController.codexResetForecastHint(for: .demo(updatedAt: date))
-        )
-        XCTAssertNil(probabilityLink.toolTip)
-        let prefix24 = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability24hPrefix"
-            }
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count,
+            1
         )
         let prefix48 = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
-            }
-        )
-        let percent24 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability24h"
             }
         )
         let percent48 = try XCTUnwrap(
@@ -4942,41 +4770,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         let large24 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }
         )
-        XCTAssertEqual(large24.textField.stringValue, "24%")
-        XCTAssertNil(large24.sample?.progressPercentage)
-        assertBankedResetForecastSubtitleFullyVisible(
-            prefix24,
-            expected: tr(.keyCodexBankedResetProbability24h)
-        )
+        XCTAssertEqual(large24.stringValue, "24%")
         assertBankedResetForecastSubtitleFullyVisible(
             prefix48,
             expected: tr(.keyCodexBankedResetProbability48h)
         )
-        XCTAssertEqual(percent24.frame.minY, percent48.frame.minY, accuracy: 0.001)
-        XCTAssertLessThan(percent24.frame.maxX, percent48.frame.minX)
-        let separator = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator"
-            }
-        )
-        XCTAssertTrue(
-            separator.stringValue == " · " || separator.stringValue == "·",
-            "separator should be a middot, got \(separator.stringValue)"
-        )
-        assertBankedResetForecastSubtitleFullyVisible(
-            separator,
-            expected: separator.stringValue
-        )
-        XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
-        XCTAssertGreaterThan(probabilityLink.frame.minY, percent24.frame.maxY)
-        XCTAssertLessThanOrEqual(large24.frame.minY, probabilityLink.frame.minY)
-        XCTAssertGreaterThan(large24.frame.maxY, probabilityLink.frame.maxY)
-        XCTAssertFalse(probabilityLink.stringValue.contains("codex-reset.com"))
-        XCTAssertTrue(probabilityLink.hoverHint.contains("codex-reset.com"))
         let probabilityTitle = try XCTUnwrap(
             allControls(of: overview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == tr(.keyCodexBankedResetProbabilityPrefix)
@@ -4987,8 +4789,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.accountLabel.stringValue == tr(.keyCodexBankedResetTitle)
             }
         )
-        XCTAssertGreaterThan(percent24.frame.minY, resetTitle.frame.maxY)
-        XCTAssertLessThan(probabilityLink.frame.maxY, probabilityTitle.frame.minY)
         let nearestExpiry = try XCTUnwrap(
             allControls(of: overview, as: AccountMarqueeView.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.nearestExpiry"
@@ -5012,12 +4812,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertNotEqual(expectedNearest, bankedReset.cards[0].expiresText)
         XCTAssertLessThan(nearestExpiry.frame.maxY, resetTitle.frame.minY)
-        assertBankedResetProbabilityLeadingAligned(
-            in: overview,
-            title: probabilityTitle,
-            sourceLink: probabilityLink,
-            prefix24: prefix24
-        )
+        assertBankedResetProbabilityLeadingAligned(in: overview, title: probabilityTitle, subtitle: prefix48)
     }
 
     func testOfficialCodexMenuBankedResetForecastCopyFitsEveryBundledLanguage() throws {
@@ -5109,122 +4904,38 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 settings: settings
             )
             let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
-            let prefix24 = try XCTUnwrap(
-                allControls(of: overview, as: NSTextField.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability24hPrefix"
-                }
-            )
-            let prefix48 = try XCTUnwrap(
-                allControls(of: overview, as: NSTextField.self).first {
+            let title = try XCTUnwrap(allControls(of: overview, as: AccountMarqueeView.self).first {
+                $0.accountLabel.stringValue == tr(.keyCodexBankedResetProbabilityPrefix)
+            })
+            let primary = try XCTUnwrap(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first)
+            XCTAssertEqual(primary.stringValue, "24%", language.rawValue)
+            XCTAssertEqual(primary.alignment, .right)
+            let expectedText = tr(.keyCodexBankedResetProbability48h) + " " + "42%"
+            if let marquee = allControls(of: overview, as: AccountMarqueeView.self).first(where: {
+                $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+            }) {
+                XCTAssertEqual(marquee.accountLabel.stringValue, expectedText)
+                XCTAssertTrue(marquee.isScrollable, language.rawValue)
+                XCTAssertLessThanOrEqual(marquee.frame.maxX, primary.frame.maxX)
+                XCTAssertEqual(marquee.frame.minX, title.frame.minX)
+            } else {
+                let prefix = try XCTUnwrap(allControls(of: overview, as: NSTextField.self).first {
                     $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
-                }
-            )
-            let percent24 = try XCTUnwrap(
-                allControls(of: overview, as: OverviewNumericTextView.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability24h"
-                }
-            )
-            let percent48 = try XCTUnwrap(
-                allControls(of: overview, as: OverviewNumericTextView.self).first {
+                })
+                let value = try XCTUnwrap(allControls(of: overview, as: OverviewNumericTextView.self).first {
                     $0.identifier?.rawValue == "codex.bankedReset.probability48h"
-                }
-            )
-            let sourceLink = try XCTUnwrap(
-                allControls(of: overview, as: HoverLinkTextField.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability"
-                }
-            )
-            XCTAssertFalse(
-                allControls(of: overview, as: NSTextField.self).contains {
-                    $0.identifier?.rawValue == "codex.bankedReset.confidence"
-                        || $0.identifier?.rawValue == "codex.bankedReset.confidencePrefix"
-                },
-                "confidence stays off the menu in \(language.rawValue)"
-            )
-            assertBankedResetForecastSubtitleFullyVisible(
-                prefix24,
-                expected: tr(.keyCodexBankedResetProbability24h, language: language)
-            )
-            assertBankedResetForecastSubtitleFullyVisible(
-                prefix48,
-                expected: tr(.keyCodexBankedResetProbability48h, language: language)
-            )
-            assertBankedResetForecastSubtitleFullyVisible(
-                sourceLink,
-                expected: tr(.keyCodexBankedResetProbabilitySource, language: language)
-            )
-            XCTAssertEqual(percent24.textField.stringValue, "24%")
-            XCTAssertEqual(percent48.textField.stringValue, "42%")
-            XCTAssertGreaterThanOrEqual(
-                percent24.frame.width,
-                AccountMarqueeView.textWidth(of: "24%", font: numericFont)
-            )
-            XCTAssertGreaterThanOrEqual(
-                percent48.frame.width,
-                AccountMarqueeView.textWidth(of: "42%", font: numericFont)
-            )
-            let packing = OpenCodexCardLayout.BankedResetForecastMetricsPacking.make(
-                prefix24: tr(.keyCodexBankedResetProbability24h, language: language),
-                percent24: "100%",
-                prefix48: tr(.keyCodexBankedResetProbability48h, language: language),
-                percent48: "100%"
-            )
-            XCTAssertLessThanOrEqual(
-                packing.totalWidth,
-                OpenCodexCardLayout.cardWidth - OpenCodexCardLayout.horizontalInset,
-                "24h+48h overflow in \(language.rawValue)"
-            )
-            XCTAssertEqual(percent24.frame.minY, percent48.frame.minY, accuracy: 0.001)
-            XCTAssertLessThan(percent24.frame.maxX, percent48.frame.minX)
-            let separator = try XCTUnwrap(
-                allControls(of: overview, as: NSTextField.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator"
-                }
-            )
-            XCTAssertTrue(
-                separator.stringValue == " · " || separator.stringValue == "·",
-                "separator should be a middot in \(language.rawValue), got \(separator.stringValue)"
-            )
-            assertBankedResetForecastSubtitleFullyVisible(
-                separator,
-                expected: separator.stringValue
-            )
-            XCTAssertEqual(separator.frame.minY, percent24.frame.minY, accuracy: 0.001)
-            XCTAssertGreaterThan(sourceLink.frame.minY, percent24.frame.maxY)
-            XCTAssertFalse(sourceLink.stringValue.contains("codex-reset.com"))
-            XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"))
-            let probabilityTitle = try XCTUnwrap(
-                allControls(of: overview, as: AccountMarqueeView.self).first {
-                    $0.accountLabel.stringValue == tr(
-                        .keyCodexBankedResetProbabilityPrefix,
-                        language: language
-                    )
-                }
-            )
-            assertBankedResetProbabilityLeadingAligned(
-                in: overview,
-                title: probabilityTitle,
-                sourceLink: sourceLink,
-                prefix24: prefix24
-            )
-            XCTAssertLessThan(sourceLink.frame.maxY, probabilityTitle.frame.minY)
-            XCTAssertLessThanOrEqual(
-                AccountMarqueeView.textWidth(
-                    of: tr(.keyCodexBankedResetProbabilitySource, language: language),
-                    font: sourceLink.font ?? subtitleFont
-                ),
-                OpenCodexCardLayout.contentWidth,
-                "source row overflow in \(language.rawValue)"
-            )
-            let hint = StatusItemController.codexResetForecastHint(
-                for: .demo(updatedAt: date)
-            )
-            let hintLayout = DashboardTextTooltipLayout.make(
-                for: hint,
-                font: DashboardTextTooltip.font
-            )
-            XCTAssertTrue(hintLayout.wraps, "hint should wrap for \(language.rawValue)")
-            XCTAssertEqual(hintLayout.textWidth, DashboardTextTooltipLayout.maximumTextWidth)
+                })
+                XCTAssertEqual(prefix.stringValue + " " + value.textField.stringValue, expectedText)
+                assertBankedResetForecastSubtitleFullyVisible(prefix, expected: prefix.stringValue)
+                XCTAssertEqual(prefix.frame.minX, title.frame.minX)
+                XCTAssertLessThanOrEqual(value.frame.maxX, primary.frame.maxX)
+            }
+            XCTAssertFalse(allControls(of: overview, as: NSTextField.self).contains {
+                $0.identifier?.rawValue == "codex.bankedReset.probability24hPrefix"
+                    || $0.identifier?.rawValue == "codex.bankedReset.probability24h"
+            })
+            XCTAssertTrue(primary.hoverHint.contains("codex-reset.com"))
+            XCTAssertNotNil(primary.onActivate)
         }
     }
 
@@ -5355,20 +5066,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 [80, 45],
                 name
             )
-            let source = try XCTUnwrap(
-                allControls(of: overview, as: HoverLinkTextField.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability"
-                },
-                name
-            )
-            XCTAssertEqual(source.stringValue, tr(.keyCodexBankedResetProbabilitySource), name)
-            XCTAssertFalse(source.stringValue.contains("codex-reset.com"), name)
-            XCTAssertTrue(source.hoverHint.contains("codex-reset.com"), name)
-            XCTAssertEqual(
-                source.hoverHint,
-                StatusItemController.codexResetForecastHint(for: forecast),
-                name
-            )
             let largeFields = allControls(of: overview, as: NSTextField.self).filter {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }
@@ -5376,18 +5073,31 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let largeNumeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }
-            XCTAssertEqual(largeNumeric.count, largeAnimates ? 1 : 0, name)
-            if largeAnimates {
-                XCTAssertEqual(largeNumeric[0].textField.font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize, name)
-                XCTAssertNil(largeNumeric[0].sample?.progressPercentage, name)
-            } else {
-                XCTAssertEqual(largeFields[0].font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize, name)
-                XCTAssertEqual(largeFields[0].alignment, .right, name)
+            XCTAssertEqual(largeNumeric.count, 0, name)
+            let primaryLink = allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
+            }
+            XCTAssertEqual(primaryLink != nil, largeAnimates, name)
+            let sourceLink = try XCTUnwrap(allControls(of: overview, as: HoverLinkTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
+            }, name)
+            XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"), name)
+            XCTAssertNotNil(sourceLink.onActivate, name)
+            XCTAssertNotNil(sourceLink.forecastTooltipContent, name)
+            let drawingStyle = try XCTUnwrap(sourceLink.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle, name)
+            XCTAssertEqual(drawingStyle.alignment, .right, name)
+            XCTAssertEqual(largeFields[0].font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize, name)
+            XCTAssertEqual(largeFields[0].alignment, .right, name)
+            if let primaryLink {
+                XCTAssertNil(primaryLink.sample?.progressPercentage, name)
+                XCTAssertTrue(primaryLink.hoverHint.contains("codex-reset.com"), name)
+                XCTAssertNotNil(primaryLink.forecastTooltipContent, name)
+                XCTAssertNotNil(primaryLink.onActivate, name)
             }
             let small24Numeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24h"
             }
-            XCTAssertEqual(small24Numeric.count, largeAnimates ? 1 : 0, name)
+            XCTAssertEqual(small24Numeric.count, 0, name)
             let small48Numeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
                 $0.identifier?.rawValue == "codex.bankedReset.probability48h"
             }
@@ -5415,9 +5125,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 },
                 name
             )
-            XCTAssertGreaterThan(source.frame.minY, prefix48.frame.maxY, name)
             XCTAssertGreaterThan(prefix48.frame.minY, resetTitle.frame.maxY, name)
-            XCTAssertGreaterThan(probabilityTitle.frame.midY, source.frame.maxY, name)
+            XCTAssertEqual(
+                allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count,
+                largeAnimates ? 1 : 0,
+                name
+            )
         }
     }
 
@@ -5462,6 +5175,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             CodexResetForecast,
             String,
             String,
+            Bool,
             Bool
         )] = [
             (
@@ -5476,7 +5190,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 ),
                 "71%",
                 "codex.bankedReset.probabilitySignalAmount",
-                true
+                true,
+                false
             ),
             (
                 "signal-fallback",
@@ -5490,11 +5205,28 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 ),
                 tr(.keyCodexBankedResetHighProbability),
                 "codex.bankedReset.probabilityHighLabel",
+                false,
                 false
+            ),
+            (
+                "confirmed-reset",
+                CodexResetForecast(
+                    probability24h: .percent(20),
+                    probability48h: .percent(35),
+                    confidence: .high,
+                    updatedAt: date,
+                    isCached: false,
+                    officialSignal: CodexResetOfficialSignal(probability: .percent(93)),
+                    officialResetObservation: .observed
+                ),
+                "✅ 已重置",
+                "codex.bankedReset.probabilityConfirmedLabel",
+                false,
+                true
             )
         ]
 
-        for (name, forecast, largeText, largeIdentifier, usesNumeric) in cases {
+        for (name, forecast, largeText, largeIdentifier, usesNumeric, confirmed) in cases {
             let controller = StatusItemController(
                 actions: StatusItemController.Actions(
                     manualRefresh: {},
@@ -5551,9 +5283,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertNotNil(frames.bankedResetForecastMetrics, name)
             let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
             XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)), name)
-            XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilitySource)), name)
+            XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilitySource)), name)
             XCTAssertTrue(labels.contains(largeText), name)
-            XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetOfficialHintNoTime)), name)
+            XCTAssertTrue(
+                labels.contains(
+                    confirmed
+                        ? tr(.keyCodexBankedResetOfficialHintConfirmed)
+                        : tr(.keyCodexBankedResetOfficialHintNoTime)
+                ),
+                name
+            )
             XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetOfficialHintTime)), name)
             XCTAssertFalse(labels.contains("10/5"), name)
             XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)), name)
@@ -5588,7 +5327,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             XCTAssertEqual(
                 officialHint.stringValue,
-                tr(.keyCodexBankedResetOfficialHintNoTime),
+                tr(
+                    confirmed
+                        ? .keyCodexBankedResetOfficialHintConfirmed
+                        : .keyCodexBankedResetOfficialHintNoTime
+                ),
                 name
             )
             XCTAssertEqual(officialHint.textColor, NSColor.secondaryLabelColor, name)
@@ -5605,27 +5348,81 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 },
                 name
             )
-            let source = try XCTUnwrap(
-                allControls(of: overview, as: HoverLinkTextField.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability"
-                },
-                name
-            )
-            XCTAssertEqual(source.stringValue, tr(.keyCodexBankedResetProbabilitySource), name)
-            XCTAssertFalse(source.stringValue.contains("codex-reset.com"), name)
-            XCTAssertTrue(source.hoverHint.contains("codex-reset.com"), name)
-            XCTAssertEqual(
-                source.hoverHint,
-                StatusItemController.codexResetForecastHint(for: forecast),
-                name
-            )
-            XCTAssertNil(source.toolTip, name)
-            XCTAssertEqual(
-                source.hoverHintDelay,
-                OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay,
-                accuracy: 0.001,
-                name
-            )
+            let amountLink = allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first
+            XCTAssertEqual(amountLink != nil, name == "signal-percent", name)
+            let sourceLink = allControls(of: overview, as: HoverLinkTextField.self).first {
+                $0.identifier?.rawValue == largeIdentifier
+            }
+            XCTAssertEqual(sourceLink != nil, !confirmed, name)
+            if let sourceLink {
+                XCTAssertEqual(sourceLink.forecastTooltipContent?.title, "官方重置信号", name)
+                XCTAssertNotNil(sourceLink.onActivate, name)
+                XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"), name)
+            }
+            if let amountLink {
+                XCTAssertEqual(amountLink.stringValue, largeText, name)
+                XCTAssertTrue(amountLink.hoverHint.contains("codex-reset.com"), name)
+                XCTAssertEqual(
+                    amountLink.hoverHintDelay,
+                    OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay,
+                    accuracy: 0.001,
+                    name
+                )
+                XCTAssertEqual(
+                    amountLink.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor,
+                    NSColor.labelColor,
+                    name
+                )
+                if name == "signal-percent" {
+                    let host = try XCTUnwrap(overview as? MenuHoverLinkHostView, name)
+                    let hit = amountLink.visibleTextHitRect
+                    XCTAssertFalse(hit.isEmpty, name)
+                    host.forwardHover(
+                        atHostPoint: host.convert(
+                            NSPoint(x: hit.midX, y: hit.midY),
+                            from: amountLink
+                        )
+                    )
+                    XCTAssertNotNil(
+                        amountLink.attributedStringValue.attribute(
+                            .underlineStyle,
+                            at: 0,
+                            effectiveRange: nil
+                        ),
+                        name
+                    )
+                    XCTAssertEqual(
+                        amountLink.attributedStringValue.attribute(
+                            .foregroundColor,
+                            at: 0,
+                            effectiveRange: nil
+                        ) as? NSColor,
+                        NSColor.linkColor,
+                        name
+                    )
+                    host.forwardHover(
+                        atHostPoint: NSPoint(x: host.bounds.maxX - 1, y: host.bounds.midY)
+                    )
+                    XCTAssertNil(
+                        amountLink.attributedStringValue.attribute(
+                            .underlineStyle,
+                            at: 0,
+                            effectiveRange: nil
+                        ),
+                        name
+                    )
+                    XCTAssertEqual(
+                        amountLink.attributedStringValue.attribute(
+                            .foregroundColor,
+                            at: 0,
+                            effectiveRange: nil
+                        ) as? NSColor,
+                        NSColor.labelColor,
+                        name
+                    )
+                    XCTAssertNotNil(amountLink.onActivate, name)
+                }
+            }
             let largeFields = allControls(of: overview, as: NSTextField.self).filter {
                 $0.identifier?.rawValue == largeIdentifier
             }
@@ -5634,14 +5431,19 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let largeNumeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
                 $0.identifier?.rawValue == largeIdentifier
             }
-            XCTAssertEqual(largeNumeric.count, usesNumeric ? 1 : 0, name)
+            XCTAssertEqual(largeNumeric.count, 0, name)
+            XCTAssertEqual(
+                allControls(of: overview, as: OverviewNumericHoverLinkTextField.self)
+                    .filter { $0.identifier?.rawValue == largeIdentifier }.count,
+                usesNumeric ? 1 : 0,
+                name
+            )
             if usesNumeric {
                 XCTAssertEqual(
-                    largeNumeric[0].textField.font?.pointSize,
+                    amountLink?.font?.pointSize,
                     OpenCodexCardLayout.quotaAmountPointSize,
                     name
                 )
-                XCTAssertNil(largeNumeric[0].sample?.progressPercentage, name)
             } else {
                 XCTAssertEqual(
                     largeFields[0].font,
@@ -5650,6 +5452,31 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 )
             }
         }
+    }
+
+    func testOfficialCodexMenuShowsConfirmedResetWithoutCreditCards() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let demo = DevelopmentBankedResetDemo.snapshot(mode: .confirmed, providerName: "OpenAI Official", date: now)
+        let snapshot = Snapshot.official("OpenAI Official", demo.amount ?? 100, demo.unit ?? "quota", demo.message, now, windows: demo.officialQuotaWindows, bankedReset: nil, resetForecast: demo.resetForecast)
+        let controller = StatusItemController(actions: StatusItemController.Actions(
+            manualRefresh: {}, openDashboard: {}, openChatGPT: {}, openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }
+        ))
+        defer { controller.teardown() }
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: now,
+            menuInput: StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false),
+            settings: StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true, horizontalPadding: 6, keepMenuOpenAfterRefresh: true)
+        )
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let labels = allControls(of: overview, as: NSTextField.self)
+        XCTAssertEqual(labels.first { $0.identifier?.rawValue == "codex.bankedReset.probabilityConfirmedLabel" }?.stringValue, demo.resetForecast.menuPrimaryDisplayText())
+        XCTAssertEqual(labels.first { $0.identifier?.rawValue == "codex.bankedReset.officialHint" }?.stringValue, demo.resetForecast.officialHintText())
+        XCTAssertFalse(allControls(of: overview, as: QuotaProgressView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress" })
+        XCTAssertFalse(labels.contains { $0.identifier?.rawValue == "codex.bankedReset.count" })
+        let frames = OpenCodexCardLayout.frames(for: .quota, officialQuotaWindows: demo.officialQuotaWindows, includesBankedReset: false, includesBankedResetForecastMetrics: false, includesResetProbability: true)
+        XCTAssertNotNil(frames.bankedResetProbabilityRow)
+        XCTAssertNil(frames.bankedResetSummaryRow)
     }
 
     func testOfficialCodexMenuProbabilityBlockShowsCountdownWithoutDatetimeSubtitle() throws {
@@ -5757,11 +5584,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability48h)))
         let countdown = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probabilityCountdownAmount"
             }
         )
-        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.stringValue, "1h1m")
         XCTAssertEqual(countdown.sample?.format, .remainingMinutes)
         XCTAssertEqual(countdown.sample?.value, 61)
         let hint = try XCTUnwrap(
@@ -5777,26 +5604,19 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress"
             }
         )
-        let source = try XCTUnwrap(
-            allControls(of: overview, as: HoverLinkTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability"
-            }
-        )
-        XCTAssertEqual(source.stringValue, tr(.keyCodexBankedResetProbabilitySource))
-        XCTAssertEqual(
-            source.hoverHint,
-            StatusItemController.codexResetForecastHint(for: forecast)
-        )
+        XCTAssertEqual(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count, 1)
+        XCTAssertNotNil(countdown.onActivate)
+        XCTAssertEqual(countdown.forecastTooltipContent?.title, "官方重置信号")
 
         controller.menuWillOpen(controller.statusMenuForTesting)
         XCTAssertNotNil(controller.bankedResetCountdownTimerForTesting)
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(1)
         controller.bankedResetCountdownTimerForTesting?.fire()
-        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.stringValue, "1h1m")
         XCTAssertEqual(countdown.sample?.value, 61)
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(66)
         controller.bankedResetCountdownTimerForTesting?.fire()
-        XCTAssertEqual(countdown.textField.stringValue, "59m")
+        XCTAssertEqual(countdown.stringValue, "59m")
         XCTAssertEqual(countdown.sample?.value, 59)
         XCTAssertEqual(hint.stringValue, "官方重置提示 · 具体时间点")
         controller.menuDidClose(controller.statusMenuForTesting)
@@ -5914,11 +5734,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         let countdown = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probabilityCountdownAmount"
             }
         )
-        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.stringValue, "1h1m")
         let progressViews = allControls(of: overview, as: QuotaProgressView.self)
         XCTAssertEqual(progressViews.count, 1)
         let bar = try XCTUnwrap(progressViews.first)
@@ -5936,23 +5756,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ).bankedResetForecastMetrics
         )
         XCTAssertEqual(bar.frame.height, OpenCodexCardLayout.quotaProgressHeight, accuracy: 0.001)
-        XCTAssertEqual(bar.frame.midY, metrics.midY, accuracy: 0.001)
-        XCTAssertEqual(bar.frame.width, metrics.width, accuracy: 0.001)
-        let source = try XCTUnwrap(
-            allControls(of: overview, as: HoverLinkTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability"
-            }
+        XCTAssertEqual(bar.frame.midY, metrics.midY, accuracy: 0.5)
+        XCTAssertEqual(bar.frame.minX, metrics.minX, accuracy: 0.001)
+        let amountWidth = AccountMarqueeView.textWidth(
+            of: countdown.stringValue,
+            font: try XCTUnwrap(countdown.font)
         )
-        XCTAssertEqual(source.stringValue, tr(.keyCodexBankedResetProbabilitySource))
-        XCTAssertEqual(
-            source.hoverHint,
-            StatusItemController.codexResetForecastHint(for: forecast)
-        )
+        XCTAssertLessThanOrEqual(bar.frame.maxX, countdown.frame.maxX - amountWidth + 0.001)
+        XCTAssertEqual(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count, 1)
+        XCTAssertNotNil(countdown.onActivate)
+        XCTAssertEqual(countdown.forecastTooltipContent?.title, "官方重置信号")
 
         controller.menuWillOpen(controller.statusMenuForTesting)
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(1)
         controller.bankedResetCountdownTimerForTesting?.fire()
-        XCTAssertEqual(countdown.textField.stringValue, "1h1m")
+        XCTAssertEqual(countdown.stringValue, "1h1m")
         let remainingAfterTick = 3_664.0 / (3_600.0 + 3_665.0) * 100
         XCTAssertEqual(bar.percentage, remainingAfterTick, accuracy: 0.001)
         controller.menuDidClose(controller.statusMenuForTesting)
@@ -6200,7 +6018,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)),
                 "probability title for \(mode)"
             )
-            XCTAssertTrue(
+            XCTAssertFalse(
                 labels.contains(tr(.keyCodexBankedResetProbabilitySource)),
                 "probability source for \(mode)"
             )
@@ -6606,54 +6424,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     private func assertBankedResetProbabilityLeadingAligned(
         in overview: NSView,
         title: AccountMarqueeView,
-        sourceLink: HoverLinkTextField,
-        prefix24: NSTextField,
+        subtitle: NSTextField,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         let expected = OpenCodexCardLayout.horizontalInset
         XCTAssertEqual(title.frame.minX, expected, accuracy: 0.001, file: file, line: line)
-        XCTAssertEqual(prefix24.frame.minX, expected, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(subtitle.frame.minX, expected, accuracy: 0.001, file: file, line: line)
         let titleX = visualTextMinX(of: title, in: overview)
         XCTAssertEqual(
-            visualTextMinX(of: sourceLink, in: overview),
+            visualTextMinX(of: subtitle, in: overview),
             titleX,
             accuracy: 0.5,
-            "source link visual minX",
+            "forecast subtitle visual minX",
             file: file,
             line: line
         )
-        XCTAssertEqual(
-            visualTextMinX(of: prefix24, in: overview),
-            titleX,
-            accuracy: 0.5,
-            "24h prefix visual minX",
-            file: file,
-            line: line
-        )
-        XCTAssertFalse(sourceLink.stringValue.isEmpty, file: file, line: line)
-        XCTAssertFalse(sourceLink.stringValue.contains("codex-reset.com"), file: file, line: line)
-        XCTAssertFalse(sourceLink.stringValue.contains("https://"), file: file, line: line)
-        XCTAssertEqual(
-            sourceLink.attributedStringValue.attribute(
-                .foregroundColor,
-                at: 0,
-                effectiveRange: nil
-            ) as? NSColor,
-            NSColor.linkColor,
-            file: file,
-            line: line
-        )
-        XCTAssertNil(
-            sourceLink.attributedStringValue.attribute(
-                .underlineStyle,
-                at: 0,
-                effectiveRange: nil
-            ),
-            file: file,
-            line: line
-        )
-        XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"), file: file, line: line)
-        XCTAssertFalse(sourceLink.hoverHint.contains("https://"), file: file, line: line)
     }
 }

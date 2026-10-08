@@ -84,6 +84,19 @@ final class CredentialReaderTests: XCTestCase {
         return "\(header).\(encodedPayload).signature"
     }
 
+    func testCodexRequestCredentialsBindTokenAndNormalizedAccountFromOneAuthRead() {
+        let home = URL(fileURLWithPath: "/fixture-home")
+        let authURL = home.appendingPathComponent(".codex/auth.json")
+        let fileReader = FixtureFileReader(dataByPath: [authURL.path: Data(#"{"tokens":{"access_token":"fixture-a","id_token":{"email":" A@Example.com "}}}"#.utf8)])
+        let reader = CredentialReader(homeDirectoryURL: home, fileReader: fileReader)
+        XCTAssertEqual(reader.codexRequestCredentials(), CodexRequestCredentials(accessToken: "fixture-a", accountKey: "a@example.com"))
+        XCTAssertEqual(fileReader.readPaths, [authURL])
+        let a = CodexRequestCredentials(accessToken: "fixture-a", accountKey: "a@example.com")
+        let b = CodexRequestCredentials(accessToken: "fixture-b", accountKey: "b@example.com")
+        XCTAssertNotEqual(a.requestScope, b.requestScope)
+        XCTAssertFalse(a.requestScope.contains("fixture-a"))
+    }
+
     func testClaudeReaderPrefersKeychainAndSupportsBothCredentialKeys() {
         let fileReader = FixtureFileReader(dataByPath: [:])
         let processRunner = FixtureProcessRunner(

@@ -667,8 +667,55 @@ enum CodexResetForecastParser {
             return CodexResetOfficialSignal(
                 probability: signalProbability(from: object),
                 targetAt: officialSignalTargetAt(from: object, now: now),
-                publishedAt: officialSignalPublishedAt(from: object)
+                publishedAt: officialSignalPublishedAt(from: object),
+                episodeKey: officialSignalEpisodeKey(from: object, now: now)
             )
+        }
+    }
+
+    /// Prefer an upstream event identity; timestamp fallbacks still keep a
+    /// changed signal from inheriting the previous episode when the API omits
+    /// a dedicated id.
+    private static func officialSignalEpisodeKey(
+        from object: [String: Any],
+        now: Date
+    ) -> String? {
+        guard let official = object["official_signal"] as? [String: Any] else {
+            return nil
+        }
+        for key in ["episode_id", "signal_id", "tweet_id", "id"] {
+            if let value = ResponseParsingSupport.stringValue(official[key]), !value.isEmpty {
+                return "\(key):\(value)"
+            }
+        }
+        let publishedAt = officialSignalPublishedAt(from: object)
+        let targetAt = officialSignalEpisodeTargetAt(from: object)
+        if let publishedAt {
+            return "published:\(publishedAt.timeIntervalSince1970)"
+        }
+        if let targetAt {
+            return "target:\(targetAt.timeIntervalSince1970)"
+        }
+        return nil
+    }
+
+    /// Episode identity must remain stable after the countdown target passes;
+    /// unlike the UI countdown parser, this fallback accepts past timestamps.
+    private static func officialSignalEpisodeTargetAt(from object: [String: Any]) -> Date? {
+        guard let official = object["official_signal"] as? [String: Any] else { return nil }
+        return absoluteSignalInstant(official["window"])
+            ?? ResponseParsingSupport.timestampDate(official["deadline"])
+            ?? ResponseParsingSupport.timestampDate(official["target"])
+    }
+
+    private static func absoluteSignalInstant(_ value: Any?) -> Date? {
+        switch value {
+        case let dict as [String: Any]:
+            return ResponseParsingSupport.timestampDate(dict["at"])
+                ?? ResponseParsingSupport.timestampDate(dict["deadline"])
+                ?? ResponseParsingSupport.timestampDate(dict["target"])
+        default:
+            return ResponseParsingSupport.timestampDate(value)
         }
     }
 

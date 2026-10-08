@@ -469,15 +469,25 @@
     case keyCodexBankedResetProbabilityPrefix = "codex.banked_reset.probability_prefix"
     case keyCodexBankedResetProbabilitySource = "codex.banked_reset.probability_source"
     case keyCodexBankedResetProbabilityHint = "codex.banked_reset.probability_hint"
+    case keyCodexBankedResetTooltipTitle = "codex.banked_reset.tooltip.title"
+    case keyCodexBankedResetTooltipBody = "codex.banked_reset.tooltip.body"
+    case keyCodexBankedResetTooltipSource = "codex.banked_reset.tooltip.source"
+    case keyCodexBankedResetTooltipDisclaimer = "codex.banked_reset.tooltip.disclaimer"
     case keyCodexBankedResetProbability24h = "codex.banked_reset.probability_24h"
     case keyCodexBankedResetProbability48h = "codex.banked_reset.probability_48h"
     case keyCodexBankedResetHighProbability = "codex.banked_reset.high_probability"
     case keyCodexBankedResetOfficialHintNoTime = "codex.banked_reset.official_hint_no_time"
     case keyCodexBankedResetOfficialHintTime = "codex.banked_reset.official_hint_time"
+    case keyCodexBankedResetOfficialHintConfirmed = "codex.banked_reset.official_hint_confirmed"
+    case keyCodexBankedResetOfficialResetConfirmed = "codex.banked_reset.official_reset_confirmed"
     case keyCodexBankedResetConfidencePrefix = "codex.banked_reset.confidence_prefix"
     case keyCodexBankedResetConfidenceLow = "codex.banked_reset.confidence_low"
     case keyCodexBankedResetConfidenceMedium = "codex.banked_reset.confidence_medium"
     case keyCodexBankedResetConfidenceHigh = "codex.banked_reset.confidence_high"
 
+    case keyCodexResetSignalTooltipTitle = "codex.reset_signal.tooltip_title"
+    case keyCodexResetSignalTooltipBody = "codex.reset_signal.tooltip_body"
+    case keyCodexResetSignalTooltipDisclaimer = "codex.reset_signal.tooltip_disclaimer"
+
     var rawKey: String { rawValue }
-  }
+}

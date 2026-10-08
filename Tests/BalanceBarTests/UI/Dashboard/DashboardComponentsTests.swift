@@ -1513,6 +1513,79 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(AccountEmailTextField.tooltipDelay, 0.15, accuracy: 0.001)
     }
 
+    func testForecastTooltipHasHierarchyAndFitsEveryLanguage() throws {
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-07T09:21:00Z"))
+        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        for language in AppLanguage.allCases where language != .system {
+            let content = StatusItemController.codexResetForecastTooltip(
+                for: .demo(updatedAt: date), language: language, now: date, timeZone: timeZone
+            )
+            let controller = DashboardForecastTooltipViewController(content: content)
+            controller.loadViewIfNeeded()
+            let fields = controller.view.subviews.compactMap { $0 as? NSTextField }
+            XCTAssertEqual(fields.count, 4)
+            XCTAssertEqual(fields.map(\.stringValue), [content.title, content.body, content.source, content.disclaimer])
+            XCTAssertEqual(fields.map { $0.font?.pointSize }, [13, 12, 12, 11])
+            XCTAssertEqual(fields[0].font, .systemFont(ofSize: 13, weight: .semibold))
+            XCTAssertEqual(fields[2].textColor, .secondaryLabelColor)
+            XCTAssertEqual(fields[3].textColor, .secondaryLabelColor)
+            XCTAssertEqual(fields[0].frame.minY - fields[1].frame.maxY, 5, accuracy: 0.001)
+            XCTAssertEqual(fields[1].frame.minY - fields[2].frame.maxY, 10, accuracy: 0.001)
+            XCTAssertEqual(fields[2].frame.minY - fields[3].frame.maxY, 10, accuracy: 0.001)
+            for field in fields {
+                XCTAssertTrue(controller.view.bounds.contains(field.frame), language.rawValue)
+                let needed = try XCTUnwrap(field.cell).cellSize(forBounds: field.bounds).height
+                XCTAssertGreaterThanOrEqual(field.frame.height, needed, language.rawValue)
+                XCTAssertFalse(field.cell?.truncatesLastVisibleLine ?? true)
+                XCTAssertFalse(field.stringValue.contains("\n"))
+            }
+            XCTAssertLessThanOrEqual(controller.view.frame.width, 386)
+            XCTAssertTrue(content.source.contains("codex-reset.com"))
+            if language == .simplifiedChinese {
+                XCTAssertEqual(content.title, "24 小时内重置概率")
+                XCTAssertEqual(content.source, "来源：codex-reset.com · 更新于 10月7日 09:21")
+                XCTAssertLessThanOrEqual(fields[2].frame.height, 20, "Chinese source must fit one line")
+            }
+        }
+    }
+
+    func testStrongSignalTooltipExplainsSignalSeparatelyInEveryLanguage() throws {
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        var forecast = CodexResetForecast.demo(updatedAt: date)
+        for language in AppLanguage.allCases where language != .system {
+            let ordinary = StatusItemController.codexResetForecastTooltip(for: forecast, language: language, now: date)
+            forecast.officialSignal = CodexResetOfficialSignal(probability: .percent(93))
+            let signal = StatusItemController.codexResetForecastTooltip(for: forecast, language: language, now: date)
+            XCTAssertNotEqual(signal.title, ordinary.title, language.rawValue)
+            XCTAssertNotEqual(signal.body, ordinary.body, language.rawValue)
+            XCTAssertEqual(signal.source, ordinary.source, language.rawValue)
+            if language == .simplifiedChinese { XCTAssertEqual(signal.title, "官方重置信号") }
+            let controller = DashboardForecastTooltipViewController(content: signal)
+            controller.loadViewIfNeeded()
+            for field in controller.view.subviews.compactMap({ $0 as? NSTextField }) {
+                XCTAssertTrue(controller.view.bounds.contains(field.frame), language.rawValue)
+                XCTAssertFalse(field.cell?.truncatesLastVisibleLine ?? true)
+                XCTAssertGreaterThanOrEqual(field.frame.height, try XCTUnwrap(field.cell).cellSize(forBounds: field.bounds).height, language.rawValue)
+            }
+            forecast.officialSignal = nil
+        }
+    }
+
+    func testForecastTooltipKeepsYearForOlderUpdatesAndUnknownDate() throws {
+        let formatter = ISO8601DateFormatter()
+        let date = try XCTUnwrap(formatter.date(from: "2025-10-07T09:21:00Z"))
+        let now = try XCTUnwrap(formatter.date(from: "2026-10-07T09:21:00Z"))
+        let zone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let older = StatusItemController.codexResetForecastTooltip(
+            for: .demo(updatedAt: date), language: .simplifiedChinese, now: now, timeZone: zone
+        )
+        XCTAssertTrue(older.source.contains("2025年10月7日 09:21"))
+        let missing = StatusItemController.codexResetForecastTooltip(
+            for: .unavailable, language: .simplifiedChinese, now: now, timeZone: zone
+        )
+        XCTAssertTrue(missing.source.hasSuffix("更新于 --"))
+    }
+
     func testHoverLinkHoverHintSetsNativeTooltip() {
         let link = HoverLinkTextField(text: "24%")
         XCTAssertEqual(link.hoverHint, "")
@@ -1578,6 +1651,41 @@ final class DashboardComponentsTests: XCTestCase {
         host.removeFromSuperview()
         XCTAssertFalse(link.isHoverHintScheduled)
         XCTAssertFalse(link.isHoverHintVisible)
+    }
+
+    func testHoverLinkAlignmentChangesUpdateDrawingParagraphAndHoverGeometry() throws {
+        let link = HoverLinkTextField(text: "--%")
+        link.font = .monospacedDigitSystemFont(ofSize: 30, weight: .semibold)
+        link.restingTextColor = .labelColor
+        link.frame = NSRect(x: 0, y: 0, width: 212, height: 37)
+        link.alignment = .right
+        link.layout()
+        var paragraph = try XCTUnwrap(link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(paragraph.alignment, .right)
+        XCTAssertGreaterThan(link.visibleTextHitRect.minX, link.bounds.midX)
+        let rightRect = link.visibleTextHitRect
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 240, height: 50))
+        host.addSubview(link)
+        host.track(link)
+        host.forwardHover(atHostPoint: host.convert(rightRect.center, from: link))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertEqual(link.visibleTextHitRect.minX, rightRect.minX, accuracy: 0.001)
+        paragraph = try XCTUnwrap(link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(paragraph.alignment, .right)
+        host.forwardHover(atHostPoint: NSPoint(x: -1, y: -1))
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertEqual(link.visibleTextHitRect.minX, rightRect.minX, accuracy: 0.001)
+
+        link.alignment = .left
+        paragraph = try XCTUnwrap(link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(paragraph.alignment, .left)
+        XCTAssertLessThan(link.visibleTextHitRect.maxX, link.bounds.midX)
+
+        link.alignment = .right
+        link.restingTextColor = .secondaryLabelColor
+        paragraph = try XCTUnwrap(link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(paragraph.alignment, .right)
+        XCTAssertEqual(link.visibleTextHitRect, rightRect)
     }
 
     func testHoverLinkInvokesActivationCallbackOnMouseDown() {

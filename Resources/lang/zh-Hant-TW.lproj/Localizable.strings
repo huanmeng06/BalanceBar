@@ -457,7 +457,11 @@
 "codex.banked_reset.remaining_minutes" = "%1$@ 分鐘";
 "codex.banked_reset.probability_prefix" = "重置機率";
 "codex.banked_reset.probability_source" = "資料來源";
-"codex.banked_reset.probability_hint" = "預測未來 24 小時和 48 小時內出現額外全域重置的可能性。資料來源：codex-reset.com。來源更新於 %1$@。這是第三方對全域額外重置的預測，不是目前帳戶週額度的確定重置時間，也不保證發放重置卡。置信度為模型分類，不代表預測一定準確。";
+"codex.banked_reset.probability_hint" = "24 小時內重置概率\n\n預測未來 24 / 48 小時內的額外全域重置概率。\n\n來源：codex-reset.com · 更新於 %1$@\n\n第三方預測，不代表目前帳戶的確定重置時間，也不保證發放重置卡；置信度由模型分類得出，僅供參考。";
+"codex.banked_reset.tooltip.title" = "24 小時內重置概率";
+"codex.banked_reset.tooltip.body" = "預測未來 24 / 48 小時內的額外全域重置概率。";
+"codex.banked_reset.tooltip.source" = "來源：codex-reset.com · 更新於 %1$@";
+"codex.banked_reset.tooltip.disclaimer" = "第三方預測，不代表目前帳戶的確定重置時間，也不保證發放重置卡；置信度由模型分類得出，僅供參考。";
 "codex.banked_reset.probability_24h" = "24 小時內";
 "codex.banked_reset.probability_48h" = "48 小時內";
 "codex.banked_reset.high_probability" = "高機率";
@@ -476,3 +480,10 @@
 "dashboard.menu.page.color_yellow" = "黃";
 "dashboard.menu.page.color_green" = "綠";
 "common.restore_defaults" = "回復預設值";
+
+"codex.banked_reset.official_hint_confirmed" = "本輪已完成";
+"codex.banked_reset.official_reset_confirmed" = "✅ 已重置";
+
+"codex.reset_signal.tooltip_title" = "官方重置信號";
+"codex.reset_signal.tooltip_body" = "目前官方訊號的強訊號機率或倒數提示，獨立於一般 24 / 48 小時預測。";
+"codex.reset_signal.tooltip_disclaimer" = "訊號提示不代表目前帳戶已完成重置，也不保證發放重置卡；實際額度以官方介面為準。";

@@ -460,6 +460,12 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                     statusCode: 500
                 )
             }
+            if request.url?.path == "/api/forecast" {
+                return DelayedBalanceURLProtocol.Reply(
+                    data: ResponseParsersTests.codexResetIssueJSON,
+                    statusCode: 200
+                )
+            }
             return DelayedBalanceURLProtocol.Reply(
                 data: Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000}}}"#.utf8),
                 statusCode: 200
@@ -516,6 +522,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
 
     func testOfficialRefreshDrawsBankedResetDetailsFromReadOnlyCreditList() throws {
         try setCurrentProvider("codex-replacement")
+        let fixedNow = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-03T01:32:00Z"))
         let fiveHour = OfficialQuotaWindow(
             kind: .fiveHour,
             remaining: 80,
@@ -580,7 +587,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 },
                 storeClientSnapshot: { _, _, _ in },
                 quickSwitchSummaryChanged: { _ in },
-            )
+            ),
+            now: { fixedNow }
         )
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
         coordinator.refreshStandardProvider(
@@ -1557,6 +1565,671 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 
+
+    func testOfficialObservationDetectsResetRestoresAfterRestartAndClearsAtEpisodeBoundaries() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        var coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .watching)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .observed)
+        coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .observed)
+
+        fixture.update { $0.forecast = ObservationFixture.forecast(episode: "second") }
+        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastTTL + 1)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .notEligible)
+        fixture.update { $0.windows = ObservationFixture.windows(70, 80, cycle: 2) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .watching)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 3) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .observed)
+        fixture.update { $0.forecast = ObservationFixture.forecast(episode: nil, signal: false) }
+        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastTTL + 1)
+        let ended = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        XCTAssertNil(ended.resetForecast.officialSignal)
+        XCTAssertNil(store.load(providerID: "codex-replacement", accountKey: "a@example.com"))
+    }
+
+    func testOfficialObservationDoesNotConfirmUnusedFullQuotasOrSingleWindowRecovery() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 1) }
+        let coordinator = try observationCoordinator(fixture, store: observationStore())
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .notEligible)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .notEligible)
+        fixture.update { $0.windows = ObservationFixture.windows(80, 90, cycle: 2) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .watching)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 90, cycle: 3) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .watching)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 3) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .watching)
+    }
+
+    func testOfficialObservationIgnoresPartialAndFailedQuotaResponses() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let coordinator = try observationCoordinator(fixture, store: store)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        let previous = try XCTUnwrap(store.load(providerID: "codex-replacement", accountKey: "a@example.com")).observation.previousSample
+        fixture.update { $0.windows = Array(ObservationFixture.windows(100, 100, cycle: 2).prefix(1)) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .watching)
+        XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation.previousSample, previous)
+        fixture.update { $0.quotaStatus = 503 }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).kind, .error)
+        XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation.previousSample, previous)
+        fixture.update { $0.quotaStatus = 200; $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .observed)
+    }
+
+    func testOfficialObservationDropsLateAccountAResponseAndStartsAccountBIndependently() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let coordinator = try observationCoordinator(fixture, store: store)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        let previous = store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        fixture.update {
+            $0.windows = ObservationFixture.windows(100, 100, cycle: 2)
+            $0.quotaGate = (started, release)
+        }
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        waitForEvent(started)
+        XCTAssertEqual(fixture.lastAuthorization, "Bearer token-a@example.com")
+        fixture.update {
+            $0.email = "b@example.com"
+            $0.windows = ObservationFixture.windows(100, 100, cycle: 3)
+            $0.quotaGate = nil
+        }
+        let rendered = expectation(description: "only account B response renders")
+        var snapshots: [Snapshot] = []
+        fixture.onRender = { snapshots.append($0); rendered.fulfill() }
+        // Register B while A is still in flight: they must use distinct transports.
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        waitForCoordinator(coordinator)
+        release.signal()
+        wait(for: [rendered], timeout: 3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(snapshots.count, 1)
+        XCTAssertEqual(snapshots.first?.officialQuotaWindows, ObservationFixture.windows(100, 100, cycle: 3))
+        XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation, previous)
+        let b = try XCTUnwrap(store.load(providerID: "codex-replacement", accountKey: "b@example.com"))
+        XCTAssertEqual(b.observation.state, .notEligible)
+        XCTAssertEqual(b.observation.previousSample, CodexResetQuotaSample.make(from: ObservationFixture.windows(100, 100, cycle: 3)))
+
+    }
+
+    func testAnonymousOfficialSignalNeverRestoresObservedStateAcrossRestart() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.forecast = ObservationFixture.forecast(episode: nil) }
+        let store = try observationStore()
+        var coordinator = try observationCoordinator(fixture, store: store)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .watching)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .observed)
+        XCTAssertNil(store.load(providerID: "codex-replacement", accountKey: "a@example.com"))
+        // Also reject the anonymous entry written by previous versions.
+        var legacy = CodexResetObservation()
+        legacy.observe(try XCTUnwrap(CodexResetQuotaSample.make(from: ObservationFixture.windows(70, 80, cycle: 1))), now: Date())
+        legacy.observe(try XCTUnwrap(CodexResetQuotaSample.make(from: ObservationFixture.windows(100, 100, cycle: 2))), now: Date())
+        store.save(providerID: "codex-replacement", accountKey: "a@example.com", episodeKey: "active", observation: legacy)
+        coordinator = try observationCoordinator(fixture, store: store)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .notEligible)
+        XCTAssertNil(store.load(providerID: "codex-replacement", accountKey: "a@example.com"))
+    }
+
+    func testOfficialObservationSurvivesCreditFailureAndPresentsWithoutCards() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let coordinator = try observationCoordinator(fixture, store: store)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        fixture.update {
+            $0.windows = ObservationFixture.windows(100, 100, cycle: 2)
+            $0.needsCreditList = true
+            $0.creditGate = (started, release)
+        }
+        let rendered = expectation(description: "credit failure still renders observation")
+        var snapshot: Snapshot?
+        fixture.onRender = { snapshot = $0; rendered.fulfill() }
+        coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")), client: .codex, forceBalance: true, switched: false)
+        waitForEvent(started)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation.state, .observed)
+        release.signal()
+        wait(for: [rendered], timeout: 2)
+        let result = try XCTUnwrap(snapshot)
+        XCTAssertNil(result.bankedReset)
+        XCTAssertTrue(result.resetForecast.isOfficialResetConfirmed)
+        XCTAssertTrue(result.officialQuotaMenuPresentation(lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false).resetForecast.isOfficialResetConfirmed)
+        XCTAssertEqual(result.officialQuotaWindows, ObservationFixture.windows(100, 100, cycle: 2))
+        XCTAssertEqual(fixture.forecastRequestCount, 1)
+    }
+
+    func testUnavailableAndFailedForecastRetrySoonerThanSuccessfulCacheExpires() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.forecast = Data("{}".utf8) }
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: observationStore(), clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        XCTAssertEqual(fixture.forecastRequestCount, 1)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastRetryInterval - 1)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(fixture.forecastRequestCount, 1)
+        clock.advance(by: 1)
+        fixture.update { $0.forecastStatus = 503 }
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        XCTAssertEqual(fixture.forecastRequestCount, 2)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(fixture.forecastRequestCount, 2)
+        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastRetryInterval)
+        fixture.update { $0.forecastStatus = 200; $0.forecast = ObservationFixture.forecast(episode: "recovered") }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .watching)
+        XCTAssertEqual(fixture.forecastRequestCount, 3)
+        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastRetryInterval)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(fixture.forecastRequestCount, 3, "successful forecast keeps its ten-minute cache")
+    }
+
+    func testForecastRecoveryBeforeResetRetainsConsumptionEvidence() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.forecastStatus = 503 }
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: observationStore(), clock: clock)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast, .unavailable)
+
+        // T+1 minute: signal becomes available while both quotas still show usage.
+        clock.advance(by: 60)
+        fixture.update { $0.forecastStatus = 200 }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .watching)
+        XCTAssertEqual(fixture.forecastRequestCount, 2)
+
+        // T+3 minutes: the same episode resets. The successful cache is sufficient.
+        clock.advance(by: 120)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .observed)
+        XCTAssertEqual(fixture.forecastRequestCount, 2)
+    }
+
+    func testStandardAndQuickSwitchShareLocalCredentialQuotaTransport() throws {
+        let fixture = ObservationFixture()
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        fixture.update { $0.hasBankedReset = false; $0.quotaGate = (started, release) }
+        let coordinator = try observationCoordinator(fixture, store: observationStore())
+        let rendered = expectation(description: "standard consumer receives shared result")
+        let summary = expectation(description: "quick switch consumer receives shared result")
+        fixture.onRender = { _ in rendered.fulfill() }
+        fixture.onSummary = { summary.fulfill() }
+        coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")), client: .codex, forceBalance: true, switched: false)
+        waitForEvent(started)
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-replacement"])
+        waitForCoordinator(coordinator)
+        release.signal()
+        wait(for: [rendered, summary], timeout: 3)
+        XCTAssertEqual(fixture.quotaRequestCount, 1)
+        XCTAssertEqual(fixture.forecastRequestCount, 0)
+        XCTAssertEqual(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour)["codex-replacement"], "70% / 5h")
+    }
+
+    func testStandardAndQuickSwitchKeepDifferentAccountsInSeparateTransports() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        fixture.update { $0.hasBankedReset = false; $0.quotaGate = (started, release) }
+        let coordinator = try observationCoordinator(fixture, store: store)
+        let summary = expectation(description: "only B result updates summary")
+        fixture.onSummary = { summary.fulfill() }
+        coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")), client: .codex, forceBalance: true, switched: false)
+        waitForEvent(started)
+        fixture.update {
+            $0.email = "b@example.com"
+            $0.windows = ObservationFixture.windows(100, 100, cycle: 2)
+            $0.quotaGate = nil
+        }
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-replacement"])
+        waitForCoordinator(coordinator)
+        release.signal()
+        wait(for: [summary], timeout: 3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(fixture.quotaRequestCount, 2)
+        XCTAssertEqual(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour)["codex-replacement"], "100% / 5h")
+        XCTAssertNil(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com"))
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "b@example.com")?.previousSample, CodexResetQuotaSample.make(from: ObservationFixture.windows(100, 100, cycle: 2)))
+    }
+
+    func testQuickSwitchStoredTokenChangeDiscardsOldAccountResponse() throws {
+        func setToken(_ token: String) throws {
+            try withDatabase { database in
+                try execute(database, sql: "UPDATE providers SET settings_config = '{\"auth\":{\"tokens\":{\"access_token\":\"\(token)\"}}}' WHERE id = 'codex-replacement'")
+            }
+        }
+        let fixture = ObservationFixture()
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        fixture.update { $0.quotaGate = (started, release); $0.hasBankedReset = false }
+        let coordinator = try observationCoordinator(fixture, store: observationStore())
+        try setToken("stored-A")
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-replacement"])
+        waitForEvent(started)
+        try setToken("stored-B")
+        fixture.update { $0.quotaGate = nil; $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        let summary = expectation(description: "B summary")
+        fixture.onSummary = { summary.fulfill() }
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-replacement"])
+        wait(for: [summary], timeout: 3)
+        XCTAssertEqual(fixture.quotaRequestCount, 2)
+        XCTAssertEqual(fixture.lastAuthorization, "Bearer stored-B")
+        let stale = expectation(description: "A must not publish")
+        stale.isInverted = true
+        fixture.onSummary = { stale.fulfill() }
+        release.signal()
+        wait(for: [stale], timeout: 0.3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour)["codex-replacement"], "100% / 5h")
+    }
+
+    func testColdStartCreditFailuresPersistQuotaEvidenceUntilSignalCanBeFetched() throws {
+        let fixture = ObservationFixture()
+        fixture.update {
+            $0.hasBankedReset = false; $0.needsCreditList = true
+            $0.forecast = ObservationFixture.forecast(episode: "first", publishedAt: Date(timeIntervalSince1970: 1_799_999_999))
+        }
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        var coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast, .unavailable)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.state, .watching)
+        XCTAssertEqual(fixture.forecastRequestCount, 0)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast, .unavailable)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.state, .observed)
+        XCTAssertEqual(fixture.forecastRequestCount, 0)
+        // Forecast can recover much later; evidence remains within the current quota cycle.
+        clock.advance(by: 3_600)
+        fixture.update { $0.hasBankedReset = true; $0.needsCreditList = false }
+        coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        let recovered = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        XCTAssertTrue(recovered.resetForecast.isOfficialResetConfirmed)
+        XCTAssertEqual(fixture.forecastRequestCount, 1)
+    }
+
+    func testColdStartNoCardsQuotaJournalDoesNotAdvanceOnPartialOrFailedSnapshots() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.hasBankedReset = false }
+        let store = try observationStore()
+        let coordinator = try observationCoordinator(fixture, store: store)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        let trusted = store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")
+        fixture.update { $0.windows = Array(ObservationFixture.windows(100, 100, cycle: 2).prefix(1)) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com"), trusted)
+        fixture.update { $0.quotaStatus = 503 }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com"), trusted)
+        fixture.update { $0.quotaStatus = 200; $0.email = "b@example.com"; $0.windows = ObservationFixture.windows(100, 100, cycle: 2); $0.hasBankedReset = true }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .notEligible)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com"), trusted)
+    }
+
+    func testUnassignedResetEvidenceDoesNotConfirmSignalPublishedAfterReset() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.hasBankedReset = false }
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 60)
+        var object = try JSONSerialization.jsonObject(with: ObservationFixture.forecast(episode: "later")) as! [String: Any]
+        var signal = object["official_signal"] as! [String: Any]
+        signal["at"] = ISO8601DateFormatter().string(from: clock.now)
+        object["official_signal"] = signal
+        let data = try JSONSerialization.data(withJSONObject: object)
+        fixture.update { $0.hasBankedReset = true; $0.forecast = data }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .notEligible)
+    }
+
+    func testAnonymousSignalDoesNotRestoreUnassignedResetEvidence() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.hasBankedReset = false; $0.forecast = ObservationFixture.forecast(episode: nil) }
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        var coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        fixture.update { $0.hasBankedReset = true }
+        coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .notEligible)
+    }
+
+    func testExpiredUnassignedQuotaCycleCannotConfirmANewSignal() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.hasBankedReset = false }
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        var coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 604_801)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2); $0.hasBankedReset = true }
+        coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .notEligible)
+    }
+
+    func testCachedOrdinaryForecastDoesNotEraseEvidenceBeforeFirstSignal() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.forecast = ObservationFixture.forecast(episode: nil, signal: false) }
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: observationStore(), clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        let published = clock.now.addingTimeInterval(60)
+        clock.advance(by: 90)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 90)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertNil(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialSignal)
+        clock.advance(by: 421)
+        fixture.update { $0.forecast = ObservationFixture.forecast(episode: "first", publishedAt: published) }
+        XCTAssertTrue(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.isOfficialResetConfirmed)
+        XCTAssertEqual(fixture.forecastRequestCount, 2)
+    }
+
+    func testNewSignalCanAdoptProvisionalCachedEventOnlyWithinPublicationWindow() throws {
+        for (publicationOffset, validateA) in [(60.0, false), (240.0, false), (60.0, true)] {
+            let fixture = ObservationFixture()
+            let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+            let store = try observationStore()
+            let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+            _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+            let published = clock.now.addingTimeInterval(publicationOffset)
+            clock.advance(by: 120)
+            _ = try observationRefresh(coordinator, fixture: fixture)
+            clock.advance(by: 60)
+            fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+            _ = try observationRefresh(coordinator, fixture: fixture)
+            XCTAssertNil(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation.confirmedDetectedAt)
+            clock.advance(by: 421)
+            if validateA {
+                _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+                let observation = try XCTUnwrap(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation)
+                XCTAssertEqual(observation.confirmedDetectedAt, observation.detectedAt)
+                XCTAssertNotNil(observation.confirmedDetectedAt)
+                clock.advance(by: 601)
+            }
+            fixture.update { $0.forecast = ObservationFixture.forecast(episode: "second", publishedAt: published) }
+            let result = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+            XCTAssertEqual(result.resetForecast.isOfficialResetConfirmed, publicationOffset < 120 && !validateA)
+            XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.episodeKey, "tweet_id:second")
+        }
+    }
+
+    func testStableUndatedSignalDoesNotAdoptHistoricalResetEvidence() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.hasBankedReset = false }
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        var coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.state, .observed)
+        fixture.update { $0.hasBankedReset = true; $0.forecast = ObservationFixture.forecast(episode: "undated-new") }
+        coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        XCTAssertFalse(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.isOfficialResetConfirmed)
+        fixture.update { $0.windows = ObservationFixture.windows(70, 80, cycle: 2) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 3) }
+        XCTAssertTrue(try observationRefresh(coordinator, fixture: fixture).resetForecast.isOfficialResetConfirmed)
+    }
+
+    func testDatedSignalCannotAdoptTransitionWhoseBaselinePredatesPublication() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.hasBankedReset = false }
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: observationStore(), clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 60)
+        let publication = clock.now
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        fixture.update { $0.hasBankedReset = true; $0.forecast = ObservationFixture.forecast(episode: "new", publishedAt: publication) }
+        XCTAssertFalse(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.isOfficialResetConfirmed)
+    }
+
+    func testNewSignalDoesNotInheritConsumptionOnlySeenBeforePublication() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.hasBankedReset = false }
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: observationStore(), clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 60)
+        let publication = clock.now
+        clock.advance(by: 60)
+        fixture.update {
+            $0.windows = ObservationFixture.windows(100, 100, cycle: 1)
+            $0.hasBankedReset = true
+            $0.forecast = ObservationFixture.forecast(episode: "new", publishedAt: publication)
+        }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .notEligible)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertFalse(try observationRefresh(coordinator, fixture: fixture).resetForecast.isOfficialResetConfirmed)
+    }
+
+    func testQuotaJournalPreservesRolloverAtExpiredResetTimeUntilForecastRecovers() throws {
+        let fixture = ObservationFixture()
+        fixture.update {
+            $0.hasBankedReset = false
+            $0.forecast = ObservationFixture.forecast(episode: "rollover", publishedAt: Date(timeIntervalSince1970: 1_799_999_999))
+        }
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        var coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 604_860)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.state, .observed)
+        clock.advance(by: 60)
+        fixture.update { $0.hasBankedReset = true }
+        XCTAssertTrue(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.isOfficialResetConfirmed)
+    }
+
+    func testLateCreditReplyWithIdenticalQuotaCannotReplaceNewerCards() throws {
+        let fixture = ObservationFixture()
+        let coordinator = try observationCoordinator(fixture, store: observationStore())
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        fixture.update { $0.needsCreditList = true; $0.creditGate = (started, release) }
+        coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")), client: .codex, forceBalance: true, switched: false)
+        waitForEvent(started)
+        fixture.update { $0.needsCreditList = false; $0.creditGate = nil }
+        XCTAssertNotNil(try observationRefresh(coordinator, fixture: fixture).bankedReset)
+        let stale = expectation(description: "same quota older credit response must not render")
+        stale.isInverted = true
+        fixture.onRender = { _ in stale.fulfill() }
+        release.signal()
+        wait(for: [stale], timeout: 0.3)
+        waitForCoordinator(coordinator)
+    }
+
+    func testUsageAfterProvisionalResetDoesNotEraseEventBeforeFreshB() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        clock.advance(by: 60)
+        let publicationB = clock.now
+        clock.advance(by: 60)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        let event = try XCTUnwrap(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.detectedAt)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(80, 90, cycle: 2) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.detectedAt, event)
+        clock.advance(by: 361)
+        fixture.update { $0.forecast = ObservationFixture.forecast(episode: "B", publishedAt: publicationB) }
+        XCTAssertTrue(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.isOfficialResetConfirmed)
+    }
+
+    func testNewQuotaEventDuringCachedAIsNotPinnedToAsEarlierDetectedAt() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
+        XCTAssertTrue(try observationRefresh(coordinator, fixture: fixture).resetForecast.isOfficialResetConfirmed)
+        let oldDetected = store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation.detectedAt
+        clock.advance(by: 60)
+        let publicationB = clock.now
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(70, 80, cycle: 2) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        clock.advance(by: 60)
+        fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 3) }
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertNotEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.detectedAt, oldDetected)
+        clock.advance(by: 361)
+        fixture.update { $0.forecastStatus = 503 }
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        clock.advance(by: 60)
+        fixture.update { $0.forecastStatus = 200; $0.forecast = ObservationFixture.forecast(episode: "B", publishedAt: publicationB) }
+        XCTAssertTrue(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.isOfficialResetConfirmed)
+        XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.episodeKey, "tweet_id:B")
+    }
+
+    func testLateCreditReplyCannotOverwriteNewerQuotaFailureOrAdvanceObservation() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        clock.advance(by: 601)
+        fixture.update {
+            $0.needsCreditList = true; $0.creditGate = (started, release)
+            $0.windows = ObservationFixture.windows(100, 100, cycle: 2)
+        }
+        coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")), client: .codex, forceBalance: true, switched: false)
+        waitForEvent(started)
+        fixture.update { $0.quotaStatus = 503; $0.needsCreditList = false; $0.creditGate = nil }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).kind, .error)
+        let trusted = store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation
+        let journal = store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")
+        let forecastRequests = fixture.forecastRequestCount
+        let stale = expectation(description: "old credits cannot overwrite latest error")
+        stale.isInverted = true
+        fixture.onRender = { _ in stale.fulfill() }
+        release.signal()
+        wait(for: [stale], timeout: 0.3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation, trusted)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com"), journal)
+        XCTAssertEqual(fixture.forecastRequestCount, forecastRequests)
+        fixture.update { $0.quotaStatus = 200 }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).kind, .official)
+    }
+
+    func testLateCreditReplyCannotRewindNewerQuotaEvidenceOrRender() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        fixture.update { $0.needsCreditList = true; $0.creditGate = (started, release) }
+        coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")), client: .codex, forceBalance: true, switched: false)
+        waitForEvent(started)
+        fixture.update {
+            $0.needsCreditList = false
+            $0.creditGate = nil
+            $0.windows = ObservationFixture.windows(100, 100, cycle: 2)
+        }
+        XCTAssertTrue(try observationRefresh(coordinator, fixture: fixture).resetForecast.isOfficialResetConfirmed)
+        let trusted = store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation
+        let journal = store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")
+        let stale = expectation(description: "late older quota must not render")
+        stale.isInverted = true
+        fixture.onRender = { _ in stale.fulfill() }
+        release.signal()
+        wait(for: [stale], timeout: 0.3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation, trusted)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com"), journal)
+    }
+
+    private func observationStore() throws -> CodexResetObservationStore {
+        let name = "BalanceBarTests.coordinator-observation.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        return CodexResetObservationStore(defaults: defaults)
+    }
+
+    private func observationCoordinator(
+        _ fixture: ObservationFixture,
+        store: CodexResetObservationStore,
+        clock: TestClock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+    ) throws -> ProviderRefreshCoordinator {
+        try setCurrentProvider("codex-replacement")
+        DelayedBalanceURLProtocol.setHandler { fixture.reply($0) }
+        return ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session, credentialReader: fixture, parser: fixture),
+            codexResetObservationStore: store,
+            queue: DispatchQueue(label: "test.observation.\(UUID().uuidString)"),
+            actions: ProviderRefreshActions(
+                currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+                isActiveClient: { _ in true },
+                render: { fixture.onRender?($0) },
+                storeClientSnapshot: { _, _, _ in },
+                quickSwitchSummaryChanged: { _ in fixture.onSummary?() }
+            ),
+            now: { clock.now }
+        )
+    }
+
+    private func observationRefresh(_ coordinator: ProviderRefreshCoordinator, fixture: ObservationFixture, renders: Int = 1) throws -> Snapshot {
+        let rendered = expectation(description: "official refresh publications")
+        rendered.expectedFulfillmentCount = renders
+        var snapshots: [Snapshot] = []
+        fixture.onRender = { snapshots.append($0); rendered.fulfill() }
+        coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")), client: .codex, forceBalance: true, switched: false)
+        wait(for: [rendered], timeout: 3)
+        waitForCoordinator(coordinator)
+        return try XCTUnwrap(snapshots.last)
+    }
+
     private func makeActions(
         _ quickSwitchSummaryChanged: @escaping (String) -> Void = { _ in }
     ) -> ProviderRefreshActions {
@@ -1901,6 +2574,13 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
     struct Reply {
         let data: Data
         let statusCode: Int
+        let delayUntil: DispatchSemaphore?
+
+        init(data: Data, statusCode: Int, delayUntil: DispatchSemaphore? = nil) {
+            self.data = data
+            self.statusCode = statusCode
+            self.delayUntil = delayUntil
+        }
     }
 
     private static let lock = NSLock()
@@ -1945,6 +2625,17 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
 
         let reply = handler?(request) ?? Self.success(amount: "0")
 
+        if let gate = reply.delayUntil {
+            DispatchQueue.global().async {
+                gate.wait()
+                self.deliver(reply)
+            }
+        } else {
+            deliver(reply)
+        }
+    }
+
+    private func deliver(_ reply: Reply) {
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: reply.statusCode,
@@ -1957,4 +2648,78 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+
+/// Uses a real account and asynchronous URLSession transport, with no auth-file
+/// or network dependencies. Locking permits account changes during a response.
+private final class ObservationFixture: OfficialQuotaCredentialReading, OfficialQuotaParsing {
+    struct State {
+        var email = "a@example.com"
+        var windows = ObservationFixture.windows(70, 80, cycle: 1)
+        var forecast = ObservationFixture.forecast(episode: "first")
+        var quotaStatus = 200
+        var forecastStatus = 200
+        var needsCreditList = false
+        var hasBankedReset = true
+        var quotaRequests = 0
+        var quotaGate: (DispatchSemaphore, DispatchSemaphore)?
+        var creditGate: (DispatchSemaphore, DispatchSemaphore)?
+        var authorization: String?
+        var forecastRequests = 0
+    }
+    private let lock = NSLock()
+    private var state = State()
+    var onRender: ((Snapshot) -> Void)?
+    var onSummary: (() -> Void)?
+    func update(_ change: (inout State) -> Void) { lock.lock(); defer { lock.unlock() }; change(&state) }
+    private func read() -> State { lock.lock(); defer { lock.unlock() }; return state }
+    var lastAuthorization: String? { read().authorization }
+    var forecastRequestCount: Int { read().forecastRequests }
+    var quotaRequestCount: Int { read().quotaRequests }
+    func codexAccessToken() -> String? { codexRequestCredentials().accessToken }
+    func codexAccountProfile() -> CodexAccountProfile? { CodexAccountProfile(email: read().email, planType: nil) }
+    func claudeAccessToken() -> String? { nil }
+    func codexRequestCredentials() -> CodexRequestCredentials {
+        let email = read().email
+        return CodexRequestCredentials(accessToken: "token-" + email, accountKey: email)
+    }
+    func parse(data: Data, client: AssistantClient) throws -> OfficialQuotaResponseParser.Output {
+        let object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let values = object["windows"] as! [[String: Any]]
+        let windows = values.map {
+            OfficialQuotaWindow(kind: OfficialQuotaWindow.Kind(rawValue: $0["kind"] as! Int)!, remaining: $0["remaining"] as! Double, label: $0["label"] as! String, daysText: $0["label"] as! String, reset: nil, durationSeconds: $0["duration"] as? Double, resetAt: ($0["resetAt"] as? Double).map(Date.init(timeIntervalSince1970:)))
+        }
+        return OfficialQuotaResponseParser.Output(windows: windows, bankedReset: (object["hasBankedReset"] as! Bool) ? CodexBankedReset(cards: []) : nil, bankedResetNeedsCreditList: object["needsCreditList"] as! Bool)
+    }
+    func reply(_ request: URLRequest) -> DelayedBalanceURLProtocol.Reply {
+        let state = read()
+        if request.url?.path == "/api/forecast" {
+            update { $0.forecastRequests += 1 }
+            return .init(data: state.forecast, statusCode: state.forecastStatus)
+        }
+        if request.url?.path.contains("credits") == true {
+            if let gate = state.creditGate { gate.0.signal() }
+            return .init(data: Data("{}".utf8), statusCode: 503, delayUntil: state.creditGate?.1)
+        }
+        update { $0.authorization = request.value(forHTTPHeaderField: "Authorization"); $0.quotaRequests += 1 }
+        if let gate = state.quotaGate { gate.0.signal() }
+        let windows: [[String: Any]] = state.windows.map {
+            var value: [String: Any] = ["kind": $0.kind.rawValue, "remaining": $0.remaining, "label": $0.label]
+            value["duration"] = $0.durationSeconds
+            value["resetAt"] = $0.resetAt?.timeIntervalSince1970
+            return value
+        }
+        let data = try! JSONSerialization.data(withJSONObject: ["windows": windows, "needsCreditList": state.needsCreditList, "hasBankedReset": state.hasBankedReset])
+        return .init(data: data, statusCode: state.quotaStatus, delayUntil: state.quotaGate?.1)
+    }
+    static func windows(_ five: Double, _ seven: Double, cycle: Int) -> [OfficialQuotaWindow] {
+        [.init(kind: .fiveHour, remaining: five, label: "5h", daysText: "5h", reset: nil, durationSeconds: 18_000),
+         .init(kind: .sevenDay, remaining: seven, label: "7d", daysText: "7d", reset: nil, durationSeconds: 604_800, resetAt: Date(timeIntervalSince1970: 1_800_000_000 + Double(cycle) * 604_800))]
+    }
+    static func forecast(episode: String?, signal: Bool = true, publishedAt: Date? = nil) -> Data {
+        var official: [String: Any] = episode.map { ["tweet_id": $0, "score": ["value": 80]] } ?? ["score": ["value": 80]]
+        if let publishedAt { official["at"] = ISO8601DateFormatter().string(from: publishedAt) }
+        return try! JSONSerialization.data(withJSONObject: ["official_signal": signal ? official as Any : NSNull(), "probabilities": ["rounded_24h": 24, "rounded_48h": 42]])
+    }
 }

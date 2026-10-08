@@ -953,11 +953,9 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             horizontal: .trailing,
             in: officialOverview
         )
-        assertCentered(
-            .bankedResetProbability24h(provider: "OpenAI Official"),
-            horizontal: .leading,
-            in: officialOverview
-        )
+        XCTAssertFalse(amountViews(in: officialOverview).contains {
+            $0.identifier?.rawValue == "codex.bankedReset.probability24h"
+        })
         assertCentered(
             .bankedResetProbability48h(provider: "OpenAI Official"),
             horizontal: .leading,

@@ -570,6 +570,90 @@ final class DomainModelsTests: XCTestCase {
         )
     }
 
+    func testCodexResetObservationRequiresConsumptionAndASevenDayCycleJump() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func sample(fiveHour: Double, sevenDay: Double, resetAt: TimeInterval) -> CodexResetQuotaSample {
+            CodexResetQuotaSample(
+                fiveHourRemaining: fiveHour,
+                sevenDayRemaining: sevenDay,
+                sevenDayResetAt: now.addingTimeInterval(resetAt)
+            )
+        }
+
+        var untouched = CodexResetObservation()
+        untouched.observe(sample(fiveHour: 100, sevenDay: 100, resetAt: 6 * 86_400), now: now)
+        untouched.observe(sample(fiveHour: 100, sevenDay: 100, resetAt: 7 * 86_400), now: now)
+        XCTAssertEqual(untouched.state, .notEligible)
+
+        var watching = CodexResetObservation()
+        watching.observe(sample(fiveHour: 85, sevenDay: 92, resetAt: 6 * 86_400), now: now)
+        XCTAssertEqual(watching.state, .watching)
+        watching.observe(sample(fiveHour: 100, sevenDay: 100, resetAt: 6 * 86_400 + 60), now: now)
+        XCTAssertEqual(watching.state, .watching)
+        watching.observe(sample(fiveHour: 100, sevenDay: 100, resetAt: 13 * 86_400), now: now)
+        XCTAssertEqual(watching.state, .observed)
+        XCTAssertEqual(watching.detectedAt, now)
+
+        var singleWindow = CodexResetObservation()
+        singleWindow.observe(sample(fiveHour: 85, sevenDay: 92, resetAt: 6 * 86_400), now: now)
+        singleWindow.observe(sample(fiveHour: 100, sevenDay: 92, resetAt: 13 * 86_400), now: now)
+        XCTAssertEqual(singleWindow.state, .watching)
+    }
+
+    func testCodexResetConfirmedForecastSuppressesSignalCountdownAndForecastMetrics() {
+        let signal = CodexResetOfficialSignal(
+            probability: .percent(93),
+            targetAt: Date(timeIntervalSince1970: 1_700_003_600),
+            episodeKey: "tweet:123"
+        )
+        let forecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .high,
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            isCached: false,
+            officialSignal: signal,
+            officialResetObservation: .observed
+        )
+        XCTAssertTrue(forecast.isOfficialResetConfirmed)
+        XCTAssertNil(forecast.remainingCountdownSeconds(now: Date(timeIntervalSince1970: 1_700_000_000)))
+        XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .simplifiedChinese), "✅ 已重置")
+        XCTAssertEqual(
+            forecast.officialHintText(language: .simplifiedChinese),
+            "本轮已完成"
+        )
+    }
+
+    func testCodexResetObservationStoreRestoresOnlyTheMatchingAccountAndEpisode() throws {
+        let suiteName = "BalanceBarTests.codex-reset-observation-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = CodexResetObservationStore(defaults: defaults)
+        var observation = CodexResetObservation()
+        observation.observe(
+            CodexResetQuotaSample(
+                fiveHourRemaining: 80,
+                sevenDayRemaining: 90,
+                sevenDayResetAt: Date(timeIntervalSince1970: 1_700_000_000)
+            ),
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        store.save(
+            providerID: "official",
+            accountKey: "person@example.com",
+            episodeKey: "tweet:1",
+            observation: observation
+        )
+
+        let restored = try XCTUnwrap(
+            store.load(providerID: "official", accountKey: "person@example.com")
+        )
+        XCTAssertEqual(restored.episodeKey, "tweet:1")
+        XCTAssertEqual(restored.observation, observation)
+        XCTAssertNil(store.load(providerID: "official", accountKey: "other@example.com"))
+        XCTAssertNil(store.load(providerID: "other-provider", accountKey: "person@example.com"))
+    }
+
     func testBankedResetRemainingUsesWarningThresholdUnderTwentyFourHours() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let sixHours = try XCTUnwrap(

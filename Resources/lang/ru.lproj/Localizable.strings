@@ -457,7 +457,11 @@
 "codex.banked_reset.remaining_minutes" = "%1$@ мин";
 "codex.banked_reset.probability_prefix" = "Вероятность сброса";
 "codex.banked_reset.probability_source" = "Источник данных";
-"codex.banked_reset.probability_hint" = "Прогноз дополнительного глобального сброса в ближайшие 24 и 48 часов. Источник данных: codex-reset.com. Источник обновлён %1$@. Это сторонний прогноз глобального дополнительного сброса, а не гарантированное время сброса недельной квоты этого аккаунта, и он не гарантирует карту сброса. Уверенность — категория модели, а не обещание точности.";
+"codex.banked_reset.probability_hint" = "Вероятность сброса в течение 24 часов\n\nПрогноз дополнительного глобального сброса в течение 24 / 48 часов.\n\nИсточник: codex-reset.com · Обновлено %1$@\n\nСторонний прогноз, не гарантия времени сброса этого аккаунта или выдачи карты сброса. Уверенность — категория модели, только для справки.";
+"codex.banked_reset.tooltip.title" = "Вероятность сброса в течение 24 часов";
+"codex.banked_reset.tooltip.body" = "Прогноз дополнительного глобального сброса в течение 24 / 48 часов.";
+"codex.banked_reset.tooltip.source" = "Источник: codex-reset.com · Обновлено %1$@";
+"codex.banked_reset.tooltip.disclaimer" = "Сторонний прогноз, не гарантия времени сброса этого аккаунта или выдачи карты сброса. Уверенность — категория модели, только для справки.";
 "codex.banked_reset.probability_24h" = "За 24 ч";
 "codex.banked_reset.probability_48h" = "За 48 ч";
 "codex.banked_reset.high_probability" = "Выс. вер.";
@@ -476,3 +480,10 @@
 "dashboard.menu.page.color_yellow" = "Жёлтый";
 "dashboard.menu.page.color_green" = "Зелёный";
 "common.restore_defaults" = "Восстановить значения по умолчанию";
+
+"codex.banked_reset.official_hint_confirmed" = "Этот цикл завершён";
+"codex.banked_reset.official_reset_confirmed" = "✅ Сброшено";
+
+"codex.reset_signal.tooltip_title" = "Официальный сигнал сброса";
+"codex.reset_signal.tooltip_body" = "Вероятность текущего сильного официального сигнала или обратный отсчёт, отдельно от обычного прогноза на 24 / 48 часов.";
+"codex.reset_signal.tooltip_disclaimer" = "Сигнал не подтверждает сброс этой учётной записи и не гарантирует кредиты сброса. Фактическую квоту определяет официальный API.";

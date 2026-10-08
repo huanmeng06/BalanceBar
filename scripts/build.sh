@@ -10,7 +10,7 @@ images_src="$resources_src/images"
 lang_src="$resources_src/lang"
 usage() {
     cat <<'EOF'
-Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0]
+Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0|demo-banked-reset-confirmed]
 
 Build the macOS app without changing the checked-in Info.plist.
 
@@ -29,6 +29,8 @@ Build the macOS app without changing the checked-in Info.plist.
               Build a demo app that shows 10 official Codex banked reset cards.
   demo-banked-reset-0
               Build a demo app that shows 0 official Codex banked reset cards.
+  demo-banked-reset-confirmed
+              Build a demo app that shows an observed official reset signal.
 EOF
 }
 
@@ -127,6 +129,16 @@ case "$variant" in
         bundle_name="BalanceBar Demo · 0 Reset Cards"
         demo_mode="banked-reset-0"
         banked_reset_demo_mode="banked-reset-0"
+        module_cache_dir="$build_dir/swift-module-cache"
+        clean_paths=("$build_dir")
+        ;;
+    demo-banked-reset-confirmed)
+        build_dir="$repo_root/build/demo/banked-reset-confirmed"
+        app_bundle="$build_dir/BalanceBar-BankedReset-Confirmed.app"
+        bundle_identifier="com.huanmeng06.BalanceBar.demo.banked-reset-confirmed"
+        bundle_name="BalanceBar Demo · Reset Confirmed"
+        demo_mode="banked-reset-confirmed"
+        banked_reset_demo_mode="banked-reset-confirmed"
         module_cache_dir="$build_dir/swift-module-cache"
         clean_paths=("$build_dir")
         ;;

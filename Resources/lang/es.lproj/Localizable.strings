@@ -457,7 +457,11 @@
 "codex.banked_reset.remaining_minutes" = "%1$@ minutos";
 "codex.banked_reset.probability_prefix" = "Probabilidad de reinicio";
 "codex.banked_reset.probability_source" = "Fuente de datos";
-"codex.banked_reset.probability_hint" = "Previsión de un reinicio global extra en las próximas 24 y 48 horas. Fuente de datos: codex-reset.com. Fuente actualizada el %1$@. Es una previsión de terceros sobre un reinicio global extra, no la hora de reinicio garantizada de la cuota semanal de esta cuenta, y no garantiza una tarjeta de reinicio. La confianza es una categoría del modelo, no una promesa de exactitud.";
+"codex.banked_reset.probability_hint" = "Probabilidad de reinicio en 24 horas\n\nPrevisión de un reinicio global extra en 24 / 48 horas.\n\nFuente: codex-reset.com · Actualizado %1$@\n\nPrevisión de terceros, no una hora de reinicio garantizada para esta cuenta ni una promesa de tarjetas de reinicio. La confianza es una categoría del modelo, solo como referencia.";
+"codex.banked_reset.tooltip.title" = "Probabilidad de reinicio en 24 horas";
+"codex.banked_reset.tooltip.body" = "Previsión de un reinicio global extra en 24 / 48 horas.";
+"codex.banked_reset.tooltip.source" = "Fuente: codex-reset.com · Actualizado %1$@";
+"codex.banked_reset.tooltip.disclaimer" = "Previsión de terceros, no una hora de reinicio garantizada para esta cuenta ni una promesa de tarjetas de reinicio. La confianza es una categoría del modelo, solo como referencia.";
 "codex.banked_reset.probability_24h" = "En 24 h";
 "codex.banked_reset.probability_48h" = "En 48 h";
 "codex.banked_reset.high_probability" = "Alta prob.";
@@ -476,3 +480,10 @@
 "dashboard.menu.page.color_yellow" = "Amarillo";
 "dashboard.menu.page.color_green" = "Verde";
 "common.restore_defaults" = "Restaurar valores predeterminados";
+
+"codex.banked_reset.official_hint_confirmed" = "Completado este ciclo";
+"codex.banked_reset.official_reset_confirmed" = "✅ Restablecido";
+
+"codex.reset_signal.tooltip_title" = "Señal oficial de restablecimiento";
+"codex.reset_signal.tooltip_body" = "Probabilidad de señal fuerte o cuenta atrás de la señal oficial actual, distinta del pronóstico normal de 24 / 48 horas.";
+"codex.reset_signal.tooltip_disclaimer" = "La señal no confirma un restablecimiento de esta cuenta ni garantiza créditos. La cuota real procede de la API oficial.";
