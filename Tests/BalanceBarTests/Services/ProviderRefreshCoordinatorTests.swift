@@ -2125,6 +2125,40 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.episodeKey, "tweet_id:B")
     }
 
+    func testLateCreditReplyCannotOverwriteNewerQuotaFailureOrAdvanceObservation() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        clock.advance(by: 601)
+        fixture.update {
+            $0.needsCreditList = true; $0.creditGate = (started, release)
+            $0.windows = ObservationFixture.windows(100, 100, cycle: 2)
+        }
+        coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")), client: .codex, forceBalance: true, switched: false)
+        waitForEvent(started)
+        fixture.update { $0.quotaStatus = 503; $0.needsCreditList = false; $0.creditGate = nil }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).kind, .error)
+        let trusted = store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation
+        let journal = store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")
+        let forecastRequests = fixture.forecastRequestCount
+        let stale = expectation(description: "old credits cannot overwrite latest error")
+        stale.isInverted = true
+        fixture.onRender = { _ in stale.fulfill() }
+        release.signal()
+        wait(for: [stale], timeout: 0.3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation, trusted)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com"), journal)
+        XCTAssertEqual(fixture.forecastRequestCount, forecastRequests)
+        fixture.update { $0.quotaStatus = 200 }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).kind, .official)
+    }
+
     func testLateCreditReplyCannotRewindNewerQuotaEvidenceOrRender() throws {
         let fixture = ObservationFixture()
         let store = try observationStore()

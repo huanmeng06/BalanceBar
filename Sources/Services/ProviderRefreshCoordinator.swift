@@ -668,6 +668,14 @@ final class ProviderRefreshCoordinator {
             guard let self else { return }
             self.performOnQueue {
                 guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
+                // Every completed quota response owns a new generation, including
+                // errors. Pending credit/forecast callbacks from older successes
+                // must not replace a newer failure or mutate its observation state.
+                let responseKey = client.rawValue + "|" + providerID + "|" + (credentials?.requestScope ?? "")
+                self.officialResponseGenerations[responseKey]?.invalidate()
+                let generation = OfficialResponseGeneration()
+                self.officialResponseGenerations[responseKey] = generation
+                let isCurrentQuota = { generation.isCurrent() }
                 switch result {
                 case .success(let response):
                     if client == .codex, let accountKey {
@@ -677,11 +685,6 @@ final class ProviderRefreshCoordinator {
                         providerID: providerID,
                         payload: .officialWindows(response.output.windows)
                     )
-                    let responseKey = client.rawValue + "|" + providerID + "|" + (credentials?.requestScope ?? "")
-                    self.officialResponseGenerations[responseKey]?.invalidate()
-                    let generation = OfficialResponseGeneration()
-                    self.officialResponseGenerations[responseKey] = generation
-                    let isCurrentQuota = { generation.isCurrent() }
                     let renderOfficial: (CodexBankedReset?, CodexResetForecast) -> Void = { bankedReset, forecast in
                         guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials,
                               isCurrentQuota() else { return }
@@ -749,7 +752,7 @@ final class ProviderRefreshCoordinator {
                         providerName: providerName,
                         reason: tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [String(describing: client.displayName)]),
                         client: client,
-                        isCurrentRequest: { client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials }
+                        isCurrentRequest: { isCurrentQuota() && (client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials) }
                     )
                 case .failure(.transport(let error)):
                     self.renderOfficialError(
@@ -757,7 +760,7 @@ final class ProviderRefreshCoordinator {
                         providerName: providerName,
                         reason: tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [String(describing: client.displayName), String(describing: error.localizedDescription)]),
                         client: client,
-                        isCurrentRequest: { client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials }
+                        isCurrentRequest: { isCurrentQuota() && (client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials) }
                     )
                 case .failure:
                     self.renderOfficialError(
@@ -765,7 +768,7 @@ final class ProviderRefreshCoordinator {
                         providerName: providerName,
                         reason: tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [String(describing: client.displayName)]),
                         client: client,
-                        isCurrentRequest: { client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials }
+                        isCurrentRequest: { isCurrentQuota() && (client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials) }
                     )
                 }
             }
