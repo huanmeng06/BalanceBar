@@ -475,8 +475,9 @@ final class ProviderRefreshCoordinator {
                 if let providerIDs, !providerIDs.contains(source.id) { continue }
                 if source.isOfficial {
                     if client != .codex { continue }
-                    let credentials = source.officialAccessToken == nil
-                        ? self.officialQuotaClient.codexRequestCredentials() : nil
+                    let credentials = source.officialAccessToken.map {
+                        CodexRequestCredentials(accessToken: $0, accountKey: nil)
+                    } ?? self.officialQuotaClient.codexRequestCredentials()
                     self.officialQuotaClient.fetchQuota(
                         client: client,
                         providerID: source.id,
@@ -485,8 +486,10 @@ final class ProviderRefreshCoordinator {
                     ) { [weak self] result in
                         guard let self, case .success(let response) = result else { return }
                         self.performOnQueue {
-                            guard credentials == nil || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
-                            if let accountKey = credentials?.accountKey {
+                            guard let currentSource = self.repository.loadSummarySources(appType: client.appType).first(where: { $0.id == source.id && $0.isOfficial }),
+                                  currentSource.officialAccessToken == source.officialAccessToken,
+                                  source.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
+                            if let accountKey = credentials.accountKey {
                                 self.recordCodexQuotaEvidence(providerID: source.id, accountKey: accountKey, windows: response.output.windows)
                             }
                             self.updateQuickSwitchSummary(
@@ -786,7 +789,7 @@ final class ProviderRefreshCoordinator {
                 && sample.sevenDayResetAt > timestamp
             if !completesTransition { evidence = CodexResetObservation() }
         }
-        evidence.observe(sample, now: timestamp)
+        evidence.observeLatestQuotaEvent(sample, now: timestamp)
         codexQuotaEvidence[key] = evidence
         codexResetObservationStore.saveQuotaEvidence(providerID: providerID, accountKey: accountKey, evidence: evidence)
     }
@@ -843,7 +846,7 @@ final class ProviderRefreshCoordinator {
                 seed = pending
             } else if let detectedAt = pending.detectedAt,
                       detectedAt >= baselineAt, detectedAt <= now(),
-                      priorEntry?.observation.detectedAt != detectedAt {
+                      priorEntry?.observation.confirmedDetectedAt != detectedAt {
                 seed = pending
             }
         }
@@ -854,6 +857,7 @@ final class ProviderRefreshCoordinator {
         if let sample = CodexResetQuotaSample.make(from: windows) {
             var observation = entry.observation
             observation.observe(sample, now: now())
+            if !forecast.isCached { observation.confirmDetectedEvent() }
             entry = (episodeKey: episodeKey, observation: observation)
             codexResetObservations[cacheKey] = entry
             if durable {

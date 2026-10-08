@@ -447,6 +447,32 @@ final class OfficialQuotaClientTests: XCTestCase {
         ))
     }
 
+    func testConcurrentStoredTokensUseSeparateScopesButSameTokenSharesTransport() throws {
+        let started = expectation(description: "two token transports")
+        started.expectedFulfillmentCount = 2
+        StubURLProtocol.setHandler { request in
+            started.fulfill()
+            let used = request.value(forHTTPHeaderField: "Authorization") == "Bearer stored-A" ? 20 : 70
+            return StubResult(data: Data("{\"rate_limit\":{\"secondary_window\":{\"used_percent\":\(used),\"limit_window_seconds\":604800,\"reset_after_seconds\":5400}}}".utf8), holdsResponse: true)
+        }
+        let client = makeClient()
+        let completed = expectation(description: "three consumers")
+        completed.expectedFulfillmentCount = 3
+        for (token, expected) in [("stored-A", 80.0), ("stored-A", 80.0), ("stored-B", 30.0)] {
+            client.fetchQuota(client: .codex, providerID: "same-provider", storedAccessToken: token) { result in
+                if case .success(let response) = result { XCTAssertEqual(response.output.remaining, expected) }
+                else { XCTFail("expected successful stored-token response") }
+                completed.fulfill()
+            }
+        }
+        wait(for: [started], timeout: 2)
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+        XCTAssertTrue(client.isRequestInFlight(client: .codex, providerID: "same-provider", credentialSource: .storedAccessToken, storedAccessToken: "stored-A"))
+        XCTAssertTrue(client.isRequestInFlight(client: .codex, providerID: "same-provider", credentialSource: .storedAccessToken, storedAccessToken: "stored-B"))
+        StubURLProtocol.releaseHeldResponses()
+        wait(for: [completed], timeout: 2)
+    }
+
     func testMissingCredentialsCompletesWithoutStartingTransport() throws {
         let client = makeClient()
         for clientName in [AssistantClient.codex, .claude, .grok] {

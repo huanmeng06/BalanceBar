@@ -193,24 +193,28 @@ final class OfficialQuotaClient {
         client: AssistantClient,
         providerID: String,
         credentialSource: OfficialQuotaCredentialSource = .localReader,
-        requestCredentials: CodexRequestCredentials? = nil
+        requestCredentials: CodexRequestCredentials? = nil,
+        storedAccessToken: String? = nil
     ) -> String {
         let base = "official:\(client.rawValue):\(providerID):\(credentialSource.rawValue)"
-        return requestCredentials.map { base + ":" + $0.requestScope } ?? base
+        let scope = requestCredentials ?? storedAccessToken.map { CodexRequestCredentials(accessToken: $0, accountKey: nil) }
+        return scope.map { base + ":" + $0.requestScope } ?? base
     }
 
     func isRequestInFlight(
         client: AssistantClient,
         providerID: String,
         credentialSource: OfficialQuotaCredentialSource = .localReader,
-        requestCredentials: CodexRequestCredentials? = nil
+        requestCredentials: CodexRequestCredentials? = nil,
+        storedAccessToken: String? = nil
     ) -> Bool {
         inFlight.contains(
             key: Self.requestKey(
                 client: client,
                 providerID: providerID,
                 credentialSource: credentialSource,
-                requestCredentials: requestCredentials
+                requestCredentials: requestCredentials,
+                storedAccessToken: storedAccessToken
             )
         )
     }
@@ -242,7 +246,8 @@ final class OfficialQuotaClient {
             client: client,
             providerID: providerID,
             credentialSource: credentialSource,
-            requestCredentials: requestCredentials
+            requestCredentials: requestCredentials,
+            storedAccessToken: storedAccessToken
         )
         let registry = inFlight
         guard registry.register(key: key, completion: completion) else {
@@ -384,13 +389,15 @@ final class OfficialQuotaClient {
         client: AssistantClient,
         providerID: String,
         credentialSource: OfficialQuotaCredentialSource = .localReader,
-        requestCredentials: CodexRequestCredentials? = nil
+        requestCredentials: CodexRequestCredentials? = nil,
+        storedAccessToken: String? = nil
     ) {
         let key = Self.requestKey(
             client: client,
             providerID: providerID,
             credentialSource: credentialSource,
-            requestCredentials: requestCredentials
+            requestCredentials: requestCredentials,
+            storedAccessToken: storedAccessToken
         )
         let completions = inFlight.cancel(key: key)
         let result: Result<OfficialQuotaResult, OfficialQuotaClientError> =

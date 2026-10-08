@@ -345,6 +345,7 @@ struct CodexResetObservation: Codable, Equatable {
     private(set) var detectedAt: Date?
     private(set) var previousSampleAt: Date?
     private(set) var resetTransitionStartedAt: Date?
+    private(set) var confirmedDetectedAt: Date?
 
     mutating func observe(_ sample: CodexResetQuotaSample, now: Date) {
         if sample.hasConsumption {
@@ -369,6 +370,25 @@ struct CodexResetObservation: Codable, Equatable {
         }
         previousSample = sample
         previousSampleAt = now
+    }
+
+    /// The independent journal preserves an unassigned event while usage resumes,
+    /// and records a later event without inheriting the first event's timestamp.
+    mutating func observeLatestQuotaEvent(_ sample: CodexResetQuotaSample, now: Date) {
+        if state == .observed, let previous = previousSample,
+           previous.hasConsumption, sample.isComplete,
+           sample.sevenDayResetAt.timeIntervalSince(previous.sevenDayResetAt) >= Self.minimumResetCycleJump {
+            let baselineAt = previousSampleAt ?? now
+            self = CodexResetObservation()
+            observe(previous, now: baselineAt)
+        }
+        observe(sample, now: now)
+    }
+
+    /// Cached forecasts may display a provisional observation, but only a fresh
+    /// forecast can bind that quota event to its currently returned episode.
+    mutating func confirmDetectedEvent() {
+        if state == .observed { confirmedDetectedAt = detectedAt }
     }
 
     mutating func reset() {
