@@ -841,6 +841,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     private weak var relay: DashboardPreferencePageRelay?
     private var rows = TimeZoneCityCatalog.all
     private var applying = false
+    private var filteredQuery: String?
     private(set) var candidatesAreVisible = false
     private var candidatePresentationScheduled = false
 
@@ -876,6 +877,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         defer { applying = false }
         isEnabled = selection != .system
         rows = TimeZoneCityCatalog.all
+        filteredQuery = nil
         reloadData()
         if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
         stringValue = TimeZoneCityCatalog.displayTitle(for: selection)
@@ -887,8 +889,13 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         toolTip = selection.title()
     }
 
-    func numberOfItems(in comboBox: NSComboBox) -> Int { rows.count }
+    func numberOfItems(in comboBox: NSComboBox) -> Int { max(1, rows.count) }
     func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any? {
+        if rows.isEmpty, index == 0 {
+            return NSAttributedString(string: tr(.keyDashboardSearchNoResults), attributes: [
+                .foregroundColor: NSColor.secondaryLabelColor
+            ])
+        }
         guard rows.indices.contains(index) else { return nil }
         return rows[index].title
     }
@@ -901,6 +908,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         applying = true
         defer { applying = false }
         let query = stringValue
+        filteredQuery = query
         let editor = currentEditor() as? NSTextView
         let selectionRange = editor?.selectedRange()
         // Deselecting a native combo item also clears its text. Preserve the
@@ -927,7 +935,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
             guard let self else { return }
             self.candidatePresentationScheduled = false
             guard self.isEnabled, self.window != nil, let editor = self.currentEditor() as? NSTextView,
-                  !editor.hasMarkedText(), !self.rows.isEmpty, !self.candidatesAreVisible else { return }
+                  !editor.hasMarkedText(), !self.candidatesAreVisible else { return }
             // Use AppKit's public expanded-state API, preserving the native
             // combo list instead of private popUp: selectors or a custom UI.
             self.cell?.setAccessibilityExpanded(true)
@@ -944,7 +952,19 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
     func comboBoxSelectionDidChange(_ notification: Notification) {
-        guard !applying, rows.indices.contains(indexOfSelectedItem) else { return }
+        guard !applying else { return }
+        if rows.isEmpty {
+            // The gray status row is informational, never a timezone choice.
+            // AppKit may copy a clicked row into the field; retain the query.
+            applying = true
+            defer { applying = false }
+            let query = filteredQuery ?? stringValue
+            if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
+            stringValue = query
+            if let editor = currentEditor(), editor.string != query { editor.string = query }
+            return
+        }
+        guard rows.indices.contains(indexOfSelectedItem) else { return }
         commit(rows[indexOfSelectedItem].identifier)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

@@ -10366,3 +10366,35 @@ extension DashboardPreferencePagesTests {
         XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "America/New_York"))
     }
 }
+
+extension DashboardPreferencePagesTests {
+    func testEmptyCityCandidatesShowGrayStatusAndCannotCommitIt() throws {
+        let suite = "BalanceBarTests.CityEmptyStatus.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
+        let relay = DashboardPreferencePageRelay()
+        var commits = 0
+        relay.onTimeZone = { commits += 1; preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        combo.stringValue = "牛"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        XCTAssertEqual(combo.numberOfItems(in: combo), 1)
+        let status = try XCTUnwrap(combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)
+        XCTAssertEqual(status.string, tr(.keyDashboardSearchNoResults))
+        XCTAssertEqual(status.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, .secondaryLabelColor)
+        XCTAssertEqual(combo.comboBox(combo, indexOfItemWithStringValue: status.string), NSNotFound)
+        combo.selectItem(at: 0)
+        combo.comboBoxSelectionDidChange(Notification(name: NSComboBox.selectionDidChangeNotification, object: combo))
+        XCTAssertEqual(combo.stringValue, "牛")
+        XCTAssertEqual(commits, 0)
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "America/New_York"))
+        combo.stringValue = "Shanghai"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        XCTAssertEqual(combo.numberOfItems(in: combo), 1)
+        XCTAssertEqual(combo.comboBox(combo, objectValueForItemAt: 0) as? String, TimeZoneCityCatalog.title(for: "Asia/Shanghai"))
+        combo.commitText()
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+    }
+}
