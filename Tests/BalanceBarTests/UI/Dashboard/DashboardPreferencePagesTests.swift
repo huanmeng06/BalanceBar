@@ -10398,3 +10398,54 @@ extension DashboardPreferencePagesTests {
         XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
     }
 }
+
+extension DashboardPreferencePagesTests {
+    func testArrowNavigationKeepsFilteredCityListUntilReturn() throws {
+        let suite = "BalanceBarTests.CityArrows.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        var commits = 0
+        relay.onTimeZone = { commits += 1; preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        combo.stringValue = "new"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        let matches = TimeZoneCityCatalog.all.filter { TimeZoneCityCatalog.matches($0, query: "new") }
+        XCTAssertGreaterThan(matches.count, 1)
+        let titles = matches.map(\.title)
+        let editor = NSTextView()
+        for command in [#selector(NSResponder.moveDown(_:)), #selector(NSResponder.moveDown(_:)), #selector(NSResponder.moveUp(_:))] {
+            XCTAssertTrue(combo.control(combo, textView: editor, doCommandBy: command))
+            XCTAssertEqual(commits, 0)
+            XCTAssertEqual(combo.stringValue, "new")
+            XCTAssertEqual(combo.numberOfItems(in: combo), matches.count)
+            XCTAssertEqual((0..<matches.count).compactMap { combo.comboBox(combo, objectValueForItemAt: $0) as? String }, titles)
+        }
+        XCTAssertEqual(combo.indexOfSelectedItem, 0)
+        XCTAssertTrue(combo.control(combo, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        XCTAssertEqual(commits, 1)
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: matches[0].identifier))
+    }
+
+    func testEscapeCancelsHighlightedCityWithoutSaving() throws {
+        let suite = "BalanceBarTests.CityArrowCancel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        var commits = 0
+        relay.onTimeZone = { commits += 1; preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        combo.stringValue = "new"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        let editor = NSTextView()
+        _ = combo.control(combo, textView: editor, doCommandBy: #selector(NSResponder.moveDown(_:)))
+        _ = combo.control(combo, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
+        XCTAssertEqual(commits, 0)
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        XCTAssertEqual(combo.stringValue, TimeZoneCityCatalog.title(for: "Asia/Shanghai"))
+    }
+}

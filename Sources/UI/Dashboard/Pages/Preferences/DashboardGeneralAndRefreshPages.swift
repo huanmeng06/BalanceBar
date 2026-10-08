@@ -842,8 +842,11 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     private var rows = TimeZoneCityCatalog.all
     private var applying = false
     private var filteredQuery: String?
+    private var pendingCandidate: TimeZoneCity?
+    private var navigatingCandidates = false
     private(set) var candidatesAreVisible = false
     private var candidatePresentationScheduled = false
+    private var candidatePresentationVersion = 0
 
     init(preferences: AppPreferences, relay: DashboardPreferencePageRelay) {
         self.preferences = preferences
@@ -875,9 +878,12 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     func apply(_ selection: AppTimeZoneSelection) {
         applying = true
         defer { applying = false }
+        candidatePresentationVersion += 1
+        candidatePresentationScheduled = false
         isEnabled = selection != .system
         rows = TimeZoneCityCatalog.all
         filteredQuery = nil
+        pendingCandidate = nil
         reloadData()
         if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
         stringValue = TimeZoneCityCatalog.displayTitle(for: selection)
@@ -904,9 +910,12 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
     func controlTextDidChange(_ notification: Notification) {
-        guard !applying else { return }
+        guard !applying, !navigatingCandidates else { return }
+        if candidatesAreVisible, let event = NSApp.currentEvent,
+           event.type == .keyDown, [125, 126].contains(event.keyCode) { return }
         applying = true
         defer { applying = false }
+        pendingCandidate = nil
         let query = stringValue
         filteredQuery = query
         let editor = currentEditor() as? NSTextView
@@ -931,8 +940,9 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     private func scheduleCandidates() {
         guard !candidatePresentationScheduled else { return }
         candidatePresentationScheduled = true
+        let version = candidatePresentationVersion
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.candidatePresentationVersion == version else { return }
             self.candidatePresentationScheduled = false
             guard self.isEnabled, self.window != nil, let editor = self.currentEditor() as? NSTextView,
                   !editor.hasMarkedText(), !self.candidatesAreVisible else { return }
@@ -943,12 +953,71 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
     func comboBoxWillPopUp(_ notification: Notification) { candidatesAreVisible = true }
-    func comboBoxWillDismiss(_ notification: Notification) { candidatesAreVisible = false }
+    func comboBoxWillDismiss(_ notification: Notification) {
+        candidatesAreVisible = false
+        if let event = NSApp.currentEvent, event.type == .keyDown,
+           [36, 76].contains(event.keyCode), let candidate = pendingCandidate {
+            confirmCandidateAfterTracking(candidate)
+        } else {
+            pendingCandidate = nil
+            if let event = NSApp.currentEvent, event.type == .keyDown, event.keyCode == 53 {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.apply(self.preferences.displayTimeZoneSelection)
+                }
+            }
+        }
+    }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.moveDown(_:)) {
+            navigateCandidates(direction: 1)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.moveUp(_:)) {
+            navigateCandidates(direction: -1)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            pendingCandidate = nil
+            cell?.setAccessibilityExpanded(false)
+            apply(preferences.displayTimeZoneSelection)
+            return true
+        }
         guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
         commitText()
         return true
+    }
+
+    private func navigateCandidates(direction: Int) {
+        guard !applying, !rows.isEmpty else { return }
+        let previous = pendingCandidate.flatMap { candidate in rows.firstIndex { $0.identifier == candidate.identifier } }
+        let index = previous.map { min(rows.count - 1, max(0, $0 + direction)) } ?? (direction > 0 ? 0 : rows.count - 1)
+        navigatingCandidates = true
+        defer { navigatingCandidates = false }
+        pendingCandidate = rows[index]
+        selectItem(at: index)
+        scrollItemAtIndexToVisible(index)
+        preserveFilterQuery()
+        scheduleCandidates()
+    }
+
+    private func preserveFilterQuery() {
+        guard let query = filteredQuery else { return }
+        stringValue = query
+        if let editor = currentEditor() as? NSTextView {
+            if editor.string != query { editor.string = query }
+            editor.setSelectedRange(NSRange(location: (query as NSString).length, length: 0))
+        }
+    }
+
+    private func confirmCandidateAfterTracking(_ candidate: TimeZoneCity) {
+        pendingCandidate = nil
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.commit(candidate.identifier)
+            self.apply(self.preferences.displayTimeZoneSelection)
+        }
     }
 
     func comboBoxSelectionDidChange(_ notification: Notification) {
@@ -965,17 +1034,23 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
             return
         }
         guard rows.indices.contains(indexOfSelectedItem) else { return }
-        commit(rows[indexOfSelectedItem].identifier)
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.apply(self.preferences.displayTimeZoneSelection)
+        let candidate = rows[indexOfSelectedItem]
+        pendingCandidate = candidate
+        // Native selection notifications also fire on arrow-key highlights.
+        // Only a row click confirms here; keyboard navigation keeps the filter.
+        if !navigatingCandidates, let event = NSApp.currentEvent,
+           [.leftMouseDown, .leftMouseUp].contains(event.type)
+            || (event.type == .keyDown && [36, 76].contains(event.keyCode)) {
+            confirmCandidateAfterTracking(candidate)
+        } else {
+            preserveFilterQuery()
         }
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
         if (notification.userInfo?["NSTextMovement"] as? Int) == NSReturnTextMovement {
             commitText()
-        } else {
+        } else if !candidatesAreVisible {
             apply(preferences.displayTimeZoneSelection)
         }
     }
@@ -984,6 +1059,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         guard !applying else { return }
         let query = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let city: TimeZoneCity? = {
+            if let pendingCandidate { return pendingCandidate }
             if let exact = rows.first(where: { $0.title.caseInsensitiveCompare(query) == .orderedSame }) { return exact }
             if candidatesAreVisible, rows.indices.contains(indexOfSelectedItem) { return rows[indexOfSelectedItem] }
             let exactNames = rows.filter { city in
@@ -995,6 +1071,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
             return !query.isEmpty && rows.count == 1 ? rows[0] : nil
         }()
         if let city {
+            pendingCandidate = nil
             commit(city.identifier)
             cell?.setAccessibilityExpanded(false)
             apply(preferences.displayTimeZoneSelection)
