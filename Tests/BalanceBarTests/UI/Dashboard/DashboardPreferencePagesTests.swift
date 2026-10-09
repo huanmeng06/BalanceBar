@@ -10604,7 +10604,7 @@ extension DashboardPreferencePagesTests {
         let relay = DashboardPreferencePageRelay()
         var commits = 0
         relay.onTimeZone = { commits += 1; preferences.displayTimeZoneSelection = $0 }
-        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: TestCityTimeZoneResolver())
         combo.stringValue = "new"
         combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
         let count = combo.numberOfItems(in: combo)
@@ -10615,7 +10615,8 @@ extension DashboardPreferencePagesTests {
         combo.commitText()
         XCTAssertEqual(commits, 0)
         XCTAssertEqual(combo.stringValue, "new")
-        XCTAssertEqual(combo.numberOfItems(in: combo), count)
+        XCTAssertEqual(combo.numberOfItems(in: combo), 1)
+        XCTAssertEqual((combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)?.string, tr(.keyTimeZoneLookupLoading))
         XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
     }
 
@@ -10775,6 +10776,7 @@ extension DashboardPreferencePagesTests {
         relay.onTimeZone = { commits += 1; preferences.displayTimeZoneSelection = $0 }
         let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
         let candidate = try XCTUnwrap(TimeZoneCityCatalog.all.first { $0.identifier == "America/New_York" })
+        combo.controlTextDidBeginEditing(Notification(name: NSControl.textDidBeginEditingNotification, object: combo))
         combo.confirmCandidateAfterTracking(candidate)
         preferences.displayTimeZoneSelection = .system
         let done = expectation(description: "queued candidate discarded")
@@ -10839,5 +10841,196 @@ extension DashboardPreferencePagesTests {
         combo.commitText()
         XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Calcutta"))
         XCTAssertTrue(resolver.queries.isEmpty)
+    }
+}
+
+extension DashboardPreferencePagesTests {
+    func testCityLookupLoadingReplacesOldRowsAndBlocksEveryOldCommitPath() throws {
+        let suite = "BalanceBarTests.LoadingCandidateState.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        var commits = 0
+        relay.onTimeZone = { commits += 1; preferences.displayTimeZoneSelection = $0 }
+        let resolver = TestCityTimeZoneResolver()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: resolver)
+        combo.stringValue = "York"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        let oldCity = try XCTUnwrap(TimeZoneCityCatalog.all.first { $0.identifier == "America/New_York" })
+        XCTAssertEqual(combo.comboBox(combo, objectValueForItemAt: 0) as? String, oldCity.title)
+        combo.commitText()
+        XCTAssertEqual(combo.numberOfItems(in: combo), 1)
+        XCTAssertEqual((combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)?.string, tr(.keyTimeZoneLookupLoading))
+        XCTAssertNil(combo.comboBox(combo, objectValueForItemAt: 1))
+        _ = combo.control(combo, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:)))
+        combo.selectItem(at: 0)
+        combo.comboBoxSelectionDidChange(Notification(name: NSComboBox.selectionDidChangeNotification, object: combo))
+        combo.confirmCandidateAfterTracking(oldCity)
+        combo.commitText()
+        let done = expectation(description: "no old commit")
+        DispatchQueue.main.async { done.fulfill() }
+        wait(for: [done], timeout: 3)
+        XCTAssertEqual(commits, 0)
+        XCTAssertEqual(resolver.queries, ["York"])
+        XCTAssertEqual(combo.stringValue, "York")
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        finishCityLookup(resolver, with: .success([.init(title: "York - England - United Kingdom", identifier: "Europe/London", isExactNameMatch: true, requiresConfirmation: true)]))
+        XCTAssertEqual(combo.comboBox(combo, objectValueForItemAt: 0) as? String, "York - England - United Kingdom")
+        _ = combo.control(combo, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:)))
+        combo.commitText()
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Europe/London"))
+    }
+
+    func testFailedAndEmptyLookupStatesCannotExposeOldCatalogChoices() throws {
+        let suite = "BalanceBarTests.LookupFailureState.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let resolver = TestCityTimeZoneResolver()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: resolver)
+        combo.stringValue = "York"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        combo.commitText()
+        finishCityLookup(resolver, with: .failure(.unavailable))
+        XCTAssertEqual((combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)?.string, tr(.keyTimeZoneLookupFailed))
+        XCTAssertNil(combo.comboBox(combo, objectValueForItemAt: 1))
+        _ = combo.control(combo, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:)))
+        combo.commitText()
+        XCTAssertEqual((combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)?.string, tr(.keyTimeZoneLookupLoading))
+        finishCityLookup(resolver, with: .success([]), at: 1)
+        XCTAssertEqual((combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)?.string, tr(.keyDashboardSearchNoResults))
+        XCTAssertNil(combo.comboBox(combo, objectValueForItemAt: 1))
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        XCTAssertEqual(combo.stringValue, "York")
+    }
+
+    func testBlurSynchronouslyCancelsLookupBeforeAlreadyQueuedSuccess() throws {
+        let suite = "BalanceBarTests.LookupBlurOrdering.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        var commits = 0
+        relay.onTimeZone = { commits += 1; preferences.displayTimeZoneSelection = $0 }
+        let resolver = TestCityTimeZoneResolver()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: resolver)
+        combo.stringValue = "夏延"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        combo.commitText()
+        // The old success task is ahead of blur's restore task in the queue.
+        resolver.finish(.success([.init(title: "夏延", identifier: "America/Denver", isExactNameMatch: true)]))
+        let cancelledBefore = resolver.cancellationCount
+        combo.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification, object: combo))
+        XCTAssertGreaterThan(resolver.cancellationCount, cancelledBefore)
+        let successProcessed = expectation(description: "queued success precedes restore")
+        DispatchQueue.main.async { successProcessed.fulfill() }
+        wait(for: [successProcessed], timeout: 3)
+        XCTAssertEqual(commits, 0)
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        XCTAssertEqual(combo.stringValue, TimeZoneCityCatalog.title(for: "Asia/Shanghai"))
+    }
+
+    func testBlurPreservesOnlyAnAlreadyConfirmedRowClick() throws {
+        let suite = "BalanceBarTests.ConfirmedRowBlur.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        var commits = 0
+        relay.onTimeZone = { commits += 1; preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        combo.stringValue = "new"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        let candidate = try XCTUnwrap(TimeZoneCityCatalog.all.first { $0.identifier == "America/New_York" })
+        combo.confirmCandidateAfterTracking(candidate)
+        combo.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification, object: combo))
+        let done = expectation(description: "explicit row confirmation completes")
+        DispatchQueue.main.async { done.fulfill() }
+        wait(for: [done], timeout: 3)
+        XCTAssertEqual(commits, 1)
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "America/New_York"))
+    }
+
+    func testUniqueOfflineCityRequiresCountryAndStateConfirmation() throws {
+        let suite = "BalanceBarTests.OfflineConfirmation.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let resolver = TestCityTimeZoneResolver()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: resolver)
+        let matches = CityTimeZoneGazetteer.lookup(city: "夏延", locale: Locale(identifier: "zh_CN"))
+        XCTAssertEqual(matches.count, 1)
+        XCTAssertTrue(try XCTUnwrap(matches.first).requiresConfirmation)
+        combo.stringValue = "夏延"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        combo.commitText()
+        finishCityLookup(resolver, with: .success(matches))
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        XCTAssertTrue(try XCTUnwrap(combo.comboBox(combo, objectValueForItemAt: 0) as? String).contains("怀俄明州"))
+        combo.commitText()
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        _ = combo.control(combo, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:)))
+        combo.commitText()
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "America/Denver"))
+    }
+}
+
+extension DashboardPreferencePagesTests {
+    func testRefocusingBeforeBlurRestoreCanStartAFreshLookup() throws {
+        let suite = "BalanceBarTests.LookupRefocus.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let resolver = TestCityTimeZoneResolver()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: resolver)
+        combo.stringValue = "York"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        combo.commitText()
+        combo.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification, object: combo))
+        combo.controlTextDidBeginEditing(Notification(name: NSControl.textDidBeginEditingNotification, object: combo))
+        combo.commitText()
+        XCTAssertEqual(resolver.queries, ["York", "York"])
+        finishCityLookup(resolver, with: .success([.init(title: "old York", identifier: "America/New_York", isExactNameMatch: true)]))
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        XCTAssertEqual(combo.stringValue, "York")
+        XCTAssertEqual((combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)?.string, tr(.keyTimeZoneLookupLoading))
+        finishCityLookup(resolver, with: .success([.init(title: "York - England - United Kingdom", identifier: "Europe/London", isExactNameMatch: true, requiresConfirmation: true)]), at: 1)
+        XCTAssertEqual(combo.comboBox(combo, objectValueForItemAt: 0) as? String, "York - England - United Kingdom")
+    }
+
+    func testNewTypingCancelsAnAlreadyQueuedCandidateConfirmation() throws {
+        let suite = "BalanceBarTests.CandidateThenTyping.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        combo.stringValue = "new"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        combo.confirmCandidateAfterTracking(try XCTUnwrap(TimeZoneCityCatalog.all.first { $0.identifier == "America/New_York" }))
+        combo.stringValue = "Tokyo"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        let done = expectation(description: "old candidate ignored")
+        DispatchQueue.main.async { done.fulfill() }
+        wait(for: [done], timeout: 3)
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        XCTAssertEqual(combo.stringValue, "Tokyo")
+        combo.commitText()
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Tokyo"))
     }
 }

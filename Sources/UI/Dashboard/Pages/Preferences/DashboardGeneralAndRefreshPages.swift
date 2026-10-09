@@ -839,11 +839,31 @@ enum DashboardRefreshPage {
 final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSComboBoxDelegate, SettingsRowAccessoryLayout {
     private let preferences: AppPreferences
     private weak var relay: DashboardPreferencePageRelay?
-    private var rows = TimeZoneCityCatalog.all
+    private enum CandidateState {
+        case results([TimeZoneCity], requireConfirmation: Bool)
+        case loading
+        case failed
+        case empty
+
+        var rows: [TimeZoneCity] {
+            if case .results(let rows, _) = self { return rows }
+            return []
+        }
+        var requiresConfirmation: Bool {
+            if case .results(_, let required) = self { return required }
+            return false
+        }
+        var isLoading: Bool {
+            if case .loading = self { return true }
+            return false
+        }
+    }
+    private enum EditingState { case idle, editing, confirming, cancelled }
+    private var candidateState: CandidateState = .results(TimeZoneCityCatalog.all, requireConfirmation: false)
+    private var rows: [TimeZoneCity] { candidateState.rows }
+    private var editingState: EditingState = .idle
     private let cityResolver: CityTimeZoneResolving
     private var lookupVersion = 0
-    private var lookupLoading = false
-    private var lookupFailed = false
     private var lookupCache: [String: [CityTimeZoneMatch]] = [:]
     private var applying = false
     private var filteredQuery: String?
@@ -851,9 +871,9 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     private var navigatingCandidates = false
     private var editingVersion = 0
     private var confirmationScheduled = false
+    private var confirmedTitle: String?
     private var appliedPreferenceRevision: UInt64 = 0
     private var appliedPreferenceSelection: AppTimeZoneSelection = .system
-    private var rowsRequireConfirmation = false
 
     private var preferenceIsCurrent: Bool {
         appliedPreferenceRevision == preferences.displayTimeZoneRevision
@@ -906,14 +926,15 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         defer { applying = false }
         appliedPreferenceRevision = preferences.displayTimeZoneRevision
         appliedPreferenceSelection = selection
-        rowsRequireConfirmation = false
+        editingState = .idle
+        confirmedTitle = nil
         editingVersion += 1
         confirmationScheduled = false
         cancelCityLookup()
         candidatePresentationVersion += 1
         candidatePresentationScheduled = false
         isEnabled = selection != .system
-        rows = TimeZoneCityCatalog.all
+        candidateState = .results(TimeZoneCityCatalog.all, requireConfirmation: false)
         filteredQuery = nil
         pendingCandidate = nil
         reloadData()
@@ -929,10 +950,15 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
 
     func numberOfItems(in comboBox: NSComboBox) -> Int { max(1, rows.count) }
     func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any? {
-        if rows.isEmpty, index == 0 {
-            return NSAttributedString(string: tr(lookupLoading ? .keyTimeZoneLookupLoading : lookupFailed ? .keyTimeZoneLookupFailed : .keyDashboardSearchNoResults), attributes: [
-                .foregroundColor: NSColor.secondaryLabelColor
-            ])
+        let status: LocalizationKey?
+        switch candidateState {
+        case .loading: status = .keyTimeZoneLookupLoading
+        case .failed: status = .keyTimeZoneLookupFailed
+        case .empty: status = .keyDashboardSearchNoResults
+        case .results: status = nil
+        }
+        if let status, index == 0 {
+            return NSAttributedString(string: tr(status), attributes: [.foregroundColor: NSColor.secondaryLabelColor])
         }
         guard rows.indices.contains(index) else { return nil }
         return rows[index].title
@@ -941,8 +967,26 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         rows.firstIndex { $0.title == string } ?? NSNotFound
     }
 
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        beginEditingIfNeeded()
+    }
+
+    private func beginEditingIfNeeded() {
+        guard editingState != .editing, editingState != .confirming else { return }
+        editingVersion += 1
+        editingState = .editing
+    }
+
     func controlTextDidChange(_ notification: Notification) {
         guard !applying, !navigatingCandidates else { return }
+        if editingState == .confirming {
+            // Native tracking can echo the clicked label into the field.
+            // A subsequent actual edit cancels that queued confirmation.
+            if let event = NSApp.currentEvent, [.leftMouseDown, .leftMouseUp].contains(event.type),
+               [confirmedTitle, filteredQuery].compactMap({ $0 }).contains(stringValue) { return }
+            editingState = .editing
+        }
+        beginEditingIfNeeded()
         // Composition belongs to the field editor until the IME commits it.
         // Never deselect/reload or rewrite its marked text.
         guard (currentEditor() as? NSTextView)?.hasMarkedText() != true else {
@@ -964,7 +1008,6 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         candidatePresentationScheduled = false
         cancelCityLookup()
         pendingCandidate = nil
-        rowsRequireConfirmation = false
         let query = stringValue
         filteredQuery = query
         let editor = currentEditor() as? NSTextView
@@ -972,7 +1015,8 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         // Deselecting a native combo item also clears its text. Preserve the
         // user's query and caret while removing the stale list selection.
         if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
-        rows = TimeZoneCityCatalog.all.filter { TimeZoneCityCatalog.matches($0, query: query) }
+        let filtered = TimeZoneCityCatalog.all.filter { TimeZoneCityCatalog.matches($0, query: query) }
+        candidateState = filtered.isEmpty ? .empty : .results(filtered, requireConfirmation: false)
         reloadData()
         stringValue = query
         if let editor, editor.string != query {
@@ -993,7 +1037,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         DispatchQueue.main.async { [weak self] in
             guard let self, self.candidatePresentationVersion == version else { return }
             self.candidatePresentationScheduled = false
-            guard self.isEnabled, self.window != nil, let editor = self.currentEditor() as? NSTextView,
+            guard self.editingState == .editing, self.isEnabled, self.window != nil, let editor = self.currentEditor() as? NSTextView,
                   !editor.hasMarkedText(), !self.candidatesAreVisible else { return }
             // Use AppKit's public expanded-state API, preserving the native
             // combo list instead of private popUp: selectors or a custom UI.
@@ -1001,7 +1045,11 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         }
     }
 
-    func comboBoxWillPopUp(_ notification: Notification) { candidatesAreVisible = true }
+    func comboBoxWillPopUp(_ notification: Notification) {
+        guard editingState != .cancelled else { return }
+        beginEditingIfNeeded()
+        candidatesAreVisible = true
+    }
     func comboBoxWillDismiss(_ notification: Notification) {
         candidatesAreVisible = false
         if let event = NSApp.currentEvent, event.type == .keyDown,
@@ -1041,8 +1089,8 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
     private func navigateCandidates(direction: Int) {
-        guard !applying, !rows.isEmpty else { return }
-        let previous = pendingCandidate.flatMap { candidate in rows.firstIndex { $0.identifier == candidate.identifier } }
+        guard !applying, editingState == .editing, !rows.isEmpty else { return }
+        let previous = pendingCandidate.flatMap { candidate in rows.firstIndex { $0.identifier == candidate.identifier && $0.title == candidate.title } }
         let index = previous.map { min(rows.count - 1, max(0, $0 + direction)) } ?? (direction > 0 ? 0 : rows.count - 1)
         navigatingCandidates = true
         defer { navigatingCandidates = false }
@@ -1063,13 +1111,17 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
     func confirmCandidateAfterTracking(_ candidate: TimeZoneCity) {
-        guard !confirmationScheduled, preferenceIsCurrent else { return }
+        guard !confirmationScheduled, preferenceIsCurrent, editingState == .editing,
+              rows.contains(where: { $0.identifier == candidate.identifier && $0.title == candidate.title }) else { return }
         pendingCandidate = nil
         confirmationScheduled = true
+        confirmedTitle = candidate.title
+        editingState = .confirming
+        cancelCityLookup()
         let version = editingVersion
         let preferenceRevision = preferences.displayTimeZoneRevision
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.editingVersion == version, self.confirmationScheduled,
+            guard let self, self.editingVersion == version, self.confirmationScheduled, self.editingState == .confirming,
                   self.preferences.displayTimeZoneRevision == preferenceRevision, self.preferenceIsCurrent,
                   self.isEnabled, (self.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
             self.confirmationScheduled = false
@@ -1079,7 +1131,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
     func comboBoxSelectionDidChange(_ notification: Notification) {
-        guard !applying, (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
+        guard !applying, editingState == .editing, (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
         if rows.isEmpty {
             // The gray status row is informational, never a timezone choice.
             // AppKit may copy a clicked row into the field; retain the query.
@@ -1109,23 +1161,32 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
-        guard (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
         if (notification.userInfo?["NSTextMovement"] as? Int) == NSReturnTextMovement {
+            guard (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
             commitText()
-        } else {
-            // Let native selection/dismissal callbacks finish before deciding
-            // whether focus loss cancels this edit.
-            let version = editingVersion
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.editingVersion == version,
-                      !self.confirmationScheduled, !self.candidatesAreVisible else { return }
-                self.apply(self.preferences.displayTimeZoneSelection)
-            }
+            return
+        }
+        // Cancellation is synchronous, independent of callback queue order.
+        // Only a row click already confirmed by selection tracking retains
+        // its own queued commit; blur never grants confirmation to a lookup.
+        cancelCityLookup()
+        candidatePresentationVersion += 1
+        candidatePresentationScheduled = false
+        if editingState == .confirming, confirmationScheduled { return }
+        editingState = .cancelled
+        candidateState = .empty
+        editingVersion += 1
+        pendingCandidate = nil
+        let version = editingVersion
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.editingVersion == version, self.editingState == .cancelled else { return }
+            self.cell?.setAccessibilityExpanded(false)
+            self.apply(self.preferences.displayTimeZoneSelection)
         }
     }
 
     @objc func commitText() {
-        guard !applying, !confirmationScheduled, preferenceIsCurrent,
+        guard !applying, !confirmationScheduled, editingState == .editing, !candidateState.isLoading, preferenceIsCurrent,
               (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
         let query = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if let identifier = AppTimeZoneSelection.regionIdentifiers.first(where: { $0.caseInsensitiveCompare(query) == .orderedSame }) {
@@ -1137,7 +1198,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         let city: TimeZoneCity? = {
             if let pendingCandidate { return pendingCandidate }
             if let exact = rows.first(where: { $0.title.caseInsensitiveCompare(query) == .orderedSame }) { return exact }
-            guard !rowsRequireConfirmation else { return nil }
+            guard !candidateState.requiresConfirmation else { return nil }
             let exactNames = rows.filter { city in
                 let localizedCity = city.title.components(separatedBy: " - ").first ?? city.title
                 let englishCity = city.identifier.split(separator: "/").last.map(String.init)?.replacingOccurrences(of: "_", with: " ") ?? city.identifier
@@ -1151,7 +1212,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
             commit(city.identifier)
             cell?.setAccessibilityExpanded(false)
             apply(preferences.displayTimeZoneSelection)
-        } else if rowsRequireConfirmation {
+        } else if candidateState.requiresConfirmation {
             // A geocoder suggestion is not the typed city. Return without
             // explicit navigation must never accept a fuzzy service result.
             scheduleCandidates()
@@ -1166,19 +1227,18 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     private func cancelCityLookup() {
         lookupVersion += 1
         cityResolver.cancel()
-        lookupLoading = false
-        lookupFailed = false
     }
 
     private func resolveSubmittedCity(_ query: String) {
-        guard !lookupLoading else { return }
+        guard editingState == .editing, !candidateState.isLoading else { return }
         let cacheKey = TimeZoneCityCatalog.locale.identifier + "|" + query.lowercased()
         if let matches = lookupCache[cacheKey] {
             applyResolvedCities(matches, query: query)
             return
         }
         cancelCityLookup()
-        lookupLoading = true
+        candidateState = .loading
+        pendingCandidate = nil
         filteredQuery = query
         let version = lookupVersion
         let preferenceRevision = preferences.displayTimeZoneRevision
@@ -1186,10 +1246,9 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         cityResolver.resolve(city: query, locale: TimeZoneCityCatalog.locale) { [weak self] result in
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.lookupVersion == version,
-                      self.filteredQuery == query, self.isEnabled, self.preferenceIsCurrent,
+                      self.filteredQuery == query, self.editingState == .editing, self.candidateState.isLoading, self.isEnabled, self.preferenceIsCurrent,
                       self.preferences.displayTimeZoneRevision == preferenceRevision,
                       (self.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-                self.lookupLoading = false
                 switch result {
                 case .success(let matches):
                     let supported = AppleCityTimeZoneResolver.uniqueSupportedMatches(matches)
@@ -1199,7 +1258,8 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
                     }
                     self.applyResolvedCities(supported, query: query)
                 case .failure:
-                    self.lookupFailed = true
+                    self.candidateState = .failed
+                    self.pendingCandidate = nil
                     self.refreshLookupRows()
                 }
             }
@@ -1207,14 +1267,13 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
     private func applyResolvedCities(_ matches: [CityTimeZoneMatch], query: String) {
-        lookupFailed = false
-        if matches.count == 1, let match = matches.first, match.isExactNameMatch {
+        if matches.count == 1, let match = matches.first, match.isExactNameMatch, !match.requiresConfirmation {
             commit(match.identifier)
             cell?.setAccessibilityExpanded(false)
             apply(preferences.displayTimeZoneSelection)
         } else {
-            rowsRequireConfirmation = !matches.isEmpty
-            rows = matches.map { TimeZoneCity(identifier: $0.identifier, title: $0.title, searchKey: $0.title.lowercased()) }
+            let resolved = matches.map { TimeZoneCity(identifier: $0.identifier, title: $0.title, searchKey: $0.title.lowercased()) }
+            candidateState = resolved.isEmpty ? .empty : .results(resolved, requireConfirmation: true)
             filteredQuery = query
             pendingCandidate = nil
             refreshLookupRows()

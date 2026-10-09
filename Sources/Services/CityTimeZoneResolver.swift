@@ -8,6 +8,7 @@ struct CityTimeZoneMatch: Equatable {
     let title: String
     let identifier: String
     var isExactNameMatch = false
+    var requiresConfirmation = false
 }
 
 enum CityTimeZoneLookupError: Error { case unavailable }
@@ -155,7 +156,7 @@ enum CityTimeZoneGazetteer {
                 let admin = localizedAdministration(country: countryCode,
                     code: String(fields[4]), name: String(fields[5]), locale: locale)
                 let parts = [query, admin, country].filter { !$0.isEmpty }
-                matches.append(CityTimeZoneMatch(title: "\(parts.joined(separator: " - ")) (\(identifier))", identifier: identifier, isExactNameMatch: true))
+                matches.append(CityTimeZoneMatch(title: "\(parts.joined(separator: " - ")) (\(identifier))", identifier: identifier, isExactNameMatch: true, requiresConfirmation: true))
                 searchStart = rowEnd
             }
         }
