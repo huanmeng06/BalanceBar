@@ -11034,3 +11034,25 @@ extension DashboardPreferencePagesTests {
         XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Tokyo"))
     }
 }
+
+extension DashboardPreferencePagesTests {
+    func testTypingNonCatalogCityStartsLookupWithoutReturn() throws {
+        let suite = "BalanceBarTests.CityLookupOnType.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        let resolver = TestCityTimeZoneResolver()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: resolver)
+        combo.stringValue = "夏延"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        let started = expectation(description: "lookup starts while typing")
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(400)) {
+            XCTAssertEqual(resolver.queries, ["夏延"])
+            XCTAssertEqual(combo.stringValue, "夏延")
+            started.fulfill()
+        }
+        wait(for: [started], timeout: 2)
+    }
+}

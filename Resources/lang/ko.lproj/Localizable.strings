@@ -490,13 +490,13 @@
 
 // Application display time zone
 "timezone.title" = "시간대";
-"timezone.description" = "도시 선택. 목록에 없는 도시는 Return으로 검색";
+"timezone.description" = "도시를 선택하세요. 목록에 없는 도시는 입력하는 동안 검색됩니다";
 "timezone.system" = "시스템 시간대 따르기";
 "timezone.regions" = "지역 / 도시";
 "timezone.offsets" = "UTC 고정 오프셋";
 "timezone.search" = "도시 또는 시간대 검색";
 
 "timezone.lookup_loading" = "도시 검색 중…";
-"timezone.lookup_failed" = "도시 검색을 사용할 수 없습니다. Return으로 재시도.";
+"timezone.lookup_failed" = "도시를 검색할 수 없습니다. 도시 이름을 다시 입력하세요";
 
 "codex.banked_reset.expired_value" = "%1$@에 만료됨";

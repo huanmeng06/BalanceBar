@@ -865,6 +865,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     private let cityResolver: CityTimeZoneResolving
     private var lookupVersion = 0
     private var lookupCache: [String: [CityTimeZoneMatch]] = [:]
+    private var lookupDebounceWorkItem: DispatchWorkItem?
     private var applying = false
     private var filteredQuery: String?
     private var pendingCandidate: TimeZoneCity?
@@ -1028,6 +1029,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
             }
         }
         scheduleCandidates()
+        scheduleCityLookupIfNeeded(query)
     }
 
     private func scheduleCandidates() {
@@ -1226,7 +1228,28 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
 
     private func cancelCityLookup() {
         lookupVersion += 1
+        lookupDebounceWorkItem?.cancel()
+        lookupDebounceWorkItem = nil
         cityResolver.cancel()
+    }
+
+    private func scheduleCityLookupIfNeeded(_ query: String) {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.count >= 2,
+              editingState == .editing,
+              !query.contains("/"),
+              !query.hasPrefix("+") && !query.hasPrefix("-") else { return }
+
+        lookupDebounceWorkItem?.cancel()
+        var work: DispatchWorkItem?
+        work = DispatchWorkItem { [weak self] in
+            guard let self, work?.isCancelled != true,
+                  self.editingState == .editing,
+                  self.filteredQuery == query else { return }
+            self.resolveSubmittedCity(query)
+        }
+        lookupDebounceWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(280), execute: work!)
     }
 
     private func resolveSubmittedCity(_ query: String) {
@@ -1236,6 +1259,7 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
             applyResolvedCities(matches, query: query)
             return
         }
+        lookupDebounceWorkItem = nil
         cancelCityLookup()
         candidateState = .loading
         pendingCandidate = nil

@@ -490,13 +490,13 @@
 
 // Application display time zone
 "timezone.title" = "Time zone";
-"timezone.description" = "Choose a city; press Return to look up cities not in the list";
+"timezone.description" = "Choose a city; cities outside the list are found while you type";
 "timezone.system" = "Follow system time zone";
 "timezone.regions" = "Regions / Cities";
 "timezone.offsets" = "UTC fixed offsets";
 "timezone.search" = "Search cities or time zones";
 
 "timezone.lookup_loading" = "Looking up city…";
-"timezone.lookup_failed" = "City lookup unavailable. Press Return to retry.";
+"timezone.lookup_failed" = "City lookup unavailable. Try editing the city name again.";
 
 "codex.banked_reset.expired_value" = "Expired %1$@";
