@@ -837,57 +837,22 @@ enum DashboardRefreshPage {
 /// AppKit owns the editable field and list. Only confirmed city matches commit;
 /// every display update is applied to this same mounted control instance.
 final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSComboBoxDelegate, SettingsRowAccessoryLayout {
+    private enum Item {
+        case header(String)
+        case city(TimeZoneCity)
+    }
     private let preferences: AppPreferences
     private weak var relay: DashboardPreferencePageRelay?
-    private enum CandidateState {
-        case results([TimeZoneCity], requireConfirmation: Bool)
-        case loading
-        case failed
-        case empty
-
-        var rows: [TimeZoneCity] {
-            if case .results(let rows, _) = self { return rows }
-            return []
-        }
-        var requiresConfirmation: Bool {
-            if case .results(_, let required) = self { return required }
-            return false
-        }
-        var isLoading: Bool {
-            if case .loading = self { return true }
-            return false
-        }
-    }
-    private enum EditingState { case idle, editing, confirming, cancelled }
-    private var candidateState: CandidateState = .results(TimeZoneCityCatalog.all, requireConfirmation: false)
-    private var rows: [TimeZoneCity] { candidateState.rows }
-    private var editingState: EditingState = .idle
-    private let cityResolver: CityTimeZoneResolving
-    private var lookupVersion = 0
-    private var lookupCache: [String: [CityTimeZoneMatch]] = [:]
-    private var lookupDebounceWorkItem: DispatchWorkItem?
-    private var applying = false
+    private var items: [Item] = []
     private var filteredQuery: String?
     private var pendingCandidate: TimeZoneCity?
+    private var applying = false
     private var navigatingCandidates = false
-    private var editingVersion = 0
-    private var confirmationScheduled = false
-    private var confirmedTitle: String?
-    private var appliedPreferenceRevision: UInt64 = 0
-    private var appliedPreferenceSelection: AppTimeZoneSelection = .system
-
-    private var preferenceIsCurrent: Bool {
-        appliedPreferenceRevision == preferences.displayTimeZoneRevision
-            && appliedPreferenceSelection == preferences.displayTimeZoneSelection
-    }
     private(set) var candidatesAreVisible = false
-    private var candidatePresentationScheduled = false
-    private var candidatePresentationVersion = 0
 
-    init(preferences: AppPreferences, relay: DashboardPreferencePageRelay, cityResolver: CityTimeZoneResolving = AppleCityTimeZoneResolver()) {
+    init(preferences: AppPreferences, relay: DashboardPreferencePageRelay) {
         self.preferences = preferences
         self.relay = relay
-        self.cityResolver = cityResolver
         super.init(frame: .zero)
         identifier = NSUserInterfaceItemIdentifier(AppPreferences.displayTimeZoneKey)
         usesDataSource = true
@@ -912,6 +877,11 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         apply(preferences.displayTimeZoneSelection)
     }
 
+
+    convenience init(preferences: AppPreferences, relay: DashboardPreferencePageRelay, cityResolver: CityTimeZoneResolving) {
+        self.init(preferences: preferences, relay: relay)
+    }
+
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -925,397 +895,161 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     func apply(_ selection: AppTimeZoneSelection) {
         applying = true
         defer { applying = false }
-        appliedPreferenceRevision = preferences.displayTimeZoneRevision
-        appliedPreferenceSelection = selection
-        editingState = .idle
-        confirmedTitle = nil
-        editingVersion += 1
-        confirmationScheduled = false
-        cancelCityLookup()
-        candidatePresentationVersion += 1
-        candidatePresentationScheduled = false
-        isEnabled = selection != .system
-        candidateState = .results(TimeZoneCityCatalog.all, requireConfirmation: false)
+        let cities = TimeZoneCityCatalog.all
+        items = Self.groupedItems(cities)
         filteredQuery = nil
         pendingCandidate = nil
+        isEnabled = selection != .system
         reloadData()
         if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
         stringValue = TimeZoneCityCatalog.displayTitle(for: selection)
         let identifier = selection.resolved().identifier
-        if let index = rows.firstIndex(where: { $0.identifier == identifier || $0.title == stringValue }) {
+        if let index = items.firstIndex(where: { if case .city(let city) = $0 { return city.identifier == identifier }; return false }) {
             selectItem(at: index)
             scrollItemAtIndexToVisible(index)
         }
         toolTip = selection.title()
     }
 
-    func numberOfItems(in comboBox: NSComboBox) -> Int { max(1, rows.count) }
+    private static func groupedItems(_ cities: [TimeZoneCity]) -> [Item] {
+        var result: [Item] = []
+        var current: String?
+        let ordered = cities.sorted {
+            let left = TimeZoneCityCatalog.continentTitle(for: $0.identifier)
+            let right = TimeZoneCityCatalog.continentTitle(for: $1.identifier)
+            if left != right { return left.localizedStandardCompare(right) == .orderedAscending }
+            return $0.title.localizedStandardCompare($1.title) == .orderedAscending
+        }
+        for city in ordered {
+            let header = TimeZoneCityCatalog.continentTitle(for: city.identifier)
+            if current != header { result.append(.header(header)); current = header }
+            result.append(.city(city))
+        }
+        return result
+    }
+
+    func numberOfItems(in comboBox: NSComboBox) -> Int { max(1, items.count) }
     func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any? {
-        let status: LocalizationKey?
-        switch candidateState {
-        case .loading: status = .keyTimeZoneLookupLoading
-        case .failed: status = .keyTimeZoneLookupFailed
-        case .empty: status = .keyDashboardSearchNoResults
-        case .results: status = nil
+        guard items.indices.contains(index) else { return nil }
+        switch items[index] {
+        case .header(let title):
+            return NSAttributedString(string: title, attributes: [
+                .font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize - 1),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ])
+        case .city(let city): return city.title
         }
-        if let status, index == 0 {
-            return NSAttributedString(string: tr(status), attributes: [.foregroundColor: NSColor.secondaryLabelColor])
-        }
-        guard rows.indices.contains(index) else { return nil }
-        return rows[index].title
     }
     func comboBox(_ comboBox: NSComboBox, indexOfItemWithStringValue string: String) -> Int {
-        rows.firstIndex { $0.title == string } ?? NSNotFound
+        items.firstIndex { if case .city(let city) = $0 { return city.title == string }; return false } ?? NSNotFound
     }
 
-    func controlTextDidBeginEditing(_ notification: Notification) {
-        beginEditingIfNeeded()
-    }
-
-    private func beginEditingIfNeeded() {
-        guard editingState != .editing, editingState != .confirming else { return }
-        editingVersion += 1
-        editingState = .editing
-    }
+    func controlTextDidBeginEditing(_ notification: Notification) {}
 
     func controlTextDidChange(_ notification: Notification) {
         guard !applying, !navigatingCandidates else { return }
-        if editingState == .confirming {
-            // Native tracking can echo the clicked label into the field.
-            // A subsequent actual edit cancels that queued confirmation.
-            if let event = NSApp.currentEvent, [.leftMouseDown, .leftMouseUp].contains(event.type),
-               [confirmedTitle, filteredQuery].compactMap({ $0 }).contains(stringValue) { return }
-            editingState = .editing
-        }
-        beginEditingIfNeeded()
-        // Composition belongs to the field editor until the IME commits it.
-        // Never deselect/reload or rewrite its marked text.
-        guard (currentEditor() as? NSTextView)?.hasMarkedText() != true else {
-            editingVersion += 1
-            candidatePresentationVersion += 1
-            candidatePresentationScheduled = false
-            confirmationScheduled = false
-            pendingCandidate = nil
-            cancelCityLookup()
-            return
-        }
-        if candidatesAreVisible, let event = NSApp.currentEvent,
-           event.type == .keyDown, [125, 126].contains(event.keyCode) { return }
+        guard (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
         applying = true
         defer { applying = false }
-        editingVersion += 1
-        confirmationScheduled = false
-        candidatePresentationVersion += 1
-        candidatePresentationScheduled = false
-        cancelCityLookup()
         pendingCandidate = nil
         let query = stringValue
         filteredQuery = query
-        let editor = currentEditor() as? NSTextView
-        let selectionRange = editor?.selectedRange()
-        // Deselecting a native combo item also clears its text. Preserve the
-        // user's query and caret while removing the stale list selection.
         if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
-        let filtered = TimeZoneCityCatalog.all.filter { TimeZoneCityCatalog.matches($0, query: query) }
-        candidateState = filtered.isEmpty ? .empty : .results(filtered, requireConfirmation: false)
+        let cities = TimeZoneCityCatalog.all.filter { TimeZoneCityCatalog.matches($0, query: query) }
+        items = Self.groupedItems(cities)
         reloadData()
         stringValue = query
-        if let editor, editor.string != query {
-            editor.string = query
-            if let selectionRange {
-                let length = (query as NSString).length
-                let location = min(selectionRange.location, length)
-                editor.setSelectedRange(NSRange(location: location, length: min(selectionRange.length, length - location)))
-            }
-        }
         scheduleCandidates()
-        scheduleCityLookupIfNeeded(query)
     }
 
     private func scheduleCandidates() {
-        guard !candidatePresentationScheduled else { return }
-        candidatePresentationScheduled = true
-        let version = candidatePresentationVersion
+        guard window != nil, currentEditor() != nil else { return }
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.candidatePresentationVersion == version else { return }
-            self.candidatePresentationScheduled = false
-            guard self.editingState == .editing, self.isEnabled, self.window != nil, let editor = self.currentEditor() as? NSTextView,
-                  !editor.hasMarkedText(), !self.candidatesAreVisible else { return }
-            // Use AppKit's public expanded-state API, preserving the native
-            // combo list instead of private popUp: selectors or a custom UI.
+            guard let self, !self.candidatesAreVisible,
+                  (self.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
             self.cell?.setAccessibilityExpanded(true)
         }
     }
 
-    func comboBoxWillPopUp(_ notification: Notification) {
-        guard editingState != .cancelled else { return }
-        beginEditingIfNeeded()
-        candidatesAreVisible = true
-    }
-    func comboBoxWillDismiss(_ notification: Notification) {
-        candidatesAreVisible = false
-        if let event = NSApp.currentEvent, event.type == .keyDown,
-           [36, 76].contains(event.keyCode), let candidate = pendingCandidate {
-            confirmCandidateAfterTracking(candidate)
-        } else {
-            pendingCandidate = nil
-            if let event = NSApp.currentEvent, event.type == .keyDown, event.keyCode == 53 {
-                let version = editingVersion
-                DispatchQueue.main.async { [weak self] in
-                    guard let self, self.editingVersion == version else { return }
-                    self.apply(self.preferences.displayTimeZoneSelection)
-                }
-            }
-        }
-    }
+    func comboBoxWillPopUp(_ notification: Notification) { candidatesAreVisible = true }
+    func comboBoxWillDismiss(_ notification: Notification) { candidatesAreVisible = false; pendingCandidate = nil }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         guard !textView.hasMarkedText() else { return false }
-        if commandSelector == #selector(NSResponder.moveDown(_:)) {
-            navigateCandidates(direction: 1)
-            return true
-        }
-        if commandSelector == #selector(NSResponder.moveUp(_:)) {
-            navigateCandidates(direction: -1)
-            return true
-        }
+        if commandSelector == #selector(NSResponder.moveDown(_:)) { navigateCandidates(1); return true }
+        if commandSelector == #selector(NSResponder.moveUp(_:)) { navigateCandidates(-1); return true }
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            pendingCandidate = nil
-            cell?.setAccessibilityExpanded(false)
-            apply(preferences.displayTimeZoneSelection)
-            return true
+            apply(preferences.displayTimeZoneSelection); return true
         }
         guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
-        commitText()
-        return true
+        commitText(); return true
     }
 
-    private func navigateCandidates(direction: Int) {
-        guard !applying, editingState == .editing, !rows.isEmpty else { return }
-        let previous = pendingCandidate.flatMap { candidate in rows.firstIndex { $0.identifier == candidate.identifier && $0.title == candidate.title } }
-        let index = previous.map { min(rows.count - 1, max(0, $0 + direction)) } ?? (direction > 0 ? 0 : rows.count - 1)
-        navigatingCandidates = true
-        defer { navigatingCandidates = false }
-        pendingCandidate = rows[index]
-        selectItem(at: index)
-        scrollItemAtIndexToVisible(index)
+    private func selectableIndices() -> [Int] {
+        items.indices.filter { if case .city = items[$0] { return true }; return false }
+    }
+    private func navigateCandidates(_ direction: Int) {
+        let selectable = selectableIndices()
+        guard !selectable.isEmpty else { return }
+        let current = pendingCandidate.flatMap { candidate in items.firstIndex { if case .city(let city) = $0 { return city.identifier == candidate.identifier }; return false } }
+        let position = current.flatMap { selectable.firstIndex(of: $0) }
+        let next = min(selectable.count - 1, max(0, (position ?? (direction > 0 ? -1 : selectable.count)) + direction))
+        let index = selectable[next]
+        guard case .city(let city) = items[index] else { return }
+        navigatingCandidates = true; pendingCandidate = city; selectItem(at: index); navigatingCandidates = false
         preserveFilterQuery()
-        scheduleCandidates()
     }
-
     private func preserveFilterQuery() {
         guard let query = filteredQuery else { return }
         stringValue = query
-        if let editor = currentEditor() as? NSTextView {
-            if editor.string != query { editor.string = query }
-            editor.setSelectedRange(NSRange(location: (query as NSString).length, length: 0))
-        }
+        (currentEditor() as? NSTextView)?.setSelectedRange(NSRange(location: (query as NSString).length, length: 0))
     }
 
     func confirmCandidateAfterTracking(_ candidate: TimeZoneCity) {
-        guard !confirmationScheduled, preferenceIsCurrent, editingState == .editing,
-              rows.contains(where: { $0.identifier == candidate.identifier && $0.title == candidate.title }) else { return }
-        pendingCandidate = nil
-        confirmationScheduled = true
-        confirmedTitle = candidate.title
-        editingState = .confirming
-        cancelCityLookup()
-        let version = editingVersion
-        let preferenceRevision = preferences.displayTimeZoneRevision
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.editingVersion == version, self.confirmationScheduled, self.editingState == .confirming,
-                  self.preferences.displayTimeZoneRevision == preferenceRevision, self.preferenceIsCurrent,
-                  self.isEnabled, (self.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-            self.confirmationScheduled = false
-            self.commit(candidate.identifier)
-            self.apply(self.preferences.displayTimeZoneSelection)
-        }
+        pendingCandidate = candidate
+        commit(candidate.identifier)
     }
 
     func comboBoxSelectionDidChange(_ notification: Notification) {
-        guard !applying, editingState == .editing, (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-        if rows.isEmpty {
-            // The gray status row is informational, never a timezone choice.
-            // AppKit may copy a clicked row into the field; retain the query.
-            applying = true
-            defer { applying = false }
-            let query = filteredQuery ?? stringValue
+        guard !applying, items.indices.contains(indexOfSelectedItem) else { return }
+        guard case .city(let city) = items[indexOfSelectedItem] else {
             if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
-            stringValue = query
-            if let editor = currentEditor(), editor.string != query { editor.string = query }
-            return
+            preserveFilterQuery(); return
         }
-        guard rows.indices.contains(indexOfSelectedItem) else { return }
-        let candidate = rows[indexOfSelectedItem]
-        // Opening a native popup may select a row automatically. Only user
-        // navigation stages a candidate, and only a click confirms it here.
-        if !navigatingCandidates, let event = NSApp.currentEvent {
-            if [.leftMouseDown, .leftMouseUp].contains(event.type), candidatesAreVisible,
-               event.window !== window || !bounds.contains(convert(event.locationInWindow, from: nil)) {
-                // The disclosure button may auto-select a row while opening.
-                // A click inside this field is not a click on a popup row.
-                confirmCandidateAfterTracking(candidate)
-            } else if event.type == .keyDown, [125, 126].contains(event.keyCode) {
-                pendingCandidate = candidate
-            }
-        }
-        preserveFilterQuery()
+        pendingCandidate = city
+        if !navigatingCandidates, let event = NSApp.currentEvent,
+           [.leftMouseDown, .leftMouseUp].contains(event.type) {
+            commit(city.identifier); apply(preferences.displayTimeZoneSelection)
+        } else { preserveFilterQuery() }
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
-        if (notification.userInfo?["NSTextMovement"] as? Int) == NSReturnTextMovement {
-            guard (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-            commitText()
-            return
-        }
-        // Cancellation is synchronous, independent of callback queue order.
-        // Only a row click already confirmed by selection tracking retains
-        // its own queued commit; blur never grants confirmation to a lookup.
-        cancelCityLookup()
-        candidatePresentationVersion += 1
-        candidatePresentationScheduled = false
-        if editingState == .confirming, confirmationScheduled { return }
-        editingState = .cancelled
-        candidateState = .empty
-        editingVersion += 1
-        pendingCandidate = nil
-        let version = editingVersion
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.editingVersion == version, self.editingState == .cancelled else { return }
-            self.cell?.setAccessibilityExpanded(false)
-            self.apply(self.preferences.displayTimeZoneSelection)
-        }
+        if (notification.userInfo?["NSTextMovement"] as? Int) == NSReturnTextMovement { commitText() }
+        else { pendingCandidate = nil; apply(preferences.displayTimeZoneSelection) }
     }
 
     @objc func commitText() {
-        guard !applying, !confirmationScheduled, editingState == .editing, !candidateState.isLoading, preferenceIsCurrent,
-              (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
+        guard !applying else { return }
         let query = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let identifier = AppTimeZoneSelection.regionIdentifiers.first(where: { $0.caseInsensitiveCompare(query) == .orderedSame }) {
-            commit(identifier)
-            cell?.setAccessibilityExpanded(false)
+        if let pendingCandidate {
+            commit(pendingCandidate.identifier)
             apply(preferences.displayTimeZoneSelection)
             return
         }
-        let city: TimeZoneCity? = {
-            if let pendingCandidate { return pendingCandidate }
-            if let exact = rows.first(where: { $0.title.caseInsensitiveCompare(query) == .orderedSame }) { return exact }
-            guard !candidateState.requiresConfirmation else { return nil }
-            let exactNames = rows.filter { city in
-                let localizedCity = city.title.components(separatedBy: " - ").first ?? city.title
-                let englishCity = city.identifier.split(separator: "/").last.map(String.init)?.replacingOccurrences(of: "_", with: " ") ?? city.identifier
-                return [localizedCity, englishCity, city.identifier].contains { $0.caseInsensitiveCompare(query) == .orderedSame }
-            }
-            if exactNames.count == 1 { return exactNames[0] }
-            return nil
-        }()
-        if let city {
-            pendingCandidate = nil
-            commit(city.identifier)
-            cell?.setAccessibilityExpanded(false)
-            apply(preferences.displayTimeZoneSelection)
-        } else if candidateState.requiresConfirmation {
-            // A geocoder suggestion is not the typed city. Return without
-            // explicit navigation must never accept a fuzzy service result.
-            scheduleCandidates()
-        } else if query.count >= 2 {
-            resolveSubmittedCity(query)
-        } else {
-            cell?.setAccessibilityExpanded(false)
-            apply(preferences.displayTimeZoneSelection)
+        let exactCities = items.compactMap { item -> TimeZoneCity? in
+            guard case .city(let city) = item else { return nil }
+            let name = city.title.components(separatedBy: " - ").first ?? city.title
+            guard name.caseInsensitiveCompare(query) == .orderedSame
+                    || city.identifier.caseInsensitiveCompare(query) == .orderedSame else { return nil }
+            return city
         }
-    }
-
-    private func cancelCityLookup() {
-        lookupVersion += 1
-        lookupDebounceWorkItem?.cancel()
-        lookupDebounceWorkItem = nil
-        cityResolver.cancel()
-    }
-
-    private func scheduleCityLookupIfNeeded(_ query: String) {
-        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.count >= 2,
-              editingState == .editing,
-              !query.contains("/"),
-              !query.hasPrefix("+") && !query.hasPrefix("-") else { return }
-
-        lookupDebounceWorkItem?.cancel()
-        var work: DispatchWorkItem?
-        work = DispatchWorkItem { [weak self] in
-            guard let self, work?.isCancelled != true,
-                  self.editingState == .editing,
-                  self.filteredQuery == query else { return }
-            self.resolveSubmittedCity(query)
-        }
-        lookupDebounceWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(280), execute: work!)
-    }
-
-    private func resolveSubmittedCity(_ query: String) {
-        guard editingState == .editing, !candidateState.isLoading else { return }
-        let cacheKey = TimeZoneCityCatalog.locale.identifier + "|" + query.lowercased()
-        if let matches = lookupCache[cacheKey] {
-            applyResolvedCities(matches, query: query)
-            return
-        }
-        lookupDebounceWorkItem = nil
-        cancelCityLookup()
-        candidateState = .loading
-        pendingCandidate = nil
-        filteredQuery = query
-        let version = lookupVersion
-        let preferenceRevision = preferences.displayTimeZoneRevision
-        refreshLookupRows()
-        cityResolver.resolve(city: query, locale: TimeZoneCityCatalog.locale) { [weak self] result in
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.lookupVersion == version,
-                      self.filteredQuery == query, self.editingState == .editing, self.candidateState.isLoading, self.isEnabled, self.preferenceIsCurrent,
-                      self.preferences.displayTimeZoneRevision == preferenceRevision,
-                      (self.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-                switch result {
-                case .success(let matches):
-                    let supported = AppleCityTimeZoneResolver.uniqueSupportedMatches(matches)
-                    if !supported.isEmpty {
-                        if self.lookupCache.count >= 16 { self.lookupCache.removeAll() }
-                        self.lookupCache[cacheKey] = supported
-                    }
-                    self.applyResolvedCities(supported, query: query)
-                case .failure:
-                    self.candidateState = .failed
-                    self.pendingCandidate = nil
-                    self.refreshLookupRows()
-                }
-            }
-        }
-    }
-
-    private func applyResolvedCities(_ matches: [CityTimeZoneMatch], query: String) {
-        if matches.count == 1, let match = matches.first, match.isExactNameMatch, !match.requiresConfirmation {
-            commit(match.identifier)
-            cell?.setAccessibilityExpanded(false)
-            apply(preferences.displayTimeZoneSelection)
-        } else {
-            let resolved = matches.map { TimeZoneCity(identifier: $0.identifier, title: $0.title, searchKey: $0.title.lowercased()) }
-            candidateState = resolved.isEmpty ? .empty : .results(resolved, requireConfirmation: true)
-            filteredQuery = query
-            pendingCandidate = nil
-            refreshLookupRows()
-        }
-    }
-
-    private func refreshLookupRows() {
-        applying = true
-        defer { applying = false }
-        if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
-        reloadData()
-        preserveFilterQuery()
-        scheduleCandidates()
+        guard exactCities.count == 1, let city = exactCities.first else { return }
+        commit(city.identifier); apply(preferences.displayTimeZoneSelection)
     }
 
     private func commit(_ identifier: String) {
         let selection = AppTimeZoneSelection.region(identifier: identifier)
-        guard preferenceIsCurrent, selection != preferences.displayTimeZoneSelection else { return }
+        guard selection != preferences.displayTimeZoneSelection else { return }
         relay?.onTimeZone?(selection)
     }
 }

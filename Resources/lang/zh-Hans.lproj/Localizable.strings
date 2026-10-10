@@ -490,13 +490,13 @@
 
 // Application display time zone
 "timezone.title" = "时区";
-"timezone.description" = "选择城市；列表中没有的城市会在输入时自动查找";
+"timezone.description" = "从列表中选择城市";
 "timezone.system" = "跟随系统时区";
 "timezone.regions" = "地区／城市";
 "timezone.offsets" = "UTC 固定偏移";
 "timezone.search" = "搜索城市或时区";
 
 "timezone.lookup_loading" = "正在查找城市…";
-"timezone.lookup_failed" = "城市查询暂不可用，请重新输入城市名称";
+"timezone.lookup_failed" = "只能选择列表中的城市";
 
 "codex.banked_reset.expired_value" = "%1$@ 已过期";

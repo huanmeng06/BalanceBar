@@ -10251,7 +10251,7 @@ extension DashboardPreferencePagesTests {
         preferences.displayTimeZoneSelection = .fixedOffset(minutes: 345)
         let relay = DashboardPreferencePageRelay()
         relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
-        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: TestCityTimeZoneResolver())
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
         XCTAssertEqual(combo.stringValue, "UTC+05:45")
         XCTAssertTrue(combo.isEnabled)
         combo.stringValue = "New York"
@@ -10604,7 +10604,7 @@ extension DashboardPreferencePagesTests {
         let relay = DashboardPreferencePageRelay()
         var commits = 0
         relay.onTimeZone = { commits += 1; preferences.displayTimeZoneSelection = $0 }
-        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: TestCityTimeZoneResolver())
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
         combo.stringValue = "new"
         combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
         let count = combo.numberOfItems(in: combo)
@@ -11054,5 +11054,73 @@ extension DashboardPreferencePagesTests {
             started.fulfill()
         }
         wait(for: [started], timeout: 2)
+    }
+}
+
+extension DashboardPreferencePagesTests {
+    func testExistingCatalogCityDoesNotStartExternalLookup() throws {
+        let suite = "BalanceBarTests.CatalogPriority.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        let resolver = TestCityTimeZoneResolver()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: resolver)
+        combo.stringValue = "上海"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        let settled = expectation(description: "catalog remains authoritative")
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(450)) {
+            XCTAssertTrue(combo.numberOfItems(in: combo) > 0)
+            XCTAssertTrue(resolver.queries.isEmpty)
+            XCTAssertTrue((combo.comboBox(combo, objectValueForItemAt: 0) as? String ?? "").contains("上海"))
+            settled.fulfill()
+        }
+        wait(for: [settled], timeout: 2)
+    }
+
+    func testMissingCatalogCityStartsExternalLookupAfterTyping() throws {
+        let suite = "BalanceBarTests.CatalogFallback.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        let resolver = TestCityTimeZoneResolver()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay, cityResolver: resolver)
+        combo.stringValue = "珠海"
+        combo.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: combo))
+        let settled = expectation(description: "missing city lookup starts")
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(450)) {
+            XCTAssertEqual(resolver.queries, ["珠海"])
+            XCTAssertEqual(combo.stringValue, "珠海")
+            XCTAssertEqual((combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)?.string, tr(.keyTimeZoneLookupLoading))
+            settled.fulfill()
+        }
+        wait(for: [settled], timeout: 2)
+    }
+}
+
+extension DashboardPreferencePagesTests {
+    func testTimeZoneListUsesNonSelectableContinentHeadersAndUTCFormat() throws {
+        let suite = "BalanceBarTests.ContinentHeaders.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        let first = try XCTUnwrap(combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)
+        XCTAssertFalse(first.string.isEmpty)
+        XCTAssertNotNil(first.attribute(.font, at: 0, effectiveRange: nil))
+        XCTAssertGreaterThanOrEqual(combo.indexOfSelectedItem, 0)
+        XCTAssertEqual(combo.comboBox(combo, indexOfItemWithStringValue: first.string), NSNotFound)
+        let cityIndex = (0..<combo.numberOfItems(in: combo)).first { index in
+            guard let value = combo.comboBox(combo, objectValueForItemAt: index) as? String else { return false }
+            return value.contains("UTC")
+        }
+        let city = try XCTUnwrap(cityIndex.flatMap { combo.comboBox(combo, objectValueForItemAt: $0) as? String })
+        XCTAssertTrue(city.contains(" - "))
+        XCTAssertTrue(city.contains("(UTC"))
     }
 }

@@ -1040,7 +1040,15 @@ enum TimeZoneCityCatalog {
             let localized = formatter.string(from: Date())
             let city = localized.isEmpty || localized == unknown ? english : localized
             let country = countryCode.map { locale.localizedString(forRegionCode: $0) ?? $0 }
-            let title = country.map { "\(city) - \($0)" } ?? city
+            let minutes = zone.secondsFromGMT(for: Date()) / 60
+            let sign = minutes < 0 ? "−" : "+"
+            let absolute = abs(minutes)
+            let hours = absolute / 60
+            let remainder = absolute % 60
+            let offset = remainder == 0
+                ? "UTC\(sign)\(hours)"
+                : String(format: "UTC%@%02d:%02d", sign, hours, remainder)
+            let title = country.map { "\(city) - \($0) (\(offset))" } ?? "\(city) (\(offset))"
             let legacyNames = aliases.filter { $0.value == identifier }.map(\.key).joined(separator: " ")
             result.append(TimeZoneCity(identifier: identifier, title: title,
                 searchKey: "\(title) \(english) \(identifier) \(legacyNames) \(identifier.replacingOccurrences(of: "_", with: " "))".lowercased()))
@@ -1057,6 +1065,24 @@ enum TimeZoneCityCatalog {
             }
         }
         return result.sorted { $0.title.compare($1.title, options: [.numeric, .caseInsensitive], locale: locale) == .orderedAscending }
+    }
+
+    static func continentTitle(for identifier: String, locale: Locale = locale) -> String {
+        let continent = identifier.split(separator: "/").first.map(String.init) ?? ""
+        let language = locale.language.languageCode?.identifier ?? "en"
+        let names: [String: (String, String)] = [
+            "Africa": ("非洲", "Africa"), "America": ("美洲", "Americas"),
+            "Antarctica": ("南极洲", "Antarctica"), "Arctic": ("北极地区", "Arctic"),
+            "Asia": ("亚洲", "Asia"), "Atlantic": ("大西洋地区", "Atlantic"),
+            "Australia": ("大洋洲", "Oceania"), "Europe": ("欧洲", "Europe"),
+            "Indian": ("印度洋地区", "Indian Ocean"), "Pacific": ("太平洋地区", "Pacific")
+        ]
+        let pair = names[continent] ?? (continent, continent)
+        return language == "zh" ? pair.0 : pair.1
+    }
+
+    static func grouped(_ cities: [TimeZoneCity], locale: Locale = locale) -> [(header: String, city: TimeZoneCity)] {
+        cities.map { (continentTitle(for: $0.identifier, locale: locale), $0) }
     }
 
     static func matches(_ city: TimeZoneCity, query: String, now: Date = Date()) -> Bool {
