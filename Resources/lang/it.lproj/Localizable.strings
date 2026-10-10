@@ -487,3 +487,16 @@
 "codex.reset_signal.tooltip_title" = "Segnale ufficiale di ripristino";
 "codex.reset_signal.tooltip_body" = "Probabilità del segnale ufficiale forte attuale o conto alla rovescia, distinti dalla previsione ordinaria a 24 / 48 ore.";
 "codex.reset_signal.tooltip_disclaimer" = "Il segnale non conferma il ripristino di questo account e non garantisce crediti. La quota effettiva proviene dall’API ufficiale.";
+
+// Application display time zone
+"timezone.title" = "Fuso orario";
+"timezone.description" = "Scegli una città; premi Invio per cercare città non in elenco";
+"timezone.system" = "Segui il fuso orario del sistema";
+"timezone.regions" = "Regioni / Città";
+"timezone.offsets" = "Scostamenti UTC fissi";
+"timezone.search" = "Cerca città o fusi orari";
+
+"timezone.lookup_loading" = "Ricerca della città…";
+"timezone.lookup_failed" = "Ricerca non disponibile. Premi Invio per riprovare.";
+
+"codex.banked_reset.expired_value" = "Scaduto il %1$@";

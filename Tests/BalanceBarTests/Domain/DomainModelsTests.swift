@@ -2608,3 +2608,46 @@ final class DomainModelsTests: XCTestCase {
         return value
     }
 }
+
+extension DomainModelsTests {
+    func testDisplayTimeZoneChangesLocalDayAndTooltipWithoutChangingCountdown() throws {
+        let parser = ISO8601DateFormatter()
+        let now = try XCTUnwrap(parser.date(from: "2026-01-01T18:00:00Z"))
+        let reset = try XCTUnwrap(parser.date(from: "2026-01-01T23:30:00Z"))
+        let utc = AppTimeZoneSelection.fixedOffset(minutes: 0).resolved()
+        let nepal = AppTimeZoneSelection.fixedOffset(minutes: 345).resolved()
+        let locale = Locale(identifier: "en_GB")
+        let calendar = Calendar(identifier: .gregorian)
+        let utcText = try XCTUnwrap(OfficialQuotaResetFormatter.string(for: reset, relativeTo: now, calendar: calendar, locale: locale, timeZone: utc))
+        let localText = try XCTUnwrap(OfficialQuotaResetFormatter.string(for: reset, relativeTo: now, calendar: calendar, locale: locale, timeZone: nepal))
+        XCTAssertTrue(utcText.contains("23:30"))
+        XCTAssertTrue(localText.contains("05:15"))
+        XCTAssertFalse(AppDisplayTime.calendar(timeZone: nepal).isDate(now, inSameDayAs: reset))
+        XCTAssertTrue(AppDisplayTime.calendar(timeZone: utc).isDate(now, inSameDayAs: reset))
+        let forecast = CodexResetForecast(probability24h: .unavailable, probability48h: .unavailable, confidence: .unavailable, updatedAt: reset, isCached: false, officialSignal: .init(probability: .unavailable, targetAt: reset))
+        let remaining = forecast.remainingCountdownSeconds(now: now)
+        let tooltipUTC = StatusItemController.codexResetForecastTooltip(for: forecast, language: .english, now: now, timeZone: utc)
+        let tooltipLocal = StatusItemController.codexResetForecastTooltip(for: forecast, language: .english, now: now, timeZone: nepal)
+        XCTAssertNotEqual(tooltipUTC.source, tooltipLocal.source)
+        XCTAssertEqual(forecast.remainingCountdownSeconds(now: now), remaining)
+        XCTAssertEqual(remaining, 19800)
+        XCTAssertEqual(forecast.officialSignal?.targetAt, reset)
+    }
+}
+
+extension DomainModelsTests {
+    func testExpiredBankedResetUsesSelectedZoneAndExpiredLabel() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let expired = now.addingTimeInterval(-3600)
+        let locale = Locale(identifier: "en_US")
+        let tokyo = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        let la = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let stamp = try XCTUnwrap(OfficialQuotaResetFormatter.bankedResetString(for: expired, relativeTo: now, locale: locale, timeZone: tokyo, includeExpired: true))
+        let text = try XCTUnwrap(CodexBankedResetFormatting.expiryText(for: expired, relativeTo: now, locale: locale, timeZone: tokyo))
+        XCTAssertEqual(text, tr(.keyCodexBankedResetExpiredValue, arguments: [stamp]))
+        XCTAssertNotEqual(text, CodexBankedResetFormatting.expiryText(for: expired, relativeTo: now, locale: locale, timeZone: la))
+        XCTAssertNil(OfficialQuotaResetFormatter.bankedResetString(for: expired, relativeTo: now))
+        XCTAssertNil(CodexBankedResetFormatting.remaining(until: expired, now: now))
+        XCTAssertNil(CodexBankedResetFormatting.expiryText(for: nil, relativeTo: now))
+    }
+}

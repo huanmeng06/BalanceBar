@@ -154,6 +154,7 @@ private struct DashboardSearchRuntimeIdentity: Equatable {
     var animationFrameRate: Int
     var previewPrimary: String
     var previewSecondary: String
+    var timeZoneTitle: String
 }
 
 struct DashboardCompositionActions {
@@ -440,6 +441,11 @@ final class DashboardCompositionController {
         dashboardPreferencePages.teardown()
         pageSession.teardown()
         windowController.teardown()
+    }
+
+    func refreshDisplayTimeZone(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
+        dashboardPreferencePages.refreshDisplayTimeZone()
+        refreshMountedPage(snapshot: snapshot, refreshDate: refreshDate, revision: revision)
     }
 
     func refreshMountedPage(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
@@ -1126,6 +1132,7 @@ final class DashboardCompositionController {
             showReset: preferences.showMenuBarReset,
             quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
+            timeZone: preferences.effectiveDisplayTimeZone,
             resolving: state.menuBarSnapshot
         )
         // Provider name is the in-memory cache. This path must not open SQLite.
@@ -1141,7 +1148,8 @@ final class DashboardCompositionController {
             animationMode: preferences.menuBarAnimationMode,
             animationFrameRate: preferences.menuBarAnimationFrameRate,
             previewPrimary: presentation.primary,
-            previewSecondary: presentation.secondary
+            previewSecondary: presentation.secondary,
+            timeZoneTitle: TimeZoneCityCatalog.displayTitle(for: state.preferences.displayTimeZoneSelection)
         )
         if identity == cachedSearchRuntimeIdentity {
             return cachedSearchRuntimeTexts
@@ -1157,7 +1165,8 @@ final class DashboardCompositionController {
             animationMode: identity.animationMode,
             animationFrameRate: identity.animationFrameRate,
             menuBarPreviewPrimary: identity.previewPrimary,
-            menuBarPreviewSecondary: identity.previewSecondary
+            menuBarPreviewSecondary: identity.previewSecondary,
+            timeZoneTitle: identity.timeZoneTitle
         )
         cachedSearchRuntimeIdentity = identity
         cachedSearchRuntimeTexts = texts
@@ -1332,7 +1341,8 @@ final class DashboardCompositionController {
             revision: revision,
             currentProviderIsOfficial: state.currentProviderIsOfficial(),
             quotaProgressColorConfiguration: state.preferences.quotaProgressColorConfiguration,
-            showQuotaProgressBar: state.preferences.showQuotaProgressBar
+            showQuotaProgressBar: state.preferences.showQuotaProgressBar,
+            displayTimeZone: state.preferences.effectiveDisplayTimeZone
         )
     }
 

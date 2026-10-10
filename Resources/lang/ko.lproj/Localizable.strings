@@ -487,3 +487,16 @@
 "codex.reset_signal.tooltip_title" = "공식 리셋 신호";
 "codex.reset_signal.tooltip_body" = "현재 공식 신호의 강한 신호 확률 또는 카운트다운이며 일반 24 / 48시간 예측과는 별개입니다.";
 "codex.reset_signal.tooltip_disclaimer" = "신호는 이 계정의 리셋 완료나 리셋 카드 지급을 보장하지 않습니다. 실제 할당량은 공식 API를 따릅니다.";
+
+// Application display time zone
+"timezone.title" = "시간대";
+"timezone.description" = "목록에서 도시를 선택하세요";
+"timezone.system" = "시스템 시간대 따르기";
+"timezone.regions" = "지역 / 도시";
+"timezone.offsets" = "UTC 고정 오프셋";
+"timezone.search" = "도시 또는 시간대 검색";
+
+"timezone.lookup_loading" = "도시 검색 중…";
+"timezone.lookup_failed" = "목록에 있는 도시만 선택할 수 있습니다";
+
+"codex.banked_reset.expired_value" = "%1$@에 만료됨";

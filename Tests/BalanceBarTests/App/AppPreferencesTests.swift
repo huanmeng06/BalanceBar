@@ -791,3 +791,96 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.showMenuBarIcon)
     }
 }
+
+extension AppPreferencesTests {
+    func testDisplayTimeZonePersistenceDistinguishesModesAndRejectsCorruption() throws {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .system)
+        for selection: AppTimeZoneSelection in [.region(identifier: "Asia/Calcutta"), .region(identifier: "Asia/Kolkata"), .region(identifier: "America/New_York"), .fixedOffset(minutes: -300), .fixedOffset(minutes: 345), .system] {
+            preferences.displayTimeZoneSelection = selection
+            XCTAssertEqual(AppPreferences(defaults: defaults).displayTimeZoneSelection, selection)
+        }
+        for invalid in [AppTimeZoneSelection.region(identifier: "unknown/zone"), .fixedOffset(minutes: 16), .fixedOffset(minutes: 900)] {
+            defaults.set(try JSONEncoder().encode(invalid), forKey: AppPreferences.displayTimeZoneKey)
+            XCTAssertEqual(preferences.displayTimeZoneSelection, .system)
+        }
+        defaults.set(Data("not JSON".utf8), forKey: AppPreferences.displayTimeZoneKey)
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .system)
+        XCTAssertTrue(PreferencesMigrationPlan.keys.contains(AppPreferences.displayTimeZoneKey))
+        let encoded = try JSONEncoder().encode(AppTimeZoneSelection.fixedOffset(minutes: 345))
+        let values = PreferencesMigrationPlan.selectedValues(target: [:], production: [AppPreferences.displayTimeZoneKey: encoded], local: [:])
+        XCTAssertEqual(values[AppPreferences.displayTimeZoneKey] as? Data, encoded)
+    }
+
+    func testDisplayTimeZoneResolvesSystemAndRegionRulesIndependently() throws {
+        let system = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
+        XCTAssertEqual(AppTimeZoneSelection.system.resolved(systemTimeZone: system), system)
+        let region = AppTimeZoneSelection.region(identifier: "America/New_York").resolved(systemTimeZone: system)
+        let winter = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-01-15T12:00:00Z"))
+        let summer = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-07-15T12:00:00Z"))
+        XCTAssertEqual(region.secondsFromGMT(for: winter), -5 * 3600)
+        XCTAssertEqual(region.secondsFromGMT(for: summer), -4 * 3600)
+        let fixed = AppTimeZoneSelection.fixedOffset(minutes: -300).resolved(systemTimeZone: system)
+        XCTAssertEqual(fixed.secondsFromGMT(for: summer), -5 * 3600)
+        for minutes in [330, 345, -720, 840] {
+            XCTAssertEqual(AppTimeZoneSelection.fixedOffset(minutes: minutes).resolved().secondsFromGMT(for: summer), minutes * 60)
+        }
+    }
+
+    func testSelectedLocalDayBoundaryHandlesBothDSTTransitions() throws {
+        let zone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let parser = ISO8601DateFormatter()
+        for (start, hours) in [("2026-03-08T05:00:00Z", 23), ("2026-11-01T04:00:00Z", 25)] {
+            let now = try XCTUnwrap(parser.date(from: start))
+            let end = try XCTUnwrap(AppDisplayTime.nextDayStart(after: now, timeZone: zone))
+            XCTAssertEqual(end.timeIntervalSince(now), Double(hours * 3600))
+        }
+        let now = try XCTUnwrap(parser.date(from: "2026-01-01T22:00:00Z"))
+        let end = try XCTUnwrap(AppDisplayTime.nextDayStart(after: now, timeZone: AppTimeZoneSelection.fixedOffset(minutes: 345).resolved()))
+        XCTAssertEqual(parser.string(from: end), "2026-01-02T18:15:00Z")
+    }
+
+    func testDisplayFormattersHaveNoSharedMutableZoneState() throws {
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-01-01T23:30:00Z"))
+        let utc = AppDisplayTime.formatter(timeZone: AppTimeZoneSelection.fixedOffset(minutes: 0).resolved())
+        let nepal = AppDisplayTime.formatter(timeZone: AppTimeZoneSelection.fixedOffset(minutes: 345).resolved())
+        XCTAssertEqual(utc.string(from: date), "23:30:00")
+        XCTAssertEqual(nepal.string(from: date), "05:15:00")
+        XCTAssertEqual(utc.string(from: date), "23:30:00")
+        XCTAssertFalse(utc === nepal)
+    }
+}
+
+extension AppPreferencesTests {
+    func testDisplayTimeZoneRevisionAdvancesSynchronouslyAndDetectsABA() throws {
+        let suite = "BalanceBarTests.ZoneRevision.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let before = preferences.displayTimeZoneRevision
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        XCTAssertEqual(preferences.displayTimeZoneRevision, before + 1)
+        preferences.displayTimeZoneSelection = .system
+        XCTAssertEqual(preferences.displayTimeZoneRevision, before + 2)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        XCTAssertEqual(preferences.displayTimeZoneRevision, before + 3)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        XCTAssertEqual(preferences.displayTimeZoneRevision, before + 3)
+    }
+
+    func testTurningOffSystemModeFreezesSupportedRegionOrOffset() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let region = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        XCTAssertEqual(AppTimeZoneSelection.manualSelection(systemTimeZone: region, now: now), .region(identifier: "America/New_York"))
+        for minutes in [0, 345, -300] {
+            let zone = try XCTUnwrap(TimeZone(secondsFromGMT: minutes * 60))
+            let selection = AppTimeZoneSelection.manualSelection(systemTimeZone: zone, now: now)
+            XCTAssertNotEqual(selection, .system)
+            XCTAssertTrue(selection.isSupported)
+            XCTAssertEqual(selection.resolved().secondsFromGMT(for: now), minutes * 60)
+        }
+        let unusual = try XCTUnwrap(TimeZone(secondsFromGMT: 37 * 60))
+        XCTAssertEqual(AppTimeZoneSelection.manualSelection(systemTimeZone: unusual, now: now), .fixedOffset(minutes: 0))
+    }
+}

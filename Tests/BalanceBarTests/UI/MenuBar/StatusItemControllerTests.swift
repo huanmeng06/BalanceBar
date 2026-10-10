@@ -2890,3 +2890,27 @@ final class StatusItemControllerTests: XCTestCase {
         )
     }
 }
+
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testMenuRefreshTimestampReformatsExistingSnapshotAfterZoneChange() throws {
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-01-01T23:30:00Z"))
+        let snapshot = Snapshot.balance("Test", 10, "USD", nil, date)
+        let controller = makeController()
+        defer { controller.teardown() }
+        let settings: (Int) -> StatusItemController.MenuBarSettings = { minutes in
+            .init(showIcon: true, showAmount: true, showReset: true, horizontalPadding: 6, keepMenuOpenAfterRefresh: true, displayTimeZone: AppTimeZoneSelection.fixedOffset(minutes: minutes).resolved())
+        }
+        controller.start(snapshot: snapshot, refreshDate: date, menuInput: makeMenuInput(), settings: settings(0))
+        func texts(_ view: NSView) -> [String] {
+            (view as? NSTextField).map { [$0.stringValue] } ?? view.subviews.flatMap(texts)
+        }
+        let before = controller.menuItemsForTesting.compactMap(\.view).flatMap(texts)
+        XCTAssertTrue(before.contains("23:30:00"))
+        controller.update(snapshot: snapshot, refreshDate: date, menuInput: makeMenuInput(), settings: settings(345))
+        let after = controller.menuItemsForTesting.compactMap(\.view).flatMap(texts)
+        XCTAssertTrue(after.contains("05:15:00"))
+        XCTAssertFalse(after.contains("23:30:00"))
+    }
+}

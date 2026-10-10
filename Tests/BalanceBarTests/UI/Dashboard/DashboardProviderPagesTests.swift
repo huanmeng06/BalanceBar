@@ -499,3 +499,23 @@ private func descendants<T: NSView>(of root: NSView, as type: T.Type) -> [T] {
         ([child].compactMap { $0 as? T }) + descendants(of: child, as: type)
     }
 }
+
+
+extension DashboardProviderPagesTests {
+    func testMountedProviderReformatsTimestampWithoutRequestingRefresh() throws {
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-01-01T23:30:00Z"))
+        let snapshot = Snapshot.balance("Current", 10, "USD", nil, date)
+        let choice = ProviderChoice(id: "current", name: "Current", isCurrent: true)
+        var requests = 0
+        let coordinator = DashboardProviderPageCoordinator(actions: .init(onRefresh: { requests += 1 }, onSwitchProvider: { _ in }, onOpenProvider: { _ in }, onSelectProvider: { _ in }, isSortAlphabetically: { false }, setSortAlphabetically: { _ in }))
+        let input: (Int, UInt64) -> DashboardProviderPageInput = { minutes, revision in
+            .init(choices: [choice], selectedProviderID: choice.id, snapshot: snapshot, quickSwitchSummaries: [:], refreshDate: date, revision: revision, displayTimeZone: AppTimeZoneSelection.fixedOffset(minutes: minutes).resolved())
+        }
+        let page = coordinator.makeDetailPage(choice: choice, input: input(0, 1))
+        XCTAssertTrue(descendants(of: page, as: NSTextField.self).contains { $0.stringValue.contains("23:30:00") })
+        _ = coordinator.refreshMountedPage(input: input(345, 2))
+        XCTAssertTrue(descendants(of: page, as: NSTextField.self).contains { $0.stringValue.contains("05:15:00") })
+        XCTAssertFalse(descendants(of: page, as: NSTextField.self).contains { $0.stringValue.contains("23:30:00") })
+        XCTAssertEqual(requests, 0)
+    }
+}

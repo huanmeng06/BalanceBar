@@ -487,3 +487,16 @@
 "codex.reset_signal.tooltip_title" = "Offizielles Reset-Signal";
 "codex.reset_signal.tooltip_body" = "Wahrscheinlichkeit oder Countdown des aktuellen starken offiziellen Signals, getrennt von der normalen 24-/48-Stunden-Prognose.";
 "codex.reset_signal.tooltip_disclaimer" = "Das Signal bestätigt keinen Reset dieses Kontos und garantiert keine Reset-Guthaben. Das tatsächliche Kontingent stammt aus der offiziellen API.";
+
+// Application display time zone
+"timezone.title" = "Zeitzone";
+"timezone.description" = "Stadt auswählen; mit Return weitere Städte suchen";
+"timezone.system" = "Systemzeitzone verwenden";
+"timezone.regions" = "Regionen / Städte";
+"timezone.offsets" = "Feste UTC-Abstände";
+"timezone.search" = "Städte oder Zeitzonen suchen";
+
+"timezone.lookup_loading" = "Stadt wird gesucht…";
+"timezone.lookup_failed" = "Stadtsuche nicht verfügbar. Mit Return erneut versuchen.";
+
+"codex.banked_reset.expired_value" = "Abgelaufen am %1$@";

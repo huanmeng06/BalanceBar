@@ -2081,6 +2081,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
         let showQuotaProgressBar: Bool
         let showBankedReset: Bool
+        let displayTimeZone: TimeZone
 
         init(
             showIcon: Bool,
@@ -2105,7 +2106,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
             quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
             showQuotaProgressBar: Bool = true,
-            showBankedReset: Bool = true
+            showBankedReset: Bool = true,
+            displayTimeZone: TimeZone = .autoupdatingCurrent
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -2128,6 +2130,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.quotaProgressColorConfiguration = quotaProgressColorConfiguration.normalized()
             self.showQuotaProgressBar = showQuotaProgressBar
             self.showBankedReset = showBankedReset
+            self.displayTimeZone = displayTimeZone
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -4025,7 +4028,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let reservedSecondary = settings.showAmount && effectiveSnapshot.kind == .official
             ? effectiveSnapshot.menuBarSecondary(
                 displayMode: settings.quotaResetDisplayMode,
-                lunaReserveResetTimeMode: settings.lunaReserveResetTimeMode
+                lunaReserveResetTimeMode: settings.lunaReserveResetTimeMode,
+                timeZone: settings.displayTimeZone
             )
             : ""
         let hasSecondary = settings.showAmount
@@ -4148,8 +4152,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             codexAnimationNeedsPostLayoutReconciliation = false
             updateActivityIcon()
         }
-        if button.toolTip != effectiveSnapshot.menuBarToolTip {
-            button.toolTip = effectiveSnapshot.menuBarToolTip
+        if button.toolTip != effectiveSnapshot.menuBarToolTip(timeZone: settings.displayTimeZone) {
+            button.toolTip = effectiveSnapshot.menuBarToolTip(timeZone: settings.displayTimeZone)
         }
         button.isHidden = false
         button.isEnabled = true
@@ -5706,7 +5710,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let lunaReserve = quotaPresentation.lunaReserve
         let bankedReset = quotaPresentation.bankedReset
         let nearestExpiryText = bankedReset.flatMap {
-            CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards)
+            CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards, timeZone: settings.displayTimeZone)
         }
         let subscription = menuInput.openAIAccount?.subscription
         let subscriptionTextWidth = subscription.map {
@@ -5742,7 +5746,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         provider.frame = layout.title
 
         if snapshot.kind == .official || snapshot.kind == .balance {
-            let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
+            let timeText = refreshDate.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
             let refreshTime = makeOverviewLabel(timeText, font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
             refreshTime.textColor = .secondaryLabelColor
             refreshTime.alignment = .right
@@ -5803,7 +5807,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
                 view.addSubview(quotaDetail)
 
-                let resetText = window.resetDisplayText().map {
+                let resetText = window.resetDisplayText(timeZone: settings.displayTimeZone).map {
                     tr(.keySnapshotResetValue, arguments: [String(describing: $0)])
                 } ?? tr(.keySnapshotResetValue, arguments: [tr(.keyLocalizationUnknown)])
                 let reset = makeMarqueeOverviewLabel(
@@ -5878,7 +5882,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 view.addSubview(quotaDetail)
 
                 let reset = makeMarqueeOverviewLabel(
-                    lunaReserve.menuSubtitleText,
+                    lunaReserve.menuSubtitle(timeZone: settings.displayTimeZone),
                     font: .systemFont(
                         ofSize: OpenCodexCardLayout.quotaResetPointSize,
                         weight: .regular
@@ -6035,7 +6039,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             ticketHost.addSubview(remaining)
                         }
 
-                        if let expiresText = card.expiresText, !expiresText.isEmpty {
+                        if let expiresText = CodexBankedResetFormatting.expiryText(for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone) ?? (card.expiresAt == nil ? card.expiresText : nil), !expiresText.isEmpty {
                             let subtitle = makeOverviewLabel(
                                 expiresText,
                                 font: .systemFont(
@@ -6129,7 +6133,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
             } else {
                 let reset = makeMarqueeOverviewLabel(
-                    snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter),
+                    snapshot.overviewReset(refreshDate: refreshDate, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone)),
                     font: .systemFont(
                         ofSize: OpenCodexCardLayout.quotaResetPointSize,
                         weight: .regular
@@ -6153,7 +6157,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeOverviewErrorMenuItem(for snapshot: Snapshot) -> NSMenuItem {
         let item = NSMenuItem()
         item.isEnabled = false
-        let message = snapshot.overviewReset(refreshDate: nil, formatter: Self.timeFormatter)
+        let message = snapshot.overviewReset(refreshDate: nil, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone))
         let frames = ErrorCardLayout.errorFrames(
             for: message,
             includesAccount: menuInput.openAIAccount != nil,
@@ -6177,7 +6181,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
            let subscriptionFrame = frames.subscription {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
-        let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
+        let timeText = refreshDate.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
         let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
             timeText,
             showsCachedBalance: snapshot.hasCachedBalance
@@ -6742,7 +6746,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func configureBankedResetSourceLink(_ link: HoverLinkTextField, forecast: CodexResetForecast) {
         link.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
-        let content = Self.codexResetForecastTooltip(for: forecast)
+        let content = Self.codexResetForecastTooltip(for: forecast, timeZone: settings.displayTimeZone)
         link.forecastTooltipContent = content
         link.hoverHint = content.plainText
         link.onActivate = {
@@ -6966,10 +6970,4 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = .current
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter
-    }()
 }

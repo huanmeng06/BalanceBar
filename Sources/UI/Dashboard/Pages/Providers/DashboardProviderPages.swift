@@ -9,6 +9,7 @@ struct DashboardProviderPageInput {
     let revision: UInt64
     let currentProviderIsOfficial: Bool
     let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
+    let displayTimeZone: TimeZone
     let showQuotaProgressBar: Bool
 
     init(
@@ -20,7 +21,8 @@ struct DashboardProviderPageInput {
         revision: UInt64,
         currentProviderIsOfficial: Bool = false,
         quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
-        showQuotaProgressBar: Bool = true
+        showQuotaProgressBar: Bool = true,
+        displayTimeZone: TimeZone = .autoupdatingCurrent
     ) {
         self.choices = choices
         self.selectedProviderID = selectedProviderID
@@ -31,6 +33,7 @@ struct DashboardProviderPageInput {
         self.currentProviderIsOfficial = currentProviderIsOfficial
         self.quotaProgressColorConfiguration = quotaProgressColorConfiguration
         self.showQuotaProgressBar = showQuotaProgressBar
+        self.displayTimeZone = displayTimeZone
     }
 }
 
@@ -183,7 +186,7 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
 
         amountLabel.font = .monospacedDigitSystemFont(ofSize: 34, weight: .semibold)
         let initialReset = choice.isCurrent
-            ? choice.initialResetText(input: input, formatter: Self.timeFormatter)
+            ? choice.initialResetText(input: input, formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone))
             : tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation)
         let usageRow = SettingsRowView(
             title: tr(.keyDashboardProviderPagesRemainingBalance),
@@ -235,7 +238,7 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
             ? input.snapshot.overviewLargeAmount
             : (input.quickSwitchSummaries[choice.id] ?? tr(.keyDashboardProviderPagesLoading))
         resetLabel.stringValue = choice.isCurrent
-            ? input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: Self.timeFormatter)
+            ? input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone))
             : tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation2)
         updateActionState(for: choice)
         return true
@@ -280,11 +283,6 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
         clearDashboardProviderControlTargets(in: root)
     }
 
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter
-    }()
 }
 
 private extension ProviderChoice {
@@ -412,8 +410,8 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         }
         providerLabel.stringValue = current.name
         amountLabel.stringValue = input.snapshot.overviewLargeAmount
-        resetLabel.stringValue = input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: Self.timeFormatter)
-        refreshLabel.stringValue = input.refreshDate.map(Self.timeFormatter.string(from:)) ?? "--:--:--"
+        resetLabel.stringValue = input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone))
+        refreshLabel.stringValue = input.refreshDate.map(AppDisplayTime.formatter(timeZone: input.displayTimeZone).string(from:)) ?? "--:--:--"
         statusLabel.stringValue = tr(.keyDashboardProviderPagesFollowingCurrentProvider)
         refreshLunaReserve(input: input)
         refreshRows()
@@ -440,7 +438,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
             lunaReserveCard.isHidden = true
             return
         }
-        lunaReserveCard.update(quota: quota)
+        lunaReserveCard.update(quota: quota, timeZone: input.displayTimeZone)
         lunaReserveCard.isHidden = false
     }
 
@@ -499,11 +497,6 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         providersStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
     }
 
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter
-    }()
 }
 
 /// Retains only pure coordinator state and a weak mounted page. Every page

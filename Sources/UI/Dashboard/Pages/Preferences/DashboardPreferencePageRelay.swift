@@ -60,6 +60,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onLaunchWithChatGPT: ((Bool) -> Void)?
     var onOpenLaunchWithChatGPTSettings: (() -> Void)?
     var onInterval: ((String, TimeInterval) -> Void)?
+    var onTimeZone: ((AppTimeZoneSelection) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
     var onMenuBarFontSizePreset: ((MenuBarFontSizePreset) -> Void)?
     var onMenuBarIconSizePreset: ((MenuBarIconSizePreset) -> Void)?
@@ -108,6 +109,10 @@ final class DashboardPreferencePageRelay: NSObject {
         guard let identifier = sender.identifier?.rawValue,
               let value = sender.selectedItem?.representedObject as? NSNumber else { return }
         onInterval?(identifier, value.doubleValue)
+    }
+
+    @objc func followSystemTimeZone(_ sender: NSSwitch) {
+        onTimeZone?(sender.state == .on ? .system : AppTimeZoneSelection.manualSelection())
     }
 
     @objc func language(_ sender: NSPopUpButton) {

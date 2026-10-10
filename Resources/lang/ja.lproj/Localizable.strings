@@ -487,3 +487,16 @@
 "codex.reset_signal.tooltip_title" = "公式リセットシグナル";
 "codex.reset_signal.tooltip_body" = "現在の公式シグナルの強シグナル確率またはカウントダウンです。通常の 24 / 48 時間予測とは別です。";
 "codex.reset_signal.tooltip_disclaimer" = "このシグナルは、このアカウントのリセット完了やリセットカードの配布を保証しません。実際の残量は公式 API に従います。";
+
+// Application display time zone
+"timezone.title" = "タイムゾーン";
+"timezone.description" = "リストから都市を選択";
+"timezone.system" = "システムのタイムゾーンに従う";
+"timezone.regions" = "地域／都市";
+"timezone.offsets" = "UTC 固定オフセット";
+"timezone.search" = "都市またはタイムゾーンを検索";
+
+"timezone.lookup_loading" = "都市を検索中…";
+"timezone.lookup_failed" = "リスト内の都市のみ選択できます";
+
+"codex.banked_reset.expired_value" = "%1$@ に期限切れ";

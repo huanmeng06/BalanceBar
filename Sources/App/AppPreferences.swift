@@ -256,7 +256,119 @@ enum MenuBarIconSizePreset: String, CaseIterable, Equatable {
     }
 }
 
+/// Persist the mode, not the region's current offset: Foundation resolves DST
+/// using the date being displayed. Invalid persisted values never become zones.
+enum AppTimeZoneSelection: Equatable, Codable {
+    case system
+    case region(identifier: String)
+    case fixedOffset(minutes: Int)
+
+    static let regionIdentifiers: [String] = {
+        // Foundation's list can retain old aliases while TimeZone accepts
+        // the current IANA name in the OS directory (e.g. Kolkata/Calcutta).
+        var identifiers = Set(TimeZone.knownTimeZoneIdentifiers)
+        if let raw = try? String(contentsOfFile: "/usr/share/zoneinfo/zone.tab", encoding: .utf8) {
+            for line in raw.split(separator: "\n") where !line.hasPrefix("#") {
+                let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
+                guard columns.count >= 3 else { continue }
+                let identifier = String(columns[2])
+                if TimeZone(identifier: identifier) != nil { identifiers.insert(identifier) }
+            }
+        }
+        return identifiers.sorted()
+    }()
+    static let fixedOffsets = Array(stride(from: -12 * 60, through: 14 * 60, by: 15))
+
+    /// Freeze a supported system region, or its exact supported GMT offset.
+    /// Unrepresentable custom offsets fall back to UTC rather than silently
+    /// returning to system mode or rounding to a different local time.
+    static func manualSelection(systemTimeZone: TimeZone = .autoupdatingCurrent, now: Date = Date()) -> Self {
+        let region = Self.region(identifier: systemTimeZone.identifier)
+        if region.isSupported { return region }
+        let seconds = systemTimeZone.secondsFromGMT(for: now)
+        let offset = Self.fixedOffset(minutes: seconds / 60)
+        if seconds % 60 == 0, offset.isSupported { return offset }
+        return .fixedOffset(minutes: 0)
+    }
+
+    var isSupported: Bool {
+        switch self {
+        case .system: return true
+        case .region(let identifier): return Self.regionIdentifiers.contains(identifier)
+        case .fixedOffset(let minutes): return Self.fixedOffsets.contains(minutes)
+        }
+    }
+
+    func resolved(systemTimeZone: TimeZone = .autoupdatingCurrent) -> TimeZone {
+        guard isSupported else { return systemTimeZone }
+        switch self {
+        case .system: return systemTimeZone
+        case .region(let identifier): return TimeZone(identifier: identifier) ?? systemTimeZone
+        case .fixedOffset(let minutes): return TimeZone(secondsFromGMT: minutes * 60) ?? systemTimeZone
+        }
+    }
+
+    static func offsetTitle(minutes: Int) -> String {
+        String(format: "UTC%@%02d:%02d", minutes < 0 ? "−" : "+", abs(minutes) / 60, abs(minutes) % 60)
+    }
+
+    func title(now: Date = Date(), systemTimeZone: TimeZone = .autoupdatingCurrent) -> String {
+        switch self {
+        case .system: return "\(tr(.keyTimeZoneSystem)) (\(systemTimeZone.identifier))"
+        case .region(let identifier):
+            return "\(identifier)  \(Self.offsetTitle(minutes: resolved().secondsFromGMT(for: now) / 60))"
+        case .fixedOffset(let minutes): return Self.offsetTitle(minutes: minutes)
+        }
+    }
+}
+
+/// Display-only helpers. Callers pass the effective zone explicitly; API,
+/// logging, scheduling and relative countdowns do not use this policy.
+enum AppDisplayTime {
+    static func calendar(timeZone: TimeZone, base: Calendar = .autoupdatingCurrent) -> Calendar {
+        var calendar = base
+        calendar.timeZone = timeZone
+        return calendar
+    }
+
+    static func nextDayStart(after now: Date, timeZone: TimeZone) -> Date? {
+        calendar(timeZone: timeZone).dateInterval(of: .day, for: now)?.end
+    }
+
+    static func formatter(timeZone: TimeZone, dateFormat: String = "HH:mm:ss") -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = calendar(timeZone: timeZone)
+        formatter.timeZone = timeZone
+        formatter.dateFormat = dateFormat
+        return formatter
+    }
+}
+
 final class AppPreferences {
+    static let displayTimeZoneKey = "displayTimeZone"
+    static let displayTimeZoneDidChange = Notification.Name("BalanceBar.displayTimeZoneDidChange")
+    private(set) var displayTimeZoneRevision: UInt64 = 0
+
+    var displayTimeZoneSelection: AppTimeZoneSelection {
+        get {
+            guard let data = defaults.data(forKey: Self.displayTimeZoneKey),
+                  let selection = try? JSONDecoder().decode(AppTimeZoneSelection.self, from: data),
+                  selection.isSupported else { return .system }
+            return selection
+        }
+        set {
+            let selection = newValue.isSupported ? newValue : .system
+            guard selection != displayTimeZoneSelection,
+                  let data = try? JSONEncoder().encode(selection) else { return }
+            defaults.set(data, forKey: Self.displayTimeZoneKey)
+            displayTimeZoneRevision &+= 1
+            NotificationCenter.default.post(name: Self.displayTimeZoneDidChange, object: self)
+        }
+    }
+
+    var effectiveDisplayTimeZone: TimeZone { displayTimeZoneSelection.resolved() }
+
     static let quotaProgressEnabledColorsKey = "quotaProgressEnabledColors"
     static let quotaProgressRedUpperBoundKey = "quotaProgressRedUpperBound"
     static let quotaProgressOrangeUpperBoundKey = "quotaProgressOrangeUpperBound"
@@ -846,5 +958,144 @@ enum AppPreferencesMigration {
             defaults.set(value, forKey: key)
         }
         defaults.set(true, forKey: marker)
+    }
+}
+
+struct TimeZoneCity: Equatable {
+    let identifier: String
+    let title: String
+    let searchKey: String
+}
+
+/// zone.tab lists geographic zones once, rather than Foundation's aliases.
+/// Cache localized names, but resolve a region's UTC offset at query time.
+enum TimeZoneCityCatalog {
+    private static let zoneTab = try? String(contentsOfFile: "/usr/share/zoneinfo/zone.tab", encoding: .utf8)
+    private static let lock = NSLock()
+    private static var cache: [String: [TimeZoneCity]] = [:]
+    private static let aliases: [String: String] = {
+        var links = ["Asia/Calcutta": "Asia/Kolkata", "US/Pacific": "America/Los_Angeles", "US/Eastern": "America/New_York", "Europe/Kiev": "Europe/Kyiv"]
+        // Apple's installed tzdb supplies the complete legacy link set. Keep
+        // the common aliases above as a fallback when that file is absent.
+        if let data = try? String(contentsOfFile: "/usr/share/zoneinfo/tzdata.zi", encoding: .utf8) {
+            for line in data.split(separator: "\n") {
+                let fields = line.split(whereSeparator: { $0.isWhitespace })
+                if fields.count >= 3, fields[0] == "L" || fields[0] == "Link" {
+                    links[String(fields[2])] = String(fields[1])
+                }
+            }
+        }
+        return links.mapValues { target in
+            var canonical = target
+            var visited = Set<String>()
+            while let next = links[canonical], visited.insert(canonical).inserted { canonical = next }
+            return canonical
+        }
+    }()
+
+    static var locale: Locale {
+        if AppLanguage.selected == .system { return .autoupdatingCurrent }
+        let identifiers: [AppLanguage: String] = [.simplifiedChinese: "zh_CN", .traditionalChineseTaiwan: "zh_TW", .traditionalChineseHongKong: "zh_HK", .english: "en_US", .japanese: "ja_JP", .korean: "ko_KR", .spanish: "es_ES", .portuguese: "pt_PT", .german: "de_DE", .french: "fr_FR", .russian: "ru_RU", .italian: "it_IT"]
+        return Locale(identifier: identifiers[AppLanguage.resolved] ?? Locale.autoupdatingCurrent.identifier)
+    }
+
+    static var all: [TimeZoneCity] {
+        let locale = locale
+        lock.lock()
+        defer { lock.unlock() }
+        if let cities = cache[locale.identifier] { return cities }
+        let cities = load(zoneTab: zoneTab, locale: locale)
+        cache[locale.identifier] = cities
+        return cities
+    }
+
+    static func title(for identifier: String) -> String {
+        let cities = all
+        return cities.first { $0.identifier == identifier }?.title
+            ?? aliases[identifier].flatMap { canonical in cities.first { $0.identifier == canonical }?.title }
+            ?? identifier
+    }
+
+    static func displayTitle(for selection: AppTimeZoneSelection) -> String {
+        if case .fixedOffset = selection { return selection.title() }
+        return title(for: selection.resolved().identifier)
+    }
+
+    static func load(zoneTab: String?, locale: Locale) -> [TimeZoneCity] {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "VVV"
+        let unknown = { () -> String in
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            return formatter.string(from: Date())
+        }()
+        var result: [TimeZoneCity] = []
+        var seen = Set<String>()
+        let makeCity: (String, String?) -> Void = { identifier, countryCode in
+            guard AppTimeZoneSelection.regionIdentifiers.contains(identifier),
+                  seen.insert(identifier).inserted,
+                  let zone = TimeZone(identifier: identifier) else { return }
+            formatter.timeZone = zone
+            let english = identifier.split(separator: "/").last.map(String.init)?.replacingOccurrences(of: "_", with: " ") ?? identifier
+            let localized = formatter.string(from: Date())
+            let city = localized.isEmpty || localized == unknown ? english : localized
+            let country = countryCode.map { locale.localizedString(forRegionCode: $0) ?? $0 }
+            let minutes = zone.secondsFromGMT(for: Date()) / 60
+            let sign = minutes < 0 ? "−" : "+"
+            let absolute = abs(minutes)
+            let hours = absolute / 60
+            let remainder = absolute % 60
+            let offset = remainder == 0
+                ? "UTC\(sign)\(hours)"
+                : String(format: "UTC%@%02d:%02d", sign, hours, remainder)
+            let title = country.map { "\(city) - \($0) (\(offset))" } ?? "\(city) (\(offset))"
+            let legacyNames = aliases.filter { $0.value == identifier }.map(\.key).joined(separator: " ")
+            result.append(TimeZoneCity(identifier: identifier, title: title,
+                searchKey: "\(title) \(english) \(identifier) \(legacyNames) \(identifier.replacingOccurrences(of: "_", with: " "))".lowercased()))
+        }
+        for line in (zoneTab ?? "").split(separator: "\n") where !line.hasPrefix("#") {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard columns.count >= 3 else { continue }
+            makeCity(String(columns[2]), String(columns[0]))
+        }
+        if result.isEmpty {
+            let geographicPrefixes = ["Africa/", "America/", "Antarctica/", "Arctic/", "Asia/", "Atlantic/", "Australia/", "Europe/", "Indian/", "Pacific/"]
+            for identifier in AppTimeZoneSelection.regionIdentifiers where geographicPrefixes.contains(where: identifier.hasPrefix) && (aliases[identifier].map { !AppTimeZoneSelection.regionIdentifiers.contains($0) } ?? true) {
+                makeCity(identifier, nil)
+            }
+        }
+        return result.sorted { $0.title.compare($1.title, options: [.numeric, .caseInsensitive], locale: locale) == .orderedAscending }
+    }
+
+    static func continentTitle(for identifier: String, locale: Locale = locale) -> String {
+        let continent = identifier.split(separator: "/").first.map(String.init) ?? ""
+        let language = locale.language.languageCode?.identifier ?? "en"
+        let names: [String: (String, String)] = [
+            "Africa": ("非洲", "Africa"), "America": ("美洲", "Americas"),
+            "Antarctica": ("南极洲", "Antarctica"), "Arctic": ("北极地区", "Arctic"),
+            "Asia": ("亚洲", "Asia"), "Atlantic": ("大西洋地区", "Atlantic"),
+            "Australia": ("大洋洲", "Oceania"), "Europe": ("欧洲", "Europe"),
+            "Indian": ("印度洋地区", "Indian Ocean"), "Pacific": ("太平洋地区", "Pacific")
+        ]
+        let pair = names[continent] ?? (continent, continent)
+        return language == "zh" ? pair.0 : pair.1
+    }
+
+    static func grouped(_ cities: [TimeZoneCity], locale: Locale = locale) -> [(header: String, city: TimeZoneCity)] {
+        cities.map { (continentTitle(for: $0.identifier, locale: locale), $0) }
+    }
+
+    static func matches(_ city: TimeZoneCity, query: String, now: Date = Date()) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "−", with: "-")
+        if query.isEmpty || city.searchKey.contains(query) { return true }
+        let offsetQuery = query.hasPrefix("utc") ? String(query.dropFirst(3)) : query
+        guard offsetQuery.first == "+" || offsetQuery.first == "-",
+              offsetQuery.dropFirst().allSatisfy({ $0.isNumber || $0 == ":" }),
+              let zone = TimeZone(identifier: city.identifier) else { return false }
+        let minutes = zone.secondsFromGMT(for: now) / 60
+        let sign = minutes < 0 ? "-" : "+"
+        let short = "\(sign)\(abs(minutes) / 60)"
+        let full = String(format: "%@%02d:%02d", sign, abs(minutes) / 60, abs(minutes) % 60)
+        return [short, full, "utc" + short, "utc" + full].contains { $0.hasPrefix(query) }
     }
 }
