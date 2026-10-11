@@ -10227,6 +10227,10 @@ extension DashboardPreferencePagesTests {
         combo.apply(.fixedOffset(minutes: 0))
         XCTAssertEqual(combo.menu?.items.count, cityMenuCount)
         XCTAssertFalse(combo.menu?.items.contains { ($0.representedObject as? String)?.hasPrefix("UTC") == true } ?? true)
+        XCTAssertTrue(combo.isEnabled)
+        combo.apply(.region(identifier: "America/New_York"))
+        XCTAssertTrue(combo.isEnabled)
+        XCTAssertEqual(combo.title, TimeZoneCityCatalog.title(for: "America/New_York"))
         combo.apply(preferences.displayTimeZoneSelection)
         XCTAssertEqual(combo.menu?.items.count, cityMenuCount)
         toggle.state = .off

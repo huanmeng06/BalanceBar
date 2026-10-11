@@ -933,6 +933,9 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         fallbackDisplayLabel.translatesAutoresizingMaskIntoConstraints = false
         fallbackDisplayLabel.alignment = .left
         fallbackDisplayLabel.lineBreakMode = .byTruncatingTail
+        fallbackDisplayLabel.drawsBackground = true
+        fallbackDisplayLabel.backgroundColor = .controlBackgroundColor
+        fallbackDisplayLabel.isSelectable = false
         fallbackDisplayLabel.isHidden = true
         addSubview(fallbackDisplayLabel)
         NSLayoutConstraint.activate([
@@ -987,19 +990,18 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         // implicitly create a selectable menu item. For an internal fixed
         // offset fallback, update only the popup cell's displayed text.
         let identifier = selection.resolved().identifier
-        var usesFallbackDisplay = false
         if let item = menu?.items.first(where: { ($0.representedObject as? String) == identifier }) {
             fallbackDisplayLabel.isHidden = true
             select(item)
             displayedTitle = item.title
         } else {
-            usesFallbackDisplay = true
             displayedTitle = TimeZoneCityCatalog.displayTitle(for: selection)
             fallbackDisplayLabel.stringValue = displayedTitle
             fallbackDisplayLabel.isHidden = false
-            isEnabled = false
         }
-        isEnabled = selection != .system && !usesFallbackDisplay
+        // A fallback value only changes the presentation; the city menu must
+        // remain usable so the user can choose a supported region immediately.
+        isEnabled = selection != .system
         toolTip = selection.title()
     }
 
