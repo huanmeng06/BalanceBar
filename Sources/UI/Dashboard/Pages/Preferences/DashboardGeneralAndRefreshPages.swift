@@ -842,7 +842,7 @@ final class MenuHeaderView: NSView {
     private let accentBar = NSView()
 
     init(title: String, width: CGFloat = 240) {
-        super.init(frame: NSRect(x: 0, y: 0, width: width, height: 28))
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: 32))
         autoresizingMask = [.width]
         wantsLayer = true
 
@@ -863,12 +863,12 @@ final class MenuHeaderView: NSView {
 
         NSLayoutConstraint.activate([
             accentBar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            accentBar.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1),
+            accentBar.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -2),
             accentBar.widthAnchor.constraint(equalToConstant: 3),
             accentBar.heightAnchor.constraint(equalToConstant: 14),
             label.leadingAnchor.constraint(equalTo: accentBar.trailingAnchor, constant: 8),
             label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1)
+            label.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -2)
         ])
     }
 
@@ -942,7 +942,6 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         for city in cities {
             let continent = TimeZoneCityCatalog.continentTitle(for: city.identifier)
             if currentContinent != continent {
-                if currentContinent != nil { menu?.addItem(.separator()) }
                 menu?.addItem(makeHeaderItem(title: continent))
                 currentContinent = continent
             }

@@ -10336,7 +10336,7 @@ extension DashboardPreferencePagesTests {
         let header = try XCTUnwrap(menu.items.first(where: { $0.view != nil }))
         XCTAssertFalse(header.isEnabled)
         XCTAssertNotNil(header.view?.subviews.compactMap { $0 as? NSTextField }.first)
-        XCTAssertTrue(menu.items.contains { $0.isSeparatorItem })
+        XCTAssertFalse(menu.items.contains { $0.isSeparatorItem })
         XCTAssertTrue(menu.items.compactMap { $0.title }.contains { $0.contains("(UTC") })
         XCTAssertTrue(menu.items.compactMap { $0.title }.contains { $0.contains(" - ") })
     }
