@@ -965,6 +965,10 @@ struct TimeZoneCity: Equatable {
     let identifier: String
     let title: String
     let searchKey: String
+    let countryTitle: String
+    let cityTitle: String
+
+    var sortKey: String { "\(countryTitle)\u{0000}\(cityTitle)" }
 }
 
 /// zone.tab lists geographic zones once, rather than Foundation's aliases.
@@ -1048,10 +1052,15 @@ enum TimeZoneCityCatalog {
             let offset = remainder == 0
                 ? "UTC\(sign)\(hours)"
                 : String(format: "UTC%@%02d:%02d", sign, hours, remainder)
-            let title = country.map { "\(city) - \($0) (\(offset))" } ?? "\(city) (\(offset))"
+            let countryTitle = country ?? ""
+            let title = countryTitle.isEmpty
+                ? "\(city) (\(offset))"
+                : "\(countryTitle) - \(city) (\(offset))"
             let legacyNames = aliases.filter { $0.value == identifier }.map(\.key).joined(separator: " ")
             result.append(TimeZoneCity(identifier: identifier, title: title,
-                searchKey: "\(title) \(english) \(identifier) \(legacyNames) \(identifier.replacingOccurrences(of: "_", with: " "))".lowercased()))
+                searchKey: "\(title) \(english) \(identifier) \(legacyNames) \(identifier.replacingOccurrences(of: "_", with: " "))".lowercased(),
+                countryTitle: countryTitle,
+                cityTitle: city))
         }
         for line in (zoneTab ?? "").split(separator: "\n") where !line.hasPrefix("#") {
             let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
@@ -1064,7 +1073,9 @@ enum TimeZoneCityCatalog {
                 makeCity(identifier, nil)
             }
         }
-        return result.sorted { $0.title.compare($1.title, options: [.numeric, .caseInsensitive], locale: locale) == .orderedAscending }
+        return result.sorted {
+            $0.sortKey.localizedStandardCompare($1.sortKey) == .orderedAscending
+        }
     }
 
     static func continentTitle(for identifier: String, locale: Locale = locale) -> String {

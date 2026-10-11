@@ -936,7 +936,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
             let left = TimeZoneCityCatalog.continentTitle(for: $0.identifier)
             let right = TimeZoneCityCatalog.continentTitle(for: $1.identifier)
             if left != right { return left.localizedStandardCompare(right) == .orderedAscending }
-            return $0.title.localizedStandardCompare($1.title) == .orderedAscending
+            return $0.sortKey.localizedStandardCompare($1.sortKey) == .orderedAscending
         }
         var currentContinent: String?
         for city in cities {
