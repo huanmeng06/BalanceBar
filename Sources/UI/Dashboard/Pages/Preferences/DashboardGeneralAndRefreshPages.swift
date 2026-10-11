@@ -911,6 +911,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     private var applying = false
     private var menuBuilt = false
     private var displayedTitle = ""
+    private let fallbackDisplayLabel = NSTextField(labelWithString: "")
 
     override var stringValue: String {
         get { displayedTitle }
@@ -929,6 +930,16 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         preferredWidth.isActive = true
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         setAccessibilityLabel(tr(.keyTimeZoneTitle))
+        fallbackDisplayLabel.translatesAutoresizingMaskIntoConstraints = false
+        fallbackDisplayLabel.alignment = .left
+        fallbackDisplayLabel.lineBreakMode = .byTruncatingTail
+        fallbackDisplayLabel.isHidden = true
+        addSubview(fallbackDisplayLabel)
+        NSLayoutConstraint.activate([
+            fallbackDisplayLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            fallbackDisplayLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -28),
+            fallbackDisplayLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
         target = self
         action = #selector(selectTimeZone(_:))
         autoenablesItems = false
@@ -976,14 +987,19 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         // implicitly create a selectable menu item. For an internal fixed
         // offset fallback, update only the popup cell's displayed text.
         let identifier = selection.resolved().identifier
+        var usesFallbackDisplay = false
         if let item = menu?.items.first(where: { ($0.representedObject as? String) == identifier }) {
+            fallbackDisplayLabel.isHidden = true
             select(item)
             displayedTitle = item.title
         } else {
+            usesFallbackDisplay = true
             displayedTitle = TimeZoneCityCatalog.displayTitle(for: selection)
-            cell?.title = displayedTitle
+            fallbackDisplayLabel.stringValue = displayedTitle
+            fallbackDisplayLabel.isHidden = false
+            isEnabled = false
         }
-        isEnabled = selection != .system
+        isEnabled = selection != .system && !usesFallbackDisplay
         toolTip = selection.title()
     }
 
