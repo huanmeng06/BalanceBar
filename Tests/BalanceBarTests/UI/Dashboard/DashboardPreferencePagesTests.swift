@@ -10201,7 +10201,7 @@ extension DashboardPreferencePagesTests {
         XCTAssertFalse(combo.isEnabled)
         XCTAssertFalse(combo.completes)
         XCTAssertEqual(toggle.state, .on)
-        XCTAssertEqual(combo.stringValue, TimeZoneCityCatalog.displayTitle(for: .system))
+        XCTAssertEqual(combo.title, TimeZoneCityCatalog.displayTitle(for: .system))
         toggle.state = .off
         XCTAssertTrue(toggle.sendAction(toggle.action, to: toggle.target))
         XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: TimeZone.autoupdatingCurrent.identifier))
@@ -10209,7 +10209,7 @@ extension DashboardPreferencePagesTests {
         XCTAssertTrue(combo.isEnabled)
         preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
         general.refreshDisplayTimeZone(preferences.displayTimeZoneSelection)
-        XCTAssertEqual(combo.stringValue, TimeZoneCityCatalog.title(for: "America/New_York"))
+        XCTAssertEqual(combo.title, TimeZoneCityCatalog.title(for: "America/New_York"))
         XCTAssertTrue(descendants(of: page).compactMap { $0 as? DashboardTimeZoneComboBox }.first === combo)
         toggle.state = .on
         XCTAssertTrue(toggle.sendAction(toggle.action, to: toggle.target))
@@ -10324,25 +10324,20 @@ extension DashboardPreferencePagesTests {
 }
 
 extension DashboardPreferencePagesTests {
-    func testTimeZoneListUsesNonSelectableContinentHeadersAndUTCFormat() throws {
+    func testTimeZoneListUsesCustomNonSelectableContinentViewsAndUTCFormat() throws {
         let suite = "BalanceBarTests.ContinentHeaders.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
         preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
         let relay = DashboardPreferencePageRelay()
-        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
-        let first = try XCTUnwrap(combo.comboBox(combo, objectValueForItemAt: 0) as? NSAttributedString)
-        XCTAssertFalse(first.string.isEmpty)
-        XCTAssertNotNil(first.attribute(.font, at: 0, effectiveRange: nil))
-        XCTAssertGreaterThanOrEqual(combo.indexOfSelectedItem, 0)
-        XCTAssertEqual(combo.comboBox(combo, indexOfItemWithStringValue: first.string), NSNotFound)
-        let cityIndex = (0..<combo.numberOfItems(in: combo)).first { index in
-            guard let value = combo.comboBox(combo, objectValueForItemAt: index) as? String else { return false }
-            return value.contains("UTC")
-        }
-        let city = try XCTUnwrap(cityIndex.flatMap { combo.comboBox(combo, objectValueForItemAt: $0) as? String })
-        XCTAssertTrue(city.contains(" - "))
-        XCTAssertTrue(city.contains("(UTC"))
+        let popup = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        let menu = try XCTUnwrap(popup.menu)
+        let header = try XCTUnwrap(menu.items.first(where: { $0.view != nil }))
+        XCTAssertFalse(header.isEnabled)
+        XCTAssertNotNil(header.view?.subviews.compactMap { $0 as? NSTextField }.first)
+        XCTAssertTrue(menu.items.contains { $0.isSeparatorItem })
+        XCTAssertTrue(menu.items.compactMap { $0.title }.contains { $0.contains("(UTC") })
+        XCTAssertTrue(menu.items.compactMap { $0.title }.contains { $0.contains(" - ") })
     }
 }

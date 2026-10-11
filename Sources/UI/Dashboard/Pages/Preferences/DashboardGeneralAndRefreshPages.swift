@@ -836,35 +836,74 @@ enum DashboardRefreshPage {
 
 /// AppKit owns the editable field and list. Only confirmed city matches commit;
 /// every display update is applied to this same mounted control instance.
-final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSComboBoxDelegate, SettingsRowAccessoryLayout {
-    private enum Item {
-        case header(String)
-        case city(TimeZoneCity)
+/// Menu header view for a continent section.
+final class MenuHeaderView: NSView {
+    private let label = NSTextField(labelWithString: "")
+    private let accentBar = NSView()
+
+    init(title: String, width: CGFloat = 240) {
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: 28))
+        autoresizingMask = [.width]
+        wantsLayer = true
+
+        accentBar.wantsLayer = true
+        accentBar.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(accentBar)
+
+        label.attributedStringValue = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 12, weight: .bold),
+                .foregroundColor: NSColor.controlAccentColor,
+                .kern: 1.2
+            ]
+        )
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+
+        NSLayoutConstraint.activate([
+            accentBar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            accentBar.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1),
+            accentBar.widthAnchor.constraint(equalToConstant: 3),
+            accentBar.heightAnchor.constraint(equalToConstant: 14),
+            label.leadingAnchor.constraint(equalTo: accentBar.trailingAnchor, constant: 8),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1)
+        ])
     }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.controlAccentColor
+                .withAlphaComponent(0.10).cgColor
+            accentBar.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+            accentBar.layer?.cornerRadius = 1.5
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+}
+
+/// A native pop-up menu with custom, non-selectable continent headings.
+/// City entries are the only menu items with actions.
+final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout {
     private let preferences: AppPreferences
     private weak var relay: DashboardPreferencePageRelay?
-    private var items: [Item] = []
-    private var filteredQuery: String?
-    private var pendingCandidate: TimeZoneCity?
     private var applying = false
-    private var navigatingCandidates = false
-    private(set) var candidatesAreVisible = false
 
     init(preferences: AppPreferences, relay: DashboardPreferencePageRelay) {
         self.preferences = preferences
         self.relay = relay
-        super.init(frame: .zero)
+        super.init(frame: .zero, pullsDown: false)
         identifier = NSUserInterfaceItemIdentifier(AppPreferences.displayTimeZoneKey)
-        usesDataSource = true
-        dataSource = self
-        delegate = self
-        isEditable = true
-        completes = false
-        hasVerticalScroller = true
-        numberOfVisibleItems = 10
-        controlSize = .regular
-        font = .systemFont(ofSize: NSFont.systemFontSize)
-        placeholderString = tr(.keyTimeZoneSearch)
         translatesAutoresizingMaskIntoConstraints = false
         widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
         let preferredWidth = widthAnchor.constraint(equalToConstant: 280)
@@ -873,15 +912,15 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         setAccessibilityLabel(tr(.keyTimeZoneTitle))
         target = self
-        action = #selector(commitText)
+        action = #selector(selectTimeZone(_:))
+        autoenablesItems = false
         apply(preferences.displayTimeZoneSelection)
     }
-
-
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    var completes: Bool { false }
     var minimumInlineLabelWidth: CGFloat { 120 }
     var naturalAccessoryWidth: CGFloat { 280 }
     func updateAvailableRowWidth(_ width: CGFloat) {}
@@ -892,163 +931,46 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     func apply(_ selection: AppTimeZoneSelection) {
         applying = true
         defer { applying = false }
-        let cities = TimeZoneCityCatalog.all
-        items = Self.groupedItems(cities)
-        filteredQuery = nil
-        pendingCandidate = nil
-        isEnabled = selection != .system
-        reloadData()
-        if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
-        stringValue = TimeZoneCityCatalog.displayTitle(for: selection)
-        let identifier = selection.resolved().identifier
-        if let index = items.firstIndex(where: { if case .city(let city) = $0 { return city.identifier == identifier }; return false }) {
-            selectItem(at: index)
-            scrollItemAtIndexToVisible(index)
-        }
-        toolTip = selection.title()
-    }
-
-    private static func groupedItems(_ cities: [TimeZoneCity]) -> [Item] {
-        var result: [Item] = []
-        var current: String?
-        let ordered = cities.sorted {
+        removeAllItems()
+        let cities = TimeZoneCityCatalog.all.sorted {
             let left = TimeZoneCityCatalog.continentTitle(for: $0.identifier)
             let right = TimeZoneCityCatalog.continentTitle(for: $1.identifier)
             if left != right { return left.localizedStandardCompare(right) == .orderedAscending }
             return $0.title.localizedStandardCompare($1.title) == .orderedAscending
         }
-        for city in ordered {
-            let header = TimeZoneCityCatalog.continentTitle(for: city.identifier)
-            if current != header { result.append(.header(header)); current = header }
-            result.append(.city(city))
+        var currentContinent: String?
+        for city in cities {
+            let continent = TimeZoneCityCatalog.continentTitle(for: city.identifier)
+            if currentContinent != continent {
+                if currentContinent != nil { menu?.addItem(.separator()) }
+                menu?.addItem(makeHeaderItem(title: continent))
+                currentContinent = continent
+            }
+            let item = NSMenuItem(title: city.title, action: #selector(selectTimeZone(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = city.identifier
+            menu?.addItem(item)
         }
-        return result
-    }
-
-    func numberOfItems(in comboBox: NSComboBox) -> Int { max(1, items.count) }
-    func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any? {
-        guard items.indices.contains(index) else { return nil }
-        switch items[index] {
-        case .header(let title):
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.paragraphSpacingBefore = 6
-            return NSAttributedString(string: title, attributes: [
-                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .bold),
-                .foregroundColor: NSColor.labelColor,
-                .kern: 1.0,
-                .paragraphStyle: paragraph
-            ])
-        case .city(let city): return city.title
+        let identifier = selection.resolved().identifier
+        if let item = menu?.items.first(where: { ($0.representedObject as? String) == identifier }) {
+            select(item)
+        } else {
+            title = TimeZoneCityCatalog.displayTitle(for: selection)
         }
-    }
-    func comboBox(_ comboBox: NSComboBox, indexOfItemWithStringValue string: String) -> Int {
-        items.firstIndex { if case .city(let city) = $0 { return city.title == string }; return false } ?? NSNotFound
-    }
-
-    func controlTextDidBeginEditing(_ notification: Notification) {}
-
-    func controlTextDidChange(_ notification: Notification) {
-        guard !applying, !navigatingCandidates else { return }
-        guard (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-        applying = true
-        defer { applying = false }
-        pendingCandidate = nil
-        let query = stringValue
-        filteredQuery = query
-        if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
-        let cities = TimeZoneCityCatalog.all.filter { TimeZoneCityCatalog.matches($0, query: query) }
-        items = Self.groupedItems(cities)
-        reloadData()
-        stringValue = query
-        scheduleCandidates()
+        isEnabled = selection != .system
+        toolTip = selection.title()
     }
 
-    private func scheduleCandidates() {
-        guard window != nil, currentEditor() != nil else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, !self.candidatesAreVisible,
-                  (self.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
-            self.cell?.setAccessibilityExpanded(true)
-        }
+    private func makeHeaderItem(title: String) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.title = title
+        item.view = MenuHeaderView(title: title)
+        item.isEnabled = false
+        return item
     }
 
-    func comboBoxWillPopUp(_ notification: Notification) { candidatesAreVisible = true }
-    func comboBoxWillDismiss(_ notification: Notification) { candidatesAreVisible = false; pendingCandidate = nil }
-
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard !textView.hasMarkedText() else { return false }
-        if commandSelector == #selector(NSResponder.moveDown(_:)) { navigateCandidates(1); return true }
-        if commandSelector == #selector(NSResponder.moveUp(_:)) { navigateCandidates(-1); return true }
-        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            apply(preferences.displayTimeZoneSelection); return true
-        }
-        guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
-        commitText(); return true
-    }
-
-    private func selectableIndices() -> [Int] {
-        items.indices.filter { if case .city = items[$0] { return true }; return false }
-    }
-    private func navigateCandidates(_ direction: Int) {
-        let selectable = selectableIndices()
-        guard !selectable.isEmpty else { return }
-        let current = pendingCandidate.flatMap { candidate in items.firstIndex { if case .city(let city) = $0 { return city.identifier == candidate.identifier }; return false } }
-        let position = current.flatMap { selectable.firstIndex(of: $0) }
-        let next = min(selectable.count - 1, max(0, (position ?? (direction > 0 ? -1 : selectable.count)) + direction))
-        let index = selectable[next]
-        guard case .city(let city) = items[index] else { return }
-        navigatingCandidates = true; pendingCandidate = city; selectItem(at: index); navigatingCandidates = false
-        preserveFilterQuery()
-    }
-    private func preserveFilterQuery() {
-        guard let query = filteredQuery else { return }
-        stringValue = query
-        (currentEditor() as? NSTextView)?.setSelectedRange(NSRange(location: (query as NSString).length, length: 0))
-    }
-
-    func confirmCandidateAfterTracking(_ candidate: TimeZoneCity) {
-        pendingCandidate = candidate
-        commit(candidate.identifier)
-    }
-
-    func comboBoxSelectionDidChange(_ notification: Notification) {
-        guard !applying, items.indices.contains(indexOfSelectedItem) else { return }
-        guard case .city(let city) = items[indexOfSelectedItem] else {
-            if indexOfSelectedItem >= 0 { deselectItem(at: indexOfSelectedItem) }
-            preserveFilterQuery(); return
-        }
-        pendingCandidate = city
-        if !navigatingCandidates, let event = NSApp.currentEvent,
-           [.leftMouseDown, .leftMouseUp].contains(event.type) {
-            commit(city.identifier); apply(preferences.displayTimeZoneSelection)
-        } else { preserveFilterQuery() }
-    }
-
-    func controlTextDidEndEditing(_ notification: Notification) {
-        if (notification.userInfo?["NSTextMovement"] as? Int) == NSReturnTextMovement { commitText() }
-        else { pendingCandidate = nil; apply(preferences.displayTimeZoneSelection) }
-    }
-
-    @objc func commitText() {
-        guard !applying else { return }
-        let query = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let pendingCandidate {
-            commit(pendingCandidate.identifier)
-            apply(preferences.displayTimeZoneSelection)
-            return
-        }
-        let exactCities = items.compactMap { item -> TimeZoneCity? in
-            guard case .city(let city) = item else { return nil }
-            let name = city.title.components(separatedBy: " - ").first ?? city.title
-            guard name.caseInsensitiveCompare(query) == .orderedSame
-                    || city.identifier.caseInsensitiveCompare(query) == .orderedSame else { return nil }
-            return city
-        }
-        guard exactCities.count == 1, let city = exactCities.first else { return }
-        commit(city.identifier); apply(preferences.displayTimeZoneSelection)
-    }
-
-    private func commit(_ identifier: String) {
+    @objc private func selectTimeZone(_ sender: NSMenuItem) {
+        guard !applying, let identifier = sender.representedObject as? String else { return }
         let selection = AppTimeZoneSelection.region(identifier: identifier)
         guard selection != preferences.displayTimeZoneSelection else { return }
         relay?.onTimeZone?(selection)
