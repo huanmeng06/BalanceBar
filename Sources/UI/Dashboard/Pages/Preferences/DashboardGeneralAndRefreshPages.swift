@@ -933,9 +933,13 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
         guard items.indices.contains(index) else { return nil }
         switch items[index] {
         case .header(let title):
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.paragraphSpacingBefore = 6
             return NSAttributedString(string: title, attributes: [
-                .font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize - 1),
-                .foregroundColor: NSColor.secondaryLabelColor
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .bold),
+                .foregroundColor: NSColor.labelColor,
+                .kern: 1.0,
+                .paragraphStyle: paragraph
             ])
         case .city(let city): return city.title
         }
