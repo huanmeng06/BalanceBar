@@ -1043,7 +1043,17 @@ enum TimeZoneCityCatalog {
             let english = identifier.split(separator: "/").last.map(String.init)?.replacingOccurrences(of: "_", with: " ") ?? identifier
             let localized = formatter.string(from: Date())
             let city = localized.isEmpty || localized == unknown ? english : localized
-            let country = countryCode.map { locale.localizedString(forRegionCode: $0) ?? $0 }
+            let country = countryCode.map { code -> String in
+                if locale.language.languageCode?.identifier == "zh" {
+                    switch code {
+                    case "HK": return "中国香港"
+                    case "MO": return "中国澳门"
+                    case "TW": return "中国台湾"
+                    default: break
+                    }
+                }
+                return locale.localizedString(forRegionCode: code) ?? code
+            }
             let minutes = zone.secondsFromGMT(for: Date()) / 60
             let sign = minutes < 0 ? "−" : "+"
             let absolute = abs(minutes)
@@ -1073,9 +1083,22 @@ enum TimeZoneCityCatalog {
                 makeCity(identifier, nil)
             }
         }
-        return result.sorted {
-            $0.sortKey.localizedStandardCompare($1.sortKey) == .orderedAscending
-        }
+        return result.sorted { compare($0, $1, locale: locale) }
+    }
+
+    static func compare(_ lhs: TimeZoneCity, _ rhs: TimeZoneCity, locale: Locale = locale) -> Bool {
+        let country = collationKey(lhs.countryTitle, locale: locale)
+            .compare(collationKey(rhs.countryTitle, locale: locale), options: [.numeric, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        if country != .orderedSame { return country == .orderedAscending }
+        return collationKey(lhs.cityTitle, locale: locale)
+            .compare(collationKey(rhs.cityTitle, locale: locale), options: [.numeric, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX")) == .orderedAscending
+    }
+
+    static func collationKey(_ value: String, locale: Locale = locale) -> String {
+        guard locale.language.languageCode?.identifier == "zh" else { return value }
+        return (value.applyingTransform(StringTransform("Han-Latin"), reverse: false) ?? value)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .lowercased()
     }
 
     static func continentTitle(for identifier: String, locale: Locale = locale) -> String {
