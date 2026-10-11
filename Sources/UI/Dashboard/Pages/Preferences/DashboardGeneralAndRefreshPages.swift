@@ -911,6 +911,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     private var applying = false
     private var menuBuilt = false
     private var displayedTitle = ""
+    private let fallbackItemMarker = "__timezone_fallback__"
 
     override var stringValue: String {
         get { displayedTitle }
@@ -972,16 +973,26 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
             }
             menuBuilt = true
         }
+        // Remove an explicitly managed compatibility item before selecting a
+        // normal city. Never assign `title` to text absent from the menu:
+        // AppKit would implicitly create a selectable menu item.
+        menu?.items.filter { ($0.representedObject as? String) == fallbackItemMarker }
+            .forEach { menu?.removeItem($0) }
         let identifier = selection.resolved().identifier
         if let item = menu?.items.first(where: { ($0.representedObject as? String) == identifier }) {
             select(item)
-            // NSPopUpButton can expose the selected item's tag as stringValue
-            // after a programmatic selection. Keep the visible title explicit.
             displayedTitle = item.title
-            title = item.title
         } else {
-            displayedTitle = TimeZoneCityCatalog.displayTitle(for: selection)
-            title = displayedTitle
+            let fallback = NSMenuItem(
+                title: TimeZoneCityCatalog.displayTitle(for: selection),
+                action: nil,
+                keyEquivalent: ""
+            )
+            fallback.representedObject = fallbackItemMarker
+            fallback.isEnabled = false
+            menu?.addItem(fallback)
+            select(fallback)
+            displayedTitle = fallback.title
         }
         isEnabled = selection != .system
         toolTip = selection.title()
