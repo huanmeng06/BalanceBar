@@ -433,7 +433,7 @@ final class BalanceNotificationCoordinator {
         onQueue {
             self.store.update { settings in
                 settings.pauseUntil = duration.map { Date().addingTimeInterval($0) }
-                settings.pauseMode = duration == nil ? nil : "oneHour"
+                settings.pauseMode = duration == nil ? nil : .oneHour
             }
         }
     }
@@ -444,7 +444,7 @@ final class BalanceNotificationCoordinator {
         onQueue {
             self.store.update {
                 $0.pauseUntil = deadline
-                $0.pauseMode = "today"
+                $0.pauseMode = .today
             }
         }
     }

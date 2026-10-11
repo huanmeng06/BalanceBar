@@ -279,6 +279,17 @@ enum AppTimeZoneSelection: Equatable, Codable {
     }()
     static let fixedOffsets = Array(stride(from: -12 * 60, through: 14 * 60, by: 15))
 
+    static func normalized(_ selection: Self) -> Self {
+        guard case .region(let identifier) = selection else { return selection }
+        let aliases = [
+            "Asia/Calcutta": "Asia/Kolkata",
+            "US/Pacific": "America/Los_Angeles",
+            "US/Eastern": "America/New_York",
+            "Europe/Kiev": "Europe/Kyiv"
+        ]
+        return .region(identifier: aliases[identifier] ?? identifier)
+    }
+
     /// Freeze a supported system region, or its exact supported GMT offset.
     /// Unrepresentable custom offsets fall back to UTC rather than silently
     /// returning to system mode or rounding to a different local time.
@@ -353,9 +364,11 @@ final class AppPreferences {
 
     var lastManualDisplayTimeZoneSelection: AppTimeZoneSelection {
         guard let data = defaults.data(forKey: Self.lastManualDisplayTimeZoneKey),
-              let selection = try? JSONDecoder().decode(AppTimeZoneSelection.self, from: data),
-              selection.isSupported,
-              selection != .system else {
+              let decoded = try? JSONDecoder().decode(AppTimeZoneSelection.self, from: data) else {
+            return AppTimeZoneSelection.manualSelection()
+        }
+        let selection = AppTimeZoneSelection.normalized(decoded)
+        guard selection.isSupported, selection != .system else {
             return AppTimeZoneSelection.manualSelection()
         }
         return selection
@@ -364,12 +377,13 @@ final class AppPreferences {
     var displayTimeZoneSelection: AppTimeZoneSelection {
         get {
             guard let data = defaults.data(forKey: Self.displayTimeZoneKey),
-                  let selection = try? JSONDecoder().decode(AppTimeZoneSelection.self, from: data),
-                  selection.isSupported else { return .system }
-            return selection
+                  let decoded = try? JSONDecoder().decode(AppTimeZoneSelection.self, from: data) else { return .system }
+            let selection = AppTimeZoneSelection.normalized(decoded)
+            return selection.isSupported ? selection : .system
         }
         set {
-            let selection = newValue.isSupported ? newValue : .system
+            let normalized = AppTimeZoneSelection.normalized(newValue)
+            let selection = normalized.isSupported ? normalized : .system
             guard selection != displayTimeZoneSelection,
                   let data = try? JSONEncoder().encode(selection) else { return }
             if selection == .system,
@@ -1045,7 +1059,7 @@ enum TimeZoneCityCatalog {
         let locale = locale
         lock.lock()
         defer { lock.unlock() }
-        let key = cacheKey
+        let key = locale.identifier
         if let cities = cache[key] { return cities }
         let cities = load(zoneTab: zoneTab, locale: locale)
         cache[key] = cities

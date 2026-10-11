@@ -659,7 +659,9 @@ final class DashboardNotificationPages {
             "notifications.pause_status",
             arguments: [AppDisplayTime.formatter(timeZone: configuration.displayTimeZone(), dateFormat: "M/d HH:mm").string(from: pauseUntil), remainingText(until: pauseUntil)]
         )
-        selectPauseOption(pauseSelection(for: pauseUntil))
+        if let mode = pauseSelection(for: pauseUntil) {
+            selectPauseOption(mode.rawValue)
+        }
     }
 
     private func selectPauseOption(_ value: String) {
@@ -669,10 +671,10 @@ final class DashboardNotificationPages {
         pauseMenu?.select(item)
     }
 
-    private func pauseSelection(for pauseUntil: Date) -> String {
-        // The original selection is persisted with the absolute deadline. Do
-        // not infer it from the newly selected timezone's calendar boundary.
-        configuration.coordinator.settings.pauseMode ?? "oneHour"
+    private func pauseSelection(for pauseUntil: Date) -> BalanceNotificationPauseMode? {
+        // Legacy records may have only an absolute deadline. Leave the menu
+        // unchanged rather than inventing a misleading duration.
+        configuration.coordinator.settings.pauseMode
     }
 
     private func remainingText(until date: Date) -> String {

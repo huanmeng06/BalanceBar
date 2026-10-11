@@ -453,7 +453,7 @@ final class DashboardCompositionController {
         )
         dashboardProviderPages.refreshDisplayTimeZone(input: input)
         // Reformat the mounted menu-bar preview without rebuilding the whole dashboard.
-        refreshMenuBarPage(snapshot: snapshot)
+        refreshMenuBarPage(snapshot: snapshot, invalidateSearchData: false, reapplySearch: false)
         // Timezone titles and offsets participate in global settings search.
         invalidateSearchData()
         if !pageSession.toolbarController.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

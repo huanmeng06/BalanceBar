@@ -910,7 +910,6 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     private weak var relay: DashboardPreferencePageRelay?
     private var applying = false
     private var menuBuilt = false
-    private var menuCacheKey = ""
     private var displayedTitle = ""
 
     override var stringValue: String {
@@ -951,7 +950,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     func apply(_ selection: AppTimeZoneSelection) {
         applying = true
         defer { applying = false }
-        if !menuBuilt || menuCacheKey != TimeZoneCityCatalog.cacheKey {
+        if !menuBuilt {
             removeAllItems()
             let cities = TimeZoneCityCatalog.all.sorted {
             let left = TimeZoneCityCatalog.continentTitle(for: $0.identifier)
@@ -972,7 +971,6 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
             menu?.addItem(item)
             }
             menuBuilt = true
-            menuCacheKey = TimeZoneCityCatalog.cacheKey
         }
         let identifier = selection.resolved().identifier
         if let item = menu?.items.first(where: { ($0.representedObject as? String) == identifier }) {
@@ -992,7 +990,19 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     func menuWillOpen(_ menu: NSMenu) {
         // Re-evaluate dynamic UTC offsets when the user opens the list, including
         // DST transitions that occurred while a manual region was selected.
+        refreshDynamicMenuTitles()
         apply(preferences.displayTimeZoneSelection)
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        refreshDynamicMenuTitles()
+    }
+
+    private func refreshDynamicMenuTitles() {
+        for item in menu?.items ?? [] {
+            guard let identifier = item.representedObject as? String else { continue }
+            item.title = TimeZoneCityCatalog.title(for: identifier)
+        }
     }
 
     private func makeHeaderItem(title: String) -> NSMenuItem {
