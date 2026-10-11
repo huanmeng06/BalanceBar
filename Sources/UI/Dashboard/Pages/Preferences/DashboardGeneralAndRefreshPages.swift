@@ -910,6 +910,12 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     private weak var relay: DashboardPreferencePageRelay?
     private var applying = false
     private var menuBuilt = false
+    private var displayedTitle = ""
+
+    override var stringValue: String {
+        get { displayedTitle }
+        set { displayedTitle = newValue }
+    }
 
     init(preferences: AppPreferences, relay: DashboardPreferencePageRelay) {
         self.preferences = preferences
@@ -968,8 +974,13 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         let identifier = selection.resolved().identifier
         if let item = menu?.items.first(where: { ($0.representedObject as? String) == identifier }) {
             select(item)
+            // NSPopUpButton can expose the selected item's tag as stringValue
+            // after a programmatic selection. Keep the visible title explicit.
+            displayedTitle = item.title
+            title = item.title
         } else {
-            title = TimeZoneCityCatalog.displayTitle(for: selection)
+            displayedTitle = TimeZoneCityCatalog.displayTitle(for: selection)
+            title = displayedTitle
         }
         isEnabled = selection != .system
         toolTip = selection.title()

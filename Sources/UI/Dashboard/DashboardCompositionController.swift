@@ -1160,7 +1160,7 @@ final class DashboardCompositionController {
         if identity == cachedSearchRuntimeIdentity {
             return cachedSearchRuntimeTexts
         }
-        let texts = DashboardSettingsSearchRuntime.textsBySection(
+        var texts = DashboardSettingsSearchRuntime.textsBySection(
             currentProviderName: identity.providerName,
             updateState: identity.updateState,
             balanceDisplayThreshold: identity.balanceDisplayThreshold,
@@ -1174,6 +1174,9 @@ final class DashboardCompositionController {
             menuBarPreviewSecondary: identity.previewSecondary,
             timeZoneTitle: identity.timeZoneTitle
         )
+        texts[.general, default: []].append(contentsOf: TimeZoneCityCatalog.all.flatMap { city in
+            [city.title, TimeZoneCityCatalog.continentTitle(for: city.identifier)]
+        })
         cachedSearchRuntimeIdentity = identity
         cachedSearchRuntimeTexts = texts
         return texts
