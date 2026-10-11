@@ -364,8 +364,10 @@ final class DashboardNotificationPages {
                     if let end = AppDisplayTime.nextDayStart(after: Date(), timeZone: timeZone) {
                         coordinator.pause(until: end)
                     }
-                default:
+                case "oneHour":
                     coordinator.pause(for: 3_600)
+                default:
+                    return
                 }
                 DispatchQueue.main.async { [weak self] in self?.updatePausePresentation() }
             }
@@ -573,8 +575,6 @@ final class DashboardNotificationPages {
         pauseMenu.item(at: 1)?.representedObject = "oneHour"
         pauseMenu.addItem(withTitle: tr("notifications.pause_today"))
         pauseMenu.item(at: 2)?.representedObject = "today"
-        pauseMenu.addItem(withTitle: AppLanguage.resolved == .simplifiedChinese ? "自定义截止时间" : "Custom deadline")
-        pauseMenu.item(at: 3)?.representedObject = "custom"
         pauseMenu.target = relay
         pauseMenu.action = #selector(DashboardNotificationPageRelay.pauseSelection(_:))
         self.pauseMenu = pauseMenu
@@ -664,7 +664,7 @@ final class DashboardNotificationPages {
         if let mode = pauseSelection(for: pauseUntil) {
             selectPauseOption(mode.rawValue)
         } else {
-            selectPauseOption("custom")
+            pauseMenu?.select(nil)
         }
     }
 

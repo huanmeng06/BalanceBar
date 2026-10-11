@@ -827,6 +827,18 @@ extension AppPreferencesTests {
         XCTAssertEqual(Set(traditional.map(\.countryTitle)), ["中國大陸", "中國香港", "中國澳門", "中國台灣"])
     }
 
+    func testSystemGMTAndUTCCanFreezeIntoManualMode() throws {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for identifier in ["GMT", "UTC", "America/New_York"] {
+            let zone = try XCTUnwrap(TimeZone(identifier: identifier))
+            preferences.displayTimeZoneSelection = AppTimeZoneSelection.manualSelection(systemTimeZone: zone)
+            XCTAssertNotEqual(preferences.displayTimeZoneSelection, .system)
+            XCTAssertTrue(preferences.displayTimeZoneSelection.isSupported)
+            XCTAssertEqual(preferences.effectiveDisplayTimeZone.secondsFromGMT(), zone.secondsFromGMT())
+        }
+    }
+
     func testDisplayTimeZoneResolvesSystemAndRegionRulesIndependently() throws {
         let system = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
         XCTAssertEqual(AppTimeZoneSelection.system.resolved(systemTimeZone: system), system)

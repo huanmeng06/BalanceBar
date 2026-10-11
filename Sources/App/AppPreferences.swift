@@ -288,7 +288,7 @@ enum AppTimeZoneSelection: Equatable, Codable {
     /// Unrepresentable custom offsets fall back to UTC rather than silently
     /// returning to system mode or rounding to a different local time.
     static func manualSelection(systemTimeZone: TimeZone = .autoupdatingCurrent, now: Date = Date()) -> Self {
-        let region = Self.region(identifier: systemTimeZone.identifier)
+        let region = Self.normalized(.region(identifier: systemTimeZone.identifier))
         if region.isSupported { return region }
         let seconds = systemTimeZone.secondsFromGMT(for: now)
         let offset = Self.fixedOffset(minutes: seconds / 60)

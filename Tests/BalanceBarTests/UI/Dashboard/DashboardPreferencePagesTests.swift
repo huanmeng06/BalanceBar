@@ -10225,7 +10225,9 @@ extension DashboardPreferencePagesTests {
         XCTAssertEqual(combo.title, TimeZoneCityCatalog.displayTitle(for: .system))
         toggle.state = .off
         XCTAssertTrue(toggle.sendAction(toggle.action, to: toggle.target))
-        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: TimeZone.autoupdatingCurrent.identifier))
+        XCTAssertNotEqual(preferences.displayTimeZoneSelection, .system)
+        XCTAssertTrue(preferences.displayTimeZoneSelection.isSupported)
+        XCTAssertEqual(preferences.effectiveDisplayTimeZone.secondsFromGMT(), TimeZone.autoupdatingCurrent.secondsFromGMT())
         general.refreshDisplayTimeZone(preferences.displayTimeZoneSelection)
         XCTAssertTrue(combo.isEnabled)
         preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
@@ -10253,6 +10255,7 @@ extension DashboardPreferencePagesTests {
         let pages = DashboardNotificationPages(configuration: .init(coordinator: coordinator, providerChoices: { _ in [] }, displayTimeZone: { preferences.effectiveDisplayTimeZone }))
         let page = pages.make()
         let menu = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }.first { popup in popup.itemArray.contains { ($0.representedObject as? String) == "today" } })
+        XCTAssertEqual(menu.itemArray.compactMap { $0.representedObject as? String }, ["none", "oneHour", "today"])
         menu.select(try XCTUnwrap(menu.itemArray.first { ($0.representedObject as? String) == "today" }))
         let expected = try XCTUnwrap(AppDisplayTime.nextDayStart(after: Date(), timeZone: preferences.effectiveDisplayTimeZone))
         XCTAssertTrue(menu.sendAction(menu.action, to: menu.target))
