@@ -999,9 +999,11 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     }
 
     private func refreshDynamicMenuTitles() {
+        let titles = Dictionary(uniqueKeysWithValues: TimeZoneCityCatalog.all.map { ($0.identifier, $0.title) })
         for item in menu?.items ?? [] {
-            guard let identifier = item.representedObject as? String else { continue }
-            item.title = TimeZoneCityCatalog.title(for: identifier)
+            guard let identifier = item.representedObject as? String,
+                  let title = titles[identifier] else { continue }
+            item.title = title
         }
     }
 

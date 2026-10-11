@@ -410,7 +410,9 @@ struct BalanceNotificationSettings: Codable, Equatable {
         providerPreferences = try container.decodeIfPresent([BalanceNotificationProviderPreference].self, forKey: .providerPreferences) ?? []
         resourceRules = try container.decodeIfPresent([BalanceNotificationResourceRule].self, forKey: .resourceRules) ?? []
         pauseUntil = try container.decodeIfPresent(Date.self, forKey: .pauseUntil)
-        pauseMode = try container.decodeIfPresent(BalanceNotificationPauseMode.self, forKey: .pauseMode)
+        if let rawMode = try? container.decode(String.self, forKey: .pauseMode) {
+            pauseMode = BalanceNotificationPauseMode(rawValue: rawMode)
+        }
     }
 
     func isAgentEnabled(_ agent: BalanceNotificationAgent) -> Bool {

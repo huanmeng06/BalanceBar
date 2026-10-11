@@ -799,7 +799,7 @@ extension AppPreferencesTests {
         XCTAssertEqual(preferences.displayTimeZoneSelection, .system)
         for selection: AppTimeZoneSelection in [.region(identifier: "Asia/Calcutta"), .region(identifier: "Asia/Kolkata"), .region(identifier: "America/New_York"), .fixedOffset(minutes: -300), .fixedOffset(minutes: 345), .system] {
             preferences.displayTimeZoneSelection = selection
-            XCTAssertEqual(AppPreferences(defaults: defaults).displayTimeZoneSelection, selection)
+            XCTAssertEqual(AppPreferences(defaults: defaults).displayTimeZoneSelection, AppTimeZoneSelection.normalized(selection))
         }
         for invalid in [AppTimeZoneSelection.region(identifier: "unknown/zone"), .fixedOffset(minutes: 16), .fixedOffset(minutes: 900)] {
             defaults.set(try JSONEncoder().encode(invalid), forKey: AppPreferences.displayTimeZoneKey)
@@ -811,6 +811,20 @@ extension AppPreferencesTests {
         let encoded = try JSONEncoder().encode(AppTimeZoneSelection.fixedOffset(minutes: 345))
         let values = PreferencesMigrationPlan.selectedValues(target: [:], production: [AppPreferences.displayTimeZoneKey: encoded], local: [:])
         XCTAssertEqual(values[AppPreferences.displayTimeZoneKey] as? Data, encoded)
+    }
+
+    func testDisplayTimeZoneNormalizesLegacyAliasAndTraditionalChineseNames() throws {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let legacy = AppTimeZoneSelection.region(identifier: "Asia/Calcutta")
+        preferences.displayTimeZoneSelection = legacy
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Kolkata"))
+        XCTAssertEqual(AppTimeZoneSelection.normalized(legacy), .region(identifier: "Asia/Kolkata"))
+        let traditional = TimeZoneCityCatalog.load(
+            zoneTab: "CN\t+3114+12128\tAsia/Shanghai\nHK\t+2217+11410\tAsia/Hong_Kong\nMO\t+2210+11333\tAsia/Macau\nTW\t+2503+12130\tAsia/Taipei",
+            locale: Locale(identifier: "zh_TW")
+        )
+        XCTAssertEqual(Set(traditional.map(\.countryTitle)), ["中國大陸", "中國香港", "中國澳門", "中國台灣"])
     }
 
     func testDisplayTimeZoneResolvesSystemAndRegionRulesIndependently() throws {

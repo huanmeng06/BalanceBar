@@ -281,13 +281,7 @@ enum AppTimeZoneSelection: Equatable, Codable {
 
     static func normalized(_ selection: Self) -> Self {
         guard case .region(let identifier) = selection else { return selection }
-        let aliases = [
-            "Asia/Calcutta": "Asia/Kolkata",
-            "US/Pacific": "America/Los_Angeles",
-            "US/Eastern": "America/New_York",
-            "Europe/Kiev": "Europe/Kyiv"
-        ]
-        return .region(identifier: aliases[identifier] ?? identifier)
+        return .region(identifier: TimeZoneCityCatalog.canonicalIdentifier(identifier))
     }
 
     /// Freeze a supported system region, or its exact supported GMT offset.
@@ -1024,11 +1018,6 @@ enum TimeZoneCityCatalog {
     private static let lock = NSLock()
     private static var cache: [String: [TimeZoneCity]] = [:]
 
-    /// Titles include the current DST offset, so refresh the catalog at least
-    /// once per minute without requiring an application restart.
-    static var cacheKey: String {
-        "\(locale.identifier)|\(Int(Date().timeIntervalSince1970 / 60))"
-    }
     private static let aliases: [String: String] = {
         var links = ["Asia/Calcutta": "Asia/Kolkata", "US/Pacific": "America/Los_Angeles", "US/Eastern": "America/New_York", "Europe/Kiev": "Europe/Kyiv"]
         // Apple's installed tzdb supplies the complete legacy link set. Keep
@@ -1048,6 +1037,10 @@ enum TimeZoneCityCatalog {
             return canonical
         }
     }()
+
+    static func canonicalIdentifier(_ identifier: String) -> String {
+        aliases[identifier] ?? identifier
+    }
 
     static var locale: Locale {
         if AppLanguage.selected == .system { return .autoupdatingCurrent }
@@ -1102,11 +1095,12 @@ enum TimeZoneCityCatalog {
                 guard ["CN", "HK", "MO", "TW"].contains(code) else { return localized }
                 let china = ["zh": "中国", "ja": "中国", "ko": "중국", "ru": "Китай", "de": "China", "fr": "Chine", "es": "China", "pt": "China", "it": "Cina"][language] ?? "China"
                 if language == "zh" {
+                    let traditional = locale.identifier == "zh_TW" || locale.identifier == "zh_HK" || locale.identifier.contains("Hant")
                     switch code {
-                    case "CN": return "中国大陆"
-                    case "HK": return "中国香港"
-                    case "MO": return "中国澳门"
-                    case "TW": return "中国台湾"
+                    case "CN": return traditional ? "中國大陸" : "中国大陆"
+                    case "HK": return traditional ? "中國香港" : "中国香港"
+                    case "MO": return traditional ? "中國澳門" : "中国澳门"
+                    case "TW": return traditional ? "中國台灣" : "中国台湾"
                     default: break
                     }
                 }
