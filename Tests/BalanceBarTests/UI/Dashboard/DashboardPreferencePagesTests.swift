@@ -10223,6 +10223,12 @@ extension DashboardPreferencePagesTests {
         XCTAssertFalse(combo.completes)
         XCTAssertEqual(toggle.state, .on)
         XCTAssertEqual(combo.title, TimeZoneCityCatalog.displayTitle(for: .system))
+        let cityMenuCount = combo.menu?.items.count ?? 0
+        combo.apply(.fixedOffset(minutes: 0))
+        XCTAssertEqual(combo.menu?.items.count, cityMenuCount)
+        XCTAssertFalse(combo.menu?.items.contains { ($0.representedObject as? String)?.hasPrefix("UTC") == true } ?? true)
+        combo.apply(preferences.displayTimeZoneSelection)
+        XCTAssertEqual(combo.menu?.items.count, cityMenuCount)
         toggle.state = .off
         XCTAssertTrue(toggle.sendAction(toggle.action, to: toggle.target))
         XCTAssertNotEqual(preferences.displayTimeZoneSelection, .system)
