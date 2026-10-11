@@ -246,8 +246,6 @@ swiftc \
     -framework AppKit \
     -framework ApplicationServices \
     -framework Foundation \
-    -framework MapKit \
-    -framework CoreLocation \
     -framework QuartzCore \
     -framework ServiceManagement \
     -framework SwiftUI \
@@ -287,8 +285,6 @@ launch_agent_binary_minos="$(awk '$1 == "minos" { print $2; exit }' <<< "$launch
     || die "ChatGPT launch agent is not executable: $launch_agent_executable"
 
 printf 'build-balancebar: copying bundle metadata and resources\n'
-cp "$resources_src/CityTimeZoneData.lzfse" "$resources_dir/CityTimeZoneData.lzfse"
-cp "$resources_src/CityTimeZoneData-LICENSE.txt" "$resources_dir/CityTimeZoneData-LICENSE.txt"
 bundle_plist="$contents_dir/Info.plist"
 cp "$resources_src/Info.plist" "$bundle_plist"
 plutil -replace CFBundleIdentifier -string "$bundle_identifier" "$bundle_plist"

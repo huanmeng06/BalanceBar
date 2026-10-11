@@ -10258,30 +10258,7 @@ extension DashboardPreferencePagesTests {
 
 }
 
-private final class TestCityTimeZoneResolver: CityTimeZoneResolving {
-    var queries: [String] = []
-    var completions: [(Result<[CityTimeZoneMatch], CityTimeZoneLookupError>) -> Void] = []
-    var cancellationCount = 0
-    func resolve(city: String, locale: Locale, completion: @escaping (Result<[CityTimeZoneMatch], CityTimeZoneLookupError>) -> Void) {
-        queries.append(city)
-        completions.append(completion)
-    }
-    func cancel() { cancellationCount += 1 }
-    func finish(_ result: Result<[CityTimeZoneMatch], CityTimeZoneLookupError>, at index: Int = 0) { completions[index](result) }
-}
 
-extension DashboardPreferencePagesTests {
-    private func finishCityLookup(_ resolver: TestCityTimeZoneResolver, with result: Result<[CityTimeZoneMatch], CityTimeZoneLookupError>, at index: Int = 0) {
-        resolver.finish(result, at: index)
-        let done = expectation(description: "city lookup completion applied")
-        DispatchQueue.main.async { done.fulfill() }
-        wait(for: [done], timeout: 3)
-    }
-
-
-
-
-}
 
 extension DashboardPreferencePagesTests {
 }

@@ -878,9 +878,6 @@ final class DashboardTimeZoneComboBox: NSComboBox, NSComboBoxDataSource, NSCombo
     }
 
 
-    convenience init(preferences: AppPreferences, relay: DashboardPreferencePageRelay, cityResolver: CityTimeZoneResolving) {
-        self.init(preferences: preferences, relay: relay)
-    }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
