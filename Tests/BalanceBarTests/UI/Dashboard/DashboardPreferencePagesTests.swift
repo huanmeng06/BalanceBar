@@ -10177,6 +10177,9 @@ extension DashboardPreferencePagesTests {
         XCTAssertEqual(ordered.map(\.countryTitle), ["美国", "乌兹别克斯坦", "中国大陆"])
         let special = TimeZoneCityCatalog.load(zoneTab: "HK\t+2217+11410\tAsia/Hong_Kong\nMO\t+2210+11333\tAsia/Macau\nTW\t+2503+12130\tAsia/Taipei", locale: Locale(identifier: "zh_CN"))
         XCTAssertEqual(Set(special.map(\.countryTitle)), ["中国香港", "中国澳门", "中国台湾"])
+        let allChina = TimeZoneCityCatalog.load(zoneTab: "CN\t+404251-0740023\tAsia/Shanghai\nHK\t+2217+11410\tAsia/Hong_Kong\nMO\t+2210+11333\tAsia/Macau\nTW\t+2503+12130\tAsia/Taipei", locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(Set(allChina.map(\.countryTitle)), ["China - Mainland", "China - Hong Kong", "China - Macao", "China - Taiwan"])
+        XCTAssertEqual(TimeZoneCityCatalog.continentTitle(for: "America/New_York", locale: Locale(identifier: "ko_KR")), "아메리카")
         XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "New York"))
         XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "纽约"))
         XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "America/New_York"))
@@ -10193,6 +10196,18 @@ extension DashboardPreferencePagesTests {
         XCTAssertTrue(TimeZoneCityCatalog.all.contains { $0.identifier == "America/New_York" })
     }
 
+
+    func testFollowingSystemRestoresPreviousManualTimeZone() throws {
+        let suite = "BalanceBarTests.TimeZoneRestoreManual.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        preferences.displayTimeZoneSelection = .system
+        XCTAssertEqual(preferences.lastManualDisplayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        preferences.displayTimeZoneSelection = preferences.lastManualDisplayTimeZoneSelection
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+    }
     func testGeneralTimeZoneRefreshKeepsExistingComboAndSwitch() throws {
         let suite = "BalanceBarTests.TimeZoneUI.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

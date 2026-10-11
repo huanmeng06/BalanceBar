@@ -347,8 +347,19 @@ enum AppDisplayTime {
 
 final class AppPreferences {
     static let displayTimeZoneKey = "displayTimeZone"
+    static let lastManualDisplayTimeZoneKey = "lastManualDisplayTimeZone"
     static let displayTimeZoneDidChange = Notification.Name("BalanceBar.displayTimeZoneDidChange")
     private(set) var displayTimeZoneRevision: UInt64 = 0
+
+    var lastManualDisplayTimeZoneSelection: AppTimeZoneSelection {
+        guard let data = defaults.data(forKey: Self.lastManualDisplayTimeZoneKey),
+              let selection = try? JSONDecoder().decode(AppTimeZoneSelection.self, from: data),
+              selection.isSupported,
+              selection != .system else {
+            return AppTimeZoneSelection.manualSelection()
+        }
+        return selection
+    }
 
     var displayTimeZoneSelection: AppTimeZoneSelection {
         get {
@@ -361,7 +372,15 @@ final class AppPreferences {
             let selection = newValue.isSupported ? newValue : .system
             guard selection != displayTimeZoneSelection,
                   let data = try? JSONEncoder().encode(selection) else { return }
+            if selection == .system,
+               let current = try? JSONEncoder().encode(displayTimeZoneSelection),
+               displayTimeZoneSelection != .system {
+                defaults.set(current, forKey: Self.lastManualDisplayTimeZoneKey)
+            }
             defaults.set(data, forKey: Self.displayTimeZoneKey)
+            if selection != .system, let manualData = try? JSONEncoder().encode(selection) {
+                defaults.set(manualData, forKey: Self.lastManualDisplayTimeZoneKey)
+            }
             displayTimeZoneRevision &+= 1
             NotificationCenter.default.post(name: Self.displayTimeZoneDidChange, object: self)
         }
@@ -1044,15 +1063,26 @@ enum TimeZoneCityCatalog {
             let localized = formatter.string(from: Date())
             let city = localized.isEmpty || localized == unknown ? english : localized
             let country = countryCode.map { code -> String in
-                if locale.language.languageCode?.identifier == "zh" {
+                let language = locale.language.languageCode?.identifier ?? "en"
+                let localized = locale.localizedString(forRegionCode: code) ?? code
+                guard ["CN", "HK", "MO", "TW"].contains(code) else { return localized }
+                let china = ["zh": "中国", "ja": "中国", "ko": "중국", "ru": "Китай", "de": "China", "fr": "Chine", "es": "China", "pt": "China", "it": "Cina"][language] ?? "China"
+                if language == "zh" {
                     switch code {
+                    case "CN": return "中国大陆"
                     case "HK": return "中国香港"
                     case "MO": return "中国澳门"
                     case "TW": return "中国台湾"
                     default: break
                     }
                 }
-                return locale.localizedString(forRegionCode: code) ?? code
+                let qualifier: String
+                switch code {
+                case "CN": qualifier = language == "ja" ? "本土" : language == "ko" ? "본토" : language == "ru" ? "материковый Китай" : language == "de" ? "Festland" : language == "fr" ? "continentale" : language == "es" ? "continental" : language == "pt" ? "continental" : language == "it" ? "continentale" : "Mainland"
+                default:
+                    qualifier = localized.components(separatedBy: " - ").last ?? localized
+                }
+                return code == "CN" ? "\(china) - \(qualifier)" : "\(china) - \(qualifier)"
             }
             let minutes = zone.secondsFromGMT(for: Date()) / 60
             let sign = minutes < 0 ? "−" : "+"
@@ -1104,15 +1134,19 @@ enum TimeZoneCityCatalog {
     static func continentTitle(for identifier: String, locale: Locale = locale) -> String {
         let continent = identifier.split(separator: "/").first.map(String.init) ?? ""
         let language = locale.language.languageCode?.identifier ?? "en"
-        let names: [String: (String, String)] = [
-            "Africa": ("非洲", "Africa"), "America": ("美洲", "Americas"),
-            "Antarctica": ("南极洲", "Antarctica"), "Arctic": ("北极地区", "Arctic"),
-            "Asia": ("亚洲", "Asia"), "Atlantic": ("大西洋地区", "Atlantic"),
-            "Australia": ("大洋洲", "Oceania"), "Europe": ("欧洲", "Europe"),
-            "Indian": ("印度洋地区", "Indian Ocean"), "Pacific": ("太平洋地区", "Pacific")
+        let names: [String: [String: String]] = [
+            "Africa": ["zh": "非洲", "en": "Africa", "ja": "アフリカ", "ko": "아프리카", "es": "África", "pt": "África", "de": "Afrika", "fr": "Afrique", "ru": "Африка", "it": "Africa"],
+            "America": ["zh": "美洲", "en": "Americas", "ja": "アメリカ", "ko": "아메리카", "es": "América", "pt": "Américas", "de": "Amerika", "fr": "Amériques", "ru": "Америка", "it": "Americhe"],
+            "Antarctica": ["zh": "南极洲", "en": "Antarctica", "ja": "南極", "ko": "남극", "es": "Antártida", "pt": "Antártida", "de": "Antarktis", "fr": "Antarctique", "ru": "Антарктика", "it": "Antartide"],
+            "Arctic": ["zh": "北极地区", "en": "Arctic", "ja": "北極", "ko": "북극", "es": "Ártico", "pt": "Ártico", "de": "Arktis", "fr": "Arctique", "ru": "Арктика", "it": "Artico"],
+            "Asia": ["zh": "亚洲", "en": "Asia", "ja": "アジア", "ko": "아시아", "es": "Asia", "pt": "Ásia", "de": "Asien", "fr": "Asie", "ru": "Азия", "it": "Asia"],
+            "Atlantic": ["zh": "大西洋地区", "en": "Atlantic", "ja": "大西洋", "ko": "대서양", "es": "Atlántico", "pt": "Atlântico", "de": "Atlantik", "fr": "Atlantique", "ru": "Атлантика", "it": "Atlantico"],
+            "Australia": ["zh": "大洋洲", "en": "Oceania", "ja": "オセアニア", "ko": "오세아니아", "es": "Oceanía", "pt": "Oceania", "de": "Ozeanien", "fr": "Océanie", "ru": "Океания", "it": "Oceania"],
+            "Europe": ["zh": "欧洲", "en": "Europe", "ja": "ヨーロッパ", "ko": "유럽", "es": "Europa", "pt": "Europa", "de": "Europa", "fr": "Europe", "ru": "Европа", "it": "Europa"],
+            "Indian": ["zh": "印度洋地区", "en": "Indian Ocean", "ja": "インド洋", "ko": "인도양", "es": "Océano Índico", "pt": "Oceano Índico", "de": "Indischer Ozean", "fr": "Océan Indien", "ru": "Индийский океан", "it": "Oceano Indiano"],
+            "Pacific": ["zh": "太平洋地区", "en": "Pacific", "ja": "太平洋", "ko": "태평양", "es": "Pacífico", "pt": "Pacífico", "de": "Pazifik", "fr": "Pacifique", "ru": "Тихий океан", "it": "Pacifico"]
         ]
-        let pair = names[continent] ?? (continent, continent)
-        return language == "zh" ? pair.0 : pair.1
+        return names[continent]?[language] ?? names[continent]?["en"] ?? continent
     }
 
     static func grouped(_ cities: [TimeZoneCity], locale: Locale = locale) -> [(header: String, city: TimeZoneCity)] {

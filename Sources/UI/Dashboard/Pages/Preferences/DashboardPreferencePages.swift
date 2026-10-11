@@ -81,6 +81,9 @@ final class DashboardPreferencePages {
         relay.onOffsetValueEnded = actions.onOffsetValueEnded
         relay.onOffsetReset = actions.onOffsetReset
         relay.onLanguage = actions.onLanguage
+        relay.manualTimeZoneSelectionProvider = { [weak preferences] in
+            preferences?.lastManualDisplayTimeZoneSelection ?? AppTimeZoneSelection.manualSelection()
+        }
         relay.onTimeZone = { [weak preferences] selection in
             preferences?.displayTimeZoneSelection = selection
         }

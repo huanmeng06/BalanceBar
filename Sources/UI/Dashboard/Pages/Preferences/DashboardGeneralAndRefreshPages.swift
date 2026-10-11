@@ -909,6 +909,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     private let preferences: AppPreferences
     private weak var relay: DashboardPreferencePageRelay?
     private var applying = false
+    private var menuBuilt = false
 
     init(preferences: AppPreferences, relay: DashboardPreferencePageRelay) {
         self.preferences = preferences
@@ -942,8 +943,9 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     func apply(_ selection: AppTimeZoneSelection) {
         applying = true
         defer { applying = false }
-        removeAllItems()
-        let cities = TimeZoneCityCatalog.all.sorted {
+        if !menuBuilt {
+            removeAllItems()
+            let cities = TimeZoneCityCatalog.all.sorted {
             let left = TimeZoneCityCatalog.continentTitle(for: $0.identifier)
             let right = TimeZoneCityCatalog.continentTitle(for: $1.identifier)
             if left != right { return left.localizedStandardCompare(right) == .orderedAscending }
@@ -960,6 +962,8 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
             item.target = self
             item.representedObject = city.identifier
             menu?.addItem(item)
+            }
+            menuBuilt = true
         }
         let identifier = selection.resolved().identifier
         if let item = menu?.items.first(where: { ($0.representedObject as? String) == identifier }) {
