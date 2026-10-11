@@ -905,7 +905,7 @@ final class MenuHeaderView: NSView {
 
 /// A native pop-up menu with custom, non-selectable continent headings.
 /// City entries are the only menu items with actions.
-final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout {
+final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout, NSMenuDelegate {
     private let preferences: AppPreferences
     private weak var relay: DashboardPreferencePageRelay?
     private var applying = false
@@ -933,6 +933,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         target = self
         action = #selector(selectTimeZone(_:))
         autoenablesItems = false
+        menu?.delegate = self
         apply(preferences.displayTimeZoneSelection)
     }
 
@@ -986,6 +987,12 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         }
         isEnabled = selection != .system
         toolTip = selection.title()
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        // Re-evaluate dynamic UTC offsets when the user opens the list, including
+        // DST transitions that occurred while a manual region was selected.
+        apply(preferences.displayTimeZoneSelection)
     }
 
     private func makeHeaderItem(title: String) -> NSMenuItem {
