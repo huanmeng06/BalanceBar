@@ -141,6 +141,7 @@ final class DashboardProviderPageRelay: NSObject {
 private protocol DashboardProviderMountedPage: AnyObject {
     var mount: DashboardProviderPageMount { get }
     func refresh(input: DashboardProviderPageInput) -> Bool
+    func refreshDisplayTimeZone(input: DashboardProviderPageInput)
     func teardown()
 }
 
@@ -242,6 +243,14 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
             : tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation2)
         updateActionState(for: choice)
         return true
+    }
+
+    func refreshDisplayTimeZone(input: DashboardProviderPageInput) {
+        guard let choice = input.choices.first(where: { $0.id == choiceID }), choice.isCurrent else { return }
+        resetLabel.stringValue = input.snapshot.overviewReset(
+            refreshDate: input.refreshDate,
+            formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone)
+        )
     }
 
     private func updateActionState(for choice: ProviderChoice?) {
@@ -418,6 +427,18 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         return true
     }
 
+    func refreshDisplayTimeZone(input: DashboardProviderPageInput) {
+        guard let current = choices.first(where: { $0.isCurrent }) else { return }
+        resetLabel.stringValue = input.snapshot.overviewReset(
+            refreshDate: input.refreshDate,
+            formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone)
+        )
+        refreshLabel.stringValue = input.refreshDate.map {
+            AppDisplayTime.formatter(timeZone: input.displayTimeZone).string(from: $0)
+        } ?? "--:--:--"
+        if current.isCurrent { refreshLunaReserve(input: input) }
+    }
+
     private func refreshLunaReserve(input: DashboardProviderPageInput) {
         guard LunaReserveUserFacing.isCurrentlyEnabled,
               input.currentProviderIsOfficial else {
@@ -526,6 +547,14 @@ final class DashboardProviderPageCoordinator {
         let page = DashboardProviderOverviewPage(input: input, actions: actions)
         revisionGate = DashboardProviderRevisionGate()
         return mount(page)
+    }
+
+    func refreshDisplayTimeZone(input: DashboardProviderPageInput) {
+        guard !isTornDown,
+              let page = mountedPage,
+              mountedMount == page.mount,
+              Thread.isMainThread else { return }
+        page.refreshDisplayTimeZone(input: input)
     }
 
     @discardableResult

@@ -445,7 +445,13 @@ final class DashboardCompositionController {
 
     func refreshDisplayTimeZone(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
         dashboardPreferencePages.refreshDisplayTimeZone()
-        refreshMountedPage(snapshot: snapshot, refreshDate: refreshDate, revision: revision)
+        let input = makeProviderPageInput(
+            snapshot: snapshot,
+            refreshDate: refreshDate,
+            useLastSuccessfulRefresh: false,
+            revision: revision
+        )
+        dashboardProviderPages.refreshDisplayTimeZone(input: input)
     }
 
     func refreshMountedPage(snapshot: Snapshot, refreshDate: Date?, revision: UInt64) {
