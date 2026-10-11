@@ -838,16 +838,21 @@ enum DashboardRefreshPage {
 /// every display update is applied to this same mounted control instance.
 /// Menu header view for a continent section.
 final class MenuHeaderView: NSView {
+    private let background = NSView()
     private let label = NSTextField(labelWithString: "")
     private let accentBar = NSView()
+    private let topSpacing: CGFloat = 4
 
     init(title: String, width: CGFloat = 240) {
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: 32))
         autoresizingMask = [.width]
         wantsLayer = true
 
-        accentBar.wantsLayer = true
-        accentBar.translatesAutoresizingMaskIntoConstraints = false
+        [background, accentBar].forEach {
+            $0.wantsLayer = true
+            $0.translatesAutoresizingMaskIntoConstraints = false
+        }
+        addSubview(background)
         addSubview(accentBar)
 
         label.attributedStringValue = NSAttributedString(
@@ -862,13 +867,19 @@ final class MenuHeaderView: NSView {
         addSubview(label)
 
         NSLayoutConstraint.activate([
-            accentBar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            accentBar.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -2),
+            background.topAnchor.constraint(equalTo: topAnchor, constant: topSpacing),
+            background.bottomAnchor.constraint(equalTo: bottomAnchor),
+            background.leadingAnchor.constraint(equalTo: leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            accentBar.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 10),
+            accentBar.centerYAnchor.constraint(equalTo: background.centerYAnchor),
             accentBar.widthAnchor.constraint(equalToConstant: 3),
             accentBar.heightAnchor.constraint(equalToConstant: 14),
+
             label.leadingAnchor.constraint(equalTo: accentBar.trailingAnchor, constant: 8),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -2)
+            label.trailingAnchor.constraint(lessThanOrEqualTo: background.trailingAnchor, constant: -12),
+            label.centerYAnchor.constraint(equalTo: background.centerYAnchor)
         ])
     }
 
@@ -879,7 +890,7 @@ final class MenuHeaderView: NSView {
 
     override func updateLayer() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.controlAccentColor
+            background.layer?.backgroundColor = NSColor.controlAccentColor
                 .withAlphaComponent(0.10).cgColor
             accentBar.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
             accentBar.layer?.cornerRadius = 1.5
