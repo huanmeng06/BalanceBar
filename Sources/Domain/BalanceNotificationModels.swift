@@ -367,6 +367,8 @@ struct BalanceNotificationSettings: Codable, Equatable {
     var providerPreferences: [BalanceNotificationProviderPreference] = []
     var resourceRules: [BalanceNotificationResourceRule] = []
     var pauseUntil: Date?
+    /// Preserves whether the user chose a fixed duration or local-day pause.
+    var pauseMode: String?
 
     private enum CodingKeys: String, CodingKey {
         case globalEnabled
@@ -382,6 +384,7 @@ struct BalanceNotificationSettings: Codable, Equatable {
         case providerPreferences
         case resourceRules
         case pauseUntil
+        case pauseMode
     }
 
     init() {}
@@ -402,6 +405,7 @@ struct BalanceNotificationSettings: Codable, Equatable {
         providerPreferences = try container.decodeIfPresent([BalanceNotificationProviderPreference].self, forKey: .providerPreferences) ?? []
         resourceRules = try container.decodeIfPresent([BalanceNotificationResourceRule].self, forKey: .resourceRules) ?? []
         pauseUntil = try container.decodeIfPresent(Date.self, forKey: .pauseUntil)
+        pauseMode = try container.decodeIfPresent(String.self, forKey: .pauseMode)
     }
 
     func isAgentEnabled(_ agent: BalanceNotificationAgent) -> Bool {

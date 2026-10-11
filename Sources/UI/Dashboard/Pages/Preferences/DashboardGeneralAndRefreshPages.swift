@@ -910,6 +910,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     private weak var relay: DashboardPreferencePageRelay?
     private var applying = false
     private var menuBuilt = false
+    private var menuCacheKey = ""
     private var displayedTitle = ""
 
     override var stringValue: String {
@@ -949,7 +950,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     func apply(_ selection: AppTimeZoneSelection) {
         applying = true
         defer { applying = false }
-        if !menuBuilt {
+        if !menuBuilt || menuCacheKey != TimeZoneCityCatalog.cacheKey {
             removeAllItems()
             let cities = TimeZoneCityCatalog.all.sorted {
             let left = TimeZoneCityCatalog.continentTitle(for: $0.identifier)
@@ -970,6 +971,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
             menu?.addItem(item)
             }
             menuBuilt = true
+            menuCacheKey = TimeZoneCityCatalog.cacheKey
         }
         let identifier = selection.resolved().identifier
         if let item = menu?.items.first(where: { ($0.representedObject as? String) == identifier }) {

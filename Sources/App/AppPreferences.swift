@@ -982,10 +982,23 @@ enum AppPreferencesMigration {
 
 struct TimeZoneCity: Equatable {
     let identifier: String
-    let title: String
     let searchKey: String
     let countryTitle: String
     let cityTitle: String
+    let localeIdentifier: String
+
+    var title: String {
+        guard let zone = TimeZone(identifier: identifier) else { return cityTitle }
+        let minutes = zone.secondsFromGMT(for: Date()) / 60
+        let sign = minutes < 0 ? "−" : "+"
+        let absolute = abs(minutes)
+        let hours = absolute / 60
+        let remainder = absolute % 60
+        let offset = remainder == 0
+            ? "UTC\(sign)\(hours)"
+            : String(format: "UTC%@%02d:%02d", sign, hours, remainder)
+        return countryTitle.isEmpty ? "\(cityTitle) (\(offset))" : "\(countryTitle) - \(cityTitle) (\(offset))"
+    }
 
     var sortKey: String { "\(countryTitle)\u{0000}\(cityTitle)" }
 }
@@ -996,6 +1009,12 @@ enum TimeZoneCityCatalog {
     private static let zoneTab = try? String(contentsOfFile: "/usr/share/zoneinfo/zone.tab", encoding: .utf8)
     private static let lock = NSLock()
     private static var cache: [String: [TimeZoneCity]] = [:]
+
+    /// Titles include the current DST offset, so refresh the catalog at least
+    /// once per minute without requiring an application restart.
+    static var cacheKey: String {
+        "\(locale.identifier)|\(Int(Date().timeIntervalSince1970 / 60))"
+    }
     private static let aliases: [String: String] = {
         var links = ["Asia/Calcutta": "Asia/Kolkata", "US/Pacific": "America/Los_Angeles", "US/Eastern": "America/New_York", "Europe/Kiev": "Europe/Kyiv"]
         // Apple's installed tzdb supplies the complete legacy link set. Keep
@@ -1026,9 +1045,10 @@ enum TimeZoneCityCatalog {
         let locale = locale
         lock.lock()
         defer { lock.unlock() }
-        if let cities = cache[locale.identifier] { return cities }
+        let key = cacheKey
+        if let cities = cache[key] { return cities }
         let cities = load(zoneTab: zoneTab, locale: locale)
-        cache[locale.identifier] = cities
+        cache[key] = cities
         return cities
     }
 
@@ -1084,23 +1104,13 @@ enum TimeZoneCityCatalog {
                 }
                 return code == "CN" ? "\(china) - \(qualifier)" : "\(china) - \(qualifier)"
             }
-            let minutes = zone.secondsFromGMT(for: Date()) / 60
-            let sign = minutes < 0 ? "−" : "+"
-            let absolute = abs(minutes)
-            let hours = absolute / 60
-            let remainder = absolute % 60
-            let offset = remainder == 0
-                ? "UTC\(sign)\(hours)"
-                : String(format: "UTC%@%02d:%02d", sign, hours, remainder)
             let countryTitle = country ?? ""
-            let title = countryTitle.isEmpty
-                ? "\(city) (\(offset))"
-                : "\(countryTitle) - \(city) (\(offset))"
             let legacyNames = aliases.filter { $0.value == identifier }.map(\.key).joined(separator: " ")
-            result.append(TimeZoneCity(identifier: identifier, title: title,
-                searchKey: "\(title) \(english) \(identifier) \(legacyNames) \(identifier.replacingOccurrences(of: "_", with: " "))".lowercased(),
+            result.append(TimeZoneCity(identifier: identifier,
+                searchKey: "\(countryTitle) \(city) \(english) \(identifier) \(legacyNames) \(identifier.replacingOccurrences(of: "_", with: " "))".lowercased(),
                 countryTitle: countryTitle,
-                cityTitle: city))
+                cityTitle: city,
+                localeIdentifier: locale.identifier))
         }
         for line in (zoneTab ?? "").split(separator: "\n") where !line.hasPrefix("#") {
             let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
@@ -1117,11 +1127,14 @@ enum TimeZoneCityCatalog {
     }
 
     static func compare(_ lhs: TimeZoneCity, _ rhs: TimeZoneCity, locale: Locale = locale) -> Bool {
+        let comparisonLocale = locale.language.languageCode?.identifier == "zh"
+            ? Locale(identifier: "en_US_POSIX")
+            : locale
         let country = collationKey(lhs.countryTitle, locale: locale)
-            .compare(collationKey(rhs.countryTitle, locale: locale), options: [.numeric, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .compare(collationKey(rhs.countryTitle, locale: locale), options: [.numeric, .caseInsensitive], locale: comparisonLocale)
         if country != .orderedSame { return country == .orderedAscending }
         return collationKey(lhs.cityTitle, locale: locale)
-            .compare(collationKey(rhs.cityTitle, locale: locale), options: [.numeric, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX")) == .orderedAscending
+            .compare(collationKey(rhs.cityTitle, locale: locale), options: [.numeric, .caseInsensitive], locale: comparisonLocale) == .orderedAscending
     }
 
     static func collationKey(_ value: String, locale: Locale = locale) -> String {

@@ -670,13 +670,9 @@ final class DashboardNotificationPages {
     }
 
     private func pauseSelection(for pauseUntil: Date) -> String {
-        let calendar = AppDisplayTime.calendar(timeZone: configuration.displayTimeZone())
-        let endOfToday = calendar.date(
-            byAdding: .day,
-            value: 1,
-            to: calendar.startOfDay(for: Date())
-        ) ?? Date()
-        return abs(pauseUntil.timeIntervalSince(endOfToday)) < 1 ? "today" : "oneHour"
+        // The original selection is persisted with the absolute deadline. Do
+        // not infer it from the newly selected timezone's calendar boundary.
+        configuration.coordinator.settings.pauseMode ?? "oneHour"
     }
 
     private func remainingText(until date: Date) -> String {
