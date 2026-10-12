@@ -6040,7 +6040,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         if let remainingText = card.remainingText, !remainingText.isEmpty {
                             let remaining = makeOverviewLabel(
                                 remainingText,
-                                font: .systemFont(
+                                font: .monospacedDigitSystemFont(
                                     ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                                     weight: .medium
                                 )

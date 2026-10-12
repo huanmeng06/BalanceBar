@@ -417,6 +417,7 @@ enum OpenCodexCardLayout {
     static let bankedResetRemainingWidth: CGFloat = 120
     static let bankedResetChromeInset: CGFloat = 12
     static let bankedResetChromeCornerRadius: CGFloat = 10
+    static let bankedResetTicketLineGap: CGFloat = 2
     /// Gap between the reset-card summary and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
     /// The probability footer and reset-card summary use the same visible
@@ -1025,14 +1026,14 @@ enum OpenCodexCardLayout {
             guard includesBankedReset, bankedDetailCount > 0 else { return [] }
             let iconSize = bankedResetTicketIconSize
             let chromeInset = bankedResetChromeInset
-            let innerX = horizontalInset + chromeInset
-            let innerRight = cardWidth - horizontalInset - chromeInset
-            let textX = innerX + iconSize.width + bankedResetTicketIconGap
-            let valueColumnRight = cardWidth - horizontalInset
-            let remainingX = valueColumnRight - bankedResetRemainingWidth
+            let contentMinX = horizontalInset + chromeInset
+            let contentMaxX = cardWidth - horizontalInset - chromeInset
+            let textX = contentMinX + iconSize.width + bankedResetTicketIconGap
+            let remainingX = contentMaxX - bankedResetRemainingWidth
             let titleWidth = max(64, remainingX - textX - 6)
-            let lineWidth = max(64, innerRight - textX)
-            let lineGap: CGFloat = 2
+            let lineWidth = max(64, contentMaxX - textX)
+            let lineGap = bankedResetTicketLineGap
+            let textBlockHeight = quotaDetailHeight + quotaResetHeight * 2 + lineGap * 2
             return (0..<bankedDetailCount).map { index in
                 // Unclipped 1–2 card lists stay in host coordinates so the
                 // existing two-ticket menu still paints at bottomInset.
@@ -1041,12 +1042,11 @@ enum OpenCodexCardLayout {
                 let originY: CGFloat = bankedTicketsNeedScroll ? 0 : bottomInset
                 let y = originY
                     + CGFloat(bankedDetailCount - 1 - index) * (bankedDetailHeight + ticketGap)
-                let expiryY = y + chromeInset
+                let textBlockY = y + (bankedDetailHeight - textBlockHeight) / 2
+                let expiryY = textBlockY
                 let windowY = expiryY + quotaResetHeight + lineGap
                 let titleY = windowY + quotaResetHeight + lineGap
-                let textBottom = expiryY
-                let textTop = titleY + quotaDetailHeight
-                let iconY = (textBottom + textTop - iconSize.height) / 2
+                let iconY = y + (bankedDetailHeight - iconSize.height) / 2
                 return OpenCodexQuotaRowFrames(
                     quotaDetail: CGRect(
                         x: textX,
@@ -1068,7 +1068,7 @@ enum OpenCodexCardLayout {
                     ),
                     progress: .zero,
                     icon: CGRect(
-                        x: innerX,
+                        x: contentMinX,
                         y: iconY,
                         width: iconSize.width,
                         height: iconSize.height

@@ -89,8 +89,15 @@ final class OpenCodexCardLayoutTests: XCTestCase {
                            + OpenCodexCardLayout.metrics.ticketSpacing,
                        accuracy: 0.001)
         XCTAssertEqual(first.amount.maxX,
-                       OpenCodexCardLayout.cardWidth - OpenCodexCardLayout.horizontalInset,
+                       first.chrome.maxX - OpenCodexCardLayout.bankedResetChromeInset,
                        accuracy: 0.001)
+        XCTAssertEqual(first.icon.midY, first.chrome.midY, accuracy: 0.001)
+        XCTAssertEqual(first.amount.midY, first.window.midY, accuracy: 0.001)
+        XCTAssertEqual(
+            (first.quotaDetail.maxY + first.reset.minY) / 2,
+            first.chrome.midY,
+            accuracy: 0.001
+        )
     }
 
     func testOpenCodexCardLayoutMatchesExistingOfficialAndBalanceOverviewFrames() {
