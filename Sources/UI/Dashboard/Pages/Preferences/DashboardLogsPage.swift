@@ -116,7 +116,13 @@ final class DashboardLogsPage {
     }
 
     func refresh() {
-        let text = SwitchLog.recentText() ?? tr(.keyDashboardLogsPageNoLogsYet)
+        let text: String
+        switch SwitchLog.readSnapshot() {
+        case .empty: text = tr(.keyDashboardLogsPageNoLogsYet)
+        case .failure(let message): text = message
+        case .data(let value, let truncated):
+            text = truncated ? "[仅显示最近内容；完整日志可在 Finder 中查看。]\n" + value : value
+        }
         logView.textStorage?.setAttributedString(Self.styledLog(text))
         resizeDocument()
         DispatchQueue.main.async { [weak self] in
@@ -126,7 +132,7 @@ final class DashboardLogsPage {
     }
 
     func reveal() {
-        NSWorkspace.shared.activateFileViewerSelecting([SwitchLog.fileURL])
+        NSWorkspace.shared.activateFileViewerSelecting([SwitchLog.directoryURL])
     }
 
     private func resizeDocument() {

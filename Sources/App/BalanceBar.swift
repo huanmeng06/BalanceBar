@@ -21,116 +21,130 @@ enum DashboardLogging {
 }
 
 enum SwitchLog {
-    enum Level: String {
-        case debug = "DEBUG"
-        case info = "INFO"
-        case warning = "WARN"
-        case error = "ERROR"
+    enum Level: String { case debug = "DEBUG", info = "INFO", warning = "WARN", error = "ERROR" }
+
+    enum ReadResult: Equatable {
+        case empty
+        case data(String, truncated: Bool)
+        case failure(String)
     }
 
     private static let queue = DispatchQueue(label: "local.balancebar.debug-log")
-    // Keep at most about 1 MB on disk: one 512 KB active file and one rotated
-    // predecessor. Diagnostic logs should never grow with the app's lifetime.
-    private static let maximumSize = 512 * 1_024
+    private static let maximumSize = 1 * 1_024 * 1_024
+    private static let maximumArchives = 10
+    private static let maximumStorageSize = 20 * 1_024 * 1_024
     private static let viewerMaximumBytes: UInt64 = 160 * 1_024
-    private static let viewerMaximumLines = 1_000
     private static var lastWriteDates: [String: Date] = [:]
+    private static var sessionID: String?
     private static let timestampFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
-    static let fileURL = URL(fileURLWithPath: NSString(
-        string: "~/Library/Logs/BalanceBar/debug.log"
-    ).expandingTildeInPath)
-    private static let previousFileURL = fileURL
-        .deletingLastPathComponent()
-        .appendingPathComponent("debug.previous.log")
 
-    static func write(
-        _ message: String,
-        level: Level = .info,
-        category: String = "general",
-        throttleKey: String? = nil,
-        minimumInterval: TimeInterval = 0
-    ) {
+    private static var environmentName: String {
+        let bundle = Bundle.main.bundleIdentifier ?? ""
+        return bundle == "com.huanmeng06.BalanceBar.dev" || bundle.hasPrefix("com.huanmeng06.BalanceBar.dev.") ? "Development" : "Production"
+    }
+
+    static var directoryURL: URL {
+        if let override = ProcessInfo.processInfo.environment["BALANCEBAR_LOG_DIRECTORY"], !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/\(environmentName)").expandingTildeInPath, isDirectory: true)
+    }
+    static var fileURL: URL { directoryURL.appendingPathComponent("debug.log") }
+    private static var legacyFileURL: URL { URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/debug.log").expandingTildeInPath) }
+    private static var legacyPreviousURL: URL { legacyFileURL.deletingLastPathComponent().appendingPathComponent("debug.previous.log") }
+
+    static var archiveURLs: [URL] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])) ?? []
+        return files.filter { $0.pathExtension == "log" && $0.lastPathComponent.hasPrefix("debug-") }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    static func write(_ message: String, level: Level = .info, category: String = "general", throttleKey: String? = nil, minimumInterval: TimeInterval = 0) {
         queue.async {
             let now = Date()
             if minimumInterval > 0 {
                 let key = throttleKey ?? "\(level.rawValue)|\(category)|\(message)"
-                if let previous = lastWriteDates[key],
-                   now.timeIntervalSince(previous) < minimumInterval {
-                    return
-                }
+                if let previous = lastWriteDates[key], now.timeIntervalSince(previous) < minimumInterval { return }
                 lastWriteDates[key] = now
-                if lastWriteDates.count > 256 {
-                    lastWriteDates = lastWriteDates.filter {
-                        now.timeIntervalSince($0.value) < 3_600
-                    }
-                }
+                if lastWriteDates.count > 256 { lastWriteDates = lastWriteDates.filter { now.timeIntervalSince($0.value) < 3_600 } }
             }
-            let line = "[\(timestampFormatter.string(from: now))] [\(level.rawValue)] [\(category)] \(message)\n"
-            guard let data = line.data(using: .utf8) else { return }
             do {
-                try FileManager.default.createDirectory(
-                    at: fileURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                rotateIfNeeded(incomingBytes: data.count)
-                if !FileManager.default.fileExists(atPath: fileURL.path) {
-                    try data.write(to: fileURL, options: .atomic)
-                } else {
-                    let handle = try FileHandle(forWritingTo: fileURL)
-                    try handle.seekToEnd()
-                    try handle.write(contentsOf: data)
-                    try handle.close()
+                try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+                if sessionID == nil {
+                    sessionID = UUID().uuidString
+                    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+                    let start = "session-start; session_id=\(sessionID!); started_at=\(timestampFormatter.string(from: now)); version=\(version); environment=\(environmentName); pid=\(ProcessInfo.processInfo.processIdentifier)"
+                    try append(line: format(start, level: .info, category: "lifecycle", date: now))
                 }
-            } catch {
-                NSLog("BalanceBar debug log error: %@", error.localizedDescription)
-            }
+                try rotateIfNeeded(incomingBytes: message.utf8.count + 128)
+                try append(line: format(message, level: level, category: category, date: now))
+                pruneArchives()
+            } catch { NSLog("BalanceBar debug log error: %@", error.localizedDescription) }
         }
     }
 
     static func recentText() -> String? {
+        switch readSnapshot() { case .data(let text, _): return text; default: return nil }
+    }
+
+    static func readSnapshot() -> ReadResult {
         queue.sync {
-            guard FileManager.default.fileExists(atPath: fileURL.path),
-                  let handle = try? FileHandle(forReadingFrom: fileURL)
-            else { return nil }
-            defer { try? handle.close() }
+            var urls = archiveURLs + [fileURL]
+            if FileManager.default.fileExists(atPath: legacyPreviousURL.path) { urls.insert(legacyPreviousURL, at: 0) }
+            if FileManager.default.fileExists(atPath: legacyFileURL.path), legacyFileURL != fileURL { urls.insert(legacyFileURL, at: 0) }
+            guard !urls.isEmpty else { return .empty }
             do {
-                let size = try handle.seekToEnd()
-                let start = size > viewerMaximumBytes
-                    ? size - viewerMaximumBytes
-                    : 0
-                try handle.seek(toOffset: start)
-                guard let data = try handle.readToEnd(),
-                      var text = String(data: data, encoding: .utf8)
-                else { return nil }
-                if start > 0, let newline = text.firstIndex(of: "\n") {
-                    text.removeSubrange(...newline)
+                var combined = ""
+                for url in urls {
+                    guard FileManager.default.fileExists(atPath: url.path) else { continue }
+                    let data = try Data(contentsOf: url)
+                    if !data.isEmpty { combined += String(decoding: data, as: UTF8.self) }
                 }
-                let lines = text.split(
-                    separator: "\n",
-                    omittingEmptySubsequences: false
-                )
-                if lines.count > viewerMaximumLines {
-                    text = lines.suffix(viewerMaximumLines)
-                        .joined(separator: "\n")
+                guard !combined.isEmpty else { return .empty }
+                let bytes = Array(combined.utf8)
+                let truncated = bytes.count > viewerMaximumBytes
+                if truncated {
+                    let suffix = String(decoding: bytes.suffix(Int(viewerMaximumBytes)), as: UTF8.self)
+                    let text = suffix.drop(while: { $0 != "\n" })
+                    return .data(String(text.dropFirst()), truncated: true)
                 }
-                return text
-            } catch {
-                return nil
-            }
+                return .data(combined, truncated: false)
+            } catch { return .failure("无法读取诊断日志：\(error.localizedDescription)") }
         }
     }
 
-    private static func rotateIfNeeded(incomingBytes: Int) {
-        let size = (try? fileURL.resourceValues(
-            forKeys: [.fileSizeKey]
-        ).fileSize) ?? 0
-        guard size + incomingBytes > maximumSize else { return }
-        try? FileManager.default.removeItem(at: previousFileURL)
-        try? FileManager.default.moveItem(at: fileURL, to: previousFileURL)
+    private static func format(_ message: String, level: Level, category: String, date: Date) -> String {
+        "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(category)] [session=\(sessionID ?? "unknown")] \(message)\n"
+    }
+    private static func append(line: String) throws {
+        let data = Data(line.utf8)
+        if !FileManager.default.fileExists(atPath: fileURL.path) { try data.write(to: fileURL, options: .atomic); return }
+        let handle = try FileHandle(forWritingTo: fileURL)
+        defer { try? handle.close() }
+        try handle.seekToEnd(); try handle.write(contentsOf: data)
+    }
+    private static func rotateIfNeeded(incomingBytes: Int) throws {
+        let size = ((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        guard size + incomingBytes > maximumSize, FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        let stamp = timestampFormatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let archive = directoryURL.appendingPathComponent("debug-\(stamp)-\(UUID().uuidString).log")
+        try FileManager.default.moveItem(at: fileURL, to: archive)
+    }
+    private static func pruneArchives() {
+        let files = archiveURLs
+        let attrs: [(URL, Int)] = files.compactMap { url in
+            guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return nil }
+            return (url, size)
+        }
+        var total = ((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) + attrs.reduce(0) { $0 + $1.1 }
+        for (url, size) in attrs {
+            if files.count - (files.firstIndex(of: url) ?? 0) > maximumArchives || total > maximumStorageSize {
+                try? FileManager.default.removeItem(at: url); total -= size
+            }
+        }
     }
 }
 
