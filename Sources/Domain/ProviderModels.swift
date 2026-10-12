@@ -188,19 +188,27 @@ enum OpenCodexCardCategory: Equatable, Hashable {
 struct OverviewLayoutMetrics: Equatable {
     let horizontalInset: CGFloat
     let sectionSpacing: CGFloat
+    let subsectionSpacing: CGFloat
     let quotaRowSpacing: CGFloat
     let titleSubtitleSpacing: CGFloat
     let subtitleProgressSpacing: CGFloat
     let ticketSpacing: CGFloat
 
     static let `default` = Self(
-        horizontalInset: 14,
-        sectionSpacing: 14,
-        quotaRowSpacing: 14,
-        titleSubtitleSpacing: 1,
+        horizontalInset: 16,
+        sectionSpacing: 22,
+        subsectionSpacing: 16,
+        quotaRowSpacing: 12,
+        titleSubtitleSpacing: 2,
         subtitleProgressSpacing: 7,
-        ticketSpacing: 14
+        ticketSpacing: 8
     )
+}
+
+struct OverviewLayoutBlock: Equatable {
+    let id: OpenCodexOverviewSectionID
+    let height: CGFloat
+    let spacingAfter: CGFloat
 }
 
 enum OpenCodexOverviewSectionID: String, Equatable, CaseIterable {
@@ -335,6 +343,7 @@ struct OpenCodexQuotaRowFrames: Equatable {
 
 enum OpenCodexCardLayout {
     static let cardWidth: CGFloat = 304
+    static let showsSectionOutlines = false
     static let metrics = OverviewLayoutMetrics.default
     static let horizontalInset: CGFloat = metrics.horizontalInset
     static let contentWidth = cardWidth - horizontalInset * 2
@@ -364,7 +373,7 @@ enum OpenCodexCardLayout {
     static let quotaTitleGap: CGFloat = 11
     static let quotaAmountOffset: CGFloat = 10
     static let quotaResetOffset: CGFloat = 20
-    static let quotaDetailOffset: CGFloat = 39
+    static let quotaDetailOffset: CGFloat = quotaResetOffset + quotaResetHeight + metrics.titleSubtitleSpacing
     static let quotaAmountHeight: CGFloat = 48
     static let quotaResetHeight: CGFloat = 17
     static let quotaDetailHeight: CGFloat = 18
@@ -373,15 +382,15 @@ enum OpenCodexCardLayout {
     /// `quotaRowHeight` so the unused gap under the subtitle shrinks;
     /// title/subtitle/amount stay the same distance from the row top.
     static let quotaProgressRowHeight: CGFloat = 52
-    static let quotaProgressResetOffset: CGFloat = 12
-    static let quotaProgressDetailOffset: CGFloat = 31
+    static let quotaProgressResetOffset: CGFloat = quotaProgressHeight + metrics.subtitleProgressSpacing
+    static let quotaProgressDetailOffset: CGFloat = quotaProgressResetOffset + quotaResetHeight + metrics.titleSubtitleSpacing
     /// Unused subtitle-to-bar slot removed from the original 60pt row.
     static var quotaProgressGapCompression: CGFloat {
         quotaRowHeight - quotaProgressRowHeight
     }
     /// Visible gap from a progress bar's top to the subtitle or link above it.
     static var quotaProgressTopGap: CGFloat {
-        quotaProgressResetOffset - quotaProgressHeight
+        metrics.subtitleProgressSpacing
     }
     /// Space from a progress-row top to its title, matching official 5h/7d.
     static var quotaTitleTopInset: CGFloat {
@@ -406,14 +415,14 @@ enum OpenCodexCardLayout {
     static let bankedResetTicketIconSize = CGSize(width: 31, height: 24)
     static let bankedResetTicketIconGap: CGFloat = 8
     static let bankedResetRemainingWidth: CGFloat = 120
-    static let bankedResetChromeInset: CGFloat = 8
+    static let bankedResetChromeInset: CGFloat = 12
     static let bankedResetChromeCornerRadius: CGFloat = 10
     /// Gap between the reset-card summary and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
     /// The probability footer and reset-card summary use the same visible
     /// section spacing as the standard quota blocks.
     static var bankedResetProbabilitySummaryGap: CGFloat {
-        metrics.sectionSpacing
+        metrics.subsectionSpacing
     }
     /// The second visible row under the title/primary-value band. Ordinary
     /// mode packs 24h+48h; strong-signal mode shows a hint or time progress.
@@ -797,18 +806,45 @@ enum OpenCodexCardLayout {
         let bankedDetailBlockHeight = bankedDetailCount > 0
             ? bankedVisibleTicketStackHeight + bankedResetSummaryDetailGap
             : 0
-        let bankedBlockHeight = probabilityBlockHeight
-            + probabilityCardGap
-            + cardSummaryHeight
-            + bankedDetailBlockHeight
-        let bankedLeadingGap = (includesBankedReset || includesResetProbability)
-            && (windowCount > 0 || includesLunaReserve) ? metrics.sectionSpacing : 0
-        let quotaLift = bankedBlockHeight + bankedLeadingGap
-        let rowAreaHeight = CGFloat(windowCount) * rowHeight
+        let quotaGroupHeight = CGFloat(windowCount) * rowHeight
             + CGFloat(max(0, windowCount - 1)) * rowGap
             + reserveGap
             + reserveRowHeight
-            + quotaLift
+        let resetBlocks: [OverviewLayoutBlock] = [
+            includesResetProbability
+                ? OverviewLayoutBlock(
+                    id: .resetProbability,
+                    height: probabilityBlockHeight,
+                    spacingAfter: includesBankedReset ? probabilityCardGap : 0
+                )
+                : nil,
+            includesBankedReset
+                ? OverviewLayoutBlock(
+                    id: .bankedReset,
+                    height: cardSummaryHeight + bankedDetailBlockHeight,
+                    spacingAfter: 0
+                )
+                : nil
+        ].compactMap { $0 }
+        let resetRegionHeight = resetBlocks.reduce(CGFloat.zero) {
+            $0 + $1.height + $1.spacingAfter
+        }
+        let quotaGroupToResetSpacing = quotaGroupHeight > 0 && resetRegionHeight > 0
+            ? metrics.sectionSpacing
+            : 0
+        let quotaBlocks: [OverviewLayoutBlock] = [
+            quotaGroupHeight > 0
+                ? OverviewLayoutBlock(
+                    id: .quota,
+                    height: quotaGroupHeight,
+                    spacingAfter: quotaGroupToResetSpacing
+                )
+                : nil
+        ].compactMap { $0 }
+        let visibleBlocks = quotaBlocks + resetBlocks
+        let rowAreaHeight = visibleBlocks.reduce(CGFloat.zero) {
+            $0 + $1.height + $1.spacingAfter
+        }
         let baseTitleY = bottomInset + rowAreaHeight + titleGap
         let titleY = baseTitleY + accountShift
         let cardHeight = titleY + 20 + 7
@@ -835,7 +871,7 @@ enum OpenCodexCardLayout {
         }()
         let rows = windows.enumerated().map { index, _ in
             let yWithoutReserve = bottomInset
-                + quotaLift
+                + resetRegionHeight + quotaGroupToResetSpacing
                 + CGFloat(windowCount - 1 - index) * (rowHeight + rowGap)
             let isAboveReserve = reserveInsertionIndex.map { index < $0 } ?? false
             let y = yWithoutReserve
@@ -890,7 +926,7 @@ enum OpenCodexCardLayout {
                 quotaDetail: CGRect(
                     x: horizontalInset,
                     y: bottomInset
-                        + quotaLift
+                        + resetRegionHeight + quotaGroupToResetSpacing
                         + CGFloat(reserveRowsBelow) * (rowHeight + rowGap)
                         + reserveDetailOffset
                         - reserveContentShift,
@@ -900,7 +936,7 @@ enum OpenCodexCardLayout {
                 reset: CGRect(
                     x: horizontalInset,
                     y: bottomInset
-                        + quotaLift
+                        + resetRegionHeight + quotaGroupToResetSpacing
                         + CGFloat(reserveRowsBelow) * (rowHeight + rowGap)
                         + reserveResetOffset
                         - reserveContentShift,
@@ -910,7 +946,7 @@ enum OpenCodexCardLayout {
                 amount: CGRect(
                     x: amountX,
                     y: bottomInset
-                        + quotaLift
+                        + resetRegionHeight + quotaGroupToResetSpacing
                         + CGFloat(reserveRowsBelow) * (rowHeight + rowGap)
                         + max(0, reserveAmountOffset - reserveContentShift),
                     width: amountWidth,
@@ -920,7 +956,7 @@ enum OpenCodexCardLayout {
                     ? CGRect(
                         x: horizontalInset,
                         y: bottomInset
-                            + quotaLift
+                            + resetRegionHeight + quotaGroupToResetSpacing
                             + CGFloat(reserveRowsBelow) * (rowHeight + rowGap),
                         width: contentWidth,
                         height: quotaProgressHeight
@@ -992,7 +1028,8 @@ enum OpenCodexCardLayout {
             let innerX = horizontalInset + chromeInset
             let innerRight = cardWidth - horizontalInset - chromeInset
             let textX = innerX + iconSize.width + bankedResetTicketIconGap
-            let remainingX = innerRight - bankedResetRemainingWidth
+            let valueColumnRight = cardWidth - horizontalInset
+            let remainingX = valueColumnRight - bankedResetRemainingWidth
             let titleWidth = max(64, remainingX - textX - 6)
             let lineWidth = max(64, innerRight - textX)
             let lineGap: CGFloat = 2

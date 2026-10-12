@@ -5742,18 +5742,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.wantsLayer = true
         view.clipsToBounds = true
         view.layer?.masksToBounds = true
-        for section in layout.sectionLayouts {
-            guard !section.frame.isEmpty else { continue }
-            let outlineFrame = NSRect(
-                x: OpenCodexCardLayout.horizontalInset,
-                y: section.frame.minY - 3,
-                width: OpenCodexCardLayout.contentWidth,
-                height: section.frame.height + 6
-            )
-            let outline = OverviewSectionOutlineView(
-                frame: outlineFrame
-            )
-            view.addSubview(outline)
+        if OpenCodexCardLayout.showsSectionOutlines {
+            for section in layout.sectionLayouts {
+                guard !section.frame.isEmpty else { continue }
+                let outlineFrame = NSRect(
+                    x: OpenCodexCardLayout.horizontalInset,
+                    y: section.frame.minY - 3,
+                    width: OpenCodexCardLayout.contentWidth,
+                    height: section.frame.height + 6
+                )
+                let outline = OverviewSectionOutlineView(frame: outlineFrame)
+                view.addSubview(outline)
+            }
         }
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
