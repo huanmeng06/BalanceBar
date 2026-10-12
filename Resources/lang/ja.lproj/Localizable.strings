@@ -500,3 +500,9 @@
 "timezone.lookup_failed" = "リスト内の都市のみ選択できます";
 
 "codex.banked_reset.expired_value" = "%1$@ に期限切れ";
+
+"dashboard.logs.page.export" = "Export Logs";
+"dashboard.logs.page.export.2" = "Export diagnostic logs";
+"dashboard.logs.page.preview_truncated" = "Only the recent preview is shown; export the full retained logs.";
+"dashboard.logs.page.read_warning" = "Some diagnostic files could not be read";
+"dashboard.logs.page.export_failed" = "Diagnostic log export failed";

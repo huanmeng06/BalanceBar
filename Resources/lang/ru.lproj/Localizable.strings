@@ -500,3 +500,9 @@
 "timezone.lookup_failed" = "Поиск недоступен. Нажмите Return для повтора.";
 
 "codex.banked_reset.expired_value" = "Истекло %1$@";
+
+"dashboard.logs.page.export" = "Export Logs";
+"dashboard.logs.page.export.2" = "Export diagnostic logs";
+"dashboard.logs.page.preview_truncated" = "Only the recent preview is shown; export the full retained logs.";
+"dashboard.logs.page.read_warning" = "Some diagnostic files could not be read";
+"dashboard.logs.page.export_failed" = "Diagnostic log export failed";

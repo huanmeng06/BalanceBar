@@ -10406,7 +10406,7 @@ extension DashboardPreferencePagesTests {
         defer { try? FileManager.default.removeItem(at: archive); try? FileManager.default.removeItem(at: SwitchLog.fileURL) }
 
         switch SwitchLog.readSnapshot() {
-        case .data(let text, _):
+        case .data(let text, _, _):
             XCTAssertTrue(text.contains("归档中文 😀"))
             XCTAssertTrue(text.contains("当前日志组合字符 é"))
         default:
@@ -10418,7 +10418,7 @@ extension DashboardPreferencePagesTests {
         try requireIsolatedDiagnosticDirectory()
         let directory = SwitchLog.directoryURL
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let payload = String(repeating: "中文😀日志\n", count: 120_000)
+        let payload = String(repeating: "中文😀日志\n", count: 400_000)
         SwitchLog.write(payload, category: "test")
         _ = SwitchLog.readSnapshot()
         SwitchLog.write("rotation marker", category: "test")
@@ -10431,6 +10431,31 @@ extension DashboardPreferencePagesTests {
         XCTAssertTrue(archives.contains { url in
             (try? String(decoding: Data(contentsOf: url), as: UTF8.self).contains("中文😀日志")) == true
         })
+        XCTAssertLessThanOrEqual(try Data(contentsOf: SwitchLog.fileURL).count, 5 * 1_024 * 1_024)
+    }
+
+    func testDiagnosticLogExportIncludesFullRetainedLogs() throws {
+        try requireIsolatedDiagnosticDirectory()
+        SwitchLog.write("export marker", category: "test")
+        _ = SwitchLog.readSnapshot()
+        let destination = SwitchLog.directoryURL.appendingPathComponent("export.log")
+        defer { try? FileManager.default.removeItem(at: destination) }
+        try SwitchLog.exportAll(to: destination)
+        let exported = try String(contentsOf: destination, encoding: .utf8)
+        XCTAssertTrue(exported.contains("export marker"))
+        XCTAssertTrue(exported.contains("BalanceBar diagnostic export"))
+    }
+
+    func testDiagnosticLogPreviewKeepsLongSingleRecordReadable() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        let marker = String(repeating: "长日志😀", count: 40_000)
+        try Data(marker.utf8).write(to: SwitchLog.fileURL)
+        guard case .data(let text, _, let warnings) = SwitchLog.readSnapshot() else {
+            return XCTFail("expected preview data")
+        }
+        XCTAssertFalse(text.isEmpty)
+        XCTAssertTrue(warnings.contains { $0.contains("超过预览限制") } || text.contains("长日志😀"))
     }
 
     private func requireIsolatedDiagnosticDirectory() throws {
