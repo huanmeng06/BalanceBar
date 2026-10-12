@@ -122,7 +122,10 @@ enum SwitchLog {
             let snapshot = readFilesLocked(previewLimit: nil)
             guard !snapshot.text.isEmpty else { throw NSError(domain: "BalanceBar.Diagnostics", code: 1, userInfo: [NSLocalizedDescriptionKey: "No diagnostic logs are available."]) }
             let header = "# BalanceBar diagnostic export\n# Environment: \(environmentName)\n# Warnings: \(snapshot.warnings.joined(separator: " | "))\n\n"
-            try (header + snapshot.text).data(using: .utf8)?.write(to: destination, options: .atomic)
+            guard let data = (header + snapshot.text).data(using: .utf8) else {
+                throw NSError(domain: "BalanceBar.Diagnostics", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to encode diagnostic logs."])
+            }
+            try data.write(to: destination, options: .atomic)
         }
     }
 
@@ -284,11 +287,15 @@ enum SwitchLog {
 
     private static func redact(_ value: String) -> String {
         var result = value
-        let patterns = [
-            "(?i)(authorization|cookie|api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^; ,]+",
-            "(?i)bearer\\s+[A-Za-z0-9._~+/=-]+"
+        let patterns: [(String, String)] = [
+            ("(?i)(authorization|cookie|api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^; ,]+", "$1=[REDACTED]"),
+            ("(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")
         ]
-        for pattern in patterns { result = (try? NSRegularExpression(pattern: pattern)).map { $0.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "$1=[REDACTED]") } ?? result }
+        for (pattern, replacement) in patterns {
+            if let expression = try? NSRegularExpression(pattern: pattern) {
+                result = expression.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: replacement)
+            }
+        }
         return result
     }
 }
