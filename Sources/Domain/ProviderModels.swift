@@ -413,7 +413,7 @@ enum OpenCodexCardLayout {
     /// The probability footer and reset-card summary use the same visible
     /// section spacing as the standard quota blocks.
     static var bankedResetProbabilitySummaryGap: CGFloat {
-        metrics.sectionSpacing + quotaTitleTopInset
+        metrics.sectionSpacing
     }
     /// The second visible row under the title/primary-value band. Ordinary
     /// mode packs 24h+48h; strong-signal mode shows a hint or time progress.
@@ -802,7 +802,7 @@ enum OpenCodexCardLayout {
             + cardSummaryHeight
             + bankedDetailBlockHeight
         let bankedLeadingGap = (includesBankedReset || includesResetProbability)
-            && (windowCount > 0 || includesLunaReserve) ? rowGap : 0
+            && (windowCount > 0 || includesLunaReserve) ? metrics.sectionSpacing : 0
         let quotaLift = bankedBlockHeight + bankedLeadingGap
         let rowAreaHeight = CGFloat(windowCount) * rowHeight
             + CGFloat(max(0, windowCount - 1)) * rowGap

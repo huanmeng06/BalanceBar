@@ -5744,8 +5744,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.layer?.masksToBounds = true
         for section in layout.sectionLayouts {
             guard !section.frame.isEmpty else { continue }
+            let outlineFrame = NSRect(
+                x: OpenCodexCardLayout.horizontalInset,
+                y: section.frame.minY - 3,
+                width: OpenCodexCardLayout.contentWidth,
+                height: section.frame.height + 6
+            )
             let outline = OverviewSectionOutlineView(
-                frame: section.frame.insetBy(dx: -3, dy: -3)
+                frame: outlineFrame
             )
             view.addSubview(outline)
         }

@@ -16,7 +16,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         // keys, so changing one layer cannot silently change another.
         XCTAssertEqual(OpenCodexCardLayout.quotaRowGap, metrics.quotaRowSpacing)
         XCTAssertEqual(OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
-                       metrics.sectionSpacing + OpenCodexCardLayout.quotaTitleTopInset)
+                       metrics.sectionSpacing)
     }
 
     func testExpandedFramesExposeIndependentVisibleSections() throws {
@@ -180,7 +180,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         let metrics = try XCTUnwrap(frames.bankedResetForecastMetrics)
         XCTAssertEqual(probability.amount.minY, probability.reset.minY, accuracy: 0.001)
         XCTAssertEqual(metrics.minY, probability.reset.minY, accuracy: 0.001)
-        XCTAssertEqual(metrics.minY - summary.quotaDetail.maxY, OpenCodexCardLayout.quotaVisibleBlockGap, accuracy: 0.001)
+        XCTAssertEqual(metrics.minY - summary.quotaDetail.maxY, OpenCodexCardLayout.bankedResetProbabilitySummaryGap, accuracy: 0.001)
     }
     func testBankedResetProbabilityKeepsForecastMetricsSlotForOfficialHint() throws {
         let windows = [
@@ -520,7 +520,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         let frames = OpenCodexCardLayout.frames(for: .quota, officialQuotaWindows: windows, includesQuotaProgress: false, includesBankedReset: true, bankedResetCardCount: 2)
         let probability = try XCTUnwrap(frames.bankedResetProbabilityRow)
         let summary = try XCTUnwrap(frames.bankedResetSummaryRow)
-        XCTAssertEqual(probability.reset.minY - summary.quotaDetail.maxY, OpenCodexCardLayout.quotaVisibleBlockGap, accuracy: 0.001)
+        XCTAssertEqual(probability.reset.minY - summary.quotaDetail.maxY, OpenCodexCardLayout.bankedResetProbabilitySummaryGap, accuracy: 0.001)
         XCTAssertEqual(frames.quotaRows.count, 2)
     }
     func testOfficialQuotaLayoutClipsDetailedBankedResetTicketsToTwoAndAHalfRows() throws {
