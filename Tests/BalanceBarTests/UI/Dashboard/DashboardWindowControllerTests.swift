@@ -4577,6 +4577,17 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ) / 2,
             accuracy: 1
         )
+        let firstAmount = try XCTUnwrap(
+            remainingFields.first { $0.stringValue == earlierRemaining.text }
+        )
+        let firstWindowBaseline = firstWindow.frame.maxY - firstWindow.firstBaselineOffsetFromTop
+        let firstAmountBaseline = firstAmount.frame.maxY - firstAmount.firstBaselineOffsetFromTop
+        XCTAssertEqual(firstAmountBaseline, firstWindowBaseline, accuracy: 0.001)
+        XCTAssertEqual(
+            firstAmount.frame.maxX,
+            firstChrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset,
+            accuracy: 0.001
+        )
         XCTAssertFalse(labels.contains { $0.contains("🌙") })
         XCTAssertFalse(labels.contains(tr(.keyLunaReserveTitle)))
         XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "80%")

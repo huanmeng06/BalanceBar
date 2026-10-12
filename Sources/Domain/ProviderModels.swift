@@ -1046,6 +1046,7 @@ enum OpenCodexCardLayout {
                 let expiryY = textBlockY
                 let windowY = expiryY + quotaResetHeight + lineGap
                 let titleY = windowY + quotaResetHeight + lineGap
+                let amountY = windowY + (quotaResetHeight - quotaDetailHeight) / 2
                 let iconY = y + (bankedDetailHeight - iconSize.height) / 2
                 return OpenCodexQuotaRowFrames(
                     quotaDetail: CGRect(
@@ -1062,7 +1063,7 @@ enum OpenCodexCardLayout {
                     ),
                     amount: CGRect(
                         x: remainingX,
-                        y: y + (bankedDetailHeight - quotaDetailHeight) / 2,
+                        y: amountY,
                         width: bankedResetRemainingWidth,
                         height: quotaDetailHeight
                     ),

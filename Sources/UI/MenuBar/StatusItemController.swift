@@ -6024,32 +6024,40 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         title.frame = row.quotaDetail
                         ticketHost.addSubview(title)
 
+                        var windowLine: NSTextField?
                         if let windowText = card.windowText, !windowText.isEmpty {
-                            let windowLine = makeOverviewLabel(
+                            let label = makeOverviewLabel(
                                 windowText,
                                 font: .systemFont(
                                     ofSize: OpenCodexCardLayout.quotaResetPointSize,
                                     weight: .regular
                                 )
                             )
-                            windowLine.textColor = .secondaryLabelColor
-                            windowLine.frame = row.window
-                            ticketHost.addSubview(windowLine)
+                            label.textColor = .secondaryLabelColor
+                            label.frame = row.window
+                            ticketHost.addSubview(label)
+                            windowLine = label
                         }
 
+                        var remaining: NSTextField?
                         if let remainingText = card.remainingText, !remainingText.isEmpty {
-                            let remaining = makeOverviewLabel(
+                            let label = makeOverviewLabel(
                                 remainingText,
                                 font: .monospacedDigitSystemFont(
                                     ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                                     weight: .medium
                                 )
                             )
-                            remaining.alignment = .right
-                            remaining.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
-                            remaining.frame = row.amount
-                            remaining.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
-                            ticketHost.addSubview(remaining)
+                            label.alignment = .right
+                            label.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
+                            label.frame = row.amount
+                            label.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
+                            ticketHost.addSubview(label)
+                            remaining = label
+                        }
+
+                        if let windowLine, let remaining {
+                            alignOverviewLabelBaseline(remaining, to: windowLine)
                         }
 
                         if let expiresText = CodexBankedResetFormatting.expiryText(for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone) ?? (card.expiresAt == nil ? card.expiresText : nil), !expiresText.isEmpty {
@@ -6233,6 +6241,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingTail
         return label
+    }
+
+    private func alignOverviewLabelBaseline(_ label: NSTextField, to reference: NSTextField) {
+        let labelBaseline = label.frame.maxY - label.firstBaselineOffsetFromTop
+        let referenceBaseline = reference.frame.maxY - reference.firstBaselineOffsetFromTop
+        label.frame.origin.y += referenceBaseline - labelBaseline
     }
 
     private func makeMarqueeOverviewLabel(
