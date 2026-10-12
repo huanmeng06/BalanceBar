@@ -5742,6 +5742,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.wantsLayer = true
         view.clipsToBounds = true
         view.layer?.masksToBounds = true
+        for section in layout.sectionLayouts {
+            guard !section.frame.isEmpty else { continue }
+            let outline = OverviewSectionOutlineView(
+                frame: section.frame.insetBy(dx: -3, dy: -3)
+            )
+            view.addSubview(outline)
+        }
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
 

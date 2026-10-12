@@ -216,8 +216,10 @@ enum OpenCodexOverviewSectionID: String, Equatable, CaseIterable {
 /// the root container owns spacing between visible sections.
 struct OpenCodexOverviewSectionLayout: Equatable {
     let id: OpenCodexOverviewSectionID
-    let height: CGFloat
+    let frame: CGRect
     let isVisible: Bool
+
+    var height: CGFloat { frame.height }
 }
 
 /// Frames used by official quota and balance overview cards.
@@ -257,42 +259,45 @@ struct OpenCodexCardFrames: Equatable {
     /// card coordinates for compatibility; section heights are derived from
     /// their own content and never include the root's inter-section spacing.
     var sectionLayouts: [OpenCodexOverviewSectionLayout] {
-        func height(of rects: [CGRect]) -> CGFloat {
+        func bounds(of rects: [CGRect]) -> CGRect {
             let visible = rects.filter { !$0.isEmpty }
-            guard let first = visible.first else { return 0 }
-            let bounds = visible.dropFirst().reduce(first) { $0.union($1) }
-            return bounds.height
+            guard let first = visible.first else { return .zero }
+            return visible.dropFirst().reduce(first) { $0.union($1) }
         }
 
-        let quotaHeight = height(of: quotaRows.flatMap { [$0.quotaDetail, $0.reset, $0.amount, $0.progress] })
-        let probabilityHeight = height(of: [bankedResetProbabilityRow?.quotaDetail,
-                                             bankedResetProbabilityRow?.reset,
-                                             bankedResetProbabilityRow?.amount,
-                                             bankedResetForecastMetrics].compactMap { $0 })
-        let bankedHeight = height(of: [bankedResetSummaryRow?.quotaDetail,
-                                       bankedResetSummaryRow?.reset,
-                                       bankedResetSummaryRow?.amount,
-                                       bankedResetTicketViewport].compactMap { $0 }
+        let quotaFrame = bounds(of: quotaRows.flatMap { [$0.quotaDetail, $0.reset, $0.amount, $0.progress] })
+        let lunaReserveFrame = lunaReserveRow.map {
+            bounds(of: [$0.quotaDetail, $0.reset, $0.amount, $0.progress])
+        } ?? .zero
+        let probabilityFrame = bounds(of: [bankedResetProbabilityRow?.quotaDetail,
+                                           bankedResetProbabilityRow?.reset,
+                                           bankedResetProbabilityRow?.amount,
+                                           bankedResetForecastMetrics].compactMap { $0 })
+        let bankedFrame = bounds(of: [bankedResetSummaryRow?.quotaDetail,
+                                      bankedResetSummaryRow?.reset,
+                                      bankedResetSummaryRow?.amount,
+                                      bankedResetTicketViewport].compactMap { $0 }
             + bankedResetDetailRows.flatMap { [$0.chrome, $0.quotaDetail, $0.reset, $0.amount] })
+        let accountFrame = bounds(of: [title, refreshTime, account, subscription].compactMap { $0 })
 
         return [
             OpenCodexOverviewSectionLayout(
                 id: .account,
-                height: account?.height ?? 0,
+                frame: accountFrame,
                 isVisible: account != nil
             ),
-            OpenCodexOverviewSectionLayout(id: .quota, height: quotaHeight, isVisible: quotaHeight > 0),
+            OpenCodexOverviewSectionLayout(id: .quota, frame: quotaFrame, isVisible: !quotaFrame.isEmpty),
             OpenCodexOverviewSectionLayout(
                 id: .lunaReserve,
-                height: lunaReserveRow.map { height(of: [$0.quotaDetail, $0.reset, $0.amount, $0.progress]) } ?? 0,
+                frame: lunaReserveFrame,
                 isVisible: lunaReserveRow != nil
             ),
             OpenCodexOverviewSectionLayout(
                 id: .resetProbability,
-                height: probabilityHeight,
+                frame: probabilityFrame,
                 isVisible: bankedResetProbabilityRow != nil
             ),
-            OpenCodexOverviewSectionLayout(id: .bankedReset, height: bankedHeight, isVisible: bankedResetSummaryRow != nil)
+            OpenCodexOverviewSectionLayout(id: .bankedReset, frame: bankedFrame, isVisible: bankedResetSummaryRow != nil)
         ].filter { $0.isVisible }
     }
 }

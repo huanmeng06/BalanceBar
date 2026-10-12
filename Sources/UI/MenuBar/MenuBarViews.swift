@@ -9,8 +9,28 @@ class PassthroughImageView: NSImageView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-final class PassthroughView: NSView {
+class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// Thin, non-interactive outline used to make overview section boundaries
+/// visible while exercising the modular card layout.
+final class OverviewSectionOutlineView: PassthroughView {
+    static let cornerRadius: CGFloat = 7
+    static let borderWidth: CGFloat = 0.75
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = Self.cornerRadius
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = Self.borderWidth
+        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
+        layer?.masksToBounds = false
+        identifier = NSUserInterfaceItemIdentifier("codex.overview.sectionOutline")
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
 final class BankedResetChromeView: NSView {
