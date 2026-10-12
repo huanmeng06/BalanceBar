@@ -350,8 +350,8 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             OpenCodexCardLayout.quotaRowGap,
             accuracy: 0.001
         )
-        XCTAssertEqual(fiveHour.progress.width, 276)
-        XCTAssertEqual(sevenDay.progress.width, 276)
+        XCTAssertEqual(fiveHour.progress.width, OpenCodexCardLayout.contentWidth)
+        XCTAssertEqual(sevenDay.progress.width, OpenCodexCardLayout.contentWidth)
         let baseline = OpenCodexCardLayout.frames(
             for: .quota,
             includesAccount: true,

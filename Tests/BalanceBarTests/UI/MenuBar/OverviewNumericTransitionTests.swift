@@ -851,7 +851,15 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
         )
         XCTAssertEqual(balanceAmount.frame, balanceLayout.amount)
-        XCTAssertEqual(balanceLayout.amount, CGRect(x: 149, y: 10, width: 141, height: 48))
+        XCTAssertEqual(
+            balanceLayout.amount,
+            CGRect(
+                x: OpenCodexCardLayout.amountX,
+                y: 10,
+                width: OpenCodexCardLayout.amountWidth,
+                height: 48
+            )
+        )
         XCTAssertEqual(balanceAmount.verticalAlignment, .top)
         XCTAssertEqual(balanceAmount.contentAlignmentForTesting, .topTrailing)
 
