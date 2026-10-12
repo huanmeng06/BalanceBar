@@ -183,6 +183,43 @@ enum OpenCodexCardCategory: Equatable, Hashable {
     }
 }
 
+/// Shared spacing contract for the overview card. Values describe one
+/// layout layer only: section spacing never changes text or ticket spacing.
+struct OverviewLayoutMetrics: Equatable {
+    let horizontalInset: CGFloat
+    let sectionSpacing: CGFloat
+    let quotaRowSpacing: CGFloat
+    let titleSubtitleSpacing: CGFloat
+    let subtitleProgressSpacing: CGFloat
+    let ticketSpacing: CGFloat
+
+    static let `default` = Self(
+        horizontalInset: 14,
+        sectionSpacing: 14,
+        quotaRowSpacing: 14,
+        titleSubtitleSpacing: 1,
+        subtitleProgressSpacing: 7,
+        ticketSpacing: 14
+    )
+}
+
+enum OpenCodexOverviewSectionID: String, Equatable, CaseIterable {
+    case account
+    case quota
+    case lunaReserve
+    case resetProbability
+    case bankedReset
+}
+
+/// A section's local measurement exposed for geometry tests and future
+/// AppKit section containers. `height` includes only the section's content;
+/// the root container owns spacing between visible sections.
+struct OpenCodexOverviewSectionLayout: Equatable {
+    let id: OpenCodexOverviewSectionID
+    let height: CGFloat
+    let isVisible: Bool
+}
+
 /// Frames used by official quota and balance overview cards.
 /// Keeping these values in a pure helper makes the visual baseline testable
 /// without launching AppKit or the status menu.
@@ -215,6 +252,49 @@ struct OpenCodexCardFrames: Equatable {
     /// overview has no tickets. 1–2 tickets fill this rect; 3+ clip to
     /// `bankedResetTicketViewportMaxHeight` and scroll inside it.
     let bankedResetTicketViewport: CGRect?
+
+    /// Ordered, independently measurable semantic sections. Frames remain in
+    /// card coordinates for compatibility; section heights are derived from
+    /// their own content and never include the root's inter-section spacing.
+    var sectionLayouts: [OpenCodexOverviewSectionLayout] {
+        func height(of rects: [CGRect]) -> CGFloat {
+            let visible = rects.filter { !$0.isEmpty }
+            guard let first = visible.first else { return 0 }
+            let bounds = visible.dropFirst().reduce(first) { $0.union($1) }
+            return bounds.height
+        }
+
+        let quotaHeight = height(of: quotaRows.flatMap { [$0.quotaDetail, $0.reset, $0.amount, $0.progress] })
+        let probabilityHeight = height(of: [bankedResetProbabilityRow?.quotaDetail,
+                                             bankedResetProbabilityRow?.reset,
+                                             bankedResetProbabilityRow?.amount,
+                                             bankedResetForecastMetrics].compactMap { $0 })
+        let bankedHeight = height(of: [bankedResetSummaryRow?.quotaDetail,
+                                       bankedResetSummaryRow?.reset,
+                                       bankedResetSummaryRow?.amount,
+                                       bankedResetTicketViewport].compactMap { $0 }
+            + bankedResetDetailRows.flatMap { [$0.chrome, $0.quotaDetail, $0.reset, $0.amount] })
+
+        return [
+            OpenCodexOverviewSectionLayout(
+                id: .account,
+                height: account?.height ?? 0,
+                isVisible: account != nil
+            ),
+            OpenCodexOverviewSectionLayout(id: .quota, height: quotaHeight, isVisible: quotaHeight > 0),
+            OpenCodexOverviewSectionLayout(
+                id: .lunaReserve,
+                height: lunaReserveRow.map { height(of: [$0.quotaDetail, $0.reset, $0.amount, $0.progress]) } ?? 0,
+                isVisible: lunaReserveRow != nil
+            ),
+            OpenCodexOverviewSectionLayout(
+                id: .resetProbability,
+                height: probabilityHeight,
+                isVisible: bankedResetProbabilityRow != nil
+            ),
+            OpenCodexOverviewSectionLayout(id: .bankedReset, height: bankedHeight, isVisible: bankedResetSummaryRow != nil)
+        ].filter { $0.isVisible }
+    }
 }
 
 struct OpenCodexQuotaRowFrames: Equatable {
@@ -250,7 +330,8 @@ struct OpenCodexQuotaRowFrames: Equatable {
 
 enum OpenCodexCardLayout {
     static let cardWidth: CGFloat = 304
-    static let horizontalInset: CGFloat = 14
+    static let metrics = OverviewLayoutMetrics.default
+    static let horizontalInset: CGFloat = metrics.horizontalInset
     static let contentWidth = cardWidth - horizontalInset * 2
     static let subscriptionWidth: CGFloat = 78
     static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
@@ -273,7 +354,7 @@ enum OpenCodexCardLayout {
     static let quotaDetailPointSize: CGFloat = 13
     static let quotaResetPointSize: CGFloat = 13
     static let quotaRowHeight: CGFloat = 60
-    static let quotaRowGap: CGFloat = 14
+    static let quotaRowGap: CGFloat = metrics.quotaRowSpacing
     static let quotaBottomInset: CGFloat = 8
     static let quotaTitleGap: CGFloat = 11
     static let quotaAmountOffset: CGFloat = 10
@@ -303,7 +384,7 @@ enum OpenCodexCardLayout {
     }
     /// Visible gap from a bar or 24h line to the next block's title.
     static var quotaVisibleBlockGap: CGFloat {
-        quotaRowGap + quotaTitleTopInset
+        metrics.sectionSpacing + quotaTitleTopInset
     }
     static var quotaProgressAmountOffset: CGFloat {
         max(0, quotaAmountOffset - quotaProgressGapCompression)
@@ -327,7 +408,7 @@ enum OpenCodexCardLayout {
     /// The probability footer and reset-card summary use the same visible
     /// section spacing as the standard quota blocks.
     static var bankedResetProbabilitySummaryGap: CGFloat {
-        quotaVisibleBlockGap
+        metrics.sectionSpacing + quotaTitleTopInset
     }
     /// The second visible row under the title/primary-value band. Ordinary
     /// mode packs 24h+48h; strong-signal mode shows a hint or time progress.
@@ -483,14 +564,14 @@ enum OpenCodexCardLayout {
     static func bankedResetTicketStackHeight(cardCount: Int) -> CGFloat {
         guard cardCount > 0 else { return 0 }
         return CGFloat(cardCount) * bankedResetDetailRowHeight
-            + CGFloat(cardCount - 1) * quotaRowGap
+            + CGFloat(cardCount - 1) * metrics.ticketSpacing
     }
 
     static var bankedResetTicketViewportMaxHeight: CGFloat {
         let fullVisibleRows = floor(bankedResetVisibleTicketLimit)
         let partialRow = bankedResetVisibleTicketLimit - fullVisibleRows
         return fullVisibleRows * bankedResetDetailRowHeight
-            + fullVisibleRows * quotaRowGap
+            + fullVisibleRows * metrics.ticketSpacing
             + partialRow * bankedResetDetailRowHeight
     }
 
@@ -679,7 +760,8 @@ enum OpenCodexCardLayout {
         let windowResetOffset = includesQuotaProgress
             ? quotaProgressResetOffset
             : quotaResetOffset
-        let rowGap = quotaRowGap
+        let rowGap = metrics.quotaRowSpacing
+        let ticketGap = metrics.ticketSpacing
         let bottomInset = quotaBottomInset
         let titleGap = quotaTitleGap
         let accountShift: CGFloat = includesAccount ? 19 : 0
@@ -916,7 +998,7 @@ enum OpenCodexCardLayout {
                 // last ticket; the scroll view sits at `bottomInset`.
                 let originY: CGFloat = bankedTicketsNeedScroll ? 0 : bottomInset
                 let y = originY
-                    + CGFloat(bankedDetailCount - 1 - index) * (bankedDetailHeight + rowGap)
+                    + CGFloat(bankedDetailCount - 1 - index) * (bankedDetailHeight + ticketGap)
                 let expiryY = y + chromeInset
                 let windowY = expiryY + quotaResetHeight + lineGap
                 let titleY = windowY + quotaResetHeight + lineGap

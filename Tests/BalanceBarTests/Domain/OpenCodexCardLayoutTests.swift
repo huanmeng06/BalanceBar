@@ -3,6 +3,72 @@ import XCTest
 @testable import BalanceBar
 
 final class OpenCodexCardLayoutTests: XCTestCase {
+    func testOverviewMetricsKeepSectionAndTicketSpacingIndependent() {
+        let metrics = OverviewLayoutMetrics.default
+
+        XCTAssertEqual(metrics.sectionSpacing, 14)
+        XCTAssertEqual(metrics.quotaRowSpacing, 14)
+        XCTAssertEqual(metrics.ticketSpacing, 14)
+        XCTAssertNotEqual(metrics.sectionSpacing, metrics.titleSubtitleSpacing)
+        XCTAssertNotEqual(metrics.sectionSpacing, metrics.subtitleProgressSpacing)
+
+        // The production calculator reads these through separate semantic
+        // keys, so changing one layer cannot silently change another.
+        XCTAssertEqual(OpenCodexCardLayout.quotaRowGap, metrics.quotaRowSpacing)
+        XCTAssertEqual(OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
+                       metrics.sectionSpacing + OpenCodexCardLayout.quotaTitleTopInset)
+    }
+
+    func testExpandedFramesExposeIndependentVisibleSections() throws {
+        let windows = [
+            OfficialQuotaWindow(kind: .fiveHour, remaining: 80, label: "5h", daysText: "5 hours", reset: "2h", durationSeconds: 18_000),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 45, label: "7d", daysText: "7 days", reset: "7d", durationSeconds: 604_800)
+        ]
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 3,
+            bankedResetDisplayMode: .detailed
+        )
+
+        XCTAssertEqual(frames.sectionLayouts.map(\.id), [.account, .quota, .resetProbability, .bankedReset])
+        XCTAssertTrue(frames.sectionLayouts.allSatisfy { $0.height > 0 })
+
+        let quota = try XCTUnwrap(frames.sectionLayouts.first { $0.id == .quota })
+        let probability = try XCTUnwrap(frames.sectionLayouts.first { $0.id == .resetProbability })
+        let banked = try XCTUnwrap(frames.sectionLayouts.first { $0.id == .bankedReset })
+        XCTAssertEqual(probability.height, OpenCodexCardLayout.bankedResetProbabilityBlockHeight(), accuracy: 0.001)
+        XCTAssertGreaterThan(banked.height, probability.height)
+        XCTAssertGreaterThan(quota.height, OpenCodexCardLayout.quotaProgressRowHeight)
+        XCTAssertLessThan(quota.height, OpenCodexCardLayout.quotaProgressRowHeight * 2 + OpenCodexCardLayout.quotaRowGap)
+    }
+
+    func testCompactBankedResetDoesNotReserveTicketSectionHeight() {
+        let compact = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: [],
+            includesBankedReset: true,
+            bankedResetCardCount: 8,
+            bankedResetDisplayMode: .compact
+        )
+        let detailed = OpenCodexCardLayout.frames(
+            for: .quota,
+            officialQuotaWindows: [],
+            includesBankedReset: true,
+            bankedResetCardCount: 8,
+            bankedResetDisplayMode: .detailed
+        )
+
+        XCTAssertNil(compact.bankedResetTicketViewport)
+        XCTAssertTrue(compact.sectionLayouts.allSatisfy { $0.id != .bankedReset || $0.height == OpenCodexCardLayout.bankedResetSummaryHeight() })
+        XCTAssertGreaterThan(detailed.cardSize.height, compact.cardSize.height)
+        XCTAssertEqual(detailed.bankedResetTicketViewport!.height,
+                       OpenCodexCardLayout.bankedResetTicketViewportMaxHeight,
+                       accuracy: 0.001)
+    }
+
     func testOpenCodexCardLayoutMatchesExistingOfficialAndBalanceOverviewFrames() {
         let official = OpenCodexCardLayout.frames(for: .quota)
         XCTAssertEqual(official.cardSize, CGSize(width: 304, height: 94))
