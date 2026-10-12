@@ -10162,3 +10162,235 @@ final class DashboardPreferencePagesTests: XCTestCase {
         return lines
     }
 }
+
+extension DashboardPreferencePagesTests {
+    func testCityCatalogDeduplicatesLocalizesAndFallsBack() throws {
+        let raw = "US\t+404251-0740023\tAmerica/New_York\nUS\t+404251-0740023\tAmerica/New_York\nIN\t+2232+08822\tAsia/Kolkata\n# comment\ninvalid"
+        let cities = TimeZoneCityCatalog.load(zoneTab: raw, locale: Locale(identifier: "zh_CN"))
+        XCTAssertEqual(cities.count, 2)
+        let ny = try XCTUnwrap(cities.first { $0.identifier == "America/New_York" })
+        XCTAssertTrue(ny.title.hasPrefix("美国 - 纽约"))
+        XCTAssertTrue(ny.title.contains("(UTC"))
+        XCTAssertEqual(ny.countryTitle, "美国")
+        XCTAssertEqual(ny.cityTitle, "纽约")
+        let ordered = TimeZoneCityCatalog.load(zoneTab: "CN\t+404251-0740023\tAsia/Shanghai\nUS\t+404251-0740023\tAmerica/New_York\nUZ\t+404251-0740023\tAsia/Tashkent", locale: Locale(identifier: "zh_CN"))
+        XCTAssertEqual(ordered.map(\.countryTitle), ["美国", "乌兹别克斯坦", "中国大陆"])
+        let special = TimeZoneCityCatalog.load(zoneTab: "HK\t+2217+11410\tAsia/Hong_Kong\nMO\t+2210+11333\tAsia/Macau\nTW\t+2503+12130\tAsia/Taipei", locale: Locale(identifier: "zh_CN"))
+        XCTAssertEqual(Set(special.map(\.countryTitle)), ["中国香港", "中国澳门", "中国台湾"])
+        let allChina = TimeZoneCityCatalog.load(zoneTab: "CN\t+404251-0740023\tAsia/Shanghai\nHK\t+2217+11410\tAsia/Hong_Kong\nMO\t+2210+11333\tAsia/Macau\nTW\t+2503+12130\tAsia/Taipei", locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(Set(allChina.map(\.countryTitle)), ["China - Mainland", "China - Hong Kong", "China - Macao", "China - Taiwan"])
+        XCTAssertEqual(TimeZoneCityCatalog.continentTitle(for: "America/New_York", locale: Locale(identifier: "ko_KR")), "아메리카")
+        let americanZones = [
+            ("CO", "America/Bogota"), ("VE", "America/Caracas"), ("EC", "America/Guayaquil"),
+            ("GY", "America/Guyana"), ("BR", "America/Belem"), ("BR", "America/Araguaina"),
+            ("MX", "America/Bahia_Banderas"), ("PE", "America/Lima"), ("US", "America/Anchorage")
+        ]
+        for (country, identifier) in americanZones {
+            let city = try XCTUnwrap(TimeZoneCityCatalog.load(zoneTab: "\(country)\t+0000+00000\t\(identifier)", locale: Locale(identifier: "zh_CN")).first)
+            let expected = country == "MX" || country == "US" ? "北美洲" : "南美洲"
+            XCTAssertEqual(TimeZoneCityCatalog.continentTitle(for: city, locale: Locale(identifier: "zh_CN")), expected, identifier)
+        }
+        let lima = try XCTUnwrap(TimeZoneCityCatalog.load(zoneTab: "PE\t+1203-07703\tAmerica/Lima", locale: Locale(identifier: "zh_CN")).first)
+        XCTAssertEqual(TimeZoneCityCatalog.grouped([lima], locale: Locale(identifier: "zh_CN")).first?.header, "南美洲")
+        XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "New York"))
+        XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "纽约"))
+        XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "America/New_York"))
+        let parser = ISO8601DateFormatter()
+        let summer = try XCTUnwrap(parser.date(from: "2026-07-15T12:00:00Z"))
+        let winter = try XCTUnwrap(parser.date(from: "2026-01-15T12:00:00Z"))
+        XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "UTC-04:00", now: summer))
+        XCTAssertFalse(TimeZoneCityCatalog.matches(ny, query: "UTC-04:00", now: winter))
+        XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "−05:00", now: winter))
+        let fallback = TimeZoneCityCatalog.load(zoneTab: nil, locale: Locale(identifier: "en_US"))
+        XCTAssertFalse(fallback.isEmpty)
+        XCTAssertFalse(fallback.contains { $0.identifier.hasPrefix("Etc/") || $0.identifier.hasPrefix("US/") })
+        XCTAssertEqual(Set(TimeZoneCityCatalog.all.map(\.identifier)).count, TimeZoneCityCatalog.all.count)
+        XCTAssertTrue(TimeZoneCityCatalog.all.contains { $0.identifier == "America/New_York" })
+    }
+
+
+    func testFollowingSystemRestoresPreviousManualTimeZone() throws {
+        let suite = "BalanceBarTests.TimeZoneRestoreManual.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        preferences.displayTimeZoneSelection = .system
+        XCTAssertEqual(preferences.lastManualDisplayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+        preferences.displayTimeZoneSelection = preferences.lastManualDisplayTimeZoneSelection
+        XCTAssertEqual(preferences.displayTimeZoneSelection, .region(identifier: "Asia/Shanghai"))
+    }
+    func testGeneralTimeZoneRefreshKeepsExistingComboAndSwitch() throws {
+        let suite = "BalanceBarTests.TimeZoneUI.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
+        let general = DashboardGeneralPage()
+        let page = general.make(.init(preferences: preferences, currentProviderName: "test", relay: relay, updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.6.4")))))
+        let combo = try XCTUnwrap(descendants(of: page).compactMap { $0 as? DashboardTimeZoneComboBox }.first)
+        let toggle = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSSwitch }.first { $0.identifier?.rawValue == AppPreferences.displayTimeZoneKey + ".system" })
+        XCTAssertFalse(combo.isEnabled)
+        XCTAssertFalse(combo.completes)
+        XCTAssertEqual(toggle.state, .on)
+        XCTAssertEqual(combo.stringValue, TimeZoneCityCatalog.displayTitle(for: .system))
+        if TimeZoneCityCatalog.all.contains(where: { $0.identifier == TimeZone.autoupdatingCurrent.identifier }) {
+            XCTAssertNotNil(combo.selectedItem)
+        } else {
+            XCTAssertNil(combo.selectedItem)
+        }
+        let cityMenuCount = combo.menu?.items.count ?? 0
+        combo.apply(.fixedOffset(minutes: 0))
+        XCTAssertNil(combo.selectedItem)
+        XCTAssertTrue(combo.isEnabled)
+        XCTAssertEqual(combo.menu?.items.count, cityMenuCount)
+        XCTAssertFalse(combo.menu?.items.contains { ($0.representedObject as? String)?.hasPrefix("UTC") == true } ?? true)
+        XCTAssertTrue(combo.isEnabled)
+        combo.apply(.region(identifier: "America/New_York"))
+        XCTAssertTrue(combo.isEnabled)
+        XCTAssertEqual(combo.title, TimeZoneCityCatalog.title(for: "America/New_York"))
+        combo.apply(preferences.displayTimeZoneSelection)
+        XCTAssertEqual(combo.menu?.items.count, cityMenuCount)
+        toggle.state = .off
+        XCTAssertTrue(toggle.sendAction(toggle.action, to: toggle.target))
+        XCTAssertNotEqual(preferences.displayTimeZoneSelection, .system)
+        XCTAssertTrue(preferences.displayTimeZoneSelection.isSupported)
+        XCTAssertEqual(preferences.effectiveDisplayTimeZone.secondsFromGMT(), TimeZone.autoupdatingCurrent.secondsFromGMT())
+        general.refreshDisplayTimeZone(preferences.displayTimeZoneSelection)
+        XCTAssertTrue(combo.isEnabled)
+        preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
+        general.refreshDisplayTimeZone(preferences.displayTimeZoneSelection)
+        XCTAssertEqual(combo.title, TimeZoneCityCatalog.title(for: "America/New_York"))
+        XCTAssertTrue(descendants(of: page).compactMap { $0 as? DashboardTimeZoneComboBox }.first === combo)
+        toggle.state = .on
+        XCTAssertTrue(toggle.sendAction(toggle.action, to: toggle.target))
+        general.refreshDisplayTimeZone(preferences.displayTimeZoneSelection)
+        XCTAssertFalse(combo.isEnabled)
+        let section = try XCTUnwrap(descendants(of: page).compactMap { $0 as? SettingsSectionView }.first { $0.headingLabel.stringValue == tr(.keyDashboardGeneralAndRefreshPagesApplication) })
+        let rows = section.contentViews.compactMap { $0 as? SettingsRowView }
+        XCTAssertEqual(rows[0].titleLabel.stringValue, tr(.keyDashboardGeneralAndRefreshPagesLanguage))
+        XCTAssertEqual(rows[1].titleLabel.stringValue, tr(.keyTimeZoneSystem))
+        XCTAssertEqual(rows[2].titleLabel.stringValue, tr(.keyTimeZoneTitle))
+    }
+
+    func testPauseTodayUsesDisplayZoneAndKeepsAbsoluteDeadlineOnZoneChange() throws {
+        let suite = "BalanceBarTests.PauseTimeZone.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: DashboardNotificationTestClient())
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .fixedOffset(minutes: 345)
+        let pages = DashboardNotificationPages(configuration: .init(coordinator: coordinator, providerChoices: { _ in [] }, displayTimeZone: { preferences.effectiveDisplayTimeZone }))
+        let page = pages.make()
+        let menu = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }.first { popup in popup.itemArray.contains { ($0.representedObject as? String) == "today" } })
+        XCTAssertEqual(menu.itemArray.compactMap { $0.representedObject as? String }, ["none", "oneHour", "today"])
+        menu.select(try XCTUnwrap(menu.itemArray.first { ($0.representedObject as? String) == "today" }))
+        let expected = try XCTUnwrap(AppDisplayTime.nextDayStart(after: Date(), timeZone: preferences.effectiveDisplayTimeZone))
+        XCTAssertTrue(menu.sendAction(menu.action, to: menu.target))
+        let done = expectation(description: "pause applied")
+        coordinator.performAsync { DispatchQueue.main.async { done.fulfill() } }
+        wait(for: [done], timeout: 3)
+        XCTAssertEqual(try XCTUnwrap(coordinator.settings.pauseUntil).timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.001)
+        preferences.displayTimeZoneSelection = .fixedOffset(minutes: -300)
+        XCTAssertEqual(coordinator.settings.pauseUntil, expected)
+    }
+
+
+}
+
+extension DashboardPreferencePagesTests {
+
+
+}
+
+extension DashboardPreferencePagesTests {
+}
+
+extension DashboardPreferencePagesTests {
+
+}
+
+
+
+extension DashboardPreferencePagesTests {
+}
+
+extension DashboardPreferencePagesTests {
+
+
+
+    func testCityComboFitsNarrowSettingsRow() throws {
+        let suite = "BalanceBarTests.CityWidth.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
+        let relay = DashboardPreferencePageRelay()
+        let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        let row = SettingsRowView(title: "Time zone", accessoryView: combo)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 230, height: 200))
+        host.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            row.topAnchor.constraint(equalTo: host.topAnchor),
+            row.widthAnchor.constraint(equalToConstant: 230)
+        ])
+        host.layoutSubtreeIfNeeded()
+        row.layoutSubtreeIfNeeded()
+        XCTAssertEqual(row.bounds.width, 230, accuracy: 0.5)
+        XCTAssertGreaterThan(combo.bounds.width, 0)
+        XCTAssertLessThan(combo.bounds.width, 280)
+        let frame = combo.convert(combo.bounds, to: row)
+        XCTAssertGreaterThanOrEqual(frame.minX, 0)
+        XCTAssertLessThanOrEqual(frame.maxX, row.bounds.width + 0.5)
+    }
+
+}
+
+extension DashboardPreferencePagesTests {
+
+
+
+
+
+}
+
+extension DashboardPreferencePagesTests {
+
+
+
+
+}
+
+extension DashboardPreferencePagesTests {
+
+}
+
+extension DashboardPreferencePagesTests {
+}
+
+extension DashboardPreferencePagesTests {
+
+}
+
+extension DashboardPreferencePagesTests {
+    func testTimeZoneListUsesCustomNonSelectableContinentViewsAndUTCFormat() throws {
+        let suite = "BalanceBarTests.ContinentHeaders.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let relay = DashboardPreferencePageRelay()
+        let popup = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
+        let menu = try XCTUnwrap(popup.menu)
+        let header = try XCTUnwrap(menu.items.first(where: { $0.view != nil }))
+        XCTAssertFalse(header.isEnabled)
+        XCTAssertNotNil(header.view?.subviews.compactMap { $0 as? NSTextField }.first)
+        XCTAssertFalse(menu.items.contains { $0.isSeparatorItem })
+        XCTAssertTrue(menu.items.compactMap { $0.title }.contains { $0.contains("(UTC") })
+        XCTAssertTrue(menu.items.compactMap { $0.title }.contains { $0.contains(" - ") })
+    }
+}

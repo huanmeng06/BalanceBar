@@ -433,12 +433,27 @@ final class BalanceNotificationCoordinator {
         onQueue {
             self.store.update { settings in
                 settings.pauseUntil = duration.map { Date().addingTimeInterval($0) }
+                settings.pauseMode = duration == nil ? nil : .oneHour
+            }
+        }
+    }
+
+    /// Store the absolute local-day boundary selected by the UI. Subsequent
+    /// display-zone changes only reformat this instant.
+    func pause(until deadline: Date) {
+        onQueue {
+            self.store.update {
+                $0.pauseUntil = deadline
+                $0.pauseMode = .today
             }
         }
     }
 
     func resume() {
-        onQueue { self.store.update { $0.pauseUntil = nil } }
+        onQueue { self.store.update { settings in
+            settings.pauseUntil = nil
+            settings.pauseMode = nil
+        } }
     }
 
     func resourceDescriptors(

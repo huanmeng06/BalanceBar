@@ -348,6 +348,11 @@ struct BalanceNotificationProviderPreference: Codable, Equatable {
     var enabled: Bool
 }
 
+enum BalanceNotificationPauseMode: String, Codable {
+    case oneHour
+    case today
+}
+
 struct BalanceNotificationSettings: Codable, Equatable {
     var globalEnabled = false
     /// Legacy aggregate defaults retained for settings migration. New UI uses
@@ -367,6 +372,8 @@ struct BalanceNotificationSettings: Codable, Equatable {
     var providerPreferences: [BalanceNotificationProviderPreference] = []
     var resourceRules: [BalanceNotificationResourceRule] = []
     var pauseUntil: Date?
+    /// Preserves whether the user chose a fixed duration or local-day pause.
+    var pauseMode: BalanceNotificationPauseMode?
 
     private enum CodingKeys: String, CodingKey {
         case globalEnabled
@@ -382,6 +389,7 @@ struct BalanceNotificationSettings: Codable, Equatable {
         case providerPreferences
         case resourceRules
         case pauseUntil
+        case pauseMode
     }
 
     init() {}
@@ -402,6 +410,9 @@ struct BalanceNotificationSettings: Codable, Equatable {
         providerPreferences = try container.decodeIfPresent([BalanceNotificationProviderPreference].self, forKey: .providerPreferences) ?? []
         resourceRules = try container.decodeIfPresent([BalanceNotificationResourceRule].self, forKey: .resourceRules) ?? []
         pauseUntil = try container.decodeIfPresent(Date.self, forKey: .pauseUntil)
+        if let rawMode = try? container.decode(String.self, forKey: .pauseMode) {
+            pauseMode = BalanceNotificationPauseMode(rawValue: rawMode)
+        }
     }
 
     func isAgentEnabled(_ agent: BalanceNotificationAgent) -> Bool {

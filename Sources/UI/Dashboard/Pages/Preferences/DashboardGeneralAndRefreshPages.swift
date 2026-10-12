@@ -318,6 +318,9 @@ final class DashboardGeneralPage {
         }
     }
 
+    private weak var timeZoneComboBox: DashboardTimeZoneComboBox?
+    private weak var systemTimeZoneSwitch: NSSwitch?
+
     private var updateSubtitleLabel: NSTextField?
     private var updateButton: NSButton?
     private var updateNotesButton: NSButton?
@@ -578,6 +581,15 @@ final class DashboardGeneralPage {
         self.launchWithChatGPTOpenSettingsButton = launchWithChatGPTOpenSettingsButton
         self.launchWithChatGPTControls = launchWithChatGPTControls
 
+        let timeZoneComboBox = DashboardTimeZoneComboBox(preferences: input.preferences, relay: input.relay)
+        let systemTimeZoneSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.displayTimeZoneKey + ".system",
+            isOn: input.preferences.displayTimeZoneSelection == .system,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.followSystemTimeZone(_:))
+        )
+        self.timeZoneComboBox = timeZoneComboBox
+        self.systemTimeZoneSwitch = systemTimeZoneSwitch
         let app = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesApplication),
             contentViews: [
@@ -586,11 +598,25 @@ final class DashboardGeneralPage {
                     detail: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
                     accessoryView: languagePopup
                 ),
+                SettingsRowView(
+                    title: tr(.keyTimeZoneSystem),
+                    accessoryView: systemTimeZoneSwitch
+                ),
+                SettingsRowView(
+                    title: tr(.keyTimeZoneTitle),
+                    detail: tr(.keyTimeZoneDescription),
+                    accessoryView: timeZoneComboBox
+                ),
                 updateChannelRow,
                 updateRow
             ]
         )
         return DashboardSettingsComponents.makeSettingsPageContent([system, refreshing, startup, app])
+    }
+
+    func refreshDisplayTimeZone(_ selection: AppTimeZoneSelection) {
+        systemTimeZoneSwitch?.state = selection == .system ? .on : .off
+        timeZoneComboBox?.apply(selection)
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
@@ -805,5 +831,219 @@ enum DashboardRefreshPage {
             note.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
         return root
+    }
+}
+
+/// AppKit owns the editable field and list. Only confirmed city matches commit;
+/// every display update is applied to this same mounted control instance.
+/// Menu header view for a continent section.
+final class MenuHeaderView: NSView {
+    private let background = NSView()
+    private let label = NSTextField(labelWithString: "")
+    private let accentBar = NSView()
+    private let topSpacing: CGFloat = 4
+
+    init(title: String, width: CGFloat = 240) {
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: 32))
+        autoresizingMask = [.width]
+        wantsLayer = true
+
+        [background, accentBar].forEach {
+            $0.wantsLayer = true
+            $0.translatesAutoresizingMaskIntoConstraints = false
+        }
+        addSubview(background)
+        addSubview(accentBar)
+
+        label.attributedStringValue = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 12, weight: .bold),
+                .foregroundColor: NSColor.controlAccentColor,
+                .kern: 1.2
+            ]
+        )
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+
+        NSLayoutConstraint.activate([
+            background.topAnchor.constraint(equalTo: topAnchor, constant: topSpacing),
+            background.bottomAnchor.constraint(equalTo: bottomAnchor),
+            background.leadingAnchor.constraint(equalTo: leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            accentBar.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 10),
+            accentBar.centerYAnchor.constraint(equalTo: background.centerYAnchor),
+            accentBar.widthAnchor.constraint(equalToConstant: 3),
+            accentBar.heightAnchor.constraint(equalToConstant: 14),
+
+            label.leadingAnchor.constraint(equalTo: accentBar.trailingAnchor, constant: 8),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: background.trailingAnchor, constant: -12),
+            label.centerYAnchor.constraint(equalTo: background.centerYAnchor)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            background.layer?.backgroundColor = NSColor.controlAccentColor
+                .withAlphaComponent(0.10).cgColor
+            accentBar.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+            accentBar.layer?.cornerRadius = 1.5
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+}
+
+private final class TimeZoneFallbackDisplayLabel: NSTextField {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// A native pop-up menu with custom, non-selectable continent headings.
+/// City entries are the only menu items with actions.
+final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout, NSMenuDelegate {
+    private let preferences: AppPreferences
+    private weak var relay: DashboardPreferencePageRelay?
+    private var applying = false
+    private var menuBuilt = false
+    private var displayedTitle = ""
+    private let fallbackDisplayLabel = TimeZoneFallbackDisplayLabel(labelWithString: "")
+
+    override var stringValue: String {
+        get { displayedTitle }
+        set { displayedTitle = newValue }
+    }
+
+    init(preferences: AppPreferences, relay: DashboardPreferencePageRelay) {
+        self.preferences = preferences
+        self.relay = relay
+        super.init(frame: .zero, pullsDown: false)
+        identifier = NSUserInterfaceItemIdentifier(AppPreferences.displayTimeZoneKey)
+        translatesAutoresizingMaskIntoConstraints = false
+        widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
+        let preferredWidth = widthAnchor.constraint(equalToConstant: 280)
+        preferredWidth.priority = .defaultHigh
+        preferredWidth.isActive = true
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        setAccessibilityLabel(tr(.keyTimeZoneTitle))
+        fallbackDisplayLabel.translatesAutoresizingMaskIntoConstraints = false
+        fallbackDisplayLabel.alignment = .left
+        fallbackDisplayLabel.lineBreakMode = .byTruncatingTail
+        fallbackDisplayLabel.drawsBackground = true
+        fallbackDisplayLabel.backgroundColor = .controlBackgroundColor
+        fallbackDisplayLabel.isSelectable = false
+        fallbackDisplayLabel.isHidden = true
+        addSubview(fallbackDisplayLabel)
+        NSLayoutConstraint.activate([
+            fallbackDisplayLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            fallbackDisplayLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -28),
+            fallbackDisplayLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+        target = self
+        action = #selector(selectTimeZone(_:))
+        autoenablesItems = false
+        menu?.delegate = self
+        apply(preferences.displayTimeZoneSelection)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    var completes: Bool { false }
+    var minimumInlineLabelWidth: CGFloat { 120 }
+    var naturalAccessoryWidth: CGFloat { 280 }
+    func updateAvailableRowWidth(_ width: CGFloat) {}
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: 280, height: super.intrinsicContentSize.height)
+    }
+
+    func apply(_ selection: AppTimeZoneSelection) {
+        applying = true
+        defer { applying = false }
+        if !menuBuilt {
+            removeAllItems()
+            let cities = TimeZoneCityCatalog.all.sorted {
+            let left = TimeZoneCityCatalog.continentTitle(for: $0)
+            let right = TimeZoneCityCatalog.continentTitle(for: $1)
+            if left != right { return left.localizedStandardCompare(right) == .orderedAscending }
+            return TimeZoneCityCatalog.compare($0, $1)
+        }
+        var currentContinent: String?
+        for city in cities {
+            let continent = TimeZoneCityCatalog.continentTitle(for: city)
+            if currentContinent != continent {
+                menu?.addItem(makeHeaderItem(title: continent))
+                currentContinent = continent
+            }
+            let item = NSMenuItem(title: city.title, action: #selector(selectTimeZone(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = city.identifier
+            menu?.addItem(item)
+            }
+            menuBuilt = true
+        }
+        // Never assign `title` to text absent from the menu: AppKit would
+        // implicitly create a selectable menu item. For an internal fixed
+        // offset fallback, update only the popup cell's displayed text.
+        let identifier = selection.resolved().identifier
+        if let item = menu?.items.first(where: { ($0.representedObject as? String) == identifier }) {
+            fallbackDisplayLabel.isHidden = true
+            select(item)
+            displayedTitle = item.title
+        } else {
+            // The fallback value is not a menu item. Clear the previous city
+            // selection so AppKit cannot report a stale selectedItem.
+            select(nil)
+            displayedTitle = TimeZoneCityCatalog.displayTitle(for: selection)
+            fallbackDisplayLabel.stringValue = displayedTitle
+            fallbackDisplayLabel.isHidden = false
+        }
+        // A fallback value only changes the presentation; the city menu must
+        // remain usable so the user can choose a supported region immediately.
+        isEnabled = selection != .system
+        toolTip = selection.title()
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        // Re-evaluate dynamic UTC offsets when the user opens the list, including
+        // DST transitions that occurred while a manual region was selected.
+        refreshDynamicMenuTitles()
+        apply(preferences.displayTimeZoneSelection)
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        refreshDynamicMenuTitles()
+    }
+
+    private func refreshDynamicMenuTitles() {
+        let titles = Dictionary(uniqueKeysWithValues: TimeZoneCityCatalog.all.map { ($0.identifier, $0.title) })
+        for item in menu?.items ?? [] {
+            guard let identifier = item.representedObject as? String,
+                  let title = titles[identifier] else { continue }
+            item.title = title
+        }
+    }
+
+    private func makeHeaderItem(title: String) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.title = title
+        item.view = MenuHeaderView(title: title)
+        item.isEnabled = false
+        return item
+    }
+
+    @objc private func selectTimeZone(_ sender: NSMenuItem) {
+        guard !applying, let identifier = sender.representedObject as? String else { return }
+        let selection = AppTimeZoneSelection.region(identifier: identifier)
+        guard selection != preferences.displayTimeZoneSelection else { return }
+        relay?.onTimeZone?(selection)
     }
 }

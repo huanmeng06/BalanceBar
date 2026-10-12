@@ -481,12 +481,12 @@ final class LunaReserveCardView: NSView {
         }
     }
 
-    func update(quota: LunaReserveQuota) {
+    func update(quota: LunaReserveQuota, timeZone: TimeZone = .autoupdatingCurrent) {
         titleLabel.stringValue = tr(.keyLunaReserveTitle)
         statusLabel.stringValue = quota.status.localizedText
         statusLabel.textColor = Self.statusColor(for: quota.status)
         remainingLabel.stringValue = quota.remainingText
-        resetLabel.stringValue = quota.resetText
+        resetLabel.stringValue = quota.resetDisplayText(timeZone: timeZone).map { tr(.keyLunaReserveResetValue, arguments: [$0]) } ?? tr(.keyLunaReserveResetUnavailable)
         progressHost.subviews.forEach { $0.removeFromSuperview() }
         if showsProgressBar, let remaining = quota.remaining {
             progressHost.isHidden = false

@@ -3839,3 +3839,36 @@ private final class LockedInt: @unchecked Sendable {
         lock.unlock()
     }
 }
+
+extension DashboardPageSearchTests {
+    func testDisplayTimeZoneRefreshKeepsMountedGeneralAndSearchControls() throws {
+        let defaults = UserDefaults.standard
+        let old = defaults.object(forKey: AppPreferences.displayTimeZoneKey)
+        defer {
+            if let old { defaults.set(old, forKey: AppPreferences.displayTimeZoneKey) }
+            else { defaults.removeObject(forKey: AppPreferences.displayTimeZoneKey) }
+        }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.displayTimeZoneSelection = .region(identifier: "Asia/Shanghai")
+        let appDelegate = AppDelegate(repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-489-cities.db")))
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        _ = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        let root = composition.currentHostedPageContentForTesting()
+        let combo = try XCTUnwrap(firstDescendant(of: root) { $0 is DashboardTimeZoneComboBox } as? DashboardTimeZoneComboBox)
+        preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
+        composition.refreshDisplayTimeZone(snapshot: .placeholder, refreshDate: nil, revision: 1)
+        XCTAssertTrue(composition.currentHostedPageContentForTesting() === root)
+        XCTAssertTrue(firstDescendant(of: root) { $0 is DashboardTimeZoneComboBox } === combo)
+        XCTAssertEqual(combo.stringValue, TimeZoneCityCatalog.title(for: "America/New_York"))
+        composition.applySearchQueryForTesting(tr(.keyTimeZoneTitle))
+        let searchRoot = composition.currentHostedPageContentForTesting()
+        let searchCombo = try XCTUnwrap(firstDescendant(of: searchRoot) { $0 is DashboardTimeZoneComboBox } as? DashboardTimeZoneComboBox)
+        preferences.displayTimeZoneSelection = .system
+        composition.refreshDisplayTimeZone(snapshot: .placeholder, refreshDate: nil, revision: 2)
+        XCTAssertTrue(composition.currentHostedPageContentForTesting() === searchRoot)
+        XCTAssertTrue(firstDescendant(of: searchRoot) { $0 is DashboardTimeZoneComboBox } === searchCombo)
+        XCTAssertFalse(searchCombo.isEnabled)
+        XCTAssertEqual(searchCombo.stringValue, TimeZoneCityCatalog.displayTitle(for: .system))
+    }
+}

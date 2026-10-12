@@ -78,13 +78,15 @@ final class DashboardMenuBarPage {
         showReset: Bool,
         quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
         lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
+        timeZone: TimeZone = .autoupdatingCurrent,
         resolving snapshotResolver: (Snapshot) -> Snapshot
     ) -> Presentation {
         let effective = snapshotResolver(snapshot)
         let secondary = effective.kind == .official
             ? effective.menuBarSecondary(
                 displayMode: quotaResetDisplayMode,
-                lunaReserveResetTimeMode: lunaReserveResetTimeMode
+                lunaReserveResetTimeMode: lunaReserveResetTimeMode,
+                timeZone: timeZone
             )
             : ""
         return Presentation(
@@ -470,6 +472,7 @@ final class DashboardMenuBarPage {
             showReset: preferences.showMenuBarReset,
             quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
+            timeZone: preferences.effectiveDisplayTimeZone,
             resolving: menuBarSnapshot
         )
         let widthAdjustment = transientWidthAdjustment
@@ -582,6 +585,7 @@ final class DashboardMenuBarPage {
             showReset: preferences.showMenuBarReset,
             quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
+            timeZone: preferences.effectiveDisplayTimeZone,
             resolving: menuBarSnapshot
         )
         previewSection.updateWarnings(statusItemVisibility)

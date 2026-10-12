@@ -398,7 +398,7 @@ enum DashboardSettingsSearchCatalog {
         let prefixes: [String]
         switch section {
         case .general:
-            prefixes = ["dashboard.general.and.refresh.pages."]
+            prefixes = ["dashboard.general.and.refresh.pages.", "timezone."]
         case .menuBar:
             prefixes = ["dashboard.menu.bar.page."]
         case .menu:
@@ -559,6 +559,9 @@ enum DashboardSettingsSearchCatalog {
             var texts = DashboardSettingsFormattedCopy.sharedVisibleTexts(for: section)
             if section == .general {
                 texts.append(contentsOf: DashboardSettingsFormattedCopy.languageMenuTitles())
+                texts.append(contentsOf: Set(TimeZoneCityCatalog.all.map {
+                    TimeZoneCityCatalog.continentTitle(for: $0)
+                }).sorted())
             }
             return texts
         case .notifications:
@@ -709,7 +712,8 @@ enum DashboardSettingsSearchRuntime {
         animationMode: MenuBarAnimationMode,
         animationFrameRate: Int,
         menuBarPreviewPrimary: String,
-        menuBarPreviewSecondary: String
+        menuBarPreviewSecondary: String,
+        timeZoneTitle: String = TimeZoneCityCatalog.displayTitle(for: .system)
     ) -> [DashboardSection: [String]] {
         let update = DashboardUpdatePresentation.make(for: updateState)
         let frameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
@@ -717,7 +721,8 @@ enum DashboardSettingsSearchRuntime {
             .general: nonempty([
                 DashboardSettingsFormattedCopy.currentProviderValue(currentProviderName),
                 update.subtitle,
-                update.buttonTitle
+                update.buttonTitle,
+                timeZoneTitle
             ]),
             .menuBar: nonempty(
                 [

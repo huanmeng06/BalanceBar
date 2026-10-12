@@ -3,6 +3,7 @@ import AppKit
 struct DashboardNotificationPageConfiguration {
     let coordinator: BalanceNotificationCoordinator
     let providerChoices: (BalanceNotificationAgent) -> [ProviderChoice]
+    var displayTimeZone: () -> TimeZone = { .autoupdatingCurrent }
 }
 
 private final class DashboardNotificationPageRelay: NSObject, NSTextFieldDelegate {
@@ -354,17 +355,19 @@ final class DashboardNotificationPages {
         relay.onPauseSelection = { [weak self] selection in
             guard let self else { return }
             let coordinator = self.configuration.coordinator
+            let timeZone = self.configuration.displayTimeZone()
             coordinator.performAsync {
                 switch selection {
                 case "none":
                     coordinator.resume()
                 case "today":
-                    let calendar = Calendar.autoupdatingCurrent
-                    let start = calendar.startOfDay(for: Date())
-                    let end = calendar.date(byAdding: .day, value: 1, to: start) ?? Date().addingTimeInterval(86_400)
-                    coordinator.pause(for: max(0, end.timeIntervalSinceNow))
-                default:
+                    if let end = AppDisplayTime.nextDayStart(after: Date(), timeZone: timeZone) {
+                        coordinator.pause(until: end)
+                    }
+                case "oneHour":
                     coordinator.pause(for: 3_600)
+                default:
+                    return
                 }
                 DispatchQueue.main.async { [weak self] in self?.updatePausePresentation() }
             }
@@ -454,6 +457,8 @@ final class DashboardNotificationPages {
         path = []
         rebuild()
     }
+
+    func refreshDisplayTimeZone() { updatePausePresentation() }
 
     func refresh() {
         guard currentPage != nil else { return }
@@ -654,9 +659,13 @@ final class DashboardNotificationPages {
         }
         pauseDetailLabel.stringValue = tr(
             "notifications.pause_status",
-            arguments: [Self.pauseDateFormatter.string(from: pauseUntil), remainingText(until: pauseUntil)]
+            arguments: [AppDisplayTime.formatter(timeZone: configuration.displayTimeZone(), dateFormat: "M/d HH:mm").string(from: pauseUntil), remainingText(until: pauseUntil)]
         )
-        selectPauseOption(pauseSelection(for: pauseUntil))
+        if let mode = pauseSelection(for: pauseUntil) {
+            selectPauseOption(mode.rawValue)
+        } else {
+            pauseMenu?.select(nil)
+        }
     }
 
     private func selectPauseOption(_ value: String) {
@@ -666,14 +675,10 @@ final class DashboardNotificationPages {
         pauseMenu?.select(item)
     }
 
-    private func pauseSelection(for pauseUntil: Date) -> String {
-        let calendar = Calendar.autoupdatingCurrent
-        let endOfToday = calendar.date(
-            byAdding: .day,
-            value: 1,
-            to: calendar.startOfDay(for: Date())
-        ) ?? Date()
-        return pauseUntil.timeIntervalSince(endOfToday) > -1 ? "today" : "oneHour"
+    private func pauseSelection(for pauseUntil: Date) -> BalanceNotificationPauseMode? {
+        // Legacy records may have only an absolute deadline. Leave the menu
+        // unchanged rather than inventing a misleading duration.
+        configuration.coordinator.settings.pauseMode
     }
 
     private func remainingText(until date: Date) -> String {
@@ -684,13 +689,6 @@ final class DashboardNotificationPages {
         return remainder == 0 ? "\(hours)h" : "\(hours)h \(remainder)m"
     }
 
-    private static let pauseDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = .autoupdatingCurrent
-        formatter.calendar = .autoupdatingCurrent
-        formatter.dateFormat = "M/d HH:mm"
-        return formatter
-    }()
 
     private func makeReminderRulesSection(settings: BalanceNotificationSettings) -> NSView {
         let fiveHourKey = BalanceNotificationResourceKey(agent: .gpt, providerID: "global", resourceID: "five-hour")

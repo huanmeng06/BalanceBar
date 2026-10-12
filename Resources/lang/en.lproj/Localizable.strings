@@ -487,3 +487,16 @@
 "codex.reset_signal.tooltip_title" = "Official reset signal";
 "codex.reset_signal.tooltip_body" = "Strong-signal probability or countdown for the current official signal, separate from the ordinary 24 / 48-hour forecast.";
 "codex.reset_signal.tooltip_disclaimer" = "The signal does not confirm a reset for this account or guarantee reset credits. Actual quota comes from the official API.";
+
+// Application display time zone
+"timezone.title" = "Time zone";
+"timezone.description" = "Choose a city from the list";
+"timezone.system" = "Follow system time zone";
+"timezone.regions" = "Regions / Cities";
+"timezone.offsets" = "UTC fixed offsets";
+"timezone.search" = "Search cities or time zones";
+
+"timezone.lookup_loading" = "Looking up city…";
+"timezone.lookup_failed" = "Only cities in the list can be selected";
+
+"codex.banked_reset.expired_value" = "Expired %1$@";
