@@ -3115,7 +3115,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             8
         )
         XCTAssertGreaterThan(accountView.frame.maxX, subscriptionLabel.frame.minX)
-        XCTAssertEqual(subscriptionLabel.frame.maxX, overview.bounds.width - 14)
+        XCTAssertEqual(
+            subscriptionLabel.frame.maxX,
+            overview.bounds.width - OpenCodexCardLayout.horizontalInset
+        )
         XCTAssertNotNil(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.stringValue == "83%"
@@ -3900,11 +3903,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertLessThanOrEqual(
             frames.quotaRows[0].quotaDetail.maxX,
-            overview.bounds.maxX - 14
+            overview.bounds.maxX - OpenCodexCardLayout.horizontalInset
         )
         XCTAssertLessThanOrEqual(
             frames.quotaRows[1].quotaDetail.maxX,
-            overview.bounds.maxX - 14
+            overview.bounds.maxX - OpenCodexCardLayout.horizontalInset
         )
         XCTAssertTrue(quotaViews.allSatisfy { $0.frame.maxX <= overview.bounds.maxX })
 

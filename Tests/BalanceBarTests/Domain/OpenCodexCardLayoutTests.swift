@@ -280,7 +280,10 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertGreaterThan(frames.account?.maxX ?? 0, frames.subscription?.minX ?? 0)
-        XCTAssertLessThanOrEqual(frames.subscription?.maxX ?? 0, frames.cardSize.width - 14)
+        XCTAssertLessThanOrEqual(
+            frames.subscription?.maxX ?? 0,
+            frames.cardSize.width - OpenCodexCardLayout.horizontalInset
+        )
 
         let errorFrames = ErrorCardLayout.errorFrames(
             for: "quota unavailable",
@@ -382,7 +385,10 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(fiveHour.quotaDetail.maxY, frames.account?.minY ?? 0)
         for row in frames.quotaRows {
             XCTAssertGreaterThanOrEqual(row.progress.minX, 14)
-            XCTAssertLessThanOrEqual(row.progress.maxX, frames.cardSize.width - 14)
+            XCTAssertLessThanOrEqual(
+                row.progress.maxX,
+                frames.cardSize.width - OpenCodexCardLayout.horizontalInset
+            )
             XCTAssertGreaterThanOrEqual(row.amount.minY, 0)
             XCTAssertLessThanOrEqual(row.amount.maxY, frames.cardSize.height)
         }
