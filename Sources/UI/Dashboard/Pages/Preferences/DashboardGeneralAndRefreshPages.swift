@@ -971,14 +971,14 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         if !menuBuilt {
             removeAllItems()
             let cities = TimeZoneCityCatalog.all.sorted {
-            let left = TimeZoneCityCatalog.continentTitle(for: $0.identifier)
-            let right = TimeZoneCityCatalog.continentTitle(for: $1.identifier)
+            let left = TimeZoneCityCatalog.continentTitle(for: $0)
+            let right = TimeZoneCityCatalog.continentTitle(for: $1)
             if left != right { return left.localizedStandardCompare(right) == .orderedAscending }
             return TimeZoneCityCatalog.compare($0, $1)
         }
         var currentContinent: String?
         for city in cities {
-            let continent = TimeZoneCityCatalog.continentTitle(for: city.identifier)
+            let continent = TimeZoneCityCatalog.continentTitle(for: city)
             if currentContinent != continent {
                 menu?.addItem(makeHeaderItem(title: continent))
                 currentContinent = continent

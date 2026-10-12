@@ -1152,6 +1152,33 @@ enum TimeZoneCityCatalog {
             .lowercased()
     }
 
+    static func continentTitle(for city: TimeZoneCity, locale: Locale = locale) -> String {
+        let identifier = city.identifier
+        if identifier.hasPrefix("America/") {
+            let southPrefixes = [
+                "America/Argentina/", "America/Asuncion", "America/Bahia", "America/Boa_Vista",
+                "America/Campo_Grande", "America/Catamarca", "America/Cayenne", "America/Cordoba",
+                "America/Cuiaba", "America/Eirunepe", "America/Fortaleza", "America/Goiania",
+                "America/La_Paz", "America/Lima", "America/Maceio", "America/Manaus",
+                "America/Montevideo", "America/Paramaribo", "America/Porto_Acre", "America/Porto_Velho",
+                "America/Recife", "America/Rio_Branco", "America/Rosario", "America/Santiago",
+                "America/Sao_Paulo", "America/Argentina"
+            ]
+            let key = southPrefixes.contains(where: identifier.hasPrefix) ? "SouthAmerica" : "NorthAmerica"
+            return localizedContinentName(key, locale: locale)
+        }
+        return continentTitle(for: identifier, locale: locale)
+    }
+
+    private static func localizedContinentName(_ continent: String, locale: Locale) -> String {
+        let language = locale.language.languageCode?.identifier ?? "en"
+        let names: [String: [String: String]] = [
+            "NorthAmerica": ["zh": "北美洲", "en": "North America", "ja": "北アメリカ", "ko": "북아메리카", "es": "América del Norte", "pt": "América do Norte", "de": "Nordamerika", "fr": "Amérique du Nord", "ru": "Северная Америка", "it": "America settentrionale"],
+            "SouthAmerica": ["zh": "南美洲", "en": "South America", "ja": "南アメリカ", "ko": "남아메리카", "es": "América del Sur", "pt": "América do Sul", "de": "Südamerika", "fr": "Amérique du Sud", "ru": "Южная Америка", "it": "Sud America"]
+        ]
+        return names[continent]?[language] ?? names[continent]?["en"] ?? continent
+    }
+
     static func continentTitle(for identifier: String, locale: Locale = locale) -> String {
         let continent = identifier.split(separator: "/").first.map(String.init) ?? ""
         let language = locale.language.languageCode?.identifier ?? "en"
