@@ -64,6 +64,7 @@ enum SwitchLog {
 
     static var fileURL: URL { directoryURL.appendingPathComponent("debug.log") }
     private static var recoveryURL: URL { directoryURL.appendingPathComponent("debug.recovery.log") }
+    private static var recoveryCommitURL: URL { directoryURL.appendingPathComponent(".recovery-committed") }
     private static var sequenceURL: URL { directoryURL.appendingPathComponent(".sequence") }
     private static var lockURL: URL { directoryURL.appendingPathComponent(".lock") }
     private static var legacyFileURL: URL { URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/debug.log").expandingTildeInPath) }
@@ -181,7 +182,25 @@ enum SwitchLog {
             output.text = tail.firstIndex(of: "\n").map { String(tail[tail.index(after: $0)...]) } ?? tail
             output.truncated = true
         }
+        output.text = orderedRecords(output.text)
         return output
+    }
+
+    private static func orderedRecords(_ text: String) -> String {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard lines.count > 1 else { return text }
+        let indexed = lines.enumerated().map { index, line in (index, line, timestamp(in: line)) }
+        return indexed.sorted { lhs, rhs in
+            switch (lhs.2, rhs.2) {
+            case let (left?, right?): return left == right ? lhs.0 < rhs.0 : left < right
+            default: return lhs.0 < rhs.0
+            }
+        }.map(\.1).joined(separator: "\n")
+    }
+
+    private static func timestamp(in line: String) -> Date? {
+        guard line.first == "[", let end = line.firstIndex(of: "]") else { return nil }
+        return timestampFormatter.date(from: String(line[line.index(after: line.startIndex)..<end]))
     }
 
     private static func uniqueRecords(_ text: String, seenEventIDs: inout Set<String>) -> String {
@@ -291,20 +310,49 @@ enum SwitchLog {
         let data = try Data(contentsOf: recoveryURL)
         guard !data.isEmpty else { try FileManager.default.removeItem(at: recoveryURL); return }
         let text = String(decoding: data, as: UTF8.self)
-        let existing = readFilesLocked(previewLimit: nil, includeRecovery: false).text
+        var committed = try readCommittedEventIDs()
         let pendingRecords = text.split(separator: "\n").filter { !$0.hasPrefix(recoveryBatchMarker) && !$0.isEmpty }
-        let missingRecords = pendingRecords.filter { record in
+        let unresolved = pendingRecords.filter { record in
             guard let eventID = eventID(in: String(record)) else { return true }
-            return !existing.contains("[event_id=\(eventID)]")
+            return !committed.contains(eventID)
         }
-        if missingRecords.isEmpty {
-            try FileManager.default.removeItem(at: recoveryURL)
-            return
+        var existing = ""
+        if unresolved.contains(where: { eventID(in: String($0)) != nil }) {
+            let snapshot = readFilesLocked(previewLimit: nil, includeRecovery: false)
+            guard snapshot.warnings.isEmpty else { throw NSError(domain: "BalanceBar.Diagnostics", code: 5, userInfo: [NSLocalizedDescriptionKey: "Unable to verify existing diagnostic records."]) }
+            existing = snapshot.text
         }
-        for record in missingRecords {
+        for record in unresolved {
+            guard let id = eventID(in: String(record)) else {
+                try appendRecord(Data((String(record) + "\n").utf8))
+                continue
+            }
+            if existing.contains("[event_id=\(id)]") {
+                committed.insert(id)
+                try writeCommittedEventIDs(committed)
+                continue
+            }
             try appendRecord(Data((String(record) + "\n").utf8))
+            committed.insert(id)
+            try writeCommittedEventIDs(committed)
         }
-        try FileManager.default.removeItem(at: recoveryURL)
+        if unresolved.isEmpty || unresolved.allSatisfy({ record in
+            guard let id = eventID(in: String(record)) else { return true }
+            return committed.contains(id)
+        }) {
+            try FileManager.default.removeItem(at: recoveryURL)
+        }
+    }
+
+    private static func readCommittedEventIDs() throws -> Set<String> {
+        guard FileManager.default.fileExists(atPath: recoveryCommitURL.path) else { return [] }
+        let text = try String(contentsOf: recoveryCommitURL, encoding: .utf8)
+        return Set(text.split(whereSeparator: \.isNewline).map(String.init))
+    }
+
+    private static func writeCommittedEventIDs(_ ids: Set<String>) throws {
+        let bounded = ids.sorted().suffix(4096).joined(separator: "\n")
+        try Data(bounded.utf8).write(to: recoveryCommitURL, options: .atomic)
     }
 
     private static func eventID(in record: String) -> String? {
@@ -360,14 +408,26 @@ enum SwitchLog {
     }
 
     private static func redact(_ value: String) -> String {
+        if let json = try? JSONSerialization.jsonObject(with: Data(value.utf8)),
+           JSONSerialization.isValidJSONObject(json),
+           let sanitized = sanitizedJSON(json),
+           let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys]),
+           let text = String(data: data, encoding: .utf8) {
+            return text
+        }
+        let sensitiveContainer = try? NSRegularExpression(pattern: "(?i)[\\\"']?(credentials|tokens|headers|authorization|cookie|secret)[\\\"']?\\s*[:=]\\s*[\\[{]")
+        if sensitiveContainer?.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil {
+            return "[structured-details-omitted]"
+        }
         var result = value
         let patterns: [(String, String)] = [
-            ("(?i)(authorization|proxy-authorization)\\s*[:=]\\s*(?:bearer|basic|token|digest)\\s+[^\\r\\n]+", "$1=[REDACTED]"),
-            ("(?i)(cookie|set-cookie)\\s*[:=]\\s*[^\\r\\n]+", "$1=[REDACTED]"),
+            ("(?i)(authorization|proxy-authorization)\\s*[:=]\\s*(bearer|basic|token|digest|apikey|negotiate)\\s+[^;\\r\\n]+", "$1: $2 [REDACTED]"),
+            ("(?i)(cookie|set-cookie)\\s*[:=]\\s*[^\\r\\n]+", "$1: [REDACTED]"),
             ("(?i)([\\\"']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|password|passwd|pwd|secret|credential|credentials|token|tokens|headers)[\\\"']?\\s*[:=]\\s*)(?:\\[[^\\]]*\\]|\\{[^}]*\\}|[\\\"'][^\\\"']*[\\\"']|[^\\\"',;}\\s]+)", "$1[REDACTED]"),
             ("(?i)(https?://)[^/\\s:@]+:[^@/\\s]+@", "$1[REDACTED]@"),
             ("(?i)(?:api[_-]?key|access[_-]?token|token|password|secret|signature)=([^&#\\s]+)", "[REDACTED]"),
-            ("(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")
+            ("(?i)https?://[^\\s;,]+", "[URL_REDACTED]"),
+            ("(?i)\\bsk-(?:ant-)?[A-Za-z0-9_-]{12,}", "[TOKEN_REDACTED]")
         ]
         for (pattern, replacement) in patterns {
             if let expression = try? NSRegularExpression(pattern: pattern) {
@@ -375,6 +435,28 @@ enum SwitchLog {
             }
         }
         return result
+    }
+
+    private static func sanitizedJSON(_ value: Any) -> Any? {
+        if let dictionary = value as? [String: Any] {
+            var output: [String: Any] = [:]
+            for (key, nested) in dictionary {
+                let normalized = key.lowercased().replacingOccurrences(of: "-", with: "_")
+                if normalized.contains("token") || normalized.contains("credential") || normalized.contains("secret") || normalized.contains("password") || normalized.contains("cookie") || normalized.contains("authorization") || normalized.contains("api_key") || normalized == "auth" {
+                    output[key] = "[REDACTED]"
+                } else if let sanitized = sanitizedJSON(nested) {
+                    output[key] = sanitized
+                } else {
+                    return nil
+                }
+            }
+            return output
+        }
+        if let array = value as? [Any] {
+            return array.compactMap { sanitizedJSON($0) }
+        }
+        if value is String || value is NSNumber || value is NSNull { return value }
+        return nil
     }
 }
 

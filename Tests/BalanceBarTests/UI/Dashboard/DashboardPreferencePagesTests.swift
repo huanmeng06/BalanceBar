@@ -10478,10 +10478,18 @@ extension DashboardPreferencePagesTests {
         let cookie = "cookie-secret-987654"
         let json = "json-secret-987654"
         let query = "query-secret-987654"
+        let apiKey = "opaqueAPIValue999"
+        let negotiate = "opaqueAuthValue999"
+        let pathSecret = "opaquePathValue999"
+        let bareToken = "sk-ant-api03-verySensitiveString123"
         SwitchLog.write("Authorization: Basic \(basic); status=401", category: "security")
         SwitchLog.write("Cookie: session=\(cookie); csrf=\(cookie)", category: "security")
         SwitchLog.write("{\"credentials\":{\"x-secret-header\":\"\(json)\"},\"tokens\":[\"\(json)\"]}", category: "security")
         SwitchLog.write("https://user:password-secret@example.test/path?signature=\(query)&status=401", category: "security")
+        SwitchLog.write("Authorization: ApiKey \(apiKey); status=401", category: "security")
+        SwitchLog.write("Authorization: Negotiate \(negotiate); status=401", category: "security")
+        SwitchLog.write("https://example.test/\(pathSecret)/v1/status", category: "security")
+        SwitchLog.write(bareToken, category: "security")
         _ = SwitchLog.readSnapshot()
         let raw = try String(contentsOf: SwitchLog.fileURL, encoding: .utf8)
         XCTAssertFalse(raw.contains(basic))
@@ -10489,6 +10497,10 @@ extension DashboardPreferencePagesTests {
         XCTAssertFalse(raw.contains(json))
         XCTAssertFalse(raw.contains(query))
         XCTAssertFalse(raw.contains("password-secret"))
+        XCTAssertFalse(raw.contains(apiKey))
+        XCTAssertFalse(raw.contains(negotiate))
+        XCTAssertFalse(raw.contains(pathSecret))
+        XCTAssertFalse(raw.contains(bareToken))
         XCTAssertTrue(raw.contains("status=401"))
     }
 
