@@ -93,11 +93,11 @@ enum SwitchLog {
                         try appendRecord(try makeRecord(message, level: level, category: category, date: now))
                     } catch {
                         try appendRecovery(record)
-                        NSLog("BalanceBar diagnostic log deferred: %@", error.localizedDescription)
+                        NSLog("BalanceBar diagnostic log deferred; error_code=%ld", error._code)
                     }
                     pruneArchives()
                 }
-            } catch { NSLog("BalanceBar debug log error: %@", error.localizedDescription) }
+            } catch { NSLog("BalanceBar debug log error; error_code=%ld", error._code) }
         }
     }
 
@@ -106,7 +106,7 @@ enum SwitchLog {
             do {
                 try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
                 try withFileLock { try ensureSessionStarted(at: Date()) }
-            } catch { NSLog("BalanceBar session start deferred: %@", error.localizedDescription) }
+            } catch { NSLog("BalanceBar session start deferred; error_code=%ld", error._code) }
         }
     }
 
@@ -122,9 +122,9 @@ enum SwitchLog {
     }
 
     static func exportAll(to destination: URL) throws {
-        try queue.sync {
-            let protected = [fileURL, recoveryURL, sequenceURL, lockURL] + archiveURLs
-            guard !protected.contains(destination.standardizedFileURL) else {
+        let protected = [fileURL, recoveryURL, sequenceURL, lockURL, legacyFileURL, legacyPreviousURL] + archiveURLs
+            let destinationURL = destination.standardizedFileURL
+            guard !protected.contains(where: { $0.standardizedFileURL == destinationURL }) else {
                 throw NSError(domain: "BalanceBar.Diagnostics", code: 4, userInfo: [NSLocalizedDescriptionKey: "The export destination is part of the diagnostic store."])
             }
             let snapshot = try withFileLock { readFilesLocked(previewLimit: nil) }
@@ -133,8 +133,7 @@ enum SwitchLog {
             guard let data = (header + redact(snapshot.text)).data(using: .utf8) else {
                 throw NSError(domain: "BalanceBar.Diagnostics", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to encode diagnostic logs."])
             }
-            try data.write(to: destination, options: .atomic)
-        }
+        try data.write(to: destination, options: .atomic)
     }
 
     private static func readSnapshotLocked(previewLimit: Int) -> ReadResult {
@@ -149,8 +148,10 @@ enum SwitchLog {
 
     private static func readFilesLocked(previewLimit: Int?, includeRecovery: Bool = true) -> FileReadSnapshot {
         var urls: [URL] = []
-        if FileManager.default.fileExists(atPath: legacyPreviousURL.path) { urls.append(legacyPreviousURL) }
-        if FileManager.default.fileExists(atPath: legacyFileURL.path), legacyFileURL != fileURL { urls.append(legacyFileURL) }
+        if testingDirectoryURL == nil {
+            if FileManager.default.fileExists(atPath: legacyPreviousURL.path) { urls.append(legacyPreviousURL) }
+            if FileManager.default.fileExists(atPath: legacyFileURL.path), legacyFileURL != fileURL { urls.append(legacyFileURL) }
+        }
         let scan = scanFiles()
         urls.append(contentsOf: scan.files.filter { $0.lastPathComponent.hasPrefix("debug-") && $0.pathExtension == "log" })
         if includeRecovery, FileManager.default.fileExists(atPath: recoveryURL.path) { urls.append(recoveryURL) }
@@ -258,7 +259,12 @@ enum SwitchLog {
     }
 
     private static func appendRecovery(_ data: Data) throws {
-        let existing = (try? Data(contentsOf: recoveryURL)) ?? Data()
+        let existing: Data
+        if FileManager.default.fileExists(atPath: recoveryURL.path) {
+            existing = try Data(contentsOf: recoveryURL)
+        } else {
+            existing = Data()
+        }
         let envelope = Data("\(recoveryBatchMarker)\(UUID().uuidString)\n".utf8) + data
         guard existing.count + envelope.count <= recoveryMaximumBytes else {
             throw NSError(domain: "BalanceBar.Diagnostics", code: 3, userInfo: [NSLocalizedDescriptionKey: "Recovery log capacity is full; the complete event was not stored."])
@@ -300,7 +306,7 @@ enum SwitchLog {
         while sizes.count > maximumArchives || total > maximumStorageSize {
             guard let oldest = sizes.first else { break }
             do { try FileManager.default.removeItem(at: oldest.0); sizes.removeFirst(); total -= oldest.1 }
-            catch { NSLog("BalanceBar archive prune failed: %@", error.localizedDescription); break }
+            catch { NSLog("BalanceBar archive prune failed; error_code=%ld", error._code); break }
         }
     }
 
@@ -330,9 +336,10 @@ enum SwitchLog {
     private static func redact(_ value: String) -> String {
         var result = value
         let patterns: [(String, String)] = [
-            ("(?i)(authorization|proxy-authorization)\\s*[:=]\\s*bearer\\s+[A-Za-z0-9._~+/=-]+", "$1: Bearer [REDACTED]"),
-            ("(?i)(authorization|proxy-authorization)\\s*[:=]\\s*[^; ,]+", "$1=[REDACTED]"),
-            ("(?i)(cookie|set-cookie|api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^; ,]+", "$1=[REDACTED]"),
+            ("(?i)(authorization|proxy-authorization)\\s*[:=]\\s*(?:bearer|basic|token|digest)\\s+[^\\r\\n]+", "$1=[REDACTED]"),
+            ("(?i)(cookie|set-cookie)\\s*[:=]\\s*[^\\r\\n]+", "$1=[REDACTED]"),
+            ("(?i)([\\\"']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|password|passwd|pwd|secret|credential|token)[\\\"']?\\s*[:=]\\s*[\\\"']?)[^\\\"',;}\\s]+", "$1[REDACTED]"),
+            ("(?i)(?:api[_-]?key|access[_-]?token|token|password|secret)=([^&#\\s]+)", "[REDACTED]"),
             ("(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")
         ]
         for (pattern, replacement) in patterns {

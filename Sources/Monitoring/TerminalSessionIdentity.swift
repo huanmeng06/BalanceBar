@@ -1625,7 +1625,7 @@ enum TerminalFrontmostTTY {
         identityLogLock.unlock()
 
         SwitchLog.write(
-            "identity tick; selected_tty=\(signal.tty ?? "-"); pid=\(signal.pid.map(String.init) ?? "-"); title=\(compactIdentityTitle(signal.title)); classified=\(classified); latch=\(latchTTY ?? "-"); applescript=\(status.rawValue); err=\(err); ms=\(appleScriptMS); total_ms=\(Int((duration * 1000).rounded())); raw=\(compactRaw)",
+            "identity tick; has_tty=\(signal.tty != nil); has_pid=\(signal.pid != nil); classified=\(classified != "-"); has_latch=\(latchTTY != nil); applescript=\(status.rawValue); error_category=\(err == nil ? "none" : "present"); script_ms=\(appleScriptMS); total_ms=\(Int((duration * 1000).rounded()))",
             level: .debug,
             category: "identity"
         )

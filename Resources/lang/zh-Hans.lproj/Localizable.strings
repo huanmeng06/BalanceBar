@@ -501,8 +501,8 @@
 
 "codex.banked_reset.expired_value" = "%1$@ 已过期";
 
-"dashboard.logs.page.export" = "Export Logs";
-"dashboard.logs.page.export.2" = "Export diagnostic logs";
-"dashboard.logs.page.preview_truncated" = "Only the recent preview is shown; export the full retained logs.";
-"dashboard.logs.page.read_warning" = "Some diagnostic files could not be read";
-"dashboard.logs.page.export_failed" = "Diagnostic log export failed";
+"dashboard.logs.page.export" = "导出日志";
+"dashboard.logs.page.export.2" = "导出诊断日志";
+"dashboard.logs.page.preview_truncated" = "仅显示最近预览；请导出全部保留日志。";
+"dashboard.logs.page.read_warning" = "部分诊断文件无法读取";
+"dashboard.logs.page.export_failed" = "诊断日志导出失败";

@@ -10471,6 +10471,16 @@ extension DashboardPreferencePagesTests {
         XCTAssertFalse(try String(contentsOf: destination, encoding: .utf8).contains("abc123SECRET"))
     }
 
+    func testDiagnosticLogRedactsBasicCookieJSONAndURLCredentials() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        let secret = "unique-secret-987654"
+        SwitchLog.write("Authorization: Basic \(secret); Cookie: session=\(secret); csrf=\(secret); {\"access_token\": \"\(secret)\"}; https://example.test/balance?api_key=\(secret)", category: "security")
+        _ = SwitchLog.readSnapshot()
+        let raw = try String(contentsOf: SwitchLog.fileURL, encoding: .utf8)
+        XCTAssertFalse(raw.contains(secret))
+    }
+
     func testDiagnosticLogReaderIncludesPendingRecoveryRecords() throws {
         try requireIsolatedDiagnosticDirectory()
         try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)

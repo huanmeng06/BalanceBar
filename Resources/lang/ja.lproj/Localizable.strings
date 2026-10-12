@@ -501,8 +501,8 @@
 
 "codex.banked_reset.expired_value" = "%1$@ に期限切れ";
 
-"dashboard.logs.page.export" = "Export Logs";
-"dashboard.logs.page.export.2" = "Export diagnostic logs";
-"dashboard.logs.page.preview_truncated" = "Only the recent preview is shown; export the full retained logs.";
-"dashboard.logs.page.read_warning" = "Some diagnostic files could not be read";
-"dashboard.logs.page.export_failed" = "Diagnostic log export failed";
+"dashboard.logs.page.export" = "ログを書き出す";
+"dashboard.logs.page.export.2" = "診断ログを書き出す";
+"dashboard.logs.page.preview_truncated" = "最近のプレビューのみ表示しています。保存されたすべてのログを書き出してください。";
+"dashboard.logs.page.read_warning" = "一部の診断ファイルを読み取れません";
+"dashboard.logs.page.export_failed" = "診断ログの書き出しに失敗しました";

@@ -501,8 +501,8 @@
 
 "codex.banked_reset.expired_value" = "Expirou em %1$@";
 
-"dashboard.logs.page.export" = "Export Logs";
-"dashboard.logs.page.export.2" = "Export diagnostic logs";
-"dashboard.logs.page.preview_truncated" = "Only the recent preview is shown; export the full retained logs.";
-"dashboard.logs.page.read_warning" = "Some diagnostic files could not be read";
-"dashboard.logs.page.export_failed" = "Diagnostic log export failed";
+"dashboard.logs.page.export" = "Exportar logs";
+"dashboard.logs.page.export.2" = "Exportar logs de diagnóstico";
+"dashboard.logs.page.preview_truncated" = "Apenas a pré-visualização recente é mostrada; exporte todos os logs retidos.";
+"dashboard.logs.page.read_warning" = "Não foi possível ler alguns arquivos de diagnóstico";
+"dashboard.logs.page.export_failed" = "Falha ao exportar os logs de diagnóstico";
