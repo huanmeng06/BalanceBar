@@ -559,6 +559,9 @@ enum DashboardSettingsSearchCatalog {
             var texts = DashboardSettingsFormattedCopy.sharedVisibleTexts(for: section)
             if section == .general {
                 texts.append(contentsOf: DashboardSettingsFormattedCopy.languageMenuTitles())
+                texts.append(contentsOf: Set(TimeZoneCityCatalog.all.map {
+                    TimeZoneCityCatalog.continentTitle(for: $0)
+                }).sorted())
             }
             return texts
         case .notifications:

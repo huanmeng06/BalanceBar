@@ -10234,7 +10234,12 @@ extension DashboardPreferencePagesTests {
         XCTAssertFalse(combo.isEnabled)
         XCTAssertFalse(combo.completes)
         XCTAssertEqual(toggle.state, .on)
-        XCTAssertEqual(combo.title, TimeZoneCityCatalog.displayTitle(for: .system))
+        XCTAssertEqual(combo.stringValue, TimeZoneCityCatalog.displayTitle(for: .system))
+        if TimeZoneCityCatalog.all.contains(where: { $0.identifier == TimeZone.autoupdatingCurrent.identifier }) {
+            XCTAssertNotNil(combo.selectedItem)
+        } else {
+            XCTAssertNil(combo.selectedItem)
+        }
         let cityMenuCount = combo.menu?.items.count ?? 0
         combo.apply(.fixedOffset(minutes: 0))
         XCTAssertNil(combo.selectedItem)
