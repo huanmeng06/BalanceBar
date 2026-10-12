@@ -10458,6 +10458,29 @@ extension DashboardPreferencePagesTests {
         XCTAssertTrue(warnings.contains { $0.contains("超过预览限制") } || text.contains("长日志😀"))
     }
 
+    func testDiagnosticLogRedactsAuthorizationBeforeWritingAndExporting() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        SwitchLog.write("Authorization: Bearer abc123SECRET", category: "security")
+        _ = SwitchLog.readSnapshot()
+        let raw = try String(contentsOf: SwitchLog.fileURL, encoding: .utf8)
+        XCTAssertFalse(raw.contains("abc123SECRET"))
+        let destination = SwitchLog.directoryURL.appendingPathComponent("safe-export.log")
+        defer { try? FileManager.default.removeItem(at: destination) }
+        try SwitchLog.exportAll(to: destination)
+        XCTAssertFalse(try String(contentsOf: destination, encoding: .utf8).contains("abc123SECRET"))
+    }
+
+    func testDiagnosticLogReaderIncludesPendingRecoveryRecords() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        let recovery = SwitchLog.directoryURL.appendingPathComponent("debug.recovery.log")
+        try Data("# recovery-batch=test-batch\n[recovery] pending event\n".utf8).write(to: recovery)
+        defer { try? FileManager.default.removeItem(at: recovery) }
+        guard case .data(let text, _, _) = SwitchLog.readSnapshot() else { return XCTFail("expected recovery data") }
+        XCTAssertTrue(text.contains("pending event"))
+    }
+
     private func requireIsolatedDiagnosticDirectory() throws {
         let directory = URL(fileURLWithPath: "/tmp/BalanceBarDiagnosticTests-\(UUID().uuidString)", isDirectory: true)
         SwitchLog.setTestingDirectory(directory)

@@ -68,6 +68,7 @@ enum SwitchLog {
     private static var lockURL: URL { directoryURL.appendingPathComponent(".lock") }
     private static var legacyFileURL: URL { URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/debug.log").expandingTildeInPath) }
     private static var legacyPreviousURL: URL { legacyFileURL.deletingLastPathComponent().appendingPathComponent("debug.previous.log") }
+    private static let recoveryBatchMarker = "# recovery-batch="
 
     static var archiveURLs: [URL] {
         scanFiles().files.filter { $0.lastPathComponent.hasPrefix("debug-") && $0.pathExtension == "log" }
@@ -114,15 +115,22 @@ enum SwitchLog {
     }
 
     static func readSnapshot() -> ReadResult {
-        queue.sync { readSnapshotLocked(previewLimit: viewerMaximumBytes) }
+        queue.sync {
+            do { return try withFileLock { readSnapshotLocked(previewLimit: viewerMaximumBytes) } }
+            catch { return .failure("无法锁定诊断日志：\(error.localizedDescription)") }
+        }
     }
 
     static func exportAll(to destination: URL) throws {
         try queue.sync {
-            let snapshot = readFilesLocked(previewLimit: nil)
+            let protected = [fileURL, recoveryURL, sequenceURL, lockURL] + archiveURLs
+            guard !protected.contains(destination.standardizedFileURL) else {
+                throw NSError(domain: "BalanceBar.Diagnostics", code: 4, userInfo: [NSLocalizedDescriptionKey: "The export destination is part of the diagnostic store."])
+            }
+            let snapshot = try withFileLock { readFilesLocked(previewLimit: nil) }
             guard !snapshot.text.isEmpty else { throw NSError(domain: "BalanceBar.Diagnostics", code: 1, userInfo: [NSLocalizedDescriptionKey: "No diagnostic logs are available."]) }
             let header = "# BalanceBar diagnostic export\n# Environment: \(environmentName)\n# Warnings: \(snapshot.warnings.joined(separator: " | "))\n\n"
-            guard let data = (header + snapshot.text).data(using: .utf8) else {
+            guard let data = (header + redact(snapshot.text)).data(using: .utf8) else {
                 throw NSError(domain: "BalanceBar.Diagnostics", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to encode diagnostic logs."])
             }
             try data.write(to: destination, options: .atomic)
@@ -139,22 +147,25 @@ enum SwitchLog {
 
     private struct FileReadSnapshot { var text = ""; var truncated = false; var warnings: [String] = [] }
 
-    private static func readFilesLocked(previewLimit: Int?) -> FileReadSnapshot {
+    private static func readFilesLocked(previewLimit: Int?, includeRecovery: Bool = true) -> FileReadSnapshot {
         var urls: [URL] = []
         if FileManager.default.fileExists(atPath: legacyPreviousURL.path) { urls.append(legacyPreviousURL) }
         if FileManager.default.fileExists(atPath: legacyFileURL.path), legacyFileURL != fileURL { urls.append(legacyFileURL) }
         let scan = scanFiles()
         urls.append(contentsOf: scan.files.filter { $0.lastPathComponent.hasPrefix("debug-") && $0.pathExtension == "log" })
+        if includeRecovery, FileManager.default.fileExists(atPath: recoveryURL.path) { urls.append(recoveryURL) }
         urls.append(fileURL)
         var output = FileReadSnapshot()
         if let warning = scan.warning { output.warnings.append(warning) }
         for url in urls {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
             do {
-                let data = try readTail(of: url, maximumBytes: previewLimit)
+                let tail = try readTail(of: url, maximumBytes: previewLimit)
+                let data = tail.data
+                let isValidUTF8 = String(data: data, encoding: .utf8) != nil
                 let decoded = String(decoding: data, as: UTF8.self)
-                if decoded.contains("�") { output.warnings.append("损坏或非法 UTF-8：\(url.lastPathComponent)") }
-                if previewLimit != nil && data.count >= previewLimit! {
+                if !isValidUTF8 { output.warnings.append("损坏或非法 UTF-8：\(url.lastPathComponent)") }
+                if tail.wasTruncated && previewLimit != nil {
                     output.truncated = true
                     if let newline = decoded.firstIndex(of: "\n") { output.text += String(decoded[decoded.index(after: newline)...]) }
                     else if !decoded.isEmpty { output.text += decoded; output.warnings.append("单条日志记录超过预览限制：\(url.lastPathComponent)") }
@@ -169,10 +180,25 @@ enum SwitchLog {
         return output
     }
 
-    private static func readTail(of url: URL, maximumBytes: Int?) throws -> Data {
-        let data = try Data(contentsOf: url)
-        guard let maximumBytes, data.count > maximumBytes else { return data }
-        return data.suffix(maximumBytes)
+    private struct TailRead { let data: Data; let wasTruncated: Bool }
+
+    private static func readTail(of url: URL, maximumBytes: Int?) throws -> TailRead {
+        guard let maximumBytes else { return TailRead(data: try Data(contentsOf: url), wasTruncated: false) }
+        let size = ((try url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        let offset = size > maximumBytes ? size - maximumBytes : 0
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        if offset == 0 { return TailRead(data: try handle.readToEnd() ?? Data(), wasTruncated: false) }
+        for backtrack in 0...3 {
+            let start = max(0, offset - backtrack)
+            try handle.seek(toOffset: UInt64(start))
+            let candidate = try handle.readToEnd() ?? Data()
+            if String(data: candidate, encoding: .utf8) != nil {
+                return TailRead(data: candidate, wasTruncated: true)
+            }
+        }
+        try handle.seek(toOffset: UInt64(offset))
+        return TailRead(data: try handle.readToEnd() ?? Data(), wasTruncated: true)
     }
 
     private static func makeRecord(_ message: String, level: Level, category: String, date: Date) throws -> Data {
@@ -181,7 +207,9 @@ enum SwitchLog {
         let prefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(cleanCategory)] [session=\(sessionID ?? "pending")] "
         let suffix = "\n"
         let originalBytes = cleanMessage.utf8.count
-        let budget = maximumSize - prefix.utf8.count - suffix.utf8.count
+        let boundedCategory = String(cleanCategory.prefix(256))
+        let boundedPrefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(boundedCategory)] [session=\(sessionID ?? "pending")] "
+        let budget = maximumSize - boundedPrefix.utf8.count - suffix.utf8.count
         let body: String
         if originalBytes <= budget { body = cleanMessage }
         else {
@@ -197,7 +225,7 @@ enum SwitchLog {
             }
             body = prefix + marker
         }
-        return Data((prefix + body + suffix).utf8)
+        return Data((boundedPrefix + body + suffix).utf8)
     }
 
     private static func ensureSessionStarted(at date: Date) throws {
@@ -231,16 +259,24 @@ enum SwitchLog {
 
     private static func appendRecovery(_ data: Data) throws {
         let existing = (try? Data(contentsOf: recoveryURL)) ?? Data()
-        let remaining = max(0, recoveryMaximumBytes - existing.count)
-        guard remaining > 0 else { return }
-        let bounded = data.prefix(remaining)
-        try (existing + bounded).write(to: recoveryURL, options: .atomic)
+        let envelope = Data("\(recoveryBatchMarker)\(UUID().uuidString)\n".utf8) + data
+        guard existing.count + envelope.count <= recoveryMaximumBytes else {
+            throw NSError(domain: "BalanceBar.Diagnostics", code: 3, userInfo: [NSLocalizedDescriptionKey: "Recovery log capacity is full; the complete event was not stored."])
+        }
+        try (existing + envelope).write(to: recoveryURL, options: .atomic)
     }
 
     private static func recoverPendingLog() throws {
         guard FileManager.default.fileExists(atPath: recoveryURL.path) else { return }
         let data = try Data(contentsOf: recoveryURL)
         guard !data.isEmpty else { try FileManager.default.removeItem(at: recoveryURL); return }
+        let text = String(decoding: data, as: UTF8.self)
+        let existing = readFilesLocked(previewLimit: nil, includeRecovery: false).text
+        let batches = text.split(separator: "\n").filter { $0.hasPrefix(recoveryBatchMarker) }
+        if !batches.isEmpty && batches.allSatisfy({ existing.contains(String($0)) }) {
+            try FileManager.default.removeItem(at: recoveryURL)
+            return
+        }
         try appendRecord(data)
         try FileManager.default.removeItem(at: recoveryURL)
     }
@@ -277,10 +313,16 @@ enum SwitchLog {
         } catch { return ([], "无法扫描日志目录：\(error.localizedDescription)") }
     }
 
-    private static func withFileLock<T>(_ body: () throws -> T) rethrows -> T {
+    private static func withFileLock<T>(_ body: () throws -> T) throws -> T {
         let descriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
-        guard descriptor >= 0 else { return try body() }
-        flock(descriptor, LOCK_EX)
+        guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "Unable to open diagnostic log lock."]) }
+        var result = flock(descriptor, LOCK_EX)
+        while result != 0 && errno == EINTR { result = flock(descriptor, LOCK_EX) }
+        guard result == 0 else {
+            let error = NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "Unable to acquire diagnostic log lock."])
+            close(descriptor)
+            throw error
+        }
         defer { flock(descriptor, LOCK_UN); close(descriptor) }
         return try body()
     }
@@ -288,7 +330,9 @@ enum SwitchLog {
     private static func redact(_ value: String) -> String {
         var result = value
         let patterns: [(String, String)] = [
-            ("(?i)(authorization|cookie|api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^; ,]+", "$1=[REDACTED]"),
+            ("(?i)(authorization|proxy-authorization)\\s*[:=]\\s*bearer\\s+[A-Za-z0-9._~+/=-]+", "$1: Bearer [REDACTED]"),
+            ("(?i)(authorization|proxy-authorization)\\s*[:=]\\s*[^; ,]+", "$1=[REDACTED]"),
+            ("(?i)(cookie|set-cookie|api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^; ,]+", "$1=[REDACTED]"),
             ("(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")
         ]
         for (pattern, replacement) in patterns {

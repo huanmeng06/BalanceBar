@@ -3,6 +3,7 @@ import AppKit
 final class DashboardLogsPage {
     private let logView = NSTextView()
     private var refreshGeneration = 0
+    private var exportInProgress = false
 
     func makeViewer() -> NSView {
         let container = NSView()
@@ -162,17 +163,26 @@ final class DashboardLogsPage {
     }
 
     func export() {
+        guard !exportInProgress else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "BalanceBar-Diagnostics.log"
         panel.canCreateDirectories = true
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            do { try SwitchLog.exportAll(to: url) }
-            catch {
-                let alert = NSAlert()
-                alert.messageText = tr(.keyDashboardLogsPageExportFailed)
-                alert.informativeText = error.localizedDescription
-                alert.runModal()
+            self.exportInProgress = true
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                do {
+                    try SwitchLog.exportAll(to: url)
+                    DispatchQueue.main.async { self?.exportInProgress = false }
+                } catch {
+                    DispatchQueue.main.async {
+                        self?.exportInProgress = false
+                        let alert = NSAlert()
+                        alert.messageText = tr(.keyDashboardLogsPageExportFailed)
+                        alert.informativeText = error.localizedDescription
+                        alert.runModal()
+                    }
+                }
             }
         }
     }
