@@ -266,7 +266,12 @@ final class OpenCodexCardLayoutTests: XCTestCase {
 
         XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 113))
         XCTAssertEqual(frames.account?.minX, OpenCodexCardLayout.horizontalInset)
-        XCTAssertEqual(frames.account?.width, 234)
+        XCTAssertEqual(
+            frames.account?.width,
+            OpenCodexCardLayout.accountWidth(
+                forSubscriptionTextWidth: renderedSubscriptionTextWidth
+            )
+        )
         XCTAssertEqual(frames.subscription, CGRect(x: OpenCodexCardLayout.subscriptionX, y: 67, width: OpenCodexCardLayout.subscriptionWidth, height: 17))
         XCTAssertEqual(frames.title, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 86, width: 189, height: 20))
         XCTAssertEqual(frames.refreshTime, CGRect(x: OpenCodexCardLayout.refreshTimeX, y: 87, width: 81, height: 17))
@@ -337,7 +342,12 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 181))
         XCTAssertEqual(frames.quotaRows.count, 2)
         XCTAssertEqual(frames.account?.minX, OpenCodexCardLayout.horizontalInset)
-        XCTAssertEqual(frames.account?.width, 198)
+        XCTAssertEqual(
+            frames.account?.width,
+            OpenCodexCardLayout.accountWidth(
+                forSubscriptionTextWidth: nil
+            )
+        )
         XCTAssertEqual(frames.subscription, CGRect(x: OpenCodexCardLayout.subscriptionX, y: 135, width: OpenCodexCardLayout.subscriptionWidth, height: 17))
         XCTAssertEqual(frames.title, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 154, width: 189, height: 20))
         XCTAssertEqual(frames.refreshTime, CGRect(x: OpenCodexCardLayout.refreshTimeX, y: 155, width: 81, height: 17))
