@@ -10225,6 +10225,8 @@ extension DashboardPreferencePagesTests {
         XCTAssertEqual(combo.title, TimeZoneCityCatalog.displayTitle(for: .system))
         let cityMenuCount = combo.menu?.items.count ?? 0
         combo.apply(.fixedOffset(minutes: 0))
+        XCTAssertNil(combo.selectedItem)
+        XCTAssertTrue(combo.isEnabled)
         XCTAssertEqual(combo.menu?.items.count, cityMenuCount)
         XCTAssertFalse(combo.menu?.items.contains { ($0.representedObject as? String)?.hasPrefix("UTC") == true } ?? true)
         XCTAssertTrue(combo.isEnabled)

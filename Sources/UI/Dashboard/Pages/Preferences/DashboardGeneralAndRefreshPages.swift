@@ -903,6 +903,10 @@ final class MenuHeaderView: NSView {
     }
 }
 
+private final class TimeZoneFallbackDisplayLabel: NSTextField {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// A native pop-up menu with custom, non-selectable continent headings.
 /// City entries are the only menu items with actions.
 final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout, NSMenuDelegate {
@@ -911,7 +915,7 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
     private var applying = false
     private var menuBuilt = false
     private var displayedTitle = ""
-    private let fallbackDisplayLabel = NSTextField(labelWithString: "")
+    private let fallbackDisplayLabel = TimeZoneFallbackDisplayLabel(labelWithString: "")
 
     override var stringValue: String {
         get { displayedTitle }
@@ -995,6 +999,9 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
             select(item)
             displayedTitle = item.title
         } else {
+            // The fallback value is not a menu item. Clear the previous city
+            // selection so AppKit cannot report a stale selectedItem.
+            select(nil)
             displayedTitle = TimeZoneCityCatalog.displayTitle(for: selection)
             fallbackDisplayLabel.stringValue = displayedTitle
             fallbackDisplayLabel.isHidden = false
