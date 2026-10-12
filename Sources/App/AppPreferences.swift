@@ -993,6 +993,7 @@ struct TimeZoneCity: Equatable {
     let searchKey: String
     let countryTitle: String
     let cityTitle: String
+    let countryCode: String?
     let localeIdentifier: String
 
     var title: String {
@@ -1118,6 +1119,7 @@ enum TimeZoneCityCatalog {
                 searchKey: "\(countryTitle) \(city) \(english) \(identifier) \(legacyNames) \(identifier.replacingOccurrences(of: "_", with: " "))".lowercased(),
                 countryTitle: countryTitle,
                 cityTitle: city,
+                countryCode: countryCode,
                 localeIdentifier: locale.identifier))
         }
         for line in (zoneTab ?? "").split(separator: "\n") where !line.hasPrefix("#") {
@@ -1153,21 +1155,12 @@ enum TimeZoneCityCatalog {
     }
 
     static func continentTitle(for city: TimeZoneCity, locale: Locale = locale) -> String {
-        let identifier = city.identifier
-        if identifier.hasPrefix("America/") {
-            let southPrefixes = [
-                "America/Argentina/", "America/Asuncion", "America/Bahia", "America/Boa_Vista",
-                "America/Campo_Grande", "America/Catamarca", "America/Cayenne", "America/Cordoba",
-                "America/Cuiaba", "America/Eirunepe", "America/Fortaleza", "America/Goiania",
-                "America/La_Paz", "America/Lima", "America/Maceio", "America/Manaus",
-                "America/Montevideo", "America/Paramaribo", "America/Porto_Acre", "America/Porto_Velho",
-                "America/Recife", "America/Rio_Branco", "America/Rosario", "America/Santiago",
-                "America/Sao_Paulo", "America/Argentina"
-            ]
-            let key = southPrefixes.contains(where: identifier.hasPrefix) ? "SouthAmerica" : "NorthAmerica"
-            return localizedContinentName(key, locale: locale)
+        guard city.identifier.hasPrefix("America/") else {
+            return continentTitle(for: city.identifier, locale: locale)
         }
-        return continentTitle(for: identifier, locale: locale)
+        let southAmericanCountries: Set<String> = ["AR", "BO", "BR", "CL", "CO", "EC", "FK", "GF", "GS", "GY", "PE", "PY", "SR", "UY", "VE"]
+        let key = southAmericanCountries.contains(city.countryCode ?? "") ? "SouthAmerica" : "NorthAmerica"
+        return localizedContinentName(key, locale: locale)
     }
 
     private static func localizedContinentName(_ continent: String, locale: Locale) -> String {
@@ -1198,7 +1191,7 @@ enum TimeZoneCityCatalog {
     }
 
     static func grouped(_ cities: [TimeZoneCity], locale: Locale = locale) -> [(header: String, city: TimeZoneCity)] {
-        cities.map { (continentTitle(for: $0.identifier, locale: locale), $0) }
+        cities.map { (continentTitle(for: $0, locale: locale), $0) }
     }
 
     static func matches(_ city: TimeZoneCity, query: String, now: Date = Date()) -> Bool {

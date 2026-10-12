@@ -10180,12 +10180,18 @@ extension DashboardPreferencePagesTests {
         let allChina = TimeZoneCityCatalog.load(zoneTab: "CN\t+404251-0740023\tAsia/Shanghai\nHK\t+2217+11410\tAsia/Hong_Kong\nMO\t+2210+11333\tAsia/Macau\nTW\t+2503+12130\tAsia/Taipei", locale: Locale(identifier: "en_US"))
         XCTAssertEqual(Set(allChina.map(\.countryTitle)), ["China - Mainland", "China - Hong Kong", "China - Macao", "China - Taiwan"])
         XCTAssertEqual(TimeZoneCityCatalog.continentTitle(for: "America/New_York", locale: Locale(identifier: "ko_KR")), "아메리카")
-        let lima = try XCTUnwrap(cities.first { $0.identifier == "Asia/Kolkata" }.flatMap { _ in
-            TimeZoneCityCatalog.load(zoneTab: "PE\t+1203-07703\tAmerica/Lima", locale: Locale(identifier: "zh_CN")).first
-        })
-        let anchorage = try XCTUnwrap(TimeZoneCityCatalog.load(zoneTab: "US\t+6113-14954\tAmerica/Anchorage", locale: Locale(identifier: "zh_CN")).first)
-        XCTAssertEqual(TimeZoneCityCatalog.continentTitle(for: lima, locale: Locale(identifier: "zh_CN")), "南美洲")
-        XCTAssertEqual(TimeZoneCityCatalog.continentTitle(for: anchorage, locale: Locale(identifier: "en_US")), "North America")
+        let americanZones = [
+            ("CO", "America/Bogota"), ("VE", "America/Caracas"), ("EC", "America/Guayaquil"),
+            ("GY", "America/Guyana"), ("BR", "America/Belem"), ("BR", "America/Araguaina"),
+            ("MX", "America/Bahia_Banderas"), ("PE", "America/Lima"), ("US", "America/Anchorage")
+        ]
+        for (country, identifier) in americanZones {
+            let city = try XCTUnwrap(TimeZoneCityCatalog.load(zoneTab: "\(country)\t+0000+00000\t\(identifier)", locale: Locale(identifier: "zh_CN")).first)
+            let expected = country == "MX" || country == "US" ? "北美洲" : "南美洲"
+            XCTAssertEqual(TimeZoneCityCatalog.continentTitle(for: city, locale: Locale(identifier: "zh_CN")), expected, identifier)
+        }
+        let lima = try XCTUnwrap(TimeZoneCityCatalog.load(zoneTab: "PE\t+1203-07703\tAmerica/Lima", locale: Locale(identifier: "zh_CN")).first)
+        XCTAssertEqual(TimeZoneCityCatalog.grouped([lima], locale: Locale(identifier: "zh_CN")).first?.header, "南美洲")
         XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "New York"))
         XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "纽约"))
         XCTAssertTrue(TimeZoneCityCatalog.matches(ny, query: "America/New_York"))
