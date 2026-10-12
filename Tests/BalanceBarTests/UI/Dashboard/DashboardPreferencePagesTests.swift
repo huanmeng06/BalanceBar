@@ -10414,7 +10414,7 @@ extension DashboardPreferencePagesTests {
         }
     }
 
-    func testDiagnosticLogWriterRotatesAfterOneMiB() throws {
+    func testDiagnosticLogWriterRotatesAtFiveMiB() throws {
         try requireIsolatedDiagnosticDirectory()
         let directory = SwitchLog.directoryURL
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -10474,11 +10474,22 @@ extension DashboardPreferencePagesTests {
     func testDiagnosticLogRedactsBasicCookieJSONAndURLCredentials() throws {
         try requireIsolatedDiagnosticDirectory()
         try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
-        let secret = "unique-secret-987654"
-        SwitchLog.write("Authorization: Basic \(secret); Cookie: session=\(secret); csrf=\(secret); {\"access_token\": \"\(secret)\"}; https://example.test/balance?api_key=\(secret)", category: "security")
+        let basic = "basic-secret-987654"
+        let cookie = "cookie-secret-987654"
+        let json = "json-secret-987654"
+        let query = "query-secret-987654"
+        SwitchLog.write("Authorization: Basic \(basic); status=401", category: "security")
+        SwitchLog.write("Cookie: session=\(cookie); csrf=\(cookie)", category: "security")
+        SwitchLog.write("{\"credentials\":{\"x-secret-header\":\"\(json)\"},\"tokens\":[\"\(json)\"]}", category: "security")
+        SwitchLog.write("https://user:password-secret@example.test/path?signature=\(query)&status=401", category: "security")
         _ = SwitchLog.readSnapshot()
         let raw = try String(contentsOf: SwitchLog.fileURL, encoding: .utf8)
-        XCTAssertFalse(raw.contains(secret))
+        XCTAssertFalse(raw.contains(basic))
+        XCTAssertFalse(raw.contains(cookie))
+        XCTAssertFalse(raw.contains(json))
+        XCTAssertFalse(raw.contains(query))
+        XCTAssertFalse(raw.contains("password-secret"))
+        XCTAssertTrue(raw.contains("status=401"))
     }
 
     func testDiagnosticLogReaderIncludesPendingRecoveryRecords() throws {

@@ -86,11 +86,12 @@ enum SwitchLog {
             do {
                 try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
                 try withFileLock {
-                    let record = try makeRecord(message, level: level, category: category, date: now)
+                    let eventID = UUID().uuidString
+                    let record = try makeRecord(message, level: level, category: category, date: now, eventID: eventID)
                     do {
                         try ensureSessionStarted(at: now)
                         try recoverPendingLog()
-                        try appendRecord(try makeRecord(message, level: level, category: category, date: now))
+                        try appendRecord(try makeRecord(message, level: level, category: category, date: now, eventID: eventID))
                     } catch {
                         try appendRecovery(record)
                         NSLog("BalanceBar diagnostic log deferred; error_code=%ld", error._code)
@@ -117,7 +118,7 @@ enum SwitchLog {
     static func readSnapshot() -> ReadResult {
         queue.sync {
             do { return try withFileLock { readSnapshotLocked(previewLimit: viewerMaximumBytes) } }
-            catch { return .failure("无法锁定诊断日志：\(error.localizedDescription)") }
+            catch { return .failure("无法锁定诊断日志（锁错误）") }
         }
     }
 
@@ -129,7 +130,8 @@ enum SwitchLog {
             }
             let snapshot = try withFileLock { readFilesLocked(previewLimit: nil) }
             guard !snapshot.text.isEmpty else { throw NSError(domain: "BalanceBar.Diagnostics", code: 1, userInfo: [NSLocalizedDescriptionKey: "No diagnostic logs are available."]) }
-            let header = "# BalanceBar diagnostic export\n# Environment: \(environmentName)\n# Warnings: \(snapshot.warnings.joined(separator: " | "))\n\n"
+            let warningText = redact(snapshot.warnings.joined(separator: " | "))
+            let header = "# BalanceBar diagnostic export\n# Environment: \(environmentName)\n# Warnings: \(warningText)\n\n"
             guard let data = (header + redact(snapshot.text)).data(using: .utf8) else {
                 throw NSError(domain: "BalanceBar.Diagnostics", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to encode diagnostic logs."])
             }
@@ -157,6 +159,7 @@ enum SwitchLog {
         if includeRecovery, FileManager.default.fileExists(atPath: recoveryURL.path) { urls.append(recoveryURL) }
         urls.append(fileURL)
         var output = FileReadSnapshot()
+        var seenEventIDs = Set<String>()
         if let warning = scan.warning { output.warnings.append(warning) }
         for url in urls {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
@@ -164,14 +167,14 @@ enum SwitchLog {
                 let tail = try readTail(of: url, maximumBytes: previewLimit)
                 let data = tail.data
                 let isValidUTF8 = String(data: data, encoding: .utf8) != nil
-                let decoded = String(decoding: data, as: UTF8.self)
+                let decoded = uniqueRecords(String(decoding: data, as: UTF8.self), seenEventIDs: &seenEventIDs)
                 if !isValidUTF8 { output.warnings.append("损坏或非法 UTF-8：\(url.lastPathComponent)") }
                 if tail.wasTruncated && previewLimit != nil {
                     output.truncated = true
                     if let newline = decoded.firstIndex(of: "\n") { output.text += String(decoded[decoded.index(after: newline)...]) }
                     else if !decoded.isEmpty { output.text += decoded; output.warnings.append("单条日志记录超过预览限制：\(url.lastPathComponent)") }
                 } else { output.text += decoded }
-            } catch { output.warnings.append("无法读取 \(url.lastPathComponent)：\(error.localizedDescription)") }
+            } catch { output.warnings.append("无法读取诊断文件：\(url.lastPathComponent)") }
         }
         if let previewLimit, output.text.utf8.count > previewLimit {
             let tail = String(decoding: Array(output.text.utf8).suffix(previewLimit), as: UTF8.self)
@@ -179,6 +182,17 @@ enum SwitchLog {
             output.truncated = true
         }
         return output
+    }
+
+    private static func uniqueRecords(_ text: String, seenEventIDs: inout Set<String>) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false).compactMap { line in
+            if line.hasPrefix(recoveryBatchMarker) { return nil }
+            let value = String(line)
+            if let id = eventID(in: value) {
+                guard seenEventIDs.insert(id).inserted else { return nil }
+            }
+            return value
+        }.joined(separator: "\n")
     }
 
     private struct TailRead { let data: Data; let wasTruncated: Bool }
@@ -202,14 +216,14 @@ enum SwitchLog {
         return TailRead(data: try handle.readToEnd() ?? Data(), wasTruncated: true)
     }
 
-    private static func makeRecord(_ message: String, level: Level, category: String, date: Date) throws -> Data {
+    private static func makeRecord(_ message: String, level: Level, category: String, date: Date, eventID: String = UUID().uuidString) throws -> Data {
         let cleanMessage = redact(message).replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\r", with: "\\r").replacingOccurrences(of: "\n", with: "\\n")
         let cleanCategory = redact(category).replacingOccurrences(of: "\r", with: "\\r").replacingOccurrences(of: "\n", with: "\\n")
         let prefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(cleanCategory)] [session=\(sessionID ?? "pending")] "
         let suffix = "\n"
         let originalBytes = cleanMessage.utf8.count
         let boundedCategory = String(cleanCategory.prefix(256))
-        let boundedPrefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(boundedCategory)] [session=\(sessionID ?? "pending")] "
+        let boundedPrefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(boundedCategory)] [session=\(sessionID ?? "pending")] [event_id=\(eventID)] "
         let budget = maximumSize - boundedPrefix.utf8.count - suffix.utf8.count
         let body: String
         if originalBytes <= budget { body = cleanMessage }
@@ -278,13 +292,25 @@ enum SwitchLog {
         guard !data.isEmpty else { try FileManager.default.removeItem(at: recoveryURL); return }
         let text = String(decoding: data, as: UTF8.self)
         let existing = readFilesLocked(previewLimit: nil, includeRecovery: false).text
-        let batches = text.split(separator: "\n").filter { $0.hasPrefix(recoveryBatchMarker) }
-        if !batches.isEmpty && batches.allSatisfy({ existing.contains(String($0)) }) {
+        let pendingRecords = text.split(separator: "\n").filter { !$0.hasPrefix(recoveryBatchMarker) && !$0.isEmpty }
+        let missingRecords = pendingRecords.filter { record in
+            guard let eventID = eventID(in: String(record)) else { return true }
+            return !existing.contains("[event_id=\(eventID)]")
+        }
+        if missingRecords.isEmpty {
             try FileManager.default.removeItem(at: recoveryURL)
             return
         }
-        try appendRecord(data)
+        for record in missingRecords {
+            try appendRecord(Data((String(record) + "\n").utf8))
+        }
         try FileManager.default.removeItem(at: recoveryURL)
+    }
+
+    private static func eventID(in record: String) -> String? {
+        guard let start = record.range(of: "[event_id="),
+              let end = record[start.upperBound...].firstIndex(of: "]") else { return nil }
+        return String(record[start.upperBound..<end])
     }
 
     private static func nextSequence() throws -> UInt64 {
@@ -316,7 +342,7 @@ enum SwitchLog {
                 (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
             }.sorted { $0.lastPathComponent < $1.lastPathComponent }
             return (files, nil)
-        } catch { return ([], "无法扫描日志目录：\(error.localizedDescription)") }
+        } catch { return ([], "无法扫描诊断日志目录") }
     }
 
     private static func withFileLock<T>(_ body: () throws -> T) throws -> T {
@@ -338,8 +364,9 @@ enum SwitchLog {
         let patterns: [(String, String)] = [
             ("(?i)(authorization|proxy-authorization)\\s*[:=]\\s*(?:bearer|basic|token|digest)\\s+[^\\r\\n]+", "$1=[REDACTED]"),
             ("(?i)(cookie|set-cookie)\\s*[:=]\\s*[^\\r\\n]+", "$1=[REDACTED]"),
-            ("(?i)([\\\"']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|password|passwd|pwd|secret|credential|token)[\\\"']?\\s*[:=]\\s*[\\\"']?)[^\\\"',;}\\s]+", "$1[REDACTED]"),
-            ("(?i)(?:api[_-]?key|access[_-]?token|token|password|secret)=([^&#\\s]+)", "[REDACTED]"),
+            ("(?i)([\\\"']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|password|passwd|pwd|secret|credential|credentials|token|tokens|headers)[\\\"']?\\s*[:=]\\s*)(?:\\[[^\\]]*\\]|\\{[^}]*\\}|[\\\"'][^\\\"']*[\\\"']|[^\\\"',;}\\s]+)", "$1[REDACTED]"),
+            ("(?i)(https?://)[^/\\s:@]+:[^@/\\s]+@", "$1[REDACTED]@"),
+            ("(?i)(?:api[_-]?key|access[_-]?token|token|password|secret|signature)=([^&#\\s]+)", "[REDACTED]"),
             ("(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")
         ]
         for (pattern, replacement) in patterns {
@@ -922,11 +949,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func publishQuickSwitchSummary(providerID: String) {
-        let text = providerRefreshCoordinator?.quickSwitchSummariesSnapshot(
-            preferredQuotaWindow: menuBarQuotaWindowPreference
-        )[providerID] ?? "…"
         SwitchLog.write(
-            "quick-switch balance changed; provider_id=\(providerID); value=\(text)",
+            "quick-switch balance changed; summary_updated=true",
             category: "balance"
         )
         DispatchQueue.main.async { [weak self] in
@@ -1037,7 +1061,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         ) as? String ?? "unknown"
         SwitchLog.startSession()
         SwitchLog.write(
-            "session started; version=\(version); os=\(ProcessInfo.processInfo.operatingSystemVersionString); database=\(ccSwitchRepository.databaseURL.path)",
+            "session started; version=\(version); os=\(ProcessInfo.processInfo.operatingSystemVersionString)",
             category: "lifecycle"
         )
         SwitchLog.write(
@@ -1244,13 +1268,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
             if let error {
                 SwitchLog.write(
-                    "open ChatGPT failed; path=\(url.path); error=\(error.localizedDescription)",
+                    "open ChatGPT failed; error_category=workspace_open",
                     level: .warning,
                     category: "ui.menu"
                 )
             } else {
                 SwitchLog.write(
-                    "ChatGPT opened; path=\(url.path)",
+                    "ChatGPT opened; success=true",
                     category: "ui.menu"
                 )
             }
@@ -2082,7 +2106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             // request to finish.
             let switched = current.id != self.lastProviderID
             if switched {
-                SwitchLog.write("provider observed; app=\(client.appType); id=\(current.id); name=\(current.name); source=database watcher/poll")
+                SwitchLog.write("provider observed; app=\(client.appType); source=database watcher/poll")
             }
             self.lastProviderID = current.id
             self.providerRefreshCoordinator.refreshStandardProvider(
