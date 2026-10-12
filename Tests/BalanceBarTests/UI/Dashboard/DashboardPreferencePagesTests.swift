@@ -10394,3 +10394,51 @@ extension DashboardPreferencePagesTests {
         XCTAssertTrue(menu.items.compactMap { $0.title }.contains { $0.contains(" - ") })
     }
 }
+
+extension DashboardPreferencePagesTests {
+    func testDiagnosticLogReaderMergesArchivesAndPreservesUTF8() throws {
+        try requireIsolatedDiagnosticDirectory()
+        let directory = SwitchLog.directoryURL
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let archive = directory.appendingPathComponent("debug-2026-10-12T00-00-00Z-test.log")
+        try Data("归档中文 😀\n".utf8).write(to: archive)
+        try Data("当前日志组合字符 é\n".utf8).write(to: SwitchLog.fileURL)
+        defer { try? FileManager.default.removeItem(at: archive); try? FileManager.default.removeItem(at: SwitchLog.fileURL) }
+
+        switch SwitchLog.readSnapshot() {
+        case .data(let text, _):
+            XCTAssertTrue(text.contains("归档中文 😀"))
+            XCTAssertTrue(text.contains("当前日志组合字符 é"))
+        default:
+            XCTFail("expected merged diagnostic log data")
+        }
+    }
+
+    func testDiagnosticLogWriterRotatesAfterOneMiB() throws {
+        try requireIsolatedDiagnosticDirectory()
+        let directory = SwitchLog.directoryURL
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let payload = String(repeating: "中文😀日志\n", count: 120_000)
+        SwitchLog.write(payload, category: "test")
+        _ = SwitchLog.readSnapshot()
+        SwitchLog.write("rotation marker", category: "test")
+        _ = SwitchLog.readSnapshot()
+        defer { for url in SwitchLog.archiveURLs { try? FileManager.default.removeItem(at: url) }; try? FileManager.default.removeItem(at: SwitchLog.fileURL) }
+
+        let archives = SwitchLog.archiveURLs
+        XCTAssertGreaterThanOrEqual(archives.count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: SwitchLog.fileURL.path))
+        XCTAssertTrue(archives.contains { url in
+            (try? String(decoding: Data(contentsOf: url), as: UTF8.self).contains("中文😀日志")) == true
+        })
+    }
+
+    private func requireIsolatedDiagnosticDirectory() throws {
+        let directory = URL(fileURLWithPath: "/tmp/BalanceBarDiagnosticTests-\(UUID().uuidString)", isDirectory: true)
+        SwitchLog.setTestingDirectory(directory)
+        addTeardownBlock {
+            SwitchLog.setTestingDirectory(nil)
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+}

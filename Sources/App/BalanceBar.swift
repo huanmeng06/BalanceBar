@@ -36,6 +36,7 @@ enum SwitchLog {
     private static let viewerMaximumBytes: UInt64 = 160 * 1_024
     private static var lastWriteDates: [String: Date] = [:]
     private static var sessionID: String?
+    private static var testingDirectoryURL: URL?
     private static let timestampFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -48,10 +49,18 @@ enum SwitchLog {
     }
 
     static var directoryURL: URL {
+        if let testingDirectoryURL { return testingDirectoryURL }
         if let override = ProcessInfo.processInfo.environment["BALANCEBAR_LOG_DIRECTORY"], !override.isEmpty {
             return URL(fileURLWithPath: override, isDirectory: true)
         }
         return URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/\(environmentName)").expandingTildeInPath, isDirectory: true)
+    }
+
+    static func setTestingDirectory(_ url: URL?) {
+        queue.sync {
+            testingDirectoryURL = url
+            sessionID = nil
+        }
     }
     static var fileURL: URL { directoryURL.appendingPathComponent("debug.log") }
     private static var legacyFileURL: URL { URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/debug.log").expandingTildeInPath) }
