@@ -507,3 +507,11 @@
 "dashboard.logs.page.preview_truncated" = "Viene mostrata solo l’anteprima recente; esporta tutti i registri conservati.";
 "dashboard.logs.page.read_warning" = "Impossibile leggere alcuni file diagnostici";
 "dashboard.logs.page.export_failed" = "Esportazione dei registri diagnostici non riuscita";
+
+// CC Switch aggregation overview
+"aggregation.default" = "Predefinito";
+"aggregation.loading" = "Aggiornamento…";
+"aggregation.stale" = "Ultimi dati attendibili · nuovo tentativo";
+"aggregation.unavailable" = "Saldo non disponibile";
+"aggregation.updated" = "Ultimo aggiornamento";
+"aggregation.manage_in_cc_switch" = "Gestisci il fornitore predefinito in CC Switch in modalità aggregazione";

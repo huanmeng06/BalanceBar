@@ -2914,3 +2914,93 @@ extension StatusItemControllerTests {
         XCTAssertFalse(after.contains("23:30:00"))
     }
 }
+
+extension StatusItemControllerTests {
+    private func aggregationInput(count: Int, amount: Double = 4.73) -> StatusItemController.MenuInput {
+        let displays = (0..<count).map { index -> AggregatedProviderDisplay in
+            let id = "provider-\(index)"
+            return AggregatedProviderDisplay(
+                entry: AggregatedProviderEntry(source: ProviderSummarySource(id: id, name: "tokenshop",
+                    isOfficial: false, query: nil, officialAccessToken: nil), role: index == 0 ? .default : .member),
+                identity: AggregationDisplayIdentity(providerID: id, accountScope: id, configurationRevision: "fixture"),
+                snapshot: .balance("tokenshop", amount + Double(index), index == 1 ? "CNY" : "USD", nil, Date(), progressPercentage: nil),
+                account: nil, status: .fresh, reason: nil, fetchedAt: Date())
+        }
+        return StatusItemController.MenuInput(choices: [ProviderChoice(id: "provider-0", name: "tokenshop", isCurrent: true)],
+            quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [],
+            showQuickSwitchMenu: true, showOpenChatGPTMenu: true, showOpenCCSwitchMenu: true, showStatusMenu: false,
+            aggregatedProviders: displays, aggregationQuickSwitchBlocked: count > 0)
+    }
+
+    @MainActor
+    func testAggregationUsesOneMenuViewWithSixDistinctBoundedCardsAndNativeFooter() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 6), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let scroll = try XCTUnwrap(menu.items.first?.view as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        XCTAssertEqual(document.subviews.count, 6)
+        XCTAssertEqual(Set(document.subviews.compactMap { $0.identifier?.rawValue }).count, 6)
+        XCTAssertLessThanOrEqual(scroll.frame.height, document.frame.height)
+        XCTAssertLessThan(scroll.frame.height, NSScreen.main?.visibleFrame.height ?? 1000)
+        XCTAssertTrue(menu.items.contains { $0.action != nil && $0.view == nil })
+        let submenu = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        XCTAssertTrue(submenu.items.filter { $0.representedObject is String }.allSatisfy { !$0.isEnabled && $0.state == .off })
+        XCTAssertTrue(submenu.items.contains { $0.title == tr(.keyAggregationManageInCCSwitch) })
+        for card in document.subviews {
+            XCTAssertGreaterThan(card.frame.height, 80)
+            XCTAssertEqual(card.frame.width, OpenCodexCardLayout.cardWidth)
+            XCTAssertTrue(document.bounds.contains(card.frame))
+        }
+    }
+
+    @MainActor
+    func testAggregationValueRefreshKeepsViewsAndScrollWhileUpdatingEveryIdentity() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = true
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 12), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let scroll = try XCTUnwrap(menu.items.first?.view as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        let wrappers = document.subviews
+        let cards = wrappers.map { $0.subviews.first { $0 is MenuHoverLinkHostView }! }
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 20))
+        let origin = scroll.contentView.bounds.origin
+        controller.updateMenu(input: aggregationInput(count: 12, amount: 14.73))
+        XCTAssertTrue(menu.items.first?.view === scroll)
+        XCTAssertTrue(zip(wrappers, document.subviews).allSatisfy { $0 === $1 })
+        XCTAssertTrue(zip(cards, wrappers.map { $0.subviews.first { $0 is MenuHoverLinkHostView }! }).allSatisfy { $0 === $1 })
+        XCTAssertEqual(scroll.contentView.bounds.origin.y, origin.y, accuracy: 0.5)
+        func numerics(_ view: NSView) -> [OverviewNumericTextView] {
+            (view as? OverviewNumericTextView).map { [$0] } ?? view.subviews.flatMap(numerics)
+        }
+        let values = cards.flatMap(numerics)
+        XCTAssertEqual(values.count, 12)
+        XCTAssertEqual(Set(values.compactMap { $0.sample?.identity }).count, 12)
+        XCTAssertEqual(Set(values.map(\.currentValue)), Set((0..<12).map { 14.73 + Double($0) }))
+        controller.updateMenu(input: aggregationInput(count: 4, amount: 14.73))
+        XCTAssertEqual(document.subviews.count, 4)
+        XCTAssertTrue(document.subviews.allSatisfy { document.bounds.contains($0.frame) })
+    }
+}
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testAggregationExitWhileMenuOpenImmediatelyRestoresSingleCardAndQuickSwitch() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 4), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        controller.updateMenu(input: aggregationInput(count: 0))
+        XCTAssertFalse(menu.items.first?.view is NSScrollView)
+        let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        XCTAssertFalse(quick.items.contains { $0.identifier?.rawValue == "aggregation.quickSwitch.hint" })
+        XCTAssertTrue(quick.items.filter { $0.representedObject is String }.allSatisfy(\.isEnabled))
+    }
+}

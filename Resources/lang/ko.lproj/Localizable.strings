@@ -507,3 +507,11 @@
 "dashboard.logs.page.preview_truncated" = "최근 미리보기만 표시됩니다. 보관된 모든 로그를 내보내세요.";
 "dashboard.logs.page.read_warning" = "일부 진단 파일을 읽을 수 없습니다";
 "dashboard.logs.page.export_failed" = "진단 로그 내보내기에 실패했습니다";
+
+// CC Switch aggregation overview
+"aggregation.default" = "기본";
+"aggregation.loading" = "새로 고치는 중…";
+"aggregation.stale" = "마지막으로 확인된 데이터 · 재시도 중";
+"aggregation.unavailable" = "잔액을 사용할 수 없음";
+"aggregation.updated" = "마지막 업데이트";
+"aggregation.manage_in_cc_switch" = "집계 모드의 기본 공급자는 CC Switch에서 관리하세요";

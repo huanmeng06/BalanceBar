@@ -220,6 +220,7 @@ struct ProviderRefreshActions {
     let storeClientSnapshot: (AssistantClient, String, Snapshot) -> Void
     let quickSwitchSummaryChanged: (String) -> Void
     var notificationSnapshot: ((AssistantClient, String, Snapshot) -> Void)? = nil
+    var aggregationChanged: (([AggregatedProviderDisplay], Bool) -> Void)? = nil
 }
 
 /// Persists only the local observation state needed to survive menu rebuilds
@@ -303,6 +304,14 @@ final class ProviderRefreshCoordinator {
     private var quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaryPayloads: [String: QuickSwitchSummaryPayload] = [:]
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
+    private var aggregationEntries: [AggregatedProviderEntry] = []
+    private var aggregationDisplays: [AggregationDisplayIdentity: AggregatedProviderDisplay] = [:]
+    private var aggregationAttempts: [AggregationDisplayIdentity: Date] = [:]
+    private var aggregationRequests: [AggregationDisplayIdentity: UUID] = [:]
+    private var aggregationPending: [AggregationDisplayIdentity] = []
+    private var aggregationReader: CCSwitchAggregationRepository?
+    private var aggregationBlocked = false
+    private var standardPublicationEpoch = OfficialResponseGeneration()
     private struct CachedCodexResetForecast {
         let forecast: CodexResetForecast
         let fetchedAt: Date
@@ -373,6 +382,164 @@ final class ProviderRefreshCoordinator {
             }
         }
         return summaries
+    }
+
+    /// Called on the refresh owner queue before the ordinary single-provider path.
+    @discardableResult
+    func refreshAggregation(reader: CCSwitchAggregationRepository, force: Bool) -> Bool {
+        aggregationReader = reader
+        let state = reader.load()
+        aggregationBlocked = reader.blocksQuickSwitch()
+        let entries: [AggregatedProviderEntry]
+        if case .active(let active) = state { entries = active } else { entries = [] }
+        let identities = Set(entries.map(aggregationIdentity))
+        if !entries.isEmpty {
+            standardPublicationEpoch.invalidate()
+            standardPublicationEpoch = OfficialResponseGeneration()
+        }
+        let obsolete = aggregationDisplays.keys.filter { !identities.contains($0) }
+        for identity in obsolete {
+            aggregationRequests.removeValue(forKey: identity)
+            if let display = aggregationDisplays.removeValue(forKey: identity) {
+                cancelAggregationTransport(display)
+            }
+            aggregationAttempts.removeValue(forKey: identity)
+        }
+        aggregationPending.removeAll { !identities.contains($0) }
+        aggregationEntries = entries
+        for entry in entries {
+            let identity = aggregationIdentity(entry)
+            if var display = aggregationDisplays[identity] {
+                display = AggregatedProviderDisplay(entry: entry, identity: identity, snapshot: display.snapshot,
+                    account: display.account, status: display.status, reason: display.reason, fetchedAt: display.fetchedAt, requestCredentials: display.requestCredentials)
+                aggregationDisplays[identity] = display
+            } else {
+                let profile = entry.source.officialAccessToken != nil
+                    ? entry.source.officialAccount : officialQuotaClient.codexAccountProfile()
+                aggregationDisplays[identity] = AggregatedProviderDisplay(entry: entry, identity: identity,
+                    snapshot: .providerError(entry.source.name, reason: tr(.keyAggregationLoading), cachedBalance: nil),
+                    account: entry.source.isOfficial ? OpenAIAccountPresentation.current(
+                        activeClient: .codex, providerIsOfficial: true, email: profile?.email,
+                        subscription: OpenAISubscriptionTier(planType: profile?.planType)) : nil,
+                    status: .loading, reason: nil, fetchedAt: nil)
+            }
+            let interval = TimeInterval(max(60, (entry.source.query?.intervalMinutes ?? 1) * 60))
+            let due = aggregationAttempts[identity].map { now().timeIntervalSince($0) >= interval } ?? true
+            if (force || due), aggregationRequests[identity] == nil, !aggregationPending.contains(identity) {
+                aggregationPending.append(identity)
+            }
+        }
+        publishAggregation()
+        drainAggregationRequests()
+        return !entries.isEmpty
+    }
+
+    func stopAggregation() {
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            let displays = Array(self.aggregationDisplays.values)
+            self.aggregationRequests.removeAll()
+            self.aggregationPending.removeAll()
+            self.aggregationEntries.removeAll()
+            self.aggregationDisplays.removeAll()
+            self.aggregationAttempts.removeAll()
+            displays.forEach(self.cancelAggregationTransport)
+            self.aggregationReader = nil
+        }
+    }
+
+    private func aggregationIdentity(_ entry: AggregatedProviderEntry) -> AggregationDisplayIdentity {
+        let scope: String
+        if entry.source.isOfficial {
+            scope = entry.source.officialAccessToken.map {
+                CodexRequestCredentials(accessToken: $0, accountKey: entry.source.officialAccount?.email?.lowercased()).requestScope
+            } ?? officialQuotaClient.codexRequestCredentials().requestScope
+        } else { scope = entry.source.configurationRevision }
+        return AggregationDisplayIdentity(providerID: entry.providerID, accountScope: scope,
+            configurationRevision: entry.source.configurationRevision)
+    }
+
+    private func cancelAggregationTransport(_ display: AggregatedProviderDisplay) {
+        if let query = display.entry.source.query {
+            balanceAPIClient.cancelBalance(query: query, client: .codex, providerID: display.identity.providerID)
+        } else if display.entry.source.isOfficial {
+            let source = display.entry.source
+            let credentials = display.requestCredentials ?? source.officialAccessToken.map {
+                CodexRequestCredentials(accessToken: $0, accountKey: source.officialAccount?.email?.lowercased())
+            } ?? officialQuotaClient.codexRequestCredentials()
+            officialQuotaClient.cancelQuota(client: .codex, providerID: source.id, requestCredentials: credentials)
+        }
+    }
+
+    private func publishAggregation() {
+        let displays = aggregationEntries.compactMap { aggregationDisplays[aggregationIdentity($0)] }
+        actions.aggregationChanged?(displays, aggregationBlocked)
+    }
+
+    private func aggregationRequestIsCurrent(_ identity: AggregationDisplayIdentity, request: UUID) -> Bool {
+        guard aggregationRequests[identity] == request else { return false }
+        guard let reader = aggregationReader, case .active(let entries) = reader.load(),
+              entries.contains(where: { aggregationIdentity($0) == identity }) else {
+            aggregationRequests.removeValue(forKey: identity)
+            if let reader = aggregationReader { _ = refreshAggregation(reader: reader, force: false) }
+            return false
+        }
+        return true
+    }
+
+    private func drainAggregationRequests() {
+        while aggregationRequests.count < 2, !aggregationPending.isEmpty {
+            let identity = aggregationPending.removeFirst()
+            guard var display = aggregationDisplays[identity] else { continue }
+            let request = UUID()
+            aggregationRequests[identity] = request
+            aggregationAttempts[identity] = now()
+            display.status = .loading
+            let source = display.entry.source
+            if source.isOfficial {
+                display.requestCredentials = source.officialAccessToken.map {
+                    CodexRequestCredentials(accessToken: $0, accountKey: source.officialAccount?.email?.lowercased())
+                } ?? officialQuotaClient.codexRequestCredentials()
+            }
+            aggregationDisplays[identity] = display
+            publishAggregation()
+            let isValid = { [weak self] in self?.aggregationRequestIsCurrent(identity, request: request) == true }
+            let finish: (Snapshot) -> Void = { [weak self] snapshot in
+                guard let self else { return }
+                self.performOnQueue {
+                    guard isValid(), var current = self.aggregationDisplays[identity] else { return }
+                    self.aggregationRequests.removeValue(forKey: identity)
+                    if snapshot.kind == .error {
+                        current.reason = snapshot.message
+                        current.status = current.fetchedAt == nil ? .error : .stale
+                        if current.fetchedAt == nil { current.snapshot = snapshot }
+                    } else {
+                        current.snapshot = snapshot
+                        current.status = .fresh
+                        current.reason = nil
+                        current.fetchedAt = self.now()
+                        self.actions.notificationSnapshot?(.codex, identity.providerID, snapshot)
+                    }
+                    self.aggregationDisplays[identity] = current
+                    self.publishAggregation()
+                    self.drainAggregationRequests()
+                }
+            }
+            if source.isOfficial {
+                fetchOfficialQuota(providerID: source.id, providerName: source.name, client: .codex,
+                    source: source, isValid: isValid, completion: finish)
+            } else if let query = source.query {
+                fetchBalance(providerID: source.id, providerName: source.name, query: query, client: .codex,
+                    isValid: isValid, completion: finish)
+            } else {
+                aggregationRequests.removeValue(forKey: identity)
+                display.snapshot = .providerError(source.name, reason: tr(.keyAggregationUnavailable), cachedBalance: nil)
+                display.status = .unavailable
+                display.reason = tr(.keyAggregationUnavailable)
+                aggregationDisplays[identity] = display
+                publishAggregation()
+            }
+        }
     }
 
     func resetCadence() {
@@ -471,7 +638,13 @@ final class ProviderRefreshCoordinator {
             let due = self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
             guard force || due else { return }
             self.lastQuickSwitchFetch[client] = currentDate
+            let aggregationIDs: Set<String>
+            if client == .codex, let reader = self.aggregationReader, case .active(let entries) = reader.load() {
+                _ = self.refreshAggregation(reader: reader, force: force)
+                aggregationIDs = Set(entries.map(\.providerID))
+            } else { aggregationIDs = [] }
             for source in self.repository.loadSummarySources(appType: client.appType) {
+                if aggregationIDs.contains(source.id) { continue }
                 if let providerIDs, !providerIDs.contains(source.id) { continue }
                 if source.isOfficial {
                     if client != .codex { continue }
@@ -581,64 +754,70 @@ final class ProviderRefreshCoordinator {
         providerID: String,
         providerName: String,
         query: BalanceQuery,
-        client: AssistantClient
+        client: AssistantClient,
+        isValid: @escaping () -> Bool = { true },
+        completion: ((Snapshot) -> Void)? = nil
     ) {
+        func fail(providerID: String, providerName: String, reason: String, client: AssistantClient) {
+            if let completion { completion(.providerError(providerName, reason: reason, cachedBalance: nil)) }
+            else { renderBalanceError(providerID: providerID, providerName: providerName, reason: reason, client: client) }
+        }
         guard balanceAPIClient.fetchBalance(
             query: query,
             client: client,
             providerID: providerID,
             completion: { [weak self] result in
             guard let self else { return }
-            switch result {
-            case .success(let response):
-                let identity = ProviderBalanceProgressIdentity(
-                    client: client,
-                    providerID: providerID,
-                    query: query
-                )
-                let progressResult = self.balanceProgressStore.update(
-                    amount: response.output.amount,
-                    unit: response.output.unit,
-                    identity: identity
-                )
-                guard case .success(let progressPercentage) = progressResult else {
-                    if case .failure(let error) = progressResult {
-                        self.renderBalanceError(
-                            providerID: providerID,
-                            providerName: providerName,
-                            reason: error.userVisibleReason(language: AppLanguage.resolved),
-                            client: client
-                        )
+            self.performOnQueue {
+                guard isValid() else { return }
+                switch result {
+                case .success(let response):
+                    let identity = ProviderBalanceProgressIdentity(
+                        client: client,
+                        providerID: providerID,
+                        query: query
+                    )
+                    let progressResult = self.balanceProgressStore.update(
+                        amount: response.output.amount,
+                        unit: response.output.unit,
+                        identity: identity
+                    )
+                    guard case .success(let progressPercentage) = progressResult else {
+                        if case .failure(let error) = progressResult {
+                            fail(
+                                providerID: providerID,
+                                providerName: providerName,
+                                reason: error.userVisibleReason(language: AppLanguage.resolved),
+                                client: client
+                            )
+                        }
+                        return
                     }
-                    return
+                    self.updateQuickSwitchSummary(
+                        providerID: providerID,
+                        payload: .formatted(Self.formatBalanceSummary(response.output.amount, unit: response.output.unit))
+                    )
+                    let balanceSnapshot = Snapshot.balance(
+                        providerName,
+                        response.output.amount,
+                        response.output.unit,
+                        query.websiteURL,
+                        Date(),
+                        progressPercentage: progressPercentage
+                    )
+                    if let completion { completion(balanceSnapshot) }
+                    else { self.renderForCurrentProvider(balanceSnapshot, providerID: providerID, client: client) }
+                case .failure(.nonHTTPS):
+                    fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), client: client)
+                case .failure(.transport(let error)):
+                    fail(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client)
+                case .failure(.httpStatus):
+                    fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError), client: client)
+                case .failure(.unsupportedFormat):
+                    fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), client: client)
+                case .failure(.invalidJSON):
+                    fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed), client: client)
                 }
-                self.updateQuickSwitchSummary(
-                    providerID: providerID,
-                    payload: .formatted(Self.formatBalanceSummary(response.output.amount, unit: response.output.unit))
-                )
-                let balanceSnapshot = Snapshot.balance(
-                    providerName,
-                    response.output.amount,
-                    response.output.unit,
-                    query.websiteURL,
-                    Date(),
-                    progressPercentage: progressPercentage
-                )
-                self.renderForCurrentProvider(
-                    balanceSnapshot,
-                    providerID: providerID,
-                    client: client
-                )
-            case .failure(.nonHTTPS):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), client: client)
-            case .failure(.transport(let error)):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client)
-            case .failure(.httpStatus):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError), client: client)
-            case .failure(.unsupportedFormat):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), client: client)
-            case .failure(.invalidJSON):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed), client: client)
             }
             }
         ) else {
@@ -646,10 +825,23 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient) {
-        if let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
+    private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient,
+                                    source: ProviderSummarySource? = nil,
+                                    isValid: @escaping () -> Bool = { true },
+                                    completion: ((Snapshot) -> Void)? = nil) {
+        func publish(_ snapshot: Snapshot, providerID: String, client: AssistantClient,
+                     isCurrentRequest: @escaping () -> Bool = { true }) {
+            guard isValid(), isCurrentRequest() else { return }
+            if let completion { completion(snapshot) }
+            else { renderForCurrentProvider(snapshot, providerID: providerID, client: client, isCurrentRequest: isCurrentRequest) }
+        }
+        func fail(providerID: String, providerName: String, reason: String, client: AssistantClient,
+                  isCurrentRequest: @escaping () -> Bool) {
+            publish(.providerError(providerName, reason: reason, cachedBalance: nil), providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
+        }
+        if source == nil, let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
             ?? DevelopmentBankedResetDemo.snapshot(providerName: providerName) {
-            renderForCurrentProvider(
+            publish(
                 demoSnapshot,
                 providerID: providerID,
                 client: client
@@ -658,7 +850,13 @@ final class ProviderRefreshCoordinator {
         }
         // Freeze the account before transport starts. Never assign a late
         // response to the auth profile that happens to be current on arrival.
-        let credentials = client == .codex ? officialQuotaClient.codexRequestCredentials() : nil
+        let credentials = client == .codex ? source?.officialAccessToken.map {
+            CodexRequestCredentials(accessToken: $0, accountKey: source?.officialAccount?.email?.lowercased())
+        } ?? officialQuotaClient.codexRequestCredentials() : nil
+        let credentialsMatch = { [weak self] in
+            guard let self, isValid() else { return false }
+            return client != .codex || source?.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials
+        }
         let accountKey = credentials?.accountKey
         officialQuotaClient.fetchQuota(
             client: client,
@@ -667,7 +865,7 @@ final class ProviderRefreshCoordinator {
         ) { [weak self] result in
             guard let self else { return }
             self.performOnQueue {
-                guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
+                guard credentialsMatch() else { return }
                 // Every completed quota response owns a new generation, including
                 // errors. Pending credit/forecast callbacks from older successes
                 // must not replace a newer failure or mutate its observation state.
@@ -686,7 +884,7 @@ final class ProviderRefreshCoordinator {
                         payload: .officialWindows(response.output.windows)
                     )
                     let renderOfficial: (CodexBankedReset?, CodexResetForecast) -> Void = { bankedReset, forecast in
-                        guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials,
+                        guard credentialsMatch(),
                               isCurrentQuota() else { return }
                         let resolvedForecast = self.resolveCodexResetObservation(
                             providerID: providerID,
@@ -695,7 +893,7 @@ final class ProviderRefreshCoordinator {
                             accountKey: accountKey,
                             client: client
                         )
-                        self.renderForCurrentProvider(
+                        publish(
                             .official(
                                 providerName,
                                 response.output.remaining,
@@ -709,7 +907,7 @@ final class ProviderRefreshCoordinator {
                             ),
                             providerID: providerID,
                             client: client,
-                            isCurrentRequest: { isCurrentQuota() && (client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials) }
+                            isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) }
                         )
                     }
                     // Observation consumes successful quota data immediately,
@@ -723,13 +921,13 @@ final class ProviderRefreshCoordinator {
                     )
                     let finishOfficial: (CodexBankedReset?) -> Void = { bankedReset in
                         self.performOnQueue {
-                            guard client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials,
+                            guard credentialsMatch(),
                                   isCurrentQuota() else { return }
                             guard client == .codex, bankedReset != nil || self.cachedCodexResetForecast != nil else {
                                 renderOfficial(bankedReset, cachedForecast)
                                 return
                             }
-                            self.provideCodexResetForecast { forecast in
+                            self.provideCodexResetForecast(includingCached: source == nil) { forecast in
                                 renderOfficial(bankedReset, forecast)
                             }
                         }
@@ -747,28 +945,28 @@ final class ProviderRefreshCoordinator {
                         finishOfficial(response.output.bankedReset)
                     }
                 case .failure(.missingCredentials):
-                    self.renderOfficialError(
+                    fail(
                         providerID: providerID,
                         providerName: providerName,
                         reason: tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [String(describing: client.displayName)]),
                         client: client,
-                        isCurrentRequest: { isCurrentQuota() && (client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials) }
+                        isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) }
                     )
                 case .failure(.transport(let error)):
-                    self.renderOfficialError(
+                    fail(
                         providerID: providerID,
                         providerName: providerName,
                         reason: tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [String(describing: client.displayName), String(describing: error.localizedDescription)]),
                         client: client,
-                        isCurrentRequest: { isCurrentQuota() && (client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials) }
+                        isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) }
                     )
                 case .failure:
-                    self.renderOfficialError(
+                    fail(
                         providerID: providerID,
                         providerName: providerName,
                         reason: tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [String(describing: client.displayName)]),
                         client: client,
-                        isCurrentRequest: { isCurrentQuota() && (client != .codex || self.officialQuotaClient.codexRequestCredentials() == credentials) }
+                        isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) }
                     )
                 }
             }
@@ -886,22 +1084,8 @@ final class ProviderRefreshCoordinator {
         providerID + "|" + accountKey
     }
 
-    private func renderOfficialError(
-        providerID: String,
-        providerName: String,
-        reason: String,
-        client: AssistantClient,
-        isCurrentRequest: @escaping () -> Bool = { true }
-    ) {
-        renderForCurrentProvider(
-            .providerError(providerName, reason: reason, cachedBalance: nil),
-            providerID: providerID,
-            client: client,
-            isCurrentRequest: isCurrentRequest
-        )
-    }
-
     private func provideCodexResetForecast(
+        includingCached: Bool = true,
         completion: @escaping (CodexResetForecast) -> Void
     ) {
         performOnQueue { [weak self] in
@@ -913,17 +1097,14 @@ final class ProviderRefreshCoordinator {
                 return
             }
 
-            if let cached = self.cachedCodexResetForecast {
-                completion(cached.forecast.markingCached())
-            } else {
-                completion(.unavailable)
-            }
-
+            let fallback = self.cachedCodexResetForecast?.forecast.markingCached() ?? .unavailable
             if !self.forecastRequestInFlight,
                let attempted = self.lastForecastAttempt,
                now.timeIntervalSince(attempted) < Self.codexResetForecastRetryInterval {
+                completion(fallback)
                 return
             }
+            if includingCached { completion(fallback) }
             self.inFlightForecastCompletions.append(completion)
             guard !self.forecastRequestInFlight else { return }
             self.forecastRequestInFlight = true
@@ -963,7 +1144,9 @@ final class ProviderRefreshCoordinator {
         isCurrentRequest: @escaping () -> Bool = { true }
     ) {
         queue.async { [weak self] in
-            guard let self, isCurrentRequest(), self.repository.loadCurrent(appType: client.appType)?.id == providerID else { return }
+            guard let self, isCurrentRequest(), self.repository.loadCurrent(appType: client.appType)?.id == providerID,
+                  client != .codex || self.aggregationEntries.isEmpty else { return }
+            let epoch = self.standardPublicationEpoch
             if next.kind == .balance {
                 self.providerBalanceSnapshots.store(next, clientID: client.rawValue, providerID: providerID)
             }
@@ -971,7 +1154,7 @@ final class ProviderRefreshCoordinator {
                 self.actions.notificationSnapshot?(client, providerID, next)
             }
             DispatchQueue.main.async {
-                guard isCurrentRequest() else { return }
+                guard isCurrentRequest(), client != .codex || epoch.isCurrent() else { return }
                 if next.kind == .official || next.kind == .balance {
                     self.actions.storeClientSnapshot(client, providerID, next)
                 }
@@ -984,7 +1167,9 @@ final class ProviderRefreshCoordinator {
 
     private func renderBalanceError(providerID: String, providerName: String, reason: String, client: AssistantClient) {
         queue.async { [weak self] in
-            guard let self, self.repository.loadCurrent(appType: client.appType)?.id == providerID else { return }
+            guard let self, self.repository.loadCurrent(appType: client.appType)?.id == providerID,
+                  client != .codex || self.aggregationEntries.isEmpty else { return }
+            let epoch = self.standardPublicationEpoch
             let next = self.providerBalanceSnapshots.errorSnapshot(
                 clientID: client.rawValue,
                 providerID: providerID,
@@ -992,7 +1177,7 @@ final class ProviderRefreshCoordinator {
                 reason: reason
             )
             DispatchQueue.main.async {
-                guard self.actions.isActiveClient(client) else { return }
+                guard (client != .codex || epoch.isCurrent()), self.actions.isActiveClient(client) else { return }
                 guard self.actions.currentProvider(client)?.id == providerID else { return }
                 self.actions.render(next)
             }

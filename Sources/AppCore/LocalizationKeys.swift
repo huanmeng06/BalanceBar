@@ -1,5 +1,12 @@
   // Stable typed keys for every bundled Localizable.strings resource.
   enum LocalizationKey: String, CaseIterable {
+    case keyAggregationDefault = "aggregation.default"
+    case keyAggregationLoading = "aggregation.loading"
+    case keyAggregationStale = "aggregation.stale"
+    case keyAggregationUnavailable = "aggregation.unavailable"
+    case keyAggregationUpdated = "aggregation.updated"
+    case keyAggregationManageInCCSwitch = "aggregation.manage_in_cc_switch"
+
     case keyTimeZoneLookupLoading = "timezone.lookup_loading"
     case keyTimeZoneLookupFailed = "timezone.lookup_failed"
     case keyTimeZoneTitle = "timezone.title"

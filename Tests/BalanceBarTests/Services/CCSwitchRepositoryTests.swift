@@ -217,3 +217,138 @@ final class CCSwitchRepositoryTests: XCTestCase {
         ])
     }
 }
+
+extension CCSwitchRepositoryTests {
+    private func aggregationState(mode: String = "proxy", attached: Bool = true, enabled: Bool = true,
+                                  route: String = "codex-official", members: [String] = [], pending: Bool = false) throws -> Data {
+        var codex: [String: Any] = ["mode": mode, "attached": attached, "proxy_route": route,
+                                   "stack": ["enabled": enabled, "members": members, "keys": ["ccs-old": "deleted"]]]
+        if pending { codex["pending"] = ["op": "stack"] }
+        return try JSONSerialization.data(withJSONObject: ["version": 1, "apps": ["codex": codex], "ignored": ["fixture_secret": "not_logged"]])
+    }
+
+    private func aggregationReader(_ data: Data, running: Bool = true) -> CCSwitchAggregationRepository {
+        CCSwitchAggregationRepository(repository: repository,
+            stateURL: temporaryDirectoryURL.appendingPathComponent("live-state.json"),
+            isRunning: { running }, read: { _ in data })
+    }
+
+    func testAggregationRequiresProxyAttachedEnabledAndRunning() throws {
+        for data in [try aggregationState(mode: "direct"), try aggregationState(attached: false),
+                     try aggregationState(enabled: false)] {
+            guard case .inactive = aggregationReader(data).load() else { return XCTFail("inactive mode must fall back") }
+        }
+        guard case .untrusted = aggregationReader(try aggregationState(), running: false).load() else {
+            return XCTFail("a stale attached flag cannot prove a running aggregation")
+        }
+        for data in [Data("broken".utf8), try aggregationState(pending: true), try aggregationState(route: "deleted")] {
+            guard case .untrusted = aggregationReader(data).load() else { return XCTFail("unsafe state must fall back") }
+        }
+    }
+
+    func testAggregationDefaultFirstStableDedupAndOfficialOnlyDefault() throws {
+        let data = try aggregationState(route: "codex-custom",
+            members: ["deleted", "codex-custom", "codex-official", "claude-other", "codex-custom"])
+        guard case .active(let entries) = aggregationReader(data).load() else { return XCTFail("valid default") }
+        XCTAssertEqual(entries.map(\.providerID), ["codex-custom"])
+        XCTAssertEqual(entries.first?.role, .default)
+        // The keys registry above contains a deleted ID and must never become a member.
+        XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+    }
+
+    func testAggregationZeroOneFourAndSixMembersKeepOrderAndSameNames() throws {
+        try withDatabase { db in
+            for i in 0..<6 {
+                try execute(db, sql: "INSERT INTO providers SELECT 'member-\(i)', 'tokenshop', settings_config, meta, category, website_url, app_type, 0, 10, 10 FROM providers WHERE id='codex-custom'")
+            }
+        }
+        for count in [0, 1, 4, 6] {
+            let members = (0..<count).reversed().map { "member-\($0)" }
+            guard case .active(let entries) = aggregationReader(try aggregationState(members: members + members)).load() else {
+                return XCTFail("valid aggregation")
+            }
+            XCTAssertEqual(entries.map(\.providerID), ["codex-official"] + members)
+            XCTAssertEqual(entries.count, count + 1)
+            XCTAssertTrue(entries.dropFirst().allSatisfy { $0.source.name == "tokenshop" && $0.role == .member })
+        }
+    }
+
+    func testAggregationReadRetriesOnlyOnceAndNeverMixesSwitchingState() throws {
+        let a = try aggregationState(route: "codex-official")
+        let b = try aggregationState(route: "codex-custom")
+        var reads = 0
+        let reader = CCSwitchAggregationRepository(repository: repository, isRunning: { true }, read: { _ in
+            reads += 1
+            return reads.isMultiple(of: 2) ? b : a
+        })
+        guard case .untrusted = reader.load() else { return XCTFail("mixed state must not publish") }
+        XCTAssertEqual(reads, 4)
+    }
+
+    func testAggregationDatabaseBusyAndReadFailureAreNotEmptySuccess() throws {
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) }
+            guard case .untrusted = aggregationReader(try aggregationState()).load() else { return XCTFail("SQL busy") }
+        }
+        let reader = CCSwitchAggregationRepository(repository: repository, read: { _ in throw CocoaError(.fileReadNoPermission) })
+        guard case .untrusted = reader.load() else { return XCTFail("unreadable") }
+        XCTAssertTrue(reader.blocksQuickSwitch())
+    }
+
+    func testAggregationQuickSwitchGuardAllowsLegacyAndOrdinaryModes() throws {
+        let missing = CCSwitchAggregationRepository(repository: repository, read: { _ in throw CocoaError(.fileReadNoSuchFile) })
+        XCTAssertFalse(missing.blocksQuickSwitch())
+        XCTAssertFalse(aggregationReader(try aggregationState(mode: "direct")).blocksQuickSwitch())
+        XCTAssertFalse(aggregationReader(try aggregationState(enabled: false)).blocksQuickSwitch())
+        XCTAssertTrue(aggregationReader(try aggregationState()).blocksQuickSwitch())
+        XCTAssertTrue(aggregationReader(Data("broken".utf8)).blocksQuickSwitch())
+    }
+
+    func testAggregationQuickSwitchBlockedBeforeAnyDatabaseMutation() throws {
+        let failed = expectation(description: "aggregation switch explicitly refused")
+        let reader = aggregationReader(try aggregationState())
+        let coordinator = ProviderSwitchCoordinator(repository: repository, aggregationRepository: reader,
+            actions: ProviderSwitchActions(changed: { XCTFail("must never claim a successful switch") }, failed: { message in
+                XCTAssertEqual(message, tr(.keyAggregationManageInCCSwitch))
+                failed.fulfill()
+            }))
+        coordinator.switchProvider(providerID: "codex-official", appType: "codex", providerName: "Fixture")
+        wait(for: [failed], timeout: 2)
+        XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+        XCTAssertEqual(try currentValue(for: "codex-official"), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+    }
+
+    func testAggregationWatcherSurvivesAtomicStateReplacementAndStops() throws {
+        let stateURL = temporaryDirectoryURL.appendingPathComponent("live-state.json")
+        try aggregationState().write(to: stateURL)
+        let changed = DispatchSemaphore(value: 0)
+        let watcher = CCSwitchDatabaseWatcher(databaseURL: databaseURL, stateURL: stateURL, onChange: { changed.signal() })
+        watcher.start(); watcher.start()
+        XCTAssertEqual(watcher.startCount, 1)
+        try aggregationState(route: "codex-custom").write(to: stateURL, options: .atomic)
+        XCTAssertEqual(changed.wait(timeout: .now() + 2), .success)
+        // The replacement inode must be watched again.
+        try aggregationState(attached: false).write(to: stateURL)
+        XCTAssertEqual(changed.wait(timeout: .now() + 2), .success)
+        watcher.stop(); watcher.stop()
+        while changed.wait(timeout: .now()) == .success {}
+        try aggregationState().write(to: stateURL, options: .atomic)
+        XCTAssertEqual(changed.wait(timeout: .now() + 0.2), .timedOut)
+    }
+}
+
+extension CCSwitchRepositoryTests {
+    func testAggregationConfigurationIdentityChangesWhenProviderIDIsRecreated() throws {
+        let before = try XCTUnwrap(repository.loadSummarySourcesChecked(appType: "codex", providerIDs: ["codex-custom"]).first)
+        try withDatabase { db in
+            try execute(db, sql: "CREATE TEMP TABLE saved_provider AS SELECT * FROM providers WHERE id='codex-custom'; DELETE FROM providers WHERE id='codex-custom'; UPDATE saved_provider SET created_at=created_at+1; INSERT INTO providers SELECT * FROM saved_provider;")
+        }
+        let after = try XCTUnwrap(repository.loadSummarySourcesChecked(appType: "codex", providerIDs: ["codex-custom"]).first)
+        XCTAssertEqual(before.id, after.id)
+        XCTAssertEqual(before.name, after.name)
+        XCTAssertEqual(before.query?.url, after.query?.url)
+        XCTAssertNotEqual(before.configurationRevision, after.configurationRevision)
+    }
+}

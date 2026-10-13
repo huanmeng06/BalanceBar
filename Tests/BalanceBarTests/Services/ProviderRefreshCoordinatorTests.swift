@@ -36,6 +36,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         DelayedBalanceURLProtocol.reset()
         repository = nil
         if let temporaryDirectoryURL {
+            UserDefaults.standard.removePersistentDomain(forName: temporaryDirectoryURL.lastPathComponent + ".Aggregation")
             try? FileManager.default.removeItem(at: temporaryDirectoryURL)
         }
         super.tearDown()
@@ -2721,5 +2722,211 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
         var official: [String: Any] = episode.map { ["tweet_id": $0, "score": ["value": 80]] } ?? ["score": ["value": 80]]
         if let publishedAt { official["at"] = ISO8601DateFormatter().string(from: publishedAt) }
         return try! JSONSerialization.data(withJSONObject: ["official_signal": signal ? official as Any : NSNull(), "probabilities": ["rounded_24h": 24, "rounded_48h": 42]])
+    }
+}
+
+extension ProviderRefreshCoordinatorTests {
+    private func aggregationFixture(members: [String] = [], route: String = "codex-custom") throws -> CCSwitchAggregationRepository {
+        let url = temporaryDirectoryURL.appendingPathComponent("live-state.json")
+        try JSONSerialization.data(withJSONObject: ["apps": ["codex": ["mode": "proxy", "attached": true,
+            "proxy_route": route, "stack": ["enabled": true, "members": members]]]]).write(to: url, options: .atomic)
+        return CCSwitchAggregationRepository(repository: repository, stateURL: url, isRunning: { true })
+    }
+
+    private func addAggregationMembers(_ count: Int) throws {
+        try withDatabase { db in
+            for i in 0..<count {
+                try execute(db, sql: "INSERT INTO providers SELECT 'member-\(i)', 'Codex Custom', settings_config, meta, category, website_url, app_type, 0, 10, 10 FROM providers WHERE id='codex-custom'")
+            }
+        }
+    }
+
+    private func aggregationCoordinator(official: OfficialQuotaClient? = nil,
+                                        _ changed: @escaping ([AggregatedProviderDisplay], Bool) -> Void) -> ProviderRefreshCoordinator {
+        var actions = makeActions()
+        actions.aggregationChanged = changed
+        let defaults = UserDefaults(suiteName: temporaryDirectoryURL.lastPathComponent + ".Aggregation")!
+        return ProviderRefreshCoordinator(repository: repository,
+            officialQuotaClient: official ?? OfficialQuotaClient(session: session, credentialReader: FixtureCredentialReader(codexToken: "fixture-token")),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            balanceProgressStore: ProviderBalanceProgressStore(defaults: defaults),
+            codexResetObservationStore: CodexResetObservationStore(defaults: defaults),
+            actions: actions)
+    }
+
+    func testAggregationBoundsConcurrentRequestsAndCancelsRemovedMembers() throws {
+        try addAggregationMembers(6)
+        let reader = try aggregationFixture(members: (0..<6).map { "member-\($0)" })
+        let gate = DispatchSemaphore(value: 0)
+        defer { for _ in 0..<7 { gate.signal() } }
+        let started = expectation(description: "two active transports")
+        started.expectedFulfillmentCount = 2
+        DelayedBalanceURLProtocol.setHandler { _ in
+            started.fulfill()
+            return .init(data: Data(#"{"balance":"4.73","quota":{"unit":"USD"}}"#.utf8), statusCode: 200, delayUntil: gate)
+        }
+        let coordinator = aggregationCoordinator { _, _ in }
+        coordinator.performAsync { XCTAssertTrue(coordinator.refreshAggregation(reader: reader, force: true)) }
+        wait(for: [started], timeout: 3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        coordinator.stopAggregation()
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+    }
+
+    func testAggregationNewMemberBypassesOtherProvidersTTLAndManualRefreshesAll() throws {
+        try addAggregationMembers(1)
+        let reader = try aggregationFixture()
+        let first = expectation(description: "first provider fresh")
+        let added = expectation(description: "new member fresh")
+        let refreshed = expectation(description: "manual all fresh")
+        var phase = 0
+        var firstDone = false
+        var addedDone = false
+        var refreshedDone = false
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "4.73") }
+        let coordinator = aggregationCoordinator { displays, _ in
+            let fresh = displays.filter { $0.status == .fresh }
+            if phase == 0, fresh.count == 1, !firstDone { firstDone = true; first.fulfill() }
+            if phase == 1, fresh.count == 2, !addedDone { addedDone = true; added.fulfill() }
+            if phase == 2, fresh.count == 2, DelayedBalanceURLProtocol.requestCount == 4, !refreshedDone {
+                refreshedDone = true; refreshed.fulfill()
+            }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [first], timeout: 3)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        _ = try aggregationFixture(members: ["member-0"])
+        coordinator.performAsync { phase = 1; _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [added], timeout: 3)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        coordinator.performAsync { phase = 2; _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [refreshed], timeout: 3)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 4)
+    }
+
+    func testAggregationConfigChangeRejectsInFlightSameIDAndNeverReusesWrongBalance() throws {
+        let reader = try aggregationFixture()
+        let oldStarted = expectation(description: "old configuration in flight")
+        let newFresh = expectation(description: "new configuration fresh")
+        let gate = DispatchSemaphore(value: 0)
+        defer { gate.signal() }
+        DelayedBalanceURLProtocol.setHandler { request in
+            if request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-key" {
+                oldStarted.fulfill()
+                return .init(data: Data(#"{"balance":"99.00"}"#.utf8), statusCode: 200, delayUntil: gate)
+            }
+            return DelayedBalanceURLProtocol.success(amount: "2.67", unit: "CNY")
+        }
+        var done = false
+        let coordinator = aggregationCoordinator { displays, _ in
+            guard let display = displays.first, display.status == .fresh else { return }
+            XCTAssertEqual(display.snapshot.amount, 2.67)
+            XCTAssertEqual(display.snapshot.unit, "CNY")
+            if !done { done = true; newFresh.fulfill() }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [oldStarted], timeout: 3)
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET meta=replace(meta, 'fixture-key', 'new-fixture-key') WHERE id='codex-custom'")
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [newFresh], timeout: 3)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+    }
+
+    func testAggregationLocalFailureKeepsOnlyItsOwnTrustedSnapshotAndRecovers() throws {
+        try addAggregationMembers(1)
+        let reader = try aggregationFixture(members: ["member-0"])
+        let fresh = expectation(description: "both providers fresh")
+        let stale = expectation(description: "cached failure marked stale")
+        let restored = expectation(description: "network recovery")
+        var phase = 0
+        var freshDone = false
+        var staleDone = false
+        var restoredDone = false
+        DelayedBalanceURLProtocol.setHandler { _ in
+            DelayedBalanceURLProtocol.success(amount: "4.73")
+        }
+        let coordinator = aggregationCoordinator { displays, _ in
+            if phase == 0, displays.count == 2, displays.allSatisfy({ $0.status == .fresh }), !freshDone {
+                freshDone = true; fresh.fulfill()
+            }
+            if phase == 1, displays.count == 2, displays.allSatisfy({ $0.status == .stale }), !staleDone {
+                XCTAssertTrue(displays.allSatisfy { $0.snapshot.amount == 4.73 && $0.fetchedAt != nil && $0.reason != nil })
+                staleDone = true; stale.fulfill()
+            }
+            if phase == 2, displays.count == 2, displays.allSatisfy({ $0.status == .fresh }), !restoredDone {
+                restoredDone = true; restored.fulfill()
+            }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [fresh], timeout: 3)
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data(), statusCode: 429) }
+        coordinator.performAsync { phase = 1; _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [stale], timeout: 3)
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "4.73") }
+        coordinator.performAsync { phase = 2; _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [restored], timeout: 3)
+    }
+}
+
+extension ProviderRefreshCoordinatorTests {
+    func testAggregationOfficialDefaultKeepsFullQuotaResetCardsAndThirdPartyCurrency() throws {
+        let reader = try aggregationFixture(members: ["codex-custom"], route: "codex-replacement")
+        let windows = ObservationFixture.windows(80, 45, cycle: 1)
+        let banked = CodexBankedReset(cards: [CodexBankedResetCard(id: "fixture-card", resetType: "codex_rate_limits",
+            titleText: "Fixture reset", expiresAt: Date().addingTimeInterval(3600), expiresText: nil)])
+        let ready = expectation(description: "full official and independent balance")
+        var done = false
+        DelayedBalanceURLProtocol.setHandler { request in
+            if request.url?.host == "codex-reset.com" { return .init(data: Data(#"{"probabilities":{"rounded_24h":24,"rounded_48h":42}}"#.utf8), statusCode: 200) }
+            return DelayedBalanceURLProtocol.success(amount: "2.67", unit: "CNY")
+        }
+        let official = OfficialQuotaClient(session: session, credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+            parser: FixedOfficialQuotaParser(windows: windows, bankedReset: banked))
+        let coordinator = aggregationCoordinator(official: official) { displays, _ in
+            guard displays.count == 2, displays.allSatisfy({ $0.status == .fresh }), !done else { return }
+            done = true
+            XCTAssertEqual(displays[0].entry.role, .default)
+            XCTAssertEqual(displays[0].snapshot.kind, .official)
+            XCTAssertEqual(displays[0].snapshot.officialQuotaWindows.map(\.remaining), [80, 45])
+            XCTAssertEqual(displays[0].snapshot.bankedReset?.cards.first?.id, "fixture-card")
+            XCTAssertEqual(displays[0].snapshot.resetForecast.probability24h, .percent(24))
+            XCTAssertEqual(displays[1].snapshot.kind, .balance)
+            XCTAssertEqual(displays[1].snapshot.unit, "CNY")
+            XCTAssertEqual(displays[1].snapshot.amount, 2.67)
+            XCTAssertNil(displays[1].account)
+            ready.fulfill()
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [ready], timeout: 3)
+    }
+
+    func testAggregationAccountChangeDiscardsOldOfficialRequestAndCache() throws {
+        let reader = try aggregationFixture(route: "codex-replacement")
+        let fixture = ObservationFixture()
+        let started = DispatchSemaphore(value: 0)
+        let gate = DispatchSemaphore(value: 0)
+        defer { gate.signal() }
+        fixture.update { $0.quotaGate = (started, gate) }
+        DelayedBalanceURLProtocol.setHandler { fixture.reply($0) }
+        let ready = expectation(description: "new account quota")
+        var done = false
+        let official = OfficialQuotaClient(session: session, credentialReader: fixture, parser: fixture)
+        let coordinator = aggregationCoordinator(official: official) { displays, _ in
+            guard let display = displays.first, display.status == .fresh, !done else { return }
+            done = true
+            XCTAssertEqual(display.account?.state, .available("b@example.com"))
+            XCTAssertEqual(display.snapshot.officialQuotaWindows.first?.remaining, 10)
+            ready.fulfill()
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        waitForEvent(started)
+        fixture.update { $0.email = "b@example.com"; $0.windows = ObservationFixture.windows(10, 20, cycle: 1); $0.quotaGate = nil }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [ready], timeout: 3)
+        XCTAssertEqual(fixture.quotaRequestCount, 2)
     }
 }

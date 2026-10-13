@@ -1092,3 +1092,19 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         )
     }
 }
+
+extension OverviewNumericTransitionTests {
+    func testAggregationSameNameSameBalanceHasSeparateProviderAndAccountIdentity() {
+        let snapshot = Snapshot.balance("tokenshop", 4.73, "USD", nil, Date(), progressPercentage: nil)
+        func samples(_ scope: String) -> [OverviewNumericSample] {
+            OverviewNumericPresentation.samples(snapshot: snapshot, providerIdentity: scope,
+                lunaReserveDisplayMode: .defaultValue, hideExhaustedQuota: false, showBankedReset: true)
+        }
+        let a = samples("codex|grok|account-a")
+        let b = samples("codex|gpt|account-b")
+        XCTAssertNotEqual(a.first?.identity, b.first?.identity)
+        XCTAssertEqual(OverviewNumericTransition.commitSeenValues(a + b).count, 2)
+        XCTAssertFalse(OverviewNumericTransition.plan(previous: a.first, current: b[0], reduceMotion: false).animates)
+        XCTAssertNotEqual(samples("codex|grok|new-account").first?.identity, a.first?.identity)
+    }
+}

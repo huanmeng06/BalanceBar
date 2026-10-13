@@ -507,3 +507,11 @@
 "dashboard.logs.page.preview_truncated" = "目前僅顯示最近預覽；請匯出全部保留日誌。";
 "dashboard.logs.page.read_warning" = "部分診斷檔案無法讀取";
 "dashboard.logs.page.export_failed" = "診斷日誌匯出失敗";
+
+// CC Switch aggregation overview
+"aggregation.default" = "預設";
+"aggregation.loading" = "正在更新…";
+"aggregation.stale" = "上次可信資料 · 正在重試";
+"aggregation.unavailable" = "餘額暫時無法取得";
+"aggregation.updated" = "上次更新";
+"aggregation.manage_in_cc_switch" = "聚合模式請在 CC Switch 中管理預設供應商";

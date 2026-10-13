@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import CryptoKit
 
 struct CCSwitchProvider {
     let id: String
@@ -203,25 +204,42 @@ final class CCSwitchRepository {
     }
 
     func loadSummarySources(appType: String) -> [ProviderSummarySource] {
+        (try? loadSummarySourcesChecked(appType: appType)) ?? []
+    }
+
+    /// A single read transaction; callers must distinguish SQL failure from an empty list.
+    func loadSummarySourcesChecked(appType: String, providerIDs: [String]? = nil) throws -> [ProviderSummarySource] {
         var database: OpaquePointer?
         guard sqlite3_open_v2(
             databaseURL.path,
             &database,
             SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
             nil
-        ) == SQLITE_OK, let database else { return [] }
+        ) == SQLITE_OK, let database else {
+            if let database { sqlite3_close(database) }
+            throw CCSwitchAggregationReadError.databaseUnavailable
+        }
         defer { sqlite3_close(database) }
-        sqlite3_busy_timeout(database, 3_000)
+        sqlite3_busy_timeout(database, 100)
+        guard sqlite3_exec(database, "BEGIN", nil, nil, nil) == SQLITE_OK else {
+            throw CCSwitchAggregationReadError.databaseUnavailable
+        }
+        defer { sqlite3_exec(database, "ROLLBACK", nil, nil, nil) }
 
-        let sql = "SELECT id, name, settings_config, meta, category, website_url FROM providers WHERE app_type = ? ORDER BY COALESCE(sort_index, 999999), created_at, id"
+        if providerIDs?.isEmpty == true { return [] }
+        let filter = providerIDs.map { " AND id IN (" + Array(repeating: "?", count: $0.count).joined(separator: ",") + ")" } ?? ""
+        let sql = "SELECT id, name, settings_config, meta, category, website_url, created_at FROM providers WHERE app_type = ?" + filter + " ORDER BY COALESCE(sort_index, 999999), created_at, id"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { return [] }
+              let statement else { throw CCSwitchAggregationReadError.databaseUnavailable }
         defer { sqlite3_finalize(statement) }
         bind(appType, to: statement, at: 1)
 
+        for (index, id) in (providerIDs ?? []).enumerated() { bind(id, to: statement, at: Int32(index + 2)) }
         var result: [ProviderSummarySource] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var step = sqlite3_step(statement)
+        while step == SQLITE_ROW {
+            defer { step = sqlite3_step(statement) }
             guard let id = text(from: statement, column: 0) else { continue }
             let name = text(from: statement, column: 1) ?? ""
             let settingsText = text(from: statement, column: 2) ?? "{}"
@@ -230,19 +248,25 @@ final class CCSwitchRepository {
             let websiteText = text(from: statement, column: 5)
             let websiteURL = safeWebsiteURL(from: websiteText)
 
+            let revisionData = Data([id, name, settingsText, metaText, category ?? "", websiteText ?? "", String(sqlite3_column_int64(statement, 6))].joined(separator: "\u{0}").utf8)
+            let revision = SHA256.hash(data: revisionData).map { String(format: "%02x", $0) }.joined()
             if category == "official" {
                 let stored = settingsText.data(using: .utf8)
                     .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
                 let auth = stored?["auth"] as? [String: Any]
                 let tokens = auth?["tokens"] as? [String: Any]
                 let accessToken = tokens?["access_token"] as? String
+                let profile = auth.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+                    .flatMap { CredentialReader.codexAccountProfile(from: $0) }
                 result.append(ProviderSummarySource(
                     id: id,
                     name: name,
                     isOfficial: true,
                     query: nil,
                     officialAccessToken: accessToken,
-                    websiteURL: websiteURL
+                    websiteURL: websiteURL,
+                    configurationRevision: revision,
+                    officialAccount: profile
                 ))
             } else {
                 let query = BalanceQuery.make(
@@ -257,10 +281,12 @@ final class CCSwitchRepository {
                     isOfficial: false,
                     query: query,
                     officialAccessToken: nil,
-                    websiteURL: websiteURL
+                    websiteURL: websiteURL,
+                    configurationRevision: revision
                 ))
             }
         }
+        guard step == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable }
         return result
     }
 

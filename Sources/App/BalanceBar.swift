@@ -569,6 +569,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var updateCheckTimer: Timer?
     private var activityCoordinator: ActivityCoordinator!
     private var databaseWatcher: CCSwitchDatabaseWatcher!
+    private var aggregationRepository: CCSwitchAggregationRepository!
+    private var aggregationDisplays: [AggregatedProviderDisplay] = []
+    private var aggregationQuickSwitchBlocked = false
+    private var currentProviderIsOfficialCache = false
+    private var currentAccountProfileCache: CodexAccountProfile?
+    private var ccSwitchLifecycleObservers: [NSObjectProtocol] = []
     private var lastSuccessfulRefresh: Date?
     private var dashboardProviderPageRevision: UInt64 = 0
     private var lastProviderID: String?
@@ -719,8 +725,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             if Thread.isMainThread { applyUpdateState() }
             else { DispatchQueue.main.async(execute: applyUpdateState) }
         }
+        aggregationRepository = CCSwitchAggregationRepository(repository: repository)
         databaseWatcher = CCSwitchDatabaseWatcher(
             databaseURL: repository.databaseURL,
+            stateURL: aggregationRepository.stateURL,
             onChange: { [weak self] in
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
@@ -763,11 +771,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                         agent: Self.notificationAgent(for: client),
                         providerID: providerID
                     )
+                },
+                aggregationChanged: { [weak self] displays, blocked in
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        let wasAggregating = !self.aggregationDisplays.isEmpty
+                        self.aggregationDisplays = displays
+                        self.aggregationQuickSwitchBlocked = blocked
+                        if self.activeClient == .codex, let first = displays.first {
+                            self.render(first.snapshot, immediately: true)
+                        } else if self.activeClient == .codex, wasAggregating {
+                            // The direct pointer may be different from the old
+                            // default route. Never relabel that route's numbers.
+                            self.render(.placeholder, immediately: true)
+                        } else {
+                            self.refreshStatusItemMenuInput()
+                        }
+                    }
                 }
             )
         )
         providerSwitchCoordinator = ProviderSwitchCoordinator(
             repository: repository,
+            aggregationRepository: aggregationRepository,
             actions: ProviderSwitchActions(
                 changed: { [weak self] in
                     guard let self else { return }
@@ -880,11 +906,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func makeStatusItemMenuInput() -> StatusItemController.MenuInput {
-        let currentProvider = ccSwitchRepository.loadCurrent(appType: activeClient.appType)
-        let isOfficialOpenAICodex = activeClient == .codex && currentProvider?.isOfficial == true
-        let accountProfile = isOfficialOpenAICodex
-            ? officialQuotaClient.codexAccountProfile()
-            : nil
+        let isOfficialOpenAICodex = activeClient == .codex && currentProviderIsOfficialCache
+        let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache : nil
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
             providerIsOfficial: isOfficialOpenAICodex,
@@ -892,7 +915,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
         )
         return StatusItemController.MenuInput(
-            choices: ccSwitchRepository.loadChoices(appType: activeClient.appType),
+            choices: providerChoicesCache,
             quickSwitchSummaries: quickSwitchSummariesSnapshot(),
             activeClient: activeClient,
             openAIAccount: openAIAccount,
@@ -907,7 +930,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             lunaReserveHideExhaustedQuota: LunaReserveUserFacing.isCurrentlyEnabled
                 && preferences.menuLunaReserveHideExhaustedQuota,
             bankedResetDisplayMode: preferences.menuBankedResetDisplayMode,
-            showsAvailableUpdateBadge: showsAvailableUpdateBadge
+            showsAvailableUpdateBadge: showsAvailableUpdateBadge,
+            aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
+            aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked
         )
     }
 
@@ -929,10 +954,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let resolvedAppType = appType ?? activeClient.appType
         let choices = ccSwitchRepository.loadChoices(appType: resolvedAppType)
         let name = choices.first(where: { $0.isCurrent })?.name ?? tr(.keyAppNotFound2)
+        let official = ccSwitchRepository.loadCurrent(appType: resolvedAppType)?.isOfficial == true
+        let profile = official && resolvedAppType == "codex" ? officialQuotaClient.codexAccountProfile() : nil
         let publish = { [weak self] in
             guard let self, self.activeClient.appType == resolvedAppType else { return }
             self.providerChoicesCache = choices
             self.currentProviderNameCache = name
+            self.currentProviderIsOfficialCache = official
+            self.currentAccountProfileCache = profile
+            self.refreshStatusItemMenuInput()
         }
         if Thread.isMainThread {
             publish()
@@ -1055,6 +1085,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         configureUpdateCheckTimer()
         updateStatusItemActivity()
         databaseWatcher.start()
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            ccSwitchLifecycleObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
+                forName: name, object: nil, queue: nil) { [weak self] notification in
+                    guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                          app.bundleIdentifier == "com.ccswitch.desktop" else { return }
+                    self?.refresh(reason: .configurationChanged)
+                })
+        }
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "unknown"
@@ -1101,6 +1139,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardComposition.teardown()
         statusItemController.teardown()
         databaseWatcher.stop()
+        ccSwitchLifecycleObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        ccSwitchLifecycleObservers.removeAll()
+        providerRefreshCoordinator.stopAggregation()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -2088,6 +2129,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let client = activeClient
         providerRefreshCoordinator.performAsync { [weak self] in
             guard let self else { return }
+            if client == .codex, self.providerRefreshCoordinator.refreshAggregation(
+                reader: self.aggregationRepository, force: reason.forcesStandardProviderBalance) { return }
             let current = self.ccSwitchRepository.loadCurrent(appType: client.appType)
             self.reloadCurrentProviderNameCache(appType: client.appType)
             guard let current else {

@@ -507,3 +507,11 @@
 "dashboard.logs.page.preview_truncated" = "Nur die aktuelle Vorschau wird angezeigt; exportieren Sie alle gespeicherten Protokolle.";
 "dashboard.logs.page.read_warning" = "Einige Diagnosedateien konnten nicht gelesen werden";
 "dashboard.logs.page.export_failed" = "Export der Diagnoseprotokolle fehlgeschlagen";
+
+// CC Switch aggregation overview
+"aggregation.default" = "Standard";
+"aggregation.loading" = "Wird aktualisiert…";
+"aggregation.stale" = "Letzte verlässliche Daten · neuer Versuch";
+"aggregation.unavailable" = "Guthaben nicht verfügbar";
+"aggregation.updated" = "Zuletzt aktualisiert";
+"aggregation.manage_in_cc_switch" = "Standardanbieter im Aggregationsmodus in CC Switch verwalten";

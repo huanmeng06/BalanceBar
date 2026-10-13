@@ -507,3 +507,11 @@
 "dashboard.logs.page.preview_truncated" = "最近のプレビューのみ表示しています。保存されたすべてのログを書き出してください。";
 "dashboard.logs.page.read_warning" = "一部の診断ファイルを読み取れません";
 "dashboard.logs.page.export_failed" = "診断ログの書き出しに失敗しました";
+
+// CC Switch aggregation overview
+"aggregation.default" = "デフォルト";
+"aggregation.loading" = "更新中…";
+"aggregation.stale" = "前回の信頼できるデータ · 再試行中";
+"aggregation.unavailable" = "残高を取得できません";
+"aggregation.updated" = "最終更新";
+"aggregation.manage_in_cc_switch" = "集約モードのデフォルトプロバイダーは CC Switch で管理してください";

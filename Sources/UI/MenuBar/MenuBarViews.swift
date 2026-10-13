@@ -754,3 +754,29 @@ final class MenuBarTextView: NSView {
 
     override var intrinsicContentSize: NSSize { layoutSize }
 }
+
+/// Native menus swallow ordinary wheel delivery. This viewport forwards only
+/// events in its own visible bounds, leaving nested ticket scrolling to its host.
+final class AggregationOverviewScrollView: NSScrollView {
+    private var wheelMonitor: Any?
+
+    func setMenuContentVisible(_ visible: Bool) {
+        if let wheelMonitor { NSEvent.removeMonitor(wheelMonitor) }
+        wheelMonitor = nil
+        guard visible else { return }
+        wheelMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, let window = self.window, event.window === window,
+                  self.visibleRect.contains(self.convert(event.locationInWindow, from: nil)) else { return event }
+            func insideTicket(_ view: NSView) -> Bool {
+                if view is BankedResetTicketScrollView,
+                   view.visibleRect.contains(view.convert(event.locationInWindow, from: nil)) { return true }
+                return view.subviews.contains(where: insideTicket)
+            }
+            if self.documentView.map(insideTicket) == true { return event }
+            self.scrollWheel(with: event)
+            return nil
+        }
+    }
+
+    deinit { if let wheelMonitor { NSEvent.removeMonitor(wheelMonitor) } }
+}

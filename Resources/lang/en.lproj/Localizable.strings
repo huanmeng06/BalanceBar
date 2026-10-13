@@ -507,3 +507,11 @@
 "dashboard.logs.page.preview_truncated" = "Only the recent preview is shown; export the full retained logs.";
 "dashboard.logs.page.read_warning" = "Some diagnostic files could not be read";
 "dashboard.logs.page.export_failed" = "Diagnostic log export failed";
+
+// CC Switch aggregation overview
+"aggregation.default" = "Default";
+"aggregation.loading" = "Refreshing…";
+"aggregation.stale" = "Last known data · retrying";
+"aggregation.unavailable" = "Balance unavailable";
+"aggregation.updated" = "Last updated";
+"aggregation.manage_in_cc_switch" = "Manage the default provider in CC Switch aggregation mode";

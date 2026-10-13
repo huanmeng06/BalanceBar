@@ -507,3 +507,11 @@
 "dashboard.logs.page.preview_truncated" = "Показан только последний фрагмент; экспортируйте все сохранённые журналы.";
 "dashboard.logs.page.read_warning" = "Не удалось прочитать некоторые диагностические файлы";
 "dashboard.logs.page.export_failed" = "Не удалось экспортировать диагностические журналы";
+
+// CC Switch aggregation overview
+"aggregation.default" = "По умолчанию";
+"aggregation.loading" = "Обновление…";
+"aggregation.stale" = "Последние достоверные данные · повторная попытка";
+"aggregation.unavailable" = "Баланс недоступен";
+"aggregation.updated" = "Последнее обновление";
+"aggregation.manage_in_cc_switch" = "Управляйте поставщиком по умолчанию в CC Switch в режиме агрегации";

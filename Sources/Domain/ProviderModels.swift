@@ -130,6 +130,8 @@ struct ProviderSummarySource {
     let query: BalanceQuery?
     let officialAccessToken: String?
     let websiteURL: URL?
+    let configurationRevision: String
+    let officialAccount: CodexAccountProfile?
 
     init(
         id: String,
@@ -137,7 +139,9 @@ struct ProviderSummarySource {
         isOfficial: Bool,
         query: BalanceQuery?,
         officialAccessToken: String?,
-        websiteURL: URL? = nil
+        websiteURL: URL? = nil,
+        configurationRevision: String = "",
+        officialAccount: CodexAccountProfile? = nil
     ) {
         self.id = id
         self.name = name
@@ -145,6 +149,8 @@ struct ProviderSummarySource {
         self.query = query
         self.officialAccessToken = officialAccessToken
         self.websiteURL = websiteURL
+        self.configurationRevision = configurationRevision
+        self.officialAccount = officialAccount
     }
 }
 

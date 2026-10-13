@@ -507,3 +507,11 @@
 "dashboard.logs.page.preview_truncated" = "Seul l’aperçu récent est affiché ; exportez tous les journaux conservés.";
 "dashboard.logs.page.read_warning" = "Certains fichiers de diagnostic sont illisibles";
 "dashboard.logs.page.export_failed" = "Échec de l’export des journaux de diagnostic";
+
+// CC Switch aggregation overview
+"aggregation.default" = "Par défaut";
+"aggregation.loading" = "Actualisation…";
+"aggregation.stale" = "Dernières données fiables · nouvelle tentative";
+"aggregation.unavailable" = "Solde indisponible";
+"aggregation.updated" = "Dernière mise à jour";
+"aggregation.manage_in_cc_switch" = "Gérez le fournisseur par défaut dans CC Switch en mode agrégation";
