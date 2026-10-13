@@ -252,7 +252,9 @@ report elapsed seconds; step timestamps cover setup, XCTest and artifact work.
 The SDK 26 CLI app is tarred before upload to preserve execute bits. macos-15
 `Pre-Liquid-Glass artifact smoke` restores it and checks load commands/signature;
 its `continue-on-error: true` behavior is retained. It is advisory, not GUI
-acceptance; a smoke failure is not a new required failure. Full version exemptions
+acceptance; a smoke failure is not a new required failure. A cancelled/skipped
+smoke after a successful Full does fail the gate because that run did not finish
+its contracted scope; version-only exemptions intentionally skip smoke. Full version exemptions
 skip artifact/smoke, just as before.
 
 `PR merge gate` has no job dependencies: it is created immediately, so same-SHA

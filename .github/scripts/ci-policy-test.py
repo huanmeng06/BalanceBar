@@ -74,5 +74,12 @@ class PolicyTests(unittest.TestCase):
                  patch.object(gate.subprocess, 'check_output', return_value='full\n'):
                 self.assertFalse(gate.wait_for_evidence({'pull_request': pr}, 'pull_request')[0])
 
+        for state in ('cancelled', 'skipped'):
+            incomplete = copy.deepcopy(complete)
+            incomplete['jobs'][-1]['conclusion'] = state
+            with patch.dict(gate.os.environ, env), patch.object(gate, 'api', side_effect=[pr, incomplete]), \
+                 patch.object(gate.subprocess, 'check_output', return_value='full\n'):
+                self.assertFalse(gate.wait_for_evidence({'pull_request': pr}, 'pull_request')[0])
+
 
 unittest.main()

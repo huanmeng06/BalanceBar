@@ -57,7 +57,11 @@ def wait_for_evidence(event, event_name):
             return False, 'Repository/scope checks did not succeed', results
         if results['scope'] == 'success' and results[lane] not in waiting:
             # Preserve the advisory smoke execution without making its success required.
-            if not ok or lane == 'version' or results['smoke'] not in waiting:
+            if not ok or lane == 'version':
+                return ok, reason, results
+            if results['smoke'] not in waiting:
+                if results['smoke'] not in ('success', 'failure'):
+                    return False, 'Smoke cancelled/skipped; incomplete run (failure remains advisory)', results
                 return ok, reason, results
         if time.monotonic() >= deadline:
             return False, 'Timed out waiting for this run; no Full credential', results
