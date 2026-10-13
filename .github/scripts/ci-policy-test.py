@@ -156,7 +156,7 @@ class PolicyTests(unittest.TestCase):
     def test_metadata_workflow_uses_required_name_and_real_evidence(self):
         workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
                     'build-and-test.yml').read_text(encoding='utf-8')
-        gate_job = workflow.split('\\n  merge-gate:\\n', 1)[1]
+        gate_job = workflow.split('\n  merge-gate:\n', 1)[1]
         self.assertIn("- name: Confirm prior Full gate for metadata-only edit", gate_job)
         self.assertIn("run: python3 .github/scripts/ci-metadata-gate.py", gate_job)
         self.assertNotIn('PR metadata edit (no merge credential)', gate_job)
