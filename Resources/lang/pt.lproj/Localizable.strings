@@ -501,3 +501,9 @@
 "timezone.lookup_failed" = "Pesquisa indisponível. Prima Return para tentar novamente.";
 
 "codex.banked_reset.expired_value" = "Expirou em %1$@";
+
+"dashboard.logs.page.export" = "Exportar logs";
+"dashboard.logs.page.export.2" = "Exportar logs de diagnóstico";
+"dashboard.logs.page.preview_truncated" = "Apenas a pré-visualização recente é mostrada; exporte todos os logs retidos.";
+"dashboard.logs.page.read_warning" = "Não foi possível ler alguns arquivos de diagnóstico";
+"dashboard.logs.page.export_failed" = "Falha ao exportar os logs de diagnóstico";

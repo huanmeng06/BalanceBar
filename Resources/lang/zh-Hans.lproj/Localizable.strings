@@ -501,3 +501,9 @@
 "timezone.lookup_failed" = "只能选择列表中的城市";
 
 "codex.banked_reset.expired_value" = "%1$@ 已过期";
+
+"dashboard.logs.page.export" = "导出日志";
+"dashboard.logs.page.export.2" = "导出诊断日志";
+"dashboard.logs.page.preview_truncated" = "仅显示最近预览；请导出全部保留日志。";
+"dashboard.logs.page.read_warning" = "部分诊断文件无法读取";
+"dashboard.logs.page.export_failed" = "诊断日志导出失败";

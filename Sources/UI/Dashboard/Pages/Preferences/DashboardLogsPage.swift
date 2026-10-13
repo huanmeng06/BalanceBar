@@ -2,6 +2,8 @@ import AppKit
 
 final class DashboardLogsPage {
     private let logView = NSTextView()
+    private var refreshGeneration = 0
+    private var exportInProgress = false
 
     func makeViewer() -> NSView {
         let container = NSView()
@@ -74,7 +76,13 @@ final class DashboardLogsPage {
             action: #selector(DashboardPreferencePageRelay.revealLog(_:))
         )
         revealButton.image = NSImage(systemSymbolName: "folder", accessibilityDescription: tr(.keyDashboardLogsPageShowInFinder2))
-        let buttons = NSStackView(views: [refreshButton, revealButton, NSView()])
+        let exportButton = NSButton(
+            title: tr(.keyDashboardLogsPageExport),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.exportLog(_:))
+        )
+        exportButton.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: tr(.keyDashboardLogsPageExport2))
+        let buttons = NSStackView(views: [refreshButton, revealButton, exportButton, NSView()])
         buttons.orientation = .horizontal
         buttons.spacing = 8
 
@@ -116,17 +124,67 @@ final class DashboardLogsPage {
     }
 
     func refresh() {
-        let text = SwitchLog.recentText() ?? tr(.keyDashboardLogsPageNoLogsYet)
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let followTail = isAtBottom()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let snapshot = SwitchLog.readSnapshot()
+            DispatchQueue.main.async {
+                guard let self, generation == self.refreshGeneration else { return }
+                self.apply(snapshot: snapshot, followTail: followTail)
+            }
+        }
+    }
+
+    private func apply(snapshot: SwitchLog.ReadResult, followTail: Bool) {
+        let text: String
+        switch snapshot {
+        case .empty: text = tr(.keyDashboardLogsPageNoLogsYet)
+        case .failure(let message): text = message
+        case .data(let value, let truncated, let warnings):
+            let notice = warnings.isEmpty ? "" : "[\(tr(.keyDashboardLogsPageReadWarning))] \(warnings.joined(separator: " | "))\n"
+            text = notice + (truncated ? "[\(tr(.keyDashboardLogsPagePreviewTruncated))]\n" : "") + value
+        }
         logView.textStorage?.setAttributedString(Self.styledLog(text))
         resizeDocument()
-        DispatchQueue.main.async { [weak self] in
-            self?.resizeDocument()
-        }
-        logView.scrollToEndOfDocument(nil)
+        DispatchQueue.main.async { [weak self] in self?.resizeDocument() }
+        if followTail { logView.scrollToEndOfDocument(nil) }
+    }
+
+    private func isAtBottom() -> Bool {
+        guard let scroll = logView.enclosingScrollView else { return true }
+        let visibleMax = scroll.contentView.bounds.maxY
+        guard let documentMax = scroll.documentView?.bounds.maxY else { return true }
+        return visibleMax >= documentMax
     }
 
     func reveal() {
-        NSWorkspace.shared.activateFileViewerSelecting([SwitchLog.fileURL])
+        NSWorkspace.shared.open(SwitchLog.directoryURL)
+    }
+
+    func export() {
+        guard !exportInProgress else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "BalanceBar-Diagnostics.log"
+        panel.canCreateDirectories = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            self.exportInProgress = true
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                do {
+                    try SwitchLog.exportAll(to: url)
+                    DispatchQueue.main.async { self?.exportInProgress = false }
+                } catch {
+                    DispatchQueue.main.async {
+                        self?.exportInProgress = false
+                        let alert = NSAlert()
+                        alert.messageText = tr(.keyDashboardLogsPageExportFailed)
+                        alert.informativeText = error.localizedDescription
+                        alert.runModal()
+                    }
+                }
+            }
+        }
     }
 
     private func resizeDocument() {

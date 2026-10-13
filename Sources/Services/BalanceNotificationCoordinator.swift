@@ -66,7 +66,7 @@ final class SystemBalanceNotificationClient: NSObject, BalanceNotificationClient
         center.add(request) { error in
             if let error {
                 SwitchLog.write(
-                    "notification delivery failed; error=\(error.localizedDescription)",
+                    "notification delivery failed; error_category=notification_delivery",
                     level: .warning,
                     category: "notifications"
                 )

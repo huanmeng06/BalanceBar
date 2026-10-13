@@ -107,6 +107,7 @@ final class DashboardPreferencePages {
         relay.onInstallUpdate = actions.onInstallUpdate
         relay.onOpenUpdateNotes = actions.onOpenUpdateNotes
         relay.onRevealLog = { [weak self] in self?.logsPage.reveal() }
+        relay.onExportLog = { [weak self] in self?.logsPage.export() }
         relay.onRefreshLog = { [weak self] in self?.logsPage.refresh() }
     }
 
