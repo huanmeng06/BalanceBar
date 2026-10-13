@@ -99,8 +99,7 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("- name: Draft status only (not a merge credential)", gate_job)
         self.assertIn("if: ${{ github.event_name == 'pull_request' && "
                       "github.event.pull_request.draft }}", gate_job)
-        self.assertNotIn("    if: ${{ github.event_name != 'pull_request' || "
-                         "!github.event.pull_request.draft }}\n", gate_job)
+        self.assertNotIn("\n    if:", gate_job.split("\n    steps:", 1)[0])
         # The gate credential script must NEVER run in Draft, even when the
         # draft PR is converted from an earlier Ready with a green Full.
         self.assertIn("!github.event.pull_request.draft && !(", gate_job)
