@@ -333,14 +333,13 @@ final class AccountMarqueeView: NSView {
     /// Updates the semantic text without replacing the accessible text field.
     /// Re-measurement is immediate so dynamic menu copy cannot use the old
     /// overflow distance for one or more frames.
-    func updateText(_ text: String) {
+    func updateText(_ text: String, preserveScrollPosition: Bool = false) {
         guard accountLabel.stringValue != text else { return }
         accountLabel.stringValue = text
-        configuredText = nil
-        configureContentIfNeeded(force: true)
+        configureContentIfNeeded(force: true, preserveScrollPosition: preserveScrollPosition)
     }
 
-    private func configureContentIfNeeded(force: Bool = false) {
+    private func configureContentIfNeeded(force: Bool = false, preserveScrollPosition: Bool = false) {
         let font = accountLabel.font ?? .systemFont(ofSize: 13)
         let text = accountLabel.stringValue
         let fontSignature = Self.fontSignature(for: font)
@@ -366,6 +365,12 @@ final class AccountMarqueeView: NSView {
             || contentLayout != nextLayout
             || configuredText != text
             || configuredFontSignature != fontSignature else {
+            return
+        }
+
+        if preserveScrollPosition, contentLayout == nextLayout,
+           configuredFontSignature == fontSignature {
+            configuredText = text
             return
         }
 
@@ -6681,7 +6686,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     to: view,
                     frame: metricsFrame,
                     forecast: forecast,
-                    provider: provider,
                     leadingInkAnchor: leadingInkAnchor
                 )
             } else if forecast.isOfficialResetConfirmed, let hint = forecast.officialHintText() {
@@ -6743,131 +6747,35 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         to view: MenuHoverLinkHostView,
         frame: NSRect,
         forecast: CodexResetForecast,
-        provider: String,
         leadingInkAnchor: CGFloat
     ) {
-        let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
-        let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
-        let prefix48 = tr(.keyCodexBankedResetProbability48h)
-        let percent48View = makeBankedResetForecastPercentView(
-            probability: forecast.probability48h,
-            identity: .bankedResetProbability48h(provider: provider),
-            identifier: "codex.bankedReset.probability48h",
-            font: numericFont
+        let font = NSFont.monospacedDigitSystemFont(
+            ofSize: OpenCodexCardLayout.bankedResetForecastSubtitleFont.pointSize,
+            weight: .regular
         )
-        let prefixWidth = OpenCodexCardLayout.forecastTextWidth(
-            prefix48,
-            font: subtitleFont
+        let subtitle = makeMarqueeOverviewLabel(
+            bankedResetForecastSubtitleText(forecast), font: font,
+            textColor: .secondaryLabelColor, frame: frame, leadingInkAnchor: leadingInkAnchor
         )
-        let percentText = bankedResetForecastPercentReservation(
-            probability: forecast.probability48h,
-            identity: .bankedResetProbability48h(provider: provider)
-        )
-        let percentWidth = OpenCodexCardLayout.forecastTextWidth(
-            percentText,
-            font: numericFont
-        )
-        if prefixWidth + 4 + percentWidth > frame.width {
-            let text = prefix48 + " " + forecast.probability48h.displayText
-            let marquee = makeMarqueeOverviewLabel(
-                text, font: subtitleFont, textColor: .secondaryLabelColor, frame: frame, leadingInkAnchor: leadingInkAnchor
-            )
-            marquee.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.forecastSubtitle")
-            view.addSubview(marquee)
-            return
-        }
-        let prefixLabel = addBankedResetForecastPrefix(
-            to: view,
-            frame: frame,
-            x: frame.minX,
-            width: prefixWidth,
-            text: prefix48,
-            identifier: "codex.bankedReset.probability48hPrefix",
-            font: subtitleFont
-        )
-        percent48View.frame = CGRect(
-            x: prefixLabel.frame.maxX + 4,
-            y: frame.minY,
-            width: max(percentWidth, frame.maxX - prefixLabel.frame.maxX - 4),
-            height: frame.height
-        )
-        view.addSubview(percent48View)
+        subtitle.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.forecastSubtitle")
+        subtitle.accountLabel.identifier = subtitle.identifier
+        view.addSubview(subtitle)
     }
 
-    private func bankedResetForecastPercentReservation(
-        probability: CodexResetProbability,
-        identity: OverviewNumericIdentity
-    ) -> String {
-        guard case .percent(let percent) = probability else {
-            return probability.displayText
-        }
-        let sample = OverviewNumericSample(
-            identity: identity,
-            format: .integerPercent,
-            value: Double(percent),
-            progressPercentage: nil
-        )
-        return overviewNumericPlan(for: sample).layoutReservationText
+    private func bankedResetForecastSubtitleText(_ forecast: CodexResetForecast) -> String {
+        tr(.keyCodexBankedResetProbability48hFormat, arguments: [forecast.probability48h.displayText])
     }
 
-    private func makeBankedResetForecastPercentView(
-        probability: CodexResetProbability,
-        identity: OverviewNumericIdentity,
-        identifier: String,
-        font: NSFont
-    ) -> NSView {
-        if case .percent(let percent) = probability {
-            let sample = OverviewNumericSample(
-                identity: identity,
-                format: .integerPercent,
-                value: Double(percent),
-                progressPercentage: nil
-            )
-            let plan = overviewNumericPlan(for: sample)
-            let numeric = OverviewNumericTextView(
-                text: plan.startText,
-                font: font,
-                value: plan.startValue,
-                textColor: .secondaryLabelColor,
-                alignment: .left
-            )
-            numeric.configure(plan: plan, sample: sample)
-            numeric.identifier = OverviewNumericPresentation.amountIdentifier(for: identity)
-            numeric.textField.identifier = numeric.identifier
-            numeric.textField.lineBreakMode = .byClipping
-            return numeric
-        }
-        let label = makeOverviewLabel(probability.displayText, font: font)
-        label.textColor = .secondaryLabelColor
-        label.lineBreakMode = .byClipping
-        label.usesSingleLineMode = true
-        label.identifier = NSUserInterfaceItemIdentifier(identifier)
-        return label
-    }
-
-    @discardableResult
-    private func addBankedResetForecastPrefix(
-        to view: MenuHoverLinkHostView,
-        frame: NSRect,
-        x: CGFloat,
-        width: CGFloat,
-        text: String,
-        identifier: String,
-        font: NSFont
-    ) -> NSTextField {
-        let prefixLabel = makeOverviewLabel(text, font: font)
-        prefixLabel.textColor = .secondaryLabelColor
-        prefixLabel.lineBreakMode = .byClipping
-        prefixLabel.usesSingleLineMode = true
-        prefixLabel.identifier = NSUserInterfaceItemIdentifier(identifier)
-        prefixLabel.frame = CGRect(
-            x: x,
-            y: frame.minY,
-            width: max(0, width),
-            height: frame.height
-        )
-        view.addSubview(prefixLabel)
-        return prefixLabel
+    private func updateBankedResetForecastSubtitleIfNeeded(in overview: NSView) {
+        guard let subtitle = descendantViews(of: overview, as: AccountMarqueeView.self).first(where: {
+            $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+        }) else { return }
+        let forecast = snapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+        ).resetForecast
+        guard forecast.showsOrdinaryForecastMetrics else { return }
+        subtitle.updateText(bankedResetForecastSubtitleText(forecast), preserveScrollPosition: true)
     }
 
     private func makeOverviewNumericAmount(
@@ -7035,6 +6943,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
+        updateBankedResetForecastSubtitleIfNeeded(in: overview)
         applyOfficialCountdownProgressIfNeeded(in: overview)
     }
 

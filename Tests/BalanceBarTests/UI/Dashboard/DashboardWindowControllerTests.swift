@@ -3692,6 +3692,30 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
     }
 
+    func testAccountMarqueePreservesOffsetAndAnimationOnlyForSameGeometryUpdates() throws {
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 96, height: 18))
+        let view = AccountMarqueeView(text: "Within 48h 34% extra long description", font: .monospacedDigitSystemFont(ofSize: 13, weight: .regular),
+                                     textColor: .secondaryLabelColor, frame: host.bounds)
+        host.addSubview(view)
+        defer { view.removeFromSuperview() }
+        view.applyScrollOffsetForTesting(-5)
+        let animation = try XCTUnwrap(view.accountLabel.layer?.animation(forKey: AccountMarqueeView.animationKey)?.copy() as? CAKeyframeAnimation)
+        animation.beginTime = view.accountLabel.layer!.convertTime(CACurrentMediaTime(), from: nil) - 1
+        view.accountLabel.layer?.add(animation, forKey: AccountMarqueeView.animationKey)
+        view.updateText("Within 48h 35% extra long description", preserveScrollPosition: true)
+        XCTAssertEqual(view.scrollOffset, -5)
+        XCTAssertEqual(view.accountLabel.layer?.animation(forKey: AccountMarqueeView.animationKey)?.beginTime, animation.beginTime)
+        view.updateText("Within 48h 100% extra long description", preserveScrollPosition: true)
+        XCTAssertEqual(view.scrollOffset, 0)
+        XCTAssertGreaterThan(view.scrollOverflow, 0)
+        view.applyScrollOffsetForTesting(-5)
+        view.updateText("Within 48h 101% extra long description")
+        XCTAssertEqual(view.scrollOffset, 0)
+        view.updateText("OK", preserveScrollPosition: true)
+        XCTAssertFalse(view.isScrollable)
+        XCTAssertNil(view.layer?.mask)
+    }
+
     func testAccountMarqueeSpeedsUpForLongerOverflowWithConcaveCurve() {
         let shortSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 120)
         let mediumSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 480)
@@ -4492,9 +4516,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilitySource)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)))
-        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48h)))
+        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])))
         XCTAssertTrue(labels.contains("24%"))
-        XCTAssertTrue(labels.contains("42%"))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidencePrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidenceLow)))
         XCTAssertFalse(
@@ -4576,17 +4599,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count,
             1
         )
-        let percent48 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability48h"
-            }
-        )
-        XCTAssertEqual(percent48.textField.stringValue, "42%")
-        XCTAssertEqual(percent48.textField.textColor, NSColor.secondaryLabelColor)
-        XCTAssertEqual(percent48.textField.lineBreakMode, .byClipping)
         let prefix48 = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
+            allControls(of: overview, as: AccountMarqueeView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
             }
         )
         let large24 = try XCTUnwrap(
@@ -4635,8 +4650,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         assertBankedResetForecastSubtitleFullyVisible(
-            prefix48,
-            expected: tr(.keyCodexBankedResetProbability48h)
+            prefix48.accountLabel,
+            expected: tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])
         )
         let firstChrome = try XCTUnwrap(chromes.first)
         let resetTitle = try XCTUnwrap(
@@ -4877,9 +4892,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilitySource)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)))
-        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48h)))
+        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])))
         XCTAssertTrue(labels.contains("24%"))
-        XCTAssertTrue(labels.contains("42%"))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidencePrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidenceLow)))
         XCTAssertTrue(labels.contains("2"))
@@ -4904,13 +4918,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             1
         )
         let prefix48 = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
-            }
-        )
-        let percent48 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability48h"
+            allControls(of: overview, as: AccountMarqueeView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
             }
         )
         let large24 = try XCTUnwrap(
@@ -4920,8 +4929,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(large24.stringValue, "24%")
         assertBankedResetForecastSubtitleFullyVisible(
-            prefix48,
-            expected: tr(.keyCodexBankedResetProbability48h)
+            prefix48.accountLabel,
+            expected: tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])
         )
         let probabilityTitle = try XCTUnwrap(
             allControls(of: overview, as: AccountMarqueeView.self).first {
@@ -5054,26 +5063,33 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let primary = try XCTUnwrap(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first)
             XCTAssertEqual(primary.stringValue, "24%", language.rawValue)
             XCTAssertEqual(primary.alignment, .right)
-            let expectedText = tr(.keyCodexBankedResetProbability48h) + " " + "42%"
-            if let marquee = allControls(of: overview, as: AccountMarqueeView.self).first(where: {
+            let expectedText = tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])
+            let marquee = try XCTUnwrap(allControls(of: overview, as: AccountMarqueeView.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
-            }) {
-                XCTAssertEqual(marquee.accountLabel.stringValue, expectedText)
-                XCTAssertTrue(marquee.isScrollable, language.rawValue)
-                XCTAssertLessThanOrEqual(marquee.frame.maxX, primary.frame.maxX)
-                XCTAssertEqual(marquee.frame.minX, title.frame.minX)
-            } else {
-                let prefix = try XCTUnwrap(allControls(of: overview, as: NSTextField.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
-                })
-                let value = try XCTUnwrap(allControls(of: overview, as: OverviewNumericTextView.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability48h"
-                })
-                XCTAssertEqual(prefix.stringValue + " " + value.textField.stringValue, expectedText)
-                assertBankedResetForecastSubtitleFullyVisible(prefix, expected: prefix.stringValue)
-                XCTAssertEqual(prefix.frame.minX, title.frame.minX)
-                XCTAssertLessThanOrEqual(value.frame.maxX, primary.frame.maxX)
+            })
+            XCTAssertEqual(marquee.accountLabel.stringValue, expectedText)
+            XCTAssertEqual(allControls(of: overview, as: AccountMarqueeView.self).filter {
+                $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+            }.count, 1)
+            XCTAssertFalse(allControls(of: overview, as: NSView.self).contains {
+                ["codex.bankedReset.probability48hPrefix", "codex.bankedReset.probability48h"].contains($0.identifier?.rawValue ?? "")
+            })
+            XCTAssertLessThanOrEqual(marquee.frame.maxX, primary.frame.maxX)
+            assertBankedResetProbabilityLeadingAligned(in: overview, title: title, subtitle: marquee)
+            controller.menuWillOpen(controller.statusMenuForTesting)
+            for probability in [CodexResetProbability.percent(35), .percent(0), .percent(100), .unavailable] {
+                var forecast = CodexResetForecast.demo(updatedAt: date)
+                forecast.probability48h = probability
+                controller.update(snapshot: .official("OpenAI Official", 45, windows[1].label, windows[1].reset,
+                    date, windows: windows, bankedReset: bankedReset, resetForecast: forecast),
+                    refreshDate: date, menuInput: input, settings: settings)
+                XCTAssertTrue(controller.menuItemsForTesting.first?.view === overview)
+                XCTAssertTrue(allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+                } === marquee)
+                XCTAssertEqual(marquee.accountLabel.stringValue, tr(.keyCodexBankedResetProbability48hFormat, arguments: [probability.displayText]))
             }
+            controller.menuDidClose(controller.statusMenuForTesting)
             XCTAssertFalse(allControls(of: overview, as: NSTextField.self).contains {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hPrefix"
                     || $0.identifier?.rawValue == "codex.bankedReset.probability24h"
@@ -5151,7 +5167,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
         ]
 
-        for (name, forecast, largeText, largeAnimates, text48, animates48) in cases {
+        for (name, forecast, largeText, largeAnimates, text48, _) in cases {
             let controller = StatusItemController(
                 actions: StatusItemController.Actions(
                     manualRefresh: {},
@@ -5245,17 +5261,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let small48Numeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
                 $0.identifier?.rawValue == "codex.bankedReset.probability48h"
             }
-            XCTAssertEqual(small48Numeric.count, animates48 ? 1 : 0, name)
-            if animates48 {
-                XCTAssertEqual(small48Numeric[0].textField.stringValue, text48, name)
-            } else {
-                XCTAssertTrue(labels.contains(text48), name)
-            }
+            XCTAssertEqual(small48Numeric.count, 0, name)
+            XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48hFormat, arguments: [text48])), name)
             let prefix48 = try XCTUnwrap(
-                allControls(of: overview, as: NSTextField.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
-                },
-                name
+                allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+                }
             )
             let probabilityTitle = try XCTUnwrap(
                 allControls(of: overview, as: AccountMarqueeView.self).first {
@@ -6729,34 +6740,17 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
-    private func visualTextMinX(of view: NSView, in host: NSView) -> CGFloat {
-        if let marquee = view as? AccountMarqueeView {
-            return visualTextMinX(of: marquee.accountLabel, in: host)
-        }
-        if let field = view as? NSTextField, let cell = field.cell {
-            return field.convert(cell.titleRect(forBounds: field.bounds).origin, to: host).x
-        }
-        return host.convert(NSPoint(x: view.bounds.minX, y: view.bounds.minY), from: view).x
-    }
-
     private func assertBankedResetProbabilityLeadingAligned(
         in overview: NSView,
         title: AccountMarqueeView,
-        subtitle: NSTextField,
+        subtitle: AccountMarqueeView,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let expected = OpenCodexCardLayout.horizontalInset
-        XCTAssertEqual(title.frame.minX, expected, accuracy: 0.001, file: file, line: line)
-        XCTAssertEqual(subtitle.frame.minX, expected, accuracy: 0.001, file: file, line: line)
-        let titleX = visualTextMinX(of: title, in: overview)
-        XCTAssertEqual(
-            visualTextMinX(of: subtitle, in: overview),
-            titleX,
-            accuracy: 0.5,
-            "forecast subtitle visual minX",
-            file: file,
-            line: line
-        )
+        XCTAssertEqual(title.frame.minX, OpenCodexCardLayout.horizontalInset, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(subtitle.frame.minX, title.frame.minX, accuracy: 0.001, file: file, line: line)
+        let titleInk = title.accountLabel.convert(NSPoint(x: AccountMarqueeView.leadingInkInset(of: title.accountLabel), y: 0), to: overview).x
+        let subtitleInk = subtitle.accountLabel.convert(NSPoint(x: AccountMarqueeView.leadingInkInset(of: subtitle.accountLabel), y: 0), to: overview).x
+        XCTAssertEqual(subtitleInk, titleInk, accuracy: 0.001, file: file, line: line)
     }
 }

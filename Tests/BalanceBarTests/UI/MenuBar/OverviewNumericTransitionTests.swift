@@ -964,11 +964,13 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertFalse(amountViews(in: officialOverview).contains {
             $0.identifier?.rawValue == "codex.bankedReset.probability24h"
         })
-        assertCentered(
-            .bankedResetProbability48h(provider: "OpenAI Official"),
-            horizontal: .leading,
-            in: officialOverview
-        )
+        XCTAssertFalse(amountViews(in: officialOverview).contains {
+            $0.identifier?.rawValue == "codex.bankedReset.probability48h"
+        })
+        let subtitle = try XCTUnwrap(descendantViews(of: officialOverview, as: AccountMarqueeView.self).first {
+            $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+        })
+        XCTAssertEqual(subtitle.accountLabel.stringValue, tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"]))
     }
 
     private func assertCentered(
