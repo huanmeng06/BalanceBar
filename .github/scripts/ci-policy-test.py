@@ -18,6 +18,7 @@ def load(name):
 
 scope = load('ci-scope')
 gate = load('ci-merge-gate')
+meta = load('ci-metadata-gate')
 READY = {'number': 499, 'state': 'open', 'draft': False,
          'head': {'sha': 'new'}, 'base': {'sha': 'base', 'ref': 'main'}}
 ENV = {'GITHUB_REPOSITORY': 'owner/repo', 'GITHUB_RUN_ID': '123',
@@ -109,6 +110,56 @@ class PolicyTests(unittest.TestCase):
             'pull_request', draft, draft,
             {'scope': 'success', 'full': 'success', 'version': 'skipped'}, False)
         self.assertFalse(accepted)
+
+    def test_metadata_gate_does_not_bypass_full(self):
+        log = ('2026-10-13T13:12:04.0Z PASS: Full CI for event head/base\n'
+               '2026-10-13T13:12:04.0Z Event head: new\n'
+               '2026-10-13T13:12:04.0Z Base: main / base\n'
+               '2026-10-13T13:12:04.0Z Checkout/merge SHA: merge\n')
+        self.assertTrue(meta.metadata_log_matches(log, READY, 'merge'))
+        self.assertFalse(meta.metadata_log_matches(log, READY, 'different-merge'))
+        changed = copy.deepcopy(READY)
+        changed['base']['sha'] = 'other'
+        self.assertFalse(meta.metadata_log_matches(log, changed, 'merge'))
+        self.assertFalse(meta.metadata_log_matches(log.replace('PASS:', 'FAIL:'), READY, 'merge'))
+        self.assertFalse(meta.metadata_log_matches('Event head: new\nBase: main / base', READY, 'merge'))
+
+    def test_metadata_selects_latest_real_validation(self):
+        run = lambda i: {'id': i, 'workflow_id': 9, 'event': 'pull_request',
+                         'head_sha': 'new', 'pull_requests': [{'number': 499}],
+                         'status': 'completed', 'conclusion': 'success'}
+        jobs = {
+            20: [{'name': meta.NAMES['scope'], 'conclusion': 'success'},
+                 {'name': 'PR merge gate', 'conclusion': 'success'}],
+            21: [{'name': meta.NAMES['scope'], 'conclusion': 'skipped'},
+                 {'name': 'PR merge gate', 'conclusion': 'success'}],
+            22: [{'name': meta.NAMES['scope'], 'conclusion': 'success'},
+                 {'name': 'Draft merge gate inactive (not required)', 'conclusion': 'success'}]}
+        args = (lambda i: jobs[i], 99, 9, 499, 'new')
+        source, _, error = meta.metadata_source([run(20), run(21)], *args)
+        self.assertEqual(source['id'], 20)
+        self.assertIsNone(error)
+        source, _, error = meta.metadata_source([run(20), run(21), run(22)], *args)
+        self.assertEqual(source['id'], 22)
+        self.assertIn('Draft', error)
+        wrong = dict(run(23), head_sha='other')
+        source, _, _ = meta.metadata_source([run(20), wrong], *args)
+        self.assertEqual(source['id'], 20)
+        failed_latest = [dict(j) for j in jobs[20]]
+        failed_latest[1]['conclusion'] = 'failure'
+        jobs[24] = failed_latest
+        source, selected, error = meta.metadata_source([run(20), run(24)], *args)
+        self.assertEqual(source['id'], 24)
+        self.assertEqual(selected[1]['conclusion'], 'failure')
+        self.assertIsNone(error)
+
+    def test_metadata_workflow_uses_required_name_and_real_evidence(self):
+        workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
+                    'build-and-test.yml').read_text(encoding='utf-8')
+        gate_job = workflow.split('\\n  merge-gate:\\n', 1)[1]
+        self.assertIn("- name: Confirm prior Full gate for metadata-only edit", gate_job)
+        self.assertIn("run: python3 .github/scripts/ci-metadata-gate.py", gate_job)
+        self.assertNotIn('PR metadata edit (no merge credential)', gate_job)
 
     def test_event_routes_and_retarget_full(self):
         for changes in ({'body': {'from': ''}}, {'title': {'from': 'old'}}):

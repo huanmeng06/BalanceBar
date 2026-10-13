@@ -234,7 +234,7 @@ shell syntax, classifier/policy tests and actionlint checks on Ubuntu.
 | Ready, entire PR version-only | Explicit `PR-wide version-only exemption (no XCTest)` | Gate accepts the named exemption, never reports XCTest PASS |
 | Ready target-branch edit | Force Full, including version-only PRs | Fresh gate checks base ref and SHA |
 | Draft target-branch edit | Fast | No required gate is published; Draft remains unmergeable |
-| Ready title/body edit only | Separate metadata acknowledgement; no compilation | No new merge credential; active validation unaffected |
+| Ready title/body edit only | Lightweight metadata verification; no recompilation or XCTest | Reissues the required `PR merge gate` only after confirming the latest eligible Ready Full/version gate on identical head/base/test-merge commit; otherwise blocks |
 | workflow_dispatch, any branch/state | Always Full, no version exemption | Separate `Manual Full result`, never a PR merge credential |
 
 Fast uses one unsigned Debug Xcode compilation, no CLI packaging, XCTest,
@@ -290,9 +290,18 @@ tests GitHub's synthetic merge commit (`GITHUB_SHA`), and summaries identify bot
 SHAs. Do not confuse check attachment with the integrated commit under test.
 Failure/cancellation/queued/missing/skipped Full never becomes a Full credential.
 Target changes subscribe to `edited`: Ready requires Full even when version-only;
-Draft retains Fast. Title/body-only edits publish `PR metadata edit (no merge
-credential)` in a unique metadata concurrency group and do not replace/cancel
-PR merge gate. Edited events lacking reliable change information revalidate.
+Draft retains Fast. Ready title/body-only edits also publish the REQUIRED `PR merge gate`
+without new XCTest, in a separate metadata concurrency group that does not cancel
+in-progress Full. The metadata step checks live PR head/base/ref and synthetic merge
+SHA against the most recent eligible Ready validation's successful gate execution;
+that gate must have genuine Full or version-exemption evidence. Historical run
+PR refs may be live projections, so the prior gate's own logged identity is
+verified instead. A newer incomplete/failed validation blocks; an earlier green
+cannot be borrowed across SHA, base or Draft transitions. GitHub can otherwise
+mark the PR blocked after a successful non-required metadata-only job despite
+older Full checks. This is the **sole** narrowly scoped cross-run reuse; code,
+retarget and Ready transitions still require fresh Full evidence. Edited events
+lacking reliable change information revalidate.
 
 PR validation events share concurrency by PR number and cancel obsolete runs; dispatch uses
 a separate group and check name. On a merge conflict GitHub may not trigger PR CI;

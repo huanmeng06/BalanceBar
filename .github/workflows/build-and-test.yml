@@ -253,7 +253,7 @@ jobs:
     # this job always starts, but the credential script runs ONLY for Ready PRs.
     # Ready gate has no needs: publish pending before Full finishes. No always()
     # override: workflow cancellation cancels this gate too.
-    name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'Draft merge gate inactive (not required)' || ((github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) && 'PR metadata edit (no merge credential)' || (github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result')) }}
+    name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'Draft merge gate inactive (not required)' || (github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -261,13 +261,15 @@ jobs:
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
         run: |
           echo 'Draft: no required PR merge gate is issued. Scope/Fast CI reports real development results; switching Ready starts a fresh Full gate.' >> "$GITHUB_STEP_SUMMARY"
-      - name: Metadata edit acknowledgement
-        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) }}
-        run: echo 'Title/body edit only; no CI or merge credential, active validation unaffected.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
-        if: ${{ github.event_name != 'pull_request' || (!github.event.pull_request.draft && !(github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body))) }}
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
         with:
           fetch-depth: 0
+      - name: Confirm prior Full gate for metadata-only edit
+        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci-metadata-gate.py
       - name: Wait for this attempt and verify live PR state
         if: ${{ github.event_name != 'pull_request' || (!github.event.pull_request.draft && !(github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body))) }}
         env:
