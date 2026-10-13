@@ -259,7 +259,8 @@ skip artifact/smoke, just as before.
 
 `PR merge gate` has no job dependencies: it is created immediately, so same-SHA
 Draft/Ready transitions replace the old check with a pending result while Full
-runs. It polls this exact run **and attempt** (never another run) via the read-only
+runs. It has no `always()` cancellation override, so cancelling the workflow
+cancels the gate too. It polls this exact run **and attempt** (never another run) via the read-only
 Actions jobs API and always fails closed on timeout/API failure. It accepts
 only same-run Full success or the successful explicit version exemption after
 scope validation and independently repeating the PR-wide version classifier. It re-reads live PR state and fails for Draft/closed or changed

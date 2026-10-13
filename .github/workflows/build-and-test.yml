@@ -244,9 +244,9 @@ jobs:
 
   merge-gate:
     # No needs: publish the pending check immediately, replacing an old green
-    # on same-SHA Draft/Ready transitions before Full finishes.
+    # on same-SHA Draft/Ready transitions before Full finishes. No always()
+    # override: workflow cancellation must cancel this check as well.
     name: ${{ github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result' }}
-    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
