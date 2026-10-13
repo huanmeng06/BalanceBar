@@ -195,8 +195,8 @@ struct AccountMarqueeLayout: Equatable {
 }
 
 /// Describes the visual state of a marquee from the offset actually applied to
-/// its scrolling label. A marquee may be configured and waiting at offset zero
-/// before its first movement; that state must remain unmasked.
+/// its scrolling label. Each edge fades only while that side has hidden text,
+/// including the stationary pause before the first movement.
 struct AccountMarqueeScrollState: Equatable {
     static let activationThreshold: CGFloat = 0.5
 
@@ -214,8 +214,16 @@ struct AccountMarqueeScrollState: Equatable {
     /// along the same curve on the return trip. Activity's noise threshold must
     /// not act as a binary switch for the visible mask.
     func fadeStrength(fadeWidth: CGFloat) -> CGFloat {
+        strength(hiddenDistance: -offset, fadeWidth: fadeWidth)
+    }
+
+    func trailingFadeStrength(fadeWidth: CGFloat) -> CGFloat {
+        strength(hiddenDistance: overflow + offset, fadeWidth: fadeWidth)
+    }
+
+    private func strength(hiddenDistance: CGFloat, fadeWidth: CGFloat) -> CGFloat {
         guard overflow > 0, fadeWidth > 0 else { return 0 }
-        let progress = min(1, max(0, -offset / fadeWidth))
+        let progress = min(1, max(0, hiddenDistance / fadeWidth))
         return progress * progress * (3 - 2 * progress)
     }
 }
@@ -236,7 +244,8 @@ final class AccountMarqueeView: NSView {
     private(set) var isScrollable = false
     private(set) var isScrolling = false
     private(set) var showsEdgeFade = false
-    private(set) var edgeFadeStrength: CGFloat = 0
+    private(set) var leadingEdgeFadeStrength: CGFloat = 0
+    private(set) var trailingEdgeFadeStrength: CGFloat = 0
     private(set) var edgeFadeInset: CGFloat = 0
     private(set) var scrollOverflow: CGFloat = 0
     private(set) var scrollDistance: CGFloat = 0
@@ -315,8 +324,15 @@ final class AccountMarqueeView: NSView {
         let font = accountLabel.font ?? .systemFont(ofSize: 13)
         let text = accountLabel.stringValue
         let fontSignature = Self.fontSignature(for: font)
+        // NSString reports glyph advances, whereas the NSTextField cell also
+        // reserves drawing insets. A narrow label clips its own trailing glyphs
+        // even after the outer viewport has scrolled all the way to the end.
+        let labelWidth = max(
+            Self.textWidth(of: text, font: font),
+            ceil(accountLabel.cell?.cellSize.width ?? 0)
+        )
         let nextLayout = AccountMarqueeLayout(
-            measuredTextWidth: Self.textWidth(of: text, font: font),
+            measuredTextWidth: labelWidth,
             clipBounds: bounds,
             fadeWidth: Self.defaultEdgeFadeWidth
         )
@@ -355,10 +371,7 @@ final class AccountMarqueeView: NSView {
                 NSNumber(value: Double($0))
             }
             edgeFadeMask = mask
-            // Keep the initial, zero-offset frame fully readable. The mask is
-            // attached only after the presentation layer reports real motion.
             layer?.mask = nil
-            showsEdgeFade = false
             updateEdgeFadeMaskFrame()
         } else {
             layer?.mask = nil
@@ -366,6 +379,9 @@ final class AccountMarqueeView: NSView {
             showsEdgeFade = false
         }
 
+        // Reapply even if the strengths match the previous geometry: resizing
+        // may have replaced the mask or changed its stop locations.
+        applyScrollState(AccountMarqueeScrollState(offset: 0, overflow: scrollOverflow), force: true)
         startScrollingIfNeeded()
     }
 
@@ -402,7 +418,7 @@ final class AccountMarqueeView: NSView {
         accountLabel.layer?.removeAnimation(forKey: Self.animationKey)
         scrollActivityTimer?.invalidate()
         scrollActivityTimer = nil
-        applyScrollState(AccountMarqueeScrollState(offset: 0, overflow: 0))
+        applyScrollState(AccountMarqueeScrollState(offset: 0, overflow: scrollOverflow))
     }
 
     private func startScrollActivityMonitoring() {
@@ -425,7 +441,7 @@ final class AccountMarqueeView: NSView {
     private func updateScrollActivity() {
         guard let labelLayer = accountLabel.layer,
               labelLayer.animation(forKey: Self.animationKey) != nil else {
-            applyScrollState(AccountMarqueeScrollState(offset: 0, overflow: 0))
+            applyScrollState(AccountMarqueeScrollState(offset: 0, overflow: scrollOverflow))
             return
         }
 
@@ -437,35 +453,38 @@ final class AccountMarqueeView: NSView {
         )
     }
 
-    private func applyScrollState(_ state: AccountMarqueeScrollState) {
+    private func applyScrollState(_ state: AccountMarqueeScrollState, force: Bool = false) {
         scrollOffset = state.offset
         isScrolling = state.isActive
 
-        let strength = state.fadeStrength(fadeWidth: edgeFadeInset)
-        guard strength != edgeFadeStrength else { return }
-        edgeFadeStrength = strength
+        let leading = state.fadeStrength(fadeWidth: edgeFadeInset)
+        let trailing = state.trailingFadeStrength(fadeWidth: edgeFadeInset)
+        guard force || leading != leadingEdgeFadeStrength || trailing != trailingEdgeFadeStrength else { return }
+        leadingEdgeFadeStrength = leading
+        trailingEdgeFadeStrength = trailing
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if strength > 0, let mask = edgeFadeMask {
+        if leading > 0 || trailing > 0, let mask = edgeFadeMask {
             let attaching = layer?.mask !== mask
             if attaching {
                 layer?.mask = mask
                 updateEdgeFadeMaskFrame()
             }
-            // Interpolate between presentation samples rather than showing
-            // 30Hz alpha steps. The first attachment is already nearly opaque.
+            // Interpolate between samples independently at each edge. The
+            // stationary start has only a trailing fade; the end only leading.
             CATransaction.setDisableActions(attaching)
             CATransaction.setAnimationDuration(Self.scrollActivityInterval)
             CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
-            let edge = NSColor.black.withAlphaComponent(1 - strength).cgColor
-            mask.colors = [edge, NSColor.black.cgColor, NSColor.black.cgColor, edge]
+            let leadingEdge = NSColor.black.withAlphaComponent(1 - leading).cgColor
+            let trailingEdge = NSColor.black.withAlphaComponent(1 - trailing).cgColor
+            mask.colors = [leadingEdge, NSColor.black.cgColor, NSColor.black.cgColor, trailingEdge]
         } else {
             layer?.mask = nil
             // Reset a retained mask for the next cycle's first attachment.
             edgeFadeMask?.colors = Array(repeating: NSColor.black.cgColor, count: 4)
         }
-        showsEdgeFade = strength > 0
+        showsEdgeFade = leading > 0 || trailing > 0
         CATransaction.commit()
     }
 
