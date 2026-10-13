@@ -824,23 +824,32 @@ enum OpenCodexCardLayout {
         let ticketContentMaxX = cardWidth - horizontalInset - bankedResetChromeInset
         let ticketTextX = horizontalInset + bankedResetChromeInset
             + bankedResetTicketIconSize.width + bankedResetTicketIconGap
-        let compactTextWidth = ticketContentMaxX - ticketTextX - bankedResetRemainingWidth - 6
-        let needsExpandedTickets = bankedDetailCount > 0 && bankedResetTicketMetrics.contains {
-            max($0.titleWidth, $0.windowWidth, $0.resetWidth) > compactTextWidth
-                || $0.amountWidth > bankedResetRemainingWidth
+        let fullTicketTextWidth = ticketContentMaxX - ticketTextX
+        let ticketInputs = (0..<bankedDetailCount).map { index -> (mode: OpenCodexTicketLayoutMode, amountWidth: CGFloat, height: CGFloat) in
+            guard bankedResetTicketMetrics.indices.contains(index) else {
+                return (.compact, bankedResetRemainingWidth, bankedResetDetailRowHeight)
+            }
+            let measured = bankedResetTicketMetrics[index]
+            let textWidth = max(measured.titleWidth, measured.windowWidth, measured.resetWidth)
+            // Preserve the existing column when it fits; otherwise reclaim unused
+            // countdown space before deciding that an additional line is needed.
+            let amountWidth = textWidth <= fullTicketTextWidth - bankedResetRemainingWidth - 6
+                && measured.amountWidth <= bankedResetRemainingWidth
+                ? bankedResetRemainingWidth : measured.amountWidth
+            let expanded = textWidth + amountWidth + 6 > fullTicketTextWidth
+            return (expanded ? .expanded : .compact, amountWidth,
+                    expanded ? bankedResetExpandedDetailRowHeight : bankedResetDetailRowHeight)
         }
-        let ticketLayoutMode: OpenCodexTicketLayoutMode = needsExpandedTickets ? .expanded : .compact
-        let bankedDetailHeight = ticketLayoutMode == .expanded
-            ? bankedResetExpandedDetailRowHeight
-            : bankedResetDetailRowHeight
-        let bankedVisibleTicketStackHeight = bankedResetVisibleTicketStackHeight(
-            cardCount: bankedDetailCount,
-            rowHeight: bankedDetailHeight
-        )
-        let bankedTicketsNeedScroll = bankedResetTicketsNeedScroll(
-            cardCount: bankedDetailCount,
-            rowHeight: bankedDetailHeight
-        )
+        let ticketHeights = ticketInputs.map(\.height)
+        let ticketStackHeight = ticketHeights.reduce(0, +)
+            + CGFloat(max(0, bankedDetailCount - 1)) * ticketGap
+        // The viewport shows the first two complete tickets and half of the third,
+        // including mixed compact/expanded lists in their displayed order.
+        let ticketViewportHeight = ticketHeights.prefix(2).reduce(0, +)
+            + (ticketHeights.count > 2 ? ticketHeights[2] / 2 + ticketGap * 2
+               : CGFloat(max(0, ticketHeights.count - 1)) * ticketGap)
+        let bankedVisibleTicketStackHeight = min(ticketStackHeight, ticketViewportHeight)
+        let bankedTicketsNeedScroll = ticketStackHeight > bankedVisibleTicketStackHeight + 0.5
         let bankedDetailBlockHeight = bankedDetailCount > 0
             ? bankedVisibleTicketStackHeight + bankedResetSummaryDetailGap
             : 0
@@ -1066,27 +1075,32 @@ enum OpenCodexCardLayout {
             let contentMinX = horizontalInset + chromeInset
             let contentMaxX = cardWidth - horizontalInset - chromeInset
             let textX = contentMinX + iconSize.width + bankedResetTicketIconGap
-            let remainingX = contentMaxX - bankedResetRemainingWidth
-            let titleWidth = max(64, remainingX - textX - 6)
-            let lineWidth = max(64, contentMaxX - textX)
+            let lineWidth = max(0, contentMaxX - textX)
             let lineGap = bankedResetTicketLineGap
-            let textBlockHeight = ticketLayoutMode == .expanded
-                ? quotaDetailHeight + quotaResetHeight * 2 + lineGap * 2 + quotaDetailHeight + lineGap
-                : quotaDetailHeight + quotaResetHeight * 2 + lineGap * 2
             return (0..<bankedDetailCount).map { index in
+                let input = ticketInputs[index]
+                let ticketLayoutMode = input.mode
+                let bankedDetailHeight = input.height
+                let remainingX = contentMaxX - input.amountWidth
+                let titleWidth = max(0, remainingX - textX - 6)
+                let textBlockHeight = ticketLayoutMode == .expanded
+                    ? quotaDetailHeight * 2 + quotaResetHeight * 2 + lineGap * 3
+                    : quotaDetailHeight + quotaResetHeight * 2 + lineGap * 2
                 // Unclipped 1–2 card lists stay in host coordinates so the
                 // existing two-ticket menu still paints at bottomInset.
                 // Clipped lists use document coordinates with y = 0 at the
                 // last ticket; the scroll view sits at `bottomInset`.
                 let originY: CGFloat = bankedTicketsNeedScroll ? 0 : bottomInset
                 let y = originY
-                    + CGFloat(bankedDetailCount - 1 - index) * (bankedDetailHeight + ticketGap)
+                    + ticketHeights.dropFirst(index + 1).reduce(0, +)
+                    + CGFloat(bankedDetailCount - 1 - index) * ticketGap
                 let textBlockY = y + (bankedDetailHeight - textBlockHeight) / 2
-                let expiryY = textBlockY
+                let expiryY = ticketLayoutMode == .expanded
+                    ? textBlockY + quotaDetailHeight + lineGap : textBlockY
                 let windowY = expiryY + quotaResetHeight + lineGap
                 let titleY = windowY + quotaResetHeight + lineGap
                 let amountY = ticketLayoutMode == .expanded
-                    ? titleY + quotaDetailHeight + lineGap
+                    ? textBlockY
                     : windowY + (quotaResetHeight - quotaDetailHeight) / 2
                 let iconY = y + (bankedDetailHeight - iconSize.height) / 2
                 return OpenCodexQuotaRowFrames(
@@ -1105,7 +1119,7 @@ enum OpenCodexCardLayout {
                     amount: CGRect(
                         x: ticketLayoutMode == .expanded ? textX : remainingX,
                         y: amountY,
-                        width: ticketLayoutMode == .expanded ? lineWidth : bankedResetRemainingWidth,
+                        width: ticketLayoutMode == .expanded ? lineWidth : input.amountWidth,
                         height: quotaDetailHeight
                     ),
                     progress: .zero,

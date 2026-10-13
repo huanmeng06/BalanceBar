@@ -4600,7 +4600,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ) / 2,
             accuracy: 1
         )
-        XCTAssertGreaterThanOrEqual(firstAmount.frame.minY, firstTitle.frame.maxY)
+        XCTAssertLessThanOrEqual(firstAmount.frame.maxY, firstExpiry.frame.minY)
         XCTAssertEqual(
             firstAmount.frame.maxX,
             firstChrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset,
@@ -6259,6 +6259,151 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         XCTAssertEqual(countField.stringValue, "10")
+    }
+
+    func testLocalizedResetTicketsMeasureEachRowAndKeepTextInsideChrome() throws {
+        for language in [AppLanguage.simplifiedChinese, .english, .spanish, .german, .french] {
+            for count in [1, 2, 4] {
+                let previousLanguage = AppLanguage.selected
+                defer { AppLanguage.selected = previousLanguage }
+                AppLanguage.selected = language
+
+                let controller = StatusItemController(
+                    actions: StatusItemController.Actions(
+                        manualRefresh: {},
+                        openDashboard: {},
+                        openChatGPT: {},
+                        openCCSwitch: {},
+                        quit: {},
+                        switchProvider: { _ in },
+                        openProviderWebsite: {},
+                        openStatusLink: { _ in },
+                        iconChanged: { _ in }
+                    )
+                )
+                defer { controller.teardown() }
+
+                let input = StatusItemController.MenuInput(
+                    choices: [],
+                    quickSwitchSummaries: [:],
+                    activeClient: .codex,
+                    openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+                    statusLinks: [],
+                    showQuickSwitchMenu: false,
+                    showOpenChatGPTMenu: false,
+                    showOpenCCSwitchMenu: false,
+                    showStatusMenu: false
+                )
+                let settings = StatusItemController.MenuBarSettings(
+                    showIcon: true,
+                    showAmount: true,
+                    showReset: true,
+                    horizontalPadding: 6,
+                    keepMenuOpenAfterRefresh: true
+                )
+                let date = Date()
+                let windows = [
+                    OfficialQuotaWindow(
+                        kind: .fiveHour,
+                        remaining: 80,
+                        label: tr(.keyResponseParsers5HourQuota),
+                        daysText: tr(.keyResponseParsers5Hours),
+                        reset: "2d0h",
+                        durationSeconds: 18_000
+                    ),
+                    OfficialQuotaWindow(
+                        kind: .sevenDay,
+                        remaining: 45,
+                        label: tr(.keyResponseParsers7DayQuota2),
+                        daysText: tr(.keyResponseParsers7Days4),
+                        reset: "7d0h",
+                        durationSeconds: 604_800
+                    )
+                ]
+                var cards: [CodexBankedResetCard] = []
+                cards.reserveCapacity(count)
+                for index in 0..<count {
+                    let expiresAt = date.addingTimeInterval(TimeInterval((index + 1) * 86_400))
+                    cards.append(
+                        CodexBankedResetCard(
+                            id: "card-\(index)",
+                            resetType: "codex_rate_limits",
+                            titleText: tr(.keyCodexBankedResetFullResetTitle),
+                            windowText: tr(.keyCodexBankedResetFullResetWindow),
+                            expiresAt: expiresAt,
+                            expiresText: CodexBankedResetFormatting.expiryText(
+                                for: expiresAt,
+                                relativeTo: date
+                            ),
+                            remainingText: language == .simplifiedChinese ? "1d" : "16 d 16 h",
+                            remainingIsWarning: index == 0
+                        )
+                    )
+                }
+                let bankedReset = CodexBankedReset(cards: cards)
+
+                controller.start(
+                    snapshot: .official(
+                        "OpenAI Official",
+                        45,
+                        windows[1].label,
+                        windows[1].reset,
+                        date,
+                        windows: windows,
+                        bankedReset: bankedReset,
+                        resetForecast: .demo(updatedAt: date)
+                    ),
+                    refreshDate: date,
+                    menuInput: input,
+                    settings: settings
+                )
+
+                let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+                let chromes = allControls(of: overview, as: BankedResetChromeView.self)
+                XCTAssertEqual(chromes.count, count)
+                for chrome in chromes {
+                    let labels = allControls(of: overview, as: NSTextField.self).filter {
+                        chrome.frame.contains($0.frame) && $0.superview === chrome.superview
+                    }
+                    let amount = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "codex.bankedReset.remaining" })
+                    XCTAssertEqual(amount.frame.maxX, chrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset, accuracy: 0.001)
+                    let title = try XCTUnwrap(labels.first { $0.stringValue == tr(.keyCodexBankedResetFullResetTitle) })
+                    let window = try XCTUnwrap(labels.first { $0.stringValue == tr(.keyCodexBankedResetFullResetWindow) })
+                    for label in [title, window] {
+                        let font = try XCTUnwrap(label.font)
+                        let measured = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width)
+                        let fullWidth = chrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset - label.frame.minX
+                        if measured + 4 <= fullWidth {
+                            XCTAssertLessThanOrEqual(measured + 4, label.frame.width, "\(language): \(label.stringValue)")
+                        } else {
+                            // Text wider than the entire content area may truncate, but
+                            // must get the full width and retain the system tail policy.
+                            XCTAssertEqual(label.frame.width, fullWidth, accuracy: 0.001)
+                            XCTAssertEqual(label.lineBreakMode, .byTruncatingTail)
+                        }
+                        XCTAssertTrue(label.frame.intersection(amount.frame).isEmpty)
+                    }
+                    if language == .spanish || language == .german || language == .french {
+                        XCTAssertEqual(chrome.frame.height, OpenCodexCardLayout.bankedResetExpandedDetailRowHeight)
+                        XCTAssertLessThanOrEqual(amount.frame.maxY, window.frame.minY)
+                    }
+                    XCTAssertEqual(chrome.frame.midY, try XCTUnwrap(allControls(of: overview, as: NSImageView.self).first {
+                        $0.identifier?.rawValue == "codex.bankedReset.ticket" && chrome.frame.contains($0.frame)
+                    }).frame.midY, accuracy: 0.001)
+                }
+                for index in 0..<count - 1 {
+                    XCTAssertEqual(chromes[index].frame.minY - chromes[index + 1].frame.maxY, 8, accuracy: 0.001)
+                }
+                let scrolls = allControls(of: overview, as: BankedResetTicketScrollView.self)
+                if count > 2 {
+                    let scroll = try XCTUnwrap(scrolls.first)
+                    XCTAssertEqual(scroll.frame.height, chromes[0].frame.height + chromes[1].frame.height + chromes[2].frame.height / 2 + 16, accuracy: 0.001)
+                    XCTAssertEqual(try XCTUnwrap(scroll.documentView).frame.height, chromes.map { $0.frame.height }.reduce(0, +) + CGFloat(count - 1) * 8, accuracy: 0.001)
+                } else {
+                    XCTAssertTrue(scrolls.isEmpty)
+                }
+            }
+        }
     }
 
     func testCCSwitchMenuItemStaysIndependentAndOpenCodexMenuItemIsAbsent() throws {

@@ -119,6 +119,8 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             bankedResetCardCount: 3,
             bankedResetDisplayMode: .detailed,
             bankedResetTicketMetrics: [
+                .init(titleWidth: 180, windowWidth: 190, resetWidth: 110, amountWidth: 62),
+                .init(titleWidth: 180, windowWidth: 190, resetWidth: 110, amountWidth: 62),
                 .init(titleWidth: 180, windowWidth: 190, resetWidth: 110, amountWidth: 62)
             ]
         )
@@ -134,7 +136,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertTrue(first.quotaDetail.maxX <= first.chrome.maxX - OpenCodexCardLayout.bankedResetChromeInset)
         XCTAssertTrue(first.window.maxX <= first.chrome.maxX - OpenCodexCardLayout.bankedResetChromeInset)
         XCTAssertTrue(first.amount.minX >= first.quotaDetail.minX)
-        XCTAssertTrue(first.amount.minY >= first.quotaDetail.maxY)
+        XCTAssertTrue(first.amount.maxY <= first.reset.minY)
         XCTAssertTrue(first.quotaDetail.intersection(first.amount).isEmpty)
         XCTAssertTrue(first.window.intersection(first.amount).isEmpty)
         XCTAssertEqual(
@@ -150,6 +152,25 @@ final class OpenCodexCardLayoutTests: XCTestCase {
                 rowHeight: OpenCodexCardLayout.bankedResetExpandedDetailRowHeight
             )
         )
+    }
+
+    func testMixedTicketHeightsDriveViewportAndDocumentCoordinates() throws {
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota, includesBankedReset: true, bankedResetCardCount: 4,
+            bankedResetTicketMetrics: [
+                .init(titleWidth: 40, windowWidth: 42, resetWidth: 38, amountWidth: 48),
+                .init(titleWidth: 180, windowWidth: 190, resetWidth: 110, amountWidth: 62),
+                .init(titleWidth: 40, windowWidth: 42, resetWidth: 38, amountWidth: 48),
+                .init(titleWidth: 180, windowWidth: 190, resetWidth: 110, amountWidth: 62)
+            ]
+        )
+        let rows = frames.bankedResetDetailRows
+        XCTAssertEqual(rows.map(\.chrome.height), [72, 96, 72, 96])
+        XCTAssertEqual(try XCTUnwrap(frames.bankedResetTicketViewport).height, 72 + 96 + 36 + 16)
+        XCTAssertEqual(rows[0].chrome.maxY, 72 + 96 + 72 + 96 + 24)
+        for index in 0..<3 {
+            XCTAssertEqual(rows[index].chrome.minY - rows[index + 1].chrome.maxY, 8)
+        }
     }
 
     func testOpenCodexCardLayoutMatchesExistingOfficialAndBalanceOverviewFrames() {

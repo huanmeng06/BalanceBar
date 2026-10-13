@@ -5711,10 +5711,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let bankedReset = quotaPresentation.bankedReset
         let bankedResetTicketMetrics = bankedReset?.cards.map {
             OpenCodexTicketTextMetrics(
-                titleWidth: textWidth($0.titleText, font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)),
-                windowWidth: textWidth($0.windowText ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)),
-                resetWidth: textWidth($0.expiresText ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)),
-                amountWidth: textWidth($0.remainingText ?? "", font: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium))
+                titleWidth: textWidth($0.titleText, font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4,
+                windowWidth: textWidth($0.windowText ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)) + 4,
+                resetWidth: textWidth(CodexBankedResetFormatting.expiryText(for: $0.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone) ?? $0.expiresText ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)) + 4,
+                amountWidth: textWidth($0.remainingText ?? "", font: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4
             )
         } ?? []
         let nearestExpiryText = bankedReset.flatMap {
@@ -5982,21 +5982,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     let ticketImage = Self.bankedResetTicketImage()
                     let ticketHost: NSView
                     let ticketScrollView: BankedResetTicketScrollView?
-                    let ticketRowHeight = layout.bankedResetDetailRows.first?.chrome.height
-                        ?? OpenCodexCardLayout.bankedResetDetailRowHeight
-                    if OpenCodexCardLayout.bankedResetTicketsNeedScroll(
-                        cardCount: bankedReset.cards.count,
-                        rowHeight: ticketRowHeight
-                    ), let viewport = layout.bankedResetTicketViewport {
+                    if let viewport = layout.bankedResetTicketViewport,
+                       layout.bankedResetDetailRows.map(\.chrome.height).reduce(0, +)
+                        + CGFloat(max(0, layout.bankedResetDetailRows.count - 1)) * OpenCodexCardLayout.metrics.ticketSpacing > viewport.height + 0.5 {
                         let document = BankedResetTicketDocumentView(
                             frame: NSRect(
                                 x: 0,
                                 y: 0,
                                 width: viewport.width,
-                                height: OpenCodexCardLayout.bankedResetTicketStackHeight(
-                                    cardCount: bankedReset.cards.count,
-                                    rowHeight: ticketRowHeight
-                                )
+                                height: layout.bankedResetDetailRows.map(\.chrome.maxY).max() ?? 0
                             )
                         )
                         let scrollView = BankedResetTicketScrollView(frame: viewport)
@@ -6070,7 +6064,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         }
 
                         if let windowLine, let remaining,
-                           remaining.frame.minY < row.quotaDetail.maxY {
+                           row.chrome.height == OpenCodexCardLayout.bankedResetDetailRowHeight {
                             alignOverviewLabelBaseline(remaining, to: windowLine)
                         }
 
