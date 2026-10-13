@@ -6021,29 +6021,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             ticketHost.addSubview(icon)
                         }
 
-                        let title = makeOverviewLabel(
+                        let title = makeTicketOverviewLabel(
                             card.titleText,
-                            font: .systemFont(
-                                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                                weight: .medium
-                            )
+                            font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium),
+                            textColor: .labelColor,
+                            frame: row.quotaDetail,
+                            identifier: "codex.bankedReset.ticketTitle"
                         )
-                        title.frame = row.quotaDetail
                         ticketHost.addSubview(title)
 
                         var windowLine: NSTextField?
                         if let windowText = card.windowText, !windowText.isEmpty {
-                            let label = makeOverviewLabel(
+                            let label = makeTicketOverviewLabel(
                                 windowText,
-                                font: .systemFont(
-                                    ofSize: OpenCodexCardLayout.quotaResetPointSize,
-                                    weight: .regular
-                                )
+                                font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular),
+                                textColor: .secondaryLabelColor,
+                                frame: row.window,
+                                identifier: "codex.bankedReset.ticketWindow"
                             )
-                            label.textColor = .secondaryLabelColor
-                            label.frame = row.window
                             ticketHost.addSubview(label)
-                            windowLine = label
+                            windowLine = label as? NSTextField
                         }
 
                         var remaining: NSTextField?
@@ -6069,15 +6066,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         }
 
                         if let expiresText = CodexBankedResetFormatting.expiryText(for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone) ?? (card.expiresAt == nil ? card.expiresText : nil), !expiresText.isEmpty {
-                            let subtitle = makeOverviewLabel(
+                            let subtitle = makeTicketOverviewLabel(
                                 expiresText,
-                                font: .systemFont(
-                                    ofSize: OpenCodexCardLayout.quotaResetPointSize,
-                                    weight: .regular
-                                )
+                                font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular),
+                                textColor: .secondaryLabelColor,
+                                frame: row.reset,
+                                identifier: "codex.bankedReset.ticketExpiry"
                             )
-                            subtitle.textColor = .secondaryLabelColor
-                            subtitle.frame = row.reset
                             ticketHost.addSubview(subtitle)
                         }
                     }
@@ -6275,6 +6270,27 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
     }
 
+    private func makeTicketOverviewLabel(
+        _ text: String,
+        font: NSFont,
+        textColor: NSColor,
+        frame: NSRect,
+        identifier: String
+    ) -> NSView {
+        let id = NSUserInterfaceItemIdentifier(identifier)
+        if textWidth(text, font: font) + 4 > frame.width {
+            let marquee = makeMarqueeOverviewLabel(text, font: font, textColor: textColor, frame: frame)
+            marquee.identifier = id
+            marquee.accountLabel.identifier = id
+            return marquee
+        }
+        let label = makeOverviewLabel(text, font: font)
+        label.textColor = textColor
+        label.frame = frame
+        label.identifier = id
+        return label
+    }
+
     private func overviewMarqueeFrame(
         _ baseFrame: NSRect,
         avoidingAmountFrame amountFrame: NSRect,
@@ -6282,7 +6298,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         amountFont: NSFont = .monospacedDigitSystemFont(
             ofSize: OpenCodexCardLayout.quotaAmountPointSize,
             weight: .semibold
-        )
+        ),
+        minimumAmountGap: CGFloat = 0
     ) -> NSRect {
         guard baseFrame.width > 0 else { return baseFrame }
 
@@ -6301,10 +6318,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let renderedAmountMinX = amountFrame.maxX - amountTextWidth
         let safeAmountMinX = max(amountFrame.minX, renderedAmountMinX)
-        let availableWidth = max(0, safeAmountMinX - baseFrame.minX)
-        // Give the marquee the whole safe viewport. Its horizontal mask owns
-        // the final fade inset, so the transparent edge ends exactly at the
-        // rendered amount rather than introducing a second hard-cut gap.
+        let availableWidth = max(0, safeAmountMinX - baseFrame.minX - minimumAmountGap)
+        // Keep any requested breathing room outside the marquee's fade mask,
+        // so even scrolling glyphs cannot reach the adjacent value.
         let expandedWidth = availableWidth
         return NSRect(
             x: baseFrame.minX,
@@ -6554,7 +6570,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     row.quotaDetail,
                     avoidingAmountFrame: amount.frame,
                     amountText: marqueeAmountText,
-                    amountFont: reservationFont
+                    amountFont: reservationFont,
+                    minimumAmountGap: 12
                 )
             )
         )
@@ -6567,7 +6584,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             ?? layout.bankedResetForecastMetrics {
             let metricsFrame = overviewMarqueeFrame(
                 subtitleFrame, avoidingAmountFrame: amount.frame,
-                amountText: marqueeAmountText, amountFont: reservationFont
+                amountText: marqueeAmountText, amountFont: reservationFont,
+                minimumAmountGap: 12
             )
             if forecast.showsOrdinaryForecastMetrics {
                 addBankedResetForecastMetrics(

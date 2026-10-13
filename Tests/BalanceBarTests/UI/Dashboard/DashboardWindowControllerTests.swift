@@ -6359,7 +6359,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                         date,
                         windows: windows,
                         bankedReset: bankedReset,
-                        resetForecast: .demo(updatedAt: date)
+                        resetForecast: CodexResetForecast(
+                            probability24h: .percent(20), probability48h: .percent(35),
+                            confidence: .low, updatedAt: date, isCached: false,
+                            officialSignal: CodexResetOfficialSignal(probability: .percent(83))
+                        )
                     ),
                     refreshDate: date,
                     menuInput: input,
@@ -6367,6 +6371,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 )
 
                 let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+                let probability = try XCTUnwrap(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first)
+                let probabilityTextMinX = probability.frame.maxX - AccountMarqueeView.textWidth(of: probability.stringValue, font: try XCTUnwrap(probability.font))
+                XCTAssertEqual(probability.stringValue, "83%")
+                let probabilityHint = try XCTUnwrap(allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.officialHint"
+                })
+                XCTAssertGreaterThanOrEqual(probabilityTextMinX - probabilityHint.frame.maxX, 12 - 0.001)
                 let chromes = allControls(of: overview, as: BankedResetChromeView.self)
                 XCTAssertEqual(chromes.count, count)
                 for chrome in chromes {
@@ -6375,25 +6386,33 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                     }
                     let amount = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "codex.bankedReset.remaining" })
                     XCTAssertEqual(amount.frame.maxX, chrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset, accuracy: 0.001)
-                    let title = try XCTUnwrap(labels.first { $0.stringValue == tr(.keyCodexBankedResetFullResetTitle) })
-                    let window = try XCTUnwrap(labels.first { $0.stringValue == tr(.keyCodexBankedResetFullResetWindow) })
-                    for label in [title, window] {
-                        let font = try XCTUnwrap(label.font)
-                        let measured = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width)
-                        let fullWidth = chrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset - label.frame.minX
-                        if measured + 4 <= fullWidth {
-                            XCTAssertLessThanOrEqual(measured + 4, label.frame.width, "\(language): \(label.stringValue)")
-                        } else {
-                            // Text wider than the entire content area may truncate, but
-                            // must get the full width and retain the system tail policy.
-                            XCTAssertEqual(label.frame.width, fullWidth, accuracy: 0.001)
-                            XCTAssertEqual(label.lineBreakMode, .byTruncatingTail)
+                    let textViews = chrome.superview?.subviews.filter {
+                        ["codex.bankedReset.ticketTitle", "codex.bankedReset.ticketWindow", "codex.bankedReset.ticketExpiry"].contains($0.identifier?.rawValue ?? "")
+                            && chrome.frame.contains($0.frame)
+                    } ?? []
+                    XCTAssertEqual(textViews.count, 3)
+                    for textView in textViews {
+                        XCTAssertTrue(textView.frame.intersection(amount.frame).isEmpty)
+                        if let marquee = textView as? AccountMarqueeView {
+                            XCTAssertTrue(marquee.isScrollable)
+                            XCTAssertEqual(marquee.accountLabel.lineBreakMode, .byClipping)
+                            XCTAssertTrue(marquee.layer?.masksToBounds == true)
+                            XCTAssertGreaterThan(marquee.accountLabel.frame.width, marquee.bounds.width)
+                            XCTAssertEqual(marquee.frame.maxX, chrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset, accuracy: 0.001)
+                        } else if let label = textView as? NSTextField {
+                            let font = try XCTUnwrap(label.font)
+                            let measured = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width)
+                            XCTAssertLessThanOrEqual(measured + 4, label.frame.width)
                         }
-                        XCTAssertTrue(label.frame.intersection(amount.frame).isEmpty)
+                    }
+                    if language == .german {
+                        let marquee = try XCTUnwrap(textViews.first { $0.identifier?.rawValue == "codex.bankedReset.ticketWindow" } as? AccountMarqueeView)
+                        XCTAssertEqual(marquee.accountLabel.stringValue, tr(.keyCodexBankedResetFullResetWindow))
+                        XCTAssertNotNil(marquee.accountLabel.layer?.animation(forKey: AccountMarqueeView.animationKey))
                     }
                     if language == .spanish || language == .german || language == .french {
                         XCTAssertEqual(chrome.frame.height, OpenCodexCardLayout.bankedResetExpandedDetailRowHeight)
-                        XCTAssertLessThanOrEqual(amount.frame.maxY, window.frame.minY)
+                        XCTAssertLessThanOrEqual(amount.frame.maxY, try XCTUnwrap(textViews.first { $0.identifier?.rawValue == "codex.bankedReset.ticketWindow" }).frame.minY)
                     }
                     XCTAssertEqual(chrome.frame.midY, try XCTUnwrap(allControls(of: overview, as: NSImageView.self).first {
                         $0.identifier?.rawValue == "codex.bankedReset.ticket" && chrome.frame.contains($0.frame)
