@@ -38,16 +38,122 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             bankedResetDisplayMode: .detailed
         )
 
-        XCTAssertEqual(frames.sectionLayouts.map(\.id), [.account, .quota, .resetProbability, .bankedReset])
+        XCTAssertEqual(frames.sectionLayouts.map(\.id), [.account, .fiveHour, .sevenDay, .resetProbability, .bankedReset])
         XCTAssertTrue(frames.sectionLayouts.allSatisfy { $0.height > 0 })
 
-        let quota = try XCTUnwrap(frames.sectionLayouts.first { $0.id == .quota })
+        let quota = try XCTUnwrap(frames.sectionLayouts.first { $0.id == .fiveHour })
         let probability = try XCTUnwrap(frames.sectionLayouts.first { $0.id == .resetProbability })
         let banked = try XCTUnwrap(frames.sectionLayouts.first { $0.id == .bankedReset })
         XCTAssertEqual(probability.height, OpenCodexCardLayout.bankedResetProbabilityBlockHeight(), accuracy: 0.001)
         XCTAssertGreaterThan(banked.height, probability.height)
-        XCTAssertGreaterThan(quota.height, OpenCodexCardLayout.quotaProgressRowHeight)
-        XCTAssertLessThan(quota.height, OpenCodexCardLayout.quotaProgressRowHeight * 2 + OpenCodexCardLayout.quotaRowGap)
+        XCTAssertEqual(quota.height, OpenCodexCardLayout.quotaProgressRowHeight)
+        XCTAssertEqual(quota.row?.progress.minY, 0)
+        XCTAssertEqual(quota.cardRow, frames.quotaRows.first)
+    }
+
+    func testSectionCompositionKeepsDocumentCoordinatesOutOfParentBounds() throws {
+        let frames = OpenCodexCardLayout.frames(for: .quota, includesBankedReset: true,
+            bankedResetCardCount: 8, bankedResetTicketMetrics: Array(repeating:
+                .init(titleWidth: 180, windowWidth: 190, resetWidth: 110, amountWidth: 62), count: 8))
+        let banked = try XCTUnwrap(frames.sectionLayouts.first { $0.id == .bankedReset })
+        let viewport = try XCTUnwrap(frames.bankedResetTicketViewport)
+        XCTAssertEqual(frames.bankedResetDetailRows.first?.chrome.maxY, 824)
+        XCTAssertEqual(viewport.height, 256)
+        XCTAssertEqual(banked.height, OpenCodexCardLayout.bankedResetSummaryHeight()
+            + OpenCodexCardLayout.bankedResetSummaryDetailGap + 256)
+        XCTAssertEqual(viewport.minY, banked.frame.minY)
+        XCTAssertTrue(banked.frame.contains(viewport))
+        XCTAssertEqual(frames.sectionLayouts.first?.id, .account)
+        XCTAssertNil(frames.account)
+    }
+
+    func testVisibleSectionsComposeWithoutOverlappingReserveOrHiddenGaps() throws {
+        let windows = [
+            OfficialQuotaWindow(kind: .fiveHour, remaining: 80, label: "5h", daysText: "5 hours", reset: "2h", durationSeconds: 18_000),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 45, label: "7d", daysText: "7 days", reset: "7d", durationSeconds: 604_800)
+        ]
+        for selected in [[windows[0]], [windows[1]], windows, []] {
+            for insertion in 0...selected.count {
+                for progress in [true, false] {
+                    for probability in [true, false] {
+                        for banked in [true, false] {
+                            let frames = OpenCodexCardLayout.frames(for: .quota,
+                                officialQuotaWindows: selected, includesLunaReserve: true,
+                                lunaReserveInsertionIndex: insertion, includesQuotaProgress: progress,
+                                includesBankedReset: banked, includesResetProbability: probability)
+                            let sections = frames.sectionLayouts
+                            XCTAssertEqual(sections.filter { $0.id == .account }.count, 1)
+                            XCTAssertEqual(frames.quotaRows.count, selected.count)
+                            XCTAssertEqual(sections.count, 2 + selected.count + (probability ? 1 : 0) + (banked ? 1 : 0))
+                            var gaps: CGFloat = 0
+                            for (upper, lower) in zip(sections, sections.dropFirst()) {
+                                let expected: CGFloat = upper.id == .account ? 11
+                                    : upper.id == .resetProbability && lower.id == .bankedReset ? 16
+                                    : lower.id == .resetProbability || lower.id == .bankedReset ? 22 : 12
+                                XCTAssertEqual(upper.frame.minY - lower.frame.maxY, expected, accuracy: 0.001)
+                                XCTAssertTrue(upper.frame.intersection(lower.frame).isEmpty)
+                                gaps += expected
+                            }
+                            XCTAssertEqual(frames.cardSize.height, sections.reduce(0) { $0 + $1.height } + gaps + 8 + 7)
+                        }
+                    }
+                }
+            }
+        }
+        for window in windows {
+            let frames = OpenCodexCardLayout.frames(for: .quota, officialQuotaWindows: [window])
+            XCTAssertEqual(frames.quotaRows.count, 1)
+            XCTAssertEqual(frames.sectionLayouts.map(\.id), [.account, .quota(window, index: 0)])
+        }
+    }
+
+    func testRealLocalizedTicketMeasurementsSelectOnlyOnCompetingWindowLine() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        for language in [AppLanguage.simplifiedChinese, .english, .spanish, .german, .french] {
+            AppLanguage.selected = language
+            func measured(_ text: String, _ font: NSFont) -> CGFloat {
+                let label = NSTextField(labelWithString: text)
+                label.font = font
+                return max(ceil(label.cell?.cellSize.width ?? 0), ceil((text as NSString).size(withAttributes: [.font: font]).width) + 4)
+            }
+            let detailFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+            let resetFont = NSFont.systemFont(ofSize: 13, weight: .regular)
+            let amountFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+            let metrics = OpenCodexTicketTextMetrics(
+                titleWidth: measured(tr(.keyCodexBankedResetFullResetTitle), detailFont),
+                windowWidth: measured(tr(.keyCodexBankedResetFullResetWindow), resetFont),
+                resetWidth: measured(CodexBankedResetFormatting.expiryText(for: Date().addingTimeInterval(86400), relativeTo: Date()) ?? "", resetFont),
+                amountWidth: measured(language == .simplifiedChinese ? "16 天 16 小时" : "16 d 16 h", amountFont))
+            let frames = OpenCodexCardLayout.frames(for: .quota, includesBankedReset: true,
+                bankedResetCardCount: 1, bankedResetTicketMetrics: [metrics])
+            let row = try XCTUnwrap(frames.bankedResetDetailRows.first)
+            let fullWidth = row.chrome.maxX - 12 - row.quotaDetail.minX
+            let expanded = metrics.windowWidth + metrics.amountWidth + 6 > fullWidth
+            XCTAssertEqual(row.chrome.height, expanded ? 96 : 72, language.rawValue)
+            XCTAssertEqual(row.quotaDetail.width, fullWidth)
+            XCTAssertEqual(row.reset.width, fullWidth)
+            XCTAssertEqual(row.amount.maxX, row.chrome.maxX - 12)
+            XCTAssertTrue(row.window.intersection(row.amount).isEmpty)
+            if !expanded {
+                XCTAssertGreaterThanOrEqual(row.window.width, metrics.windowWidth)
+                XCTAssertGreaterThanOrEqual(row.amount.width, metrics.amountWidth)
+                XCTAssertEqual(row.amount.midY, row.window.midY)
+            }
+        }
+    }
+
+    func testIndependentTicketLinesDoNotForceExpansionForLongTitleOrExpiry() throws {
+        let frames = OpenCodexCardLayout.frames(for: .quota, includesBankedReset: true,
+            bankedResetCardCount: 1,
+            bankedResetTicketMetrics: [.init(titleWidth: 400, windowWidth: 42, resetWidth: 400, amountWidth: 48)])
+        let row = try XCTUnwrap(frames.bankedResetDetailRows.first)
+        XCTAssertEqual(row.chrome.height, 72)
+        XCTAssertEqual(row.quotaDetail.maxX, row.chrome.maxX - 12)
+        XCTAssertEqual(row.reset.maxX, row.chrome.maxX - 12)
+        XCTAssertLessThanOrEqual(row.window.maxX + 6, row.amount.minX)
+        XCTAssertTrue(row.quotaDetail.intersection(row.amount).isEmpty)
+        XCTAssertTrue(row.reset.intersection(row.amount).isEmpty)
     }
 
     func testCompactBankedResetDoesNotReserveTicketSectionHeight() {

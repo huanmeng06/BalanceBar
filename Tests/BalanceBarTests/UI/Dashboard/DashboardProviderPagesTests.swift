@@ -4,6 +4,17 @@ import XCTest
 
 @MainActor
 final class DashboardProviderPagesTests: XCTestCase {
+    private var previousLanguage = AppLanguage.system
+    override func setUp() {
+        super.setUp()
+        previousLanguage = AppLanguage.selected
+        AppLanguage.selected = .english
+    }
+    override func tearDown() {
+        AppLanguage.selected = previousLanguage
+        super.tearDown()
+    }
+
     func testSearchAndSortArePureAndStable() {
         let choices = [
             ProviderChoice(id: "zeta", name: "Zeta", isCurrent: false),

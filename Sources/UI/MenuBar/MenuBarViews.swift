@@ -13,6 +13,52 @@ class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+/// Section controls always use local coordinates; the menu host owns placement
+/// and event forwarding. Stable IDs also survive value-only refreshes.
+class OpenCodexOverviewSectionView: NSView {
+    let sectionID: OpenCodexOverviewSectionID
+    var measuredHeight: CGFloat { frame.height }
+    override var intrinsicContentSize: NSSize { NSSize(width: frame.width, height: measuredHeight) }
+
+    func updatePlacement(_ layout: OpenCodexOverviewSectionLayout) {
+        precondition(layout.id == sectionID)
+        frame = layout.frame
+        invalidateIntrinsicContentSize()
+    }
+
+    init(layout: OpenCodexOverviewSectionLayout) {
+        sectionID = layout.id
+        super.init(frame: layout.frame)
+        identifier = NSUserInterfaceItemIdentifier("codex.overview.section.\(layout.id.identifier)")
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
+final class OpenCodexAccountSectionView: OpenCodexOverviewSectionView {}
+/// Shared title/subtitle/amount/progress template for all metric sections.
+class OpenCodexMetricSectionView: OpenCodexOverviewSectionView {
+    private(set) var titleView: NSView?
+    private(set) var subtitleView: NSView?
+    private(set) var amountView: NSView?
+    private(set) var progressView: NSView?
+
+    func updateText(title: String, subtitle: String) {
+        (titleView as? AccountMarqueeView)?.updateText(title, preserveScrollPosition: true)
+        (subtitleView as? AccountMarqueeView)?.updateText(subtitle, preserveScrollPosition: true)
+    }
+
+    func installMetric(title: NSView, subtitle: NSView?, amount: NSView, progress: NSView? = nil) {
+        titleView = title
+        subtitleView = subtitle
+        amountView = amount
+        progressView = progress
+        [progress, amount, title, subtitle].compactMap { $0 }.forEach(addSubview)
+    }
+}
+
+final class OpenCodexBankedResetSectionView: OpenCodexMetricSectionView {}
+
 /// Thin, non-interactive outline used to make overview section boundaries
 /// visible while exercising the modular card layout.
 final class OverviewSectionOutlineView: PassthroughView {

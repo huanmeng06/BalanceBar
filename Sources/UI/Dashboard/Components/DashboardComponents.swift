@@ -971,6 +971,31 @@ class HoverLinkTextField: NSTextField {
 /// It intentionally tracks the card only to forward movement; the link keeps
 /// the glyph-only hit test and activation boundary but not its own hover owner.
 final class MenuHoverLinkHostView: NSView {
+    var overviewLayout: OpenCodexCardFrames?
+    var providerIdentity = ""
+    var forecastContentKey = ""
+    var bankedResetCardIDs: [String?] = []
+    private(set) var isMenuContentVisible = false
+    private var ticketBoundsObserver: NSObjectProtocol?
+
+    deinit {
+        if let ticketBoundsObserver { NotificationCenter.default.removeObserver(ticketBoundsObserver) }
+        if let ticketScrollMonitor { NSEvent.removeMonitor(ticketScrollMonitor) }
+    }
+
+    func setMenuContentVisible(_ visible: Bool) {
+        isMenuContentVisible = visible
+        refreshMarqueeVisibility()
+    }
+
+    func refreshMarqueeVisibility() {
+        func visit(_ node: NSView) {
+            (node as? AccountMarqueeView)?.refreshScrollVisibility()
+            node.subviews.forEach(visit)
+        }
+        visit(self)
+    }
+
     private weak var link: HoverLinkTextField?
     private weak var ticketScrollView: BankedResetTicketScrollView?
     private var trackingAreaReference: NSTrackingArea?
@@ -995,6 +1020,11 @@ final class MenuHoverLinkHostView: NSView {
 
     func trackTicketScroll(_ scrollView: BankedResetTicketScrollView) {
         ticketScrollView = scrollView
+        if let ticketBoundsObserver { NotificationCenter.default.removeObserver(ticketBoundsObserver) }
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        ticketBoundsObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
+        ) { [weak self] _ in self?.refreshMarqueeVisibility() }
         installTicketScrollMonitor()
     }
 
@@ -1017,6 +1047,7 @@ final class MenuHoverLinkHostView: NSView {
         refreshTrackingArea()
         synchronizeHoverState()
         installTicketScrollMonitor()
+        refreshMarqueeVisibility()
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -1041,6 +1072,7 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     override func removeFromSuperview() {
+        setMenuContentVisible(false)
         tearDownWindowTracking()
         super.removeFromSuperview()
     }
@@ -1094,10 +1126,13 @@ final class MenuHoverLinkHostView: NSView {
             link?.clearHoverState()
     }
 
-    private func handleTicketScroll(_ event: NSEvent) -> Bool {
+    func containsTicketScrollPoint(_ pointInWindow: NSPoint) -> Bool {
         guard let ticketScrollView else { return false }
-        let point = convert(event.locationInWindow, from: nil)
-        guard ticketScrollView.frame.contains(point) else { return false }
+        return ticketScrollView.bounds.contains(ticketScrollView.convert(pointInWindow, from: nil))
+    }
+
+    private func handleTicketScroll(_ event: NSEvent) -> Bool {
+        guard let ticketScrollView, containsTicketScrollPoint(event.locationInWindow) else { return false }
         ticketScrollView.scrollWheel(with: event)
         return true
     }
