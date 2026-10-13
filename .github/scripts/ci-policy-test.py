@@ -84,8 +84,9 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(scope.classify([('D', 'old.swift'), ('A', 'docs/new.md')]), (True, True, False))
 
     def test_draft_does_not_publish_a_required_merge_gate(self):
-        # A skipped job named "PR merge gate" can satisfy a required check on
-        # GitHub. Draft must use a different job name and skip its runner.
+        # A skipped job named "PR merge gate" can satisfy a required check.
+        # Run a small successful Draft-named job instead. GitHub displays raw
+        # expression strings for skipped jobs with dynamic names.
         workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
                     'build-and-test.yml').read_text(encoding='utf-8')
         gate_job = workflow.split('\n  merge-gate:\n', 1)[1]
@@ -94,10 +95,14 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("github.event.pull_request.draft && "
                       "'Draft merge gate inactive (not required)'", name_line)
         self.assertIn("'PR merge gate'", name_line)
-        self.assertIn("if: ${{ github.event_name != 'pull_request' || "
-                      "!github.event.pull_request.draft }}", gate_job)
-        # GitHub will still reject an attempted Draft merge; do not provide
-        # any Full credential when an accidental call supplies a Draft event.
+        self.assertIn("- name: Draft status only (not a merge credential)", gate_job)
+        self.assertIn("if: ${{ github.event_name == 'pull_request' && "
+                      "github.event.pull_request.draft }}", gate_job)
+        self.assertNotIn("    if: ${{ github.event_name != 'pull_request' || "
+                         "!github.event.pull_request.draft }}\n", gate_job)
+        # The gate credential script must NEVER run in Draft, even when the
+        # draft PR is converted from an earlier Ready with a green Full.
+        self.assertIn("!github.event.pull_request.draft && !(", gate_job)
         draft = copy.deepcopy(READY)
         draft['draft'] = True
         accepted, _ = gate.verdict(

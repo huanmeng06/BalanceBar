@@ -229,7 +229,7 @@ shell syntax, classifier/policy tests and actionlint checks on Ubuntu.
 
 | Event/state | Validation | Merge result |
 | --- | --- | --- |
-| Draft open/push/reopen/convert | Fast Debug build + localization probes for non-documentation changes; documentation adds/edits skip app build | Distinct `Draft merge gate inactive (not required)` job is skipped (no runner / no deliberate failure); GitHub prohibits merging Draft PRs |
+| Draft open/push/reopen/convert | Fast Debug build + localization probes for non-documentation changes; documentation adds/edits skip app build | A short successful `Draft merge gate inactive (not required)` check has no merge credential; GitHub prohibits merging Draft PRs |
 | Ready open/push/reopen/convert | Full CLI + probes + build-for-testing + all serial XCTest + artifact/smoke | Gate requires this run's successful Full |
 | Ready, entire PR version-only | Explicit `PR-wide version-only exemption (no XCTest)` | Gate accepts the named exemption, never reports XCTest PASS |
 | Ready target-branch edit | Force Full, including version-only PRs | Fresh gate checks base ref and SHA |
@@ -261,8 +261,10 @@ its contracted scope; version-only exemptions intentionally skip smoke. Full ver
 skip artifact/smoke, just as before.
 
 Draft validation does not publish `PR merge gate` at all. Its separate
-`Draft merge gate inactive (not required)` job is skipped without starting a
-runner or failing the workflow; only Scope/Fast determines Draft test health.
+`Draft merge gate inactive (not required)` check runs a short successful
+informational job with no validation credential; only Scope/Fast determines
+Draft test health. A dedicated runner is needed because GitHub does not
+reliably evaluate dynamic job names for skipped jobs.
 A skipped job with the **required** check name would be unsafe because GitHub
 accepts skipped required checks as passing. Draft PRs cannot merge under GitHub's
 PR rules. On `ready_for_review`, the real `PR merge gate` has no dependencies and

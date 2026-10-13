@@ -247,26 +247,28 @@ jobs:
             "$artifact_root/BalanceBar.app"
 
   merge-gate:
-    # Draft PRs cannot be merged by GitHub. Do not create a failing required
-    # check for normal Draft iterations: the skipped check has a DIFFERENT name.
-    # Never name a skipped job "PR merge gate": skipped satisfies required checks.
-    # Ready PRs create the real gate immediately (no needs), replacing older
-    # green checks with pending before Full finishes. Workflow cancellation also
-    # cancels this gate because there is no always() override.
+    # Draft has a short successful job with a DIFFERENT name. Do not skip an
+    # actual job named "PR merge gate": skipped counts as a passing required check.
+    # GitHub may display raw name expressions for job-level skipped jobs, so
+    # this job always starts, but the credential script runs ONLY for Ready PRs.
+    # Ready gate has no needs: publish pending before Full finishes. No always()
+    # override: workflow cancellation cancels this gate too.
     name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'Draft merge gate inactive (not required)' || ((github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) && 'PR metadata edit (no merge credential)' || (github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result')) }}
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      - name: Draft status only (not a merge credential)
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
+        run: echo 'Draft: no required PR merge gate is issued. Scope/Fast CI reports real development results; switching Ready starts a fresh Full gate.' >> "$GITHUB_STEP_SUMMARY"
       - name: Metadata edit acknowledgement
-        if: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) }}
+        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) }}
         run: echo 'Title/body edit only; no CI or merge credential, active validation unaffected.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
-        if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) }}
+        if: ${{ github.event_name != 'pull_request' || (!github.event.pull_request.draft && !(github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body))) }}
         with:
           fetch-depth: 0
       - name: Wait for this attempt and verify live PR state
-        if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) }}
+        if: ${{ github.event_name != 'pull_request' || (!github.event.pull_request.draft && !(github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body))) }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/ci-merge-gate.py
