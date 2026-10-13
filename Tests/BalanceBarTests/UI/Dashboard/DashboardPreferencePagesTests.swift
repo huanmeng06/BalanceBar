@@ -10504,15 +10504,6 @@ extension DashboardPreferencePagesTests {
         XCTAssertTrue(raw.contains("status=401"))
     }
 
-    func testDiagnosticLogReaderIncludesPendingRecoveryRecords() throws {
-        try requireIsolatedDiagnosticDirectory()
-        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
-        let recovery = SwitchLog.directoryURL.appendingPathComponent("debug.recovery.log")
-        try Data("# recovery-batch=test-batch\n[recovery] pending event\n".utf8).write(to: recovery)
-        defer { try? FileManager.default.removeItem(at: recovery) }
-        guard case .data(let text, _, _) = SwitchLog.readSnapshot() else { return XCTFail("expected recovery data") }
-        XCTAssertTrue(text.contains("pending event"))
-    }
 
     private func requireIsolatedDiagnosticDirectory() throws {
         let directory = URL(fileURLWithPath: "/tmp/BalanceBarDiagnosticTests-\(UUID().uuidString)", isDirectory: true)

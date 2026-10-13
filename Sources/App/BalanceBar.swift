@@ -35,7 +35,6 @@ enum SwitchLog {
     private static let maximumArchives = 10
     private static let maximumStorageSize = 60 * 1_024 * 1_024
     private static let viewerMaximumBytes = 160 * 1_024
-    private static let recoveryMaximumBytes = 5 * 1_024 * 1_024
     private static var lastWriteDates: [String: Date] = [:]
     private static var sessionID: String?
     private static var testingDirectoryURL: URL?
@@ -63,13 +62,10 @@ enum SwitchLog {
     }
 
     static var fileURL: URL { directoryURL.appendingPathComponent("debug.log") }
-    private static var recoveryURL: URL { directoryURL.appendingPathComponent("debug.recovery.log") }
-    private static var recoveryCommitURL: URL { directoryURL.appendingPathComponent(".recovery-committed") }
     private static var sequenceURL: URL { directoryURL.appendingPathComponent(".sequence") }
     private static var lockURL: URL { directoryURL.appendingPathComponent(".lock") }
     private static var legacyFileURL: URL { URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/debug.log").expandingTildeInPath) }
     private static var legacyPreviousURL: URL { legacyFileURL.deletingLastPathComponent().appendingPathComponent("debug.previous.log") }
-    private static let recoveryBatchMarker = "# recovery-batch="
 
     static var archiveURLs: [URL] {
         scanFiles().files.filter { $0.lastPathComponent.hasPrefix("debug-") && $0.pathExtension == "log" }
@@ -87,14 +83,10 @@ enum SwitchLog {
             do {
                 try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
                 try withFileLock {
-                    let eventID = UUID().uuidString
-                    let record = try makeRecord(message, level: level, category: category, date: now, eventID: eventID)
                     do {
                         try ensureSessionStarted(at: now)
-                        try recoverPendingLog()
-                        try appendRecord(try makeRecord(message, level: level, category: category, date: now, eventID: eventID))
+                        try appendRecord(try makeRecord(message, level: level, category: category, date: now))
                     } catch {
-                        try appendRecovery(record)
                         NSLog("BalanceBar diagnostic log deferred; error_code=%ld", error._code)
                     }
                     pruneArchives()
@@ -124,7 +116,7 @@ enum SwitchLog {
     }
 
     static func exportAll(to destination: URL) throws {
-        let protected = [fileURL, recoveryURL, sequenceURL, lockURL, legacyFileURL, legacyPreviousURL] + archiveURLs
+        let protected = [fileURL, sequenceURL, lockURL, legacyFileURL, legacyPreviousURL] + archiveURLs
             let destinationURL = destination.standardizedFileURL
             guard !protected.contains(where: { $0.standardizedFileURL == destinationURL }) else {
                 throw NSError(domain: "BalanceBar.Diagnostics", code: 4, userInfo: [NSLocalizedDescriptionKey: "The export destination is part of the diagnostic store."])
@@ -133,7 +125,8 @@ enum SwitchLog {
             guard !snapshot.text.isEmpty else { throw NSError(domain: "BalanceBar.Diagnostics", code: 1, userInfo: [NSLocalizedDescriptionKey: "No diagnostic logs are available."]) }
             let warningText = redact(snapshot.warnings.joined(separator: " | "))
             let header = "# BalanceBar diagnostic export\n# Environment: \(environmentName)\n# Warnings: \(warningText)\n\n"
-            guard let data = (header + redact(snapshot.text)).data(using: .utf8) else {
+            let sanitizedBody = snapshot.text.split(separator: "\n", omittingEmptySubsequences: false).map { redact(String($0)) }.joined(separator: "\n")
+            guard let data = (header + sanitizedBody).data(using: .utf8) else {
                 throw NSError(domain: "BalanceBar.Diagnostics", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to encode diagnostic logs."])
             }
         try data.write(to: destination, options: .atomic)
@@ -149,7 +142,7 @@ enum SwitchLog {
 
     private struct FileReadSnapshot { var text = ""; var truncated = false; var warnings: [String] = [] }
 
-    private static func readFilesLocked(previewLimit: Int?, includeRecovery: Bool = true) -> FileReadSnapshot {
+    private static func readFilesLocked(previewLimit: Int?) -> FileReadSnapshot {
         var urls: [URL] = []
         if testingDirectoryURL == nil {
             if FileManager.default.fileExists(atPath: legacyPreviousURL.path) { urls.append(legacyPreviousURL) }
@@ -157,10 +150,8 @@ enum SwitchLog {
         }
         let scan = scanFiles()
         urls.append(contentsOf: scan.files.filter { $0.lastPathComponent.hasPrefix("debug-") && $0.pathExtension == "log" })
-        if includeRecovery, FileManager.default.fileExists(atPath: recoveryURL.path) { urls.append(recoveryURL) }
         urls.append(fileURL)
         var output = FileReadSnapshot()
-        var seenEventIDs = Set<String>()
         if let warning = scan.warning { output.warnings.append(warning) }
         for url in urls {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
@@ -168,7 +159,7 @@ enum SwitchLog {
                 let tail = try readTail(of: url, maximumBytes: previewLimit)
                 let data = tail.data
                 let isValidUTF8 = String(data: data, encoding: .utf8) != nil
-                let decoded = uniqueRecords(String(decoding: data, as: UTF8.self), seenEventIDs: &seenEventIDs)
+                let decoded = String(decoding: data, as: UTF8.self)
                 if !isValidUTF8 { output.warnings.append("损坏或非法 UTF-8：\(url.lastPathComponent)") }
                 if tail.wasTruncated && previewLimit != nil {
                     output.truncated = true
@@ -182,36 +173,7 @@ enum SwitchLog {
             output.text = tail.firstIndex(of: "\n").map { String(tail[tail.index(after: $0)...]) } ?? tail
             output.truncated = true
         }
-        output.text = orderedRecords(output.text)
         return output
-    }
-
-    private static func orderedRecords(_ text: String) -> String {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        guard lines.count > 1 else { return text }
-        let indexed = lines.enumerated().map { index, line in (index, line, timestamp(in: line)) }
-        return indexed.sorted { lhs, rhs in
-            switch (lhs.2, rhs.2) {
-            case let (left?, right?): return left == right ? lhs.0 < rhs.0 : left < right
-            default: return lhs.0 < rhs.0
-            }
-        }.map(\.1).joined(separator: "\n")
-    }
-
-    private static func timestamp(in line: String) -> Date? {
-        guard line.first == "[", let end = line.firstIndex(of: "]") else { return nil }
-        return timestampFormatter.date(from: String(line[line.index(after: line.startIndex)..<end]))
-    }
-
-    private static func uniqueRecords(_ text: String, seenEventIDs: inout Set<String>) -> String {
-        text.split(separator: "\n", omittingEmptySubsequences: false).compactMap { line in
-            if line.hasPrefix(recoveryBatchMarker) { return nil }
-            let value = String(line)
-            if let id = eventID(in: value) {
-                guard seenEventIDs.insert(id).inserted else { return nil }
-            }
-            return value
-        }.joined(separator: "\n")
     }
 
     private struct TailRead { let data: Data; let wasTruncated: Bool }
@@ -235,14 +197,14 @@ enum SwitchLog {
         return TailRead(data: try handle.readToEnd() ?? Data(), wasTruncated: true)
     }
 
-    private static func makeRecord(_ message: String, level: Level, category: String, date: Date, eventID: String = UUID().uuidString) throws -> Data {
+    private static func makeRecord(_ message: String, level: Level, category: String, date: Date) throws -> Data {
         let cleanMessage = redact(message).replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\r", with: "\\r").replacingOccurrences(of: "\n", with: "\\n")
         let cleanCategory = redact(category).replacingOccurrences(of: "\r", with: "\\r").replacingOccurrences(of: "\n", with: "\\n")
         let prefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(cleanCategory)] [session=\(sessionID ?? "pending")] "
         let suffix = "\n"
         let originalBytes = cleanMessage.utf8.count
         let boundedCategory = String(cleanCategory.prefix(256))
-        let boundedPrefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(boundedCategory)] [session=\(sessionID ?? "pending")] [event_id=\(eventID)] "
+        let boundedPrefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(boundedCategory)] [session=\(sessionID ?? "pending")] "
         let budget = maximumSize - boundedPrefix.utf8.count - suffix.utf8.count
         let body: String
         if originalBytes <= budget { body = cleanMessage }
@@ -291,76 +253,6 @@ enum SwitchLog {
         try FileManager.default.moveItem(at: fileURL, to: archive)
     }
 
-    private static func appendRecovery(_ data: Data) throws {
-        let existing: Data
-        if FileManager.default.fileExists(atPath: recoveryURL.path) {
-            existing = try Data(contentsOf: recoveryURL)
-        } else {
-            existing = Data()
-        }
-        let envelope = Data("\(recoveryBatchMarker)\(UUID().uuidString)\n".utf8) + data
-        guard existing.count + envelope.count <= recoveryMaximumBytes else {
-            throw NSError(domain: "BalanceBar.Diagnostics", code: 3, userInfo: [NSLocalizedDescriptionKey: "Recovery log capacity is full; the complete event was not stored."])
-        }
-        try (existing + envelope).write(to: recoveryURL, options: .atomic)
-    }
-
-    private static func recoverPendingLog() throws {
-        guard FileManager.default.fileExists(atPath: recoveryURL.path) else { return }
-        let data = try Data(contentsOf: recoveryURL)
-        guard !data.isEmpty else { try FileManager.default.removeItem(at: recoveryURL); return }
-        let text = String(decoding: data, as: UTF8.self)
-        var committed = try readCommittedEventIDs()
-        let pendingRecords = text.split(separator: "\n").filter { !$0.hasPrefix(recoveryBatchMarker) && !$0.isEmpty }
-        let unresolved = pendingRecords.filter { record in
-            guard let eventID = eventID(in: String(record)) else { return true }
-            return !committed.contains(eventID)
-        }
-        var existing = ""
-        if unresolved.contains(where: { eventID(in: String($0)) != nil }) {
-            let snapshot = readFilesLocked(previewLimit: nil, includeRecovery: false)
-            guard snapshot.warnings.isEmpty else { throw NSError(domain: "BalanceBar.Diagnostics", code: 5, userInfo: [NSLocalizedDescriptionKey: "Unable to verify existing diagnostic records."]) }
-            existing = snapshot.text
-        }
-        for record in unresolved {
-            guard let id = eventID(in: String(record)) else {
-                try appendRecord(Data((String(record) + "\n").utf8))
-                continue
-            }
-            if existing.contains("[event_id=\(id)]") {
-                committed.insert(id)
-                try writeCommittedEventIDs(committed)
-                continue
-            }
-            try appendRecord(Data((String(record) + "\n").utf8))
-            committed.insert(id)
-            try writeCommittedEventIDs(committed)
-        }
-        if unresolved.isEmpty || unresolved.allSatisfy({ record in
-            guard let id = eventID(in: String(record)) else { return true }
-            return committed.contains(id)
-        }) {
-            try FileManager.default.removeItem(at: recoveryURL)
-        }
-    }
-
-    private static func readCommittedEventIDs() throws -> Set<String> {
-        guard FileManager.default.fileExists(atPath: recoveryCommitURL.path) else { return [] }
-        let text = try String(contentsOf: recoveryCommitURL, encoding: .utf8)
-        return Set(text.split(whereSeparator: \.isNewline).map(String.init))
-    }
-
-    private static func writeCommittedEventIDs(_ ids: Set<String>) throws {
-        let bounded = ids.sorted().suffix(4096).joined(separator: "\n")
-        try Data(bounded.utf8).write(to: recoveryCommitURL, options: .atomic)
-    }
-
-    private static func eventID(in record: String) -> String? {
-        guard let start = record.range(of: "[event_id="),
-              let end = record[start.upperBound...].firstIndex(of: "]") else { return nil }
-        return String(record[start.upperBound..<end])
-    }
-
     private static func nextSequence() throws -> UInt64 {
         let current = UInt64(String(data: (try? Data(contentsOf: sequenceURL)) ?? Data(), encoding: .utf8) ?? "0") ?? 0
         let next = current + 1
@@ -375,7 +267,6 @@ enum SwitchLog {
             return (url, size)
         }
         var total = ((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-            + ((try? recoveryURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
             + sizes.reduce(0) { $0 + $1.1 }
         while sizes.count > maximumArchives || total > maximumStorageSize {
             guard let oldest = sizes.first else { break }
