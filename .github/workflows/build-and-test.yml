@@ -110,6 +110,15 @@ jobs:
           [[ "${sdk_version%%.*}" == "$BALANCEBAR_REQUIRED_SDK_MAJOR" ]]
           echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
 
+      - name: Temporary Issue 498 partial-rerun fixture (remove before delivery)
+        env:
+          FIXTURE_PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ "$FIXTURE_PR" == 499 && "$GITHUB_RUN_ATTEMPT" == 1 ]]; then
+            echo 'Controlled Full failure for Issue 498 partial-rerun experiment; NOT an app test regression.' >&2
+            exit 1
+          fi
+
       - name: Independent build checks
         run: |
           set -Eeuo pipefail
