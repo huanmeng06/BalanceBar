@@ -41,39 +41,9 @@ git switch -c <类型>/<简短名称>
 
 ## 验证
 
-至少运行与改动相称的检查，并在 Pull Request 中记录完整命令与结果。完整验证顺序见[开发文档](docs/development.md)，核心命令包括：
+按[开发文档的三级验证契约](docs/development.md#three-verification-levels-single-source-of-truth)选择最小充分检查：每次修改运行 Level 1，按受影响行为运行 Level 2 定向 XCTest / probes；高风险或不确定影响范围时扩大测试。准备合并时由 Ready PR 的 Level 3 Full CI 验收最新提交。AppKit XCTest 保持串行，同一任务复用专属 DerivedData，避免并发破坏共享目录。
 
-```bash
-./scripts/build.sh
-./scripts/probes/localization-resource-probe.sh
-./scripts/probes/balance-query-probe.sh
-./scripts/probes/balance-network-error-localization-probe.sh
-
-xcodebuild \
-  -project BalanceBar.xcodeproj \
-  -scheme BalanceBar \
-  -configuration Debug \
-  -derivedDataPath /tmp/BalanceBar-DerivedData \
-  -destination 'platform=macOS,arch=arm64' \
-  CODE_SIGNING_ALLOWED=NO \
-  ARCHS=arm64 \
-  ONLY_ACTIVE_ARCH=YES \
-  build-for-testing
-
-xcodebuild \
-  -project BalanceBar.xcodeproj \
-  -scheme BalanceBar \
-  -configuration Debug \
-  -derivedDataPath /tmp/BalanceBar-DerivedData \
-  -destination 'platform=macOS,arch=arm64' \
-  CODE_SIGNING_ALLOWED=NO \
-  ARCHS=arm64 \
-  ONLY_ACTIVE_ARCH=YES \
-  -parallel-testing-enabled NO \
-  test-without-building
-
-git diff --check
-```
+Draft PR 自动运行 Fast CI；转 Ready 或 Ready 后追加提交自动运行 Full CI。Fast 成功不等于全部测试通过。PR 必须记录实际命令、通过/失败/跳过、未执行范围及原因。稳定 `PR merge gate` 的仓库强制设置由 Owner 按开发文档启用；未配置时不能声称已阻止不合格合并。
 
 终端检查不能证明视觉和交互体验正确。涉及菜单栏、Dashboard、窗口行为、供应商切换、深浅色或无障碍体验时，请构建独立开发版，并把具体人工步骤与逐步预期写入 Pull Request：
 

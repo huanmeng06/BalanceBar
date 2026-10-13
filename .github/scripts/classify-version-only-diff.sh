@@ -9,36 +9,22 @@ full_result() {
     exit 0
 }
 
-if [[ "$#" -ne 1 ]]; then
-    printf 'usage: %s <commit>\n' "$0" >&2
+# One argument retains the release lane's single-commit contract. PR callers
+# MUST pass base and head; compare the merge base, including every PR commit.
+if [[ "$#" -eq 2 ]]; then
+    commit_input="$2"
+    parent_sha="$(git merge-base "$1" "$2" 2>/dev/null)" || full_result
+elif [[ "$#" -eq 1 ]]; then
+    commit_input="$1"
+    parent_sha="$(git rev-parse "${1}^" 2>/dev/null)" || full_result
+    [[ "$(git rev-list --parents -n 1 "$1" | awk '{print NF}')" == 2 ]] || full_result
+else
+    printf 'usage: %s <base> <head> (or <commit> for release)\n' "$0" >&2
     exit 2
 fi
-
-commit_input="$1"
-if ! commit_sha="$(git rev-parse --verify "${commit_input}^{commit}" 2>/dev/null)"; then
-    full_result
-fi
-
-if ! parents_line="$(git rev-list --parents -n 1 "$commit_sha" 2>/dev/null)"; then
-    full_result
-fi
-read -r -a parent_fields <<< "$parents_line"
-if [[ "${#parent_fields[@]}" -ne 2 ]]; then
-    full_result
-fi
-parent_sha="${parent_fields[1]}"
-
-if ! changed_files="$(git diff-tree \
-    --no-commit-id \
-    --name-status \
-    --no-renames \
-    -r \
-    "$commit_sha" 2>/dev/null)"; then
-    full_result
-fi
-if [[ "$changed_files" != $'M\tResources/Info.plist' ]]; then
-    full_result
-fi
+commit_sha="$(git rev-parse --verify "${commit_input}^{commit}" 2>/dev/null)" || full_result
+changed_files="$(git diff --name-status --no-renames "$parent_sha" "$commit_sha" -- 2>/dev/null)" || full_result
+[[ "$changed_files" == $'M\tResources/Info.plist' ]] || full_result
 
 if ! old_mode="$(git ls-tree "$parent_sha" -- "$plist_path" | awk 'NF { print $1 }')"; then
     full_result
@@ -66,29 +52,19 @@ if ! git show "${commit_sha}:${plist_path}" > "$new_file" 2>/dev/null; then
     full_result
 fi
 
-if ! plutil -lint "$old_file" >/dev/null 2>&1; then
-    full_result
-fi
-if ! plutil -lint "$new_file" >/dev/null 2>&1; then
-    full_result
-fi
-
-if ! old_short="$(plutil -extract CFBundleShortVersionString raw -o - "$old_file" 2>/dev/null)"; then
-    full_result
-fi
-if ! new_short="$(plutil -extract CFBundleShortVersionString raw -o - "$new_file" 2>/dev/null)"; then
-    full_result
-fi
-if ! old_build="$(plutil -extract CFBundleVersion raw -o - "$old_file" 2>/dev/null)"; then
-    full_result
-fi
-if ! new_build="$(plutil -extract CFBundleVersion raw -o - "$new_file" 2>/dev/null)"; then
-    full_result
-fi
-if [[ -z "$old_short" || -z "$new_short" || "$old_short" == "$new_short" ]]; then
-    full_result
-fi
-if [[ -z "$old_build" || -z "$new_build" || "$old_build" == "$new_build" ]]; then
+# Portable plist validation for the Linux scope job. Require two changed,
+# nonempty string fields; textual normalization below rejects all other edits.
+if ! python3 - "$old_file" "$new_file" <<'PYPLIST'
+import plistlib, sys
+try:
+    old, new = [plistlib.load(open(p, 'rb')) for p in sys.argv[1:]]
+    for key in ('CFBundleShortVersionString', 'CFBundleVersion'):
+        assert all(isinstance(v[key], str) and v[key] for v in (old, new))
+        assert old[key] != new[key]
+except Exception:
+    sys.exit(1)
+PYPLIST
+then
     full_result
 fi
 
