@@ -259,7 +259,8 @@ jobs:
     steps:
       - name: Draft status only (not a merge credential)
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
-        run: echo 'Draft: no required PR merge gate is issued. Scope/Fast CI reports real development results; switching Ready starts a fresh Full gate.' >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo 'Draft: no required PR merge gate is issued. Scope/Fast CI reports real development results; switching Ready starts a fresh Full gate.' >> "$GITHUB_STEP_SUMMARY"
       - name: Metadata edit acknowledgement
         if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) }}
         run: echo 'Title/body edit only; no CI or merge credential, active validation unaffected.' >> "$GITHUB_STEP_SUMMARY"
