@@ -306,8 +306,12 @@ enum SwitchLog {
            let text = String(data: data, encoding: .utf8) {
             return text
         }
-        let sensitiveContainer = try? NSRegularExpression(pattern: "(?i)[\\\"']?(credentials|tokens|headers|authorization|cookie|secret)[\\\"']?\\s*[:=]\\s*[\\[{]")
-        if sensitiveContainer?.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil {
+        let containerFields = try! NSRegularExpression(pattern: #"["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*[:=]\s*[\[{]"#)
+        let range = NSRange(value.startIndex..., in: value)
+        if containerFields.matches(in: value, range: range).contains(where: { match in
+            guard let keyRange = Range(match.range(at: 1), in: value) else { return false }
+            return isSensitiveField(String(value[keyRange]))
+        }) {
             return "[structured-details-omitted]"
         }
         var result = value
@@ -344,12 +348,17 @@ enum SwitchLog {
         return records.map { redact($0) }.joined(separator: "\n")
     }
 
+    private static func isSensitiveField(_ key: String) -> Bool {
+        let normalized = key.lowercased().replacingOccurrences(of: "-", with: "_")
+        return ["token", "credential", "secret", "password", "cookie", "authorization", "api_key"].contains { normalized.contains($0) }
+            || ["auth", "headers", "passwd", "pwd", "apikey"].contains(normalized)
+    }
+
     private static func sanitizedJSON(_ value: Any) -> Any? {
         if let dictionary = value as? [String: Any] {
             var output: [String: Any] = [:]
             for (key, nested) in dictionary {
-                let normalized = key.lowercased().replacingOccurrences(of: "-", with: "_")
-                if normalized.contains("token") || normalized.contains("credential") || normalized.contains("secret") || normalized.contains("password") || normalized.contains("cookie") || normalized.contains("authorization") || normalized.contains("api_key") || normalized == "auth" || normalized == "headers" {
+                if isSensitiveField(key) {
                     output[key] = "[REDACTED]"
                 } else if let sanitized = sanitizedJSON(nested) {
                     output[key] = sanitized

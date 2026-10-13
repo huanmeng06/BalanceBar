@@ -10544,6 +10544,32 @@ extension DashboardPreferencePagesTests {
         XCTAssertEqual(try String(contentsOf: SwitchLog.fileURL, encoding: .utf8), legacyFormat)
     }
 
+    func testLegacyNestedTokenAndPasswordContainersAreOmitted() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        for key in ["access_token", "password"] {
+            let source = """
+            [2026-10-12T12:01:00Z] [INFO] [general] {
+              "\(key)": {
+                "nested": {"a": "secretABC123"},
+                "b": "secretDEF456"
+              },
+              "status": 401
+            }
+            [2026-10-12T12:02:00Z] [INFO] [general] safe-marker status=200
+            """
+            try Data(source.utf8).write(to: SwitchLog.fileURL)
+            let destination = SwitchLog.directoryURL.appendingPathComponent("export.log")
+            try SwitchLog.exportAll(to: destination)
+            let exported = try String(contentsOf: destination, encoding: .utf8)
+            XCTAssertFalse(exported.contains("secretABC123"), key)
+            XCTAssertFalse(exported.contains("secretDEF456"), key)
+            XCTAssertTrue(exported.contains("[structured-details-omitted]"), key)
+            XCTAssertTrue(exported.contains("safe-marker status=200"), key)
+            XCTAssertEqual(try String(contentsOf: SwitchLog.fileURL, encoding: .utf8), source)
+        }
+    }
+
     private func requireIsolatedDiagnosticDirectory() throws {
         let directory = URL(fileURLWithPath: "/tmp/BalanceBarDiagnosticTests-\(UUID().uuidString)", isDirectory: true)
         SwitchLog.setTestingDirectory(directory)
