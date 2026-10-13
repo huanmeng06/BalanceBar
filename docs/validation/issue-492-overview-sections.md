@@ -84,3 +84,29 @@ Checks: targeted XCTest **108 tests, 0 failures**; final full local XCTest **134
 Logs: `/private/tmp/BalanceBar-blockers-targeted.log`, `/private/tmp/BalanceBar-blockers-full.log`, `/private/tmp/BalanceBar-blockers-color-probe.log`, `/private/tmp/BalanceBar-blockers-error-probe.log`.
 
 Manual re-test: quit the previous development build and restart the new one. Check the official-signal popover in light/dark mode, after an appearance change and on repeated opens; body text must remain readable like the title. Keep the menu open during official-signal refresh and check hint/progress changes without scroll reset. Check a renamed extra quota never shows the previous percentage. Trigger a short/long error and compare its 16pt edges with a normal card. Recheck ordinary 5h/7d animations. This follow-up invalidates prior visual coverage; **manual status remains PENDING**, no version bump or merge.
+
+## Source tooltip refresh follow-up (BLOCK 5)
+
+Same-presentation forecast refresh now updates every configured source link's
+structured tooltip and plain hover hint from the latest snapshot. Section and
+link identity remain unchanged. Changed content cancels a pending hint and closes
+an already displayed bubble; the next hover uses the new content. Equal content
+is a no-op, preserving the existing hover timer and bubble during repeated ticks.
+
+Verification: DashboardComponentsTests and DashboardProductionPathRegressionTests
+passed (85 tests, zero failures), including same-type timestamp refresh and hint
+invalidation. The timestamp regression also covers an official signal changing
+83% to 85% without replacing its link. Development packaging, signature/minimum
+OS checks and localization resource checks passed (502 keys, 12 languages).
+Local full XCTest and interactive GUI acceptance were not repeated for this
+bounded change. Draft Fast CI is development feedback, not Full acceptance.
+
+### 如何人工测试
+
+Keep the official Codex menu open, hover the reset probability and note the source
+update time. Refresh with a newer timestamp and the same presentation type; the
+probability and source hint must both use the latest data. If the bubble was open,
+it should close; leave and re-enter the link to inspect the new time. Confirm that
+unrelated sections and ticket scrolling retain their position. Deep/light popup
+colors and long-text visual acceptance remain manual checks before final Ready
+and Full CI acceptance. No version bump or merge is included.

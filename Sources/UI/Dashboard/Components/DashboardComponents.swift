@@ -101,7 +101,7 @@ struct DashboardTextTooltipLayout: Equatable {
 
 /// Source / hint bubble for menu-hosted hover links. Native `toolTip`
 /// often never appears inside an `NSMenu` tracking loop.
-struct DashboardForecastTooltipContent {
+struct DashboardForecastTooltipContent: Equatable {
     let title: String
     let body: String
     let source: String
@@ -530,6 +530,16 @@ class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     /// Structured forecast presentation; plain hints keep their compact layout.
     var forecastTooltipContent: DashboardForecastTooltipContent?
+    /// Invalidate an open bubble only when its displayed content changes.
+    /// The next hover presents the latest content without replacing the link.
+    func updateForecastTooltipContent(_ content: DashboardForecastTooltipContent) {
+        guard forecastTooltipContent != content else { return }
+        forecastTooltipContent = content
+        hoverHint = content.plainText
+        cancelPendingHoverHint()
+        dismissHoverHint()
+    }
+
     var restingTextColor: NSColor = .linkColor {
         didSet { applyStyle(text: stringValue, underlined: isHovered) }
     }

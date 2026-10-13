@@ -6868,8 +6868,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func configureBankedResetSourceLink(_ link: HoverLinkTextField, forecast: CodexResetForecast) {
         link.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
         let content = Self.codexResetForecastTooltip(for: forecast, timeZone: settings.displayTimeZone)
-        link.forecastTooltipContent = content
-        link.hoverHint = content.plainText
+        link.updateForecastTooltipContent(content)
         link.onActivate = {
             NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
         }
@@ -7165,6 +7164,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let forecast = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota).resetForecast
+        let tooltipContent = Self.codexResetForecastTooltip(for: forecast, timeZone: settings.displayTimeZone)
+        for link in descendantViews(of: overview, as: HoverLinkTextField.self)
+            where link.forecastTooltipContent != nil {
+            link.updateForecastTooltipContent(tooltipContent)
+        }
         if let hint = forecast.officialHintText(), let label = descendantViews(of: overview, as: AccountMarqueeView.self).first(where: {
             $0.identifier?.rawValue == "codex.bankedReset.officialHint"
         }) { label.updateText(hint, preserveScrollPosition: true) }

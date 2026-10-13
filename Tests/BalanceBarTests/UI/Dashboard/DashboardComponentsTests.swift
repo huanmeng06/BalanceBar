@@ -1694,6 +1694,33 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(link.isHoverHintVisible)
     }
 
+    func testForecastContentRefreshCancelsStaleHintButPreservesUnchangedHint() {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        let link = HoverLinkTextField(text: "83%")
+        link.frame = NSRect(x: 8, y: 2, width: 200, height: 20)
+        link.hoverHintDelay = 0.5
+        let first = DashboardForecastTooltipContent(title: "Source", body: "Forecast", source: "11:00", disclaimer: "Hint")
+        link.updateForecastTooltipContent(first)
+        host.addSubview(link)
+        link.layout()
+        host.track(link)
+        let point = host.convert(link.visibleTextHitRect.center, from: link)
+        host.forwardHover(atHostPoint: point)
+        XCTAssertTrue(link.isHoverHintScheduled)
+        link.updateForecastTooltipContent(first)
+        XCTAssertTrue(link.isHoverHintScheduled)
+        let latest = DashboardForecastTooltipContent(title: "Source", body: "Forecast", source: "11:05", disclaimer: "Hint")
+        link.updateForecastTooltipContent(latest)
+        XCTAssertFalse(link.isHoverHintScheduled)
+        XCTAssertFalse(link.isHoverHintVisible)
+        XCTAssertEqual(link.forecastTooltipContent, latest)
+        XCTAssertEqual(link.hoverHint, latest.plainText)
+        host.forwardHover(atHostPoint: NSPoint(x: 219, y: 23))
+        host.forwardHover(atHostPoint: point)
+        XCTAssertTrue(link.isHoverHintScheduled)
+        host.forwardHover(atHostPoint: NSPoint(x: 219, y: 23))
+    }
+
     func testHoverLinkAlignmentChangesUpdateDrawingParagraphAndHoverGeometry() throws {
         let link = HoverLinkTextField(text: "--%")
         link.font = .monospacedDigitSystemFont(ofSize: 30, weight: .semibold)

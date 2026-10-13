@@ -6460,6 +6460,45 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(allControls(of: root, as: QuotaProgressView.self).contains { $0 === bar })
     }
 
+    func testForecastSourceRefreshRetainsLinkAndUsesLatestTimestamp() throws {
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }))
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = true
+        let now = Date()
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true)
+        func forecast(_ value: Int, _ date: Date) -> CodexResetForecast {
+            .init(probability24h: .percent(value), probability48h: .percent(35), confidence: .low,
+                updatedAt: date, isCached: false, officialSignal: .init(probability: .percent(value)))
+        }
+        func snapshot(_ forecast: CodexResetForecast) -> Snapshot {
+            .official("OpenAI Official", 80, "5h", "2h", now,
+                windows: [.init(kind: .fiveHour, remaining: 80, label: "5h", daysText: "5h", reset: "2h", durationSeconds: 18000)],
+                resetForecast: forecast)
+        }
+        controller.start(snapshot: snapshot(forecast(83, now)), refreshDate: now, menuInput: input, settings: settings)
+        let root = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let link = try XCTUnwrap(allControls(of: root, as: HoverLinkTextField.self).first { $0.forecastTooltipContent != nil })
+        let section = link.superview
+        let oldContent = try XCTUnwrap(link.forecastTooltipContent)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        let latest = forecast(85, now.addingTimeInterval(300))
+        controller.update(snapshot: snapshot(latest), refreshDate: now, menuInput: input, settings: settings)
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === root)
+        XCTAssertTrue(link.superview === section)
+        XCTAssertTrue(allControls(of: root, as: HoverLinkTextField.self).contains { $0 === link })
+        let content = try XCTUnwrap(link.forecastTooltipContent)
+        XCTAssertNotEqual(content.source, oldContent.source)
+        XCTAssertEqual(content, StatusItemController.codexResetForecastTooltip(for: latest, timeZone: settings.displayTimeZone))
+        XCTAssertEqual(link.hoverHint, content.plainText)
+        XCTAssertEqual((link as? OverviewNumericHoverLinkTextField)?.currentValue, 85)
+    }
+
     func testOtherQuotaRenameReplacesNumericIdentityWhileSameNameRefreshRetainsIt() throws {
         let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
             openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }))
