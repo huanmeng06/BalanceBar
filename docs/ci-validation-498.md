@@ -31,7 +31,7 @@ git diff --check
 ```
 
 Classifier fixtures cover code → version, true version-only, other plist edits,
-unrelated files, mode changes and missing revisions. Policy fixtures cover
+unrelated files, mode changes, invalid/deleted/renamed plists and missing revisions. Policy fixtures cover
 Draft/Ready state races, changed head/base, closed PR, scope failures, Full
 failure/cancellation/skipped/missing/queued/in-progress, explicit exemption and
 dispatch requiring Full. These fixtures prove decision logic, not hosted GitHub
@@ -74,7 +74,7 @@ reusing `/tmp/BalanceBar-Issue498-DerivedData` again passed 20 tests and took
 - Draft push [38350686906](https://github.com/huanmeng06/BalanceBar/actions/runs/38350686906): gate created alongside scope and failed for Draft, then superseded by Ready.
 - Draft → Ready [38350701184](https://github.com/huanmeng06/BalanceBar/actions/runs/38350701184): gate in progress while Full ran. Explicitly cancelled Full; Full conclusion `cancelled`, gate `failure`, no passing credential.
 - Ready → Draft [38350776560](https://github.com/huanmeng06/BalanceBar/actions/runs/38350776560): same head `232b9bb0f93523e95ed81f791a3978afb1da5bee`, gate `failure`, Full `skipped`, Fast resumed.
-- Explicit dispatch [38350701721](https://github.com/huanmeng06/BalanceBar/actions/runs/38350701721): Full started, Fast/version skipped, independent `Manual Full result` in progress while PR state switched back to Draft. Dispatch is not cancelled by PR event concurrency. Final result and latest Ready/synchronize runs are recorded in the PR handoff rather than claiming a pending run passed here.
+- Explicit dispatch [38350701721](https://github.com/huanmeng06/BalanceBar/actions/runs/38350701721): Full started, Fast/version skipped, independent `Manual Full result` remained in progress while PR state switched back to Draft. Dispatch was not cancelled by PR event concurrency and subsequently **succeeded**. Latest Ready/synchronize results are recorded in the PR handoff.
 
 ### Remaining measurement limits
 
@@ -88,3 +88,36 @@ claimed. The baseline did not record separate CLI/probe/Xcode timers; this chang
 adds them for future reproducible comparisons. Required-check enforcement is
 still **not activated**; same-context latest-check selection must be confirmed
 in Owner acceptance after safe ruleset activation.
+
+
+## Completed hosted Full (explicit dispatch)
+
+Run [38350701721](https://github.com/huanmeng06/BalanceBar/actions/runs/38350701721)
+at head `232b9bb0f93523e95ed81f791a3978afb1da5bee`: **success**, including
+scope, Full, artifact upload, macos-15 smoke and independent Manual Full result.
+Total workflow wall time **7m54s**; initial Ubuntu runner wait **4s**; Full began
+7s after scope completed. Full job **7m11s**, environment setup/checkout/SDK
+verification **2/3/2s**, independent checks **80s** (CLI **79s**, standalone probes
+**22s**, Xcode **75s**, running concurrently), XCTest **5m31s**, counts extraction
+**3s**, artifact stage/upload **0/2s** at timestamp resolution, smoke **11s**
+(download **2s**, non-GUI verification **2s**). Gate polling added approximately
+6s after smoke completion. These are measured timestamps, not estimates.
+
+XCTest: **1320 total / 1307 passed / 0 failed / 13 skipped**. One existing skip
+requires a pre-macOS-26 environment; 12 animation tests skip for hosted runner
+Reduce Motion. No skipped tests are claimed to have passed. Test sources,
+parallelizable=NO and Release/Forward SDK workflows remain unchanged.
+
+Ready → Draft → Ready and subsequent Ready push generated runs
+[38350899716](https://github.com/huanmeng06/BalanceBar/actions/runs/38350899716)
+and [38350907180](https://github.com/huanmeng06/BalanceBar/actions/runs/38350907180).
+Closing/reopening this same Ready PR generated
+[38351111508](https://github.com/huanmeng06/BalanceBar/actions/runs/38351111508),
+then a further Ready code/configuration push generated
+[38351297734](https://github.com/huanmeng06/BalanceBar/actions/runs/38351297734).
+Superseded runs were cancelled by PR concurrency; no success is claimed for
+those runs. Temporary unmerged close produced only a skipped Release
+[38351108308](https://github.com/huanmeng06/BalanceBar/actions/runs/38351108308),
+no publication. The final evidence-only documentation commit will also require
+Full because classification considers the **entire PR**, not its last commit.
+Final latest-head result, SHA, full counts and artifact are in the PR/Issue handoff.
