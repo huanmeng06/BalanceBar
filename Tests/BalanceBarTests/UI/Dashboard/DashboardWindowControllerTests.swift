@@ -4332,16 +4332,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             OpenCodexTicketTextMetrics(
                 titleWidth: ceil(($0.titleText as NSString).size(withAttributes: [
                     .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)
-                ]).width),
+                ]).width) + 4,
                 windowWidth: ceil((($0.windowText ?? "") as NSString).size(withAttributes: [
                     .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)
-                ]).width),
+                ]).width) + 4,
                 resetWidth: ceil((($0.expiresText ?? "") as NSString).size(withAttributes: [
                     .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)
-                ]).width),
+                ]).width) + 4,
                 amountWidth: ceil((($0.remainingText ?? "") as NSString).size(withAttributes: [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)
-                ]).width)
+                ]).width) + 4
             )
         }
 
@@ -4600,7 +4600,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ) / 2,
             accuracy: 1
         )
-        XCTAssertLessThanOrEqual(firstAmount.frame.maxY, firstExpiry.frame.minY)
+        if firstChrome.frame.height == OpenCodexCardLayout.bankedResetDetailRowHeight {
+            XCTAssertEqual(
+                firstAmount.frame.maxY - firstAmount.firstBaselineOffsetFromTop,
+                firstWindow.frame.maxY - firstWindow.firstBaselineOffsetFromTop,
+                accuracy: 0.001
+            )
+        } else {
+            XCTAssertLessThanOrEqual(firstAmount.frame.maxY, firstExpiry.frame.minY)
+        }
         XCTAssertEqual(
             firstAmount.frame.maxX,
             firstChrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset,
