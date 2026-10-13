@@ -272,7 +272,7 @@ is created immediately as a pending check, including when returning to Ready
 with the same head SHA. Do not treat a previous same-SHA green result as the
 new Ready validation; confirm the new check appeared and completed. This event
 transition remains an important live acceptance test.
- It has no `always()` cancellation override, so cancelling the workflow
+The gate has no `always()` cancellation override, so cancelling the workflow
 cancels the gate too. It polls current-attempt evidence via the read-only Actions jobs API. Only scope
 may be reused: when absent in the current attempt, the most recent prior scope
 in the same run must have succeeded with the same head SHA. A newer failed,
