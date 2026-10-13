@@ -22,13 +22,13 @@ gate = load('ci-merge-gate')
 class PolicyTests(unittest.TestCase):
     def test_fast_scope(self):
         for path in ('docs/development.md', 'CONTRIBUTING.md'):
-            self.assertEqual(scope.classify([('M', path)]), (False, False))
+            self.assertEqual(scope.classify([('M', path)]), (False, False, False))
         for status, path in [('M', 'Sources/new.swift'), ('A', 'Tests/new.swift'),
                              ('M', '.github/workflows/build-and-test.yml'), ('M', 'Resources/lang/en.json'),
                              ('M', 'BalanceBar.xcodeproj/project.pbxproj'), ('M', 'unknown'),
                              ('D', 'docs/old.md'), ('T', 'README.md'), ('A', 'scripts/new.sh')]:
-            self.assertEqual(scope.classify([(status, path)]), (True, True))
-        self.assertEqual(scope.classify([('D', 'old.swift'), ('A', 'docs/new.md')]), (True, True))
+            self.assertEqual(scope.classify([(status, path)]), (True, True, path.startswith(('Tests/', 'BalanceBar.xcodeproj/'))))
+        self.assertEqual(scope.classify([('D', 'old.swift'), ('A', 'docs/new.md')]), (True, True, False))
 
     def test_gate_matrix(self):
         ready = {'state': 'open', 'draft': False, 'head': {'sha': 'new'}, 'base': {'sha': 'base'}}

@@ -234,8 +234,10 @@ shell syntax, classifier/policy tests and actionlint checks on Ubuntu.
 | Ready, entire PR version-only | Explicit `PR-wide version-only exemption (no XCTest)` | Gate accepts the named exemption, never reports XCTest PASS |
 | workflow_dispatch, any branch/state | Always Full, no version exemption | Separate `Manual Full result`, never a PR merge credential |
 
-Fast uses one unsigned Debug Xcode build, no CLI packaging, test build, XCTest,
-upload or old-runtime smoke. Unknown paths, CI/scripts/project/resources/tests,
+Fast uses one unsigned Debug Xcode compilation, no CLI packaging, XCTest,
+upload or old-runtime smoke. Tests or Xcode project changes select
+`build-for-testing` to compile affected test code too, without executing XCTest;
+other changes use `build`. Unknown paths, CI/scripts/project/resources/tests,
 adds of non-documentation files, deletions/type changes/renames expand to build
 and all lightweight localization probes. Only Markdown additions/edits and a few
 explicit metadata paths avoid compilation. This is deliberately conservative.
