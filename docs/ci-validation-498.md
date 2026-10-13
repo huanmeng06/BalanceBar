@@ -121,3 +121,23 @@ those runs. Temporary unmerged close produced only a skipped Release
 no publication. The final evidence-only documentation commit will also require
 Full because classification considers the **entire PR**, not its last commit.
 Final latest-head result, SHA, full counts and artifact are in the PR/Issue handoff.
+
+
+## PR #499 Request Changes rework
+
+Review baseline: `bd7486473e1971964c09578e17a69fd4b2f87cf5`.
+BLOCK 2 adds target-branch `edited` routing and base-ref identity; title/body
+edits have an isolated no-credential check and concurrency group. BLOCK 3 only
+carries the latest successful same-run/head scope, with current-attempt Full and
+smoke plus 60-second missing-job diagnostics. Artifacts are attempt-named.
+
+Reproducible policy tests use a fake clock for scope reuse, latest failure vs
+older success, foreign run/head, ref changes at identical SHA, genuine queued
+prerequisites, missing Full/smoke and forced Full on retarget. Real queued jobs
+can wait; unsupported partial reruns do not wait 23 minutes. Final hosted
+retarget/metadata/partial-rerun evidence is maintained in the PR/Issue handoff.
+
+BLOCK 1 remains an Owner activation/merge-blocking acceptance step after workflow
+integration and safe migration of open PRs. It is not a Swift fix and is not
+claimed completed. Performance risks (test-target compilation and full-history
+fetch) are recorded only; no target split or history optimization is included.

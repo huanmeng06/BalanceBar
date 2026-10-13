@@ -224,7 +224,7 @@ by a filesystem check.
 
 [Build and Test](../.github/workflows/build-and-test.yml) explicitly subscribes
 to `opened`, `synchronize`, `reopened`, `ready_for_review`, and
-`converted_to_draft`. It has no path filter. Every run performs diff, tracked
+`converted_to_draft`, and `edited`. It has no path filter. Every validation run performs diff, tracked
 shell syntax, classifier/policy tests and actionlint checks on Ubuntu.
 
 | Event/state | Validation | Merge result |
@@ -232,6 +232,9 @@ shell syntax, classifier/policy tests and actionlint checks on Ubuntu.
 | Draft open/push/reopen/convert | Fast Debug build + localization probes for non-documentation changes; documentation adds/edits skip app build | PR merge gate fails deliberately; Draft cannot merge |
 | Ready open/push/reopen/convert | Full CLI + probes + build-for-testing + all serial XCTest + artifact/smoke | Gate requires this run's successful Full |
 | Ready, entire PR version-only | Explicit `PR-wide version-only exemption (no XCTest)` | Gate accepts the named exemption, never reports XCTest PASS |
+| Ready target-branch edit | Force Full, including version-only PRs | Fresh gate checks base ref and SHA |
+| Draft target-branch edit | Fast | Gate fails for Draft |
+| Title/body edit only | Separate metadata acknowledgement; no compilation | No new merge credential; active validation unaffected |
 | workflow_dispatch, any branch/state | Always Full, no version exemption | Separate `Manual Full result`, never a PR merge credential |
 
 Fast uses one unsigned Debug Xcode compilation, no CLI packaging, XCTest,
@@ -257,20 +260,39 @@ smoke after a successful Full does fail the gate because that run did not finish
 its contracted scope; version-only exemptions intentionally skip smoke. Full version exemptions
 skip artifact/smoke, just as before.
 
-`PR merge gate` has no job dependencies: it is created immediately, so same-SHA
+`PR merge gate` has no job dependencies: it is created immediately for validation events, so same-SHA
 Draft/Ready transitions replace the old check with a pending result while Full
 runs. It has no `always()` cancellation override, so cancelling the workflow
-cancels the gate too. It polls this exact run **and attempt** (never another run) via the read-only
-Actions jobs API and always fails closed on timeout/API failure. It accepts
+cancels the gate too. It polls current-attempt evidence via the read-only Actions jobs API. Only scope
+may be reused: when absent in the current attempt, the most recent prior scope
+in the same run must have succeeded with the same head SHA. A newer failed,
+cancelled or skipped scope blocks reuse. Full/version exemption/smoke are never
+borrowed from another attempt or run. Existing current-attempt scope takes
+precedence, including its queued/failure state. Evidence job IDs and attempts are
+reported in the summary. API calls are bounded and fail closed on failure. It accepts
 only same-run Full success or the successful explicit version exemption after
-scope validation and independently repeating the PR-wide version classifier. It re-reads live PR state and fails for Draft/closed or changed
-head/base. Hosted check-run API shows checks attached to the PR **head SHA**. Checkout
+scope validation (current or explicitly reused) and independently repeating the PR-wide version classifier. It re-reads live PR state and fails for Draft/closed or changed
+head/base SHA and **base ref**, rejecting missing identity fields. Hosted check-run API shows checks attached to the PR **head SHA**. Checkout
 tests GitHub's synthetic merge commit (`GITHUB_SHA`), and summaries identify both
 SHAs. Do not confuse check attachment with the integrated commit under test.
 Failure/cancellation/queued/missing/skipped Full never becomes a Full credential.
-PR events share concurrency by PR number and cancel obsolete runs; dispatch uses
+Target changes subscribe to `edited`: Ready requires Full even when version-only;
+Draft retains Fast. Title/body-only edits publish `PR metadata edit (no merge
+credential)` in a unique metadata concurrency group and do not replace/cancel
+PR merge gate. Edited events lacking reliable change information revalidate.
+
+PR validation events share concurrency by PR number and cancel obsolete runs; dispatch uses
 a separate group and check name. On a merge conflict GitHub may not trigger PR CI;
 resolve/update and rerun, never bypass the missing gate.
+
+Required jobs absent after their prerequisites succeed receive a **60-second**
+grace period, then fail with `Re-run all jobs` instructions. Queued/in-progress
+jobs are distinct from missing; downstream absence is not timed while its
+prerequisite runs. Existing running/queued jobs retain the 23-minute overall
+limit. Re-run failed jobs can reuse a successful scope, but gate-only or
+smoke-only reruns without fresh current-attempt Full are unsupported and fail
+quickly. SDK artifacts use `BalanceBar-macos26-sdk-attempt-<N>` for both upload
+and download, preventing cross-attempt collisions or stale downloads.
 
 Version classification requires the entire PR effective diff to modify only
 `Resources/Info.plist`, with both nonempty string version fields changed and all
@@ -402,3 +424,11 @@ instruction with the following rule:
 > release authorization and deployment boundaries.
 
 No installed skill was modified, and no Scheduler review/deployment stage is added.
+
+## Deferred Fast CI performance risks
+
+`build-for-testing` still compiles the test target; test/project edits may cost
+more as that target grows. `fetch-depth: 0` also downloads full history to find
+merge bases reliably. Track these costs using existing step timings; split tests
+or fetch history on demand only in a separately measured follow-up. This Issue
+does not introduce either optimization.

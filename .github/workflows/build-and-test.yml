@@ -2,7 +2,7 @@ name: Build and Test
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, edited]
   workflow_dispatch:
 
 permissions:
@@ -11,12 +11,13 @@ permissions:
   actions: read
 
 concurrency:
-  group: build-and-test-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: build-and-test-${{ (github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) && format('metadata-{0}', github.run_id) || github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   scope:
     name: CI repository checks and PR scope
+    if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -24,6 +25,7 @@ jobs:
       build: ${{ steps.scope.outputs.build }}
       probes: ${{ steps.scope.outputs.probes }}
       action: ${{ steps.scope.outputs.action }}
+      force_full: ${{ steps.scope.outputs.force_full }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,12 +35,14 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FORCE_FULL: ${{ github.event.action == 'edited' }}
         run: |
           set -Eeuo pipefail
           base="${BASE_SHA:-HEAD^}"
           head="${HEAD_SHA:-HEAD}"
           .github/scripts/ci-basic-checks.sh "$base"
           python3 .github/scripts/ci-scope.py "$base" "$head" >> "$GITHUB_OUTPUT"
+          echo "force_full=$FORCE_FULL" >> "$GITHUB_OUTPUT"
           version_only=false
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
             classification="$(.github/scripts/classify-version-only-diff.sh "$base" "$head")"
@@ -80,7 +84,7 @@ jobs:
   version-exemption:
     name: PR-wide version-only exemption (no XCTest)
     needs: scope
-    if: github.event_name == 'pull_request' && !github.event.pull_request.draft && needs.scope.outputs.version_only == 'true'
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft && needs.scope.outputs.version_only == 'true' && needs.scope.outputs.force_full != 'true'
     runs-on: ubuntu-latest
     steps:
       - run: echo 'Only approved version strings differ across the entire PR. XCTest NOT executed; explicit version exemption.' >> "$GITHUB_STEP_SUMMARY"
@@ -88,7 +92,7 @@ jobs:
   build-and-test:
     name: Full CI (CLI, probes and serial XCTest)
     needs: scope
-    if: github.event_name == 'workflow_dispatch' || (!github.event.pull_request.draft && needs.scope.outputs.version_only != 'true')
+    if: github.event_name == 'workflow_dispatch' || (!github.event.pull_request.draft && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true'))
     runs-on: macos-26
     timeout-minutes: 20
     env:
@@ -201,7 +205,7 @@ jobs:
       - name: Upload SDK 26 deployment-target artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BalanceBar-macos26-sdk
+          name: BalanceBar-macos26-sdk-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/BalanceBar-macos26-sdk
           if-no-files-found: error
           retention-days: 2
@@ -227,7 +231,7 @@ jobs:
       - name: Download SDK 26 deployment-target artifact
         uses: actions/download-artifact@v4
         with:
-          name: BalanceBar-macos26-sdk
+          name: BalanceBar-macos26-sdk-attempt-${{ github.run_attempt }}
           path: "${{ runner.temp }}/BalanceBar-artifact"
 
       - name: Verify load commands without launching the GUI
@@ -246,14 +250,19 @@ jobs:
     # No needs: publish the pending check immediately, replacing an old green
     # on same-SHA Draft/Ready transitions before Full finishes. No always()
     # override: workflow cancellation must cancel this check as well.
-    name: ${{ github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result' }}
+    name: ${{ (github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) && 'PR metadata edit (no merge credential)' || (github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      - name: Metadata edit acknowledgement
+        if: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) }}
+        run: echo 'Title/body edit only; no CI or merge credential, active validation unaffected.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
+        if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) }}
         with:
           fetch-depth: 0
       - name: Wait for this attempt and verify live PR state
+        if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/ci-merge-gate.py
