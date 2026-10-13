@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "進捗バー";
 "dashboard.menu.page.show_quota_progress_bar" = "進捗バーを表示";
 "dashboard.menu.page.show_quota_progress_bar_description" = "オフにすると、メニューとクォータカードに進捗バーを表示しません";
+"dashboard.menu.page.show_quota_pace_indicator" = "利用ペースの目印を表示";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "公式の5時間・7日間クォータに均等利用の目安を表示します";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ の表示方法";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "メニューで %1$@ を表示するタイミングを選択";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "表示しない";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "最近のプレビューのみ表示しています。保存されたすべてのログを書き出してください。";
 "dashboard.logs.page.read_warning" = "一部の診断ファイルを読み取れません";
 "dashboard.logs.page.export_failed" = "診断ログの書き出しに失敗しました";
+"quota.pace.status.unused" = "まだ使い始めていません";
+"quota.pace.status.fast" = "少し速いペースです";
+"quota.pace.status.normal" = "ちょうどよいペースです";
+"quota.pace.status.slow" = "とても余裕のあるペースです";
+"quota.pace.body.unused" = "この期間のクォータはすべて残っています。";
+"quota.pace.body.fast" = "均等に使った場合より残りが少なくなっています。";
+"quota.pace.body.normal" = "残りは均等利用の目安に近い状態です。";
+"quota.pace.body.slow" = "均等に使った場合より残りが多くなっています。";
+"quota.pace.actual" = "実際の残り: %@";
+"quota.pace.expected" = "均等利用の目安: %@";
+"quota.pace.difference" = "目安との差: %@";
+"quota.pace.reset" = "リセット: %@";
+"quota.pace.accessibility" = "クォータの利用ペース。実際の残り %@ パーセント、目安 %@ パーセント、差 %@ パーセントポイント。";

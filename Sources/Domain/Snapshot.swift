@@ -234,6 +234,62 @@ struct OfficialQuotaWindow: Equatable {
     }
 }
 
+/// Average-use pace for one official rolling quota window. The reference is
+/// the amount that would remain if the quota were consumed evenly from the
+/// window start through its supplied reset time.
+struct OfficialQuotaUsagePace: Equatable {
+    enum Status: Equatable {
+        case unused
+        case fast
+        case normal
+        case slow
+    }
+
+    let actualRemaining: Double
+    let expectedRemaining: Double
+    let difference: Double
+    let status: Status
+
+    var roundedDifference: Int { Int(difference.rounded()) }
+
+    static func make(
+        for window: OfficialQuotaWindow,
+        now: Date = Date()
+    ) -> Self? {
+        guard window.kind == .fiveHour || window.kind == .sevenDay,
+              let duration = window.durationSeconds,
+              duration.isFinite,
+              duration > 0,
+              let resetAt = window.resetAt,
+              resetAt > now,
+              window.remaining.isFinite,
+              (0...100).contains(window.remaining) else {
+            return nil
+        }
+
+        let elapsed = now.timeIntervalSince(resetAt) + duration
+        guard elapsed >= 0, elapsed <= duration else { return nil }
+        let expected = min(100, max(0, 100 * (resetAt.timeIntervalSince(now) / duration)))
+        let difference = window.remaining - expected
+        let status: Status
+        if window.remaining == 100 {
+            status = .unused
+        } else if difference <= -5.5 {
+            status = .fast
+        } else if difference >= 5.5 {
+            status = .slow
+        } else {
+            status = .normal
+        }
+        return Self(
+            actualRemaining: window.remaining,
+            expectedRemaining: expected,
+            difference: difference,
+            status: status
+        )
+    }
+}
+
 enum OfficialQuotaWindowResolution: Equatable {
     case selected(OfficialQuotaWindow)
     case legacy(OfficialQuotaWindow?)

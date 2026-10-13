@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "진행률 막대";
 "dashboard.menu.page.show_quota_progress_bar" = "진행률 막대 표시";
 "dashboard.menu.page.show_quota_progress_bar_description" = "끄면 메뉴와 할당량 카드에 진행률 막대가 표시되지 않습니다";
+"dashboard.menu.page.show_quota_pace_indicator" = "사용 속도 표시";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "공식 5시간 및 7일 할당량 막대에 균등 사용 기준을 표시합니다";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ 표시 방식";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "메뉴에서 %1$@를 표시할 시점을 선택";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "표시 안 함";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "최근 미리보기만 표시됩니다. 보관된 모든 로그를 내보내세요.";
 "dashboard.logs.page.read_warning" = "일부 진단 파일을 읽을 수 없습니다";
 "dashboard.logs.page.export_failed" = "진단 로그 내보내기에 실패했습니다";
+"quota.pace.status.unused" = "아직 사용을 시작하지 않았습니다";
+"quota.pace.status.fast" = "사용 속도가 조금 빠릅니다";
+"quota.pace.status.normal" = "사용량이 적절한 속도입니다";
+"quota.pace.status.slow" = "사용량에 여유가 있습니다";
+"quota.pace.body.unused" = "이 기간의 할당량이 모두 남아 있습니다.";
+"quota.pace.body.fast" = "균등하게 사용한 기준보다 적게 남아 있습니다.";
+"quota.pace.body.normal" = "남은 할당량이 균등 사용 기준에 가깝습니다.";
+"quota.pace.body.slow" = "균등하게 사용한 기준보다 많이 남아 있습니다.";
+"quota.pace.actual" = "실제 잔여량: %@";
+"quota.pace.expected" = "균등 사용 기준: %@";
+"quota.pace.difference" = "기준과의 차이: %@";
+"quota.pace.reset" = "재설정: %@";
+"quota.pace.accessibility" = "할당량 사용 속도. 실제 잔여량 %@퍼센트, 기준 %@퍼센트, 차이 %@퍼센트포인트.";

@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Progress Bar";
 "dashboard.menu.page.show_quota_progress_bar" = "Show Progress Bar";
 "dashboard.menu.page.show_quota_progress_bar_description" = "When off, menus and quota cards no longer show the remaining-quota bar";
+"dashboard.menu.page.show_quota_pace_indicator" = "Show usage pace marker";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Show the even-use reference marker on official 5-hour and 7-day quota bars";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ Display";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Choose when %1$@ is shown in the menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Do not show";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "Only the recent preview is shown; export the full retained logs.";
 "dashboard.logs.page.read_warning" = "Some diagnostic files could not be read";
 "dashboard.logs.page.export_failed" = "Diagnostic log export failed";
+"quota.pace.status.unused" = "You have not started using this quota";
+"quota.pace.status.fast" = "Usage is a little fast";
+"quota.pace.status.normal" = "Usage is right on pace";
+"quota.pace.status.slow" = "Usage is very comfortable";
+"quota.pace.body.unused" = "The full quota remains available.";
+"quota.pace.body.fast" = "Less remains than the even-use reference.";
+"quota.pace.body.normal" = "Remaining quota is close to the even-use reference.";
+"quota.pace.body.slow" = "More remains than the even-use reference.";
+"quota.pace.actual" = "Actual remaining: %@";
+"quota.pace.expected" = "Even-use reference: %@";
+"quota.pace.difference" = "Difference from reference: %@";
+"quota.pace.reset" = "Resets: %@";
+"quota.pace.accessibility" = "Quota pace. Actual remaining %@ percent, even-use reference %@ percent, difference %@ percentage points.";

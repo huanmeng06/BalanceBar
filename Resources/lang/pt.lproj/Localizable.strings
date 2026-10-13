@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Barra de progresso";
 "dashboard.menu.page.show_quota_progress_bar" = "Mostrar barra de progresso";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Quando desativada, os menus e os cartões de cota não mostram mais a barra de cota restante";
+"dashboard.menu.page.show_quota_pace_indicator" = "Mostrar ritmo de uso";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Mostrar a referência de uso uniforme nas cotas oficiais de 5 horas e 7 dias";
 "dashboard.menu.page.luna_reserve_display_mode" = "Exibição da 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Escolha quando a 🌙 %1$@ será exibida no menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Não mostrar";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "Apenas a pré-visualização recente é mostrada; exporte todos os logs retidos.";
 "dashboard.logs.page.read_warning" = "Não foi possível ler alguns arquivos de diagnóstico";
 "dashboard.logs.page.export_failed" = "Falha ao exportar os logs de diagnóstico";
+"quota.pace.status.unused" = "Você ainda não começou a usar";
+"quota.pace.status.fast" = "O uso está um pouco rápido";
+"quota.pace.status.normal" = "O uso está no ritmo certo";
+"quota.pace.status.slow" = "O uso está bem tranquilo";
+"quota.pace.body.unused" = "Toda a cota continua disponível.";
+"quota.pace.body.fast" = "Resta menos do que em um uso uniforme.";
+"quota.pace.body.normal" = "A cota restante está próxima da referência uniforme.";
+"quota.pace.body.slow" = "Resta mais do que em um uso uniforme.";
+"quota.pace.actual" = "Restante real: %@";
+"quota.pace.expected" = "Referência uniforme: %@";
+"quota.pace.difference" = "Diferença: %@";
+"quota.pace.reset" = "Redefinição: %@";
+"quota.pace.accessibility" = "Ritmo da cota. Restante real %@ por cento, referência %@ por cento, diferença de %@ pontos percentuais.";

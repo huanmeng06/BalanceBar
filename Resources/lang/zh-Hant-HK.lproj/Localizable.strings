@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "進度條";
 "dashboard.menu.page.show_quota_progress_bar" = "顯示進度條";
 "dashboard.menu.page.show_quota_progress_bar_description" = "關閉後，選單和額度卡片不再顯示進度條";
+"dashboard.menu.page.show_quota_pace_indicator" = "顯示使用節奏刻度";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "在官方 5 小時和 7 日額度進度條上顯示均速參考刻度";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ 顯示方式";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "選擇 %1$@ 在選單中的顯示時機";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "不顯示";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "目前僅顯示最近預覽；請匯出全部保留日誌。";
 "dashboard.logs.page.read_warning" = "部分診斷檔案無法讀取";
 "dashboard.logs.page.export_failed" = "診斷日誌匯出失敗";
+"quota.pace.status.unused" = "還未開始使用";
+"quota.pace.status.fast" = "用得有點快";
+"quota.pace.status.normal" = "用量剛剛好";
+"quota.pace.status.slow" = "用得很從容";
+"quota.pace.body.unused" = "本週期額度仍然全部可用。";
+"quota.pace.body.fast" = "比均速參考少剩一些。";
+"quota.pace.body.normal" = "剩餘額度接近均速參考。";
+"quota.pace.body.slow" = "比均速參考多剩一些。";
+"quota.pace.actual" = "實際剩餘：%@";
+"quota.pace.expected" = "均速應剩：%@";
+"quota.pace.difference" = "與參考差值：%@ 個百分點";
+"quota.pace.reset" = "重設：%@";
+"quota.pace.accessibility" = "額度使用節奏。實際剩餘 %@%，均速參考 %@%，與參考相差 %@ 個百分點。";

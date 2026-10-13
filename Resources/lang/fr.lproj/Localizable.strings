@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Barre de progression";
 "dashboard.menu.page.show_quota_progress_bar" = "Afficher la barre de progression";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Une fois désactivée, les menus et les cartes de quota n’affichent plus la barre de quota restant";
+"dashboard.menu.page.show_quota_pace_indicator" = "Afficher le repère de rythme";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Afficher le repère d’utilisation régulière sur les quotas officiels de 5 heures et 7 jours";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 Affichage de %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Choisissez quand afficher %1$@ dans le menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Ne pas afficher";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "Seul l’aperçu récent est affiché ; exportez tous les journaux conservés.";
 "dashboard.logs.page.read_warning" = "Certains fichiers de diagnostic sont illisibles";
 "dashboard.logs.page.export_failed" = "Échec de l’export des journaux de diagnostic";
+"quota.pace.status.unused" = "Vous n’avez pas encore utilisé ce quota";
+"quota.pace.status.fast" = "Utilisation un peu rapide";
+"quota.pace.status.normal" = "Utilisation au bon rythme";
+"quota.pace.status.slow" = "Utilisation très mesurée";
+"quota.pace.body.unused" = "Tout le quota reste disponible.";
+"quota.pace.body.fast" = "Il en reste moins que pour une utilisation régulière.";
+"quota.pace.body.normal" = "Le quota restant est proche de la référence régulière.";
+"quota.pace.body.slow" = "Il en reste plus que pour une utilisation régulière.";
+"quota.pace.actual" = "Restant réel : %@";
+"quota.pace.expected" = "Référence régulière : %@";
+"quota.pace.difference" = "Écart : %@";
+"quota.pace.reset" = "Réinitialisation : %@";
+"quota.pace.accessibility" = "Rythme du quota. Restant réel %@ pour cent, référence %@ pour cent, écart de %@ points.";

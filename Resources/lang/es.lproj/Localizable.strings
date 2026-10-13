@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Barra de progreso";
 "dashboard.menu.page.show_quota_progress_bar" = "Mostrar barra de progreso";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Al desactivarla, los menús y las tarjetas de cuota ya no muestran la barra de cuota restante";
+"dashboard.menu.page.show_quota_pace_indicator" = "Mostrar ritmo de uso";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Mostrar la referencia de uso uniforme en las cuotas oficiales de 5 horas y 7 días";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 Mostrar %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Elige cuándo mostrar %1$@ en el menú";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "No mostrar";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "Solo se muestra la vista previa reciente; exporta todos los registros conservados.";
 "dashboard.logs.page.read_warning" = "No se pudieron leer algunos archivos de diagnóstico";
 "dashboard.logs.page.export_failed" = "Error al exportar los registros de diagnóstico";
+"quota.pace.status.unused" = "Aún no has usado la cuota";
+"quota.pace.status.fast" = "El uso va un poco rápido";
+"quota.pace.status.normal" = "El uso va al ritmo justo";
+"quota.pace.status.slow" = "El uso es muy pausado";
+"quota.pace.body.unused" = "Toda la cuota sigue disponible.";
+"quota.pace.body.fast" = "Queda menos que con un uso uniforme.";
+"quota.pace.body.normal" = "La cuota restante se acerca a la referencia uniforme.";
+"quota.pace.body.slow" = "Queda más que con un uso uniforme.";
+"quota.pace.actual" = "Restante real: %@";
+"quota.pace.expected" = "Referencia uniforme: %@";
+"quota.pace.difference" = "Diferencia: %@";
+"quota.pace.reset" = "Restablecimiento: %@";
+"quota.pace.accessibility" = "Ritmo de cuota. Restante real %@ por ciento, referencia %@ por ciento, diferencia %@ puntos porcentuales.";

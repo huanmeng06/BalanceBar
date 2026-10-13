@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Индикатор выполнения";
 "dashboard.menu.page.show_quota_progress_bar" = "Показывать индикатор выполнения";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Если выключено, меню и карточки квоты больше не показывают индикатор оставшейся квоты";
+"dashboard.menu.page.show_quota_pace_indicator" = "Показывать темп использования";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Показывать ориентир равномерного использования для официальных квот на 5 часов и 7 дней";
 "dashboard.menu.page.luna_reserve_display_mode" = "Отображение 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Выберите, когда показывать 🌙 %1$@ в меню";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Не показывать";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "Показан только последний фрагмент; экспортируйте все сохранённые журналы.";
 "dashboard.logs.page.read_warning" = "Не удалось прочитать некоторые диагностические файлы";
 "dashboard.logs.page.export_failed" = "Не удалось экспортировать диагностические журналы";
+"quota.pace.status.unused" = "Вы ещё не начали использовать квоту";
+"quota.pace.status.fast" = "Использование немного опережает темп";
+"quota.pace.status.normal" = "Использование идёт в нужном темпе";
+"quota.pace.status.slow" = "Использование идёт очень спокойно";
+"quota.pace.body.unused" = "Вся квота пока доступна.";
+"quota.pace.body.fast" = "Осталось меньше, чем при равномерном использовании.";
+"quota.pace.body.normal" = "Оставшаяся квота близка к равномерному ориентиру.";
+"quota.pace.body.slow" = "Осталось больше, чем при равномерном использовании.";
+"quota.pace.actual" = "Фактически осталось: %@";
+"quota.pace.expected" = "Ориентир равномерного использования: %@";
+"quota.pace.difference" = "Разница: %@";
+"quota.pace.reset" = "Сброс: %@";
+"quota.pace.accessibility" = "Темп использования квоты. Фактически осталось %@ процентов, ориентир %@ процентов, разница %@ процентных пунктов.";

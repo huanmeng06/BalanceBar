@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Barra di avanzamento";
 "dashboard.menu.page.show_quota_progress_bar" = "Mostra la barra di avanzamento";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Se disattivata, i menu e le schede quota non mostrano più la barra della quota rimanente";
+"dashboard.menu.page.show_quota_pace_indicator" = "Mostra ritmo di utilizzo";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Mostra il riferimento di utilizzo uniforme sui quota ufficiali di 5 ore e 7 giorni";
 "dashboard.menu.page.luna_reserve_display_mode" = "Visualizzazione di 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Scegli quando mostrare 🌙 %1$@ nel menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Non mostrare";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "Viene mostrata solo l’anteprima recente; esporta tutti i registri conservati.";
 "dashboard.logs.page.read_warning" = "Impossibile leggere alcuni file diagnostici";
 "dashboard.logs.page.export_failed" = "Esportazione dei registri diagnostici non riuscita";
+"quota.pace.status.unused" = "Non hai ancora usato questa quota";
+"quota.pace.status.fast" = "Utilizzo un po’ veloce";
+"quota.pace.status.normal" = "Utilizzo al ritmo giusto";
+"quota.pace.status.slow" = "Utilizzo molto tranquillo";
+"quota.pace.body.unused" = "L’intera quota è ancora disponibile.";
+"quota.pace.body.fast" = "Ne resta meno rispetto a un utilizzo uniforme.";
+"quota.pace.body.normal" = "La quota rimanente è vicina al riferimento uniforme.";
+"quota.pace.body.slow" = "Ne resta di più rispetto a un utilizzo uniforme.";
+"quota.pace.actual" = "Rimanente effettivo: %@";
+"quota.pace.expected" = "Riferimento uniforme: %@";
+"quota.pace.difference" = "Differenza: %@";
+"quota.pace.reset" = "Ripristino: %@";
+"quota.pace.accessibility" = "Ritmo della quota. Rimanente effettivo %@ percento, riferimento %@ percento, differenza %@ punti percentuali.";

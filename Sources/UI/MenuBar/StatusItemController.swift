@@ -2080,6 +2080,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let lunaReserveResetTimeMode: LunaReserveResetTimeMode
         let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
         let showQuotaProgressBar: Bool
+        let showQuotaPaceIndicator: Bool
         let showBankedReset: Bool
         let displayTimeZone: TimeZone
 
@@ -2106,6 +2107,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
             quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
             showQuotaProgressBar: Bool = true,
+            showQuotaPaceIndicator: Bool = true,
             showBankedReset: Bool = true,
             displayTimeZone: TimeZone = .autoupdatingCurrent
         ) {
@@ -2129,6 +2131,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
             self.quotaProgressColorConfiguration = quotaProgressColorConfiguration.normalized()
             self.showQuotaProgressBar = showQuotaProgressBar
+            self.showQuotaPaceIndicator = showQuotaPaceIndicator
             self.showBankedReset = showBankedReset
             self.displayTimeZone = displayTimeZone
             self.fontSize = CGFloat(
@@ -5772,12 +5775,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
                 let plan = overviewNumericPlan(for: sample)
                 if settings.showQuotaProgressBar {
-                    view.addSubview(
-                        makeOverviewNumericProgress(
-                            plan: plan,
-                            frame: row.progress
+                    if settings.showQuotaPaceIndicator,
+                       let pace = OfficialQuotaUsagePace.make(for: window),
+                       let reset = window.resetDisplayText(timeZone: settings.displayTimeZone) {
+                        let progress = QuotaProgressPaceView(
+                            percentage: plan.startProgress ?? plan.toProgress ?? window.remaining,
+                            expectedRemaining: pace,
+                            resetText: reset,
+                            colorConfiguration: settings.quotaProgressColorConfiguration
                         )
-                    )
+                        progress.frame = row.progress.insetBy(dx: 0, dy: -6)
+                        progress.identifier = OverviewNumericPresentation.progressIdentifier(for: sample.identity)
+                        if plan.animates, let target = plan.toProgress {
+                            progress.setPercentage(
+                                target,
+                                animated: true,
+                                duration: OverviewNumericTransition.duration(for: plan.format)
+                            )
+                        }
+                        view.addSubview(progress)
+                    } else {
+                        view.addSubview(
+                            makeOverviewNumericProgress(
+                                plan: plan,
+                                frame: row.progress
+                            )
+                        )
+                    }
                 }
 
                 let amount = makeOverviewNumericAmount(plan: plan, sample: sample, frame: row.amount)

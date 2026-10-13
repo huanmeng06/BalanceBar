@@ -411,6 +411,223 @@ final class QuotaProgressView: NSView {
     }
 }
 
+final class QuotaProgressPaceView: NSView {
+    private let progress: QuotaProgressView
+    private let pace: OfficialQuotaUsagePace
+    private let resetText: String
+    private var trackingAreaReference: NSTrackingArea?
+    private var tooltipWorkItem: DispatchWorkItem?
+    private var popover: NSPopover?
+
+    init(
+        percentage: Double,
+        expectedRemaining: OfficialQuotaUsagePace,
+        resetText: String,
+        colorConfiguration: QuotaProgressColorConfiguration
+    ) {
+        self.progress = QuotaProgressView(
+            percentage: percentage,
+            colorConfiguration: colorConfiguration
+        )
+        self.pace = expectedRemaining
+        self.resetText = resetText
+        super.init(frame: .zero)
+        identifier = NSUserInterfaceItemIdentifier("quotaProgressPace")
+        wantsLayer = true
+        addSubview(progress)
+        progress.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            progress.leadingAnchor.constraint(equalTo: leadingAnchor),
+            progress.trailingAnchor.constraint(equalTo: trailingAnchor),
+            progress.centerYAnchor.constraint(equalTo: centerYAnchor),
+            progress.heightAnchor.constraint(equalToConstant: 5)
+        ])
+        setAccessibilityRole(.staticText)
+        setAccessibilityLabel(accessibilityText)
+        setAccessibilityHelp(accessibilityText)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    deinit {
+        tooltipWorkItem?.cancel()
+        popover?.close()
+    }
+
+    func setPercentage(_ value: Double, animated: Bool, duration: TimeInterval) {
+        progress.setPercentage(value, animated: animated, duration: duration)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
+        let center = markerCenterX
+        let hitRect = NSRect(x: center - 8, y: 0, width: 16, height: 18)
+            .intersection(bounds)
+        guard !hitRect.isEmpty else { return }
+        let area = NSTrackingArea(
+            rect: hitRect,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingAreaReference = area
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let x = markerCenterX
+        let marker = NSBezierPath(
+            roundedRect: NSRect(x: x - 1, y: bounds.midY - 4, width: 2, height: 8),
+            xRadius: 1,
+            yRadius: 1
+        )
+        NSColor.labelColor.withAlphaComponent(0.85).setFill()
+        marker.fill()
+        NSColor.controlBackgroundColor.withAlphaComponent(0.75).setStroke()
+        marker.lineWidth = 0.75
+        marker.stroke()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        tooltipWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.showTooltip() }
+        tooltipWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        tooltipWorkItem?.cancel()
+        tooltipWorkItem = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.popover?.close()
+            self?.popover = nil
+        }
+    }
+
+    private var markerCenterX: CGFloat {
+        let percentage = min(100, max(0, pace.expectedRemaining))
+        let inset: CGFloat = 1
+        return inset + (bounds.width - inset * 2) * CGFloat(percentage / 100)
+    }
+
+    private var accessibilityText: String {
+        tr(.keyQuotaPaceAccessibility, arguments: [
+            pace.actualRemaining.formatted(.number.precision(.fractionLength(0))),
+            pace.expectedRemaining.formatted(.number.precision(.fractionLength(0))),
+            pace.roundedDifference >= 0 ? "+\(pace.roundedDifference)" : "\(pace.roundedDifference)"
+        ])
+    }
+
+    private func showTooltip() {
+        guard window != nil else { return }
+        let content = QuotaPaceTooltipContent(
+            title: pace.status.title,
+            body: pace.status.body,
+            actual: pace.actualRemaining,
+            expected: pace.expectedRemaining,
+            difference: pace.roundedDifference,
+            reset: resetText
+        )
+        let controller = QuotaPaceTooltipViewController(content: content)
+        controller.loadViewIfNeeded()
+        let nextPopover = DashboardTextTooltip.makePopover()
+        nextPopover.contentViewController = controller
+        nextPopover.contentSize = controller.contentSize
+        nextPopover.show(
+            relativeTo: NSRect(x: markerCenterX - 8, y: bounds.midY - 9, width: 16, height: 18),
+            of: self,
+            preferredEdge: .maxY
+        )
+        popover?.close()
+        popover = nextPopover
+    }
+}
+
+private struct QuotaPaceTooltipContent {
+    let title: String
+    let body: String
+    let actual: Double
+    let expected: Double
+    let difference: Int
+    let reset: String
+}
+
+private final class QuotaPaceTooltipViewController: NSViewController {
+    private let content: QuotaPaceTooltipContent
+    private(set) var contentSize = NSSize(width: 220, height: 0)
+
+    init(content: QuotaPaceTooltipContent) {
+        self.content = content
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func loadView() {
+        let title = NSTextField(wrappingLabelWithString: content.title)
+        title.font = .systemFont(ofSize: 12, weight: .semibold)
+        title.textColor = .labelColor
+        let body = NSTextField(wrappingLabelWithString: content.body)
+        DashboardTextTooltip.configure(body)
+        let rows = [
+            tr(.keyQuotaPaceActual, arguments: [content.actual.formatted(.number.precision(.fractionLength(0)))]),
+            tr(.keyQuotaPaceExpected, arguments: [content.expected.formatted(.number.precision(.fractionLength(0)))]),
+            tr(.keyQuotaPaceDifference, arguments: [content.difference >= 0 ? "+\(content.difference)" : "\(content.difference)"]),
+            tr(.keyQuotaPaceReset, arguments: [content.reset])
+        ]
+        let data = NSTextField(wrappingLabelWithString: rows.joined(separator: "\n"))
+        data.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        data.textColor = .labelColor
+        data.lineBreakMode = .byWordWrapping
+        data.usesSingleLineMode = false
+        let stack = NSStackView(views: [title, body, data])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let container = NSView()
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
+            title.widthAnchor.constraint(equalToConstant: 200),
+            body.widthAnchor.constraint(equalToConstant: 200),
+            data.widthAnchor.constraint(equalToConstant: 200)
+        ])
+        container.frame = NSRect(x: 0, y: 0, width: 220, height: 94)
+        view = container
+        container.layoutSubtreeIfNeeded()
+        contentSize = NSSize(width: 220, height: max(76, stack.fittingSize.height + 16))
+        container.frame.size.height = contentSize.height
+    }
+}
+
+private extension OfficialQuotaUsagePace.Status {
+    var title: String {
+        switch self {
+        case .unused: tr(.keyQuotaPaceStatusUnused)
+        case .fast: tr(.keyQuotaPaceStatusFast)
+        case .normal: tr(.keyQuotaPaceStatusNormal)
+        case .slow: tr(.keyQuotaPaceStatusSlow)
+        }
+    }
+
+    var body: String {
+        switch self {
+        case .unused: tr(.keyQuotaPaceBodyUnused)
+        case .fast: tr(.keyQuotaPaceBodyFast)
+        case .normal: tr(.keyQuotaPaceBodyNormal)
+        case .slow: tr(.keyQuotaPaceBodySlow)
+        }
+    }
+}
+
 extension QuotaProgressColor {
     var nsColor: NSColor {
         switch self { case .red: .systemRed; case .orange: .systemOrange; case .yellow: .systemYellow; case .green: .systemGreen }

@@ -10,6 +10,95 @@ func withLunaReserveUserFacingEnabled(_ body: () throws -> Void) rethrows {
 }
 
 final class DomainModelsTests: XCTestCase {
+    func testOfficialQuotaUsagePaceUsesWindowSpecificDurationAndReset() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 50,
+            label: "5h",
+            daysText: "5h",
+            reset: "3h06m",
+            durationSeconds: 18_000,
+            resetAt: now.addingTimeInterval(11_160)
+        )
+        let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: fiveHour, now: now))
+        XCTAssertEqual(pace.expectedRemaining, 62, accuracy: 0.0001)
+        XCTAssertEqual(pace.difference, -12, accuracy: 0.0001)
+        XCTAssertEqual(pace.status, .fast)
+
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 80,
+            label: "7d",
+            daysText: "7d",
+            reset: "5d",
+            durationSeconds: 7 * 86_400,
+            resetAt: now.addingTimeInterval(5 * 86_400)
+        )
+        let weeklyPace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: sevenDay, now: now))
+        XCTAssertEqual(weeklyPace.expectedRemaining, 100 * 5.0 / 7.0, accuracy: 0.0001)
+        XCTAssertEqual(weeklyPace.status, .slow)
+    }
+
+    func testOfficialQuotaUsagePaceClassifiesUnusedAndRoundedBoundaries() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func window(remaining: Double) -> OfficialQuotaWindow {
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: remaining,
+                label: "5h",
+                daysText: "5h",
+                reset: "",
+                durationSeconds: 18_000,
+                resetAt: now.addingTimeInterval(9_000)
+            )
+        }
+        let unused = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window(remaining: 100), now: now))
+        XCTAssertEqual(unused.status, .unused)
+
+        let exactFive = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window(remaining: 45), now: now))
+        XCTAssertEqual(exactFive.difference, -5, accuracy: 0.0001)
+        XCTAssertEqual(exactFive.status, .normal)
+
+        let roundedSix = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window(remaining: 44.4), now: now))
+        XCTAssertEqual(roundedSix.roundedDifference, -6)
+        XCTAssertEqual(roundedSix.status, .fast)
+    }
+
+    func testOfficialQuotaUsagePaceHidesIncompleteOrExpiredWindows() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let base = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 60,
+            label: "5h",
+            daysText: "5h",
+            reset: "",
+            durationSeconds: 18_000,
+            resetAt: now.addingTimeInterval(9_000)
+        )
+        XCTAssertNotNil(OfficialQuotaUsagePace.make(for: base, now: now))
+        XCTAssertNil(OfficialQuotaUsagePace.make(for: base, now: now.addingTimeInterval(9_000)))
+        XCTAssertNil(OfficialQuotaUsagePace.make(for: base, now: now.addingTimeInterval(-18_001)))
+        XCTAssertNil(OfficialQuotaUsagePace.make(for: OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 60,
+            label: "5h",
+            daysText: "5h",
+            reset: "",
+            durationSeconds: nil,
+            resetAt: base.resetAt
+        ), now: now))
+        XCTAssertNil(OfficialQuotaUsagePace.make(for: OfficialQuotaWindow(
+            kind: .other,
+            remaining: 60,
+            label: "other",
+            daysText: "other",
+            reset: "",
+            durationSeconds: 18_000,
+            resetAt: base.resetAt
+        ), now: now))
+    }
+
     func testAssistantClientAndStatusLinkValueModels() throws {
         XCTAssertEqual(AssistantClient.codex.appType, "codex")
         XCTAssertEqual(AssistantClient.codex.displayName, "Codex")

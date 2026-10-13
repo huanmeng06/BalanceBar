@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Fortschrittsbalken";
 "dashboard.menu.page.show_quota_progress_bar" = "Fortschrittsbalken anzeigen";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Wenn ausgeschaltet, zeigen Menüs und Kontingentkarten keinen Restkontingent-Balken mehr";
+"dashboard.menu.page.show_quota_pace_indicator" = "Nutzungstempo anzeigen";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Referenzmarkierung für gleichmäßige Nutzung bei offiziellen 5-Stunden- und 7-Tage-Kontingenten anzeigen";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@-Anzeige";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Zeitpunkt für die Anzeige von %1$@ im Menü auswählen";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Nicht anzeigen";
@@ -506,3 +508,16 @@
 "dashboard.logs.page.preview_truncated" = "Nur die aktuelle Vorschau wird angezeigt; exportieren Sie alle gespeicherten Protokolle.";
 "dashboard.logs.page.read_warning" = "Einige Diagnosedateien konnten nicht gelesen werden";
 "dashboard.logs.page.export_failed" = "Export der Diagnoseprotokolle fehlgeschlagen";
+"quota.pace.status.unused" = "Noch nicht verwendet";
+"quota.pace.status.fast" = "Nutzung etwas zu schnell";
+"quota.pace.status.normal" = "Nutzung genau im Tempo";
+"quota.pace.status.slow" = "Nutzung sehr entspannt";
+"quota.pace.body.unused" = "Das gesamte Kontingent ist noch verfügbar.";
+"quota.pace.body.fast" = "Es ist weniger übrig als bei gleichmäßiger Nutzung.";
+"quota.pace.body.normal" = "Das verbleibende Kontingent liegt nahe am Referenzwert.";
+"quota.pace.body.slow" = "Es ist mehr übrig als bei gleichmäßiger Nutzung.";
+"quota.pace.actual" = "Tatsächlich übrig: %@";
+"quota.pace.expected" = "Referenz bei gleichmäßiger Nutzung: %@";
+"quota.pace.difference" = "Abweichung: %@";
+"quota.pace.reset" = "Zurücksetzung: %@";
+"quota.pace.accessibility" = "Kontingenttempo. Tatsächlich übrig %@ Prozent, Referenz %@ Prozent, Abweichung %@ Prozentpunkte.";
