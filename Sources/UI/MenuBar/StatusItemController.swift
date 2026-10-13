@@ -202,10 +202,21 @@ struct AccountMarqueeScrollState: Equatable {
 
     let offset: CGFloat
     let isActive: Bool
+    private let overflow: CGFloat
 
     init(offset: CGFloat, overflow: CGFloat) {
         self.offset = offset
+        self.overflow = overflow
         self.isActive = overflow > 0 && offset < -Self.activationThreshold
+    }
+
+    /// Ease the mask in as the leading glyph enters the fade region, and out
+    /// along the same curve on the return trip. Activity's noise threshold must
+    /// not act as a binary switch for the visible mask.
+    func fadeStrength(fadeWidth: CGFloat) -> CGFloat {
+        guard overflow > 0, fadeWidth > 0 else { return 0 }
+        let progress = min(1, max(0, -offset / fadeWidth))
+        return progress * progress * (3 - 2 * progress)
     }
 }
 
@@ -225,6 +236,7 @@ final class AccountMarqueeView: NSView {
     private(set) var isScrollable = false
     private(set) var isScrolling = false
     private(set) var showsEdgeFade = false
+    private(set) var edgeFadeStrength: CGFloat = 0
     private(set) var edgeFadeInset: CGFloat = 0
     private(set) var scrollOverflow: CGFloat = 0
     private(set) var scrollDistance: CGFloat = 0
@@ -334,10 +346,10 @@ final class AccountMarqueeView: NSView {
             mask.startPoint = CGPoint(x: 0, y: 0.5)
             mask.endPoint = CGPoint(x: 1, y: 0.5)
             mask.colors = [
-                NSColor.clear.cgColor,
                 NSColor.black.cgColor,
                 NSColor.black.cgColor,
-                NSColor.clear.cgColor
+                NSColor.black.cgColor,
+                NSColor.black.cgColor
             ]
             mask.locations = nextLayout.maskLocations.map {
                 NSNumber(value: Double($0))
@@ -429,14 +441,32 @@ final class AccountMarqueeView: NSView {
         scrollOffset = state.offset
         isScrolling = state.isActive
 
-        guard state.isActive != showsEdgeFade else { return }
-        if state.isActive, let mask = edgeFadeMask {
-            layer?.mask = mask
-            updateEdgeFadeMaskFrame()
+        let strength = state.fadeStrength(fadeWidth: edgeFadeInset)
+        guard strength != edgeFadeStrength else { return }
+        edgeFadeStrength = strength
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if strength > 0, let mask = edgeFadeMask {
+            let attaching = layer?.mask !== mask
+            if attaching {
+                layer?.mask = mask
+                updateEdgeFadeMaskFrame()
+            }
+            // Interpolate between presentation samples rather than showing
+            // 30Hz alpha steps. The first attachment is already nearly opaque.
+            CATransaction.setDisableActions(attaching)
+            CATransaction.setAnimationDuration(Self.scrollActivityInterval)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
+            let edge = NSColor.black.withAlphaComponent(1 - strength).cgColor
+            mask.colors = [edge, NSColor.black.cgColor, NSColor.black.cgColor, edge]
         } else {
             layer?.mask = nil
+            // Reset a retained mask for the next cycle's first attachment.
+            edgeFadeMask?.colors = Array(repeating: NSColor.black.cgColor, count: 4)
         }
-        showsEdgeFade = state.isActive
+        showsEdgeFade = strength > 0
+        CATransaction.commit()
     }
 
     /// Test seam for checking the mask contract without depending on a live

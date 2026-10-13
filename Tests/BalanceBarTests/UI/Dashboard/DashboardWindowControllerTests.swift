@@ -3585,6 +3585,42 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNotEqual(view.scrollOffset, activeOffset, accuracy: 0.001)
     }
 
+    func testAccountMarqueeFadeChangesContinuouslyAcrossActivityThresholdAndReturn() throws {
+        let view = AccountMarqueeView(
+            text: String(repeating: "Official reset hint ", count: 8),
+            font: .systemFont(ofSize: 13), textColor: .secondaryLabelColor,
+            frame: NSRect(x: 0, y: 0, width: 128, height: 18)
+        )
+        let width = view.edgeFadeInset
+        XCTAssertGreaterThan(width, 0)
+        var outbound: [CGFloat] = []
+        for offset in [CGFloat(0), -0.25, -0.49, -0.5, -0.51, -1, -width / 2, -width] {
+            view.applyScrollOffsetForTesting(offset)
+            outbound.append(view.edgeFadeStrength)
+            if offset < 0 {
+                let mask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
+                let colors = try XCTUnwrap(mask.colors as? [CGColor])
+                XCTAssertEqual(colors[0].alpha, 1 - view.edgeFadeStrength, accuracy: 0.001)
+                XCTAssertEqual(colors[3].alpha, colors[0].alpha, accuracy: 0.001)
+                XCTAssertEqual(colors[1].alpha, 1, accuracy: 0.001)
+                XCTAssertEqual(colors[2].alpha, 1, accuracy: 0.001)
+            }
+        }
+        XCTAssertEqual(outbound.first, 0)
+        XCTAssertEqual(outbound.last, 1)
+        XCTAssertEqual(outbound[outbound.count - 2], 0.5, accuracy: 0.001)
+        XCTAssertLessThan(outbound[4] - outbound[2], 0.001)
+        XCTAssertEqual(outbound, outbound.sorted())
+        for offset in [-width, -width / 2, -1, -0.51, -0.5, -0.49, -0.25, CGFloat(0)] {
+            view.applyScrollOffsetForTesting(offset)
+            XCTAssertEqual(view.edgeFadeStrength, AccountMarqueeScrollState(offset: offset, overflow: view.scrollOverflow).fadeStrength(fadeWidth: width))
+        }
+        XCTAssertNil(view.layer?.mask)
+        XCTAssertEqual(view.edgeFadeStrength, 0)
+        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertEqual(AccountMarqueeScrollState(offset: -4, overflow: 0).fadeStrength(fadeWidth: 8), 0)
+    }
+
     func testAccountMarqueeSpeedsUpForLongerOverflowWithConcaveCurve() {
         let shortSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 120)
         let mediumSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 480)
