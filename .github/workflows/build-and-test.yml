@@ -2,74 +2,107 @@ name: Build and Test
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, edited]
   workflow_dispatch:
 
 permissions:
   contents: read
+  pull-requests: read
+  actions: read
 
 concurrency:
-  group: build-and-test-${{ github.workflow }}-${{ github.ref }}
+  group: build-and-test-${{ (github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) && format('metadata-{0}', github.run_id) || github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: CI repository checks and PR scope
+    if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version_only: ${{ steps.scope.outputs.version_only }}
+      build: ${{ steps.scope.outputs.build }}
+      probes: ${{ steps.scope.outputs.probes }}
+      action: ${{ steps.scope.outputs.action }}
+      force_full: ${{ steps.scope.outputs.force_full }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Basic checks and conservative PR-wide scope
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FORCE_FULL: ${{ github.event.action == 'edited' }}
+        run: |
+          set -Eeuo pipefail
+          base="${BASE_SHA:-HEAD^}"
+          head="${HEAD_SHA:-HEAD}"
+          .github/scripts/ci-basic-checks.sh "$base"
+          python3 .github/scripts/ci-scope.py "$base" "$head" >> "$GITHUB_OUTPUT"
+          echo "force_full=$FORCE_FULL" >> "$GITHUB_OUTPUT"
+          version_only=false
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            classification="$(.github/scripts/classify-version-only-diff.sh "$base" "$head")"
+            [[ "$classification" != version-only ]] || version_only=true
+          fi
+          echo "version_only=$version_only" >> "$GITHUB_OUTPUT"
+          echo "Event head: $head; checkout/merge SHA: $GITHUB_SHA; version exemption: $version_only" >> "$GITHUB_STEP_SUMMARY"
+
+  fast:
+    name: Fast CI (Debug build and probes; no XCTest)
+    needs: scope
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft
+    runs-on: ${{ needs.scope.outputs.build == 'true' && 'macos-26' || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unsigned Debug build (once)
+        if: needs.scope.outputs.build == 'true'
+        env:
+          BUILD_ACTION: ${{ needs.scope.outputs.action }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$(xcrun --sdk macosx --show-sdk-version)" == 26.* ]]
+          xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar \
+            -configuration Debug -derivedDataPath "$RUNNER_TEMP/BalanceBar-Fast" \
+            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO "$BUILD_ACTION"
+      - name: Localization probes
+        if: needs.scope.outputs.probes == 'true'
+        run: |
+          set -Eeuo pipefail
+          ./scripts/probes/localization-resource-probe.sh
+          ./scripts/probes/balance-query-probe.sh
+          ./scripts/probes/balance-network-error-localization-probe.sh
+          ./scripts/probes/localization-resource-probe.sh "$RUNNER_TEMP/BalanceBar-Fast/Build/Products/Debug/BalanceBar.app"
+      - name: Fast scope summary
+        run: echo 'Fast feedback only. XCTest, CLI packaging, upload and old-runtime smoke NOT executed.' >> "$GITHUB_STEP_SUMMARY"
+
+  version-exemption:
+    name: PR-wide version-only exemption (no XCTest)
+    needs: scope
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft && needs.scope.outputs.version_only == 'true' && needs.scope.outputs.force_full != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Only approved version strings differ across the entire PR. XCTest NOT executed; explicit version exemption.' >> "$GITHUB_STEP_SUMMARY"
+
   build-and-test:
-    name: macOS build and test
+    name: Full CI (CLI, probes and serial XCTest)
+    needs: scope
+    if: github.event_name == 'workflow_dispatch' || (!github.event.pull_request.draft && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true'))
     runs-on: macos-26
     timeout-minutes: 20
     env:
       BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
       BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
-    outputs:
-      version_only: ${{ steps.classify.outputs.version_only }}
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Classify current pull request head commit
-        id: classify
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -Eeuo pipefail
-
-          version_only=false
-          if [[ "$GITHUB_EVENT_NAME" == 'pull_request' && -n "$PR_HEAD_SHA" && -n "$PR_NUMBER" ]]; then
-            pr_head_ref="refs/remotes/origin/pr-${PR_NUMBER}-head"
-            if git fetch --no-tags --depth=2 origin \
-              "+refs/pull/${PR_NUMBER}/head:${pr_head_ref}"; then
-              fetched_head_sha="$(git rev-parse "$pr_head_ref" 2>/dev/null || true)"
-              if [[ "$fetched_head_sha" == "$PR_HEAD_SHA" ]]; then
-                if classification="$(.github/scripts/classify-version-only-diff.sh \
-                  "$PR_HEAD_SHA" 2>/dev/null)"; then
-                  echo "Current PR head classification: $classification"
-                  if [[ "$classification" == 'version-only' ]]; then
-                    version_only=true
-                  fi
-                else
-                  echo 'Version-only classifier failed; continuing with full checks.' >&2
-                fi
-              else
-                echo 'Fetched PR head did not match the event SHA; continuing with full checks.' >&2
-              fi
-            else
-              echo 'Could not fetch the PR head ref; continuing with full checks.' >&2
-            fi
-          else
-            echo 'Non-pull-request event; continuing with full checks.'
-          fi
-
-          echo "version_only=$version_only" >> "$GITHUB_OUTPUT"
-
-      - name: Version-only fast path
-        if: steps.classify.outputs.version_only == 'true'
-        run: |
-          set -Eeuo pipefail
-          echo 'Only the approved version values changed in the current PR head commit.'
-
       - name: Verify macOS 26 build environment
-        if: steps.classify.outputs.version_only != 'true'
         run: |
           set -Eeuo pipefail
           xcodebuild -version
@@ -78,7 +111,6 @@ jobs:
           echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
 
       - name: Independent build checks
-        if: steps.classify.outputs.version_only != 'true'
         run: |
           set -Eeuo pipefail
 
@@ -86,16 +118,24 @@ jobs:
           probes_log="$RUNNER_TEMP/BalanceBar-localization-probes.log"
           xcode_log="$RUNNER_TEMP/BalanceBar-xcode-build.log"
 
-          ./scripts/build.sh >"$cli_log" 2>&1 &
+          timed_check() {
+            local label="$1" log="$2" start status
+            shift 2
+            start=$(date +%s)
+            set +e
+            "$@" >"$log" 2>&1
+            status=$?
+            echo "$label: $(( $(date +%s) - start )) seconds, exit $status" >"$log.timing"
+            return "$status"
+          }
+          timed_check CLI "$cli_log" ./scripts/build.sh &
           cli_pid=$!
 
-          (
-            ./scripts/probes/balance-query-probe.sh
-            ./scripts/probes/balance-network-error-localization-probe.sh
-          ) >"$probes_log" 2>&1 &
+          timed_check probes "$probes_log" bash -Eeuo pipefail -c \
+            './scripts/probes/balance-query-probe.sh && ./scripts/probes/balance-network-error-localization-probe.sh' &
           probes_pid=$!
 
-          xcodebuild \
+          timed_check Xcode "$xcode_log" xcodebuild \
             -project BalanceBar.xcodeproj \
             -scheme BalanceBar \
             -configuration Debug \
@@ -104,7 +144,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
-            build-for-testing >"$xcode_log" 2>&1 &
+            -parallel-testing-enabled NO build-for-testing &
           xcode_pid=$!
 
           check_status=0
@@ -120,31 +160,39 @@ jobs:
             "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"; then
             check_status=1
           fi
+          cat "$cli_log.timing" "$probes_log.timing" "$xcode_log.timing" | tee -a "$GITHUB_STEP_SUMMARY"
           cat "$cli_log"
           cat "$probes_log"
           cat "$xcode_log"
           exit "$check_status"
 
       - name: XCTest
-        if: steps.classify.outputs.version_only != 'true'
-        run: >-
-          xcodebuild
-          -project BalanceBar.xcodeproj
-          -scheme BalanceBar
-          -configuration Debug
-          -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData"
-          -destination 'platform=macOS,arch=arm64'
-          CODE_SIGNING_ALLOWED=NO
-          ARCHS=arm64
-          ONLY_ACTIVE_ARCH=YES
-          -parallel-testing-enabled NO
-          test-without-building
+        run: |
+          set -Eeuo pipefail
+          xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar \
+            -configuration Debug -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData" \
+            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/BalanceBar.xcresult" test-without-building
+      - name: Full test conclusion and counts
+        if: always()
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -Eeuo pipefail
+          echo "Full scope: CLI package, localization probes, build-for-testing, all serial XCTest. Head: ${HEAD_SHA:-$GITHUB_SHA}; checkout/merge: $GITHUB_SHA; status so far: $JOB_STATUS" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -d "$RUNNER_TEMP/BalanceBar.xcresult" ]]; then
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/BalanceBar.xcresult" > "$RUNNER_TEMP/test-summary.json"
+            cat "$RUNNER_TEMP/test-summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'XCTest result absent: tests NOT proven passed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # upload-artifact@v4 zips the payload and drops Unix execute bits on
       # Mach-O files inside .app bundles. Tar first so old-runtime can restore
       # a runnable minos 14 binary rather than a non-executable Contents tree.
       - name: Stage SDK 26 deployment-target artifact
-        if: steps.classify.outputs.version_only != 'true'
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/BalanceBar-macos26-sdk"
@@ -155,10 +203,9 @@ jobs:
             | grep -F 'BalanceBar.app/Contents/MacOS/BalanceBar'
 
       - name: Upload SDK 26 deployment-target artifact
-        if: steps.classify.outputs.version_only != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: BalanceBar-macos26-sdk
+          name: BalanceBar-macos26-sdk-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/BalanceBar-macos26-sdk
           if-no-files-found: error
           retention-days: 2
@@ -171,7 +218,7 @@ jobs:
   old-runtime-smoke:
     name: Pre-Liquid-Glass artifact smoke
     needs: build-and-test
-    if: needs.build-and-test.outputs.version_only != 'true'
+    if: needs.build-and-test.result == 'success'
     runs-on: macos-15
     continue-on-error: true
     timeout-minutes: 10
@@ -184,7 +231,7 @@ jobs:
       - name: Download SDK 26 deployment-target artifact
         uses: actions/download-artifact@v4
         with:
-          name: BalanceBar-macos26-sdk
+          name: BalanceBar-macos26-sdk-attempt-${{ github.run_attempt }}
           path: "${{ runner.temp }}/BalanceBar-artifact"
 
       - name: Verify load commands without launching the GUI
@@ -198,3 +245,24 @@ jobs:
           ls -l "$artifact_root/BalanceBar.app/Contents/MacOS/BalanceBar"
           ./scripts/probes/deployment-artifact-smoke.sh \
             "$artifact_root/BalanceBar.app"
+
+  merge-gate:
+    # No needs: publish the pending check immediately, replacing an old green
+    # on same-SHA Draft/Ready transitions before Full finishes. No always()
+    # override: workflow cancellation must cancel this check as well.
+    name: ${{ (github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) && 'PR metadata edit (no merge credential)' || (github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Metadata edit acknowledgement
+        if: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) }}
+        run: echo 'Title/body edit only; no CI or merge credential, active validation unaffected.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v4
+        if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) }}
+        with:
+          fetch-depth: 0
+      - name: Wait for this attempt and verify live PR state
+        if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci-merge-gate.py
