@@ -270,8 +270,8 @@ resolve/update and rerun, never bypass the missing gate.
 Version classification requires the entire PR effective diff to modify only
 `Resources/Info.plist`, with both nonempty string version fields changed and all
 other text, mode and plist validity preserved. Code then version commits remain
-Full. The classifier's one-argument form retains the existing single-commit
-release contract; PR CI always uses two arguments. Release and Forward SDK
+Full. The classifier's one-argument form retains its legacy single-commit
+interface; PR CI always uses two arguments. Release and Forward SDK
 workflows are unchanged.
 
 ### Owner activation (not enforced until configured)

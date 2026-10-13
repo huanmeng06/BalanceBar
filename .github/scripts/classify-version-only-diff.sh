@@ -9,7 +9,7 @@ full_result() {
     exit 0
 }
 
-# One argument retains the release lane's single-commit contract. PR callers
+# One argument retains the legacy single-commit interface. PR callers
 # MUST pass base and head; compare the merge base, including every PR commit.
 if [[ "$#" -eq 2 ]]; then
     commit_input="$2"
@@ -19,7 +19,7 @@ elif [[ "$#" -eq 1 ]]; then
     parent_sha="$(git rev-parse "${1}^" 2>/dev/null)" || full_result
     [[ "$(git rev-list --parents -n 1 "$1" | awk '{print NF}')" == 2 ]] || full_result
 else
-    printf 'usage: %s <base> <head> (or <commit> for release)\n' "$0" >&2
+    printf 'usage: %s <base> <head> (or legacy <commit>)\n' "$0" >&2
     exit 2
 fi
 commit_sha="$(git rev-parse --verify "${commit_input}^{commit}" 2>/dev/null)" || full_result
@@ -59,8 +59,8 @@ import plistlib, sys
 try:
     old, new = [plistlib.load(open(p, 'rb')) for p in sys.argv[1:]]
     for key in ('CFBundleShortVersionString', 'CFBundleVersion'):
-        assert all(isinstance(v[key], str) and v[key] for v in (old, new))
-        assert old[key] != new[key]
+        if not all(isinstance(v[key], str) and v[key] for v in (old, new)) or old[key] == new[key]:
+            raise ValueError('Both version strings must change')
 except Exception:
     sys.exit(1)
 PYPLIST

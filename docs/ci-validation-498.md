@@ -68,3 +68,23 @@ Local serial `ResponseParsersTests`: 20 total, 20 passed, 0 failed, 0 skipped;
 result bundle `/tmp/BalanceBar-Issue498-ResponseParsers.xcresult`. A second run
 reusing `/tmp/BalanceBar-Issue498-DerivedData` again passed 20 tests and took
 2.77s wall time (`/usr/bin/time -p`), with no full suite requested locally.
+
+## Hosted transition / cancellation evidence
+
+- Draft push [38350686906](https://github.com/huanmeng06/BalanceBar/actions/runs/38350686906): gate created alongside scope and failed for Draft, then superseded by Ready.
+- Draft → Ready [38350701184](https://github.com/huanmeng06/BalanceBar/actions/runs/38350701184): gate in progress while Full ran. Explicitly cancelled Full; Full conclusion `cancelled`, gate `failure`, no passing credential.
+- Ready → Draft [38350776560](https://github.com/huanmeng06/BalanceBar/actions/runs/38350776560): same head `232b9bb0f93523e95ed81f791a3978afb1da5bee`, gate `failure`, Full `skipped`, Fast resumed.
+- Explicit dispatch [38350701721](https://github.com/huanmeng06/BalanceBar/actions/runs/38350701721): Full started, Fast/version skipped, independent `Manual Full result` in progress while PR state switched back to Draft. Dispatch is not cancelled by PR event concurrency. Final result and latest Ready/synchronize runs are recorded in the PR handoff rather than claiming a pending run passed here.
+
+### Remaining measurement limits
+
+This Issue's sole PR changes CI scripts/configuration, so its effective PR-wide
+diff is never documentation-only or pure-version-only. Testing those hosted
+paths in this PR would require discarding this implementation or creating an
+extra PR. They are validated by local classifier/scope fixtures; isolated hosted
+Swift-only, test-only and docs/version-only performance comparisons remain an
+Owner follow-up after integration. No three-scenario performance result is
+claimed. The baseline did not record separate CLI/probe/Xcode timers; this change
+adds them for future reproducible comparisons. Required-check enforcement is
+still **not activated**; same-context latest-check selection must be confirmed
+in Owner acceptance after safe ruleset activation.

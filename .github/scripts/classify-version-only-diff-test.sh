@@ -84,4 +84,17 @@ git add Resources/Info.plist
 git commit -q -m 'mode change is not a version exemption'
 assert_classification full
 [[ "$("$classifier" nonexistent HEAD)" == full ]]
-printf '%s\n' 'PR-wide and release classifier paths passed'
+git reset --hard -q "$base"
+printf '%s\n' '<not-a-plist>' > Resources/Info.plist
+git add Resources/Info.plist
+git commit -q -m 'invalid plist'
+assert_classification full
+git reset --hard -q "$base"
+git mv Resources/Info.plist Resources/Renamed.plist
+git commit -q -m 'renamed plist'
+assert_classification full
+git reset --hard -q "$base"
+git rm -q Resources/Info.plist
+git commit -q -m 'deleted plist'
+assert_classification full
+printf '%s\n' 'PR-wide and legacy classifier paths passed'
