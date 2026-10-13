@@ -54,13 +54,22 @@ def metadata_source(runs, jobs_by_run, current_run_id, workflow_id, pr_number, h
             # Actions can publish a new run before creating any jobs. It is
             # still the newest validation and must hide older green runs.
             return run, jobs, 'Latest validation jobs are not yet visible'
-        if names.get(NAMES['scope'], {}).get('conclusion') == 'skipped':
-            # Metadata-only confirmations cannot be chained as Full evidence.
-            continue
         if 'Draft merge gate inactive (not required)' in names:
             return run, jobs, 'Draft validation is newer than Full'
+        if names.get(NAMES['scope'], {}).get('conclusion') == 'skipped':
+            # Only a completed metadata confirmation can be ignored. During
+            # job creation a partial list cannot prove this is metadata-only.
+            if (run.get('status') == 'completed'
+                    and 'PR merge gate' in names
+                    and all(names.get(NAMES[key], {}).get('conclusion') == 'skipped'
+                            for key in ('full', 'version', 'smoke'))):
+                continue
+            return run, jobs, 'Latest validation jobs are not yet visible'
         if 'PR merge gate' in names or NAMES['scope'] in names:
             return run, jobs, None
+        # Empty and partially published job lists have the same safety rule:
+        # an unclassified newer run must never expose an older green result.
+        return run, jobs, 'Latest validation jobs are not yet visible'
     return None, None, 'No prior Ready validation for this PR and head'
 
 

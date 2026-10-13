@@ -131,7 +131,9 @@ class PolicyTests(unittest.TestCase):
             20: [{'name': meta.NAMES['scope'], 'conclusion': 'success'},
                  {'name': 'PR merge gate', 'conclusion': 'success'}],
             21: [{'name': meta.NAMES['scope'], 'conclusion': 'skipped'},
-                 {'name': 'PR merge gate', 'conclusion': 'success'}],
+                 {'name': 'PR merge gate', 'conclusion': 'success'}] +
+                [{'name': meta.NAMES[key], 'conclusion': 'skipped'}
+                 for key in ('full', 'version', 'smoke')],
             22: [{'name': meta.NAMES['scope'], 'conclusion': 'success'},
                  {'name': 'Draft merge gate inactive (not required)', 'conclusion': 'success'}]}
         args = (lambda i: jobs[i], 99, 9, 499, 'new')
@@ -171,6 +173,44 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(selected, [])
         self.assertIn('not yet visible', error)
 
+    def test_metadata_partial_jobs_cannot_expose_old_green(self):
+        old = {'id': 20, 'workflow_id': 9, 'event': 'pull_request',
+               'head_sha': 'new', 'pull_requests': [{'number': 499}],
+               'status': 'completed', 'conclusion': 'success'}
+        partial_lists = [
+            [{'name': meta.NAMES['full'], 'conclusion': None}],
+            [{'name': meta.NAMES['scope'], 'conclusion': 'skipped'}],
+            [{'name': 'PR merge gate', 'conclusion': None},
+             {'name': meta.NAMES['scope'], 'conclusion': 'skipped'}],
+        ]
+        for partial in partial_lists:
+            for status in ('queued', 'in_progress', 'completed'):
+                with self.subTest(jobs=partial, status=status):
+                    latest = dict(old, id=21, status=status)
+                    queried = []
+                    def jobs(run_id):
+                        queried.append(run_id)
+                        self.assertEqual(run_id, 21)
+                        return partial
+                    source, _, error = meta.metadata_source(
+                        [old, latest], jobs, 99, 9, 499, 'new')
+                    self.assertEqual(source['id'], 21)
+                    self.assertIsNotNone(error)
+                    self.assertEqual(queried, [21])
+
+    def test_draft_with_skipped_scope_blocks_old_ready(self):
+        old = {'id': 20, 'workflow_id': 9, 'event': 'pull_request',
+               'head_sha': 'new', 'pull_requests': [{'number': 499}],
+               'status': 'completed', 'conclusion': 'success'}
+        latest = dict(old, id=21)
+        jobs = [{'name': meta.NAMES['scope'], 'conclusion': 'skipped'},
+                {'name': 'Draft merge gate inactive (not required)',
+                 'conclusion': 'success'}]
+        source, _, error = meta.metadata_source(
+            [old, latest], lambda _: jobs, 99, 9, 499, 'new')
+        self.assertEqual(source['id'], 21)
+        self.assertIn('Draft', error)
+
     def test_metadata_waits_past_missing_job_grace_while_queued(self):
         clock = Clock()
         run = lambda i, status: {'id': i, 'workflow_id': 9, 'event': 'pull_request',
@@ -195,7 +235,9 @@ class PolicyTests(unittest.TestCase):
                 latest = run(21, 'queued' if clock.now < 75 else 'completed')
                 return {'workflow_runs': [run(20, 'completed'), latest], 'total_count': 2}
             if '/runs/21/jobs?' in path:
-                values = [] if clock.now < 75 else new_jobs
+                values = ([] if clock.now < 30 else
+                          [{'id': 301, 'name': meta.NAMES['full'], 'conclusion': None}]
+                          if clock.now < 75 else new_jobs)
                 return {'jobs': values, 'total_count': len(values)}
             if '/runs/20/jobs?' in path:
                 return {'jobs': old_jobs, 'total_count': len(old_jobs)}
