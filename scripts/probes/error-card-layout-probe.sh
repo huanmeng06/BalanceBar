@@ -13,6 +13,11 @@ trap 'rm -rf "$probe_dir"' EXIT
 {
     printf '%s\n' 'import AppKit' 'import CoreText'
     awk '
+        /^struct OverviewLayoutMetrics[: ]/ { capture = 1 }
+        capture { print }
+        capture && /^\}/ { exit }
+    ' "$sources_dir/Domain/ProviderModels.swift"
+    awk '
         /^(private[[:space:]]+)?enum ErrorCardLayout \{/ { capture = 1 }
         /^private struct Provider \{/ { exit }
         capture { print }
@@ -149,7 +154,7 @@ for (name, sample) in layoutSamples {
     require(frames.detail.width == ErrorCardLayout.detailWidth, "\(name) detail uses the compact balance left-column width")
     require(frames.detail.height == ErrorCardLayout.detailHeight(for: sample, width: ErrorCardLayout.detailWidth), "\(name) detail frame uses the measured height")
     require(frames.refreshTime.width == 81, "\(name) refresh time uses the standard width")
-    require(abs(frames.refreshTime.maxX - (ErrorCardLayout.cardWidth - 14)) < 0.5, "\(name) refresh time is right-aligned with the standard inset")
+    require(abs(frames.refreshTime.maxX - (ErrorCardLayout.cardWidth - ErrorCardLayout.horizontalInset)) < 0.5, "\(name) refresh time is right-aligned with the standard inset")
     require(frames.refreshTime.minY > frames.detail.maxY, "\(name) refresh time sits above the detail")
 
     for (labelName, rect) in [
@@ -181,11 +186,11 @@ for (name, sample) in layoutSamples {
 
 private let compactFrames = ErrorCardLayout.errorFrames(for: short)
 require(compactFrames.cardSize.height == 86, "single-line error card matches compact balance height")
-require(compactFrames.title == NSRect(x: 14, y: 58, width: 127, height: 20), "single-line error title matches compact balance row")
-require(compactFrames.refreshTime == NSRect(x: 209, y: 59, width: 81, height: 17), "single-line error refresh time matches compact balance row")
-require(compactFrames.quotaDetail == NSRect(x: 14, y: 31, width: 128, height: 18), "single-line error status matches compact balance row")
-require(compactFrames.amount == NSRect(x: 149, y: 5, width: 141, height: 48), "single-line error amount placeholder matches compact balance row")
-require(compactFrames.detail == NSRect(x: 14, y: 7, width: ErrorCardLayout.detailWidth, height: 17), "single-line error detail matches compact balance third row")
+require(compactFrames.title == NSRect(x: ErrorCardLayout.horizontalInset, y: 58, width: 127, height: 20), "single-line error title matches compact balance row")
+require(compactFrames.refreshTime == NSRect(x: ErrorCardLayout.refreshTimeX, y: 59, width: 81, height: 17), "single-line error refresh time matches compact balance row")
+require(compactFrames.quotaDetail == NSRect(x: ErrorCardLayout.horizontalInset, y: 31, width: 128, height: 18), "single-line error status matches compact balance row")
+require(compactFrames.amount == NSRect(x: ErrorCardLayout.amountX, y: 5, width: 141, height: 48), "single-line error amount placeholder matches compact balance row")
+require(compactFrames.detail == NSRect(x: ErrorCardLayout.horizontalInset, y: 7, width: ErrorCardLayout.detailWidth, height: 17), "single-line error detail matches compact balance third row")
 
 // The amount's accepted compact baseline places its center 1pt above the
 // geometric center of the left status/detail region. Preserve that optical
@@ -251,8 +256,8 @@ require(providerTitle.frame == compactFrames.title, "Provider title frame stays 
 require(loadFailed.frame == compactFrames.quotaDetail, "load-failed frame stays unchanged")
 require(cachedAmount.frame == compactFrames.amount, "cached amount frame stays unchanged")
 
-print("error card layout probe: PASS; wrapping and frames unchanged; Provider detail and cached success time use system red; title, status, and amount keep normal colors")
+print("error card layout probe: PASS; shared 16pt inset, measured wrapping and non-overlapping frames; Provider detail and cached success time use system red; title, status, and amount keep normal colors")
 SWIFT
-} | swiftc -framework AppKit -framework CoreText -o "$probe_binary" -
+} | swiftc -module-cache-path "$probe_dir/module-cache" -framework AppKit -framework CoreText -o "$probe_binary" -
 
 "$probe_binary"

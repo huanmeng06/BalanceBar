@@ -851,7 +851,15 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
         )
         XCTAssertEqual(balanceAmount.frame, balanceLayout.amount)
-        XCTAssertEqual(balanceLayout.amount, CGRect(x: 149, y: 10, width: 141, height: 48))
+        XCTAssertEqual(
+            balanceLayout.amount,
+            CGRect(
+                x: OpenCodexCardLayout.amountX,
+                y: 10,
+                width: OpenCodexCardLayout.amountWidth,
+                height: 48
+            )
+        )
         XCTAssertEqual(balanceAmount.verticalAlignment, .top)
         XCTAssertEqual(balanceAmount.contentAlignmentForTesting, .topTrailing)
 
@@ -956,11 +964,13 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertFalse(amountViews(in: officialOverview).contains {
             $0.identifier?.rawValue == "codex.bankedReset.probability24h"
         })
-        assertCentered(
-            .bankedResetProbability48h(provider: "OpenAI Official"),
-            horizontal: .leading,
-            in: officialOverview
-        )
+        XCTAssertFalse(amountViews(in: officialOverview).contains {
+            $0.identifier?.rawValue == "codex.bankedReset.probability48h"
+        })
+        let subtitle = try XCTUnwrap(descendantViews(of: officialOverview, as: AccountMarqueeView.self).first {
+            $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+        })
+        XCTAssertEqual(subtitle.accountLabel.stringValue, tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"]))
     }
 
     private func assertCentered(

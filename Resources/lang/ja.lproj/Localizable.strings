@@ -464,6 +464,7 @@
 "codex.banked_reset.tooltip.disclaimer" = "第三者による予測であり、このアカウントの確定リセット時刻やリセットカードの付与を保証しません。信頼度はモデルの分類であり、参考情報です。";
 "codex.banked_reset.probability_24h" = "24時間以内";
 "codex.banked_reset.probability_48h" = "48時間以内";
+"codex.banked_reset.probability_48h_format" = "48時間以内 %1$@";
 "codex.banked_reset.high_probability" = "高確率";
 "codex.banked_reset.official_hint_no_time" = "公式リセット案内 · 具体時刻なし";
 "codex.banked_reset.official_hint_time" = "公式リセット案内 · 具体的な時刻";

@@ -101,7 +101,7 @@ struct DashboardTextTooltipLayout: Equatable {
 
 /// Source / hint bubble for menu-hosted hover links. Native `toolTip`
 /// often never appears inside an `NSMenu` tracking loop.
-struct DashboardForecastTooltipContent {
+struct DashboardForecastTooltipContent: Equatable {
     let title: String
     let body: String
     let source: String
@@ -130,7 +130,7 @@ final class DashboardForecastTooltipViewController: NSViewController {
         ).width) + 4))
         let rows: [(String, String, NSFont, NSColor, CGFloat)] = [
             ("title", content.title, .systemFont(ofSize: 13, weight: .semibold), .labelColor, 5),
-            ("body", content.body, .systemFont(ofSize: 12), NSColor.labelColor.withAlphaComponent(0.85), 10),
+            ("body", content.body, .systemFont(ofSize: 12), NSColor.labelColor, 10),
             ("source", content.source, sourceFont, .secondaryLabelColor, 10),
             ("disclaimer", content.disclaimer, .systemFont(ofSize: 11), .secondaryLabelColor, 0)
         ]
@@ -530,6 +530,16 @@ class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     /// Structured forecast presentation; plain hints keep their compact layout.
     var forecastTooltipContent: DashboardForecastTooltipContent?
+    /// Invalidate an open bubble only when its displayed content changes.
+    /// The next hover presents the latest content without replacing the link.
+    func updateForecastTooltipContent(_ content: DashboardForecastTooltipContent) {
+        guard forecastTooltipContent != content else { return }
+        forecastTooltipContent = content
+        hoverHint = content.plainText
+        cancelPendingHoverHint()
+        dismissHoverHint()
+    }
+
     var restingTextColor: NSColor = .linkColor {
         didSet { applyStyle(text: stringValue, underlined: isHovered) }
     }
@@ -971,6 +981,31 @@ class HoverLinkTextField: NSTextField {
 /// It intentionally tracks the card only to forward movement; the link keeps
 /// the glyph-only hit test and activation boundary but not its own hover owner.
 final class MenuHoverLinkHostView: NSView {
+    var overviewLayout: OpenCodexCardFrames?
+    var providerIdentity = ""
+    var forecastContentKey: StatusItemController.ForecastContentKey?
+    var bankedResetCardIDs: [String?] = []
+    private(set) var isMenuContentVisible = false
+    private var ticketBoundsObserver: NSObjectProtocol?
+
+    deinit {
+        if let ticketBoundsObserver { NotificationCenter.default.removeObserver(ticketBoundsObserver) }
+        if let ticketScrollMonitor { NSEvent.removeMonitor(ticketScrollMonitor) }
+    }
+
+    func setMenuContentVisible(_ visible: Bool) {
+        isMenuContentVisible = visible
+        refreshMarqueeVisibility()
+    }
+
+    func refreshMarqueeVisibility() {
+        func visit(_ node: NSView) {
+            (node as? AccountMarqueeView)?.refreshScrollVisibility()
+            node.subviews.forEach(visit)
+        }
+        visit(self)
+    }
+
     private weak var link: HoverLinkTextField?
     private weak var ticketScrollView: BankedResetTicketScrollView?
     private var trackingAreaReference: NSTrackingArea?
@@ -995,6 +1030,11 @@ final class MenuHoverLinkHostView: NSView {
 
     func trackTicketScroll(_ scrollView: BankedResetTicketScrollView) {
         ticketScrollView = scrollView
+        if let ticketBoundsObserver { NotificationCenter.default.removeObserver(ticketBoundsObserver) }
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        ticketBoundsObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
+        ) { [weak self] _ in self?.refreshMarqueeVisibility() }
         installTicketScrollMonitor()
     }
 
@@ -1017,6 +1057,7 @@ final class MenuHoverLinkHostView: NSView {
         refreshTrackingArea()
         synchronizeHoverState()
         installTicketScrollMonitor()
+        refreshMarqueeVisibility()
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -1041,6 +1082,7 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     override func removeFromSuperview() {
+        setMenuContentVisible(false)
         tearDownWindowTracking()
         super.removeFromSuperview()
     }
@@ -1094,10 +1136,13 @@ final class MenuHoverLinkHostView: NSView {
             link?.clearHoverState()
     }
 
-    private func handleTicketScroll(_ event: NSEvent) -> Bool {
+    func containsTicketScrollPoint(_ pointInWindow: NSPoint) -> Bool {
         guard let ticketScrollView else { return false }
-        let point = convert(event.locationInWindow, from: nil)
-        guard ticketScrollView.frame.contains(point) else { return false }
+        return ticketScrollView.bounds.contains(ticketScrollView.convert(pointInWindow, from: nil))
+    }
+
+    private func handleTicketScroll(_ event: NSEvent) -> Bool {
+        guard let ticketScrollView, containsTicketScrollPoint(event.locationInWindow) else { return false }
         ticketScrollView.scrollWheel(with: event)
         return true
     }

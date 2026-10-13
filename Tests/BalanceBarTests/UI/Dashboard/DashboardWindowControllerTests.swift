@@ -2901,7 +2901,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertNil(
             controller.menuItemsForTesting.first {
-                $0.title == "查看状态" || $0.title == "View Status"
+                $0.title == tr(.keyStatusItemControllerViewStatus)
             }
         )
 
@@ -2921,7 +2921,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         controller.updateMenu(input: visibleInput)
         let statusItem = try? XCTUnwrap(
             controller.menuItemsForTesting.first {
-                $0.title == "查看状态" || $0.title == "View Status"
+                $0.title == tr(.keyStatusItemControllerViewStatus)
             }
         )
         XCTAssertEqual(statusItem?.submenu?.items.map(\.title), ["Status"])
@@ -2929,7 +2929,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         controller.updateMenu(input: baseInput)
         XCTAssertNil(
             controller.menuItemsForTesting.first {
-                $0.title == "查看状态" || $0.title == "View Status"
+                $0.title == tr(.keyStatusItemControllerViewStatus)
             }
         )
     }
@@ -2986,7 +2986,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
 
         let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         let accountView = try XCTUnwrap(
-            overview.subviews.compactMap { $0 as? AccountEmailView }.first
+            allControls(of: overview, as: AccountEmailView.self).first
         )
         let accountLabel = accountView.emailLabel
         XCTAssertEqual(accountLabel.font?.pointSize, 13)
@@ -3084,19 +3084,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 for: .quota,
                 includesAccount: true,
                 includesSubscription: true,
-                subscriptionTextWidth: subscriptionTextWidth
+                subscriptionTextWidth: subscriptionTextWidth,
+                officialQuotaWindows: Snapshot.official("OpenAI Official", 83, "7-Day Quota", "2 hours", date).officialQuotaWindowsForMenu
             ).account
         )
-        XCTAssertEqual(accountView.frame, expectedAccountFrame)
+        XCTAssertEqual(overview.convert(accountView.bounds, from: accountView), expectedAccountFrame)
         let subscriptionFrame = try XCTUnwrap(
             OpenCodexCardLayout.frames(
                 for: .quota,
                 includesAccount: true,
-                includesSubscription: true
+                includesSubscription: true,
+                officialQuotaWindows: Snapshot.official("OpenAI Official", 83, "7-Day Quota", "2 hours", date).officialQuotaWindowsForMenu
             ).subscription
         )
-        XCTAssertEqual(subscriptionLabel.frame, subscriptionFrame)
-        XCTAssertTrue(subscriptionLabel.superview === overview)
+        XCTAssertEqual(overview.convert(subscriptionLabel.bounds, from: subscriptionLabel), subscriptionFrame)
+        XCTAssertTrue(subscriptionLabel.superview is OpenCodexAccountSectionView)
         XCTAssertEqual(accountView.frame.minY, subscriptionLabel.frame.minY)
         XCTAssertEqual(accountView.frame.height, subscriptionLabel.frame.height)
         XCTAssertEqual(
@@ -3115,7 +3117,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             8
         )
         XCTAssertGreaterThan(accountView.frame.maxX, subscriptionLabel.frame.minX)
-        XCTAssertEqual(subscriptionLabel.frame.maxX, overview.bounds.width - 14)
+        XCTAssertEqual(
+            subscriptionLabel.frame.maxX,
+            overview.bounds.width - OpenCodexCardLayout.horizontalInset
+        )
         XCTAssertNotNil(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.stringValue == "83%"
@@ -3127,7 +3132,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let switchedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         let switchedAccountView = try XCTUnwrap(
-            switchedOverview.subviews.compactMap { $0 as? AccountEmailView }.first
+            allControls(of: switchedOverview, as: AccountEmailView.self).first
         )
         let switchedSubscriptionLabel = try XCTUnwrap(
             allControls(of: switchedOverview, as: NSTextField.self).first {
@@ -3390,13 +3395,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         XCTAssertFalse(view.isScrollable)
-        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
 
         view.updateText(longText)
         view.layout()
         XCTAssertTrue(view.isScrollable)
         XCTAssertFalse(view.isScrolling)
-        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
         XCTAssertEqual(view.frame.minX, 14, accuracy: 0.001)
         XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
         XCTAssertEqual(
@@ -3409,7 +3414,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             view.scrollOverflow + view.edgeFadeInset,
             accuracy: 0.001
         )
-        XCTAssertNil(view.layer?.mask)
+        XCTAssertEqual(view.layer?.mask != nil, view.isScrollable)
         view.applyScrollOffsetForTesting(-1)
         XCTAssertTrue(view.isScrolling)
         XCTAssertTrue(view.showsEdgeFade)
@@ -3440,8 +3445,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         view.layout()
         XCTAssertFalse(view.isScrollable)
         XCTAssertFalse(view.isScrolling)
-        XCTAssertFalse(view.showsEdgeFade)
-        XCTAssertNil(view.layer?.mask)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
+        XCTAssertEqual(view.layer?.mask != nil, view.isScrollable)
         XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
         XCTAssertEqual(view.accountLabel.frame.width, view.bounds.width, accuracy: 0.001)
 
@@ -3449,7 +3454,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         view.layout()
         XCTAssertTrue(view.isScrollable)
         XCTAssertFalse(view.isScrolling)
-        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
         XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
         XCTAssertEqual(
             view.scrollOverflow,
@@ -3461,7 +3466,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             view.scrollOverflow + view.edgeFadeInset,
             accuracy: 0.001
         )
-        XCTAssertNil(view.layer?.mask)
+        XCTAssertEqual(view.layer?.mask != nil, view.isScrollable)
         view.applyScrollOffsetForTesting(-1)
         XCTAssertTrue(view.isScrolling)
         XCTAssertTrue(view.showsEdgeFade)
@@ -3474,9 +3479,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         view.layout()
         XCTAssertFalse(view.isScrollable)
         XCTAssertFalse(view.isScrolling)
-        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
         XCTAssertEqual(view.scrollOverflow, 0, accuracy: 0.001)
-        XCTAssertNil(view.layer?.mask)
+        XCTAssertEqual(view.layer?.mask != nil, view.isScrollable)
         XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
         XCTAssertEqual(view.accountLabel.frame.width, view.bounds.width, accuracy: 0.001)
 
@@ -3484,12 +3489,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         view.layout()
         XCTAssertTrue(view.isScrollable)
         XCTAssertFalse(view.isScrolling)
-        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
         XCTAssertGreaterThan(view.scrollOverflow, 0)
     }
 
-    func testAccountMarqueeStartsAnimationWhenAttachedAndFadesOnlyAfterActualOffset() throws {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 128, height: 18))
+    func testAccountMarqueeStartsAnimationAndShowsTrailingFadeBeforeMovement() throws {
+        let container = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 128, height: 18))
+        let testWindow = NSWindow(contentRect: container.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        testWindow.contentView = container
+        container.setMenuContentVisible(true)
         let view = AccountMarqueeView(
             text: String(repeating: "long-account-name-", count: 8),
             font: .systemFont(ofSize: 13),
@@ -3504,8 +3512,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNotNil(view.accountLabel.layer?.animation(forKey: AccountMarqueeView.animationKey))
         XCTAssertEqual(view.scrollOffset, 0, accuracy: 0.001)
         XCTAssertFalse(view.isScrolling)
-        XCTAssertFalse(view.showsEdgeFade)
-        XCTAssertNil(view.layer?.mask)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
+        XCTAssertEqual(view.layer?.mask != nil, view.isScrollable)
         XCTAssertFalse(
             AccountMarqueeScrollState(
                 offset: 0,
@@ -3527,8 +3535,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
 
         view.applyScrollOffsetForTesting(0)
         XCTAssertFalse(view.isScrolling)
-        XCTAssertFalse(view.showsEdgeFade)
-        XCTAssertNil(view.layer?.mask)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
+        XCTAssertEqual(view.layer?.mask != nil, view.isScrollable)
     }
 
     func testAccountMarqueeSamplesPresentationOffsetDuringRealAnimation() throws {
@@ -3552,13 +3560,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             window.orderOut(nil)
         }
 
-        window.contentView?.addSubview(view)
+        let host = MenuHoverLinkHostView(frame: view.frame)
+        window.contentView = host
+        host.addSubview(view)
+        host.setMenuContentVisible(true)
         ApplicationWindowPresentation.presentInBackground(window)
 
         XCTAssertTrue(view.isScrollable)
         XCTAssertEqual(view.scrollOffset, 0, accuracy: 0.001)
         XCTAssertFalse(view.isScrolling)
-        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
 
         let animation = try XCTUnwrap(
             view.accountLabel.layer?.animation(
@@ -3580,6 +3591,140 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let activeOffset = view.scrollOffset
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         XCTAssertNotEqual(view.scrollOffset, activeOffset, accuracy: 0.001)
+    }
+
+    func testAccountMarqueeFadeChangesContinuouslyAcrossActivityThresholdAndReturn() throws {
+        let view = AccountMarqueeView(
+            text: String(repeating: "Official reset hint ", count: 8),
+            font: .systemFont(ofSize: 13), textColor: .secondaryLabelColor,
+            frame: NSRect(x: 0, y: 0, width: 128, height: 18)
+        )
+        let width = view.edgeFadeInset
+        XCTAssertGreaterThan(width, 0)
+        var outbound: [CGFloat] = []
+        for offset in [CGFloat(0), -0.25, -0.49, -0.5, -0.51, -1, -width / 2, -width] {
+            view.applyScrollOffsetForTesting(offset)
+            outbound.append(view.leadingEdgeFadeStrength)
+            if offset < 0 {
+                let mask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
+                let colors = try XCTUnwrap(mask.colors as? [CGColor])
+                XCTAssertEqual(colors[0].alpha, 1 - view.leadingEdgeFadeStrength, accuracy: 0.001)
+                XCTAssertEqual(colors[3].alpha, 1 - view.trailingEdgeFadeStrength, accuracy: 0.001)
+                XCTAssertEqual(colors[1].alpha, 1, accuracy: 0.001)
+                XCTAssertEqual(colors[2].alpha, 1, accuracy: 0.001)
+            }
+        }
+        XCTAssertEqual(outbound.first, 0)
+        XCTAssertEqual(outbound.last, 1)
+        XCTAssertEqual(outbound[outbound.count - 2], 0.5, accuracy: 0.001)
+        XCTAssertLessThan(outbound[4] - outbound[2], 0.001)
+        XCTAssertEqual(outbound, outbound.sorted())
+        for offset in [-width, -width / 2, -1, -0.51, -0.5, -0.49, -0.25, CGFloat(0)] {
+            view.applyScrollOffsetForTesting(offset)
+            XCTAssertEqual(view.leadingEdgeFadeStrength, AccountMarqueeScrollState(offset: offset, overflow: view.scrollOverflow).fadeStrength(fadeWidth: width))
+        }
+        XCTAssertEqual(view.layer?.mask != nil, view.isScrollable)
+        XCTAssertEqual(view.leadingEdgeFadeStrength, 0)
+        XCTAssertEqual(view.showsEdgeFade, view.isScrollable)
+        XCTAssertEqual(AccountMarqueeScrollState(offset: -4, overflow: 0).fadeStrength(fadeWidth: 8), 0)
+    }
+
+    func testAccountMarqueeCellWidthAndIndependentFadesPreserveLocalizedTails() throws {
+        for text in ["Indication officielle · Pas d'heure", "Wöchentlich + 5-Stunden-Kontingent", "Cuota semanal + 5 horas", "每周 + 5 小时额度"] {
+            let view = AccountMarqueeView(text: text, font: .systemFont(ofSize: 13), textColor: .secondaryLabelColor,
+                                          frame: NSRect(x: 0, y: 0, width: 96, height: 18))
+            let cellWidth = ceil(try XCTUnwrap(view.accountLabel.cell).cellSize.width)
+            XCTAssertEqual(view.accountLabel.frame.width, cellWidth)
+            XCTAssertEqual(view.scrollOverflow, cellWidth - view.bounds.width)
+            XCTAssertFalse(view.isScrolling)
+            XCTAssertEqual(view.leadingEdgeFadeStrength, 0)
+            XCTAssertGreaterThan(view.trailingEdgeFadeStrength, 0)
+            let mask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
+            let startColors = try XCTUnwrap(mask.colors as? [CGColor])
+            XCTAssertEqual(startColors[0].alpha, 1)
+            XCTAssertLessThan(startColors[3].alpha, 1)
+            let distance = view.scrollDistance
+            view.applyScrollOffsetForTesting(-distance)
+            XCTAssertEqual(view.trailingEdgeFadeStrength, 0)
+            XCTAssertEqual(view.leadingEdgeFadeStrength, 1)
+            XCTAssertLessThanOrEqual(view.accountLabel.frame.maxX - distance, view.bounds.maxX - view.edgeFadeInset + 0.001)
+            let endColors = try XCTUnwrap(mask.colors as? [CGColor])
+            XCTAssertEqual(endColors[3].alpha, 1)
+            // Sample both directions through the last fade-width of hidden tail.
+            for hidden in [CGFloat(0), 0.25, view.edgeFadeInset / 2, view.edgeFadeInset] {
+                view.applyScrollOffsetForTesting(-view.scrollOverflow + hidden)
+                let expected = AccountMarqueeScrollState(offset: -view.scrollOverflow + hidden, overflow: view.scrollOverflow).trailingFadeStrength(fadeWidth: view.edgeFadeInset)
+                XCTAssertEqual(view.trailingEdgeFadeStrength, expected)
+            }
+            view.applyScrollOffsetForTesting(0)
+            XCTAssertEqual(view.leadingEdgeFadeStrength, 0)
+            XCTAssertGreaterThan(view.trailingEdgeFadeStrength, 0)
+            view.updateText("OK")
+            XCTAssertFalse(view.showsEdgeFade)
+            XCTAssertNil(view.layer?.mask)
+        }
+    }
+
+    func testAccountMarqueeOpticalViewportAlignsToTitleInkWithoutDoubleInset() throws {
+        for (titleText, hintText) in [
+            ("Reset-Wahrscheinlichkeit", "Offizieller Hinweis · Kein Zeitpunkt"),
+            ("Reset probability", "Official reset hint · No specific time"),
+            ("Probabilité de réinitialisation", "Indication officielle · Pas d'heure"),
+            ("重置概率", "官方信号 · 未指定时间")
+        ] {
+            let host = NSView(frame: NSRect(x: 0, y: 0, width: 304, height: 80))
+            let title = AccountMarqueeView(text: titleText, font: .systemFont(ofSize: 12, weight: .medium),
+                                          textColor: .labelColor, frame: NSRect(x: 16, y: 40, width: 260, height: 18))
+            let anchor = AccountMarqueeView.leadingInkInset(of: title.accountLabel)
+            let hint = AccountMarqueeView(text: hintText, font: .systemFont(ofSize: 13),
+                                         textColor: .secondaryLabelColor, frame: NSRect(x: 16, y: 20, width: 96, height: 18),
+                                         leadingInkAnchor: anchor)
+            host.addSubview(title)
+            host.addSubview(hint)
+            defer { hint.removeFromSuperview(); title.removeFromSuperview() }
+            let ownInset = AccountMarqueeView.leadingInkInset(of: hint.accountLabel)
+            let titleInkX = title.accountLabel.convert(NSPoint(x: anchor, y: 0), to: host).x
+            XCTAssertEqual(hint.convert(hint.textClipFrame.origin, to: host).x, titleInkX, accuracy: 0.001)
+            XCTAssertEqual(hint.accountLabel.convert(NSPoint(x: ownInset, y: 0), to: host).x, titleInkX, accuracy: 0.001)
+            XCTAssertEqual(hint.textClipFrame.maxX, hint.bounds.maxX, accuracy: 0.001)
+            XCTAssertGreaterThanOrEqual(hint.accountLabel.frame.width, ceil(try XCTUnwrap(hint.accountLabel.cell).cellSize.width))
+            let clip = try XCTUnwrap(hint.accountLabel.superview)
+            XCTAssertTrue(clip.layer?.masksToBounds == true)
+            XCTAssertEqual(hint.scrollOverflow, hint.accountLabel.frame.maxX - clip.bounds.maxX, accuracy: 0.001)
+            XCTAssertLessThanOrEqual(hint.accountLabel.frame.maxX - hint.scrollDistance, clip.bounds.maxX - hint.edgeFadeInset + 0.001)
+            for offset in [CGFloat(0), -1, -hint.scrollDistance, 0] {
+                hint.applyScrollOffsetForTesting(offset)
+                XCTAssertEqual(hint.convert(hint.textClipFrame.origin, to: host).x, titleInkX, accuracy: 0.001)
+                XCTAssertEqual(try XCTUnwrap(clip.layer?.mask).frame, clip.bounds)
+            }
+        }
+    }
+
+    func testAccountMarqueePreservesOffsetAndAnimationOnlyForSameGeometryUpdates() throws {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 96, height: 18))
+        let testWindow = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        testWindow.contentView = host
+        host.setMenuContentVisible(true)
+        let view = AccountMarqueeView(text: "Within 48h 34% extra long description", font: .monospacedDigitSystemFont(ofSize: 13, weight: .regular),
+                                     textColor: .secondaryLabelColor, frame: host.bounds)
+        host.addSubview(view)
+        defer { view.removeFromSuperview() }
+        view.applyScrollOffsetForTesting(-5)
+        let animation = try XCTUnwrap(view.accountLabel.layer?.animation(forKey: AccountMarqueeView.animationKey)?.copy() as? CAKeyframeAnimation)
+        animation.beginTime = view.accountLabel.layer!.convertTime(CACurrentMediaTime(), from: nil) - 1
+        view.accountLabel.layer?.add(animation, forKey: AccountMarqueeView.animationKey)
+        view.updateText("Within 48h 35% extra long description", preserveScrollPosition: true)
+        XCTAssertEqual(view.scrollOffset, -5)
+        XCTAssertEqual(view.accountLabel.layer?.animation(forKey: AccountMarqueeView.animationKey)?.beginTime, animation.beginTime)
+        view.updateText("Within 48h 100% extra long description", preserveScrollPosition: true)
+        XCTAssertEqual(view.scrollOffset, 0)
+        XCTAssertGreaterThan(view.scrollOverflow, 0)
+        view.applyScrollOffsetForTesting(-5)
+        view.updateText("Within 48h 101% extra long description")
+        XCTAssertEqual(view.scrollOffset, 0)
+        view.updateText("OK", preserveScrollPosition: true)
+        XCTAssertFalse(view.isScrollable)
+        XCTAssertNil(view.layer?.mask)
     }
 
     func testAccountMarqueeSpeedsUpForLongerOverflowWithConcaveCurve() {
@@ -3663,7 +3808,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         let shortOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
-        let shortMarquees = shortOverview.subviews.compactMap { $0 as? AccountMarqueeView }
+        let shortMarquees = allControls(of: shortOverview, as: AccountMarqueeView.self)
         let shortQuotaView = try XCTUnwrap(
             shortMarquees.first { $0.accountLabel.stringValue == shortQuota }
         )
@@ -3687,7 +3832,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
-        let marquees = overview.subviews.compactMap { $0 as? AccountMarqueeView }
+        let marquees = allControls(of: overview, as: AccountMarqueeView.self)
         let quota = try XCTUnwrap(
             marquees.first { $0.accountLabel.stringValue == longQuota }
         )
@@ -3707,16 +3852,17 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             of: amount.stringValue,
             font: try XCTUnwrap(amount.font)
         )
-        let safeAmountMinX = max(amount.frame.minX, amount.frame.maxX - amountTextWidth)
+        let amountCardFrame = overview.convert(amount.bounds, from: amount)
+        let safeAmountMinX = max(amountCardFrame.minX, amountCardFrame.maxX - amountTextWidth)
         let expectedRightEdge = safeAmountMinX
         XCTAssertEqual(quota.frame.minX, frames.quotaDetail.minX)
-        XCTAssertEqual(quota.frame.minY, frames.quotaDetail.minY)
+        XCTAssertEqual(overview.convert(quota.bounds, from: quota).minY, frames.quotaDetail.minY)
         XCTAssertEqual(quota.frame.height, frames.quotaDetail.height)
         XCTAssertGreaterThan(quota.frame.width, frames.quotaDetail.width)
         XCTAssertEqual(quota.frame.maxX, expectedRightEdge, accuracy: 0.5)
         let resetFrame = try XCTUnwrap(frames.reset)
         XCTAssertEqual(reset.frame.minX, resetFrame.minX)
-        XCTAssertEqual(reset.frame.minY, resetFrame.minY)
+        XCTAssertEqual(overview.convert(reset.bounds, from: reset).minY, resetFrame.minY)
         XCTAssertEqual(reset.frame.height, resetFrame.height)
         XCTAssertGreaterThan(reset.frame.width, resetFrame.width)
         XCTAssertEqual(reset.frame.maxX, expectedRightEdge, accuracy: 0.5)
@@ -3816,10 +3962,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(overview.bounds.size, frames.cardSize)
 
-        let progressViews = overview.subviews.compactMap { $0 as? QuotaProgressView }
+        let progressViews = allControls(of: overview, as: QuotaProgressView.self)
         XCTAssertEqual(progressViews.map(\.percentage), [80, 45])
         XCTAssertEqual(
-            progressViews.map(\.frame),
+            progressViews.map { overview.convert($0.bounds, from: $0) },
             frames.quotaRows.map(\.progress)
         )
         let percentageLabels = allControls(of: overview, as: NSTextField.self)
@@ -3837,7 +3983,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
 
-        let quotaViews = overview.subviews.compactMap { $0 as? AccountMarqueeView }
+        let quotaViews = allControls(of: overview, as: AccountMarqueeView.self)
             .filter {
                 let value = $0.accountLabel.stringValue
                 return value == tr(.keyResponseParsers5HourQuota)
@@ -3864,7 +4010,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         for (index, (view, expected)) in zip(quotaViews, expectedBaseFrames).enumerated() {
             let isReset = index == 1 || index == 3
             XCTAssertEqual(view.frame.minX, expected.minX)
-            XCTAssertEqual(view.frame.minY, expected.minY)
+            XCTAssertEqual(overview.convert(view.bounds, from: view).minY, expected.minY)
             XCTAssertEqual(view.frame.height, expected.height)
             XCTAssertGreaterThanOrEqual(view.frame.width, expected.width)
             XCTAssertEqual(
@@ -3900,11 +4046,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertLessThanOrEqual(
             frames.quotaRows[0].quotaDetail.maxX,
-            overview.bounds.maxX - 14
+            overview.bounds.maxX - OpenCodexCardLayout.horizontalInset
         )
         XCTAssertLessThanOrEqual(
             frames.quotaRows[1].quotaDetail.maxX,
-            overview.bounds.maxX - 14
+            overview.bounds.maxX - OpenCodexCardLayout.horizontalInset
         )
         XCTAssertTrue(quotaViews.allSatisfy { $0.frame.maxX <= overview.bounds.maxX })
 
@@ -3940,7 +4086,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             settings: settings
         )
         let longOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
-        let longQuotaViews = longOverview.subviews.compactMap { $0 as? AccountMarqueeView }
+        let longQuotaViews = allControls(of: longOverview, as: AccountMarqueeView.self)
             .filter { view in
                 let value = view.accountLabel.stringValue
                 return value == longWindows[0].label
@@ -3979,16 +4125,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(reserveOverview.bounds.size, reserveFrames.cardSize)
         XCTAssertEqual(
-            reserveOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: reserveOverview, as: QuotaProgressView.self).map(\.percentage),
             [80, 45, 45]
         )
         XCTAssertNotNil(
-            reserveOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+            allControls(of: reserveOverview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == reserve.menuTitleText
             }
         )
         XCTAssertNotNil(
-            reserveOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+            allControls(of: reserveOverview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == reserve.menuSubtitleText
             }
         )
@@ -4021,16 +4167,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(unavailableOverview.bounds.size, unavailableFrames.cardSize)
         XCTAssertEqual(
-            unavailableOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: unavailableOverview, as: QuotaProgressView.self).map(\.percentage),
             [80, 45]
         )
         XCTAssertNotNil(
-            unavailableOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+            allControls(of: unavailableOverview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == unavailableReserve.menuTitleText
             }
         )
         XCTAssertNotNil(
-            unavailableOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+            allControls(of: unavailableOverview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == unavailableReserve.menuSubtitleText
             }
         )
@@ -4064,11 +4210,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let thresholdOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertEqual(
-            thresholdOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: thresholdOverview, as: QuotaProgressView.self).map(\.percentage),
             [0, 45, 45]
         )
         XCTAssertNotNil(
-            thresholdOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+            allControls(of: thresholdOverview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == reserve.menuTitleText
             }
         )
@@ -4084,7 +4230,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let hiddenExhaustedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertEqual(
-            hiddenExhaustedOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: hiddenExhaustedOverview, as: QuotaProgressView.self).map(\.percentage),
             [45, 45]
         )
         XCTAssertFalse(
@@ -4092,7 +4238,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 .contains { $0.stringValue == "0%" }
         )
         XCTAssertNotNil(
-            hiddenExhaustedOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+            allControls(of: hiddenExhaustedOverview, as: AccountMarqueeView.self).first {
                 $0.accountLabel.stringValue == reserve.menuTitleText
             }
         )
@@ -4108,11 +4254,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let disabledOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertEqual(
-            disabledOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: disabledOverview, as: QuotaProgressView.self).map(\.percentage),
             [0, 45]
         )
         XCTAssertFalse(
-            disabledOverview.subviews.compactMap { $0 as? AccountMarqueeView }.contains {
+            allControls(of: disabledOverview, as: AccountMarqueeView.self).contains {
                 $0.accountLabel.stringValue == reserve.menuTitleText
             }
         )
@@ -4205,7 +4351,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             includesQuotaProgress: false
         )
         XCTAssertEqual(overview.bounds.size, frames.cardSize)
-        XCTAssertTrue(overview.subviews.compactMap { $0 as? QuotaProgressView }.isEmpty)
+        XCTAssertTrue(allControls(of: overview, as: QuotaProgressView.self).isEmpty)
         let withProgressHeight = OpenCodexCardLayout.frames(
             for: .quota,
             includesAccount: true,
@@ -4325,6 +4471,22 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                     remainingIsWarning: laterRemaining.isWarning
                 )
             ])
+        let ticketMetrics = bankedReset.cards.map {
+            OpenCodexTicketTextMetrics(
+                titleWidth: ceil(($0.titleText as NSString).size(withAttributes: [
+                    .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)
+                ]).width) + 4,
+                windowWidth: ceil((($0.windowText ?? "") as NSString).size(withAttributes: [
+                    .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)
+                ]).width) + 4,
+                resetWidth: ceil((($0.expiresText ?? "") as NSString).size(withAttributes: [
+                    .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)
+                ]).width) + 4,
+                amountWidth: ceil((($0.remainingText ?? "") as NSString).size(withAttributes: [
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)
+                ]).width) + 4
+            )
+        }
 
         controller.start(
             snapshot: .official(
@@ -4350,11 +4512,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             includesSubscription: true,
             officialQuotaWindows: windows,
             includesBankedReset: true,
-            bankedResetCardCount: 2
+            bankedResetCardCount: 2,
+            bankedResetTicketMetrics: ticketMetrics
         )
         XCTAssertEqual(overview.bounds.size, frames.cardSize)
         XCTAssertEqual(
-            overview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: overview, as: QuotaProgressView.self).map(\.percentage),
             [80, 45]
         )
         let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
@@ -4365,26 +4528,25 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilitySource)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)))
-        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48h)))
+        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])))
         XCTAssertTrue(labels.contains("24%"))
-        XCTAssertTrue(labels.contains("42%"))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidencePrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidenceLow)))
         XCTAssertFalse(
-            overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.confidence" }
+            allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.confidence" }
         )
         XCTAssertFalse(
-            overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.confidencePrefix" }
+            allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.confidencePrefix" }
         )
         XCTAssertFalse(labels.contains("--%"))
-        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator" })
+        XCTAssertFalse(allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator" })
         XCTAssertFalse(labels.contains { $0.contains("…") || $0.hasSuffix("...") })
         let largeAmounts = allControls(of: overview, as: NSTextField.self).filter {
             $0.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize
         }
         XCTAssertTrue(largeAmounts.contains { $0.stringValue == "2" })
         XCTAssertFalse(
-            overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.badge" }
+            allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.badge" }
         )
         let countField = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
@@ -4402,7 +4564,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             OpenCodexCardLayout.bankedResetTextBandAmountHeight,
             accuracy: 0.001
         )
-        let chromes = overview.subviews.filter {
+        let chromes = allControls(of: overview, as: NSView.self).filter {
             $0.identifier?.rawValue == "codex.bankedReset.chrome"
         }
         XCTAssertEqual(chromes.count, 2)
@@ -4437,29 +4599,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(remainingFields[1].textColor, NSColor.labelColor)
         XCTAssertEqual(
             remainingFields[0].frame.midY,
-            frames.bankedResetDetailRows[0].chrome.midY,
+            frames.bankedResetDetailRows[0].amount.midY,
             accuracy: 1
         )
         XCTAssertEqual(
             remainingFields[1].frame.midY,
-            frames.bankedResetDetailRows[1].chrome.midY,
+            frames.bankedResetDetailRows[1].amount.midY,
             accuracy: 1
         )
         XCTAssertEqual(
             allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count,
             1
         )
-        let percent48 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability48h"
-            }
-        )
-        XCTAssertEqual(percent48.textField.stringValue, "42%")
-        XCTAssertEqual(percent48.textField.textColor, NSColor.secondaryLabelColor)
-        XCTAssertEqual(percent48.textField.lineBreakMode, .byClipping)
         let prefix48 = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
+            allControls(of: overview, as: AccountMarqueeView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
             }
         )
         let large24 = try XCTUnwrap(
@@ -4501,15 +4655,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
         )
         XCTAssertFalse(
-            overview.subviews.contains { view in
+            allControls(of: overview, as: NSView.self).contains { view in
                 view is QuotaProgressView
-                    && view.frame.intersects(large24.frame)
-                    && abs(view.frame.minY - large24.frame.minY) < 1
+                    && overview.convert(view.bounds, from: view).intersects(overview.convert(large24.bounds, from: large24))
+                    && abs(overview.convert(view.bounds, from: view).minY - overview.convert(large24.bounds, from: large24).minY) < 1
             }
         )
         assertBankedResetForecastSubtitleFullyVisible(
-            prefix48,
-            expected: tr(.keyCodexBankedResetProbability48h)
+            prefix48.accountLabel,
+            expected: tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])
         )
         let firstChrome = try XCTUnwrap(chromes.first)
         let resetTitle = try XCTUnwrap(
@@ -4541,13 +4695,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let cardSummary = try XCTUnwrap(frames.bankedResetSummaryRow)
         XCTAssertEqual(
             probabilityMetrics.minY - cardSummary.quotaDetail.maxY,
-            OpenCodexCardLayout.quotaVisibleBlockGap,
+            OpenCodexCardLayout.metrics.subsectionSpacing,
             accuracy: 0.001
         )
         XCTAssertNil(frames.bankedResetForecastConfidence)
         XCTAssertEqual(frames.bankedResetProbabilityRow?.progress, .zero)
         assertBankedResetProbabilityLeadingAligned(in: overview, title: probabilityTitle, subtitle: prefix48)
-        let tickets = overview.subviews.filter {
+        let tickets = allControls(of: overview, as: NSView.self).filter {
             $0.identifier?.rawValue == "codex.bankedReset.ticket"
         }
         XCTAssertEqual(tickets.count, 2)
@@ -4569,13 +4723,30 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.stringValue == (bankedReset.cards[0].expiresText ?? "")
             }
         )
+        let firstAmount = try XCTUnwrap(
+            remainingFields.first { $0.stringValue == earlierRemaining.text }
+        )
         XCTAssertEqual(
             firstTicket.frame.midY,
             (
-                min(firstTitle.frame.minY, firstWindow.frame.minY, firstExpiry.frame.minY)
-                    + max(firstTitle.frame.maxY, firstWindow.frame.maxY, firstExpiry.frame.maxY)
+                min(firstTitle.frame.minY, firstWindow.frame.minY, firstExpiry.frame.minY, firstAmount.frame.minY)
+                    + max(firstTitle.frame.maxY, firstWindow.frame.maxY, firstExpiry.frame.maxY, firstAmount.frame.maxY)
             ) / 2,
             accuracy: 1
+        )
+        if firstChrome.frame.height == OpenCodexCardLayout.bankedResetDetailRowHeight {
+            XCTAssertEqual(
+                firstAmount.frame.maxY - firstAmount.firstBaselineOffsetFromTop,
+                firstWindow.frame.maxY - firstWindow.firstBaselineOffsetFromTop,
+                accuracy: 0.001
+            )
+        } else {
+            XCTAssertLessThanOrEqual(firstAmount.frame.maxY, firstExpiry.frame.minY)
+        }
+        XCTAssertEqual(
+            firstAmount.frame.maxX,
+            firstChrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset,
+            accuracy: 0.001
         )
         XCTAssertFalse(labels.contains { $0.contains("🌙") })
         XCTAssertFalse(labels.contains(tr(.keyLunaReserveTitle)))
@@ -4607,7 +4778,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 .contains { $0.stringValue == tr(.keyCodexBankedResetTitle) }
         )
         XCTAssertEqual(
-            emptyOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: emptyOverview, as: QuotaProgressView.self).map(\.percentage),
             [80, 45]
         )
     }
@@ -4733,18 +4904,17 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilitySource)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbability24h)))
-        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48h)))
+        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])))
         XCTAssertTrue(labels.contains("24%"))
-        XCTAssertTrue(labels.contains("42%"))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidencePrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidenceLow)))
         XCTAssertTrue(labels.contains("2"))
-        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator" })
+        XCTAssertFalse(allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.probabilitySeparator" })
         XCTAssertFalse(labels.contains { $0.contains("…") || $0.hasSuffix("...") })
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetFullResetTitle)))
-        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.badge" })
-        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" })
-        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" })
+        XCTAssertFalse(allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.badge" })
+        XCTAssertFalse(allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" })
+        XCTAssertFalse(allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" })
         let countField = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.count"
@@ -4760,13 +4930,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             1
         )
         let prefix48 = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
-            }
-        )
-        let percent48 = try XCTUnwrap(
-            allControls(of: overview, as: OverviewNumericTextView.self).first {
-                $0.identifier?.rawValue == "codex.bankedReset.probability48h"
+            allControls(of: overview, as: AccountMarqueeView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
             }
         )
         let large24 = try XCTUnwrap(
@@ -4776,8 +4941,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(large24.stringValue, "24%")
         assertBankedResetForecastSubtitleFullyVisible(
-            prefix48,
-            expected: tr(.keyCodexBankedResetProbability48h)
+            prefix48.accountLabel,
+            expected: tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])
         )
         let probabilityTitle = try XCTUnwrap(
             allControls(of: overview, as: AccountMarqueeView.self).first {
@@ -4910,26 +5075,33 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let primary = try XCTUnwrap(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first)
             XCTAssertEqual(primary.stringValue, "24%", language.rawValue)
             XCTAssertEqual(primary.alignment, .right)
-            let expectedText = tr(.keyCodexBankedResetProbability48h) + " " + "42%"
-            if let marquee = allControls(of: overview, as: AccountMarqueeView.self).first(where: {
+            let expectedText = tr(.keyCodexBankedResetProbability48hFormat, arguments: ["42%"])
+            let marquee = try XCTUnwrap(allControls(of: overview, as: AccountMarqueeView.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
-            }) {
-                XCTAssertEqual(marquee.accountLabel.stringValue, expectedText)
-                XCTAssertTrue(marquee.isScrollable, language.rawValue)
-                XCTAssertLessThanOrEqual(marquee.frame.maxX, primary.frame.maxX)
-                XCTAssertEqual(marquee.frame.minX, title.frame.minX)
-            } else {
-                let prefix = try XCTUnwrap(allControls(of: overview, as: NSTextField.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
-                })
-                let value = try XCTUnwrap(allControls(of: overview, as: OverviewNumericTextView.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability48h"
-                })
-                XCTAssertEqual(prefix.stringValue + " " + value.textField.stringValue, expectedText)
-                assertBankedResetForecastSubtitleFullyVisible(prefix, expected: prefix.stringValue)
-                XCTAssertEqual(prefix.frame.minX, title.frame.minX)
-                XCTAssertLessThanOrEqual(value.frame.maxX, primary.frame.maxX)
+            })
+            XCTAssertEqual(marquee.accountLabel.stringValue, expectedText)
+            XCTAssertEqual(allControls(of: overview, as: AccountMarqueeView.self).filter {
+                $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+            }.count, 1)
+            XCTAssertFalse(allControls(of: overview, as: NSView.self).contains {
+                ["codex.bankedReset.probability48hPrefix", "codex.bankedReset.probability48h"].contains($0.identifier?.rawValue ?? "")
+            })
+            XCTAssertLessThanOrEqual(marquee.frame.maxX, primary.frame.maxX)
+            assertBankedResetProbabilityLeadingAligned(in: overview, title: title, subtitle: marquee)
+            controller.menuWillOpen(controller.statusMenuForTesting)
+            for probability in [CodexResetProbability.percent(35), .percent(0), .percent(100), .unavailable] {
+                var forecast = CodexResetForecast.demo(updatedAt: date)
+                forecast.probability48h = probability
+                controller.update(snapshot: .official("OpenAI Official", 45, windows[1].label, windows[1].reset,
+                    date, windows: windows, bankedReset: bankedReset, resetForecast: forecast),
+                    refreshDate: date, menuInput: input, settings: settings)
+                XCTAssertTrue(controller.menuItemsForTesting.first?.view === overview)
+                XCTAssertTrue(allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+                } === marquee)
+                XCTAssertEqual(marquee.accountLabel.stringValue, tr(.keyCodexBankedResetProbability48hFormat, arguments: [probability.displayText]))
             }
+            controller.menuDidClose(controller.statusMenuForTesting)
             XCTAssertFalse(allControls(of: overview, as: NSTextField.self).contains {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hPrefix"
                     || $0.identifier?.rawValue == "codex.bankedReset.probability24h"
@@ -5007,7 +5179,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
         ]
 
-        for (name, forecast, largeText, largeAnimates, text48, animates48) in cases {
+        for (name, forecast, largeText, largeAnimates, text48, _) in cases {
             let controller = StatusItemController(
                 actions: StatusItemController.Actions(
                     manualRefresh: {},
@@ -5062,7 +5234,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidencePrefix)), name)
             XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidenceHigh)), name)
             XCTAssertEqual(
-                overview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+                allControls(of: overview, as: QuotaProgressView.self).map(\.percentage),
                 [80, 45],
                 name
             )
@@ -5101,17 +5273,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let small48Numeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
                 $0.identifier?.rawValue == "codex.bankedReset.probability48h"
             }
-            XCTAssertEqual(small48Numeric.count, animates48 ? 1 : 0, name)
-            if animates48 {
-                XCTAssertEqual(small48Numeric[0].textField.stringValue, text48, name)
-            } else {
-                XCTAssertTrue(labels.contains(text48), name)
-            }
+            XCTAssertEqual(small48Numeric.count, 0, name)
+            XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbability48hFormat, arguments: [text48])), name)
             let prefix48 = try XCTUnwrap(
-                allControls(of: overview, as: NSTextField.self).first {
-                    $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
-                },
-                name
+                allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
+                }
             )
             let probabilityTitle = try XCTUnwrap(
                 allControls(of: overview, as: AccountMarqueeView.self).first {
@@ -5125,7 +5292,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 },
                 name
             )
-            XCTAssertGreaterThan(prefix48.frame.minY, resetTitle.frame.maxY, name)
+            XCTAssertGreaterThan(overview.convert(prefix48.bounds, from: prefix48).minY, overview.convert(resetTitle.bounds, from: resetTitle).maxY, name)
             XCTAssertEqual(
                 allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count,
                 largeAnimates ? 1 : 0,
@@ -5302,19 +5469,19 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertFalse(labels.contains("83%"), name)
             XCTAssertFalse(labels.contains("93%"), name)
             XCTAssertFalse(
-                overview.subviews.contains {
+                allControls(of: overview, as: NSView.self).contains {
                     $0.identifier?.rawValue == "codex.bankedReset.probability24hPrefix"
                 },
                 name
             )
             XCTAssertFalse(
-                overview.subviews.contains {
+                allControls(of: overview, as: NSView.self).contains {
                     $0.identifier?.rawValue == "codex.bankedReset.probability48hPrefix"
                 },
                 name
             )
             XCTAssertFalse(
-                overview.subviews.contains {
+                allControls(of: overview, as: NSView.self).contains {
                     $0.identifier?.rawValue == "codex.bankedReset.probability24h"
                 },
                 name
@@ -5343,7 +5510,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 name
             )
             XCTAssertFalse(
-                overview.subviews.contains {
+                allControls(of: overview, as: NSView.self).contains {
                     $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
                 },
                 name
@@ -5756,7 +5923,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ).bankedResetForecastMetrics
         )
         XCTAssertEqual(bar.frame.height, OpenCodexCardLayout.quotaProgressHeight, accuracy: 0.001)
-        XCTAssertEqual(bar.frame.midY, metrics.midY, accuracy: 0.5)
+        XCTAssertEqual(overview.convert(bar.bounds, from: bar).midY, metrics.midY, accuracy: 0.5)
         XCTAssertEqual(bar.frame.minX, metrics.minX, accuracy: 0.001)
         let amountWidth = AccountMarqueeView.textWidth(
             of: countdown.stringValue,
@@ -5905,9 +6072,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetTitle)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
         XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetFullResetTitle)))
-        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.count" })
-        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" })
-        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" })
+        XCTAssertFalse(allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.count" })
+        XCTAssertFalse(allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" })
+        XCTAssertFalse(allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" })
     }
 
     func testOfficialCodexMenuCardShowsZeroCountBankedResetInCompactAndDetailed() throws {
@@ -6046,24 +6213,24 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 "count view for \(mode)"
             )
             XCTAssertEqual(
-                resetTitle.frame.minY
+                overview.convert(resetTitle.bounds, from: resetTitle).minY
                     - overview.convert(countView.frame, from: countView.superview).minY,
                 OpenCodexCardLayout.quotaDetailOffset - OpenCodexCardLayout.quotaResetOffset,
                 accuracy: 1,
                 "collapsed reset title offset for \(mode)"
             )
             XCTAssertFalse(
-                overview.subviews.contains {
+                allControls(of: overview, as: NSView.self).contains {
                     $0.identifier?.rawValue == "codex.bankedReset.nearestExpiry"
                 },
                 "no nearest expiry for \(mode)"
             )
             XCTAssertFalse(
-                overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" },
+                allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" },
                 "no tickets for \(mode)"
             )
             XCTAssertFalse(
-                overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" },
+                allControls(of: overview, as: NSView.self).contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" },
                 "no chrome for \(mode)"
             )
         }
@@ -6175,14 +6342,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(overview.bounds.size, frames.cardSize)
         XCTAssertFalse(
-            overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" }
+            overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" },
+            "Ticket chrome belongs to the document, never the root"
         )
         let scrollView = try XCTUnwrap(
             allControls(of: overview, as: BankedResetTicketScrollView.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.ticketScroll"
             }
         )
-        XCTAssertEqual(scrollView.frame, try XCTUnwrap(frames.bankedResetTicketViewport))
+        XCTAssertEqual(overview.convert(scrollView.bounds, from: scrollView), try XCTUnwrap(frames.bankedResetTicketViewport))
         XCTAssertEqual(
             scrollView.frame.height,
             OpenCodexCardLayout.bankedResetTicketViewportMaxHeight,
@@ -6230,6 +6398,459 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         XCTAssertEqual(countField.stringValue, "10")
+    }
+
+    func testOfficialSignalSubtitleChangesReplaceOnlyProbabilitySection() throws {
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }))
+        defer { controller.teardown() }
+        let now = Date(timeIntervalSince1970: 1700000000)
+        controller.bankedResetCountdownNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true)
+        let cards = (0..<5).map { index in
+            CodexBankedResetCard(id: "signal-row-\(index)", resetType: "codex_rate_limits", titleText: "Full reset",
+                windowText: "Weekly + 5-hour quota", expiresAt: Date().addingTimeInterval(Double(index + 1) * 86400),
+                expiresText: nil, remainingText: "16 d 16 h", remainingIsWarning: false)
+        }
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 80, label: "5h", daysText: "5h", reset: "2h", durationSeconds: 18000)
+        func snapshot(published: Date?) -> Snapshot {
+            .official("OpenAI Official", 80, "5h", "2h", now, windows: [window],
+                bankedReset: CodexBankedReset(cards: cards), resetForecast: CodexResetForecast(
+                    probability24h: .percent(20), probability48h: .percent(35), confidence: .low, updatedAt: now,
+                    isCached: false, officialSignal: CodexResetOfficialSignal(probability: .percent(83),
+                        targetAt: now.addingTimeInterval(3600), publishedAt: published)))
+        }
+        controller.start(snapshot: snapshot(published: nil), refreshDate: now, menuInput: input, settings: settings)
+        let root = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let original = Dictionary(uniqueKeysWithValues: root.subviews.compactMap {
+            ($0 as? OpenCodexOverviewSectionView).map { ($0.sectionID, $0) }
+        })
+        let scroll = try XCTUnwrap(allControls(of: root, as: BankedResetTicketScrollView.self).first)
+        let document = try XCTUnwrap(scroll.documentView)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 50))
+        let origin = scroll.contentView.bounds.origin
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        XCTAssertNotNil(allControls(of: root, as: AccountMarqueeView.self).first { $0.identifier?.rawValue == "codex.bankedReset.officialHint" })
+        for published in [now.addingTimeInterval(-3600), nil, now.addingTimeInterval(-3600)] as [Date?] {
+            let oldProbability = try XCTUnwrap(root.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }.first { $0.sectionID == .resetProbability })
+            controller.update(snapshot: snapshot(published: published), refreshDate: now, menuInput: input, settings: settings)
+            XCTAssertTrue(controller.menuItemsForTesting.first?.view === root)
+            let probability = try XCTUnwrap(root.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }.first { $0.sectionID == .resetProbability })
+            XCTAssertFalse(probability === oldProbability)
+            let bars = allControls(of: probability, as: QuotaProgressView.self).filter { $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress" }
+            let hints = allControls(of: probability, as: AccountMarqueeView.self).filter { $0.identifier?.rawValue == "codex.bankedReset.officialHint" }
+            XCTAssertEqual(bars.count, published == nil ? 0 : 1)
+            XCTAssertEqual(hints.count, published == nil ? 1 : 0)
+            for (id, originalSection) in original where id != .resetProbability {
+                XCTAssertTrue(root.subviews.contains { $0 === originalSection })
+            }
+            XCTAssertTrue(scroll.documentView === document)
+            XCTAssertEqual(scroll.contentView.bounds.origin, origin)
+        }
+        let bar = try XCTUnwrap(allControls(of: root, as: QuotaProgressView.self).first { $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress" })
+        controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(600)
+        controller.bankedResetCountdownTimerForTesting?.fire()
+        XCTAssertEqual(bar.percentage, 100 * 3000.0 / 7200.0, accuracy: 0.001)
+        XCTAssertTrue(allControls(of: root, as: QuotaProgressView.self).contains { $0 === bar })
+    }
+
+    func testForecastSourceRefreshRetainsLinkAndUsesLatestTimestamp() throws {
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }))
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = true
+        let now = Date()
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true)
+        func forecast(_ value: Int, _ date: Date) -> CodexResetForecast {
+            .init(probability24h: .percent(value), probability48h: .percent(35), confidence: .low,
+                updatedAt: date, isCached: false, officialSignal: .init(probability: .percent(value)))
+        }
+        func snapshot(_ forecast: CodexResetForecast) -> Snapshot {
+            .official("OpenAI Official", 80, "5h", "2h", now,
+                windows: [.init(kind: .fiveHour, remaining: 80, label: "5h", daysText: "5h", reset: "2h", durationSeconds: 18000)],
+                resetForecast: forecast)
+        }
+        controller.start(snapshot: snapshot(forecast(83, now)), refreshDate: now, menuInput: input, settings: settings)
+        let root = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let link = try XCTUnwrap(allControls(of: root, as: HoverLinkTextField.self).first { $0.forecastTooltipContent != nil })
+        let section = link.superview
+        let oldContent = try XCTUnwrap(link.forecastTooltipContent)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        let latest = forecast(85, now.addingTimeInterval(300))
+        controller.update(snapshot: snapshot(latest), refreshDate: now, menuInput: input, settings: settings)
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === root)
+        XCTAssertTrue(link.superview === section)
+        XCTAssertTrue(allControls(of: root, as: HoverLinkTextField.self).contains { $0 === link })
+        let content = try XCTUnwrap(link.forecastTooltipContent)
+        XCTAssertNotEqual(content.source, oldContent.source)
+        XCTAssertEqual(content, StatusItemController.codexResetForecastTooltip(for: latest, timeZone: settings.displayTimeZone))
+        XCTAssertEqual(link.hoverHint, content.plainText)
+        XCTAssertEqual((link as? OverviewNumericHoverLinkTextField)?.currentValue, 85)
+    }
+
+    func testOtherQuotaRenameReplacesNumericIdentityWhileSameNameRefreshRetainsIt() throws {
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }))
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = true
+        let date = Date()
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true)
+        func snapshot(_ label: String, _ value: Double) -> Snapshot {
+            .official("OpenAI Official", value, label, "2h", date,
+                windows: [.init(kind: .other, remaining: value, label: label, daysText: "quota", reset: "2h", durationSeconds: nil)])
+        }
+        controller.start(snapshot: snapshot("Quota A", 80), refreshDate: date, menuInput: input, settings: settings)
+        let root = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let header = try XCTUnwrap(root.subviews.first { ($0 as? OpenCodexOverviewSectionView)?.sectionID == .account })
+        let oldAmount = try XCTUnwrap(allControls(of: root, as: OverviewNumericTextView.self).first)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        controller.update(snapshot: snapshot("Quota B", 20), refreshDate: date, menuInput: input, settings: settings)
+        let newAmount = try XCTUnwrap(allControls(of: root, as: OverviewNumericTextView.self).first)
+        XCTAssertFalse(oldAmount === newAmount)
+        XCTAssertEqual(newAmount.sample?.identity, .officialOther(provider: "OpenAI Official", label: "Quota B"))
+        XCTAssertEqual(newAmount.sample?.value, 20)
+        XCTAssertEqual(newAmount.textField.stringValue, "20%")
+        XCTAssertTrue(root.subviews.contains { $0 === header })
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === root)
+        controller.update(snapshot: snapshot("Quota B", 25), refreshDate: date, menuInput: input, settings: settings)
+        XCTAssertTrue(allControls(of: root, as: OverviewNumericTextView.self).first === newAmount)
+        XCTAssertEqual(newAmount.textField.stringValue, "25%")
+        XCTAssertEqual(newAmount.sample?.value, 25)
+        controller.overviewNumericReduceMotionForTesting = false
+        controller.update(snapshot: snapshot("Quota B", 30), refreshDate: date, menuInput: input, settings: settings)
+        XCTAssertTrue(allControls(of: root, as: OverviewNumericTextView.self).first === newAmount)
+        XCTAssertTrue(newAmount.hasPendingAnimationForTesting)
+        XCTAssertEqual(newAmount.sample?.value, 30)
+    }
+
+    func testOfficialSectionRefreshRetainsControlsAndRelayoutsOnlyChangedTopology() throws {
+        let previousLanguage = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = previousLanguage }
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }))
+        defer { controller.teardown() }
+        let date = Date()
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true)
+        let cards = (0..<5).map { index in
+            CodexBankedResetCard(id: "row-\(index)", resetType: "codex_rate_limits", titleText: "Full reset",
+                windowText: "Weekly + 5-hour quota", expiresAt: date.addingTimeInterval(Double(index + 1) * 86400),
+                expiresText: nil, remainingText: "16 d 16 h", remainingIsWarning: false)
+        }
+        func snapshot(_ kinds: [OfficialQuotaWindow.Kind], remaining: Double, ticketTitle: String = "Full reset") -> Snapshot {
+            let windows = kinds.map { kind in
+                OfficialQuotaWindow(kind: kind, remaining: remaining, label: kind == .fiveHour ? "5-hour quota" : "7-day quota",
+                    daysText: "window", reset: "2h", durationSeconds: kind == .fiveHour ? 18000 : 604800)
+            }
+            return .official("OpenAI Official", remaining, "quota", "2h", date, windows: windows,
+                bankedReset: CodexBankedReset(cards: cards.map { card in
+                    CodexBankedResetCard(id: card.id, resetType: card.resetType, titleText: ticketTitle,
+                        windowText: card.windowText, expiresAt: card.expiresAt, expiresText: card.expiresText,
+                        remainingText: card.remainingText, remainingIsWarning: card.remainingIsWarning)
+                }), resetForecast: .demo(updatedAt: date))
+        }
+        controller.start(snapshot: snapshot([.fiveHour, .sevenDay], remaining: 80), refreshDate: date,
+                         menuInput: input, settings: settings)
+        let root = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertTrue(root.subviews.allSatisfy { $0 is OpenCodexOverviewSectionView })
+        let original = Dictionary(uniqueKeysWithValues: root.subviews.compactMap {
+            ($0 as? OpenCodexOverviewSectionView).map { ($0.sectionID, $0) }
+        })
+        let first = try XCTUnwrap(original[.fiveHour] as? OpenCodexMetricSectionView)
+        let amount = try XCTUnwrap(first.amountView)
+        let scroll = try XCTUnwrap(allControls(of: root, as: BankedResetTicketScrollView.self).first)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 50))
+        let origin = scroll.contentView.bounds.origin
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        controller.update(snapshot: snapshot([.fiveHour, .sevenDay], remaining: 70), refreshDate: date,
+                          menuInput: input, settings: settings)
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === root)
+        XCTAssertTrue(first.amountView === amount)
+        XCTAssertEqual(scroll.contentView.bounds.origin, origin)
+        for child in root.subviews.compactMap({ $0 as? OpenCodexOverviewSectionView }) {
+            XCTAssertTrue(child === original[child.sectionID])
+        }
+        let longTitle = String(repeating: "Restablecimiento completo ", count: 4)
+        controller.update(snapshot: snapshot([.fiveHour, .sevenDay], remaining: 70, ticketTitle: longTitle),
+                          refreshDate: date, menuInput: input, settings: settings)
+        XCTAssertTrue(allControls(of: root, as: BankedResetTicketScrollView.self).first === scroll)
+        let titleViews = allControls(of: root, as: AccountMarqueeView.self).filter { $0.identifier?.rawValue == "codex.bankedReset.ticketTitle" }
+        XCTAssertEqual(titleViews.count, 5)
+        XCTAssertTrue(titleViews.allSatisfy { $0.accountLabel.stringValue == longTitle && $0.isScrollable })
+        XCTAssertEqual(scroll.contentView.bounds.origin, origin)
+        controller.update(snapshot: snapshot([.fiveHour], remaining: 60), refreshDate: date,
+                          menuInput: input, settings: settings)
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === root)
+        XCTAssertTrue(root.subviews.contains { $0 === first })
+        XCTAssertFalse(root.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }.contains { $0.sectionID == .sevenDay })
+        XCTAssertTrue(first.amountView === amount)
+        XCTAssertTrue(allControls(of: root, as: BankedResetTicketScrollView.self).first === scroll)
+        XCTAssertEqual(scroll.contentView.bounds.origin, origin)
+        for section in try XCTUnwrap(root.overviewLayout).sectionLayouts {
+            let actual = try XCTUnwrap(root.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }.first { $0.sectionID == section.id })
+            XCTAssertEqual(actual.frame, section.frame)
+            XCTAssertEqual(actual.intrinsicContentSize.height, section.height)
+        }
+    }
+
+    func testTenLongTicketsSuspendOffscreenMarqueesAndRestorePhase() throws {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 304, height: 340))
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        let section = OpenCodexBankedResetSectionView(layout: .init(id: .bankedReset,
+            frame: NSRect(x: 0, y: 8, width: 304, height: 300), row: nil))
+        host.addSubview(section)
+        let scroll = BankedResetTicketScrollView(frame: NSRect(x: 0, y: 0, width: 304, height: 256))
+        let document = BankedResetTicketDocumentView(frame: NSRect(x: 0, y: 0, width: 304, height: 1032))
+        scroll.documentView = document
+        section.addSubview(scroll)
+        host.trackTicketScroll(scroll)
+        let inside = scroll.convert(NSPoint(x: 20, y: 20), to: nil)
+        XCTAssertTrue(host.containsTicketScrollPoint(inside))
+        XCTAssertFalse(host.containsTicketScrollPoint(scroll.convert(NSPoint(x: 20, y: 280), to: nil)))
+        var marquees: [AccountMarqueeView] = []
+        for index in 0..<10 {
+            for line in 0..<3 {
+                let text = AccountMarqueeView(text: String(repeating: "Wöchentliches Kontingent · ", count: 5),
+                    font: .systemFont(ofSize: 13), textColor: .secondaryLabelColor,
+                    frame: NSRect(x: 56, y: CGFloat(index * 104 + line * 20 + 28), width: 200, height: 18))
+                document.addSubview(text)
+                marquees.append(text)
+            }
+        }
+        defer { host.setMenuContentVisible(false); window.contentView = nil }
+        XCTAssertTrue(marquees.allSatisfy { !$0.hasActiveScrollTimer })
+        scroll.scrollToTopOfDocument()
+        host.setMenuContentVisible(true)
+        let visible = marquees.filter { $0.hasActiveScrollTimer }
+        XCTAssertFalse(visible.isEmpty)
+        XCTAssertLessThanOrEqual(visible.count, 9)
+        XCTAssertTrue(marquees.filter { $0.visibleRect.isEmpty }.allSatisfy { !$0.hasActiveScrollTimer })
+        let first = try XCTUnwrap(visible.first)
+        let activeLayer = try XCTUnwrap(first.accountLabel.layer)
+        let pausedPhase: CFTimeInterval
+        scroll.contentView.scroll(to: .zero)
+        host.refreshMarqueeVisibility()
+        XCTAssertFalse(first.hasActiveScrollTimer)
+        XCTAssertEqual(activeLayer.speed, 0)
+        pausedPhase = activeLayer.timeOffset
+        XCTAssertGreaterThan(pausedPhase, 0)
+        scroll.scrollToTopOfDocument()
+        host.refreshMarqueeVisibility()
+        XCTAssertTrue(first.hasActiveScrollTimer)
+        XCTAssertEqual(activeLayer.speed, 1)
+        XCTAssertNotNil(activeLayer.animation(forKey: AccountMarqueeView.animationKey))
+        func sample(_ name: String) {
+            let startCPU = clock()
+            let startWall = ProcessInfo.processInfo.systemUptime
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+            let wall = ProcessInfo.processInfo.systemUptime - startWall
+            let cpu = Double(clock() - startCPU) / Double(CLOCKS_PER_SEC)
+            print("TICKET_CPU_SAMPLE phase=\(name) timers=\(marquees.filter { $0.hasActiveScrollTimer }.count) cpu_seconds=\(cpu) wall_seconds=\(wall)")
+        }
+        sample("open-top")
+        scroll.contentView.scroll(to: .zero)
+        host.refreshMarqueeVisibility()
+        sample("open-bottom")
+        host.setMenuContentVisible(false)
+        XCTAssertTrue(marquees.allSatisfy { !$0.hasActiveScrollTimer })
+        sample("closed")
+        XCTAssertTrue(marquees.allSatisfy { !$0.hasActiveScrollTimer })
+    }
+
+    func testLocalizedResetTicketsMeasureEachRowAndKeepTextInsideChrome() throws {
+        for language in [AppLanguage.simplifiedChinese, .english, .spanish, .german, .french] {
+            for count in [1, 2, 4] {
+                let previousLanguage = AppLanguage.selected
+                defer { AppLanguage.selected = previousLanguage }
+                AppLanguage.selected = language
+
+                let controller = StatusItemController(
+                    actions: StatusItemController.Actions(
+                        manualRefresh: {},
+                        openDashboard: {},
+                        openChatGPT: {},
+                        openCCSwitch: {},
+                        quit: {},
+                        switchProvider: { _ in },
+                        openProviderWebsite: {},
+                        openStatusLink: { _ in },
+                        iconChanged: { _ in }
+                    )
+                )
+                defer { controller.teardown() }
+
+                let input = StatusItemController.MenuInput(
+                    choices: [],
+                    quickSwitchSummaries: [:],
+                    activeClient: .codex,
+                    openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+                    statusLinks: [],
+                    showQuickSwitchMenu: false,
+                    showOpenChatGPTMenu: false,
+                    showOpenCCSwitchMenu: false,
+                    showStatusMenu: false
+                )
+                let settings = StatusItemController.MenuBarSettings(
+                    showIcon: true,
+                    showAmount: true,
+                    showReset: true,
+                    horizontalPadding: 6,
+                    keepMenuOpenAfterRefresh: true
+                )
+                let date = Date()
+                let windows = [
+                    OfficialQuotaWindow(
+                        kind: .fiveHour,
+                        remaining: 80,
+                        label: tr(.keyResponseParsers5HourQuota),
+                        daysText: tr(.keyResponseParsers5Hours),
+                        reset: "2d0h",
+                        durationSeconds: 18_000
+                    ),
+                    OfficialQuotaWindow(
+                        kind: .sevenDay,
+                        remaining: 45,
+                        label: tr(.keyResponseParsers7DayQuota2),
+                        daysText: tr(.keyResponseParsers7Days4),
+                        reset: "7d0h",
+                        durationSeconds: 604_800
+                    )
+                ]
+                var cards: [CodexBankedResetCard] = []
+                cards.reserveCapacity(count)
+                for index in 0..<count {
+                    let expiresAt = date.addingTimeInterval(TimeInterval((index + 1) * 86_400))
+                    cards.append(
+                        CodexBankedResetCard(
+                            id: "card-\(index)",
+                            resetType: "codex_rate_limits",
+                            titleText: tr(.keyCodexBankedResetFullResetTitle),
+                            windowText: tr(.keyCodexBankedResetFullResetWindow),
+                            expiresAt: expiresAt,
+                            expiresText: CodexBankedResetFormatting.expiryText(
+                                for: expiresAt,
+                                relativeTo: date
+                            ),
+                            remainingText: language == .simplifiedChinese ? "1d" : "16 d 16 h",
+                            remainingIsWarning: index == 0
+                        )
+                    )
+                }
+                let bankedReset = CodexBankedReset(cards: cards)
+
+                controller.start(
+                    snapshot: .official(
+                        "OpenAI Official",
+                        45,
+                        windows[1].label,
+                        windows[1].reset,
+                        date,
+                        windows: windows,
+                        bankedReset: bankedReset,
+                        resetForecast: CodexResetForecast(
+                            probability24h: .percent(20), probability48h: .percent(35),
+                            confidence: .low, updatedAt: date, isCached: false,
+                            officialSignal: CodexResetOfficialSignal(probability: .percent(83))
+                        )
+                    ),
+                    refreshDate: date,
+                    menuInput: input,
+                    settings: settings
+                )
+
+                let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+                let probability = try XCTUnwrap(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first)
+                let probabilityTextMinX = probability.frame.maxX - AccountMarqueeView.textWidth(of: probability.stringValue, font: try XCTUnwrap(probability.font))
+                XCTAssertEqual(probability.stringValue, "83%")
+                let probabilityHint = try XCTUnwrap(allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.officialHint"
+                })
+                XCTAssertGreaterThanOrEqual(probabilityTextMinX - probabilityHint.frame.maxX, 12 - 0.001)
+                let probabilityTitle = try XCTUnwrap(allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.accountLabel.stringValue == tr(.keyCodexBankedResetProbabilityPrefix)
+                })
+                let anchor = AccountMarqueeView.leadingInkInset(of: probabilityTitle.accountLabel)
+                XCTAssertEqual(probabilityHint.textClipFrame.minX, anchor, accuracy: 0.001)
+                XCTAssertEqual(
+                    probabilityHint.accountLabel.convert(NSPoint(x: AccountMarqueeView.leadingInkInset(of: probabilityHint.accountLabel), y: 0), to: overview).x,
+                    probabilityTitle.accountLabel.convert(NSPoint(x: anchor, y: 0), to: overview).x,
+                    accuracy: 0.001
+                )
+                let chromes = allControls(of: overview, as: BankedResetChromeView.self)
+                XCTAssertEqual(chromes.count, count)
+                for chrome in chromes {
+                    let labels = allControls(of: overview, as: NSTextField.self).filter {
+                        chrome.frame.contains($0.frame) && $0.superview === chrome.superview
+                    }
+                    let amount = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "codex.bankedReset.remaining" })
+                    XCTAssertEqual(amount.frame.maxX, chrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset, accuracy: 0.001)
+                    let textViews = chrome.superview?.subviews.filter {
+                        ["codex.bankedReset.ticketTitle", "codex.bankedReset.ticketWindow", "codex.bankedReset.ticketExpiry"].contains($0.identifier?.rawValue ?? "")
+                            && chrome.frame.contains($0.frame)
+                    } ?? []
+                    XCTAssertEqual(textViews.count, 3)
+                    for textView in textViews {
+                        XCTAssertTrue(textView.frame.intersection(amount.frame).isEmpty)
+                        if let marquee = textView as? AccountMarqueeView {
+                            XCTAssertTrue(marquee.isScrollable)
+                            XCTAssertEqual(marquee.accountLabel.lineBreakMode, .byClipping)
+                            XCTAssertTrue(marquee.layer?.masksToBounds == true)
+                            XCTAssertGreaterThan(marquee.accountLabel.frame.width, marquee.bounds.width)
+                            XCTAssertEqual(marquee.frame.maxX, chrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset, accuracy: 0.001)
+                        } else if let label = textView as? NSTextField {
+                            let font = try XCTUnwrap(label.font)
+                            let measured = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width)
+                            XCTAssertLessThanOrEqual(measured + 4, label.frame.width)
+                        }
+                    }
+                    if language == .german {
+                        let marquee = try XCTUnwrap(textViews.first { $0.identifier?.rawValue == "codex.bankedReset.ticketWindow" } as? AccountMarqueeView)
+                        XCTAssertEqual(marquee.accountLabel.stringValue, tr(.keyCodexBankedResetFullResetWindow))
+                        XCTAssertFalse(marquee.hasActiveScrollTimer, "Closed menu must not animate ticket text")
+                    }
+                    if language == .spanish || language == .german || language == .french {
+                        XCTAssertEqual(chrome.frame.height, OpenCodexCardLayout.bankedResetExpandedDetailRowHeight)
+                        XCTAssertLessThanOrEqual(amount.frame.maxY, try XCTUnwrap(textViews.first { $0.identifier?.rawValue == "codex.bankedReset.ticketWindow" }).frame.minY)
+                    }
+                    XCTAssertEqual(chrome.frame.midY, try XCTUnwrap(allControls(of: overview, as: NSImageView.self).first {
+                        $0.identifier?.rawValue == "codex.bankedReset.ticket" && chrome.frame.contains($0.frame)
+                    }).frame.midY, accuracy: 0.001)
+                }
+                for index in 0..<count - 1 {
+                    XCTAssertEqual(chromes[index].frame.minY - chromes[index + 1].frame.maxY, 8, accuracy: 0.001)
+                }
+                let scrolls = allControls(of: overview, as: BankedResetTicketScrollView.self)
+                if count > 2 {
+                    let scroll = try XCTUnwrap(scrolls.first)
+                    XCTAssertEqual(scroll.frame.height, chromes[0].frame.height + chromes[1].frame.height + chromes[2].frame.height / 2 + 16, accuracy: 0.001)
+                    XCTAssertEqual(try XCTUnwrap(scroll.documentView).frame.height, chromes.map { $0.frame.height }.reduce(0, +) + CGFloat(count - 1) * 8, accuracy: 0.001)
+                } else {
+                    XCTAssertTrue(scrolls.isEmpty)
+                }
+            }
+        }
     }
 
     func testCCSwitchMenuItemStaysIndependentAndOpenCodexMenuItemIsAbsent() throws {
@@ -6287,14 +6908,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             XCTAssertEqual(
                 controller.menuItemsForTesting.contains {
-                    $0.title == "打开 CC Switch" || $0.title == "Open CC Switch"
+                    $0.title == tr(.keyStatusItemControllerOpenCcSwitch)
                 },
                 showOpenCCSwitchMenu
             )
 
             let statusMenuItem = try XCTUnwrap(
                 controller.menuItemsForTesting.first {
-                    $0.title == "查看状态" || $0.title == "View Status"
+                    $0.title == tr(.keyStatusItemControllerViewStatus)
                 }
             )
             XCTAssertEqual(statusMenuItem.submenu?.items.map(\.title), ["Status"])
@@ -6411,34 +7032,17 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
-    private func visualTextMinX(of view: NSView, in host: NSView) -> CGFloat {
-        if let marquee = view as? AccountMarqueeView {
-            return visualTextMinX(of: marquee.accountLabel, in: host)
-        }
-        if let field = view as? NSTextField, let cell = field.cell {
-            return field.convert(cell.titleRect(forBounds: field.bounds).origin, to: host).x
-        }
-        return host.convert(NSPoint(x: view.bounds.minX, y: view.bounds.minY), from: view).x
-    }
-
     private func assertBankedResetProbabilityLeadingAligned(
         in overview: NSView,
         title: AccountMarqueeView,
-        subtitle: NSTextField,
+        subtitle: AccountMarqueeView,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let expected = OpenCodexCardLayout.horizontalInset
-        XCTAssertEqual(title.frame.minX, expected, accuracy: 0.001, file: file, line: line)
-        XCTAssertEqual(subtitle.frame.minX, expected, accuracy: 0.001, file: file, line: line)
-        let titleX = visualTextMinX(of: title, in: overview)
-        XCTAssertEqual(
-            visualTextMinX(of: subtitle, in: overview),
-            titleX,
-            accuracy: 0.5,
-            "forecast subtitle visual minX",
-            file: file,
-            line: line
-        )
+        XCTAssertEqual(title.frame.minX, OpenCodexCardLayout.horizontalInset, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(subtitle.frame.minX, title.frame.minX, accuracy: 0.001, file: file, line: line)
+        let titleInk = title.accountLabel.convert(NSPoint(x: AccountMarqueeView.leadingInkInset(of: title.accountLabel), y: 0), to: overview).x
+        let subtitleInk = subtitle.accountLabel.convert(NSPoint(x: AccountMarqueeView.leadingInkInset(of: subtitle.accountLabel), y: 0), to: overview).x
+        XCTAssertEqual(subtitleInk, titleInk, accuracy: 0.001, file: file, line: line)
     }
 }
