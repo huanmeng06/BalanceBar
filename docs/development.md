@@ -297,9 +297,13 @@ SHA against the most recent eligible Ready validation's successful gate executio
 that gate must have genuine Full or version-exemption evidence. Historical run
 PR refs may be live projections, so the prior gate's own logged identity is
 verified instead. A newer incomplete/failed validation blocks; an earlier green
-cannot be borrowed across SHA, base or Draft transitions. GitHub can otherwise
-mark the PR blocked after a successful non-required metadata-only job despite
-older Full checks. This is the **sole** narrowly scoped cross-run reuse; code,
+cannot be borrowed across SHA, base or Draft transitions. GitHub can
+publish a new run before its jobs exist; while that run is queued the metadata
+gate waits rather than using older evidence or applying the missing-job grace.
+It checks for newer runs again immediately before reporting success. This
+required-name refresh prevents GitHub from leaving the PR blocked after a
+successful non-required metadata-only job despite older Full checks. This is
+the **sole** narrowly scoped cross-run reuse; code,
 retarget and Ready transitions still require fresh Full evidence. Edited events
 lacking reliable change information revalidate.
 

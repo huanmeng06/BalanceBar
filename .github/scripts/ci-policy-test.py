@@ -152,6 +152,110 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(selected[1]['conclusion'], 'failure')
         self.assertIsNone(error)
 
+        # A newly created Ready run has no jobs yet. Its older green sibling
+        # must not supply the merge credential while Actions is queuing it.
+        pending = dict(run(25), status='queued', conclusion=None)
+        jobs[25] = []
+        source, selected, error = meta.metadata_source([run(20), pending], *args)
+        self.assertEqual(source['id'], 25)
+        self.assertEqual(selected, [])
+        self.assertIn('not yet visible', error)
+        # Ready -> Draft -> Ready on the same SHA also hides the first Ready
+        # run while the second Ready run has not published any jobs.
+        jobs[26] = jobs[22]
+        jobs[27] = []
+        second_ready = dict(run(27), status='queued', conclusion=None)
+        source, selected, error = meta.metadata_source(
+            [run(20), run(26), second_ready], *args)
+        self.assertEqual(source['id'], 27)
+        self.assertEqual(selected, [])
+        self.assertIn('not yet visible', error)
+
+    def test_metadata_waits_past_missing_job_grace_while_queued(self):
+        clock = Clock()
+        run = lambda i, status: {'id': i, 'workflow_id': 9, 'event': 'pull_request',
+                                 'head_sha': 'new', 'pull_requests': [{'number': 499}],
+                                 'status': status, 'conclusion': 'success' if status == 'completed' else None}
+        old_jobs = [{'id': 200, 'name': meta.NAMES['scope'], 'conclusion': 'success'},
+                    {'id': 201, 'name': meta.NAMES['full'], 'conclusion': 'success'},
+                    {'id': 202, 'name': meta.NAMES['smoke'], 'conclusion': 'success'},
+                    {'id': 203, 'name': 'PR merge gate', 'conclusion': 'success'}]
+        new_jobs = [dict(j, id=j['id'] + 100) for j in old_jobs]
+        log = ('PASS: Full CI for event head/base\nEvent head: new\n'
+               'Base: main / base\nCheckout/merge SHA: merge\n')
+        seen = []
+
+        def api(path):
+            seen.append((clock.now, path))
+            if path.endswith('/runs/123'):
+                return {'event': 'pull_request', 'head_sha': 'new', 'workflow_id': 9}
+            if '/pulls/' in path:
+                return dict(copy.deepcopy(READY), merge_commit_sha='merge')
+            if '/actions/runs?' in path:
+                latest = run(21, 'queued' if clock.now < 75 else 'completed')
+                return {'workflow_runs': [run(20, 'completed'), latest], 'total_count': 2}
+            if '/runs/21/jobs?' in path:
+                values = [] if clock.now < 75 else new_jobs
+                return {'jobs': values, 'total_count': len(values)}
+            if '/runs/20/jobs?' in path:
+                return {'jobs': old_jobs, 'total_count': len(old_jobs)}
+            raise AssertionError(path)
+
+        event = {'action': 'edited', 'changes': {'body': {'from': 'old'}},
+                 'pull_request': copy.deepcopy(READY)}
+        with patch.dict(os.environ, dict(ENV)), patch.object(meta, 'api', side_effect=api), \
+             patch.object(meta.subprocess, 'check_output', return_value=log), \
+             patch.object(meta.time, 'monotonic', side_effect=lambda: clock.now), \
+             patch.object(meta.time, 'sleep', side_effect=clock.sleep):
+            accepted, _, evidence = meta.metadata_gate(event)
+        self.assertTrue(accepted)
+        self.assertGreaterEqual(clock.now, 75)
+        self.assertEqual(evidence['source_run'], 21)
+        self.assertFalse(any('/runs/20/jobs?' in path for _, path in seen))
+
+    def test_metadata_rechecks_latest_run_before_success(self):
+        # Ready -> Draft -> Ready can reuse the same head SHA. A newer run
+        # arriving while the old gate log is read invalidates the old result.
+        clock = Clock()
+        old = {'id': 20, 'workflow_id': 9, 'event': 'pull_request',
+               'head_sha': 'new', 'pull_requests': [{'number': 499}],
+               'status': 'completed', 'conclusion': 'success'}
+        newer = dict(old, id=21, status='queued', conclusion=None)
+        jobs = [{'id': 1, 'name': meta.NAMES['scope'], 'conclusion': 'success'},
+                {'id': 2, 'name': meta.NAMES['full'], 'conclusion': 'success'},
+                {'id': 3, 'name': meta.NAMES['smoke'], 'conclusion': 'success'},
+                {'id': 4, 'name': 'PR merge gate', 'conclusion': 'success'}]
+        read_count = 0
+
+        def api(path):
+            nonlocal read_count
+            if path.endswith('/runs/123'):
+                return {'event': 'pull_request', 'head_sha': 'new', 'workflow_id': 9}
+            if '/pulls/' in path:
+                return dict(copy.deepcopy(READY), merge_commit_sha='merge')
+            if '/actions/runs?' in path:
+                read_count += 1
+                values = [old] if read_count == 1 else [old, newer]
+                return {'workflow_runs': values, 'total_count': len(values)}
+            if '/runs/20/jobs?' in path:
+                return {'jobs': jobs, 'total_count': len(jobs)}
+            if '/runs/21/jobs?' in path:
+                return {'jobs': [], 'total_count': 0}
+            raise AssertionError(path)
+
+        event = {'action': 'edited', 'changes': {'body': {'from': 'old'}},
+                 'pull_request': copy.deepcopy(READY)}
+        log = ('PASS: Full CI for event head/base\nEvent head: new\n'
+               'Base: main / base\nCheckout/merge SHA: merge\n')
+        with patch.dict(os.environ, dict(ENV)), patch.object(meta, 'api', side_effect=api), \
+             patch.object(meta.subprocess, 'check_output', return_value=log), \
+             patch.object(meta.time, 'monotonic', side_effect=lambda: clock.now), \
+             patch.object(meta.time, 'sleep', side_effect=lambda seconds: setattr(clock, 'now', clock.now + seconds)):
+            accepted, reason, _ = meta.metadata_gate(event)
+        self.assertFalse(accepted)
+        self.assertIn('Timed out', reason)
+        self.assertGreater(read_count, 2)
+
     def test_metadata_workflow_uses_required_name_and_real_evidence(self):
         workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
                     'build-and-test.yml').read_text(encoding='utf-8')

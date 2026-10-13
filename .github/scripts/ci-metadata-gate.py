@@ -50,6 +50,10 @@ def metadata_source(runs, jobs_by_run, current_run_id, workflow_id, pr_number, h
     for run in candidates:
         jobs = jobs_by_run(run['id'])
         names = {j['name']: j for j in jobs}
+        if not jobs:
+            # Actions can publish a new run before creating any jobs. It is
+            # still the newest validation and must hide older green runs.
+            return run, jobs, 'Latest validation jobs are not yet visible'
         if names.get(NAMES['scope'], {}).get('conclusion') == 'skipped':
             # Metadata-only confirmations cannot be chained as Full evidence.
             continue
@@ -74,6 +78,22 @@ def metadata_gate(event):
         return False, 'Metadata run identity mismatch', {}
     deadline = time.monotonic() + 23 * 60
     missing_since = None
+
+    def runs_for_head():
+        all_runs = []
+        for page in range(1, 11):
+            data = api(f'repos/{repo}/actions/runs?event=pull_request&head_sha={head}&per_page=100&page={page}')
+            all_runs.extend(data['workflow_runs'])
+            if len(all_runs) >= data['total_count']:
+                return all_runs
+        raise ValueError('Too many runs to validate metadata safely')
+
+    def jobs_by_run(run_id):
+        data = api(f'repos/{repo}/actions/runs/{run_id}/jobs?per_page=100')
+        if data.get('total_count', 0) > len(data.get('jobs', [])):
+            raise ValueError('Incomplete validation jobs')
+        return data['jobs']
+
     while time.monotonic() < deadline:
         try:
             live = api(f'repos/{repo}/pulls/{pr_num}')
@@ -82,30 +102,18 @@ def metadata_gate(event):
             merge_sha = live.get('merge_commit_sha')
             if not merge_sha:
                 return False, 'PR test-merge commit unavailable', {}
-            all_runs = []
-            for page in range(1, 11):
-                data = api(f'repos/{repo}/actions/runs?event=pull_request&head_sha={head}&per_page=100&page={page}')
-                all_runs.extend(data['workflow_runs'])
-                if len(all_runs) >= data['total_count']:
-                    break
-            else:
-                return False, 'Too many runs to validate metadata safely', {}
-
-            def jobs_by_run(run_id):
-                data = api(f'repos/{repo}/actions/runs/{run_id}/jobs?per_page=100')
-                if data.get('total_count', 0) > len(data.get('jobs', [])):
-                    raise ValueError('Incomplete validation jobs')
-                return data['jobs']
-
-            source, jobs, error = metadata_source(all_runs, jobs_by_run, current_id,
+            source, jobs, error = metadata_source(runs_for_head(), jobs_by_run, current_id,
                                                   current_run['workflow_id'], pr_num, head)
             if error:
-                if source:
+                if source and error != 'Latest validation jobs are not yet visible':
                     return False, error, {}
-                if missing_since is None:
-                    missing_since = time.monotonic()
-                if time.monotonic() - missing_since >= 60:
-                    return False, error + '; run Ready Full CI', {}
+                if source and source['status'] != 'completed':
+                    missing_since = None
+                else:
+                    if missing_since is None:
+                        missing_since = time.monotonic()
+                    if time.monotonic() - missing_since >= 60:
+                        return False, error + '; run Ready Full CI', {}
             elif source['status'] != 'completed':
                 missing_since = None
             else:
@@ -130,9 +138,23 @@ def metadata_gate(event):
                     return False, error, {}
                 if again.get('merge_commit_sha') != merge_sha:
                     return False, 'PR test-merge SHA changed during metadata validation', {}
+                latest, latest_jobs, latest_error = metadata_source(
+                    runs_for_head(), jobs_by_run, current_id,
+                    current_run['workflow_id'], pr_num, head)
+                latest_gate = next((j for j in latest_jobs or []
+                                    if j['name'] == 'PR merge gate'), None)
+                if (not latest or latest['id'] != source['id'] or latest_error
+                        or latest.get('run_attempt') != source.get('run_attempt')
+                        or latest.get('status') != 'completed'
+                        or latest.get('conclusion') != 'success'
+                        or not latest_gate or latest_gate['id'] != gate['id']):
+                    missing_since = None
+                    time.sleep(min(15, max(0, deadline - time.monotonic())))
+                    continue
                 return True, 'Metadata-only; prior identical Ready Full gate verified', {
                     'source_run': source['id'], 'source_gate_job': gate['id'],
-                    'head': head, 'base': pr['base'], 'merge_sha': merge_sha}
+                    'head': head, 'base': {'ref': pr['base']['ref'],
+                                          'sha': pr['base']['sha']}, 'merge_sha': merge_sha}
             time.sleep(min(15, max(0, deadline - time.monotonic())))
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, KeyError,
                 json.JSONDecodeError) as exc:
