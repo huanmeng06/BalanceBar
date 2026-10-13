@@ -4328,6 +4328,22 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                     remainingIsWarning: laterRemaining.isWarning
                 )
             ])
+        let ticketMetrics = bankedReset.cards.map {
+            OpenCodexTicketTextMetrics(
+                titleWidth: ceil(($0.titleText as NSString).size(withAttributes: [
+                    .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)
+                ]).width),
+                windowWidth: ceil((($0.windowText ?? "") as NSString).size(withAttributes: [
+                    .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)
+                ]).width),
+                resetWidth: ceil((($0.expiresText ?? "") as NSString).size(withAttributes: [
+                    .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)
+                ]).width),
+                amountWidth: ceil((($0.remainingText ?? "") as NSString).size(withAttributes: [
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)
+                ]).width)
+            )
+        }
 
         controller.start(
             snapshot: .official(
@@ -4353,7 +4369,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             includesSubscription: true,
             officialQuotaWindows: windows,
             includesBankedReset: true,
-            bankedResetCardCount: 2
+            bankedResetCardCount: 2,
+            bankedResetTicketMetrics: ticketMetrics
         )
         XCTAssertEqual(overview.bounds.size, frames.cardSize)
         XCTAssertEqual(
@@ -4440,12 +4457,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(remainingFields[1].textColor, NSColor.labelColor)
         XCTAssertEqual(
             remainingFields[0].frame.midY,
-            frames.bankedResetDetailRows[0].chrome.midY,
+            frames.bankedResetDetailRows[0].amount.midY,
             accuracy: 1
         )
         XCTAssertEqual(
             remainingFields[1].frame.midY,
-            frames.bankedResetDetailRows[1].chrome.midY,
+            frames.bankedResetDetailRows[1].amount.midY,
             accuracy: 1
         )
         XCTAssertEqual(
@@ -4572,20 +4589,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.stringValue == (bankedReset.cards[0].expiresText ?? "")
             }
         )
-        XCTAssertEqual(
-            firstTicket.frame.midY,
-            (
-                min(firstTitle.frame.minY, firstWindow.frame.minY, firstExpiry.frame.minY)
-                    + max(firstTitle.frame.maxY, firstWindow.frame.maxY, firstExpiry.frame.maxY)
-            ) / 2,
-            accuracy: 1
-        )
         let firstAmount = try XCTUnwrap(
             remainingFields.first { $0.stringValue == earlierRemaining.text }
         )
-        let firstWindowBaseline = firstWindow.frame.maxY - firstWindow.firstBaselineOffsetFromTop
-        let firstAmountBaseline = firstAmount.frame.maxY - firstAmount.firstBaselineOffsetFromTop
-        XCTAssertEqual(firstAmountBaseline, firstWindowBaseline, accuracy: 0.001)
+        XCTAssertEqual(
+            firstTicket.frame.midY,
+            (
+                min(firstTitle.frame.minY, firstWindow.frame.minY, firstExpiry.frame.minY, firstAmount.frame.minY)
+                    + max(firstTitle.frame.maxY, firstWindow.frame.maxY, firstExpiry.frame.maxY, firstAmount.frame.maxY)
+            ) / 2,
+            accuracy: 1
+        )
+        XCTAssertGreaterThanOrEqual(firstAmount.frame.minY, firstTitle.frame.maxY)
         XCTAssertEqual(
             firstAmount.frame.maxX,
             firstChrome.frame.maxX - OpenCodexCardLayout.bankedResetChromeInset,

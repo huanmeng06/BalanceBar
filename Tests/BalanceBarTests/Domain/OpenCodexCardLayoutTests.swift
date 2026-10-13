@@ -100,6 +100,58 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         )
     }
 
+    func testLongLocalizedTicketTextsUseExpandedRowsWithoutHorizontalOverlap() throws {
+        let compactFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .detailed,
+            bankedResetTicketMetrics: [
+                .init(titleWidth: 40, windowWidth: 42, resetWidth: 38, amountWidth: 48)
+            ]
+        )
+        let compactRow = try XCTUnwrap(compactFrames.bankedResetDetailRows.first)
+        XCTAssertEqual(compactRow.chrome.height, OpenCodexCardLayout.bankedResetDetailRowHeight)
+
+        let expandedFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesBankedReset: true,
+            bankedResetCardCount: 3,
+            bankedResetDisplayMode: .detailed,
+            bankedResetTicketMetrics: [
+                .init(titleWidth: 180, windowWidth: 190, resetWidth: 110, amountWidth: 62)
+            ]
+        )
+        let first = try XCTUnwrap(expandedFrames.bankedResetDetailRows.first)
+        let second = try XCTUnwrap(expandedFrames.bankedResetDetailRows.dropFirst().first)
+        XCTAssertEqual(first.chrome.height, OpenCodexCardLayout.bankedResetExpandedDetailRowHeight)
+        XCTAssertEqual(
+            first.chrome.minY - second.chrome.minY,
+            OpenCodexCardLayout.bankedResetExpandedDetailRowHeight
+                + OpenCodexCardLayout.metrics.ticketSpacing,
+            accuracy: 0.001
+        )
+        XCTAssertTrue(first.quotaDetail.maxX <= first.chrome.maxX - OpenCodexCardLayout.bankedResetChromeInset)
+        XCTAssertTrue(first.window.maxX <= first.chrome.maxX - OpenCodexCardLayout.bankedResetChromeInset)
+        XCTAssertTrue(first.amount.minX >= first.quotaDetail.minX)
+        XCTAssertTrue(first.amount.minY >= first.quotaDetail.maxY)
+        XCTAssertTrue(first.quotaDetail.intersection(first.amount).isEmpty)
+        XCTAssertTrue(first.window.intersection(first.amount).isEmpty)
+        XCTAssertEqual(
+            expandedFrames.bankedResetTicketViewport?.height ?? 0,
+            OpenCodexCardLayout.bankedResetTicketViewportMaxHeight(
+                rowHeight: OpenCodexCardLayout.bankedResetExpandedDetailRowHeight
+            ),
+            accuracy: 0.001
+        )
+        XCTAssertTrue(
+            OpenCodexCardLayout.bankedResetTicketsNeedScroll(
+                cardCount: 3,
+                rowHeight: OpenCodexCardLayout.bankedResetExpandedDetailRowHeight
+            )
+        )
+    }
+
     func testOpenCodexCardLayoutMatchesExistingOfficialAndBalanceOverviewFrames() {
         let official = OpenCodexCardLayout.frames(for: .quota)
         XCTAssertEqual(official.cardSize, CGSize(width: 304, height: 94))

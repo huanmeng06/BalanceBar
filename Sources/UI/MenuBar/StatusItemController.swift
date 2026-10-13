@@ -5709,6 +5709,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let officialQuotaWindows = quotaPresentation.windows
         let lunaReserve = quotaPresentation.lunaReserve
         let bankedReset = quotaPresentation.bankedReset
+        let bankedResetTicketMetrics = bankedReset?.cards.map {
+            OpenCodexTicketTextMetrics(
+                titleWidth: textWidth($0.titleText, font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)),
+                windowWidth: textWidth($0.windowText ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)),
+                resetWidth: textWidth($0.expiresText ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)),
+                amountWidth: textWidth($0.remainingText ?? "", font: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium))
+            )
+        } ?? []
         let nearestExpiryText = bankedReset.flatMap {
             CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards, timeZone: settings.displayTimeZone)
         }
@@ -5736,7 +5744,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             bankedResetDisplayMode: menuInput.bankedResetDisplayMode,
             includesBankedResetNearestExpiry: nearestExpiryText != nil,
             includesResetProbability: settings.showBankedReset && snapshot.kind == .official
-                && (bankedReset != nil || quotaPresentation.resetForecast.hasAnyValue)
+                && (bankedReset != nil || quotaPresentation.resetForecast.hasAnyValue),
+            bankedResetTicketMetrics: bankedResetTicketMetrics
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.wantsLayer = true
@@ -5973,8 +5982,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     let ticketImage = Self.bankedResetTicketImage()
                     let ticketHost: NSView
                     let ticketScrollView: BankedResetTicketScrollView?
+                    let ticketRowHeight = layout.bankedResetDetailRows.first?.chrome.height
+                        ?? OpenCodexCardLayout.bankedResetDetailRowHeight
                     if OpenCodexCardLayout.bankedResetTicketsNeedScroll(
-                        cardCount: bankedReset.cards.count
+                        cardCount: bankedReset.cards.count,
+                        rowHeight: ticketRowHeight
                     ), let viewport = layout.bankedResetTicketViewport {
                         let document = BankedResetTicketDocumentView(
                             frame: NSRect(
@@ -5982,7 +5994,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                                 y: 0,
                                 width: viewport.width,
                                 height: OpenCodexCardLayout.bankedResetTicketStackHeight(
-                                    cardCount: bankedReset.cards.count
+                                    cardCount: bankedReset.cards.count,
+                                    rowHeight: ticketRowHeight
                                 )
                             )
                         )
@@ -6056,7 +6069,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             remaining = label
                         }
 
-                        if let windowLine, let remaining {
+                        if let windowLine, let remaining,
+                           remaining.frame.minY < row.quotaDetail.maxY {
                             alignOverviewLabelBaseline(remaining, to: windowLine)
                         }
 
@@ -6241,6 +6255,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingTail
         return label
+    }
+
+    private func textWidth(_ text: String, font: NSFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 
     private func alignOverviewLabelBaseline(_ label: NSTextField, to reference: NSTextField) {

@@ -230,6 +230,20 @@ struct OpenCodexOverviewSectionLayout: Equatable {
     var height: CGFloat { frame.height }
 }
 
+enum OpenCodexTicketLayoutMode: Equatable {
+    case compact
+    case expanded
+}
+
+struct OpenCodexTicketTextMetrics: Equatable {
+    let titleWidth: CGFloat
+    let windowWidth: CGFloat
+    let resetWidth: CGFloat
+    let amountWidth: CGFloat
+
+    static let empty = Self(titleWidth: 0, windowWidth: 0, resetWidth: 0, amountWidth: 0)
+}
+
 /// Frames used by official quota and balance overview cards.
 /// Keeping these values in a pure helper makes the visual baseline testable
 /// without launching AppKit or the status menu.
@@ -412,6 +426,7 @@ enum OpenCodexCardLayout {
     /// Keep this taller than the two-line summary so the type title is not
     /// marquee-truncated.
     static let bankedResetDetailRowHeight: CGFloat = 72
+    static let bankedResetExpandedDetailRowHeight: CGFloat = 96
     static let bankedResetTicketIconSize = CGSize(width: 31, height: 24)
     static let bankedResetTicketIconGap: CGFloat = 8
     static let bankedResetRemainingWidth: CGFloat = 120
@@ -576,30 +591,34 @@ enum OpenCodexCardLayout {
     /// third so leftover cards remain obvious. 1–2 cards stay unclipped.
     static let bankedResetVisibleTicketLimit: CGFloat = 2.5
 
-    static func bankedResetTicketStackHeight(cardCount: Int) -> CGFloat {
+    static func bankedResetTicketStackHeight(cardCount: Int, rowHeight: CGFloat = bankedResetDetailRowHeight) -> CGFloat {
         guard cardCount > 0 else { return 0 }
-        return CGFloat(cardCount) * bankedResetDetailRowHeight
+        return CGFloat(cardCount) * rowHeight
             + CGFloat(cardCount - 1) * metrics.ticketSpacing
     }
 
     static var bankedResetTicketViewportMaxHeight: CGFloat {
-        let fullVisibleRows = floor(bankedResetVisibleTicketLimit)
-        let partialRow = bankedResetVisibleTicketLimit - fullVisibleRows
-        return fullVisibleRows * bankedResetDetailRowHeight
-            + fullVisibleRows * metrics.ticketSpacing
-            + partialRow * bankedResetDetailRowHeight
+        bankedResetTicketViewportMaxHeight(rowHeight: bankedResetDetailRowHeight)
     }
 
-    static func bankedResetVisibleTicketStackHeight(cardCount: Int) -> CGFloat {
+    static func bankedResetTicketViewportMaxHeight(rowHeight: CGFloat) -> CGFloat {
+        let fullVisibleRows = floor(bankedResetVisibleTicketLimit)
+        let partialRow = bankedResetVisibleTicketLimit - fullVisibleRows
+        return fullVisibleRows * rowHeight
+            + fullVisibleRows * metrics.ticketSpacing
+            + partialRow * rowHeight
+    }
+
+    static func bankedResetVisibleTicketStackHeight(cardCount: Int, rowHeight: CGFloat = bankedResetDetailRowHeight) -> CGFloat {
         min(
-            bankedResetTicketStackHeight(cardCount: cardCount),
-            bankedResetTicketViewportMaxHeight
+            bankedResetTicketStackHeight(cardCount: cardCount, rowHeight: rowHeight),
+            bankedResetTicketViewportMaxHeight(rowHeight: rowHeight)
         )
     }
 
-    static func bankedResetTicketsNeedScroll(cardCount: Int) -> Bool {
-        bankedResetTicketStackHeight(cardCount: cardCount)
-            > bankedResetTicketViewportMaxHeight + 0.5
+    static func bankedResetTicketsNeedScroll(cardCount: Int, rowHeight: CGFloat = bankedResetDetailRowHeight) -> Bool {
+        bankedResetTicketStackHeight(cardCount: cardCount, rowHeight: rowHeight)
+            > bankedResetTicketViewportMaxHeight(rowHeight: rowHeight) + 0.5
     }
 
     static func frames(
@@ -618,7 +637,8 @@ enum OpenCodexCardLayout {
         bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
         includesBankedResetNearestExpiry: Bool = false,
         includesBankedResetForecastMetrics: Bool = true,
-        includesResetProbability: Bool? = nil
+        includesResetProbability: Bool? = nil,
+        bankedResetTicketMetrics: [OpenCodexTicketTextMetrics] = []
     ) -> OpenCodexCardFrames {
         let showsProbability = includesResetProbability ?? includesBankedReset
         let recognizedWindowCount = officialQuotaWindows.filter { $0.kind != .other }.count
@@ -638,7 +658,8 @@ enum OpenCodexCardLayout {
                 bankedResetDisplayMode: bankedResetDisplayMode,
                 includesBankedResetNearestExpiry: includesBankedResetNearestExpiry,
                 includesBankedResetForecastMetrics: includesBankedResetForecastMetrics,
-                includesResetProbability: showsProbability
+                includesResetProbability: showsProbability,
+                bankedResetTicketMetrics: bankedResetTicketMetrics
             )
         }
 
@@ -762,7 +783,8 @@ enum OpenCodexCardLayout {
         bankedResetDisplayMode: CodexBankedResetDisplayMode,
         includesBankedResetNearestExpiry: Bool,
         includesBankedResetForecastMetrics: Bool,
-        includesResetProbability: Bool
+        includesResetProbability: Bool,
+        bankedResetTicketMetrics: [OpenCodexTicketTextMetrics]
     ) -> OpenCodexCardFrames {
         let windowCount = windows.count
         let rowHeight = includesQuotaProgress ? quotaProgressRowHeight : lunaReserveNoProgressRowHeight
@@ -799,11 +821,26 @@ enum OpenCodexCardLayout {
         let probabilityCardGap = includesBankedReset && includesResetProbability
             ? bankedResetProbabilitySummaryGap
             : 0
-        let bankedDetailHeight = bankedResetDetailRowHeight
+        let ticketContentMaxX = cardWidth - horizontalInset - bankedResetChromeInset
+        let ticketTextX = horizontalInset + bankedResetChromeInset
+            + bankedResetTicketIconSize.width + bankedResetTicketIconGap
+        let compactTextWidth = ticketContentMaxX - ticketTextX - bankedResetRemainingWidth - 6
+        let needsExpandedTickets = bankedDetailCount > 0 && bankedResetTicketMetrics.contains {
+            max($0.titleWidth, $0.windowWidth, $0.resetWidth) > compactTextWidth
+                || $0.amountWidth > bankedResetRemainingWidth
+        }
+        let ticketLayoutMode: OpenCodexTicketLayoutMode = needsExpandedTickets ? .expanded : .compact
+        let bankedDetailHeight = ticketLayoutMode == .expanded
+            ? bankedResetExpandedDetailRowHeight
+            : bankedResetDetailRowHeight
         let bankedVisibleTicketStackHeight = bankedResetVisibleTicketStackHeight(
-            cardCount: bankedDetailCount
+            cardCount: bankedDetailCount,
+            rowHeight: bankedDetailHeight
         )
-        let bankedTicketsNeedScroll = bankedResetTicketsNeedScroll(cardCount: bankedDetailCount)
+        let bankedTicketsNeedScroll = bankedResetTicketsNeedScroll(
+            cardCount: bankedDetailCount,
+            rowHeight: bankedDetailHeight
+        )
         let bankedDetailBlockHeight = bankedDetailCount > 0
             ? bankedVisibleTicketStackHeight + bankedResetSummaryDetailGap
             : 0
@@ -1033,7 +1070,9 @@ enum OpenCodexCardLayout {
             let titleWidth = max(64, remainingX - textX - 6)
             let lineWidth = max(64, contentMaxX - textX)
             let lineGap = bankedResetTicketLineGap
-            let textBlockHeight = quotaDetailHeight + quotaResetHeight * 2 + lineGap * 2
+            let textBlockHeight = ticketLayoutMode == .expanded
+                ? quotaDetailHeight + quotaResetHeight * 2 + lineGap * 2 + quotaDetailHeight + lineGap
+                : quotaDetailHeight + quotaResetHeight * 2 + lineGap * 2
             return (0..<bankedDetailCount).map { index in
                 // Unclipped 1–2 card lists stay in host coordinates so the
                 // existing two-ticket menu still paints at bottomInset.
@@ -1046,25 +1085,27 @@ enum OpenCodexCardLayout {
                 let expiryY = textBlockY
                 let windowY = expiryY + quotaResetHeight + lineGap
                 let titleY = windowY + quotaResetHeight + lineGap
-                let amountY = windowY + (quotaResetHeight - quotaDetailHeight) / 2
+                let amountY = ticketLayoutMode == .expanded
+                    ? titleY + quotaDetailHeight + lineGap
+                    : windowY + (quotaResetHeight - quotaDetailHeight) / 2
                 let iconY = y + (bankedDetailHeight - iconSize.height) / 2
                 return OpenCodexQuotaRowFrames(
                     quotaDetail: CGRect(
                         x: textX,
                         y: titleY,
-                        width: titleWidth,
+                        width: ticketLayoutMode == .expanded ? lineWidth : titleWidth,
                         height: quotaDetailHeight
                     ),
                     reset: CGRect(
                         x: textX,
                         y: expiryY,
-                        width: lineWidth,
+                        width: ticketLayoutMode == .expanded ? lineWidth : titleWidth,
                         height: quotaResetHeight
                     ),
                     amount: CGRect(
-                        x: remainingX,
+                        x: ticketLayoutMode == .expanded ? textX : remainingX,
                         y: amountY,
-                        width: bankedResetRemainingWidth,
+                        width: ticketLayoutMode == .expanded ? lineWidth : bankedResetRemainingWidth,
                         height: quotaDetailHeight
                     ),
                     progress: .zero,
@@ -1077,7 +1118,7 @@ enum OpenCodexCardLayout {
                     window: CGRect(
                         x: textX,
                         y: windowY,
-                        width: lineWidth,
+                        width: ticketLayoutMode == .expanded ? lineWidth : titleWidth,
                         height: quotaResetHeight
                     ),
                     chrome: CGRect(
