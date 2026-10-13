@@ -229,12 +229,12 @@ shell syntax, classifier/policy tests and actionlint checks on Ubuntu.
 
 | Event/state | Validation | Merge result |
 | --- | --- | --- |
-| Draft open/push/reopen/convert | Fast Debug build + localization probes for non-documentation changes; documentation adds/edits skip app build | PR merge gate fails deliberately; Draft cannot merge |
+| Draft open/push/reopen/convert | Fast Debug build + localization probes for non-documentation changes; documentation adds/edits skip app build | A short successful `Draft merge gate inactive (not required)` check has no merge credential; GitHub prohibits merging Draft PRs |
 | Ready open/push/reopen/convert | Full CLI + probes + build-for-testing + all serial XCTest + artifact/smoke | Gate requires this run's successful Full |
 | Ready, entire PR version-only | Explicit `PR-wide version-only exemption (no XCTest)` | Gate accepts the named exemption, never reports XCTest PASS |
 | Ready target-branch edit | Force Full, including version-only PRs | Fresh gate checks base ref and SHA |
-| Draft target-branch edit | Fast | Gate fails for Draft |
-| Title/body edit only | Separate metadata acknowledgement; no compilation | No new merge credential; active validation unaffected |
+| Draft target-branch edit | Fast | No required gate is published; Draft remains unmergeable |
+| Ready title/body edit only | Lightweight metadata verification; no recompilation or XCTest | Reissues the required `PR merge gate` only after confirming the latest eligible Ready Full/version gate on identical head/base/test-merge commit; otherwise blocks |
 | workflow_dispatch, any branch/state | Always Full, no version exemption | Separate `Manual Full result`, never a PR merge credential |
 
 Fast uses one unsigned Debug Xcode compilation, no CLI packaging, XCTest,
@@ -260,9 +260,19 @@ smoke after a successful Full does fail the gate because that run did not finish
 its contracted scope; version-only exemptions intentionally skip smoke. Full version exemptions
 skip artifact/smoke, just as before.
 
-`PR merge gate` has no job dependencies: it is created immediately for validation events, so same-SHA
-Draft/Ready transitions replace the old check with a pending result while Full
-runs. It has no `always()` cancellation override, so cancelling the workflow
+Draft validation does not publish `PR merge gate` at all. Its separate
+`Draft merge gate inactive (not required)` check runs a short successful
+informational job with no validation credential; only Scope/Fast determines
+Draft test health. A dedicated runner is needed because GitHub does not
+reliably evaluate dynamic job names for skipped jobs.
+A skipped job with the **required** check name would be unsafe because GitHub
+accepts skipped required checks as passing. Draft PRs cannot merge under GitHub's
+PR rules. On `ready_for_review`, the real `PR merge gate` has no dependencies and
+is created immediately as a pending check, including when returning to Ready
+with the same head SHA. Do not treat a previous same-SHA green result as the
+new Ready validation; confirm the new check appeared and completed. This event
+transition remains an important live acceptance test.
+The gate has no `always()` cancellation override, so cancelling the workflow
 cancels the gate too. It polls current-attempt evidence via the read-only Actions jobs API. Only scope
 may be reused: when absent in the current attempt, the most recent prior scope
 in the same run must have succeeded with the same head SHA. A newer failed,
@@ -280,9 +290,25 @@ tests GitHub's synthetic merge commit (`GITHUB_SHA`), and summaries identify bot
 SHAs. Do not confuse check attachment with the integrated commit under test.
 Failure/cancellation/queued/missing/skipped Full never becomes a Full credential.
 Target changes subscribe to `edited`: Ready requires Full even when version-only;
-Draft retains Fast. Title/body-only edits publish `PR metadata edit (no merge
-credential)` in a unique metadata concurrency group and do not replace/cancel
-PR merge gate. Edited events lacking reliable change information revalidate.
+Draft retains Fast. Ready title/body-only edits also publish the REQUIRED `PR merge gate`
+without new XCTest, in a separate metadata concurrency group that does not cancel
+in-progress Full. The metadata step checks live PR head/base/ref and synthetic merge
+SHA against the most recent eligible Ready validation's successful gate execution;
+that gate must have genuine Full or version-exemption evidence. Historical run
+PR refs may be live projections, so the prior gate's own logged identity is
+verified instead. A newer incomplete/failed validation blocks; an earlier green
+cannot be borrowed across SHA, base or Draft transitions. GitHub can
+publish a new run before all its jobs exist; empty or partial job lists cannot
+expose older green evidence. Only a completed run with skipped scope, Full,
+version and smoke jobs plus the metadata gate is ignored as metadata-only.
+While the newest unclassified run is queued the metadata
+gate waits rather than using older evidence or applying the missing-job grace.
+It checks for newer runs again immediately before reporting success. This
+required-name refresh prevents GitHub from leaving the PR blocked after a
+successful non-required metadata-only job despite older Full checks. This is
+the **sole** narrowly scoped cross-run reuse; code,
+retarget and Ready transitions still require fresh Full evidence. Edited events
+lacking reliable change information revalidate.
 
 PR validation events share concurrency by PR number and cancel obsolete runs; dispatch uses
 a separate group and check name. On a merge conflict GitHub may not trigger PR CI;

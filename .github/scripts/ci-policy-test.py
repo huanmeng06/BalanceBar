@@ -18,6 +18,7 @@ def load(name):
 
 scope = load('ci-scope')
 gate = load('ci-merge-gate')
+meta = load('ci-metadata-gate')
 READY = {'number': 499, 'state': 'open', 'draft': False,
          'head': {'sha': 'new'}, 'base': {'sha': 'base', 'ref': 'main'}}
 ENV = {'GITHUB_REPOSITORY': 'owner/repo', 'GITHUB_RUN_ID': '123',
@@ -82,6 +83,228 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(scope.classify([(status, path)]),
                              (True, True, path.startswith(('Tests/', 'BalanceBar.xcodeproj/'))))
         self.assertEqual(scope.classify([('D', 'old.swift'), ('A', 'docs/new.md')]), (True, True, False))
+
+    def test_draft_does_not_publish_a_required_merge_gate(self):
+        # A skipped job named "PR merge gate" can satisfy a required check.
+        # Run a small successful Draft-named job instead. GitHub displays raw
+        # expression strings for skipped jobs with dynamic names.
+        workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
+                    'build-and-test.yml').read_text(encoding='utf-8')
+        gate_job = workflow.split('\n  merge-gate:\n', 1)[1]
+        name_line = next(line for line in gate_job.splitlines()
+                         if line.strip().startswith('name: ${{'))
+        self.assertIn("github.event.pull_request.draft && "
+                      "'Draft merge gate inactive (not required)'", name_line)
+        self.assertIn("'PR merge gate'", name_line)
+        self.assertIn("- name: Draft status only (not a merge credential)", gate_job)
+        self.assertIn("if: ${{ github.event_name == 'pull_request' && "
+                      "github.event.pull_request.draft }}", gate_job)
+        self.assertNotIn("\n    if:", gate_job.split("\n    steps:", 1)[0])
+        # The gate credential script must NEVER run in Draft, even when the
+        # draft PR is converted from an earlier Ready with a green Full.
+        self.assertIn("!github.event.pull_request.draft && !(", gate_job)
+        draft = copy.deepcopy(READY)
+        draft['draft'] = True
+        accepted, _ = gate.verdict(
+            'pull_request', draft, draft,
+            {'scope': 'success', 'full': 'success', 'version': 'skipped'}, False)
+        self.assertFalse(accepted)
+
+    def test_metadata_gate_does_not_bypass_full(self):
+        log = ('2026-10-13T13:12:04.0Z PASS: Full CI for event head/base\n'
+               '2026-10-13T13:12:04.0Z Event head: new\n'
+               '2026-10-13T13:12:04.0Z Base: main / base\n'
+               '2026-10-13T13:12:04.0Z Checkout/merge SHA: merge\n')
+        self.assertTrue(meta.metadata_log_matches(log, READY, 'merge'))
+        self.assertFalse(meta.metadata_log_matches(log, READY, 'different-merge'))
+        changed = copy.deepcopy(READY)
+        changed['base']['sha'] = 'other'
+        self.assertFalse(meta.metadata_log_matches(log, changed, 'merge'))
+        self.assertFalse(meta.metadata_log_matches(log.replace('PASS:', 'FAIL:'), READY, 'merge'))
+        self.assertFalse(meta.metadata_log_matches('Event head: new\nBase: main / base', READY, 'merge'))
+
+    def test_metadata_selects_latest_real_validation(self):
+        run = lambda i: {'id': i, 'workflow_id': 9, 'event': 'pull_request',
+                         'head_sha': 'new', 'pull_requests': [{'number': 499}],
+                         'status': 'completed', 'conclusion': 'success'}
+        jobs = {
+            20: [{'name': meta.NAMES['scope'], 'conclusion': 'success'},
+                 {'name': 'PR merge gate', 'conclusion': 'success'}],
+            21: [{'name': meta.NAMES['scope'], 'conclusion': 'skipped'},
+                 {'name': 'PR merge gate', 'conclusion': 'success'}] +
+                [{'name': meta.NAMES[key], 'conclusion': 'skipped'}
+                 for key in ('full', 'version', 'smoke')],
+            22: [{'name': meta.NAMES['scope'], 'conclusion': 'success'},
+                 {'name': 'Draft merge gate inactive (not required)', 'conclusion': 'success'}]}
+        args = (lambda i: jobs[i], 99, 9, 499, 'new')
+        source, _, error = meta.metadata_source([run(20), run(21)], *args)
+        self.assertEqual(source['id'], 20)
+        self.assertIsNone(error)
+        source, _, error = meta.metadata_source([run(20), run(21), run(22)], *args)
+        self.assertEqual(source['id'], 22)
+        self.assertIn('Draft', error)
+        wrong = dict(run(23), head_sha='other')
+        source, _, _ = meta.metadata_source([run(20), wrong], *args)
+        self.assertEqual(source['id'], 20)
+        failed_latest = [dict(j) for j in jobs[20]]
+        failed_latest[1]['conclusion'] = 'failure'
+        jobs[24] = failed_latest
+        source, selected, error = meta.metadata_source([run(20), run(24)], *args)
+        self.assertEqual(source['id'], 24)
+        self.assertEqual(selected[1]['conclusion'], 'failure')
+        self.assertIsNone(error)
+
+        # A newly created Ready run has no jobs yet. Its older green sibling
+        # must not supply the merge credential while Actions is queuing it.
+        pending = dict(run(25), status='queued', conclusion=None)
+        jobs[25] = []
+        source, selected, error = meta.metadata_source([run(20), pending], *args)
+        self.assertEqual(source['id'], 25)
+        self.assertEqual(selected, [])
+        self.assertIn('not yet visible', error)
+        # Ready -> Draft -> Ready on the same SHA also hides the first Ready
+        # run while the second Ready run has not published any jobs.
+        jobs[26] = jobs[22]
+        jobs[27] = []
+        second_ready = dict(run(27), status='queued', conclusion=None)
+        source, selected, error = meta.metadata_source(
+            [run(20), run(26), second_ready], *args)
+        self.assertEqual(source['id'], 27)
+        self.assertEqual(selected, [])
+        self.assertIn('not yet visible', error)
+
+    def test_metadata_partial_jobs_cannot_expose_old_green(self):
+        old = {'id': 20, 'workflow_id': 9, 'event': 'pull_request',
+               'head_sha': 'new', 'pull_requests': [{'number': 499}],
+               'status': 'completed', 'conclusion': 'success'}
+        partial_lists = [
+            [{'name': meta.NAMES['full'], 'conclusion': None}],
+            [{'name': meta.NAMES['scope'], 'conclusion': 'skipped'}],
+            [{'name': 'PR merge gate', 'conclusion': None},
+             {'name': meta.NAMES['scope'], 'conclusion': 'skipped'}],
+        ]
+        for partial in partial_lists:
+            for status in ('queued', 'in_progress', 'completed'):
+                with self.subTest(jobs=partial, status=status):
+                    latest = dict(old, id=21, status=status)
+                    queried = []
+                    def jobs(run_id):
+                        queried.append(run_id)
+                        self.assertEqual(run_id, 21)
+                        return partial
+                    source, _, error = meta.metadata_source(
+                        [old, latest], jobs, 99, 9, 499, 'new')
+                    self.assertEqual(source['id'], 21)
+                    self.assertIsNotNone(error)
+                    self.assertEqual(queried, [21])
+
+    def test_draft_with_skipped_scope_blocks_old_ready(self):
+        old = {'id': 20, 'workflow_id': 9, 'event': 'pull_request',
+               'head_sha': 'new', 'pull_requests': [{'number': 499}],
+               'status': 'completed', 'conclusion': 'success'}
+        latest = dict(old, id=21)
+        jobs = [{'name': meta.NAMES['scope'], 'conclusion': 'skipped'},
+                {'name': 'Draft merge gate inactive (not required)',
+                 'conclusion': 'success'}]
+        source, _, error = meta.metadata_source(
+            [old, latest], lambda _: jobs, 99, 9, 499, 'new')
+        self.assertEqual(source['id'], 21)
+        self.assertIn('Draft', error)
+
+    def test_metadata_waits_past_missing_job_grace_while_queued(self):
+        clock = Clock()
+        run = lambda i, status: {'id': i, 'workflow_id': 9, 'event': 'pull_request',
+                                 'head_sha': 'new', 'pull_requests': [{'number': 499}],
+                                 'status': status, 'conclusion': 'success' if status == 'completed' else None}
+        old_jobs = [{'id': 200, 'name': meta.NAMES['scope'], 'conclusion': 'success'},
+                    {'id': 201, 'name': meta.NAMES['full'], 'conclusion': 'success'},
+                    {'id': 202, 'name': meta.NAMES['smoke'], 'conclusion': 'success'},
+                    {'id': 203, 'name': 'PR merge gate', 'conclusion': 'success'}]
+        new_jobs = [dict(j, id=j['id'] + 100) for j in old_jobs]
+        log = ('PASS: Full CI for event head/base\nEvent head: new\n'
+               'Base: main / base\nCheckout/merge SHA: merge\n')
+        seen = []
+
+        def api(path):
+            seen.append((clock.now, path))
+            if path.endswith('/runs/123'):
+                return {'event': 'pull_request', 'head_sha': 'new', 'workflow_id': 9}
+            if '/pulls/' in path:
+                return dict(copy.deepcopy(READY), merge_commit_sha='merge')
+            if '/actions/runs?' in path:
+                latest = run(21, 'queued' if clock.now < 75 else 'completed')
+                return {'workflow_runs': [run(20, 'completed'), latest], 'total_count': 2}
+            if '/runs/21/jobs?' in path:
+                values = ([] if clock.now < 30 else
+                          [{'id': 301, 'name': meta.NAMES['full'], 'conclusion': None}]
+                          if clock.now < 75 else new_jobs)
+                return {'jobs': values, 'total_count': len(values)}
+            if '/runs/20/jobs?' in path:
+                return {'jobs': old_jobs, 'total_count': len(old_jobs)}
+            raise AssertionError(path)
+
+        event = {'action': 'edited', 'changes': {'body': {'from': 'old'}},
+                 'pull_request': copy.deepcopy(READY)}
+        with patch.dict(os.environ, dict(ENV)), patch.object(meta, 'api', side_effect=api), \
+             patch.object(meta.subprocess, 'check_output', return_value=log), \
+             patch.object(meta.time, 'monotonic', side_effect=lambda: clock.now), \
+             patch.object(meta.time, 'sleep', side_effect=clock.sleep):
+            accepted, _, evidence = meta.metadata_gate(event)
+        self.assertTrue(accepted)
+        self.assertGreaterEqual(clock.now, 75)
+        self.assertEqual(evidence['source_run'], 21)
+        self.assertFalse(any('/runs/20/jobs?' in path for _, path in seen))
+
+    def test_metadata_rechecks_latest_run_before_success(self):
+        # Ready -> Draft -> Ready can reuse the same head SHA. A newer run
+        # arriving while the old gate log is read invalidates the old result.
+        clock = Clock()
+        old = {'id': 20, 'workflow_id': 9, 'event': 'pull_request',
+               'head_sha': 'new', 'pull_requests': [{'number': 499}],
+               'status': 'completed', 'conclusion': 'success'}
+        newer = dict(old, id=21, status='queued', conclusion=None)
+        jobs = [{'id': 1, 'name': meta.NAMES['scope'], 'conclusion': 'success'},
+                {'id': 2, 'name': meta.NAMES['full'], 'conclusion': 'success'},
+                {'id': 3, 'name': meta.NAMES['smoke'], 'conclusion': 'success'},
+                {'id': 4, 'name': 'PR merge gate', 'conclusion': 'success'}]
+        read_count = 0
+
+        def api(path):
+            nonlocal read_count
+            if path.endswith('/runs/123'):
+                return {'event': 'pull_request', 'head_sha': 'new', 'workflow_id': 9}
+            if '/pulls/' in path:
+                return dict(copy.deepcopy(READY), merge_commit_sha='merge')
+            if '/actions/runs?' in path:
+                read_count += 1
+                values = [old] if read_count == 1 else [old, newer]
+                return {'workflow_runs': values, 'total_count': len(values)}
+            if '/runs/20/jobs?' in path:
+                return {'jobs': jobs, 'total_count': len(jobs)}
+            if '/runs/21/jobs?' in path:
+                return {'jobs': [], 'total_count': 0}
+            raise AssertionError(path)
+
+        event = {'action': 'edited', 'changes': {'body': {'from': 'old'}},
+                 'pull_request': copy.deepcopy(READY)}
+        log = ('PASS: Full CI for event head/base\nEvent head: new\n'
+               'Base: main / base\nCheckout/merge SHA: merge\n')
+        with patch.dict(os.environ, dict(ENV)), patch.object(meta, 'api', side_effect=api), \
+             patch.object(meta.subprocess, 'check_output', return_value=log), \
+             patch.object(meta.time, 'monotonic', side_effect=lambda: clock.now), \
+             patch.object(meta.time, 'sleep', side_effect=lambda seconds: setattr(clock, 'now', clock.now + seconds)):
+            accepted, reason, _ = meta.metadata_gate(event)
+        self.assertFalse(accepted)
+        self.assertIn('Timed out', reason)
+        self.assertGreater(read_count, 2)
+
+    def test_metadata_workflow_uses_required_name_and_real_evidence(self):
+        workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
+                    'build-and-test.yml').read_text(encoding='utf-8')
+        gate_job = workflow.split('\n  merge-gate:\n', 1)[1]
+        self.assertIn("- name: Confirm prior Full gate for metadata-only edit", gate_job)
+        self.assertIn("run: python3 .github/scripts/ci-metadata-gate.py", gate_job)
+        self.assertNotIn('PR metadata edit (no merge credential)', gate_job)
 
     def test_event_routes_and_retarget_full(self):
         for changes in ({'body': {'from': ''}}, {'title': {'from': 'old'}}):
