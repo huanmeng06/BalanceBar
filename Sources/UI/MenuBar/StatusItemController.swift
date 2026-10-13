@@ -5709,16 +5709,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return makeSingleOverviewMenuItem(for: snapshot)
         }
         let item = NSMenuItem()
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        let cardWidth: CGFloat = 360
+        let titleHeight: CGFloat = 22
+        let cardSpacing: CGFloat = 8
+        let contentHeight = menuInput.aggregationProviders.reduce(CGFloat(0)) { height, entry in
+            let providerSnapshot = menuInput.aggregationSnapshots[entry.provider.id]
+                ?? Snapshot.providerError(
+                    entry.provider.name,
+                    reason: "Waiting for provider data",
+                    cachedBalance: nil
+                )
+            let card = makeSingleOverviewMenuItem(for: providerSnapshot)
+            return height + titleHeight + cardSpacing + (card.view?.frame.height ?? 0) + cardSpacing
+        } + 16
+        let visibleHeight = min(contentHeight, 620)
+        let documentView = NSView(frame: NSRect(x: 0, y: 0, width: cardWidth, height: contentHeight))
+        var cursorY = contentHeight - 8
         for entry in menuInput.aggregationProviders {
             let title = NSTextField(labelWithString: entry.provider.name)
             title.font = .systemFont(ofSize: 12, weight: .semibold)
             title.textColor = .secondaryLabelColor
-            stack.addArrangedSubview(title)
+            title.frame = NSRect(x: 8, y: cursorY - titleHeight, width: cardWidth - 16, height: titleHeight)
+            documentView.addSubview(title)
+            cursorY = title.frame.minY - cardSpacing
             let providerSnapshot = menuInput.aggregationSnapshots[entry.provider.id]
                 ?? Snapshot.providerError(
                     entry.provider.name,
@@ -5727,23 +5740,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             let card = makeSingleOverviewMenuItem(for: providerSnapshot)
             if let view = card.view {
-                view.translatesAutoresizingMaskIntoConstraints = false
-                stack.addArrangedSubview(view)
-                view.widthAnchor.constraint(equalToConstant: 360).isActive = true
+                let frame = NSRect(
+                    x: 0,
+                    y: cursorY - view.frame.height,
+                    width: cardWidth,
+                    height: view.frame.height
+                )
+                view.frame = frame
+                documentView.addSubview(view)
+                cursorY = frame.minY - cardSpacing
             }
         }
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = menuInput.aggregationProviders.count > 5
         scroll.borderType = .noBorder
-        scroll.documentView = stack
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
-        stack.heightAnchor.constraint(greaterThanOrEqualToConstant: 1).isActive = true
-        scroll.heightAnchor.constraint(
-            equalToConstant: min(CGFloat(menuInput.aggregationProviders.count) * 150 + 24, 620)
-        ).isActive = true
+        scroll.frame = NSRect(x: 0, y: 0, width: cardWidth, height: visibleHeight)
+        scroll.documentView = documentView
         item.view = scroll
         return item
     }
