@@ -5,6 +5,7 @@ import Foundation
 /// configuration read should be scheduled.
 final class CCSwitchDatabaseWatcher {
     private let databaseURL: URL
+    private let additionalURLs: [URL]
     private let queue: DispatchQueue
     private let onChange: () -> Void
     private var watchers: [DispatchSourceFileSystemObject] = []
@@ -15,10 +16,12 @@ final class CCSwitchDatabaseWatcher {
 
     init(
         databaseURL: URL,
+        additionalURLs: [URL] = [],
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.database-watcher"),
         onChange: @escaping () -> Void
     ) {
         self.databaseURL = databaseURL
+        self.additionalURLs = additionalURLs
         self.queue = queue
         self.onChange = onChange
     }
@@ -29,8 +32,9 @@ final class CCSwitchDatabaseWatcher {
         startCount += 1
         let databasePath = databaseURL.path
         let directory = databaseURL.deletingLastPathComponent().path
-        watchers = [databasePath, "\(databasePath)-wal", directory]
-            .compactMap(makeWatcher(for:))
+        let paths = [databasePath, "\(databasePath)-wal", directory]
+            + additionalURLs.map(\.path)
+        watchers = Array(Set(paths)).compactMap(makeWatcher(for:))
     }
 
     func stop() {

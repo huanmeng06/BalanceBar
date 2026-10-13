@@ -9,6 +9,74 @@ struct CCSwitchProvider {
     let queryFailure: BalanceQueryFailure?
 }
 
+enum CCSwitchAggregationRole: Equatable {
+    case `default`
+    case member
+}
+
+struct CCSwitchAggregationProvider {
+    let provider: CCSwitchProvider
+    let role: CCSwitchAggregationRole
+}
+
+/// Read-only view of CC Switch 4.0's Codex aggregation state.
+///
+/// `nil` means that aggregation is not active or the local state is not
+/// trustworthy. Callers must fall back to the ordinary current-provider path.
+final class CCSwitchAggregationRepository {
+    static let defaultStateURL = URL(fileURLWithPath: NSString(
+        string: "~/.cc-switch/live-state.json"
+    ).expandingTildeInPath)
+
+    private let stateURL: URL
+    private let repository: CCSwitchRepository
+
+    init(
+        stateURL: URL = CCSwitchAggregationRepository.defaultStateURL,
+        repository: CCSwitchRepository
+    ) {
+        self.stateURL = stateURL
+        self.repository = repository
+    }
+
+    var liveStateURL: URL { stateURL }
+
+    func loadCodexProviders() -> [CCSwitchAggregationProvider]? {
+        guard let data = try? Data(contentsOf: stateURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let apps = root["apps"] as? [String: Any],
+              let codex = apps["codex"] as? [String: Any],
+              codex["mode"] as? String == "proxy",
+              codex["attached"] as? Bool == true,
+              let route = codex["proxy_route"] as? String,
+              !route.isEmpty,
+              let stack = codex["stack"] as? [String: Any],
+              stack["enabled"] as? Bool == true else {
+            return nil
+        }
+
+        guard let defaultProvider = repository.loadProvider(id: route, appType: "codex") else {
+            return nil
+        }
+
+        var result = [CCSwitchAggregationProvider](
+            arrayLiteral: CCSwitchAggregationProvider(provider: defaultProvider, role: .default)
+        )
+        var seen = Set([route])
+        let members = stack["members"] as? [Any] ?? []
+        for member in members {
+            guard let id = member as? String, !id.isEmpty, seen.insert(id).inserted,
+                  let provider = repository.loadProvider(id: id, appType: "codex") else {
+                continue
+            }
+            result.append(CCSwitchAggregationProvider(provider: provider, role: .member))
+        }
+        return result
+    }
+
+    var isActive: Bool { loadCodexProviders() != nil }
+}
+
 final class CCSwitchRepository {
     static let defaultDatabaseURL = URL(fileURLWithPath: NSString(
         string: "~/.cc-switch/cc-switch.db"
@@ -84,7 +152,30 @@ final class CCSwitchRepository {
         defer { sqlite3_finalize(statement) }
         bind(appType, to: statement, at: 1)
         guard sqlite3_step(statement) == SQLITE_ROW,
-              let id = text(from: statement, column: 0),
+              let id = text(from: statement, column: 0) else { return nil }
+        return loadProvider(id: id, appType: appType)
+    }
+
+    func loadProvider(id: String, appType: String) -> CCSwitchProvider? {
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(
+            databaseURL.path,
+            &database,
+            SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
+            nil
+        ) == SQLITE_OK, let database else { return nil }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 3_000)
+
+        let sql = "SELECT id, name, settings_config, meta, category, website_url FROM providers WHERE id = ? AND app_type = ? LIMIT 1"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { return nil }
+        defer { sqlite3_finalize(statement) }
+        bind(id, to: statement, at: 1)
+        bind(appType, to: statement, at: 2)
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let loadedID = text(from: statement, column: 0),
               let name = text(from: statement, column: 1),
               let configText = text(from: statement, column: 2),
               let metaText = text(from: statement, column: 3) else { return nil }
@@ -92,7 +183,7 @@ final class CCSwitchRepository {
         let websiteText = text(from: statement, column: 5)
         guard category != "official" else {
             return CCSwitchProvider(
-                id: id,
+                id: loadedID,
                 name: name,
                 isOfficial: true,
                 query: nil,
@@ -109,7 +200,7 @@ final class CCSwitchRepository {
             onFailure: { queryFailure = $0 }
         )
         return CCSwitchProvider(
-            id: id,
+            id: loadedID,
             name: name,
             isOfficial: false,
             query: query,

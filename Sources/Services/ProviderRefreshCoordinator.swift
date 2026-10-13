@@ -219,7 +219,29 @@ struct ProviderRefreshActions {
     let render: (Snapshot) -> Void
     let storeClientSnapshot: (AssistantClient, String, Snapshot) -> Void
     let quickSwitchSummaryChanged: (String) -> Void
+    let renderAggregation: (String, Snapshot) -> Void
+    let isAggregationProvider: (String) -> Bool
     var notificationSnapshot: ((AssistantClient, String, Snapshot) -> Void)? = nil
+
+    init(
+        currentProvider: @escaping (AssistantClient) -> CCSwitchProvider?,
+        isActiveClient: @escaping (AssistantClient) -> Bool,
+        render: @escaping (Snapshot) -> Void,
+        storeClientSnapshot: @escaping (AssistantClient, String, Snapshot) -> Void,
+        quickSwitchSummaryChanged: @escaping (String) -> Void,
+        renderAggregation: @escaping (String, Snapshot) -> Void = { _, _ in },
+        isAggregationProvider: @escaping (String) -> Bool = { _ in false },
+        notificationSnapshot: ((AssistantClient, String, Snapshot) -> Void)? = nil
+    ) {
+        self.currentProvider = currentProvider
+        self.isActiveClient = isActiveClient
+        self.render = render
+        self.storeClientSnapshot = storeClientSnapshot
+        self.quickSwitchSummaryChanged = quickSwitchSummaryChanged
+        self.renderAggregation = renderAggregation
+        self.isAggregationProvider = isAggregationProvider
+        self.notificationSnapshot = notificationSnapshot
+    }
 }
 
 /// Persists only the local observation state needed to survive menu rebuilds
@@ -401,6 +423,25 @@ final class ProviderRefreshCoordinator {
                 forceBalance: forceBalance,
                 switched: switched
             )
+        }
+    }
+
+    func refreshAggregationProviders(
+        _ providers: [CCSwitchAggregationProvider],
+        client: AssistantClient,
+        force: Bool
+    ) {
+        guard client == .codex else { return }
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            for entry in providers {
+                self.refreshStandardProviderOnQueue(
+                    current: entry.provider,
+                    client: client,
+                    forceBalance: force,
+                    switched: force
+                )
+            }
         }
     }
 
@@ -963,7 +1004,10 @@ final class ProviderRefreshCoordinator {
         isCurrentRequest: @escaping () -> Bool = { true }
     ) {
         queue.async { [weak self] in
-            guard let self, isCurrentRequest(), self.repository.loadCurrent(appType: client.appType)?.id == providerID else { return }
+            guard let self, isCurrentRequest() else { return }
+            let isCurrentProvider = self.repository.loadCurrent(appType: client.appType)?.id == providerID
+            let isAggregationProvider = client == .codex && self.actions.isAggregationProvider(providerID)
+            guard isCurrentProvider || isAggregationProvider else { return }
             if next.kind == .balance {
                 self.providerBalanceSnapshots.store(next, clientID: client.rawValue, providerID: providerID)
             }
@@ -976,15 +1020,21 @@ final class ProviderRefreshCoordinator {
                     self.actions.storeClientSnapshot(client, providerID, next)
                 }
                 guard self.actions.isActiveClient(client) else { return }
-                guard self.actions.currentProvider(client)?.id == providerID else { return }
-                self.actions.render(next)
+                if isAggregationProvider {
+                    self.actions.renderAggregation(providerID, next)
+                } else {
+                    guard self.actions.currentProvider(client)?.id == providerID else { return }
+                    self.actions.render(next)
+                }
             }
         }
     }
 
     private func renderBalanceError(providerID: String, providerName: String, reason: String, client: AssistantClient) {
         queue.async { [weak self] in
-            guard let self, self.repository.loadCurrent(appType: client.appType)?.id == providerID else { return }
+            guard let self else { return }
+            let isAggregationProvider = client == .codex && self.actions.isAggregationProvider(providerID)
+            guard self.repository.loadCurrent(appType: client.appType)?.id == providerID || isAggregationProvider else { return }
             let next = self.providerBalanceSnapshots.errorSnapshot(
                 clientID: client.rawValue,
                 providerID: providerID,
@@ -993,8 +1043,12 @@ final class ProviderRefreshCoordinator {
             )
             DispatchQueue.main.async {
                 guard self.actions.isActiveClient(client) else { return }
-                guard self.actions.currentProvider(client)?.id == providerID else { return }
-                self.actions.render(next)
+                if isAggregationProvider {
+                    self.actions.renderAggregation(providerID, next)
+                } else {
+                    guard self.actions.currentProvider(client)?.id == providerID else { return }
+                    self.actions.render(next)
+                }
             }
         }
     }

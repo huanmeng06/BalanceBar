@@ -9,15 +9,18 @@ struct ProviderSwitchActions {
 /// supplies the selected Provider and routes success/failure into refresh.
 final class ProviderSwitchCoordinator {
     private let repository: CCSwitchRepository
+    private let canSwitch: (String) -> Bool
     private let queue: DispatchQueue
     private let actions: ProviderSwitchActions
 
     init(
         repository: CCSwitchRepository,
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-switch"),
+        canSwitch: @escaping (String) -> Bool = { _ in true },
         actions: ProviderSwitchActions
     ) {
         self.repository = repository
+        self.canSwitch = canSwitch
         self.queue = queue
         self.actions = actions
     }
@@ -25,6 +28,13 @@ final class ProviderSwitchCoordinator {
     func switchProvider(providerID: String, appType: String, providerName: String) {
         queue.async { [weak self] in
             guard let self else { return }
+            guard self.canSwitch(appType) else {
+                self.actions.failed(tr(
+                    .keyProviderSwitchCoordinatorSwitchFailedValue,
+                    arguments: ["CC Switch aggregation mode is active"]
+                ))
+                return
+            }
             let current = self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })
             guard current?.id != providerID else { return }
             let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.ccswitch.desktop").first

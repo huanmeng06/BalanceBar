@@ -579,6 +579,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var clientSnapshots: [
         AssistantClient: (providerID: String, snapshot: Snapshot)
     ] = [:]
+    private var aggregationSnapshots: [String: Snapshot] = [:]
     private var snapshot = Snapshot.placeholder
     private var activeProviderWebsite: URL?
     private var activeClient: AssistantClient = .codex
@@ -603,6 +604,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var providerRefreshCoordinator: ProviderRefreshCoordinator!
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
+    private let aggregationRepository: CCSwitchAggregationRepository
     private let launchAtLoginController: LaunchAtLoginController
     private let launchWithChatGPTController: LaunchWithChatGPTController
     private lazy var currentAgentOpener = CurrentAgentOpener.live(
@@ -682,6 +684,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         launchWithChatGPTService: LaunchWithChatGPTService = SystemLaunchWithChatGPTService()
     ) {
         self.ccSwitchRepository = repository
+        self.aggregationRepository = CCSwitchAggregationRepository(repository: repository)
         self.officialQuotaClient = officialQuotaClient
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
@@ -721,6 +724,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
         databaseWatcher = CCSwitchDatabaseWatcher(
             databaseURL: repository.databaseURL,
+            additionalURLs: [aggregationRepository.liveStateURL],
             onChange: { [weak self] in
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
@@ -756,6 +760,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 quickSwitchSummaryChanged: { [weak self] providerID in
                     self?.publishQuickSwitchSummary(providerID: providerID)
                 },
+                renderAggregation: { [weak self] providerID, snapshot in
+                    guard let self else { return }
+                    self.aggregationSnapshots[providerID] = snapshot
+                    self.refreshStatusItemMenuInput(deferRebuild: true)
+                },
+                isAggregationProvider: { [weak self] providerID in
+                    self?.aggregationRepository.loadCodexProviders()?.contains { $0.provider.id == providerID } == true
+                },
                 notificationSnapshot: { [weak self] client, providerID, snapshot in
                     guard let self else { return }
                     self.notificationCoordinator.process(
@@ -768,6 +780,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
         providerSwitchCoordinator = ProviderSwitchCoordinator(
             repository: repository,
+            canSwitch: { [weak self] _ in
+                !(self?.aggregationRepository.isActive ?? false)
+            },
             actions: ProviderSwitchActions(
                 changed: { [weak self] in
                     guard let self else { return }
@@ -893,11 +908,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
         return StatusItemController.MenuInput(
             choices: ccSwitchRepository.loadChoices(appType: activeClient.appType),
+            aggregationProviders: activeClient == .codex
+                ? (aggregationRepository.loadCodexProviders() ?? [])
+                : [],
+            aggregationSnapshots: aggregationSnapshots,
             quickSwitchSummaries: quickSwitchSummariesSnapshot(),
             activeClient: activeClient,
             openAIAccount: openAIAccount,
             statusLinks: statusLinks,
-            showQuickSwitchMenu: showQuickSwitchMenu,
+            showQuickSwitchMenu: showQuickSwitchMenu && aggregationRepository.isActive == false,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
             showStatusMenu: showStatusMenu,
@@ -2090,6 +2109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             guard let self else { return }
             let current = self.ccSwitchRepository.loadCurrent(appType: client.appType)
             self.reloadCurrentProviderNameCache(appType: client.appType)
+            if client == .codex, let providers = self.aggregationRepository.loadCodexProviders() {
+                self.providerRefreshCoordinator.refreshAggregationProviders(
+                    providers,
+                    client: client,
+                    force: reason.forcesStandardProviderBalance
+                )
+                return
+            }
             guard let current else {
                 SwitchLog.write(
                     "refresh failed; client=\(client.rawValue); current provider not found",

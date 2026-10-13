@@ -7,6 +7,7 @@ final class CCSwitchRepositoryTests: XCTestCase {
     private var temporaryDirectoryURL: URL!
     private var databaseURL: URL!
     private var appSettingsURL: URL!
+    private var liveStateURL: URL!
     private var repository: CCSwitchRepository!
 
     override func setUpWithError() throws {
@@ -19,6 +20,7 @@ final class CCSwitchRepositoryTests: XCTestCase {
         )
         databaseURL = temporaryDirectoryURL.appendingPathComponent("cc-switch.db")
         appSettingsURL = temporaryDirectoryURL.appendingPathComponent("settings.json")
+        liveStateURL = temporaryDirectoryURL.appendingPathComponent("live-state.json")
         try createFixtureDatabase()
         repository = CCSwitchRepository(
             databaseURL: databaseURL,
@@ -97,6 +99,50 @@ final class CCSwitchRepositoryTests: XCTestCase {
         XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
         XCTAssertEqual(try currentValue(for: "codex-official"), 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+    }
+
+    func testAggregationReadsAttachedProxyRouteAndDeduplicatesMembersByID() throws {
+        try writeLiveState(mode: "proxy", attached: true, route: "codex-custom", enabled: true, members: [
+            "codex-official", "codex-custom", "codex-official", "missing-provider"
+        ])
+
+        let aggregation = CCSwitchAggregationRepository(
+            stateURL: liveStateURL,
+            repository: repository
+        )
+        let providers = try XCTUnwrap(aggregation.loadCodexProviders())
+        XCTAssertEqual(providers.map { $0.provider.id }, ["codex-custom", "codex-official"])
+        XCTAssertEqual(providers.map { $0.role }, [.default, .member])
+    }
+
+    func testAggregationRejectsUnattachedOrMalformedLiveState() throws {
+        try writeLiveState(mode: "proxy", attached: false, route: "codex-custom", enabled: true, members: [])
+        let aggregation = CCSwitchAggregationRepository(stateURL: liveStateURL, repository: repository)
+        XCTAssertNil(aggregation.loadCodexProviders())
+
+        try Data("{not-json".utf8).write(to: liveStateURL)
+        XCTAssertNil(aggregation.loadCodexProviders())
+    }
+
+    private func writeLiveState(
+        mode: String,
+        attached: Bool,
+        route: String,
+        enabled: Bool,
+        members: [String]
+    ) throws {
+        let state: [String: Any] = [
+            "apps": [
+                "codex": [
+                    "mode": mode,
+                    "attached": attached,
+                    "proxy_route": route,
+                    "stack": ["enabled": enabled, "members": members, "keys": ["ccs-test": route]]
+                ]
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: state)
+        try data.write(to: liveStateURL, options: .atomic)
     }
 
     private func createFixtureDatabase() throws {

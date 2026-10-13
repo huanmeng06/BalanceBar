@@ -2143,6 +2143,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     struct MenuInput: Equatable {
         let choices: [ProviderChoice]
+        let aggregationProviders: [CCSwitchAggregationProvider]
+        let aggregationSnapshots: [String: Snapshot]
         let quickSwitchSummaries: [String: String]
         let activeClient: AssistantClient
         let openAIAccount: OpenAIAccountPresentation?
@@ -2158,6 +2160,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         init(
             choices: [ProviderChoice],
+            aggregationProviders: [CCSwitchAggregationProvider] = [],
+            aggregationSnapshots: [String: Snapshot] = [:],
             quickSwitchSummaries: [String: String],
             activeClient: AssistantClient,
             openAIAccount: OpenAIAccountPresentation?,
@@ -2172,6 +2176,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showsAvailableUpdateBadge: Bool = false
         ) {
             self.choices = choices
+            self.aggregationProviders = aggregationProviders
+            self.aggregationSnapshots = aggregationSnapshots
             self.quickSwitchSummaries = quickSwitchSummaries
             self.activeClient = activeClient
             self.openAIAccount = openAIAccount
@@ -2193,6 +2199,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         && left.isCurrent == right.isCurrent
                 }
                 && lhs.quickSwitchSummaries == rhs.quickSwitchSummaries
+                && lhs.aggregationSnapshots.keys.sorted() == rhs.aggregationSnapshots.keys.sorted()
+                && lhs.aggregationSnapshots.allSatisfy { key, snapshot in
+                    guard let other = rhs.aggregationSnapshots[key] else { return false }
+                    return snapshot.kind == other.kind
+                        && snapshot.overviewLargeAmount == other.overviewLargeAmount
+                        && snapshot.overviewQuotaDetail == other.overviewQuotaDetail
+                }
+                && lhs.aggregationProviders.count == rhs.aggregationProviders.count
+                && zip(lhs.aggregationProviders, rhs.aggregationProviders).allSatisfy { left, right in
+                    left.provider.id == right.provider.id
+                        && left.provider.name == right.provider.name
+                        && left.role == right.role
+                }
                 && lhs.activeClient.rawValue == rhs.activeClient.rawValue
                 && lhs.openAIAccount == rhs.openAIAccount
                 && lhs.statusLinks == rhs.statusLinks
@@ -5686,6 +5705,50 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func makeOverviewMenuItem(for snapshot: Snapshot) -> NSMenuItem {
+        guard !menuInput.aggregationProviders.isEmpty else {
+            return makeSingleOverviewMenuItem(for: snapshot)
+        }
+        let item = NSMenuItem()
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        for entry in menuInput.aggregationProviders {
+            let title = NSTextField(labelWithString: entry.provider.name)
+            title.font = .systemFont(ofSize: 12, weight: .semibold)
+            title.textColor = .secondaryLabelColor
+            stack.addArrangedSubview(title)
+            let providerSnapshot = menuInput.aggregationSnapshots[entry.provider.id]
+                ?? Snapshot.providerError(
+                    entry.provider.name,
+                    reason: "Waiting for provider data",
+                    cachedBalance: nil
+                )
+            let card = makeSingleOverviewMenuItem(for: providerSnapshot)
+            if let view = card.view {
+                view.translatesAutoresizingMaskIntoConstraints = false
+                stack.addArrangedSubview(view)
+                view.widthAnchor.constraint(equalToConstant: 360).isActive = true
+            }
+        }
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = menuInput.aggregationProviders.count > 5
+        scroll.borderType = .noBorder
+        scroll.documentView = stack
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
+        stack.heightAnchor.constraint(greaterThanOrEqualToConstant: 1).isActive = true
+        scroll.heightAnchor.constraint(
+            equalToConstant: min(CGFloat(menuInput.aggregationProviders.count) * 150 + 24, 620)
+        ).isActive = true
+        item.view = scroll
+        return item
+    }
+
+    private func makeSingleOverviewMenuItem(for snapshot: Snapshot) -> NSMenuItem {
         if snapshot.kind == .error {
             presentedOverviewNumerics = []
             return makeOverviewErrorMenuItem(for: snapshot)
