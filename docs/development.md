@@ -253,11 +253,15 @@ its `continue-on-error: true` behavior is retained. It is advisory, not GUI
 acceptance; a smoke failure is not a new required failure. Full version exemptions
 skip artifact/smoke, just as before.
 
-`PR merge gate` always runs even when its dependency jobs fail or skip. It accepts
+`PR merge gate` has no job dependencies: it is created immediately, so same-SHA
+Draft/Ready transitions replace the old check with a pending result while Full
+runs. It polls this exact run **and attempt** (never another run) via the read-only
+Actions jobs API and always fails closed on timeout/API failure. It accepts
 only same-run Full success or the successful explicit version exemption after
-scope validation. It re-reads live PR state and fails for Draft/closed or changed
-head/base. PR checks attach to GitHub's synthetic merge commit (`GITHUB_SHA`),
-while summaries also identify event head; checkout tests the integrated merge.
+scope validation and independently repeating the PR-wide version classifier. It re-reads live PR state and fails for Draft/closed or changed
+head/base. Hosted check-run API shows checks attached to the PR **head SHA**. Checkout
+tests GitHub's synthetic merge commit (`GITHUB_SHA`), and summaries identify both
+SHAs. Do not confuse check attachment with the integrated commit under test.
 Failure/cancellation/queued/missing/skipped Full never becomes a Full credential.
 PR events share concurrency by PR number and cancel obsolete runs; dispatch uses
 a separate group and check name. On a merge conflict GitHub may not trigger PR CI;

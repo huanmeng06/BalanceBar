@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  actions: read
 
 concurrency:
   group: build-and-test-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
@@ -152,7 +153,7 @@ jobs:
             "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"; then
             check_status=1
           fi
-          cat "$cli_log.timing" "$probes_log.timing" "$xcode_log.timing" >> "$GITHUB_STEP_SUMMARY"
+          cat "$cli_log.timing" "$probes_log.timing" "$xcode_log.timing" | tee -a "$GITHUB_STEP_SUMMARY"
           cat "$cli_log"
           cat "$probes_log"
           cat "$xcode_log"
@@ -176,7 +177,7 @@ jobs:
           echo "Full scope: CLI package, localization probes, build-for-testing, all serial XCTest. Head: ${HEAD_SHA:-$GITHUB_SHA}; checkout/merge: $GITHUB_SHA; status so far: $JOB_STATUS" >> "$GITHUB_STEP_SUMMARY"
           if [[ -d "$RUNNER_TEMP/BalanceBar.xcresult" ]]; then
             xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/BalanceBar.xcresult" > "$RUNNER_TEMP/test-summary.json"
-            cat "$RUNNER_TEMP/test-summary.json" >> "$GITHUB_STEP_SUMMARY"
+            cat "$RUNNER_TEMP/test-summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo 'XCTest result absent: tests NOT proven passed.' >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -239,29 +240,17 @@ jobs:
             "$artifact_root/BalanceBar.app"
 
   merge-gate:
-    # Never skip this job: skipped conditional jobs can satisfy required checks.
+    # No needs: publish the pending check immediately, replacing an old green
+    # on same-SHA Draft/Ready transitions before Full finishes.
     name: ${{ github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result' }}
-    needs: [scope, fast, version-exemption, build-and-test, old-runtime-smoke]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Verify current PR state and this run's evidence
+        with:
+          fetch-depth: 0
+      - name: Wait for this attempt and verify live PR state
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          FULL_RESULT: ${{ needs.build-and-test.result }}
-          VERSION_RESULT: ${{ needs.version-exemption.result }}
-          VERSION_ONLY: ${{ needs.scope.outputs.version_only }}
-          SMOKE_RESULT: ${{ needs.old-runtime-smoke.result }}
-        run: |
-          set -Eeuo pipefail
-          echo "Compatibility smoke: $SMOKE_RESULT (advisory, not GUI acceptance)" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/current-pr.json"
-            python3 .github/scripts/ci-merge-gate.py "$RUNNER_TEMP/current-pr.json"
-          else
-            python3 .github/scripts/ci-merge-gate.py
-          fi
+        run: python3 .github/scripts/ci-merge-gate.py

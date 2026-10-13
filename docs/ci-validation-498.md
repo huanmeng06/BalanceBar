@@ -44,3 +44,27 @@ is deferred to avoid blocking open PR #495 with a context it cannot publish yet.
 Owner instructions and unconfigured risk are in `development.md`. No local
 installed skills, shared DerivedData, Release/Forward SDK workflows or app version
 were modified. No application GUI acceptance is claimed.
+
+## Initial hosted Draft run
+
+[38350310488](https://github.com/huanmeng06/BalanceBar/actions/runs/38350310488),
+head `3a47c576c47b246160013862f516d9ee091fb3ad`: scope succeeded;
+Fast succeeded in 1m50s, Full/version/smoke skipped, Draft gate deliberately
+failed. From run creation (05:13:38Z) to Fast completion (05:15:46Z): **2m08s**;
+to gate completion: **2m19s**. Scope runner started after 3s; Fast started 10s
+after scope finished. This is a CI/script/documentation change, conservatively
+built like an unknown/Swift change, not an isolated Swift-only benchmark.
+Relative to baseline workflow wall times, gate feedback was 73%/78% shorter;
+this does not establish the same speedup for every change or queue condition.
+
+Check-runs API for head SHA returned all check `head_sha` values equal to that
+head; checkout logs showed merge `da527e360eba938afd0b65c3414d264da2c9ecef`
+(base `595d113d52e6617a8487da7fc8a8f93c0f30b6bb`). After observing that a
+needs-dependent gate only appeared after Fast completion, the gate was changed
+to have **no needs** and poll this exact run/attempt, replacing old greens
+immediately during same-SHA transitions. Subsequent runs validate this fix.
+
+Local serial `ResponseParsersTests`: 20 total, 20 passed, 0 failed, 0 skipped;
+result bundle `/tmp/BalanceBar-Issue498-ResponseParsers.xcresult`. A second run
+reusing `/tmp/BalanceBar-Issue498-DerivedData` again passed 20 tests and took
+2.77s wall time (`/usr/bin/time -p`), with no full suite requested locally.
