@@ -121,7 +121,7 @@ def metadata_gate(event):
                 if not ((full and smoke) or version):
                     return False, 'Latest Ready Full/version evidence incomplete', {'run_id': source['id']}
                 logs = subprocess.check_output(
-                    ['gh', 'api', f'repos/{repo}/actions/jobs/{gate["id"]}/logs'],
+                    ['gh', 'api', '--allow-escape-sequences', f'repos/{repo}/actions/jobs/{gate["id"]}/logs'],
                     text=True, timeout=30)
                 if not metadata_log_matches(logs, pr, merge_sha):
                     return False, 'Prior gate checked different head/base/merge SHA', {'run_id': source['id']}
