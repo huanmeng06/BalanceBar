@@ -125,7 +125,7 @@ enum SwitchLog {
             guard !snapshot.text.isEmpty else { throw NSError(domain: "BalanceBar.Diagnostics", code: 1, userInfo: [NSLocalizedDescriptionKey: "No diagnostic logs are available."]) }
             let warningText = redact(snapshot.warnings.joined(separator: " | "))
             let header = "# BalanceBar diagnostic export\n# Environment: \(environmentName)\n# Warnings: \(warningText)\n\n"
-            let sanitizedBody = snapshot.text.split(separator: "\n", omittingEmptySubsequences: false).map { redact(String($0)) }.joined(separator: "\n")
+            let sanitizedBody = sanitizeExportRecords(snapshot.text)
             guard let data = (header + sanitizedBody).data(using: .utf8) else {
                 throw NSError(domain: "BalanceBar.Diagnostics", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to encode diagnostic logs."])
             }
@@ -328,12 +328,28 @@ enum SwitchLog {
         return result
     }
 
+    private static func sanitizeExportRecords(_ text: String) -> String {
+        let prefix = try! NSRegularExpression(pattern: #"^\[\d{4}-\d{2}-\d{2}T[^\]]+\] \[(DEBUG|INFO|WARN|ERROR)\] "#)
+        var records: [String] = []
+        var current = ""
+        for line in text.components(separatedBy: "\n") {
+            if prefix.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil && !current.isEmpty {
+                records.append(current)
+                current = ""
+            }
+            if !current.isEmpty { current += "\n" }
+            current += line
+        }
+        if !current.isEmpty { records.append(current) }
+        return records.map { redact($0) }.joined(separator: "\n")
+    }
+
     private static func sanitizedJSON(_ value: Any) -> Any? {
         if let dictionary = value as? [String: Any] {
             var output: [String: Any] = [:]
             for (key, nested) in dictionary {
                 let normalized = key.lowercased().replacingOccurrences(of: "-", with: "_")
-                if normalized.contains("token") || normalized.contains("credential") || normalized.contains("secret") || normalized.contains("password") || normalized.contains("cookie") || normalized.contains("authorization") || normalized.contains("api_key") || normalized == "auth" {
+                if normalized.contains("token") || normalized.contains("credential") || normalized.contains("secret") || normalized.contains("password") || normalized.contains("cookie") || normalized.contains("authorization") || normalized.contains("api_key") || normalized == "auth" || normalized == "headers" {
                     output[key] = "[REDACTED]"
                 } else if let sanitized = sanitizedJSON(nested) {
                     output[key] = sanitized
@@ -346,7 +362,8 @@ enum SwitchLog {
         if let array = value as? [Any] {
             return array.compactMap { sanitizedJSON($0) }
         }
-        if value is String || value is NSNumber || value is NSNull { return value }
+        if let text = value as? String { return redact(text) }
+        if value is NSNumber || value is NSNull { return value }
         return nil
     }
 }

@@ -10505,6 +10505,45 @@ extension DashboardPreferencePagesTests {
     }
 
 
+    func testDiagnosticJSONStringsAndHeadersAreSanitized() throws {
+        try requireIsolatedDiagnosticDirectory()
+        SwitchLog.write(#"{"error":"Authorization: Bearer abcDEF123456","status":401}"#, category: "security")
+        SwitchLog.write(#"{"headers":{"X-Private-Session":"opaqueSECRET001"},"status":200}"#, category: "security")
+        _ = SwitchLog.readSnapshot()
+        let raw = try String(contentsOf: SwitchLog.fileURL, encoding: .utf8)
+        XCTAssertFalse(raw.contains("abcDEF123456"))
+        XCTAssertFalse(raw.contains("opaqueSECRET001"))
+        XCTAssertTrue(raw.contains("401"))
+        XCTAssertTrue(raw.contains("200"))
+        let destination = SwitchLog.directoryURL.appendingPathComponent("export.log")
+        try SwitchLog.exportAll(to: destination)
+        let exported = try String(contentsOf: destination, encoding: .utf8)
+        XCTAssertFalse(exported.contains("abcDEF123456"))
+        XCTAssertFalse(exported.contains("opaqueSECRET001"))
+    }
+
+    func testDiagnosticExportOmitsSensitiveMultilineRecordOnly() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        let legacyFormat = """
+        [2026-10-12T12:01:00Z] [INFO] [general] {
+          "credentials": {
+            "thirdPartyKey": "sensitive_opaque_value_XYZ01234"
+          },
+          "status": 401
+        }
+        [2026-10-12T12:02:00Z] [INFO] [general] safe-marker status=200
+        """
+        try Data(legacyFormat.utf8).write(to: SwitchLog.fileURL)
+        let destination = SwitchLog.directoryURL.appendingPathComponent("export.log")
+        try SwitchLog.exportAll(to: destination)
+        let exported = try String(contentsOf: destination, encoding: .utf8)
+        XCTAssertFalse(exported.contains("sensitive_opaque_value_XYZ01234"))
+        XCTAssertTrue(exported.contains("[structured-details-omitted]"))
+        XCTAssertTrue(exported.contains("safe-marker status=200"))
+        XCTAssertEqual(try String(contentsOf: SwitchLog.fileURL, encoding: .utf8), legacyFormat)
+    }
+
     private func requireIsolatedDiagnosticDirectory() throws {
         let directory = URL(fileURLWithPath: "/tmp/BalanceBarDiagnosticTests-\(UUID().uuidString)", isDirectory: true)
         SwitchLog.setTestingDirectory(directory)
