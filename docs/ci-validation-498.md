@@ -151,3 +151,50 @@ carried scope is resolved to its original successful execution for provenance.
 A regression reproduces copied successful Full/smoke with new attempt IDs and
 verifies that they are rejected, while copied scope plus genuinely fresh Full
 and smoke succeeds. Final hosted evidence is in the PR/Issue handoff.
+
+
+### Hosted rework trigger and partial-rerun evidence
+
+- Ready retarget to existing `codex/issue-491`:
+  [38362414553](https://github.com/huanmeng06/BalanceBar/actions/runs/38362414553)
+  selected Full, not metadata/version exemption. Full failed in an explicitly
+  temporary first-attempt fixture; gate failed. No app-test regression is claimed.
+- Draft retarget back to main:
+  [38362625561](https://github.com/huanmeng06/BalanceBar/actions/runs/38362625561)
+  selected Fast, Full skipped, gate failure. Fast was superseded when made Ready.
+  The existing target branch was not modified and PR base is restored to main.
+- Title/body edited during Full:
+  [38363236670](https://github.com/huanmeng06/BalanceBar/actions/runs/38363236670)
+  and corrected-head
+  [38384664204](https://github.com/huanmeng06/BalanceBar/actions/runs/38384664204)
+  ran only successful metadata acknowledgement (validation jobs skipped), with
+  **no PR merge gate** check. Parent Full continued; these are not merge credentials.
+- Corrected-head failed-jobs rerun:
+  [38363884002 attempt 2](https://github.com/huanmeng06/BalanceBar/actions/runs/38363884002/attempts/2)
+  succeeded at `ecf67494550ce77fae6ee8e1f9908b1e76a81c2f`.
+  Summary explicitly reports `scope_reused: True`, scope job `115184423863`
+  from attempt 1, fresh Full job `115252506036` and smoke `115255920134` from
+  attempt 2. Artifact `BalanceBar-macos26-sdk-attempt-2` (ID `11806460204`)
+  was verified present/unexpired with the same head.
+
+Partial-rerun XCTest: **1320 total /1307 passed /0 failed /13 existing skips**.
+Attempt-2 wall time **9m24s**, Full job **8m53s**, independent checks **103s**
+(CLI **101s**, standalone probes **19s**, Xcode **87s** concurrently), XCTest
+**6m49s**, counts **4s**, stage/upload **1/2s**, smoke **10s**. Carried scope's
+old 6-second execution was not rerun. Copied skipped jobs even had old completion
+and newer start timestamps; do not calculate execution cost from such projections.
+
+The temporary failure fixture has been removed from the delivery workflow.
+Gate-only rerun rejection and the final fixture-free SHA's Full result are in the
+PR/Issue handoff. These experiments do not activate repository required checks.
+
+Gate-only re-run of the successful partial cycle,
+[38363884002 attempt 3](https://github.com/huanmeng06/BalanceBar/actions/runs/38363884002/attempts/3),
+failed as intended. GitHub projected old successful Full/smoke into attempt 3,
+but their execution timestamps predated its start. Gate summary had fresh Full
+`missing`, scope reused from original attempt 1, and `Re-run all jobs` guidance.
+The evidence step took **63 seconds** (60-second missing-evidence grace plus API
+startup), not 23 minutes. The final diagnostic explicitly says “Missing fresh
+current-attempt evidence” to distinguish copied job projections from execution.
+No prior Full/smoke credential was borrowed. The final fixture-free commit is
+verified separately, so this intentional failure is not the delivery CI result.

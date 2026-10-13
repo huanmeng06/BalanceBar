@@ -71,7 +71,6 @@ def scope_from_history(jobs, run_id, head_sha, attempt):
     return None
 
 
-
 def fresh_execution(job, since):
     # GitHub can clone a successful dependency into a new attempt/job ID while
     # retaining its old execution timestamps. run_attempt alone is not proof.
@@ -116,7 +115,7 @@ def wait_for_evidence(event, event_name):
     while True:
         expired = [key for key, start in missing_since.items() if time.monotonic() - start >= 60]
         if expired:
-            return False, f'Missing current-attempt jobs: {expired}; use Re-run all jobs', results
+            return False, f'Missing fresh current-attempt evidence: {expired}; use Re-run all jobs', results
         try:
             live = request(f'repos/{repo}/pulls/{pr["number"]}') if pr else None
             if pr and (error := pr_error(pr, live)):
@@ -158,7 +157,7 @@ def wait_for_evidence(event, event_name):
             missing_since = {key: missing_since.get(key, time.monotonic()) for key in absent}
             expired = [key for key, start in missing_since.items() if time.monotonic() - start >= 60]
             if expired:
-                return False, f'Missing current-attempt jobs: {expired}; use Re-run all jobs', results
+                return False, f'Missing fresh current-attempt evidence: {expired}; use Re-run all jobs', results
             if results['scope'] not in WAITING | {'missing', 'success'}:
                 return False, 'Repository/scope checks did not succeed', results
             if results['scope'] == 'success' and results[lane] not in WAITING | {'missing'}:
