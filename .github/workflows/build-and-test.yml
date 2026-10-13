@@ -247,10 +247,14 @@ jobs:
             "$artifact_root/BalanceBar.app"
 
   merge-gate:
-    # No needs: publish the pending check immediately, replacing an old green
-    # on same-SHA Draft/Ready transitions before Full finishes. No always()
-    # override: workflow cancellation must cancel this check as well.
-    name: ${{ (github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) && 'PR metadata edit (no merge credential)' || (github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result') }}
+    # Draft PRs cannot be merged by GitHub. Do not create a failing required
+    # check for normal Draft iterations: the skipped check has a DIFFERENT name.
+    # Never name a skipped job "PR merge gate": skipped satisfies required checks.
+    # Ready PRs create the real gate immediately (no needs), replacing older
+    # green checks with pending before Full finishes. Workflow cancellation also
+    # cancels this gate because there is no always() override.
+    name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'Draft merge gate inactive (not required)' || ((github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) && 'PR metadata edit (no merge credential)' || (github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result')) }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

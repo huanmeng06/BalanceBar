@@ -83,6 +83,28 @@ class PolicyTests(unittest.TestCase):
                              (True, True, path.startswith(('Tests/', 'BalanceBar.xcodeproj/'))))
         self.assertEqual(scope.classify([('D', 'old.swift'), ('A', 'docs/new.md')]), (True, True, False))
 
+    def test_draft_does_not_publish_a_required_merge_gate(self):
+        # A skipped job named "PR merge gate" can satisfy a required check on
+        # GitHub. Draft must use a different job name and skip its runner.
+        workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
+                    'build-and-test.yml').read_text(encoding='utf-8')
+        gate_job = workflow.split('\n  merge-gate:\n', 1)[1]
+        name_line = next(line for line in gate_job.splitlines()
+                         if line.strip().startswith('name: ${{'))
+        self.assertIn("github.event.pull_request.draft && "
+                      "'Draft merge gate inactive (not required)'", name_line)
+        self.assertIn("'PR merge gate'", name_line)
+        self.assertIn("if: ${{ github.event_name != 'pull_request' || "
+                      "!github.event.pull_request.draft }}", gate_job)
+        # GitHub will still reject an attempted Draft merge; do not provide
+        # any Full credential when an accidental call supplies a Draft event.
+        draft = copy.deepcopy(READY)
+        draft['draft'] = True
+        accepted, _ = gate.verdict(
+            'pull_request', draft, draft,
+            {'scope': 'success', 'full': 'success', 'version': 'skipped'}, False)
+        self.assertFalse(accepted)
+
     def test_event_routes_and_retarget_full(self):
         for changes in ({'body': {'from': ''}}, {'title': {'from': 'old'}}):
             event = {'action': 'edited', 'changes': changes, 'pull_request': READY}

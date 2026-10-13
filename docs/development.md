@@ -229,12 +229,12 @@ shell syntax, classifier/policy tests and actionlint checks on Ubuntu.
 
 | Event/state | Validation | Merge result |
 | --- | --- | --- |
-| Draft open/push/reopen/convert | Fast Debug build + localization probes for non-documentation changes; documentation adds/edits skip app build | PR merge gate fails deliberately; Draft cannot merge |
+| Draft open/push/reopen/convert | Fast Debug build + localization probes for non-documentation changes; documentation adds/edits skip app build | Distinct `Draft merge gate inactive (not required)` job is skipped (no runner / no deliberate failure); GitHub prohibits merging Draft PRs |
 | Ready open/push/reopen/convert | Full CLI + probes + build-for-testing + all serial XCTest + artifact/smoke | Gate requires this run's successful Full |
 | Ready, entire PR version-only | Explicit `PR-wide version-only exemption (no XCTest)` | Gate accepts the named exemption, never reports XCTest PASS |
 | Ready target-branch edit | Force Full, including version-only PRs | Fresh gate checks base ref and SHA |
-| Draft target-branch edit | Fast | Gate fails for Draft |
-| Title/body edit only | Separate metadata acknowledgement; no compilation | No new merge credential; active validation unaffected |
+| Draft target-branch edit | Fast | No required gate is published; Draft remains unmergeable |
+| Ready title/body edit only | Separate metadata acknowledgement; no compilation | No new merge credential; active validation unaffected |
 | workflow_dispatch, any branch/state | Always Full, no version exemption | Separate `Manual Full result`, never a PR merge credential |
 
 Fast uses one unsigned Debug Xcode compilation, no CLI packaging, XCTest,
@@ -260,9 +260,17 @@ smoke after a successful Full does fail the gate because that run did not finish
 its contracted scope; version-only exemptions intentionally skip smoke. Full version exemptions
 skip artifact/smoke, just as before.
 
-`PR merge gate` has no job dependencies: it is created immediately for validation events, so same-SHA
-Draft/Ready transitions replace the old check with a pending result while Full
-runs. It has no `always()` cancellation override, so cancelling the workflow
+Draft validation does not publish `PR merge gate` at all. Its separate
+`Draft merge gate inactive (not required)` job is skipped without starting a
+runner or failing the workflow; only Scope/Fast determines Draft test health.
+A skipped job with the **required** check name would be unsafe because GitHub
+accepts skipped required checks as passing. Draft PRs cannot merge under GitHub's
+PR rules. On `ready_for_review`, the real `PR merge gate` has no dependencies and
+is created immediately as a pending check, including when returning to Ready
+with the same head SHA. Do not treat a previous same-SHA green result as the
+new Ready validation; confirm the new check appeared and completed. This event
+transition remains an important live acceptance test.
+ It has no `always()` cancellation override, so cancelling the workflow
 cancels the gate too. It polls current-attempt evidence via the read-only Actions jobs API. Only scope
 may be reused: when absent in the current attempt, the most recent prior scope
 in the same run must have succeeded with the same head SHA. A newer failed,
