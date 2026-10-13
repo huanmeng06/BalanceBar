@@ -130,7 +130,7 @@ final class DashboardForecastTooltipViewController: NSViewController {
         ).width) + 4))
         let rows: [(String, String, NSFont, NSColor, CGFloat)] = [
             ("title", content.title, .systemFont(ofSize: 13, weight: .semibold), .labelColor, 5),
-            ("body", content.body, .systemFont(ofSize: 12), NSColor.labelColor.withAlphaComponent(0.85), 10),
+            ("body", content.body, .systemFont(ofSize: 12), NSColor.labelColor, 10),
             ("source", content.source, sourceFont, .secondaryLabelColor, 10),
             ("disclaimer", content.disclaimer, .systemFont(ofSize: 11), .secondaryLabelColor, 0)
         ]
@@ -973,7 +973,7 @@ class HoverLinkTextField: NSTextField {
 final class MenuHoverLinkHostView: NSView {
     var overviewLayout: OpenCodexCardFrames?
     var providerIdentity = ""
-    var forecastContentKey = ""
+    var forecastContentKey: StatusItemController.ForecastContentKey?
     var bankedResetCardIDs: [String?] = []
     private(set) var isMenuContentVisible = false
     private var ticketBoundsObserver: NSObjectProtocol?

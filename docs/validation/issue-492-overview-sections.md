@@ -67,3 +67,20 @@ Local logs: `/private/tmp/BalanceBar-sections-full.log` (initial failure), `/pri
 反馈：`PASS`，或 `FAIL + 步骤 + 语言/模式 + 实际/预期 + 截图或录屏`。
 
 **Manual visual status: pending.** Automated checks do not establish pixel-level acceptance or close Issue #492.
+
+## Four-blocker follow-up after `1ac16d08`
+
+The preceding implementation/verification records describe the baseline delivery. This follow-up is limited to the four newly reported blockers:
+
+- Forecast tooltip body uses the original dynamic `.labelColor`, without `withAlphaComponent`. Title, source, disclaimer, fonts and sizing are unchanged; no appearance override is imposed on the popover.
+- A native AppKit probe reproduced freezing: the old body color created under Dark Aqua resolved to RGB `(1,1,1)` under both Dark Aqua and Aqua; the unmodified dynamic label color resolved to `(1,1,1)` under Dark Aqua and `(0,0,0)` under Aqua. Alpha values were respectively 0.85 (old) and the native semantic 0.8470588 (dynamic). This is color-resolution evidence, not a screenshot of the actual popover.
+- Regression tests cross all creation/display combinations of Aqua, Dark Aqua and their high-contrast variants, then switch the same view repeatedly. All four text colors are resolved under their actual inherited appearance and compared against their semantic roles.
+- The probability reuse signature now includes both primary presentation and subtitle type (forecast, official hint, countdown progress, none). Rendering uses the same classifier. Tests exercise hint → progress → hint → progress, retaining the root, unrelated sections, document and scroll position; same-type progress continues updating in place.
+- Other quota sections use the same label identity as the numeric system; scalar fallback uses a separate legacy ID. A 80% → B 20% replaces the numeric control; B 20% → B 25% → B 30% keeps the control, updates values and retains its animation plan.
+- Error cards use the shared 16pt inset. Detail width is derived from the amount column while retaining the prior 7pt safe gap. Short/multiline, Chinese/English, long URL and account/subscription combinations are measured and checked for containment/non-overlap. The standalone CoreText probe reads the real shared metrics and uses a private temporary module cache.
+
+Checks: targeted XCTest **108 tests, 0 failures**; final full local XCTest **1342 tests, 1 skipped, 0 failures**. Command is the same as above with derived data `/private/tmp/BalanceBar-blockers`. `scripts/probes/error-card-layout-probe.sh` also passes. Dev and 10-ticket demo bundles are rebuilt from this follow-up; exact remote HEAD/CI and preserved artifact paths are supplied in the PR/Issue handoff.
+
+Logs: `/private/tmp/BalanceBar-blockers-targeted.log`, `/private/tmp/BalanceBar-blockers-full.log`, `/private/tmp/BalanceBar-blockers-color-probe.log`, `/private/tmp/BalanceBar-blockers-error-probe.log`.
+
+Manual re-test: quit the previous development build and restart the new one. Check the official-signal popover in light/dark mode, after an appearance change and on repeated opens; body text must remain readable like the title. Keep the menu open during official-signal refresh and check hint/progress changes without scroll reset. Check a renamed extra quota never shows the previous percentage. Trigger a short/long error and compare its 16pt edges with a normal card. Recheck ordinary 5h/7d animations. This follow-up invalidates prior visual coverage; **manual status remains PENDING**, no version bump or merge.

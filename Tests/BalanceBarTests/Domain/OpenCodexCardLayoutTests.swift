@@ -3,6 +3,38 @@ import XCTest
 @testable import BalanceBar
 
 final class OpenCodexCardLayoutTests: XCTestCase {
+    func testErrorCardsShareInsetAndKeepWrappedTextClearOfAmount() {
+        XCTAssertEqual(ErrorCardLayout.horizontalInset, OverviewLayoutMetrics.default.horizontalInset)
+        XCTAssertEqual(ErrorCardLayout.horizontalInset, 16)
+        let messages = ["Unavailable", String(repeating: "Long error description ", count: 20),
+                        String(repeating: "错误消息需要完整显示", count: 20),
+                        "https://example.test/" + String(repeating: "long-unbroken-token", count: 25)]
+        for message in messages {
+            for account in [false, true] {
+                for subscription in [false, true] {
+                    let frames = ErrorCardLayout.errorFrames(for: message, includesAccount: account,
+                        includesSubscription: subscription, subscriptionTextWidth: 42)
+                    let card = NSRect(origin: .zero, size: frames.cardSize)
+                    for frame in [frames.title, frames.quotaDetail, frames.detail] {
+                        XCTAssertEqual(frame.minX, 16)
+                        XCTAssertTrue(card.contains(frame))
+                    }
+                    XCTAssertEqual(frames.amount.maxX, frames.cardSize.width - 16)
+                    XCTAssertEqual(frames.refreshTime.maxX, frames.cardSize.width - 16)
+                    XCTAssertEqual(frames.detail.maxX + 7, frames.amount.minX)
+                    XCTAssertTrue(frames.detail.intersection(frames.amount).isEmpty)
+                    XCTAssertTrue(frames.quotaDetail.intersection(frames.amount).isEmpty)
+                    let label = ErrorCardLayout.makeDetailLabel(frames.detailText)
+                    label.frame = frames.detail
+                    let measured = label.cell?.cellSize(forBounds: label.bounds).height ?? 0
+                    XCTAssertGreaterThanOrEqual(frames.detail.height, measured)
+                    if let email = frames.account { XCTAssertEqual(email.minX, 16) }
+                    if let plan = frames.subscription { XCTAssertEqual(plan.maxX, card.maxX - 16) }
+                }
+            }
+        }
+    }
+
     func testOverviewMetricsKeepSectionAndTicketSpacingIndependent() {
         let metrics = OverviewLayoutMetrics.default
 
@@ -475,8 +507,8 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             includesSubscription: true,
             subscriptionTextWidth: renderedSubscriptionTextWidth
         )
-        XCTAssertEqual(errorFrames.account, CGRect(x: 14, y: 58, width: 234, height: 17))
-        XCTAssertEqual(errorFrames.subscription, CGRect(x: 212, y: 58, width: 78, height: 17))
+        XCTAssertEqual(errorFrames.account, CGRect(x: ErrorCardLayout.horizontalInset, y: 58, width: ErrorCardLayout.accountWidth(forSubscriptionTextWidth: renderedSubscriptionTextWidth), height: 17))
+        XCTAssertEqual(errorFrames.subscription, CGRect(x: ErrorCardLayout.subscriptionX, y: 58, width: ErrorCardLayout.subscriptionWidth, height: 17))
         XCTAssertEqual(errorFrames.account?.minY, errorFrames.subscription?.minY)
         XCTAssertEqual(errorFrames.account?.height, errorFrames.subscription?.height)
         XCTAssertEqual(

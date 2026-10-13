@@ -6400,6 +6400,106 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(countField.stringValue, "10")
     }
 
+    func testOfficialSignalSubtitleChangesReplaceOnlyProbabilitySection() throws {
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }))
+        defer { controller.teardown() }
+        let now = Date(timeIntervalSince1970: 1700000000)
+        controller.bankedResetCountdownNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true)
+        let cards = (0..<5).map { index in
+            CodexBankedResetCard(id: "signal-row-\(index)", resetType: "codex_rate_limits", titleText: "Full reset",
+                windowText: "Weekly + 5-hour quota", expiresAt: Date().addingTimeInterval(Double(index + 1) * 86400),
+                expiresText: nil, remainingText: "16 d 16 h", remainingIsWarning: false)
+        }
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 80, label: "5h", daysText: "5h", reset: "2h", durationSeconds: 18000)
+        func snapshot(published: Date?) -> Snapshot {
+            .official("OpenAI Official", 80, "5h", "2h", now, windows: [window],
+                bankedReset: CodexBankedReset(cards: cards), resetForecast: CodexResetForecast(
+                    probability24h: .percent(20), probability48h: .percent(35), confidence: .low, updatedAt: now,
+                    isCached: false, officialSignal: CodexResetOfficialSignal(probability: .percent(83),
+                        targetAt: now.addingTimeInterval(3600), publishedAt: published)))
+        }
+        controller.start(snapshot: snapshot(published: nil), refreshDate: now, menuInput: input, settings: settings)
+        let root = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let original = Dictionary(uniqueKeysWithValues: root.subviews.compactMap {
+            ($0 as? OpenCodexOverviewSectionView).map { ($0.sectionID, $0) }
+        })
+        let scroll = try XCTUnwrap(allControls(of: root, as: BankedResetTicketScrollView.self).first)
+        let document = try XCTUnwrap(scroll.documentView)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 50))
+        let origin = scroll.contentView.bounds.origin
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        XCTAssertNotNil(allControls(of: root, as: AccountMarqueeView.self).first { $0.identifier?.rawValue == "codex.bankedReset.officialHint" })
+        for published in [now.addingTimeInterval(-3600), nil, now.addingTimeInterval(-3600)] as [Date?] {
+            let oldProbability = try XCTUnwrap(root.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }.first { $0.sectionID == .resetProbability })
+            controller.update(snapshot: snapshot(published: published), refreshDate: now, menuInput: input, settings: settings)
+            XCTAssertTrue(controller.menuItemsForTesting.first?.view === root)
+            let probability = try XCTUnwrap(root.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }.first { $0.sectionID == .resetProbability })
+            XCTAssertFalse(probability === oldProbability)
+            let bars = allControls(of: probability, as: QuotaProgressView.self).filter { $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress" }
+            let hints = allControls(of: probability, as: AccountMarqueeView.self).filter { $0.identifier?.rawValue == "codex.bankedReset.officialHint" }
+            XCTAssertEqual(bars.count, published == nil ? 0 : 1)
+            XCTAssertEqual(hints.count, published == nil ? 1 : 0)
+            for (id, originalSection) in original where id != .resetProbability {
+                XCTAssertTrue(root.subviews.contains { $0 === originalSection })
+            }
+            XCTAssertTrue(scroll.documentView === document)
+            XCTAssertEqual(scroll.contentView.bounds.origin, origin)
+        }
+        let bar = try XCTUnwrap(allControls(of: root, as: QuotaProgressView.self).first { $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress" })
+        controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(600)
+        controller.bankedResetCountdownTimerForTesting?.fire()
+        XCTAssertEqual(bar.percentage, 100 * 3000.0 / 7200.0, accuracy: 0.001)
+        XCTAssertTrue(allControls(of: root, as: QuotaProgressView.self).contains { $0 === bar })
+    }
+
+    func testOtherQuotaRenameReplacesNumericIdentityWhileSameNameRefreshRetainsIt() throws {
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }))
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = true
+        let date = Date()
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true)
+        func snapshot(_ label: String, _ value: Double) -> Snapshot {
+            .official("OpenAI Official", value, label, "2h", date,
+                windows: [.init(kind: .other, remaining: value, label: label, daysText: "quota", reset: "2h", durationSeconds: nil)])
+        }
+        controller.start(snapshot: snapshot("Quota A", 80), refreshDate: date, menuInput: input, settings: settings)
+        let root = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let header = try XCTUnwrap(root.subviews.first { ($0 as? OpenCodexOverviewSectionView)?.sectionID == .account })
+        let oldAmount = try XCTUnwrap(allControls(of: root, as: OverviewNumericTextView.self).first)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        controller.update(snapshot: snapshot("Quota B", 20), refreshDate: date, menuInput: input, settings: settings)
+        let newAmount = try XCTUnwrap(allControls(of: root, as: OverviewNumericTextView.self).first)
+        XCTAssertFalse(oldAmount === newAmount)
+        XCTAssertEqual(newAmount.sample?.identity, .officialOther(provider: "OpenAI Official", label: "Quota B"))
+        XCTAssertEqual(newAmount.sample?.value, 20)
+        XCTAssertEqual(newAmount.textField.stringValue, "20%")
+        XCTAssertTrue(root.subviews.contains { $0 === header })
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === root)
+        controller.update(snapshot: snapshot("Quota B", 25), refreshDate: date, menuInput: input, settings: settings)
+        XCTAssertTrue(allControls(of: root, as: OverviewNumericTextView.self).first === newAmount)
+        XCTAssertEqual(newAmount.textField.stringValue, "25%")
+        XCTAssertEqual(newAmount.sample?.value, 25)
+        controller.overviewNumericReduceMotionForTesting = false
+        controller.update(snapshot: snapshot("Quota B", 30), refreshDate: date, menuInput: input, settings: settings)
+        XCTAssertTrue(allControls(of: root, as: OverviewNumericTextView.self).first === newAmount)
+        XCTAssertTrue(newAmount.hasPendingAnimationForTesting)
+        XCTAssertEqual(newAmount.sample?.value, 30)
+    }
+
     func testOfficialSectionRefreshRetainsControlsAndRelayoutsOnlyChangedTopology() throws {
         let previousLanguage = AppLanguage.selected
         AppLanguage.selected = .english

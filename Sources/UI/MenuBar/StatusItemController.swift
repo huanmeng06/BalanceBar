@@ -6238,7 +6238,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             headerHost.addSubview(provider)
         } else {
-            let bodyHost: NSView = sectionViews[.otherQuota(0)] ?? view
+            let bodyHost: NSView = sectionViews[.legacyQuota] ?? view
             func attachBody(_ child: NSView) {
                 if bodyHost !== view { child.frame.origin.y -= bodyHost.frame.minY }
                 bodyHost.addSubview(child)
@@ -6613,6 +6613,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         forecast: CodexResetForecast,
         provider: String
     ) {
+        let contentKey = forecastContentKey(forecast)
         let amountFont = NSFont.monospacedDigitSystemFont(
             ofSize: OpenCodexCardLayout.quotaAmountPointSize,
             weight: .semibold
@@ -6620,7 +6621,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let amount: NSView
         let marqueeAmountText: String
         var reservationFont = amountFont
-        if forecast.isOfficialResetConfirmed {
+        if contentKey.primary == .confirmed {
             let text = forecast.menuPrimaryDisplayText()
             let labelFont = OpenCodexCardLayout.bankedResetPrimaryLabelFont(for: text)
             let label = makeOverviewLabel(text, font: labelFont)
@@ -6632,7 +6633,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             amount = label
             marqueeAmountText = text
             reservationFont = labelFont
-        } else if let minutes = forecast.remainingCountdownMinutes(now: bankedResetCountdownNow()) {
+        } else if contentKey.primary == .countdown, let minutes = forecast.remainingCountdownMinutes(now: bankedResetCountdownNow()) {
             let sample = OverviewNumericSample(
                 identity: .bankedResetProbabilityCountdown(provider: provider),
                 format: .remainingMinutes,
@@ -6751,25 +6752,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 amountText: marqueeAmountText, amountFont: reservationFont,
                 minimumAmountGap: 12
             )
-            if forecast.showsOrdinaryForecastMetrics {
-                addBankedResetForecastMetrics(
-                    to: view,
-                    frame: metricsFrame,
-                    forecast: forecast,
-                    leadingInkAnchor: leadingInkAnchor
-                )
-            } else if forecast.isOfficialResetConfirmed, let hint = forecast.officialHintText() {
-                addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint, leadingInkAnchor: leadingInkAnchor)
-            } else if let remaining = forecast.officialCountdownRemainingFraction(
-                now: bankedResetCountdownNow()
-            ) {
-                addBankedResetOfficialCountdownProgress(
-                    to: view,
-                    frame: metricsFrame,
-                    remainingFraction: remaining
-                )
-            } else if let hint = forecast.officialHintText() {
-                addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint, leadingInkAnchor: leadingInkAnchor)
+            switch contentKey.subtitle {
+            case .forecast:
+                addBankedResetForecastMetrics(to: view, frame: metricsFrame, forecast: forecast, leadingInkAnchor: leadingInkAnchor)
+            case .officialHint:
+                if let hint = forecast.officialHintText() {
+                    addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint, leadingInkAnchor: leadingInkAnchor)
+                }
+            case .countdownProgress:
+                if let remaining = forecast.officialCountdownRemainingFraction(now: bankedResetCountdownNow()) {
+                    addBankedResetOfficialCountdownProgress(to: view, frame: metricsFrame, remainingFraction: remaining)
+                }
+            case .none: break
             }
         }
     }
@@ -6960,15 +6954,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func forecastContentKey(_ forecast: CodexResetForecast) -> String {
-        if forecast.isOfficialResetConfirmed { return "confirmed" }
-        if forecast.remainingCountdownMinutes(now: bankedResetCountdownNow()) != nil { return "countdown" }
-        switch forecast.menuProbabilityPresentation {
-        case .ordinary(.percent): return "ordinary.numeric"
-        case .ordinary: return "ordinary.placeholder"
-        case .strongSignal(.percent): return "signal.numeric"
-        case .strongSignal: return "signal.placeholder"
+    struct ForecastContentKey: Equatable {
+        enum Primary: Equatable { case confirmed, countdown, ordinaryNumeric, ordinaryPlaceholder, signalNumeric, signalPlaceholder }
+        enum Subtitle: Equatable { case forecast, officialHint, countdownProgress, none }
+        let primary: Primary
+        let subtitle: Subtitle
+    }
+
+    private func forecastContentKey(_ forecast: CodexResetForecast) -> ForecastContentKey {
+        let primary: ForecastContentKey.Primary
+        if forecast.isOfficialResetConfirmed { primary = .confirmed }
+        else if forecast.remainingCountdownMinutes(now: bankedResetCountdownNow()) != nil { primary = .countdown }
+        else {
+            switch forecast.menuProbabilityPresentation {
+            case .ordinary(.percent): primary = .ordinaryNumeric
+            case .ordinary: primary = .ordinaryPlaceholder
+            case .strongSignal(.percent): primary = .signalNumeric
+            case .strongSignal: primary = .signalPlaceholder
+            }
         }
+        let subtitle: ForecastContentKey.Subtitle
+        if forecast.showsOrdinaryForecastMetrics { subtitle = .forecast }
+        else if forecast.isOfficialResetConfirmed, forecast.officialHintText() != nil { subtitle = .officialHint }
+        else if forecast.officialCountdownRemainingFraction(now: bankedResetCountdownNow()) != nil { subtitle = .countdownProgress }
+        else if forecast.officialHintText() != nil { subtitle = .officialHint }
+        else { subtitle = .none }
+        return ForecastContentKey(primary: primary, subtitle: subtitle)
     }
 
     private func reconcileOverviewSectionsIfTracking() {
@@ -7151,6 +7162,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
         }
         updateBankedResetForecastSubtitleIfNeeded(in: overview)
+        let forecast = snapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota).resetForecast
+        if let hint = forecast.officialHintText(), let label = descendantViews(of: overview, as: AccountMarqueeView.self).first(where: {
+            $0.identifier?.rawValue == "codex.bankedReset.officialHint"
+        }) { label.updateText(hint, preserveScrollPosition: true) }
         applyOfficialCountdownProgressIfNeeded(in: overview)
     }
 

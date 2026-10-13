@@ -1513,6 +1513,47 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(AccountEmailTextField.tooltipDelay, 0.15, accuracy: 0.001)
     }
 
+    func testForecastTooltipColorsResolveAgainstDisplayAppearanceAfterCreation() throws {
+        let content = DashboardForecastTooltipContent(title: "Official reset signal", body: "Body text",
+            source: "Source", disclaimer: "Disclaimer")
+        let appearances: [NSAppearance.Name] = [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua]
+        for creationName in appearances {
+            let creation = try XCTUnwrap(NSAppearance(named: creationName))
+            var controller: DashboardForecastTooltipViewController!
+            creation.performAsCurrentDrawingAppearance {
+                controller = DashboardForecastTooltipViewController(content: content)
+                controller.loadViewIfNeeded()
+            }
+            let labels = controller.view.subviews.compactMap { $0 as? NSTextField }
+            XCTAssertEqual(labels.count, 4)
+            for displayName in appearances + [.aqua, .darkAqua, .aqua] {
+                controller.view.appearance = try XCTUnwrap(NSAppearance(named: displayName))
+                for (index, label) in labels.enumerated() {
+                    var actual: NSColor!
+                    var expected: NSColor!
+                    label.effectiveAppearance.performAsCurrentDrawingAppearance {
+                        actual = label.textColor?.usingColorSpace(.deviceRGB)
+                        expected = (index < 2 ? NSColor.labelColor : NSColor.secondaryLabelColor).usingColorSpace(.deviceRGB)
+                    }
+                    let color = try XCTUnwrap(actual)
+                    let semantic = try XCTUnwrap(expected)
+                    XCTAssertEqual(color.redComponent, semantic.redComponent, accuracy: 0.001)
+                    XCTAssertEqual(color.greenComponent, semantic.greenComponent, accuracy: 0.001)
+                    XCTAssertEqual(color.blueComponent, semantic.blueComponent, accuracy: 0.001)
+                    XCTAssertEqual(color.alphaComponent, semantic.alphaComponent, accuracy: 0.001)
+                    if index == 1 {
+                        let brightness = (color.redComponent + color.greenComponent + color.blueComponent) / 3
+                        if displayName == .aqua || displayName == .accessibilityHighContrastAqua {
+                            XCTAssertLessThan(brightness, 0.5, "Body must not remain white after dark creation")
+                        } else {
+                            XCTAssertGreaterThan(brightness, 0.5, "Body must not remain black after light creation")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     func testForecastTooltipHasHierarchyAndFitsEveryLanguage() throws {
         let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-07T09:21:00Z"))
         let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))

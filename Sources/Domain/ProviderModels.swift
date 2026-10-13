@@ -209,7 +209,8 @@ enum OpenCodexOverviewSectionID: Hashable {
     case account
     case fiveHour
     case sevenDay
-    case otherQuota(Int)
+    case otherQuota(String)
+    case legacyQuota
     case lunaReserve
     case resetProbability
     case bankedReset
@@ -218,7 +219,7 @@ enum OpenCodexOverviewSectionID: Hashable {
         switch window.kind {
         case .fiveHour: return .fiveHour
         case .sevenDay: return .sevenDay
-        case .other: return .otherQuota(index)
+        case .other: return .otherQuota(window.label)
         }
     }
 
@@ -227,7 +228,8 @@ enum OpenCodexOverviewSectionID: Hashable {
         case .account: return "account"
         case .fiveHour: return "fiveHour"
         case .sevenDay: return "sevenDay"
-        case .otherQuota(let index): return "otherQuota.\(index)"
+        case .otherQuota(let label): return "otherQuota.\(label)"
+        case .legacyQuota: return "legacyQuota"
         case .lunaReserve: return "lunaReserve"
         case .resetProbability: return "resetProbability"
         case .bankedReset: return "bankedReset"
@@ -718,7 +720,7 @@ enum OpenCodexCardLayout {
                     .init(id: .account,
                           frame: CGRect(x: 0, y: headerOrigin, width: cardWidth, height: 20 + accountShift),
                           row: nil, header: localHeader),
-                    .init(id: .otherQuota(0),
+                    .init(id: .legacyQuota,
                           frame: CGRect(x: 0, y: rowOrigin, width: cardWidth, height: 47 - textShift + quotaDetailHeight - rowOrigin),
                           row: localRow)
                 ]
