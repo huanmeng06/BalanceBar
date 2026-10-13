@@ -84,6 +84,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onOpenUpdateNotes: (() -> Void)?
     var onRefreshLog: (() -> Void)?
     var onRevealLog: (() -> Void)?
+    var onExportLog: (() -> Void)?
     var onOffsetAdjust: ((String, Int) -> Void)?
     var onOffsetValue: ((String, Double) -> Void)?
     var onOffsetValueEnded: ((String, Double) -> Void)?
@@ -236,6 +237,10 @@ final class DashboardPreferencePageRelay: NSObject {
 
     @objc func revealLog(_ sender: NSButton) {
         onRevealLog?()
+    }
+
+    @objc func exportLog(_ sender: NSButton) {
+        onExportLog?()
     }
 
     @objc func adjustOffset(_ sender: NSButton) {

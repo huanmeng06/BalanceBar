@@ -500,3 +500,9 @@
 "timezone.lookup_failed" = "목록에 있는 도시만 선택할 수 있습니다";
 
 "codex.banked_reset.expired_value" = "%1$@에 만료됨";
+
+"dashboard.logs.page.export" = "로그 내보내기";
+"dashboard.logs.page.export.2" = "진단 로그 내보내기";
+"dashboard.logs.page.preview_truncated" = "최근 미리보기만 표시됩니다. 보관된 모든 로그를 내보내세요.";
+"dashboard.logs.page.read_warning" = "일부 진단 파일을 읽을 수 없습니다";
+"dashboard.logs.page.export_failed" = "진단 로그 내보내기에 실패했습니다";

@@ -500,3 +500,9 @@
 "timezone.lookup_failed" = "Stadtsuche nicht verfügbar. Mit Return erneut versuchen.";
 
 "codex.banked_reset.expired_value" = "Abgelaufen am %1$@";
+
+"dashboard.logs.page.export" = "Protokolle exportieren";
+"dashboard.logs.page.export.2" = "Diagnoseprotokolle exportieren";
+"dashboard.logs.page.preview_truncated" = "Nur die aktuelle Vorschau wird angezeigt; exportieren Sie alle gespeicherten Protokolle.";
+"dashboard.logs.page.read_warning" = "Einige Diagnosedateien konnten nicht gelesen werden";
+"dashboard.logs.page.export_failed" = "Export der Diagnoseprotokolle fehlgeschlagen";

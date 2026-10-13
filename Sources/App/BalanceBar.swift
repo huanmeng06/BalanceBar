@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Darwin
 
 enum DashboardLogging {
     static func number(_ value: CGFloat) -> String {
@@ -21,116 +22,358 @@ enum DashboardLogging {
 }
 
 enum SwitchLog {
-    enum Level: String {
-        case debug = "DEBUG"
-        case info = "INFO"
-        case warning = "WARN"
-        case error = "ERROR"
+    enum Level: String { case debug = "DEBUG", info = "INFO", warning = "WARN", error = "ERROR" }
+
+    enum ReadResult: Equatable {
+        case empty
+        case data(String, truncated: Bool, warnings: [String])
+        case failure(String)
     }
 
     private static let queue = DispatchQueue(label: "local.balancebar.debug-log")
-    // Keep at most about 1 MB on disk: one 512 KB active file and one rotated
-    // predecessor. Diagnostic logs should never grow with the app's lifetime.
-    private static let maximumSize = 512 * 1_024
-    private static let viewerMaximumBytes: UInt64 = 160 * 1_024
-    private static let viewerMaximumLines = 1_000
+    private static let maximumSize = 5 * 1_024 * 1_024
+    private static let maximumArchives = 10
+    private static let maximumStorageSize = 60 * 1_024 * 1_024
+    private static let viewerMaximumBytes = 160 * 1_024
     private static var lastWriteDates: [String: Date] = [:]
+    private static var sessionID: String?
+    private static var testingDirectoryURL: URL?
     private static let timestampFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
-    static let fileURL = URL(fileURLWithPath: NSString(
-        string: "~/Library/Logs/BalanceBar/debug.log"
-    ).expandingTildeInPath)
-    private static let previousFileURL = fileURL
-        .deletingLastPathComponent()
-        .appendingPathComponent("debug.previous.log")
 
-    static func write(
-        _ message: String,
-        level: Level = .info,
-        category: String = "general",
-        throttleKey: String? = nil,
-        minimumInterval: TimeInterval = 0
-    ) {
+    private static var environmentName: String {
+        let bundle = Bundle.main.bundleIdentifier ?? ""
+        return bundle == "com.huanmeng06.BalanceBar.dev" || bundle.hasPrefix("com.huanmeng06.BalanceBar.dev.") ? "Development" : "Production"
+    }
+
+    static var directoryURL: URL {
+        if let testingDirectoryURL { return testingDirectoryURL }
+        if let override = ProcessInfo.processInfo.environment["BALANCEBAR_LOG_DIRECTORY"], !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/\(environmentName)").expandingTildeInPath, isDirectory: true)
+    }
+
+    static func setTestingDirectory(_ url: URL?) {
+        queue.sync { testingDirectoryURL = url; sessionID = nil }
+    }
+
+    static var fileURL: URL { directoryURL.appendingPathComponent("debug.log") }
+    private static var sequenceURL: URL { directoryURL.appendingPathComponent(".sequence") }
+    private static var lockURL: URL { directoryURL.appendingPathComponent(".lock") }
+    private static var legacyFileURL: URL { URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/debug.log").expandingTildeInPath) }
+    private static var legacyPreviousURL: URL { legacyFileURL.deletingLastPathComponent().appendingPathComponent("debug.previous.log") }
+
+    static var archiveURLs: [URL] {
+        scanFiles().files.filter { $0.lastPathComponent.hasPrefix("debug-") && $0.pathExtension == "log" }
+    }
+
+    static func write(_ message: String, level: Level = .info, category: String = "general", throttleKey: String? = nil, minimumInterval: TimeInterval = 0) {
         queue.async {
             let now = Date()
             if minimumInterval > 0 {
                 let key = throttleKey ?? "\(level.rawValue)|\(category)|\(message)"
-                if let previous = lastWriteDates[key],
-                   now.timeIntervalSince(previous) < minimumInterval {
-                    return
-                }
+                if let previous = lastWriteDates[key], now.timeIntervalSince(previous) < minimumInterval { return }
                 lastWriteDates[key] = now
-                if lastWriteDates.count > 256 {
-                    lastWriteDates = lastWriteDates.filter {
-                        now.timeIntervalSince($0.value) < 3_600
-                    }
-                }
+                if lastWriteDates.count > 256 { lastWriteDates = lastWriteDates.filter { now.timeIntervalSince($0.value) < 3_600 } }
             }
-            let line = "[\(timestampFormatter.string(from: now))] [\(level.rawValue)] [\(category)] \(message)\n"
-            guard let data = line.data(using: .utf8) else { return }
             do {
-                try FileManager.default.createDirectory(
-                    at: fileURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                rotateIfNeeded(incomingBytes: data.count)
-                if !FileManager.default.fileExists(atPath: fileURL.path) {
-                    try data.write(to: fileURL, options: .atomic)
-                } else {
-                    let handle = try FileHandle(forWritingTo: fileURL)
-                    try handle.seekToEnd()
-                    try handle.write(contentsOf: data)
-                    try handle.close()
+                try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+                try withFileLock {
+                    do {
+                        try ensureSessionStarted(at: now)
+                        try appendRecord(try makeRecord(message, level: level, category: category, date: now))
+                    } catch {
+                        NSLog("BalanceBar diagnostic log deferred; error_code=%ld", error._code)
+                    }
+                    pruneArchives()
                 }
-            } catch {
-                NSLog("BalanceBar debug log error: %@", error.localizedDescription)
-            }
+            } catch { NSLog("BalanceBar debug log error; error_code=%ld", error._code) }
+        }
+    }
+
+    static func startSession() {
+        queue.async {
+            do {
+                try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+                try withFileLock { try ensureSessionStarted(at: Date()) }
+            } catch { NSLog("BalanceBar session start deferred; error_code=%ld", error._code) }
         }
     }
 
     static func recentText() -> String? {
+        switch readSnapshot() { case .data(let text, _, _): return text; default: return nil }
+    }
+
+    static func readSnapshot() -> ReadResult {
         queue.sync {
-            guard FileManager.default.fileExists(atPath: fileURL.path),
-                  let handle = try? FileHandle(forReadingFrom: fileURL)
-            else { return nil }
-            defer { try? handle.close() }
-            do {
-                let size = try handle.seekToEnd()
-                let start = size > viewerMaximumBytes
-                    ? size - viewerMaximumBytes
-                    : 0
-                try handle.seek(toOffset: start)
-                guard let data = try handle.readToEnd(),
-                      var text = String(data: data, encoding: .utf8)
-                else { return nil }
-                if start > 0, let newline = text.firstIndex(of: "\n") {
-                    text.removeSubrange(...newline)
-                }
-                let lines = text.split(
-                    separator: "\n",
-                    omittingEmptySubsequences: false
-                )
-                if lines.count > viewerMaximumLines {
-                    text = lines.suffix(viewerMaximumLines)
-                        .joined(separator: "\n")
-                }
-                return text
-            } catch {
-                return nil
-            }
+            do { return try withFileLock { readSnapshotLocked(previewLimit: viewerMaximumBytes) } }
+            catch { return .failure("无法锁定诊断日志（锁错误）") }
         }
     }
 
-    private static func rotateIfNeeded(incomingBytes: Int) {
-        let size = (try? fileURL.resourceValues(
-            forKeys: [.fileSizeKey]
-        ).fileSize) ?? 0
-        guard size + incomingBytes > maximumSize else { return }
-        try? FileManager.default.removeItem(at: previousFileURL)
-        try? FileManager.default.moveItem(at: fileURL, to: previousFileURL)
+    static func exportAll(to destination: URL) throws {
+        let protected = [fileURL, sequenceURL, lockURL, legacyFileURL, legacyPreviousURL] + archiveURLs
+            let destinationURL = destination.standardizedFileURL
+            guard !protected.contains(where: { $0.standardizedFileURL == destinationURL }) else {
+                throw NSError(domain: "BalanceBar.Diagnostics", code: 4, userInfo: [NSLocalizedDescriptionKey: "The export destination is part of the diagnostic store."])
+            }
+            let snapshot = try withFileLock { readFilesLocked(previewLimit: nil) }
+            guard !snapshot.text.isEmpty else { throw NSError(domain: "BalanceBar.Diagnostics", code: 1, userInfo: [NSLocalizedDescriptionKey: "No diagnostic logs are available."]) }
+            let warningText = redact(snapshot.warnings.joined(separator: " | "))
+            let header = "# BalanceBar diagnostic export\n# Environment: \(environmentName)\n# Warnings: \(warningText)\n\n"
+            let sanitizedBody = sanitizeExportRecords(snapshot.text)
+            guard let data = (header + sanitizedBody).data(using: .utf8) else {
+                throw NSError(domain: "BalanceBar.Diagnostics", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to encode diagnostic logs."])
+            }
+        try data.write(to: destination, options: .atomic)
+    }
+
+    private static func readSnapshotLocked(previewLimit: Int) -> ReadResult {
+        let snapshot = readFilesLocked(previewLimit: previewLimit)
+        guard !snapshot.text.isEmpty else {
+            return snapshot.warnings.isEmpty ? .empty : .failure(snapshot.warnings.joined(separator: "\n"))
+        }
+        return .data(snapshot.text, truncated: snapshot.truncated, warnings: snapshot.warnings)
+    }
+
+    private struct FileReadSnapshot { var text = ""; var truncated = false; var warnings: [String] = [] }
+
+    private static func readFilesLocked(previewLimit: Int?) -> FileReadSnapshot {
+        var urls: [URL] = []
+        if testingDirectoryURL == nil {
+            if FileManager.default.fileExists(atPath: legacyPreviousURL.path) { urls.append(legacyPreviousURL) }
+            if FileManager.default.fileExists(atPath: legacyFileURL.path), legacyFileURL != fileURL { urls.append(legacyFileURL) }
+        }
+        let scan = scanFiles()
+        urls.append(contentsOf: scan.files.filter { $0.lastPathComponent.hasPrefix("debug-") && $0.pathExtension == "log" })
+        urls.append(fileURL)
+        var output = FileReadSnapshot()
+        if let warning = scan.warning { output.warnings.append(warning) }
+        for url in urls {
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            do {
+                let tail = try readTail(of: url, maximumBytes: previewLimit)
+                let data = tail.data
+                let isValidUTF8 = String(data: data, encoding: .utf8) != nil
+                let decoded = String(decoding: data, as: UTF8.self)
+                if !isValidUTF8 { output.warnings.append("损坏或非法 UTF-8：\(url.lastPathComponent)") }
+                if tail.wasTruncated && previewLimit != nil {
+                    output.truncated = true
+                    if let newline = decoded.firstIndex(of: "\n") { output.text += String(decoded[decoded.index(after: newline)...]) }
+                    else if !decoded.isEmpty { output.text += decoded; output.warnings.append("单条日志记录超过预览限制：\(url.lastPathComponent)") }
+                } else { output.text += decoded }
+            } catch { output.warnings.append("无法读取诊断文件：\(url.lastPathComponent)") }
+        }
+        if let previewLimit, output.text.utf8.count > previewLimit {
+            let tail = String(decoding: Array(output.text.utf8).suffix(previewLimit), as: UTF8.self)
+            output.text = tail.firstIndex(of: "\n").map { String(tail[tail.index(after: $0)...]) } ?? tail
+            output.truncated = true
+        }
+        return output
+    }
+
+    private struct TailRead { let data: Data; let wasTruncated: Bool }
+
+    private static func readTail(of url: URL, maximumBytes: Int?) throws -> TailRead {
+        guard let maximumBytes else { return TailRead(data: try Data(contentsOf: url), wasTruncated: false) }
+        let size = ((try url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        let offset = size > maximumBytes ? size - maximumBytes : 0
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        if offset == 0 { return TailRead(data: try handle.readToEnd() ?? Data(), wasTruncated: false) }
+        for backtrack in 0...3 {
+            let start = max(0, offset - backtrack)
+            try handle.seek(toOffset: UInt64(start))
+            let candidate = try handle.readToEnd() ?? Data()
+            if String(data: candidate, encoding: .utf8) != nil {
+                return TailRead(data: candidate, wasTruncated: true)
+            }
+        }
+        try handle.seek(toOffset: UInt64(offset))
+        return TailRead(data: try handle.readToEnd() ?? Data(), wasTruncated: true)
+    }
+
+    private static func makeRecord(_ message: String, level: Level, category: String, date: Date) throws -> Data {
+        let cleanMessage = redact(message).replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\r", with: "\\r").replacingOccurrences(of: "\n", with: "\\n")
+        let cleanCategory = redact(category).replacingOccurrences(of: "\r", with: "\\r").replacingOccurrences(of: "\n", with: "\\n")
+        let prefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(cleanCategory)] [session=\(sessionID ?? "pending")] "
+        let suffix = "\n"
+        let originalBytes = cleanMessage.utf8.count
+        let boundedCategory = String(cleanCategory.prefix(256))
+        let boundedPrefix = "[\(timestampFormatter.string(from: date))] [\(level.rawValue)] [\(boundedCategory)] [session=\(sessionID ?? "pending")] "
+        let budget = maximumSize - boundedPrefix.utf8.count - suffix.utf8.count
+        let body: String
+        if originalBytes <= budget { body = cleanMessage }
+        else {
+            let marker = " … [message-truncated original_bytes=\(originalBytes)]"
+            let limit = max(0, budget - marker.utf8.count)
+            var count = 0
+            var prefix = ""
+            for character in cleanMessage {
+                let bytes = String(character).utf8.count
+                guard count + bytes <= limit else { break }
+                prefix.append(character)
+                count += bytes
+            }
+            body = prefix + marker
+        }
+        return Data((boundedPrefix + body + suffix).utf8)
+    }
+
+    private static func ensureSessionStarted(at date: Date) throws {
+        guard sessionID == nil else { return }
+        let candidate = UUID().uuidString
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let line = "session-start; session_id=\(candidate); started_at=\(timestampFormatter.string(from: date)); version=\(version); environment=\(environmentName); pid=\(ProcessInfo.processInfo.processIdentifier)"
+        let old = sessionID
+        sessionID = candidate
+        do {
+            let record = try makeRecord(line, level: .info, category: "lifecycle", date: date)
+            try appendRecord(record)
+        } catch { sessionID = old; throw error }
+    }
+
+    private static func appendRecord(_ data: Data) throws {
+        let size = ((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        if size + data.count > maximumSize, FileManager.default.fileExists(atPath: fileURL.path) { try rotate() }
+        if !FileManager.default.fileExists(atPath: fileURL.path) { try data.write(to: fileURL, options: .atomic); return }
+        let handle = try FileHandle(forWritingTo: fileURL)
+        defer { try? handle.close() }
+        try handle.seekToEnd(); try handle.write(contentsOf: data)
+    }
+
+    private static func rotate() throws {
+        let sequence = try nextSequence()
+        let stamp = timestampFormatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let archive = directoryURL.appendingPathComponent(String(format: "debug-%020llu-%@.log", sequence, stamp))
+        try FileManager.default.moveItem(at: fileURL, to: archive)
+    }
+
+    private static func nextSequence() throws -> UInt64 {
+        let current = UInt64(String(data: (try? Data(contentsOf: sequenceURL)) ?? Data(), encoding: .utf8) ?? "0") ?? 0
+        let next = current + 1
+        try Data(String(next).utf8).write(to: sequenceURL, options: .atomic)
+        return next
+    }
+
+    private static func pruneArchives() {
+        let files = archiveURLs
+        var sizes: [(URL, Int)] = files.compactMap { url in
+            guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return nil }
+            return (url, size)
+        }
+        var total = ((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            + sizes.reduce(0) { $0 + $1.1 }
+        while sizes.count > maximumArchives || total > maximumStorageSize {
+            guard let oldest = sizes.first else { break }
+            do { try FileManager.default.removeItem(at: oldest.0); sizes.removeFirst(); total -= oldest.1 }
+            catch { NSLog("BalanceBar archive prune failed; error_code=%ld", error._code); break }
+        }
+    }
+
+    private static func scanFiles() -> (files: [URL], warning: String?) {
+        do {
+            let files = try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]).filter { url in
+                (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+            return (files, nil)
+        } catch { return ([], "无法扫描诊断日志目录") }
+    }
+
+    private static func withFileLock<T>(_ body: () throws -> T) throws -> T {
+        let descriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "Unable to open diagnostic log lock."]) }
+        var result = flock(descriptor, LOCK_EX)
+        while result != 0 && errno == EINTR { result = flock(descriptor, LOCK_EX) }
+        guard result == 0 else {
+            let error = NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "Unable to acquire diagnostic log lock."])
+            close(descriptor)
+            throw error
+        }
+        defer { flock(descriptor, LOCK_UN); close(descriptor) }
+        return try body()
+    }
+
+    private static func redact(_ value: String) -> String {
+        if let json = try? JSONSerialization.jsonObject(with: Data(value.utf8)),
+           JSONSerialization.isValidJSONObject(json),
+           let sanitized = sanitizedJSON(json),
+           let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys]),
+           let text = String(data: data, encoding: .utf8) {
+            return text
+        }
+        let containerFields = try! NSRegularExpression(pattern: #"["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*[:=]\s*[\[{]"#)
+        let range = NSRange(value.startIndex..., in: value)
+        if containerFields.matches(in: value, range: range).contains(where: { match in
+            guard let keyRange = Range(match.range(at: 1), in: value) else { return false }
+            return isSensitiveField(String(value[keyRange]))
+        }) {
+            return "[structured-details-omitted]"
+        }
+        var result = value
+        let patterns: [(String, String)] = [
+            ("(?i)(authorization|proxy-authorization)\\s*[:=]\\s*(bearer|basic|token|digest|apikey|negotiate)\\s+[^;\\r\\n]+", "$1: $2 [REDACTED]"),
+            ("(?i)(cookie|set-cookie)\\s*[:=]\\s*[^\\r\\n]+", "$1: [REDACTED]"),
+            ("(?i)([\\\"']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|password|passwd|pwd|secret|credential|credentials|token|tokens|headers)[\\\"']?\\s*[:=]\\s*)(?:\\[[^\\]]*\\]|\\{[^}]*\\}|[\\\"'][^\\\"']*[\\\"']|[^\\\"',;}\\s]+)", "$1[REDACTED]"),
+            ("(?i)(https?://)[^/\\s:@]+:[^@/\\s]+@", "$1[REDACTED]@"),
+            ("(?i)(?:api[_-]?key|access[_-]?token|token|password|secret|signature)=([^&#\\s]+)", "[REDACTED]"),
+            ("(?i)https?://[^\\s;,]+", "[URL_REDACTED]"),
+            ("(?i)\\bsk-(?:ant-)?[A-Za-z0-9_-]{12,}", "[TOKEN_REDACTED]")
+        ]
+        for (pattern, replacement) in patterns {
+            if let expression = try? NSRegularExpression(pattern: pattern) {
+                result = expression.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: replacement)
+            }
+        }
+        return result
+    }
+
+    private static func sanitizeExportRecords(_ text: String) -> String {
+        let prefix = try! NSRegularExpression(pattern: #"^\[\d{4}-\d{2}-\d{2}T[^\]]+\] \[(DEBUG|INFO|WARN|ERROR)\] "#)
+        var records: [String] = []
+        var current = ""
+        for line in text.components(separatedBy: "\n") {
+            if prefix.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil && !current.isEmpty {
+                records.append(current)
+                current = ""
+            }
+            if !current.isEmpty { current += "\n" }
+            current += line
+        }
+        if !current.isEmpty { records.append(current) }
+        return records.map { redact($0) }.joined(separator: "\n")
+    }
+
+    private static func isSensitiveField(_ key: String) -> Bool {
+        let normalized = key.lowercased().replacingOccurrences(of: "-", with: "_")
+        return ["token", "credential", "secret", "password", "cookie", "authorization", "api_key"].contains { normalized.contains($0) }
+            || ["auth", "headers", "passwd", "pwd", "apikey"].contains(normalized)
+    }
+
+    private static func sanitizedJSON(_ value: Any) -> Any? {
+        if let dictionary = value as? [String: Any] {
+            var output: [String: Any] = [:]
+            for (key, nested) in dictionary {
+                if isSensitiveField(key) {
+                    output[key] = "[REDACTED]"
+                } else if let sanitized = sanitizedJSON(nested) {
+                    output[key] = sanitized
+                } else {
+                    return nil
+                }
+            }
+            return output
+        }
+        if let array = value as? [Any] {
+            return array.compactMap { sanitizedJSON($0) }
+        }
+        if let text = value as? String { return redact(text) }
+        if value is NSNumber || value is NSNull { return value }
+        return nil
     }
 }
 
@@ -705,11 +948,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func publishQuickSwitchSummary(providerID: String) {
-        let text = providerRefreshCoordinator?.quickSwitchSummariesSnapshot(
-            preferredQuotaWindow: menuBarQuotaWindowPreference
-        )[providerID] ?? "…"
         SwitchLog.write(
-            "quick-switch balance changed; provider_id=\(providerID); value=\(text)",
+            "quick-switch balance changed; summary_updated=true",
             category: "balance"
         )
         DispatchQueue.main.async { [weak self] in
@@ -818,8 +1058,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "unknown"
+        SwitchLog.startSession()
         SwitchLog.write(
-            "session started; version=\(version); os=\(ProcessInfo.processInfo.operatingSystemVersionString); database=\(ccSwitchRepository.databaseURL.path)",
+            "session started; version=\(version); os=\(ProcessInfo.processInfo.operatingSystemVersionString)",
             category: "lifecycle"
         )
         SwitchLog.write(
@@ -1026,13 +1267,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
             if let error {
                 SwitchLog.write(
-                    "open ChatGPT failed; path=\(url.path); error=\(error.localizedDescription)",
+                    "open ChatGPT failed; error_category=workspace_open",
                     level: .warning,
                     category: "ui.menu"
                 )
             } else {
                 SwitchLog.write(
-                    "ChatGPT opened; path=\(url.path)",
+                    "ChatGPT opened; success=true",
                     category: "ui.menu"
                 )
             }
@@ -1864,7 +2105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             // request to finish.
             let switched = current.id != self.lastProviderID
             if switched {
-                SwitchLog.write("provider observed; app=\(client.appType); id=\(current.id); name=\(current.name); source=database watcher/poll")
+                SwitchLog.write("provider observed; app=\(client.appType); source=database watcher/poll")
             }
             self.lastProviderID = current.id
             self.providerRefreshCoordinator.refreshStandardProvider(

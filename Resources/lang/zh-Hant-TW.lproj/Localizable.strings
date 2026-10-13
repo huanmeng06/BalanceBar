@@ -500,3 +500,9 @@
 "timezone.lookup_failed" = "只能選擇列表中的城市";
 
 "codex.banked_reset.expired_value" = "%1$@ 已過期";
+
+"dashboard.logs.page.export" = "匯出日誌";
+"dashboard.logs.page.export.2" = "匯出診斷日誌";
+"dashboard.logs.page.preview_truncated" = "目前僅顯示最近預覽；請匯出全部保留日誌。";
+"dashboard.logs.page.read_warning" = "部分診斷檔案無法讀取";
+"dashboard.logs.page.export_failed" = "診斷日誌匯出失敗";

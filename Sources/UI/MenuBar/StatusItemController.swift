@@ -3265,7 +3265,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let windowFrame = statusWindow.map { DashboardLogging.rect($0.frame) } ?? "none"
             let screenFrame = statusWindow?.screen.map { DashboardLogging.rect($0.frame) } ?? "none"
             SwitchLog.write(
-                "status item presentation; visible=\(statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); window_occlusion_visible=\(statusWindow?.occlusionState.contains(.visible) ?? false); window_occlusion_raw=\(statusWindow?.occlusionState.rawValue ?? 0); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); image=\(button.image != nil); title=\(button.title); attributed_title=\(button.attributedTitle.string); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+                "status item presentation; visible=\(statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); window_occlusion_visible=\(statusWindow?.occlusionState.contains(.visible) ?? false); window_occlusion_raw=\(statusWindow?.occlusionState.rawValue ?? 0); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); image=\(button.image != nil); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
                 category: "ui.status-item"
             )
         }
@@ -5571,15 +5571,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             action: #selector(quit),
             keyEquivalent: "q"
         ).target = self
-        let menuTitles = statusMenu.items.map { item in
-            item.title.isEmpty ? "<custom>" : item.title
-        }.joined(separator: "|")
         let statusWindow = statusItem?.button?.window
-        let windowFrame = statusWindow.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let screenFrame = statusWindow?.screen.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let buttonTitle = statusItem?.button?.title ?? ""
         SwitchLog.write(
-            "status menu rendered; item_count=\(statusMenu.items.count); items=\(menuTitles); status_visible=\(isVisible); button_window=\(statusWindow != nil); window_visible=\(statusWindow?.isVisible ?? false); window_occlusion_visible=\(statusWindow?.occlusionState.contains(.visible) ?? false); window_occlusion_raw=\(statusWindow?.occlusionState.rawValue ?? 0); image=\(statusItem?.button?.image != nil); title=\(buttonTitle); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+            "status menu rendered; item_count=\(statusMenu.items.count); status_visible=\(isVisible); button_window=\(statusWindow != nil); window_visible=\(statusWindow?.isVisible ?? false); window_occlusion_visible=\(statusWindow?.occlusionState.contains(.visible) ?? false); window_occlusion_raw=\(statusWindow?.occlusionState.rawValue ?? 0); image=\(statusItem?.button?.image != nil)",
             level: .debug,
             category: "ui.status-menu",
             throttleKey: "status-menu-render",
@@ -5621,9 +5615,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeQuickSwitchMenuItem() -> NSMenuItem {
         let parent = NSMenuItem(title: tr(.keyStatusItemControllerQuickSwitch), action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: tr(.keyStatusItemControllerQuickSwitch2))
-        let choiceSummary = menuInput.choices.map {
-            "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
-        }.joined(separator: "|")
         let menuChoices = QuickSwitchMenuModel.entries(from: menuInput.choices)
         if menuChoices.isEmpty {
             submenu.minimumWidth = QuickSwitchTitleLayout.minimumTabLocation
@@ -5663,7 +5654,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
         }
         SwitchLog.write(
-            "quick-switch menu built; app_type=\(menuInput.activeClient.appType); choice_count=\(menuInput.choices.count); submenu_item_count=\(submenu.items.count); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary); empty_state=\(menuInput.choices.isEmpty)",
+            "quick-switch menu built; app_type=\(menuInput.activeClient.appType); choice_count=\(menuInput.choices.count); submenu_item_count=\(submenu.items.count); choices_omitted=true; empty_state=\(menuInput.choices.isEmpty)",
             level: .debug,
             category: "provider.menu",
             throttleKey: "quick-switch-menu-\(menuInput.activeClient.appType)",

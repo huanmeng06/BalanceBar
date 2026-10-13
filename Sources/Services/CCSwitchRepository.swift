@@ -126,7 +126,7 @@ final class CCSwitchRepository {
         let attributes = try? fileManager.attributesOfItem(atPath: databaseURL.path)
         let databaseSize = (attributes?[.size] as? NSNumber)?.int64Value ?? -1
         SwitchLog.write(
-            "provider choices read started; app_type=\(appType); database_path=\(databaseURL.path); exists=\(databaseExists); readable=\(databaseReadable); size=\(databaseSize)",
+            "provider choices read started; app_type=\(appType); exists=\(databaseExists); readable=\(databaseReadable); size=\(databaseSize)",
             level: .debug,
             category: "provider.read",
             throttleKey: "provider-read-start-\(appType)",
@@ -139,7 +139,7 @@ final class CCSwitchRepository {
             let error = database.map { String(cString: sqlite3_errmsg($0)) } ?? "no sqlite handle"
             if let database { sqlite3_close(database) }
             SwitchLog.write(
-                "provider choices read failed; app_type=\(appType); stage=open; sqlite_code=\(openCode); error=\(error)",
+                "provider choices read failed; app_type=\(appType); stage=open; sqlite_code=\(openCode); error_category=sqlite_error",
                 level: .error,
                 category: "provider.read"
             )
@@ -152,7 +152,7 @@ final class CCSwitchRepository {
         let prepareCode = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
         guard prepareCode == SQLITE_OK, let statement else {
             SwitchLog.write(
-                "provider choices read failed; app_type=\(appType); stage=prepare; sqlite_code=\(prepareCode); error=\(String(cString: sqlite3_errmsg(database)))",
+                "provider choices read failed; app_type=\(appType); stage=prepare; sqlite_code=\(prepareCode); error_category=sqlite_error",
                 level: .error,
                 category: "provider.read"
             )
@@ -169,7 +169,7 @@ final class CCSwitchRepository {
             if stepCode == SQLITE_DONE { break }
             guard stepCode == SQLITE_ROW else {
                 SwitchLog.write(
-                    "provider choices read failed; app_type=\(appType); stage=step; sqlite_code=\(stepCode); error=\(String(cString: sqlite3_errmsg(database)))",
+                    "provider choices read failed; app_type=\(appType); stage=step; sqlite_code=\(stepCode); error_category=sqlite_error",
                     level: .error,
                     category: "provider.read"
                 )
@@ -193,11 +193,8 @@ final class CCSwitchRepository {
             ))
         }
 
-        let choiceSummary = result.map {
-            "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
-        }.joined(separator: "|")
         SwitchLog.write(
-            "provider choices read completed; app_type=\(appType); row_count=\(rowCount); result_count=\(result.count); skipped_rows=\(skippedRowCount); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary)",
+            "provider choices read completed; app_type=\(appType); row_count=\(rowCount); result_count=\(result.count); skipped_rows=\(skippedRowCount); choices_omitted=true",
             category: "provider.read",
             throttleKey: "provider-read-complete-\(appType)",
             minimumInterval: 1

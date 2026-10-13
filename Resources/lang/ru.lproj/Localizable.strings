@@ -500,3 +500,9 @@
 "timezone.lookup_failed" = "Поиск недоступен. Нажмите Return для повтора.";
 
 "codex.banked_reset.expired_value" = "Истекло %1$@";
+
+"dashboard.logs.page.export" = "Экспорт журналов";
+"dashboard.logs.page.export.2" = "Экспорт диагностических журналов";
+"dashboard.logs.page.preview_truncated" = "Показан только последний фрагмент; экспортируйте все сохранённые журналы.";
+"dashboard.logs.page.read_warning" = "Не удалось прочитать некоторые диагностические файлы";
+"dashboard.logs.page.export_failed" = "Не удалось экспортировать диагностические журналы";

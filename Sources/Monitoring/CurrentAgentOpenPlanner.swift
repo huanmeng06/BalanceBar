@@ -127,7 +127,7 @@ enum CurrentAgentApplicationActivator {
         NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { _, error in
             if let error {
                 SwitchLog.write(
-                    "open current agent terminal workspace failed; pid=\(pid); path=\(bundleURL.path); error=\(error.localizedDescription)",
+                    "open current agent terminal workspace failed; pid_present=true; error_category=workspace_open",
                     level: .warning,
                     category: "ui.menu"
                 )
@@ -148,7 +148,7 @@ enum CurrentAgentApplicationActivator {
             .executeAndReturnError(&error)
         if let error {
             SwitchLog.write(
-                "open current agent terminal AppleScript failed; bundle=\(bundleIdentifier); error=\(error)",
+                "open current agent terminal AppleScript failed; bundle_id_present=true; error_category=applescript",
                 level: .debug,
                 category: "ui.menu"
             )

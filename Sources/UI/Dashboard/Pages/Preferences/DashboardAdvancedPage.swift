@@ -34,7 +34,12 @@ final class DashboardAdvancedPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.revealLog(_:))
         )
-        let logButtons = NSStackView(views: [refreshLog, revealLog])
+        let exportLog = NSButton(
+            title: tr(.keyDashboardLogsPageExport),
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.exportLog(_:))
+        )
+        let logButtons = NSStackView(views: [refreshLog, revealLog, exportLog])
         logButtons.orientation = .horizontal
         logButtons.spacing = 8
         logButtons.setHuggingPriority(.required, for: .horizontal)

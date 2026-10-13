@@ -10394,3 +10394,188 @@ extension DashboardPreferencePagesTests {
         XCTAssertTrue(menu.items.compactMap { $0.title }.contains { $0.contains(" - ") })
     }
 }
+
+extension DashboardPreferencePagesTests {
+    func testDiagnosticLogReaderMergesArchivesAndPreservesUTF8() throws {
+        try requireIsolatedDiagnosticDirectory()
+        let directory = SwitchLog.directoryURL
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let archive = directory.appendingPathComponent("debug-2026-10-12T00-00-00Z-test.log")
+        try Data("归档中文 😀\n".utf8).write(to: archive)
+        try Data("当前日志组合字符 é\n".utf8).write(to: SwitchLog.fileURL)
+        defer { try? FileManager.default.removeItem(at: archive); try? FileManager.default.removeItem(at: SwitchLog.fileURL) }
+
+        switch SwitchLog.readSnapshot() {
+        case .data(let text, _, _):
+            XCTAssertTrue(text.contains("归档中文 😀"))
+            XCTAssertTrue(text.contains("当前日志组合字符 é"))
+        default:
+            XCTFail("expected merged diagnostic log data")
+        }
+    }
+
+    func testDiagnosticLogWriterRotatesAtFiveMiB() throws {
+        try requireIsolatedDiagnosticDirectory()
+        let directory = SwitchLog.directoryURL
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let payload = String(repeating: "中文😀日志\n", count: 400_000)
+        SwitchLog.write(payload, category: "test")
+        _ = SwitchLog.readSnapshot()
+        SwitchLog.write("rotation marker", category: "test")
+        _ = SwitchLog.readSnapshot()
+        defer { for url in SwitchLog.archiveURLs { try? FileManager.default.removeItem(at: url) }; try? FileManager.default.removeItem(at: SwitchLog.fileURL) }
+
+        let archives = SwitchLog.archiveURLs
+        XCTAssertGreaterThanOrEqual(archives.count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: SwitchLog.fileURL.path))
+        XCTAssertTrue(archives.contains { url in
+            (try? String(decoding: Data(contentsOf: url), as: UTF8.self).contains("中文😀日志")) == true
+        })
+        XCTAssertLessThanOrEqual(try Data(contentsOf: SwitchLog.fileURL).count, 5 * 1_024 * 1_024)
+    }
+
+    func testDiagnosticLogExportIncludesFullRetainedLogs() throws {
+        try requireIsolatedDiagnosticDirectory()
+        SwitchLog.write("export marker", category: "test")
+        _ = SwitchLog.readSnapshot()
+        let destination = SwitchLog.directoryURL.appendingPathComponent("export.log")
+        defer { try? FileManager.default.removeItem(at: destination) }
+        try SwitchLog.exportAll(to: destination)
+        let exported = try String(contentsOf: destination, encoding: .utf8)
+        XCTAssertTrue(exported.contains("export marker"))
+        XCTAssertTrue(exported.contains("BalanceBar diagnostic export"))
+    }
+
+    func testDiagnosticLogPreviewKeepsLongSingleRecordReadable() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        let marker = String(repeating: "长日志😀", count: 40_000)
+        try Data(marker.utf8).write(to: SwitchLog.fileURL)
+        guard case .data(let text, _, let warnings) = SwitchLog.readSnapshot() else {
+            return XCTFail("expected preview data")
+        }
+        XCTAssertFalse(text.isEmpty)
+        XCTAssertTrue(warnings.contains { $0.contains("超过预览限制") } || text.contains("长日志😀"))
+    }
+
+    func testDiagnosticLogRedactsAuthorizationBeforeWritingAndExporting() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        SwitchLog.write("Authorization: Bearer abc123SECRET", category: "security")
+        _ = SwitchLog.readSnapshot()
+        let raw = try String(contentsOf: SwitchLog.fileURL, encoding: .utf8)
+        XCTAssertFalse(raw.contains("abc123SECRET"))
+        let destination = SwitchLog.directoryURL.appendingPathComponent("safe-export.log")
+        defer { try? FileManager.default.removeItem(at: destination) }
+        try SwitchLog.exportAll(to: destination)
+        XCTAssertFalse(try String(contentsOf: destination, encoding: .utf8).contains("abc123SECRET"))
+    }
+
+    func testDiagnosticLogRedactsBasicCookieJSONAndURLCredentials() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        let basic = "basic-secret-987654"
+        let cookie = "cookie-secret-987654"
+        let json = "json-secret-987654"
+        let query = "query-secret-987654"
+        let apiKey = "opaqueAPIValue999"
+        let negotiate = "opaqueAuthValue999"
+        let pathSecret = "opaquePathValue999"
+        let bareToken = "sk-ant-api03-verySensitiveString123"
+        SwitchLog.write("Authorization: Basic \(basic); status=401", category: "security")
+        SwitchLog.write("Cookie: session=\(cookie); csrf=\(cookie)", category: "security")
+        SwitchLog.write("{\"credentials\":{\"x-secret-header\":\"\(json)\"},\"tokens\":[\"\(json)\"]}", category: "security")
+        SwitchLog.write("https://user:password-secret@example.test/path?signature=\(query)&status=401", category: "security")
+        SwitchLog.write("Authorization: ApiKey \(apiKey); status=401", category: "security")
+        SwitchLog.write("Authorization: Negotiate \(negotiate); status=401", category: "security")
+        SwitchLog.write("https://example.test/\(pathSecret)/v1/status", category: "security")
+        SwitchLog.write(bareToken, category: "security")
+        _ = SwitchLog.readSnapshot()
+        let raw = try String(contentsOf: SwitchLog.fileURL, encoding: .utf8)
+        XCTAssertFalse(raw.contains(basic))
+        XCTAssertFalse(raw.contains(cookie))
+        XCTAssertFalse(raw.contains(json))
+        XCTAssertFalse(raw.contains(query))
+        XCTAssertFalse(raw.contains("password-secret"))
+        XCTAssertFalse(raw.contains(apiKey))
+        XCTAssertFalse(raw.contains(negotiate))
+        XCTAssertFalse(raw.contains(pathSecret))
+        XCTAssertFalse(raw.contains(bareToken))
+        XCTAssertTrue(raw.contains("status=401"))
+    }
+
+
+    func testDiagnosticJSONStringsAndHeadersAreSanitized() throws {
+        try requireIsolatedDiagnosticDirectory()
+        SwitchLog.write(#"{"error":"Authorization: Bearer abcDEF123456","status":401}"#, category: "security")
+        SwitchLog.write(#"{"headers":{"X-Private-Session":"opaqueSECRET001"},"status":200}"#, category: "security")
+        _ = SwitchLog.readSnapshot()
+        let raw = try String(contentsOf: SwitchLog.fileURL, encoding: .utf8)
+        XCTAssertFalse(raw.contains("abcDEF123456"))
+        XCTAssertFalse(raw.contains("opaqueSECRET001"))
+        XCTAssertTrue(raw.contains("401"))
+        XCTAssertTrue(raw.contains("200"))
+        let destination = SwitchLog.directoryURL.appendingPathComponent("export.log")
+        try SwitchLog.exportAll(to: destination)
+        let exported = try String(contentsOf: destination, encoding: .utf8)
+        XCTAssertFalse(exported.contains("abcDEF123456"))
+        XCTAssertFalse(exported.contains("opaqueSECRET001"))
+    }
+
+    func testDiagnosticExportOmitsSensitiveMultilineRecordOnly() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        let legacyFormat = """
+        [2026-10-12T12:01:00Z] [INFO] [general] {
+          "credentials": {
+            "thirdPartyKey": "sensitive_opaque_value_XYZ01234"
+          },
+          "status": 401
+        }
+        [2026-10-12T12:02:00Z] [INFO] [general] safe-marker status=200
+        """
+        try Data(legacyFormat.utf8).write(to: SwitchLog.fileURL)
+        let destination = SwitchLog.directoryURL.appendingPathComponent("export.log")
+        try SwitchLog.exportAll(to: destination)
+        let exported = try String(contentsOf: destination, encoding: .utf8)
+        XCTAssertFalse(exported.contains("sensitive_opaque_value_XYZ01234"))
+        XCTAssertTrue(exported.contains("[structured-details-omitted]"))
+        XCTAssertTrue(exported.contains("safe-marker status=200"))
+        XCTAssertEqual(try String(contentsOf: SwitchLog.fileURL, encoding: .utf8), legacyFormat)
+    }
+
+    func testLegacyNestedTokenAndPasswordContainersAreOmitted() throws {
+        try requireIsolatedDiagnosticDirectory()
+        try FileManager.default.createDirectory(at: SwitchLog.directoryURL, withIntermediateDirectories: true)
+        for key in ["access_token", "password"] {
+            let source = """
+            [2026-10-12T12:01:00Z] [INFO] [general] {
+              "\(key)": {
+                "nested": {"a": "secretABC123"},
+                "b": "secretDEF456"
+              },
+              "status": 401
+            }
+            [2026-10-12T12:02:00Z] [INFO] [general] safe-marker status=200
+            """
+            try Data(source.utf8).write(to: SwitchLog.fileURL)
+            let destination = SwitchLog.directoryURL.appendingPathComponent("export.log")
+            try SwitchLog.exportAll(to: destination)
+            let exported = try String(contentsOf: destination, encoding: .utf8)
+            XCTAssertFalse(exported.contains("secretABC123"), key)
+            XCTAssertFalse(exported.contains("secretDEF456"), key)
+            XCTAssertTrue(exported.contains("[structured-details-omitted]"), key)
+            XCTAssertTrue(exported.contains("safe-marker status=200"), key)
+            XCTAssertEqual(try String(contentsOf: SwitchLog.fileURL, encoding: .utf8), source)
+        }
+    }
+
+    private func requireIsolatedDiagnosticDirectory() throws {
+        let directory = URL(fileURLWithPath: "/tmp/BalanceBarDiagnosticTests-\(UUID().uuidString)", isDirectory: true)
+        SwitchLog.setTestingDirectory(directory)
+        addTeardownBlock {
+            SwitchLog.setTestingDirectory(nil)
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+}

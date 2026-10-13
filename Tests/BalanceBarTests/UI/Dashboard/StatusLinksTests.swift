@@ -450,7 +450,9 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(scrollView.allowsVerticalScrolling)
         XCTAssertTrue(scrollView.allowsHorizontalScrolling)
         XCTAssertGreaterThan(editor.tableViewForTesting.frame.width, viewportWidth)
-        XCTAssertEqual(editor.nameColumn.width, normalNameWidth, accuracy: 0.001)
+        // AppKit pixel alignment and the editor's 0.5pt layout tolerance can
+        // produce a fractional column width without changing scrolling behavior.
+        XCTAssertEqual(editor.nameColumn.width, normalNameWidth, accuracy: StatusLinksEditorHostingView.horizontalOverflowTolerance)
         XCTAssertGreaterThan(editor.urlColumn.width, normalURLWidth)
 
         scrollView.contentView.scroll(to: NSPoint(x: 24, y: 0))
