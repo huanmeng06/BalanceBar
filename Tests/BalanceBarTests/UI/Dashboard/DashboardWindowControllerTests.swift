@@ -3657,6 +3657,41 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
     }
 
+    func testAccountMarqueeOpticalViewportAlignsToTitleInkWithoutDoubleInset() throws {
+        for (titleText, hintText) in [
+            ("Reset-Wahrscheinlichkeit", "Offizieller Hinweis · Kein Zeitpunkt"),
+            ("Reset probability", "Official reset hint · No specific time"),
+            ("Probabilité de réinitialisation", "Indication officielle · Pas d'heure"),
+            ("重置概率", "官方信号 · 未指定时间")
+        ] {
+            let host = NSView(frame: NSRect(x: 0, y: 0, width: 304, height: 80))
+            let title = AccountMarqueeView(text: titleText, font: .systemFont(ofSize: 12, weight: .medium),
+                                          textColor: .labelColor, frame: NSRect(x: 16, y: 40, width: 260, height: 18))
+            let anchor = AccountMarqueeView.leadingInkInset(of: title.accountLabel)
+            let hint = AccountMarqueeView(text: hintText, font: .systemFont(ofSize: 13),
+                                         textColor: .secondaryLabelColor, frame: NSRect(x: 16, y: 20, width: 96, height: 18),
+                                         leadingInkAnchor: anchor)
+            host.addSubview(title)
+            host.addSubview(hint)
+            defer { hint.removeFromSuperview(); title.removeFromSuperview() }
+            let ownInset = AccountMarqueeView.leadingInkInset(of: hint.accountLabel)
+            let titleInkX = title.accountLabel.convert(NSPoint(x: anchor, y: 0), to: host).x
+            XCTAssertEqual(hint.convert(hint.textClipFrame.origin, to: host).x, titleInkX, accuracy: 0.001)
+            XCTAssertEqual(hint.accountLabel.convert(NSPoint(x: ownInset, y: 0), to: host).x, titleInkX, accuracy: 0.001)
+            XCTAssertEqual(hint.textClipFrame.maxX, hint.bounds.maxX, accuracy: 0.001)
+            XCTAssertGreaterThanOrEqual(hint.accountLabel.frame.width, ceil(try XCTUnwrap(hint.accountLabel.cell).cellSize.width))
+            let clip = try XCTUnwrap(hint.accountLabel.superview)
+            XCTAssertTrue(clip.layer?.masksToBounds == true)
+            XCTAssertEqual(hint.scrollOverflow, hint.accountLabel.frame.maxX - clip.bounds.maxX, accuracy: 0.001)
+            XCTAssertLessThanOrEqual(hint.accountLabel.frame.maxX - hint.scrollDistance, clip.bounds.maxX - hint.edgeFadeInset + 0.001)
+            for offset in [CGFloat(0), -1, -hint.scrollDistance, 0] {
+                hint.applyScrollOffsetForTesting(offset)
+                XCTAssertEqual(hint.convert(hint.textClipFrame.origin, to: host).x, titleInkX, accuracy: 0.001)
+                XCTAssertEqual(try XCTUnwrap(clip.layer?.mask).frame, clip.bounds)
+            }
+        }
+    }
+
     func testAccountMarqueeSpeedsUpForLongerOverflowWithConcaveCurve() {
         let shortSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 120)
         let mediumSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 480)
@@ -6450,6 +6485,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                     $0.identifier?.rawValue == "codex.bankedReset.officialHint"
                 })
                 XCTAssertGreaterThanOrEqual(probabilityTextMinX - probabilityHint.frame.maxX, 12 - 0.001)
+                let probabilityTitle = try XCTUnwrap(allControls(of: overview, as: AccountMarqueeView.self).first {
+                    $0.accountLabel.stringValue == tr(.keyCodexBankedResetProbabilityPrefix)
+                })
+                let anchor = AccountMarqueeView.leadingInkInset(of: probabilityTitle.accountLabel)
+                XCTAssertEqual(probabilityHint.textClipFrame.minX, anchor, accuracy: 0.001)
+                XCTAssertEqual(
+                    probabilityHint.accountLabel.convert(NSPoint(x: AccountMarqueeView.leadingInkInset(of: probabilityHint.accountLabel), y: 0), to: overview).x,
+                    probabilityTitle.accountLabel.convert(NSPoint(x: anchor, y: 0), to: overview).x,
+                    accuracy: 0.001
+                )
                 let chromes = allControls(of: overview, as: BankedResetChromeView.self)
                 XCTAssertEqual(chromes.count, count)
                 for chrome in chromes {

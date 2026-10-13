@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import QuartzCore
+import CoreText
 
 enum MenuBarWidthPerformance {
     #if DEBUG
@@ -129,6 +130,7 @@ struct AccountMarqueeLayout: Equatable {
     let isScrollable: Bool
     let edgeFadeWidth: CGFloat
     let contentWidth: CGFloat
+    let contentLeadingInset: CGFloat
     let textOverflow: CGFloat
     let trailingFadeBuffer: CGFloat
     let scrollDistance: CGFloat
@@ -137,11 +139,13 @@ struct AccountMarqueeLayout: Equatable {
     init(
         measuredTextWidth: CGFloat,
         clipBounds: NSRect,
-        fadeWidth: CGFloat = Self.defaultFadeWidth
+        fadeWidth: CGFloat = Self.defaultFadeWidth,
+        contentLeadingInset: CGFloat = 0
     ) {
         let viewportWidth = max(0, clipBounds.width)
         let textWidth = max(0, measuredTextWidth)
-        let overflow = max(0, textWidth - viewportWidth)
+        let leadingInset = max(0, contentLeadingInset)
+        let overflow = max(0, textWidth - leadingInset - viewportWidth)
         let scrollable = viewportWidth > 0 && overflow > 0
         let effectiveFadeWidth = scrollable
             ? min(max(0, fadeWidth), min(viewportWidth / 4, overflow))
@@ -151,7 +155,8 @@ struct AccountMarqueeLayout: Equatable {
         self.measuredTextWidth = textWidth
         self.isScrollable = scrollable
         self.edgeFadeWidth = effectiveFadeWidth
-        self.contentWidth = scrollable ? textWidth : max(viewportWidth, textWidth)
+        self.contentLeadingInset = leadingInset
+        self.contentWidth = scrollable ? textWidth : max(viewportWidth + leadingInset, textWidth)
         self.textOverflow = overflow
         self.trailingFadeBuffer = scrollable ? effectiveFadeWidth : 0
         self.scrollDistance = scrollable
@@ -171,11 +176,11 @@ struct AccountMarqueeLayout: Equatable {
         }
     }
 
-    /// The text starts in the same coordinate space as the viewport's leading
-    /// edge. This is intentionally not shifted by the fade width.
+    /// Optical alignment trims the label's leading drawing space without
+    /// reducing its full cell width. Fade width never adds another text inset.
     var contentFrame: NSRect {
         NSRect(
-            x: clipBounds.minX,
+            x: clipBounds.minX - contentLeadingInset,
             y: clipBounds.minY,
             width: contentWidth,
             height: clipBounds.height
@@ -251,14 +256,20 @@ final class AccountMarqueeView: NSView {
     private(set) var scrollDistance: CGFloat = 0
     private(set) var scrollOffset: CGFloat = 0
 
+    private var opticalClipHost: NSView?
+    private let leadingInkAnchor: CGFloat?
+    private var clippingView: NSView { opticalClipHost ?? self }
+    var textClipFrame: NSRect { opticalClipHost?.frame ?? bounds }
+
     private var edgeFadeMask: CAGradientLayer?
     private var contentLayout: AccountMarqueeLayout?
     private var configuredText: String?
     private var configuredFontSignature: String?
     private var scrollActivityTimer: Timer?
 
-    init(text: String, font: NSFont, textColor: NSColor, frame: NSRect) {
+    init(text: String, font: NSFont, textColor: NSColor, frame: NSRect, leadingInkAnchor: CGFloat? = nil) {
         accountLabel = NSTextField(labelWithString: text)
+        self.leadingInkAnchor = leadingInkAnchor
         super.init(frame: frame)
 
         wantsLayer = true
@@ -271,7 +282,16 @@ final class AccountMarqueeView: NSView {
         accountLabel.usesSingleLineMode = true
         accountLabel.maximumNumberOfLines = 1
         accountLabel.wantsLayer = true
-        addSubview(accountLabel)
+        if leadingInkAnchor != nil {
+            let clip = NSView(frame: bounds)
+            clip.wantsLayer = true
+            clip.layer?.masksToBounds = true
+            addSubview(clip)
+            clip.addSubview(accountLabel)
+            opticalClipHost = clip
+        } else {
+            addSubview(accountLabel)
+        }
 
         configureContentIfNeeded(force: true)
     }
@@ -331,10 +351,16 @@ final class AccountMarqueeView: NSView {
             Self.textWidth(of: text, font: font),
             ceil(accountLabel.cell?.cellSize.width ?? 0)
         )
+        if let clip = opticalClipHost, let anchor = leadingInkAnchor {
+            let inset = min(max(0, anchor), bounds.width)
+            clip.frame = NSRect(x: bounds.minX + inset, y: bounds.minY,
+                                width: max(0, bounds.width - inset), height: bounds.height)
+        }
         let nextLayout = AccountMarqueeLayout(
             measuredTextWidth: labelWidth,
-            clipBounds: bounds,
-            fadeWidth: Self.defaultEdgeFadeWidth
+            clipBounds: clippingView.bounds,
+            fadeWidth: Self.defaultEdgeFadeWidth,
+            contentLeadingInset: leadingInkAnchor == nil ? 0 : Self.leadingInkInset(of: accountLabel)
         )
         guard force
             || contentLayout != nextLayout
@@ -371,10 +397,10 @@ final class AccountMarqueeView: NSView {
                 NSNumber(value: Double($0))
             }
             edgeFadeMask = mask
-            layer?.mask = nil
+            clippingView.layer?.mask = nil
             updateEdgeFadeMaskFrame()
         } else {
-            layer?.mask = nil
+            clippingView.layer?.mask = nil
             edgeFadeMask = nil
             showsEdgeFade = false
         }
@@ -389,7 +415,7 @@ final class AccountMarqueeView: NSView {
         guard let mask = edgeFadeMask else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        mask.frame = layer?.bounds ?? bounds
+        mask.frame = clippingView.layer?.bounds ?? clippingView.bounds
         CATransaction.commit()
     }
 
@@ -466,9 +492,9 @@ final class AccountMarqueeView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if leading > 0 || trailing > 0, let mask = edgeFadeMask {
-            let attaching = layer?.mask !== mask
+            let attaching = clippingView.layer?.mask !== mask
             if attaching {
-                layer?.mask = mask
+                clippingView.layer?.mask = mask
                 updateEdgeFadeMaskFrame()
             }
             // Interpolate between samples independently at each edge. The
@@ -480,7 +506,7 @@ final class AccountMarqueeView: NSView {
             let trailingEdge = NSColor.black.withAlphaComponent(1 - trailing).cgColor
             mask.colors = [leadingEdge, NSColor.black.cgColor, NSColor.black.cgColor, trailingEdge]
         } else {
-            layer?.mask = nil
+            clippingView.layer?.mask = nil
             // Reset a retained mask for the next cycle's first attachment.
             edgeFadeMask?.colors = Array(repeating: NSColor.black.cgColor, count: 4)
         }
@@ -495,6 +521,18 @@ final class AccountMarqueeView: NSView {
         applyScrollState(
             AccountMarqueeScrollState(offset: offset, overflow: scrollOverflow)
         )
+    }
+
+    /// Include the NSTextField drawing inset and the shaped run's ink bearing,
+    /// rather than aligning the viewport to a guessed padding or one language.
+    static func leadingInkInset(of label: NSTextField) -> CGFloat {
+        let font = label.font ?? .systemFont(ofSize: 13)
+        let text = label.stringValue
+        let advance = (text as NSString).size(withAttributes: [.font: font]).width
+        let cellInset = max(0, ((label.cell?.cellSize.width ?? advance) - advance) / 2)
+        let run = NSAttributedString(string: text, attributes: [.font: font])
+        let ink = CTLineGetImageBounds(CTLineCreateWithAttributedString(run as CFAttributedString), nil)
+        return max(0, cellInset + (ink.isNull ? 0 : ink.minX))
     }
 
     static func textWidth(of text: String, font: NSFont) -> CGFloat {
@@ -6309,13 +6347,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         _ text: String,
         font: NSFont,
         textColor: NSColor,
-        frame: NSRect
+        frame: NSRect,
+        leadingInkAnchor: CGFloat? = nil
     ) -> AccountMarqueeView {
         AccountMarqueeView(
             text: text,
             font: font,
             textColor: textColor,
-            frame: frame
+            frame: frame,
+            leadingInkAnchor: leadingInkAnchor
         )
     }
 
@@ -6607,23 +6647,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         }
         view.addSubview(amount)
-        view.addSubview(
-            makeMarqueeOverviewLabel(
-                tr(.keyCodexBankedResetProbabilityPrefix),
-                font: .systemFont(
-                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                    weight: .medium
-                ),
-                textColor: .labelColor,
-                frame: overviewMarqueeFrame(
-                    row.quotaDetail,
-                    avoidingAmountFrame: amount.frame,
-                    amountText: marqueeAmountText,
-                    amountFont: reservationFont,
-                    minimumAmountGap: 12
-                )
+        let probabilityTitle = makeMarqueeOverviewLabel(
+            tr(.keyCodexBankedResetProbabilityPrefix),
+            font: .systemFont(
+                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                weight: .medium
+            ),
+            textColor: .labelColor,
+            frame: overviewMarqueeFrame(
+                row.quotaDetail,
+                avoidingAmountFrame: amount.frame,
+                amountText: marqueeAmountText,
+                amountFont: reservationFont,
+                minimumAmountGap: 12
             )
         )
+        view.addSubview(probabilityTitle)
+        let leadingInkAnchor = AccountMarqueeView.leadingInkInset(of: probabilityTitle.accountLabel)
         if let link = amount as? HoverLinkTextField {
             view.track(link)
         }
@@ -6641,10 +6681,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     to: view,
                     frame: metricsFrame,
                     forecast: forecast,
-                    provider: provider
+                    provider: provider,
+                    leadingInkAnchor: leadingInkAnchor
                 )
             } else if forecast.isOfficialResetConfirmed, let hint = forecast.officialHintText() {
-                addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint)
+                addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint, leadingInkAnchor: leadingInkAnchor)
             } else if let remaining = forecast.officialCountdownRemainingFraction(
                 now: bankedResetCountdownNow()
             ) {
@@ -6654,7 +6695,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     remainingFraction: remaining
                 )
             } else if let hint = forecast.officialHintText() {
-                addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint)
+                addBankedResetOfficialHint(to: view, frame: metricsFrame, text: hint, leadingInkAnchor: leadingInkAnchor)
             }
         }
     }
@@ -6686,11 +6727,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func addBankedResetOfficialHint(
         to view: MenuHoverLinkHostView,
         frame: NSRect,
-        text: String
+        text: String,
+        leadingInkAnchor: CGFloat
     ) {
         let label = makeMarqueeOverviewLabel(
             text, font: OpenCodexCardLayout.bankedResetForecastSubtitleFont,
-            textColor: .secondaryLabelColor, frame: frame
+            textColor: .secondaryLabelColor, frame: frame, leadingInkAnchor: leadingInkAnchor
         )
         label.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.officialHint")
         label.accountLabel.identifier = label.identifier
@@ -6701,7 +6743,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         to view: MenuHoverLinkHostView,
         frame: NSRect,
         forecast: CodexResetForecast,
-        provider: String
+        provider: String,
+        leadingInkAnchor: CGFloat
     ) {
         let subtitleFont = OpenCodexCardLayout.bankedResetForecastSubtitleFont
         let numericFont = OpenCodexCardLayout.bankedResetForecastNumericFont
@@ -6727,7 +6770,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if prefixWidth + 4 + percentWidth > frame.width {
             let text = prefix48 + " " + forecast.probability48h.displayText
             let marquee = makeMarqueeOverviewLabel(
-                text, font: subtitleFont, textColor: .secondaryLabelColor, frame: frame
+                text, font: subtitleFont, textColor: .secondaryLabelColor, frame: frame, leadingInkAnchor: leadingInkAnchor
             )
             marquee.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.forecastSubtitle")
             view.addSubview(marquee)
