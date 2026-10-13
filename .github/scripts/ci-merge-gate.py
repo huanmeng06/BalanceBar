@@ -63,8 +63,22 @@ def scope_from_history(jobs, run_id, head_sha, attempt):
     latest = max(candidates, key=lambda j: (j['run_attempt'], j['id']))
     if (str(latest.get('run_id')) == run_id and latest.get('head_sha') == head_sha
             and latest['run_attempt'] >= 1 and latest.get('conclusion') == 'success'):
-        return latest
+        same_execution = [j for j in candidates if str(j.get('run_id')) == run_id
+                          and j.get('head_sha') == head_sha and j.get('conclusion') == 'success'
+                          and j.get('started_at') == latest.get('started_at')
+                          and j.get('completed_at') == latest.get('completed_at')]
+        return min(same_execution, key=lambda j: (j['run_attempt'], j['id']))
     return None
+
+
+
+def fresh_execution(job, since):
+    # GitHub can clone a successful dependency into a new attempt/job ID while
+    # retaining its old execution timestamps. run_attempt alone is not proof.
+    if job_state(job) in WAITING:
+        return True
+    return bool(job.get('started_at') and job.get('completed_at')
+                and job['started_at'] >= since and job['completed_at'] >= since)
 
 
 def wait_for_evidence(event, event_name):
@@ -83,6 +97,11 @@ def wait_for_evidence(event, event_name):
             text=True, timeout=15).strip() == 'version-only'
     run_path = f'repos/{repo}/actions/runs/{run_id}'
     jobs_path = f'{run_path}/attempts/{attempt}/jobs?per_page=100'
+    attempt_info = api(f'{run_path}/attempts/{attempt}', timeout=15)
+    if (str(attempt_info.get('id')) != run_id or attempt_info.get('head_sha') != head
+            or attempt_info.get('run_attempt') != attempt or not attempt_info.get('run_started_at')):
+        return False, 'Attempt identity missing/mismatched', {}
+    since = attempt_info['run_started_at']
     history_scope = None
     history_loaded = False
     missing_since = {}
@@ -105,7 +124,7 @@ def wait_for_evidence(event, event_name):
             jobs = request(jobs_path)['jobs']
             current = {key: next((j for j in jobs if j['name'] == name and
                                   j.get('run_attempt') == attempt and str(j.get('run_id')) == run_id
-                                  and j.get('head_sha') == head), None) for key, name in NAMES.items()}
+                                  and j.get('head_sha') == head and fresh_execution(j, since)), None) for key, name in NAMES.items()}
             if not current['scope'] and attempt > 1 and not history_loaded:
                 run = request(run_path)
                 if str(run['id']) != run_id or run['head_sha'] != head:

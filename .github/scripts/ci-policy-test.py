@@ -28,7 +28,9 @@ def job(key, state='success', attempt=2, **changes):
     value = {'id': attempt * 10 + list(gate.NAMES).index(key), 'name': gate.NAMES[key],
              'run_id': 123, 'run_attempt': attempt, 'head_sha': 'new',
              'status': 'in_progress' if state in gate.WAITING else 'completed',
-             'conclusion': None if state in gate.WAITING else state}
+             'conclusion': None if state in gate.WAITING else state,
+             'started_at': '2026-10-13T07:30:00Z' if attempt >= 2 else '2026-10-13T07:20:00Z',
+             'completed_at': '2026-10-13T07:30:05Z' if attempt >= 2 else '2026-10-13T07:20:05Z'}
     return dict(value, **changes)
 
 
@@ -54,6 +56,9 @@ class PolicyTests(unittest.TestCase):
                 return live or copy.deepcopy(READY)
             if '?filter=all' in path:
                 return {'jobs': list(history), 'total_count': len(history)}
+            if '/attempts/' in path and '/jobs?' not in path:
+                return {'id': 123, 'head_sha': 'new', 'run_attempt': attempt,
+                        'run_started_at': '2026-10-13T07:30:00Z'}
             if '/attempts/' in path:
                 values = current(clock.now) if callable(current) else current
                 return {'jobs': values}
@@ -131,6 +136,19 @@ class PolicyTests(unittest.TestCase):
                                                   history=[job('scope', attempt=1, **changes)])
             self.assertFalse(result[0])
             self.assertEqual(elapsed, 60)
+
+    def test_copied_jobs_with_new_attempt_ids_are_not_fresh_full(self):
+        original = [job(key, attempt=1) for key in ('scope', 'full', 'smoke')]
+        copies = [dict(j, id=j['id'] + 100, run_attempt=2) for j in original]
+        result, elapsed, _, _ = self.run_gate(copies, history=original)
+        self.assertFalse(result[0])
+        self.assertEqual(elapsed, 60)
+        self.assertTrue(result[2]['scope_reused'])
+        self.assertEqual(result[2]['evidence']['scope']['attempt'], 1)
+        self.assertIn('full', result[1])
+        result, _, _, _ = self.run_gate([copies[0], job('full'), job('smoke')], history=original)
+        self.assertTrue(result[0])
+        self.assertTrue(result[2]['scope_reused'])
 
     def test_current_scope_preferred_even_if_failed(self):
         result, elapsed, calls, _ = self.run_gate([job('scope', 'failure'), job('full'), job('smoke')],

@@ -269,7 +269,10 @@ in the same run must have succeeded with the same head SHA. A newer failed,
 cancelled or skipped scope blocks reuse. Full/version exemption/smoke are never
 borrowed from another attempt or run. Existing current-attempt scope takes
 precedence, including its queued/failure state. Evidence job IDs and attempts are
-reported in the summary. API calls are bounded and fail closed on failure. It accepts
+reported in the summary. GitHub may assign carried jobs a new attempt/job ID
+while preserving old execution timestamps; only scope may use that carry.
+Full/version/smoke must start and finish at or after the current attempt start.
+API calls are bounded and fail closed on failure. It accepts
 only same-run Full success or the successful explicit version exemption after
 scope validation (current or explicitly reused) and independently repeating the PR-wide version classifier. It re-reads live PR state and fails for Draft/closed or changed
 head/base SHA and **base ref**, rejecting missing identity fields. Hosted check-run API shows checks attached to the PR **head SHA**. Checkout

@@ -141,3 +141,13 @@ BLOCK 1 remains an Owner activation/merge-blocking acceptance step after workflo
 integration and safe migration of open PRs. It is not a Swift fix and is not
 claimed completed. Performance risks (test-target compilation and full-history
 fetch) are recorded only; no target split or history optimization is included.
+
+
+Hosted discovery during rework: Re-run failed jobs copied successful scope into
+attempt 2 under a new job ID but kept its attempt-1 start/end timestamps.
+Therefore `run_attempt` alone cannot prove execution freshness. The gate now
+requires Full/version/smoke execution timestamps within the current attempt;
+carried scope is resolved to its original successful execution for provenance.
+A regression reproduces copied successful Full/smoke with new attempt IDs and
+verifies that they are rejected, while copied scope plus genuinely fresh Full
+and smoke succeeds. Final hosted evidence is in the PR/Issue handoff.
