@@ -651,6 +651,25 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertFalse(pace.isMenuTracking)
     }
 
+    func testPaceTooltipUsesSettingsTimezoneAtCreationAndOpenRefresh() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        let input = makeMenuInput()
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 40), refreshDate: now,
+            menuInput: input, settings: makeSettings(timeZone: TimeZone(secondsFromGMT: 8 * 3600)!))
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let pace = try XCTUnwrap(host.paceViews.first)
+        XCTAssertTrue(try XCTUnwrap(pace.tooltipContent?.body).contains("07:53"))
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 40), refreshDate: now,
+            menuInput: input, settings: makeSettings(timeZone: TimeZone(secondsFromGMT: 0)!))
+        XCTAssertTrue(host.paceViews.first === pace)
+        XCTAssertTrue(try XCTUnwrap(pace.tooltipContent?.body).contains("23:53"))
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
     func testPaceInvalidWindowCanRecoverInPlaceAndIdentitySwitchClearsIt() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let controller = makeController()
@@ -703,7 +722,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         controller.menuWillOpen(controller.statusMenuForTesting)
         XCTAssertNotNil(try currentPace().pace)
         XCTAssertNil(try currentPace().prediction)
-        XCTAssertNil(try currentPace().tooltipContent?.body)
+        XCTAssertNotNil(try currentPace().tooltipContent?.body)
         controller.update(snapshot: .error("Temporary quota failure"), refreshDate: now,
             menuInput: makeMenuInput(), settings: makeSettings())
         XCTAssertNil(try currentPace().prediction)
@@ -1196,13 +1215,14 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         )
     }
 
-    private func makeSettings() -> StatusItemController.MenuBarSettings {
+    private func makeSettings(timeZone: TimeZone = .autoupdatingCurrent) -> StatusItemController.MenuBarSettings {
         StatusItemController.MenuBarSettings(
             showIcon: true,
             showAmount: true,
             showReset: true,
             horizontalPadding: 6,
-            keepMenuOpenAfterRefresh: true
+            keepMenuOpenAfterRefresh: true,
+            displayTimeZone: timeZone
         )
     }
 }

@@ -218,6 +218,16 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertTrue(views[0].isTooltipVisible)
             XCTAssertNotNil(views[0].tooltipContent?.body)
             XCTAssertTrue(popovers[0].anchorView === host)
+            let contentController = popovers[0].contentViewController
+            views[0].pointerLocationForTesting = NSPoint(x: views[0].markerCenterX, y: 9)
+            let now = Date(timeIntervalSince1970: 1_700_000_000)
+            for minute in 1...3 {
+                views[0].update(window: views[0].quotaWindow, now: now.addingTimeInterval(Double(minute) * 60),
+                    cycleStart: OfficialQuotaUsagePrediction.verifiedCycleStart(for: views[0].quotaWindow))
+                XCTAssertTrue(views[0].isTooltipVisible)
+                XCTAssertTrue(popovers[0].contentViewController === contentController)
+                XCTAssertEqual(popovers[0].showCount, 1)
+            }
             host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
             XCTAssertTrue(views[0].hasPendingCloseForTesting)
             self.enterPace(views[0])
@@ -230,7 +240,7 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertEqual(popovers[1].showCount, 0)
             XCTAssertEqual((popovers[0].contentViewController as? QuotaPaceTooltipViewController)?.content,
                 views[1].tooltipContent)
-            XCTAssertNil(views[1].tooltipContent?.body)
+            XCTAssertNotNil(views[1].tooltipContent?.body)
             XCTAssertEqual(popovers[0].positioningRect, host.convert(views[1].markerHitRect, from: views[1]))
             host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
             views[1].firePendingCloseForTesting()
@@ -309,8 +319,9 @@ final class DashboardComponentsTests: XCTestCase {
             now: now, colorConfiguration: .default, cycleStart: start)
         let pace = try XCTUnwrap(view.pace)
         XCTAssertEqual(pace.status, .normal)
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: view.prediction, language: .simplifiedChinese),
-            QuotaPaceTooltipContent(title: "用量刚刚好", body: "照这个速度，预计约 2 小时 51 分后用完。"))
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: view.prediction, language: .simplifiedChinese,
+            now: now, timeZone: TimeZone(secondsFromGMT: 0)!),
+            QuotaPaceTooltipContent(title: "用得有点快", body: "照这个速度，预计约 2 小时 51 分钟后（明天 01:04）用完。"))
         let original = view.prediction
         view.update(window: quota, now: now.addingTimeInterval(60), cycleStart: start)
         XCTAssertNotEqual(view.prediction, original)
@@ -321,17 +332,17 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(view.markerHitRect.isEmpty)
         XCTAssertEqual(view.accessibilityLabel(), "")
         view.update(window: quota, now: now)
-        XCTAssertNil(view.tooltipContent?.body, "No trusted cycle start means title only")
-        XCTAssertEqual(view.accessibilityLabel(), view.tooltipContent?.title)
+        XCTAssertNotNil(view.tooltipContent?.body, "No trusted start gets qualitative copy, not a fabricated forecast")
+        XCTAssertEqual(view.accessibilityLabel(), [view.tooltipContent!.title, view.tooltipContent!.body!].joined(separator: "\n"))
         let unused = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 100, reset: quota.resetAt!), now: now))
         XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .simplifiedChinese).body, "额度满满，尽情发挥吧！")
         XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .english).body, "All yours. Make something great.")
         let exhausted = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 0, reset: quota.resetAt!), now: now))
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, language: .simplifiedChinese).body, "额度已用完，等待重置。")
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 59.9), language: .simplifiedChinese).body,
-            "照这个速度，预计不到 1 分钟后用完。")
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 119.1), language: .simplifiedChinese).body,
-            "照这个速度，预计约 2 分后用完。")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, language: .simplifiedChinese).body, "等待重置。")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 59.9), language: .simplifiedChinese, now: now, timeZone: TimeZone(secondsFromGMT: 0)!).body,
+            "照这个速度，预计不到 1 分钟后（22:14）用完。")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 119.1), language: .simplifiedChinese, now: now, timeZone: TimeZone(secondsFromGMT: 0)!).body,
+            "照这个速度，预计约 2 分钟后（22:15）用完。")
         XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .lastsUntilReset, language: .simplifiedChinese).body,
             "照目前的使用节奏，额度预计能撑到重置。")
         let slow = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 80, reset: quota.resetAt!), now: now))
@@ -341,36 +352,140 @@ final class DashboardComponentsTests: XCTestCase {
         view.update(window: week, now: now)
         XCTAssertNotNil(view.pace)
         XCTAssertNil(view.prediction)
-        XCTAssertNil(view.tooltipContent?.body)
+        XCTAssertNotNil(view.tooltipContent?.body)
     }
 
     func testCompactPaceTooltipHasOnlyTitleAndOptionalSentenceAcrossAllLanguages() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 60, reset: now.addingTimeInterval(11_160)), now: now))
         for language in AppLanguage.allCases where language != .system {
-            let content = QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 10_260), language: language)
-            let controller = QuotaPaceTooltipViewController(content: content)
-            controller.loadViewIfNeeded()
-            let labels = controller.view.subviews.compactMap { $0 as? NSTextField }
-            XCTAssertEqual(labels.map(\.stringValue), [content.title, try XCTUnwrap(content.body)])
-            XCTAssertEqual(labels.count, 2)
-            XCTAssertLessThanOrEqual(controller.contentSize.width, 200)
-            XCTAssertTrue(labels.allSatisfy { controller.view.bounds.contains($0.frame) })
-            XCTAssertTrue(labels.allSatisfy { $0.maximumNumberOfLines == 0 && !$0.stringValue.contains("%@") })
-            let body = labels[1]
-            XCTAssertTrue(body.stringValue.contains("2"), language.rawValue)
-            XCTAssertTrue(body.stringValue.contains("51"), language.rawValue)
-            XCTAssertFalse(body.stringValue.contains("%"))
-            let measured = (body.stringValue as NSString).boundingRect(
-                with: NSSize(width: body.frame.width, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: body.font!])
-            XCTAssertGreaterThanOrEqual(body.frame.height, ceil(measured.height))
+            for remaining in [0.0, 40, 60, 80, 100] {
+                let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: remaining, reset: now.addingTimeInterval(11_160)), now: now))
+                for prediction: OfficialQuotaUsagePrediction? in [nil, .runsOut(after: 10_260), .lastsUntilReset] {
+                    let content = QuotaPaceTooltipContent(pace: pace, prediction: prediction, language: language,
+                        now: now, timeZone: TimeZone(secondsFromGMT: 0)!)
+                    let controller = QuotaPaceTooltipViewController(content: content)
+                    controller.loadViewIfNeeded()
+                    let labels = controller.view.subviews.compactMap { $0 as? NSTextField }.filter { !$0.isHidden }
+                    XCTAssertEqual(labels.map(\.stringValue), [content.title, try XCTUnwrap(content.body)])
+                    XCTAssertEqual(labels.count, 2)
+                    XCTAssertLessThanOrEqual(controller.contentSize.width, 260)
+                    for label in labels {
+                        XCTAssertTrue(controller.view.bounds.contains(label.frame))
+                        XCTAssertEqual(label.alignmentRect(forFrame: label.frame).minX, 14, accuracy: 0.01)
+                        XCTAssertEqual(controller.view.bounds.maxX - label.alignmentRect(forFrame: label.frame).maxX, 14, accuracy: 0.01)
+                        XCTAssertEqual(label.maximumNumberOfLines, 0)
+                        XCTAssertFalse(label.cell!.truncatesLastVisibleLine)
+                        let measured = label.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: label.frame.width, height: 100_000))
+                        XCTAssertGreaterThanOrEqual(label.frame.height, ceil(measured.height), language.rawValue)
+                        XCTAssertFalse(label.stringValue.contains("%@"))
+                        XCTAssertFalse(label.stringValue.contains("%1$@"))
+                    }
+                    let revision = controller.layoutRevision
+                    controller.update(content: content)
+                    XCTAssertEqual(controller.layoutRevision, revision)
+                }
+            }
         }
         let titleOnly = QuotaPaceTooltipViewController(content: QuotaPaceTooltipContent(title: "用量刚刚好", body: nil))
         titleOnly.loadViewIfNeeded()
-        XCTAssertEqual(titleOnly.view.subviews.compactMap { $0 as? NSTextField }.map(\.stringValue), ["用量刚刚好"])
+        let label = try XCTUnwrap(titleOnly.view.subviews.compactMap { $0 as? NSTextField }.first { !$0.isHidden })
+        XCTAssertEqual(label.stringValue, "用量刚刚好")
         XCTAssertLessThan(titleOnly.contentSize.width, 200)
         XCTAssertLessThan(titleOnly.contentSize.height, 76)
+        XCTAssertGreaterThanOrEqual(label.frame.width, label.cell!.cellSize.width)
+    }
+
+    func testPaceExhaustionTitlesAndConfiguredCalendarTimes() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let exhausted = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 0, reset: now.addingTimeInterval(540)), now: now))
+        XCTAssertEqual(exhausted.status, .normal)
+        let content = QuotaPaceTooltipContent(pace: exhausted, prediction: .runsOut(after: 0), language: .simplifiedChinese)
+        XCTAssertEqual(content.title, "额度已用完")
+        XCTAssertEqual(content.body, "等待重置。")
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let laterDay = QuotaPaceTooltipContent.exhaustionTime(now.addingTimeInterval(172_800), now: now, timeZone: utc, language: .simplifiedChinese)
+        XCTAssertTrue(laterDay.contains("2023"))
+        XCTAssertTrue(laterDay.hasSuffix("22:13"))
+        let date = now.addingTimeInterval(10_260)
+        XCTAssertEqual(QuotaPaceTooltipContent.exhaustionTime(date, now: now, timeZone: utc, language: .simplifiedChinese), "明天 01:04")
+        XCTAssertEqual(QuotaPaceTooltipContent.exhaustionTime(date, now: now, timeZone: TimeZone(secondsFromGMT: 8 * 3600)!, language: .simplifiedChinese), "09:04")
+        let formatter = ISO8601DateFormatter()
+        let beforeDST = formatter.date(from: "2026-03-08T06:50:00Z")!
+        XCTAssertEqual(QuotaPaceTooltipContent.exhaustionTime(beforeDST.addingTimeInterval(1200), now: beforeDST,
+            timeZone: TimeZone(identifier: "America/New_York")!, language: .english), "03:10")
+        let lastMinute = formatter.date(from: "2026-10-14T23:58:50Z")!
+        let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 60, reset: now.addingTimeInterval(11_160)), now: now))
+        let raw = QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 61), language: .simplifiedChinese, now: lastMinute, timeZone: utc)
+        XCTAssertEqual(raw.body, "照这个速度，预计约 2 分钟后（23:59）用完。", "Absolute time uses raw seconds, not the rounded two minutes")
+        XCTAssertEqual(raw.title, "用得有点快")
+        for remaining in [40.0, 62.0, 80.0] {
+            let value = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: remaining, reset: now.addingTimeInterval(11_160)), now: now))
+            XCTAssertNotNil(QuotaPaceTooltipContent(pace: value, prediction: nil, language: .simplifiedChinese).body)
+        }
+    }
+
+    func testPaceContinuousRefreshKeepsPresentationAndSkipsIdenticalLayout() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quota = paceWindow(remaining: 40, reset: now.addingTimeInterval(9000))
+        let view = QuotaProgressPaceView(percentage: 40, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"), now: now,
+            colorConfiguration: .default, cycleStart: now.addingTimeInterval(-9000))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 60))
+        let window = NSWindow(contentRect: root.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = root
+        view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
+        root.addSubview(view)
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { view.setMenuTracking(false); window.orderOut(nil) }
+        view.layoutSubtreeIfNeeded()
+        let probe = QuotaPacePopoverProbe()
+        view.makePopoverForTesting = { probe }
+        view.pointerLocationForTesting = NSPoint(x: view.markerCenterX, y: 9)
+        view.setMenuTracking(true)
+        view.updateHover(at: view.pointerLocationForTesting!)
+        view.firePendingShowForTesting()
+        let controller = try XCTUnwrap(probe.contentViewController as? QuotaPaceTooltipViewController)
+        let revision = controller.layoutRevision
+        let tracking = try XCTUnwrap(view.trackingAreas.first)
+        view.update(window: quota, now: now, cycleStart: now.addingTimeInterval(-9000))
+        XCTAssertEqual(controller.layoutRevision, revision)
+        XCTAssertTrue(view.trackingAreas.first === tracking)
+        for tick in 1...5 {
+            view.update(window: quota, now: now.addingTimeInterval(Double(tick) * 60), cycleStart: now.addingTimeInterval(-9000))
+            XCTAssertTrue(probe.contentViewController === controller)
+            XCTAssertTrue(view.isTooltipVisible)
+            XCTAssertFalse(view.hasPendingShowForTesting)
+            XCTAssertEqual(probe.showCount, 1)
+        }
+        XCTAssertGreaterThan(controller.layoutRevision, revision)
+        view.update(window: quota, now: now.addingTimeInterval(1200), cycleStart: now.addingTimeInterval(-9000))
+        XCTAssertFalse(view.isTooltipVisible, "Moved marker no longer contains the stationary pointer")
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        view.update(window: paceWindow(remaining: 40, reset: now.addingTimeInterval(10_000)), now: now,
+            cycleStart: now.addingTimeInterval(-8000))
+        XCTAssertFalse(view.hasPendingShowForTesting, "A new cycle cancels the old pending tooltip")
+        XCTAssertFalse(view.isTooltipVisible)
+        view.invalidatePresentation()
+        XCTAssertFalse(view.hasPendingShowForTesting)
+    }
+
+    func testPaceListenerRegistrationIsIdempotentAndReconcilesViewChanges() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = paceProbeFixture(now: now)
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        fixture.host.setPaceMenuTracking(true)
+        let count = fixture.host.monitorRegistrationCountForTesting
+        for _ in 0..<10 { fixture.host.setPaceMenuTracking(true) }
+        XCTAssertEqual(fixture.host.monitorRegistrationCountForTesting, count)
+        fixture.views[1].removeFromSuperview()
+        fixture.host.setPaceMenuTracking(true)
+        XCTAssertEqual(fixture.host.monitorRegistrationCountForTesting, count + 1)
+        fixture.host.setPaceMenuTracking(false)
+        fixture.host.setPaceMenuTracking(false)
+        XCTAssertEqual(fixture.host.monitorRegistrationCountForTesting, count + 1)
+        window.orderOut(nil)
     }
 
     func testDashboardSectionsPreserveNavigationOrderAndMetadata() {

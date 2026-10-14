@@ -22,14 +22,14 @@ Unobserved special resets before app startup cannot be established from the avai
 - Require a valid live pace window, a finite trusted start matching its duration, at least 3% of the cycle elapsed, and at least 1% consumed.
 - Average use = `(100 - remaining) / elapsed`; remaining time = `remaining / average use`.
 - Compare unrounded predicted seconds with the time to reset. Only strictly earlier exhaustion gets a specific duration; equality counts as lasting until reset.
-- Round the visible duration up to minutes. Under one minute uses a short phrase; under one hour omits zero hours.
-- Rounded pace status is unchanged. A normal title may therefore have an early-exhaustion body, as explicitly chosen by the user.
-- Full allowance gets the encouraging unused copy. Zero allowance gets factual exhausted copy. Otherwise insufficient/unverified data has **no body**, not a made-up prediction.
-- Tooltip contains just a title and optional sentence, at most 200pt wide. VoiceOver receives that same content.
+- Round the visible duration up to minutes. Under one minute uses a short phrase; under one hour omits zero hours. Absolute exhaustion time uses raw predicted seconds plus the same calculation time, formatted HH:mm in the configured display timezone; next-day dates get localized tomorrow copy.
+- Rounded pace status and marker geometry are unchanged. Tooltip presentation overrides exhausted quota with an exhausted title, and reliable early exhaustion with the fast title; this supersedes the previous normal-title/early-body choice.
+- Full allowance gets the encouraging unused copy. Zero allowance gets factual exhausted copy. Otherwise insufficient/unverified data gets a qualitative pace sentence, not a made-up forecast.
+- Tooltip contains just a title and optional sentence, at most 260pt wide, with Auto Layout and actual NSTextField cell fitting. VoiceOver receives that same content.
 
 ## AppKit verification boundary
 
-The tooltip switches 5h/7d by transferring one NSPopover anchored to their common menu host, updating its content and positioning rectangle without closing/reopening native windows. Synthetic menu tests assert shared presentation identity, actual replacement content, anchor coordinates, 300ms/100ms timing, rapid reentry and teardown.
+The tooltip switches 5h/7d by transferring one NSPopover anchored to their common menu host, updating its content and positioning rectangle without closing/reopening native windows. Synthetic menu tests assert shared presentation/controller identity across minute refreshes and switching, actual replacement content, anchor coordinates, 300ms/100ms timing, rapid reentry and teardown. Matching refresh content skips layout; mouse tracking/monitor registration is idempotent, and marker movement closes only after it leaves the pointer’s current heat rect.
 
 The background XCTest host deliberately parks windows offscreen and denies key focus. A native menu/popover diagnostic was intermittent (2 of 5 repetitions ended menu tracking early, at first presentation or switching); this does **not** establish whether production has the same behavior. Even a long presentation-probe run had one of five native menu loops end early. Deterministic coverage is split: a short real NSMenu tracking-loop probe checks routing/content/anchor/ownership/teardown with controlled timer firing; a standalone pace view in a parked window separately verifies real 300ms/100ms delays and cancellation while running the event-tracking mode. Both use a presentation probe instead of changing the host policy. Native window stability is not claimed PASS; it remains a required manual gate with the development bundle.
 

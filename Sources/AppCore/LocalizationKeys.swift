@@ -515,6 +515,11 @@
     case keyQuotaPaceBodyNormal = "quota.pace.body.normal"
     case keyQuotaPaceBodySlow = "quota.pace.body.slow"
     case keyQuotaPaceBodyFastMinutes = "quota.pace.body.fast_minutes"
+    case keyQuotaPaceStatusExhausted = "quota.pace.status.exhausted"
+    case keyQuotaPaceBodyQualitativeFast = "quota.pace.body.qualitative.fast"
+    case keyQuotaPaceBodyQualitativeNormal = "quota.pace.body.qualitative.normal"
+    case keyQuotaPaceBodyQualitativeSlow = "quota.pace.body.qualitative.slow"
+    case keyQuotaPaceTimeTomorrow = "quota.pace.time.tomorrow"
     case keyQuotaPaceBodyExhausted = "quota.pace.body.exhausted"
     case keyQuotaPaceBodyUnderMinute = "quota.pace.body.under_minute"
 

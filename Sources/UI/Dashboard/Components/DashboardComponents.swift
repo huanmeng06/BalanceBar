@@ -439,6 +439,9 @@ final class QuotaProgressPaceView: NSView {
     private var showTimer: Timer?
     private var closeTimer: Timer?
     private var popover: NSPopover?
+    private var presentationNow = Date()
+    private var displayTimeZone = TimeZone.autoupdatingCurrent
+    var pointerLocationForTesting: NSPoint?
     private(set) var isHovered = false
     private(set) var isMenuTracking = false
     var isTooltipVisible: Bool { popover?.isShown == true }
@@ -454,7 +457,8 @@ final class QuotaProgressPaceView: NSView {
         identity: OverviewNumericIdentity,
         now: Date,
         colorConfiguration: QuotaProgressColorConfiguration,
-        cycleStart: Date? = nil
+        cycleStart: Date? = nil,
+        timeZone: TimeZone = .autoupdatingCurrent
     ) {
         self.progress = QuotaProgressView(percentage: percentage, colorConfiguration: colorConfiguration)
         self.quotaWindow = window
@@ -466,7 +470,7 @@ final class QuotaProgressPaceView: NSView {
         addSubview(progress)
         addSubview(marker)
         setAccessibilityRole(.staticText)
-        update(window: window, now: now, cycleStart: cycleStart)
+        update(window: window, now: now, cycleStart: cycleStart, timeZone: timeZone)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -484,18 +488,22 @@ final class QuotaProgressPaceView: NSView {
         progress.setPercentage(value, animated: animated, duration: duration)
     }
 
-    func update(window: OfficialQuotaWindow, now: Date, cycleStart: Date? = nil) {
+    func update(window: OfficialQuotaWindow, now: Date, cycleStart: Date? = nil, timeZone: TimeZone = .autoupdatingCurrent) {
         let next = OfficialQuotaUsagePace.make(for: window, now: now)
-        if quotaWindow.resetAt != window.resetAt || pace?.expectedRemaining != next?.expectedRemaining {
+        if quotaWindow.resetAt != window.resetAt || quotaWindow.kind != window.kind
+            || quotaWindow.durationSeconds != window.durationSeconds || next == nil {
             clearInteraction()
         }
         quotaWindow = window
+        presentationNow = now
+        displayTimeZone = timeZone
         pace = next
         prediction = OfficialQuotaUsagePrediction.make(for: window, cycleStart: cycleStart, now: now)
         marker.isHidden = next == nil
         marker.centerX = markerCenterX
         marker.needsDisplay = true
         updateTrackingAreas()
+        reconcileHoverAfterGeometryChange()
         setAccessibilityLabel(accessibilityText)
         setAccessibilityHelp(accessibilityText)
         if isTooltipVisible { showTooltip() }
@@ -523,12 +531,21 @@ final class QuotaProgressPaceView: NSView {
         progress.frame = NSRect(x: 0, y: bounds.midY - 2.5, width: bounds.width, height: 5)
         marker.frame = bounds
         let next = markerCenterX
-        if marker.centerX != next { clearInteraction() }
         marker.centerX = next
         marker.needsDisplay = true
+        updateTrackingAreas()
+        reconcileHoverAfterGeometryChange()
+        if isTooltipVisible { showTooltip() }
+    }
+
+    private func reconcileHoverAfterGeometryChange() {
+        guard isHovered else { return }
+        let point = pointerLocationForTesting ?? window.map { convert($0.mouseLocationOutsideOfEventStream, from: nil) }
+        if point.map({ markerHitRect.contains($0) }) != true { clearInteraction() }
     }
 
     override func updateTrackingAreas() {
+        if trackingAreaReference?.rect == markerHitRect { return }
         if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
         trackingAreaReference = nil
         super.updateTrackingAreas()
@@ -638,7 +655,7 @@ final class QuotaProgressPaceView: NSView {
 
     var tooltipContent: QuotaPaceTooltipContent? {
         guard let pace else { return nil }
-        return QuotaPaceTooltipContent(pace: pace, prediction: prediction)
+        return QuotaPaceTooltipContent(pace: pace, prediction: prediction, now: presentationNow, timeZone: displayTimeZone)
     }
 
     private var accessibilityText: String {
@@ -649,16 +666,18 @@ final class QuotaProgressPaceView: NSView {
     private func showTooltip() {
         guard isMenuTracking, isHovered, window?.isVisible == true,
               !markerHitRect.isEmpty, let content = tooltipContent else { return }
-        let controller = QuotaPaceTooltipViewController(content: content)
-        controller.loadViewIfNeeded()
         let anchorView = (menuHoverHost as NSView?) ?? self
         let anchor = anchorView.convert(markerHitRect, from: self)
         if let popover, popover.isShown {
-            popover.contentViewController = controller
-            popover.contentSize = controller.contentSize
-            popover.positioningRect = anchor
+            if let controller = popover.contentViewController as? QuotaPaceTooltipViewController {
+                controller.update(content: content)
+                if popover.contentSize != controller.contentSize { popover.contentSize = controller.contentSize }
+            }
+            if popover.positioningRect != anchor { popover.positioningRect = anchor }
             return
         }
+        let controller = QuotaPaceTooltipViewController(content: content)
+        controller.loadViewIfNeeded()
         let nextPopover = makePopoverForTesting?() ?? DashboardTextTooltip.makePopover()
         nextPopover.contentViewController = controller
         nextPopover.contentSize = controller.contentSize
@@ -678,38 +697,78 @@ struct QuotaPaceTooltipContent: Equatable {
         self.body = body
     }
 
-    init(pace: OfficialQuotaUsagePace, prediction: OfficialQuotaUsagePrediction?, language: AppLanguage = .selected) {
-        title = pace.status.title(language: language)
+    init(pace: OfficialQuotaUsagePace, prediction: OfficialQuotaUsagePrediction?,
+         language: AppLanguage = .selected, now: Date = Date(), timeZone: TimeZone = .autoupdatingCurrent) {
         if pace.status == .unused {
+            title = pace.status.title(language: language)
             body = tr(.keyQuotaPaceBodyUnused, language: language)
         } else if pace.actualRemaining == 0 {
+            title = tr(.keyQuotaPaceStatusExhausted, language: language)
             body = tr(.keyQuotaPaceBodyExhausted, language: language)
+        } else if case .runsOut(let seconds) = prediction {
+            title = OfficialQuotaUsagePace.Status.fast.title(language: language)
+            let time = Self.exhaustionTime(now.addingTimeInterval(seconds), now: now, timeZone: timeZone, language: language)
+            if seconds < 60 {
+                body = tr(.keyQuotaPaceBodyUnderMinute, arguments: [time], language: language)
+            } else {
+                let minutes = Int(ceil(seconds / 60))
+                body = minutes < 60
+                    ? tr(.keyQuotaPaceBodyFastMinutes, arguments: ["\(minutes)", time], language: language)
+                    : tr(.keyQuotaPaceBodyFast, arguments: ["\(minutes / 60)", "\(minutes % 60)", time], language: language)
+            }
         } else {
-            switch prediction {
-            case .runsOut(let seconds):
-                if seconds < 60 {
-                    body = tr(.keyQuotaPaceBodyUnderMinute, language: language)
-                } else {
-                    // Production estimates are earlier than a verified 5h reset.
-                    let minutes = Int(ceil(seconds / 60))
-                    if minutes < 60 {
-                        body = tr(.keyQuotaPaceBodyFastMinutes, arguments: ["\(minutes)"], language: language)
-                    } else {
-                        body = tr(.keyQuotaPaceBodyFast, arguments: ["\(minutes / 60)", "\(minutes % 60)"], language: language)
-                    }
-                }
-            case .lastsUntilReset:
+            title = pace.status.title(language: language)
+            if prediction == .lastsUntilReset {
                 body = tr(pace.status == .slow ? .keyQuotaPaceBodySlow : .keyQuotaPaceBodyNormal, language: language)
-            case nil:
-                body = nil
+            } else {
+                let key: LocalizationKey = switch pace.status {
+                case .fast: .keyQuotaPaceBodyQualitativeFast
+                case .normal: .keyQuotaPaceBodyQualitativeNormal
+                case .slow: .keyQuotaPaceBodyQualitativeSlow
+                case .unused: .keyQuotaPaceBodyUnused
+                }
+                body = tr(key, language: language)
             }
         }
+    }
+
+    static func exhaustionTime(_ date: Date, now: Date, timeZone: TimeZone, language: AppLanguage) -> String {
+        let calendar = AppDisplayTime.calendar(timeZone: timeZone)
+        let time = AppDisplayTime.formatter(timeZone: timeZone, dateFormat: "HH:mm").string(from: date)
+        if calendar.isDate(date, inSameDayAs: now) { return time }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) {
+            return tr(.keyQuotaPaceTimeTomorrow, arguments: [time], language: language)
+        }
+        let formatter = DateFormatter()
+        let localeID: String = switch AppLanguage.resolved(for: language, preferredLanguages: Locale.preferredLanguages) {
+        case .simplifiedChinese: "zh_CN"
+        case .traditionalChineseTaiwan: "zh_TW"
+        case .traditionalChineseHongKong: "zh_HK"
+        case .japanese: "ja_JP"
+        case .korean: "ko_KR"
+        case .spanish: "es_ES"
+        case .portuguese: "pt_PT"
+        case .french: "fr_FR"
+        case .german: "de_DE"
+        case .russian: "ru_RU"
+        case .italian: "it_IT"
+        case .english, .system: "en_US"
+        }
+        formatter.locale = Locale(identifier: localeID)
+        formatter.calendar = calendar
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate("yMd")
+        return "\(formatter.string(from: date)) \(time)"
     }
 }
 
 final class QuotaPaceTooltipViewController: NSViewController {
-    let content: QuotaPaceTooltipContent
+    private(set) var content: QuotaPaceTooltipContent
     private(set) var contentSize = NSSize.zero
+    private(set) var layoutRevision = 0
+    private let titleLabel = NSTextField(wrappingLabelWithString: "")
+    private let bodyLabel = NSTextField(wrappingLabelWithString: "")
+    private var textConstraints: [NSLayoutConstraint] = []
 
     init(content: QuotaPaceTooltipContent) {
         self.content = content
@@ -719,37 +778,55 @@ final class QuotaPaceTooltipViewController: NSViewController {
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let title = NSTextField(wrappingLabelWithString: content.title)
-        title.font = .systemFont(ofSize: 12, weight: .semibold)
-        title.textColor = .labelColor
-        var labels = [title]
-        if let text = content.body, !text.isEmpty {
-            let body = NSTextField(wrappingLabelWithString: text)
-            DashboardTextTooltip.configure(body)
-            labels.append(body)
-        }
-        let textWidth = min(180, max(1, labels.map { label in
-            ceil((label.stringValue as NSString).size(withAttributes: [.font: label.font!]).width) + 2
-        }.max() ?? 1))
-        let container = NSView()
-        var y: CGFloat = 8
-        for label in labels.reversed() {
-            label.preferredMaxLayoutWidth = textWidth
+        view = NSView()
+        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.textColor = .labelColor
+        DashboardTextTooltip.configure(bodyLabel)
+        for label in [titleLabel, bodyLabel] {
+            label.translatesAutoresizingMaskIntoConstraints = false
             label.maximumNumberOfLines = 0
             label.cell?.wraps = true
             label.cell?.truncatesLastVisibleLine = false
-            let measured = (label.stringValue as NSString).boundingRect(
-                with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: [.font: label.font!])
-            let height = max(ceil(label.fittingSize.height), ceil(measured.height) + 2)
-            label.frame = NSRect(x: 10, y: y, width: textWidth, height: height)
-            y += height + 4
+            view.addSubview(label)
         }
-        labels.forEach(container.addSubview)
-        contentSize = NSSize(width: textWidth + 20, height: y - 4 + 8)
-        container.frame = NSRect(origin: .zero, size: contentSize)
-        view = container
+        layoutContent()
+    }
+
+    func update(content: QuotaPaceTooltipContent) {
+        guard self.content != content else { return }
+        self.content = content
+        if isViewLoaded { layoutContent() }
+        else { loadViewIfNeeded() }
+    }
+
+    private func layoutContent() {
+        layoutRevision += 1
+        titleLabel.stringValue = content.title
+        bodyLabel.stringValue = content.body ?? ""
+        bodyLabel.isHidden = bodyLabel.stringValue.isEmpty
+        let labels = bodyLabel.isHidden ? [titleLabel] : [titleLabel, bodyLabel]
+        // Measure NSTextField's cell, including its internal text insets.
+        // Constraints determine the final frames and fitting size.
+        let width = min(232, max(1, labels.map { ceil($0.cell!.cellSize.width) }.max() ?? 1))
+        NSLayoutConstraint.deactivate(textConstraints)
+        textConstraints = []
+        for label in labels {
+            label.preferredMaxLayoutWidth = width
+            let height = ceil(label.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: 100_000)).height) + 2
+            textConstraints += [label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+                label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+                label.widthAnchor.constraint(equalToConstant: width),
+                label.heightAnchor.constraint(equalToConstant: height)]
+        }
+        textConstraints.append(titleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 10))
+        if !bodyLabel.isHidden {
+            textConstraints.append(bodyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6))
+        }
+        textConstraints.append(labels.last!.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -10))
+        NSLayoutConstraint.activate(textConstraints)
+        contentSize = view.fittingSize
+        view.setFrameSize(contentSize)
+        view.layoutSubtreeIfNeeded()
     }
 }
 
@@ -1368,6 +1445,10 @@ final class MenuHoverLinkHostView: NSView {
     private var ticketScrollMonitor: Any?
     private var resignActiveObserver: NSObjectProtocol?
     private weak var hoveredPaceView: QuotaProgressPaceView?
+    private var paceMenuTracking = false
+    private var monitoredWindow: ObjectIdentifier?
+    private var monitoredViews = Set<ObjectIdentifier>()
+    private(set) var monitorRegistrationCountForTesting = 0
 
     var paceViews: [QuotaProgressPaceView] {
         func collect(_ view: NSView) -> [QuotaProgressPaceView] {
@@ -1380,9 +1461,18 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func setPaceMenuTracking(_ active: Bool) {
-        paceViews.forEach { $0.setMenuTracking(active) }
-        if !active { clearPaceHover() }
-        refreshTrackingArea()
+        if paceMenuTracking != active {
+            paceMenuTracking = active
+            if !active { clearPaceHover() }
+            refreshTrackingArea()
+        }
+        reconcilePaceMenuTracking()
+    }
+
+    /// Data refresh only reconciles replaced children. A matching monitor
+    /// keeps its identity; menu open/close owns activation and teardown.
+    func reconcilePaceMenuTracking() {
+        paceViews.forEach { $0.setMenuTracking(paceMenuTracking) }
         installTicketScrollMonitor()
     }
 
@@ -1542,8 +1632,15 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     private func installTicketScrollMonitor() {
+        let views = Set((paceMenuTracking ? paceViews.map(ObjectIdentifier.init) : [])
+            + (ticketScrollView.map { [ObjectIdentifier($0)] } ?? []))
+        let targetWindow = window.map(ObjectIdentifier.init)
+        if ticketScrollMonitor != nil && monitoredWindow == targetWindow && monitoredViews == views { return }
         removeTicketScrollMonitor()
-        guard (ticketScrollView != nil || !paceViews.isEmpty), window != nil else { return }
+        guard !views.isEmpty, let targetWindow else { return }
+        monitoredWindow = targetWindow
+        monitoredViews = views
+        monitorRegistrationCountForTesting += 1
         resignActiveObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.clearPaceHover() }
@@ -1556,6 +1653,8 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     private func removeTicketScrollMonitor() {
+        monitoredWindow = nil
+        monitoredViews.removeAll()
         if let resignActiveObserver {
             NotificationCenter.default.removeObserver(resignActiveObserver)
             self.resignActiveObserver = nil

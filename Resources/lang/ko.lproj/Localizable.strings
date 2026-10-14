@@ -514,9 +514,19 @@
 "quota.pace.status.normal" = "사용 속도가 적당해요";
 "quota.pace.status.slow" = "아직 여유가 있어요";
 "quota.pace.body.unused" = "한도가 가득해요. 멋진 것을 만들어 보세요!";
-"quota.pace.body.fast" = "이 속도라면 약 %1$@시간 %2$@분 후에 한도가 소진될 것으로 예상돼요.";
-"quota.pace.body.fast_minutes" = "이 속도라면 약 %1$@분 후에 한도가 소진될 것으로 예상돼요.";
+"quota.pace.body.fast" = "이 속도라면 약 %1$@시간 %2$@분 후에 한도가 소진될 것으로 예상돼요 (%3$@).";
+"quota.pace.body.fast_minutes" = "이 속도라면 약 %1$@분 후에 한도가 소진될 것으로 예상돼요 (%2$@).";
 "quota.pace.body.normal" = "현재 사용 속도라면 초기화될 때까지 한도가 유지될 것으로 예상돼요.";
 "quota.pace.body.slow" = "현재 사용 속도라면 이번 주기의 한도가 초기화될 때까지 유지될 것으로 예상돼요.";
-"quota.pace.body.exhausted" = "한도를 모두 사용했어요. 초기화를 기다려 주세요.";
-"quota.pace.body.under_minute" = "이 속도라면 1분 이내에 한도가 소진될 것으로 예상돼요.";
+"quota.pace.body.exhausted" = "초기화를 기다려 주세요.";
+"quota.pace.body.under_minute" = "이 속도라면 1분 이내에 한도가 소진될 것으로 예상돼요 (%1$@).";
+
+"quota.pace.status.exhausted" = "한도를 모두 사용했어요";
+
+"quota.pace.body.qualitative.fast" = "경과 시간에 비해 사용량이 조금 많아요. 앞으로의 사용량을 살펴보세요.";
+
+"quota.pace.body.qualitative.normal" = "사용량이 경과 시간과 대체로 비슷해요.";
+
+"quota.pace.body.qualitative.slow" = "이번 주기의 한도가 아직 넉넉해요. 필요에 따라 사용하세요.";
+
+"quota.pace.time.tomorrow" = "내일 %1$@";

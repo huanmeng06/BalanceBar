@@ -514,9 +514,19 @@
 "quota.pace.status.normal" = "Utilisation au bon rythme";
 "quota.pace.status.slow" = "Il reste une bonne marge";
 "quota.pace.body.unused" = "Tout est à vous. Créez quelque chose de formidable !";
-"quota.pace.body.fast" = "À ce rythme, votre quota devrait être épuisé dans environ %1$@ h %2$@ min.";
-"quota.pace.body.fast_minutes" = "À ce rythme, votre quota devrait être épuisé dans environ %1$@ min.";
+"quota.pace.body.fast" = "À ce rythme, votre quota devrait être épuisé dans environ %1$@ h %2$@ min (%3$@).";
+"quota.pace.body.fast_minutes" = "À ce rythme, votre quota devrait être épuisé dans environ %1$@ min (%2$@).";
 "quota.pace.body.normal" = "À votre rythme actuel, le quota devrait durer jusqu’à sa réinitialisation.";
 "quota.pace.body.slow" = "À votre rythme actuel, le quota de cette période devrait durer jusqu’à sa réinitialisation.";
-"quota.pace.body.exhausted" = "Votre quota est épuisé. Attendez sa réinitialisation.";
-"quota.pace.body.under_minute" = "À ce rythme, votre quota devrait être épuisé dans moins d’une minute.";
+"quota.pace.body.exhausted" = "Attendez sa réinitialisation.";
+"quota.pace.body.under_minute" = "À ce rythme, votre quota devrait être épuisé dans moins d’une minute (%1$@).";
+
+"quota.pace.status.exhausted" = "Quota épuisé";
+
+"quota.pace.body.qualitative.fast" = "L’utilisation dépasse le rythme du temps écoulé. Surveillez la suite.";
+
+"quota.pace.body.qualitative.normal" = "L’utilisation suit à peu près le temps écoulé.";
+
+"quota.pace.body.qualitative.slow" = "Il reste une bonne réserve pour cette période. Utilisez-la selon vos besoins.";
+
+"quota.pace.time.tomorrow" = "Demain %1$@";

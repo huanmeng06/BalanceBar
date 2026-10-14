@@ -6559,7 +6559,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func refreshQuotaPaceViews() {
         guard isStatusMenuTracking,
               let host = statusMenu.items.first?.view as? MenuHoverLinkHostView else { return }
-        host.setPaceMenuTracking(true)
+        if !host.isMenuContentVisible { host.setMenuContentVisible(true) }
+        else { host.reconcilePaceMenuTracking() }
         let now = quotaPaceNowForTesting ?? Date()
         let windows = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
@@ -6572,7 +6573,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if identityMatches, let window = windows.first(where: {
                 OverviewNumericPresentation.identity(for: $0, provider: snapshot.provider) == view.numericIdentity
             }) {
-                view.update(window: window, now: now, cycleStart: quotaPaceCycleStart(for: window))
+                view.update(window: window, now: now, cycleStart: quotaPaceCycleStart(for: window), timeZone: settings.displayTimeZone)
             } else {
                 view.invalidatePresentation()
             }
@@ -7001,7 +7002,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             identity: plan.identity,
             now: quotaPaceNowForTesting ?? Date(),
             colorConfiguration: settings.quotaProgressColorConfiguration,
-            cycleStart: quotaPaceCycleStart(for: window)
+            cycleStart: quotaPaceCycleStart(for: window),
+            timeZone: settings.displayTimeZone
         )
         host.frame = frame.insetBy(dx: 0, dy: -6.5)
         if plan.animates, let target = plan.toProgress {

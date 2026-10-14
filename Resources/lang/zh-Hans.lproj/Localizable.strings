@@ -514,9 +514,19 @@
 "quota.pace.status.normal" = "用量刚刚好";
 "quota.pace.status.slow" = "用得很从容";
 "quota.pace.body.unused" = "额度满满，尽情发挥吧！";
-"quota.pace.body.fast" = "照这个速度，预计约 %1$@ 小时 %2$@ 分后用完。";
-"quota.pace.body.fast_minutes" = "照这个速度，预计约 %1$@ 分后用完。";
+"quota.pace.body.fast" = "照这个速度，预计约 %1$@ 小时 %2$@ 分钟后（%3$@）用完。";
+"quota.pace.body.fast_minutes" = "照这个速度，预计约 %1$@ 分钟后（%2$@）用完。";
 "quota.pace.body.normal" = "照目前的使用节奏，额度预计能撑到重置。";
 "quota.pace.body.slow" = "照目前的使用节奏，这轮额度预计能撑到重置。";
-"quota.pace.body.exhausted" = "额度已用完，等待重置。";
-"quota.pace.body.under_minute" = "照这个速度，预计不到 1 分钟后用完。";
+"quota.pace.body.exhausted" = "等待重置。";
+"quota.pace.body.under_minute" = "照这个速度，预计不到 1 分钟后（%1$@）用完。";
+
+"quota.pace.status.exhausted" = "额度已用完";
+
+"quota.pace.body.qualitative.fast" = "当前用量比时间进度快一些，留意后续使用。";
+
+"quota.pace.body.qualitative.normal" = "当前用量与时间进度大致相当。";
+
+"quota.pace.body.qualitative.slow" = "这轮额度还比较充裕，可以按需使用。";
+
+"quota.pace.time.tomorrow" = "明天 %1$@";

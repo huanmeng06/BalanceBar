@@ -514,9 +514,19 @@
 "quota.pace.status.normal" = "Usage is right on pace";
 "quota.pace.status.slow" = "You have plenty left";
 "quota.pace.body.unused" = "All yours. Make something great.";
-"quota.pace.body.fast" = "At this pace, you’ll run out in about %1$@h %2$@m.";
-"quota.pace.body.fast_minutes" = "At this pace, you’ll run out in about %1$@ min.";
+"quota.pace.body.fast" = "At this pace, you’ll run out in about %1$@h %2$@m (%3$@).";
+"quota.pace.body.fast_minutes" = "At this pace, you’ll run out in about %1$@ min (%2$@).";
 "quota.pace.body.normal" = "At your current pace, your quota should last until it resets.";
 "quota.pace.body.slow" = "At your current pace, this cycle’s quota should last until it resets.";
-"quota.pace.body.exhausted" = "Your quota is used up. Wait for it to reset.";
-"quota.pace.body.under_minute" = "At this pace, you’ll run out in less than a minute.";
+"quota.pace.body.exhausted" = "Wait for it to reset.";
+"quota.pace.body.under_minute" = "At this pace, you’ll run out in less than a minute (%1$@).";
+
+"quota.pace.status.exhausted" = "Quota used up";
+
+"quota.pace.body.qualitative.fast" = "Usage is ahead of the time elapsed. Keep an eye on further use.";
+
+"quota.pace.body.qualitative.normal" = "Usage is roughly in line with the time elapsed.";
+
+"quota.pace.body.qualitative.slow" = "There is still plenty of quota this cycle. Use it as needed.";
+
+"quota.pace.time.tomorrow" = "Tomorrow %1$@";

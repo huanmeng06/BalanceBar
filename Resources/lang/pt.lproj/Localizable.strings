@@ -514,9 +514,19 @@
 "quota.pace.status.normal" = "Uso no ritmo certo";
 "quota.pace.status.slow" = "Ainda há bastante disponível";
 "quota.pace.body.unused" = "É tudo seu. Crie algo fantástico!";
-"quota.pace.body.fast" = "A este ritmo, a quota deverá esgotar-se em cerca de %1$@ h %2$@ min.";
-"quota.pace.body.fast_minutes" = "A este ritmo, a quota deverá esgotar-se em cerca de %1$@ min.";
+"quota.pace.body.fast" = "A este ritmo, a quota deverá esgotar-se em cerca de %1$@ h %2$@ min (%3$@).";
+"quota.pace.body.fast_minutes" = "A este ritmo, a quota deverá esgotar-se em cerca de %1$@ min (%2$@).";
 "quota.pace.body.normal" = "Ao ritmo atual, a quota deverá durar até à reposição.";
 "quota.pace.body.slow" = "Ao ritmo atual, a quota deste ciclo deverá durar até à reposição.";
-"quota.pace.body.exhausted" = "A quota esgotou-se. Aguarde a reposição.";
-"quota.pace.body.under_minute" = "A este ritmo, a quota deverá esgotar-se em menos de um minuto.";
+"quota.pace.body.exhausted" = "Aguarde a reposição.";
+"quota.pace.body.under_minute" = "A este ritmo, a quota deverá esgotar-se em menos de um minuto (%1$@).";
+
+"quota.pace.status.exhausted" = "Quota esgotada";
+
+"quota.pace.body.qualitative.fast" = "O uso está adiantado face ao tempo decorrido. Acompanhe o uso seguinte.";
+
+"quota.pace.body.qualitative.normal" = "O uso está aproximadamente alinhado com o tempo decorrido.";
+
+"quota.pace.body.qualitative.slow" = "Ainda há bastante quota neste ciclo. Use-a conforme precisar.";
+
+"quota.pace.time.tomorrow" = "Amanhã %1$@";
