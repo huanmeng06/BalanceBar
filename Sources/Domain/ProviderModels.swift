@@ -640,6 +640,7 @@ enum OpenCodexCardLayout {
     static func frames(
         for category: OpenCodexCardCategory,
         linkPrefixWidth: CGFloat = 62,
+        includesBalanceSubtitle: Bool = true,
         includesAccount: Bool = false,
         includesSubscription: Bool = false,
         subscriptionTextWidth: CGFloat? = nil,
@@ -741,13 +742,14 @@ enum OpenCodexCardLayout {
             let textShift = includesQuotaProgress
                 ? quotaProgressGapCompression
                 : quotaRowHeight - lunaReserveNoProgressRowHeight
+            let subtitleShift: CGFloat = includesBalanceSubtitle ? 0 : 8
             return OpenCodexCardFrames(
-                cardSize: CGSize(width: cardWidth, height: 102 - textShift),
-                title: CGRect(x: horizontalInset, y: 75 - textShift, width: 189, height: 20),
-                refreshTime: CGRect(x: refreshTimeX, y: 76 - textShift, width: 81, height: 17),
+                cardSize: CGSize(width: cardWidth, height: 102 - textShift - subtitleShift),
+                title: CGRect(x: horizontalInset, y: 75 - textShift - subtitleShift, width: 189, height: 20),
+                refreshTime: CGRect(x: refreshTimeX, y: 76 - textShift - subtitleShift, width: 81, height: 17),
                 account: nil,
                 subscription: nil,
-                quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift, width: 128, height: 18),
+                quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift - subtitleShift, width: 128, height: 18),
                 reset: nil,
                 amount: CGRect(
                     x: amountX,
@@ -760,13 +762,13 @@ enum OpenCodexCardLayout {
                 progress: includesQuotaProgress
                     ? CGRect(x: horizontalInset, y: 8, width: contentWidth, height: quotaProgressHeight)
                     : nil,
-                linkPrefix: CGRect(
+                linkPrefix: includesBalanceSubtitle ? CGRect(
                     x: horizontalInset,
                     y: 28 - textShift,
                     width: linkPrefixWidth,
                     height: 17
-                ),
-                link: CGRect(x: linkX, y: 28 - textShift, width: linkWidth, height: 17),
+                ) : nil,
+                link: includesBalanceSubtitle ? CGRect(x: linkX, y: 28 - textShift, width: linkWidth, height: 17) : nil,
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,

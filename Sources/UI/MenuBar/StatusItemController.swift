@@ -233,6 +233,42 @@ struct AccountMarqueeScrollState: Equatable {
     }
 }
 
+/// A fixed header badge whose text uses the existing visibility-aware marquee.
+final class AggregationNoteTagView: NSView {
+    let textView: AccountMarqueeView
+    var originalTitleFrame: NSRect = .zero
+
+    init(text: String, frame: NSRect) {
+        textView = AccountMarqueeView(text: text, font: .systemFont(ofSize: 11),
+            textColor: .secondaryLabelColor, frame: NSRect(x: 5, y: 1, width: max(0, frame.width - 10), height: 15))
+        super.init(frame: frame)
+        textView.respectsReduceMotion = true
+        wantsLayer = true
+        layer?.cornerRadius = 4
+        addSubview(textView)
+        updateText(text)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func updateText(_ text: String) {
+        textView.updateText(text, preserveScrollPosition: true)
+        toolTip = text
+        setAccessibilityLabel(text)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
+        textView.frame = NSRect(x: 5, y: 1, width: max(0, bounds.width - 10), height: 15)
+    }
+}
+
 final class AccountMarqueeView: NSView {
     static let animationKey = "BalanceBar.accountMarquee"
     static let defaultEdgeFadeWidth = AccountMarqueeLayout.defaultFadeWidth
@@ -268,6 +304,7 @@ final class AccountMarqueeView: NSView {
     private var scrollActivityTimer: Timer?
     private var scrollIsSuspended = false
     var hasActiveScrollTimer: Bool { scrollActivityTimer != nil }
+    var respectsReduceMotion = false
 
     private var isActuallyVisible: Bool {
         guard window != nil, !isHiddenOrHasHiddenAncestor, !visibleRect.isEmpty else { return false }
@@ -281,6 +318,10 @@ final class AccountMarqueeView: NSView {
 
     /// Offscreen rows retain their animation phase, but do no periodic work.
     func refreshScrollVisibility() {
+        if respectsReduceMotion && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            stopScrolling()
+            return
+        }
         guard isActuallyVisible else {
             scrollActivityTimer?.invalidate()
             scrollActivityTimer = nil
@@ -454,6 +495,7 @@ final class AccountMarqueeView: NSView {
 
     private func startScrollingIfNeeded() {
         guard isScrollable,
+              !(respectsReduceMotion && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion),
               isActuallyVisible,
               let labelLayer = accountLabel.layer else {
             return
@@ -6066,7 +6108,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         let presentation = display.snapshot.officialQuotaMenuPresentation(
                             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
                             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
-                        let layout = makeOverviewCardLayout(for: display.snapshot, presentation: presentation, account: context.account)
+                        let layout = makeOverviewCardLayout(for: display.snapshot, presentation: presentation, account: context.account, aggregation: true)
                         if host.overviewLayout != layout || (existing.snapshot.progressPercentage == nil) != (display.snapshot.progressPercentage == nil) {
                             host.setMenuContentVisible(false)
                             host.removeFromSuperview()
@@ -6165,49 +6207,46 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func updateAggregationNotes(in card: NSView, context: OverviewCardContext) {
-        if context.snapshot.kind == .official, let account = context.account,
-           let host = card as? MenuHoverLinkHostView, let row = host.overviewLayout?.account,
-           let header = host.subviews.first(where: { $0 is OpenCodexAccountSectionView }) {
-            let id = NSUserInterfaceItemIdentifier("aggregation.accountSubtitle")
-            let existing = header.subviews.first { $0.identifier == id }
-            let frame = row.offsetBy(dx: -header.frame.minX, dy: -header.frame.minY)
-            let text = context.notes.map { $0 + " · " + account.text() } ?? account.text()
-            if context.notes?.isEmpty == false {
-                if let marquee = existing as? AccountMarqueeView {
-                    marquee.updateText(text, preserveScrollPosition: true)
-                    marquee.toolTip = context.notes
-                } else {
-                    existing?.removeFromSuperview()
-                    let marquee = AccountMarqueeView(text: text, font: .systemFont(ofSize: 13),
-                        textColor: .secondaryLabelColor, frame: frame)
-                    marquee.identifier = id
-                    marquee.toolTip = context.notes
-                    header.addSubview(marquee)
-                }
-            } else if !(existing is AccountEmailView), case .available = account.state {
-                existing?.removeFromSuperview()
-                let label = makeAccountLabel(account, frame: frame)
-                label.identifier = id
-                header.addSubview(label)
-            } else if let marquee = existing as? AccountMarqueeView {
-                marquee.updateText(account.text(), preserveScrollPosition: true)
-                marquee.toolTip = nil
-            }
+        guard let title = descendantViews(of: card, as: NSTextField.self).first(where: {
+                  $0.identifier?.rawValue == "overview.providerTitle"
+              }), let header = title.superview,
+              let time = descendantViews(of: card, as: NSTextField.self).first(where: {
+                  $0.identifier?.rawValue == "overview.refreshTime"
+              }) else { return }
+        let id = NSUserInterfaceItemIdentifier("aggregation.notes." + context.identity)
+        let existing = header.subviews.first { $0.identifier == id } as? AggregationNoteTagView
+        let titleFrame: NSRect
+        if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout {
+            titleFrame = layout.title.offsetBy(dx: header === card ? 0 : -header.frame.minX,
+                                              dy: header === card ? 0 : -header.frame.minY)
+        } else {
+            titleFrame = existing?.originalTitleFrame ?? title.frame
+        }
+        let text = context.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        title.toolTip = context.snapshot.overviewProvider
+        title.setAccessibilityLabel(context.snapshot.overviewProvider)
+        title.lineBreakMode = .byTruncatingTail
+        guard !text.isEmpty else {
+            existing?.removeFromSuperview()
+            title.frame = titleFrame
             return
         }
-        guard let notes = descendantViews(of: card, as: NSTextField.self).first(where: {
-            $0.identifier?.rawValue == "aggregation.notes"
-        }) else { return }
-        notes.stringValue = context.notes ?? ""
-        notes.toolTip = context.notes
-        notes.isHidden = context.notes?.isEmpty != false
-        if context.snapshot.kind == .balance,
-           let layout = (card as? MenuHoverLinkHostView)?.overviewLayout, let row = layout.linkPrefix {
-            let reservation = numericSamples(for: context).first.map { overviewNumericPlan(for: $0).layoutReservationText }
-                ?? context.snapshot.overviewLargeAmount
-            notes.frame = overviewMarqueeFrame(NSRect(x: row.minX, y: row.minY,
-                width: OpenCodexCardLayout.contentWidth, height: row.height),
-                avoidingAmountFrame: layout.amount, amountText: reservation)
+        let available = max(0, header.convert(time.frame, from: time.superview).minX - 6 - titleFrame.minX)
+        let width = min(available / 3, ceil(AccountMarqueeView.textWidth(of: text,
+            font: .systemFont(ofSize: 11))) + 10)
+        let titleWidth = min(ceil(title.cell?.cellSize.width ?? titleFrame.width), max(0, available - width - 6))
+        title.frame = NSRect(x: titleFrame.minX, y: titleFrame.minY, width: titleWidth, height: titleFrame.height)
+        let frame = NSRect(x: title.frame.maxX + 6, y: titleFrame.midY - 8.5, width: width, height: 17)
+        if let existing {
+            existing.originalTitleFrame = titleFrame
+            existing.frame = frame
+            existing.updateText(text)
+            existing.layoutSubtreeIfNeeded()
+        } else {
+            let tag = AggregationNoteTagView(text: text, frame: frame)
+            tag.identifier = id
+            tag.originalTitleFrame = titleFrame
+            header.addSubview(tag)
         }
     }
 
@@ -6225,7 +6264,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func makeOverviewCardLayout(for snapshot: Snapshot,
                                         presentation: OfficialQuotaMenuPresentation,
-                                        account: OpenAIAccountPresentation? = nil) -> OpenCodexCardFrames {
+                                        account: OpenAIAccountPresentation? = nil,
+                                        aggregation: Bool = false) -> OpenCodexCardFrames {
         let isBalance = snapshot.kind == .balance
         let officialQuotaWindows = presentation.windows
         let lunaReserve = presentation.lunaReserve
@@ -6248,6 +6288,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
+            includesBalanceSubtitle: !aggregation,
             includesAccount: snapshot.kind == .official && account != nil,
             includesSubscription: snapshot.kind == .official && subscription != nil,
             subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
@@ -6291,7 +6332,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards, timeZone: settings.displayTimeZone)
         }
         let subscription = context.account?.subscription
-        let layout = makeOverviewCardLayout(for: snapshot, presentation: quotaPresentation, account: context.account)
+        let layout = makeOverviewCardLayout(for: snapshot, presentation: quotaPresentation, account: context.account, aggregation: supplied != nil)
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.overviewLayout = layout
         view.providerIdentity = context.identity
@@ -6727,17 +6768,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             )
             if isBalance {
-                if supplied != nil, let row = layout.linkPrefix {
-                    let notes = makeOverviewLabel(context.notes ?? "", font: .systemFont(ofSize: 12))
-                    notes.textColor = .secondaryLabelColor
-                    notes.identifier = NSUserInterfaceItemIdentifier("aggregation.notes")
-                    notes.lineBreakMode = .byTruncatingTail
-                    notes.frame = overviewMarqueeFrame(NSRect(x: row.minX, y: row.minY,
-                        width: OpenCodexCardLayout.contentWidth, height: row.height),
-                        avoidingAmountFrame: amount.frame, amountText: marqueeAmountText, amountFont: amountFont)
-                    view.addSubview(notes)
-                    updateAggregationNotes(in: view, context: context)
-                } else if supplied == nil {
+                if supplied == nil {
                     let linkPrefix = makeOverviewLabel(tr(.keyStatusItemControllerOfficialLink), font: .systemFont(ofSize: 12))
                     linkPrefix.textColor = .secondaryLabelColor
                     linkPrefix.frame = layout.linkPrefix ?? .zero
@@ -6790,6 +6821,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
         provider.frame = frames.title
+        provider.identifier = NSUserInterfaceItemIdentifier("overview.providerTitle")
         view.addSubview(provider)
         if let account = context.account, let accountFrame = frames.account {
             let accountLabel = makeAccountLabel(
@@ -6823,6 +6855,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         detail.frame = frames.detail
         view.addSubview(detail)
+        if !menuInput.aggregatedProviders.isEmpty { updateAggregationNotes(in: view, context: context) }
         item.view = view
         return item
     }
@@ -7439,7 +7472,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let presentation = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
-        let next = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account)
+        let next = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account,
+            aggregation: !menuInput.aggregatedProviders.isEmpty)
         let nextForecastKey = forecastContentKey(presentation.resetForecast)
         let nextCardIDs = presentation.bankedReset?.cards.map(\.id) ?? []
         let providerChanged = host.providerIdentity != context.identity

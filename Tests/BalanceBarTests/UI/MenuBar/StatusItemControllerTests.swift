@@ -3235,7 +3235,69 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testAggregationNotesReuseOriginalSubtitleSlotAndDoNotAddFooterHeight() throws {
+    func testUnavailableAggregationProviderKeepsNoteInTitle() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        func input(_ note: String?) -> StatusItemController.MenuInput {
+            let base = aggregationInput(count: 1)
+            let previous = base.aggregatedProviders[0]
+            let source = ProviderSummarySource(id: "provider-0", name: "tokenshop", isOfficial: false,
+                query: nil, officialAccessToken: nil, notes: note)
+            let display = AggregatedProviderDisplay(entry: .init(source: source, role: .default), identity: previous.identity,
+                snapshot: .providerError("tokenshop", reason: "Fixture unavailable", cachedBalance: nil),
+                account: nil, status: .unavailable, reason: "Fixture unavailable", fetchedAt: nil)
+            return .init(choices: [], quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [],
+                showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
+                aggregatedProviders: [display])
+        }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input("Grok"), settings: makeSettings())
+        let document = try XCTUnwrap((controller.statusMenuForTesting.items.first?.view as? NSScrollView)?.documentView)
+        let card = try XCTUnwrap(document.subviews.first?.subviews.first)
+        let tag = try XCTUnwrap(card.subviews.compactMap { $0 as? AggregationNoteTagView }.first)
+        let title = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.providerTitle" })
+        let original = tag.originalTitleFrame
+        XCTAssertEqual(tag.textView.accountLabel.stringValue, "Grok")
+        controller.updateMenu(input: input("GPT"))
+        XCTAssertTrue(card.subviews.contains { $0 === tag })
+        XCTAssertEqual(tag.textView.accountLabel.stringValue, "GPT")
+        controller.updateMenu(input: input(nil))
+        XCTAssertFalse(card.subviews.contains { $0 is AggregationNoteTagView })
+        XCTAssertEqual(title.frame, original)
+    }
+
+    @MainActor
+    func testNoteTagMarqueePausesWhenMenuClosesOrCardIsHidden() throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 80),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 200, height: 80))
+        let tag = AggregationNoteTagView(text: String(repeating: "long note ", count: 30),
+            frame: NSRect(x: 10, y: 30, width: 60, height: 17))
+        host.addSubview(tag)
+        window.contentView?.addSubview(host)
+        host.layoutSubtreeIfNeeded()
+        host.setMenuContentVisible(true)
+        XCTAssertTrue(tag.textView.isScrollable)
+        XCTAssertEqual(tag.textView.hasActiveScrollTimer, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        host.setMenuContentVisible(false)
+        XCTAssertFalse(tag.textView.hasActiveScrollTimer)
+        host.setMenuContentVisible(true)
+        host.isHidden = true
+        host.refreshMarqueeVisibility()
+        XCTAssertFalse(tag.textView.hasActiveScrollTimer)
+        host.isHidden = false
+        host.refreshMarqueeVisibility()
+        tag.updateText("GPT")
+        tag.layoutSubtreeIfNeeded()
+        tag.textView.layoutSubtreeIfNeeded()
+        XCTAssertFalse(tag.textView.isScrollable)
+        XCTAssertFalse(tag.textView.hasActiveScrollTimer)
+        host.removeFromSuperview()
+    }
+
+    @MainActor
+    func testAggregationNoteTagsReuseCardsAndCollapseSubtitleSpace() throws {
         let controller = makeController()
         defer { controller.teardown() }
         controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 4), settings: makeSettings())
@@ -3244,42 +3306,45 @@ extension StatusItemControllerTests {
         let wrapper = document.subviews[0]
         let card = try XCTUnwrap(wrapper.subviews.first as? MenuHoverLinkHostView)
         let layout = try XCTUnwrap(card.overviewLayout)
-        XCTAssertEqual(wrapper.subviews.count, 1)
-        XCTAssertEqual(wrapper.frame.height, card.frame.height)
+        XCTAssertNil(layout.linkPrefix)
+        XCTAssertNil(layout.link)
         let placements = controller.aggregationPlacementCountForTesting
-        let text = "Fixture note with a long second line. " + String(repeating: "note ", count: 40)
-        controller.updateMenu(input: aggregationInput(count: 4, notes: [0: text]))
+        let text = String(repeating: "Long fixture note ", count: 40)
+        controller.updateMenu(input: aggregationInput(count: 4, notes: [0: text, 1: "Grok", 2: "GPT", 3: "   "]))
         XCTAssertTrue(wrapper.subviews.first === card)
-        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "aggregation.notes" })
-        XCTAssertEqual(label.toolTip, text)
-        XCTAssertEqual(label.font?.pointSize, 12)
-        XCTAssertEqual(label.frame.minY, layout.linkPrefix?.minY)
-        XCTAssertEqual(label.frame.height, layout.linkPrefix?.height)
-        XCTAssertFalse(label.isHidden)
+        let tag = try XCTUnwrap(card.subviews.compactMap { $0 as? AggregationNoteTagView }.first)
+        let title = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.providerTitle" })
+        tag.layoutSubtreeIfNeeded()
+        tag.textView.layoutSubtreeIfNeeded()
+        XCTAssertEqual(tag.toolTip, text.trimmingCharacters(in: .whitespacesAndNewlines))
+        XCTAssertEqual(tag.textView.accountLabel.font?.pointSize, 11)
+        XCTAssertEqual(tag.frame.minX, title.frame.maxX + 6)
+        XCTAssertLessThanOrEqual(tag.frame.maxX, layout.refreshTime.minX - 6)
+        XCTAssertTrue(tag.textView.isScrollable)
+        XCTAssertFalse(tag.textView.hasActiveScrollTimer)
         XCTAssertEqual(wrapper.frame.height, card.frame.height)
-        XCTAssertEqual(card.frame.origin, .zero)
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
+        let otherTags = document.subviews.dropFirst().map { $0.subviews.first!.subviews.compactMap { $0 as? AggregationNoteTagView } }
+        XCTAssertEqual(otherTags[0].first?.textView.accountLabel.stringValue, "Grok")
+        XCTAssertEqual(otherTags[1].first?.textView.accountLabel.stringValue, "GPT")
+        XCTAssertTrue(otherTags[2].isEmpty)
+        controller.updateMenu(input: aggregationInput(count: 4, notes: [0: text, 1: "Grok", 2: "GPT", 3: "   "]))
+        XCTAssertTrue(card.subviews.contains { $0 === tag })
         XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
         controller.updateMenu(input: aggregationInput(count: 4))
-        XCTAssertEqual(wrapper.frame.height, card.frame.height)
-        XCTAssertTrue(label.isHidden)
-
-        // Same production template for the five screenshot elements, including
-        // original title/time/detail/amount positions and subtitle row geometry.
-        let ordinary = makeController()
-        defer { ordinary.teardown() }
-        let sample = aggregationInput(count: 4).aggregatedProviders[0]
-        ordinary.start(snapshot: sample.snapshot, refreshDate: sample.fetchedAt, menuInput: makeMenuInput(), settings: makeSettings())
-        let single = try XCTUnwrap(ordinary.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
-        XCTAssertEqual(card.overviewLayout, single.overviewLayout)
-        XCTAssertEqual(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.providerTitle" }?.font?.pointSize, 15)
-        XCTAssertEqual(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.refreshTime" }?.font?.pointSize, 12)
+        XCTAssertFalse(card.subviews.contains { $0 is AggregationNoteTagView })
+        XCTAssertEqual(title.frame, layout.title)
+        let ordinary = OpenCodexCardLayout.frames(for: .balance)
+        XCTAssertEqual(ordinary.cardSize.height - layout.cardSize.height, 8)
+        XCTAssertEqual(ordinary.cardSize.height - ordinary.refreshTime.maxY, layout.cardSize.height - layout.refreshTime.maxY)
     }
+
 }
 
 
 extension StatusItemControllerTests {
     @MainActor
-    func testOfficialNotesStayInAccountHeaderWithoutAddingBelowProgressHeight() throws {
+    func testOfficialNoteTagDoesNotReplaceAccountSubtitle() throws {
         let controller = makeController()
         defer { controller.teardown() }
         func input(notes: String?, account: OpenAIAccountPresentation = OpenAIAccountPresentation(email: "fixture@example.test")) -> StatusItemController.MenuInput {
@@ -3304,9 +3369,9 @@ extension StatusItemControllerTests {
         XCTAssertEqual(wrapper.frame.height, height)
         XCTAssertEqual(card.frame.origin, .zero)
         let header = try XCTUnwrap(card.subviews.first { $0 is OpenCodexAccountSectionView })
-        let note = try XCTUnwrap(header.subviews.compactMap { $0 as? AccountMarqueeView }.first { $0.identifier?.rawValue == "aggregation.accountSubtitle" })
-        XCTAssertTrue(note.accountLabel.stringValue.contains("Fixture name"))
-        XCTAssertTrue(note.accountLabel.stringValue.contains("fixture@example.test"))
+        let note = try XCTUnwrap(header.subviews.compactMap { $0 as? AggregationNoteTagView }.first)
+        XCTAssertEqual(note.textView.accountLabel.stringValue, "Fixture name")
+        XCTAssertTrue(header.subviews.contains { $0 is AccountEmailView })
         XCTAssertEqual(note.toolTip, "Fixture name")
         controller.updateMenu(input: input(notes: nil))
         XCTAssertTrue(header.subviews.contains { $0 is AccountEmailView })
