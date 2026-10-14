@@ -39,7 +39,7 @@ Path(sys.argv[2]).write_text('import AppKit\nimport Foundation\n' + metrics + '\
     + 'struct OpenCodexQuotaRowFrames: Equatable {}\n'
     + 'struct OpenCodexOverviewSectionLayout: Equatable {}\n' + frames + '\n'
     + 'enum OpenCodexCardLayout {\n' + constants + '\n' + compression + '\n'
-    + 'static func balance(includesBalanceLink: Bool = true, linkPrefixWidth: CGFloat = 62, includesQuotaProgress: Bool = true) -> OpenCodexCardFrames {'
+    + 'static func balance(linkPrefixWidth: CGFloat = 62, includesQuotaProgress: Bool = true) -> OpenCodexCardFrames {'
     + body + '\n}\n}\n')
 PY
 
@@ -49,13 +49,8 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
 }
 for progress in [false, true] {
     let ordinary = OpenCodexCardLayout.balance(includesQuotaProgress: progress)
-    let compact = OpenCodexCardLayout.balance(includesBalanceLink: false, includesQuotaProgress: progress)
     require(ordinary.link != nil && ordinary.linkPrefix != nil, "ordinary link row remains available")
-    require(compact.link == nil && compact.linkPrefix == nil, "aggregation omits the footer row")
-    require(compact.cardSize.height < ordinary.cardSize.height, "removed footer collapses usable spacing")
-    require(compact.amount == ordinary.amount, "amount reservation survives footer removal")
-    require(compact.progress == ordinary.progress, "progress placement remains shared")
-    for frames in [ordinary, compact] {
+    for frames in [ordinary] {
         let bounds = CGRect(origin: .zero, size: frames.cardSize)
         for rect in [frames.title, frames.refreshTime, frames.quotaDetail, frames.amount] {
             require(bounds.contains(rect), "all essential fields remain inside the card")
@@ -70,7 +65,7 @@ for progress in [false, true] {
         }
     }
 }
-print("balance card layout probe: PASS; production ordinary/aggregation frames, bounds, spacing and amount preservation")
+print("balance card layout probe: PASS; production balance template, subtitle slot, bounds and amount spacing")
 SWIFT
 swiftc -framework AppKit -framework Foundation -o "$probe_dir/probe" "$probe_dir/main.swift"
 "$probe_dir/probe"

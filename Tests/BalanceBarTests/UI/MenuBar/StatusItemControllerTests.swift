@@ -3235,25 +3235,92 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testAggregationNotesMeasuredWithoutDefaultFooterAndChangingNotesKeepsCard() throws {
+    func testAggregationNotesReuseOriginalSubtitleSlotAndDoNotAddFooterHeight() throws {
         let controller = makeController()
         defer { controller.teardown() }
         controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 4), settings: makeSettings())
         let scroll = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
         let document = try XCTUnwrap(scroll.documentView)
         let wrapper = document.subviews[0]
-        let card = try XCTUnwrap(wrapper.subviews.first { $0 is MenuHoverLinkHostView })
+        let card = try XCTUnwrap(wrapper.subviews.first as? MenuHoverLinkHostView)
+        let layout = try XCTUnwrap(card.overviewLayout)
+        XCTAssertEqual(wrapper.subviews.count, 1)
         XCTAssertEqual(wrapper.frame.height, card.frame.height)
-        let notes = "Fixture note with a long second line. " + String(repeating: "note ", count: 40)
-        controller.updateMenu(input: aggregationInput(count: 4, notes: [0: notes]))
-        XCTAssertTrue(wrapper.subviews.contains { $0 === card })
-        let label = try XCTUnwrap(wrapper.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "aggregation.notes" })
-        XCTAssertEqual(label.toolTip, notes)
+        let placements = controller.aggregationPlacementCountForTesting
+        let text = "Fixture note with a long second line. " + String(repeating: "note ", count: 40)
+        controller.updateMenu(input: aggregationInput(count: 4, notes: [0: text]))
+        XCTAssertTrue(wrapper.subviews.first === card)
+        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "aggregation.notes" })
+        XCTAssertEqual(label.toolTip, text)
+        XCTAssertEqual(label.font?.pointSize, 12)
+        XCTAssertEqual(label.frame.minY, layout.linkPrefix?.minY)
+        XCTAssertEqual(label.frame.height, layout.linkPrefix?.height)
         XCTAssertFalse(label.isHidden)
-        XCTAssertGreaterThan(wrapper.frame.height, card.frame.height)
-        XCTAssertLessThanOrEqual(wrapper.frame.height - card.frame.height, 54)
+        XCTAssertEqual(wrapper.frame.height, card.frame.height)
+        XCTAssertEqual(card.frame.origin, .zero)
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
         controller.updateMenu(input: aggregationInput(count: 4))
         XCTAssertEqual(wrapper.frame.height, card.frame.height)
         XCTAssertTrue(label.isHidden)
+
+        // Same production template for the five screenshot elements, including
+        // original title/time/detail/amount positions and subtitle row geometry.
+        let ordinary = makeController()
+        defer { ordinary.teardown() }
+        let sample = aggregationInput(count: 4).aggregatedProviders[0]
+        ordinary.start(snapshot: sample.snapshot, refreshDate: sample.fetchedAt, menuInput: makeMenuInput(), settings: makeSettings())
+        let single = try XCTUnwrap(ordinary.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
+        XCTAssertEqual(card.overviewLayout, single.overviewLayout)
+        XCTAssertEqual(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.providerTitle" }?.font?.pointSize, 15)
+        XCTAssertEqual(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.refreshTime" }?.font?.pointSize, 12)
+    }
+}
+
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testOfficialNotesStayInAccountHeaderWithoutAddingBelowProgressHeight() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        func input(notes: String?, account: OpenAIAccountPresentation = OpenAIAccountPresentation(email: "fixture@example.test")) -> StatusItemController.MenuInput {
+            var values = aggregationInput(count: 1).aggregatedProviders
+            let source = ProviderSummarySource(id: "provider-0", name: "Official", isOfficial: true,
+                query: nil, officialAccessToken: nil, notes: notes)
+            values[0] = AggregatedProviderDisplay(entry: .init(source: source, role: .default), identity: values[0].identity,
+                snapshot: .official("Official", 94, "5h", nil, Date(timeIntervalSince1970: 1_700_000_000)),
+                account: account, status: .fresh, reason: nil, fetchedAt: values[0].fetchedAt)
+            return .init(choices: [], quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [],
+                showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
+                aggregatedProviders: values)
+        }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input(notes: nil), settings: makeSettings())
+        let root = try XCTUnwrap((controller.statusMenuForTesting.items.first?.view as? NSScrollView)?.documentView)
+        let wrapper = try XCTUnwrap(root.subviews.first)
+        let card = try XCTUnwrap(wrapper.subviews.first as? MenuHoverLinkHostView)
+        let height = wrapper.frame.height
+        controller.updateMenu(input: input(notes: "Fixture name"))
+        XCTAssertTrue(wrapper.subviews.first === card)
+        XCTAssertEqual(wrapper.subviews.count, 1)
+        XCTAssertEqual(wrapper.frame.height, height)
+        XCTAssertEqual(card.frame.origin, .zero)
+        let header = try XCTUnwrap(card.subviews.first { $0 is OpenCodexAccountSectionView })
+        let note = try XCTUnwrap(header.subviews.compactMap { $0 as? AccountMarqueeView }.first { $0.identifier?.rawValue == "aggregation.accountSubtitle" })
+        XCTAssertTrue(note.accountLabel.stringValue.contains("Fixture name"))
+        XCTAssertTrue(note.accountLabel.stringValue.contains("fixture@example.test"))
+        XCTAssertEqual(note.toolTip, "Fixture name")
+        controller.updateMenu(input: input(notes: nil))
+        XCTAssertTrue(header.subviews.contains { $0 is AccountEmailView })
+        XCTAssertEqual(wrapper.frame.height, height)
+        let unavailable = makeController()
+        defer { unavailable.teardown() }
+        unavailable.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: input(notes: "Removed alias", account: OpenAIAccountPresentation(email: nil)), settings: makeSettings())
+        let unavailableRoot = try XCTUnwrap((unavailable.statusMenuForTesting.items.first?.view as? NSScrollView)?.documentView)
+        let unavailableCard = try XCTUnwrap(unavailableRoot.subviews.first?.subviews.first as? MenuHoverLinkHostView)
+        let unavailableHeader = try XCTUnwrap(unavailableCard.subviews.first { $0 is OpenCodexAccountSectionView })
+        let unavailableSubtitle = try XCTUnwrap(unavailableHeader.subviews.compactMap { $0 as? AccountMarqueeView }.first)
+        unavailable.updateMenu(input: input(notes: nil, account: OpenAIAccountPresentation(email: nil)))
+        XCTAssertFalse(unavailableSubtitle.accountLabel.stringValue.contains("Removed alias"))
+        XCTAssertNil(unavailableSubtitle.toolTip)
     }
 }
