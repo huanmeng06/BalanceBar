@@ -651,6 +651,35 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertFalse(pace.isMenuTracking)
     }
 
+    func testPaceAnimationRuntimePolicyUsesExistingWorkspaceObserver() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 40), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.orderOut(nil) }
+        host.layoutSubtreeIfNeeded()
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let view = try XCTUnwrap(host.paceViews.first)
+        view.markerReduceMotionForTesting = false
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: view.bounds.midY))
+        XCTAssertNotNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        view.markerReduceMotionForTesting = true
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        view.markerReduceMotionForTesting = false
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        XCTAssertFalse(view.hasPendingShowForTesting)
+    }
+
     func testPaceTooltipUsesSettingsTimezoneAtCreationAndOpenRefresh() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let controller = makeController()

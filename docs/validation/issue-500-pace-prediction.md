@@ -35,6 +35,14 @@ The tooltip switches 5h/7d by transferring one NSPopover anchored to their commo
 
 The background XCTest host deliberately parks windows offscreen and denies key focus. A native menu/popover diagnostic was intermittent (2 of 5 repetitions ended menu tracking early, at first presentation or switching); this does **not** establish whether production has the same behavior. Even a long presentation-probe run had one of five native menu loops end early. Deterministic coverage is split: a short real NSMenu tracking-loop probe checks routing/content/anchor/ownership/teardown with controlled timer firing; a standalone pace view in a parked window separately verifies real 300ms/100ms delays and cancellation while running the event-tracking mode. Both use a presentation probe instead of changing the host policy. Native window stability is not claimed PASS; it remains a required manual gate with the development bundle.
 
+## Tick hover animation
+
+The marker overlay uses two CALayers above the unchanged progress track. Body rest/hover dimensions are 2×8pt / 3.5×11pt, opacity 0.85 / 1, outline 0.75pt / 1pt with 40% white/black contrast. Entry uses damping 18, stiffness 320, mass 1, zero initial velocity and settlingDuration; exit is 150ms ease-out. Bounds, corner radius and opacity animate from presentation values to explicit model targets without transform scaling. Local frame/scale/color updates disable implicit animation.
+
+The clipped 16×18pt heat rect never grows with animation. Existing activeAlways/menu-tracking guards and 300ms show / 100ms close timing remain. Ordinary exits and 5h/7d transfers animate; lifecycle invalidation removes animations and snaps rest. Existing workspace accessibility observation applies runtime Reduce Motion: immediate state changes, no replay when disabled. Layer copy initialization explicitly preserves child identities, geometry, colors and scale.
+
+Unit/integration checks establish model geometry, animation configuration, presentation-start selection, copies, timing and cleanup. They do not establish native animation appearance or a particular overshoot percentage; evaluate responsiveness and menu stability with the development bundle.
+
 ## Release evidence still required
 
 Actual cursor hit testing, compact visual layout, all language wrapping, screen-edge placement, quota refresh, menu close/reopen and identity changes require the user development-bundle checklist. Weekly prediction stays withheld. When a reset scenario cannot establish a trustworthy clock/counter pair, keep its prediction withheld.

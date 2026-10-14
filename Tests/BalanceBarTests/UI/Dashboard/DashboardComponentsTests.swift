@@ -69,11 +69,159 @@ private final class QuotaPacePopoverProbe: NSPopover {
     override func close() { showing = false }
 }
 
+private final class PacePresentationProbeLayer: CALayer {
+    var presented: PacePresentationProbeLayer?
+    override func presentation() -> Self? { presented as? Self }
+}
+
 @MainActor
 final class DashboardComponentsTests: XCTestCase {
     private func paceWindow(remaining: Double = 50, reset: Date, kind: OfficialQuotaWindow.Kind = .fiveHour) -> OfficialQuotaWindow {
         OfficialQuotaWindow(kind: kind, remaining: remaining, label: "quota", daysText: "quota",
             reset: "obsolete", durationSeconds: kind == .sevenDay ? 604_800 : 18_000, resetAt: reset)
+    }
+
+    func testPaceTickLayerMetricsSpringReverseAndCopy() throws {
+        let tick = PaceTickLayer()
+        XCTAssertEqual(tick.bodyLayer.bounds.size, CGSize(width: 2, height: 8))
+        XCTAssertEqual(tick.strokeLayer.bounds.size, CGSize(width: 3.5, height: 9.5))
+        XCTAssertEqual(tick.bodyLayer.cornerRadius, 1)
+        XCTAssertEqual(tick.bodyLayer.opacity, 0.85)
+        tick.updateGeometry(center: CGPoint(x: 100, y: 9), scale: 2)
+        XCTAssertEqual(tick.bodyLayer.position, tick.strokeLayer.position)
+        tick.setHovered(true, reduceMotion: false)
+        XCTAssertEqual(tick.bodyLayer.bounds.size, CGSize(width: 3.5, height: 11))
+        XCTAssertEqual(tick.strokeLayer.bounds.size, CGSize(width: 5.5, height: 13))
+        XCTAssertEqual(tick.bodyLayer.cornerRadius, 1.75)
+        XCTAssertEqual(tick.strokeLayer.cornerRadius, 2.75)
+        XCTAssertEqual(tick.bodyLayer.opacity, 1)
+        XCTAssertTrue(CATransform3DIsIdentity(tick.bodyLayer.transform))
+        for child in [tick.bodyLayer, tick.strokeLayer] {
+            for key in ["bounds", "cornerRadius", "opacity"] {
+                let animation = try XCTUnwrap(child.animation(forKey: "pace.\(key)") as? CASpringAnimation)
+                XCTAssertEqual(animation.keyPath, key)
+                XCTAssertEqual(animation.damping, 18)
+                XCTAssertEqual(animation.stiffness, 320)
+                XCTAssertEqual(animation.mass, 1)
+                XCTAssertEqual(animation.initialVelocity, 0)
+                XCTAssertEqual(animation.duration, animation.settlingDuration)
+                XCTAssertNotNil(animation.fromValue)
+                XCTAssertNotNil(animation.toValue)
+            }
+        }
+        tick.setHovered(true, reduceMotion: false)
+        let unchanged = try XCTUnwrap(tick.bodyLayer.animation(forKey: "pace.bounds") as? CABasicAnimation)
+        XCTAssertEqual((unchanged.fromValue as? NSValue)?.rectValue.size, CGSize(width: 2, height: 8), "Repeated hover must not restart from the model target")
+        tick.setHovered(false, reduceMotion: false)
+        let exit = try XCTUnwrap(tick.bodyLayer.animation(forKey: "pace.bounds") as? CABasicAnimation)
+        XCTAssertFalse(exit is CASpringAnimation)
+        XCTAssertEqual(exit.duration, 0.15)
+        XCTAssertEqual((exit.fromValue as? NSValue)?.rectValue.size, CGSize(width: 3.5, height: 11))
+        XCTAssertEqual((exit.toValue as? NSValue)?.rectValue.size, CGSize(width: 2, height: 8))
+        tick.setHovered(true, reduceMotion: false)
+        XCTAssertEqual(tick.bodyLayer.animationKeys()?.count, 3)
+        let copy = PaceTickLayer(layer: tick)
+        XCTAssertEqual(copy.sublayers?.count, 2)
+        XCTAssertEqual(copy.bodyLayer.bounds, tick.bodyLayer.bounds)
+        XCTAssertTrue(copy.isHovered)
+        XCTAssertFalse(copy.bodyLayer === tick.bodyLayer)
+        copy.setHovered(false, reduceMotion: true)
+        XCTAssertEqual(tick.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        tick.setHovered(false, reduceMotion: false, immediately: true)
+        XCTAssertNil(tick.bodyLayer.animationKeys())
+        XCTAssertNil(tick.strokeLayer.animationKeys())
+        XCTAssertEqual(tick.bodyLayer.bounds.size, PaceTickLayer.restSize)
+    }
+
+    func testPaceReverseAnimationUsesPresentationInsteadOfModelTarget() throws {
+        let tick = PaceTickLayer()
+        let model = PacePresentationProbeLayer()
+        model.name = "pace.body"
+        model.bounds = CGRect(origin: .zero, size: PaceTickLayer.restSize)
+        let visible = PacePresentationProbeLayer()
+        visible.bounds = CGRect(x: 0, y: 0, width: 2.8, height: 9.9)
+        visible.cornerRadius = 1.4
+        visible.opacity = 0.93
+        model.presented = visible
+        tick.sublayers = [tick.strokeLayer, model]
+        tick.setHovered(true, reduceMotion: false)
+        tick.setHovered(false, reduceMotion: false)
+        let bounds = try XCTUnwrap(model.animation(forKey: "pace.bounds") as? CABasicAnimation)
+        XCTAssertEqual((bounds.fromValue as? NSValue)?.rectValue, visible.bounds)
+        XCTAssertEqual((bounds.toValue as? NSValue)?.rectValue.size, PaceTickLayer.restSize)
+        let radius = try XCTUnwrap(model.animation(forKey: "pace.cornerRadius") as? CABasicAnimation)
+        XCTAssertEqual((radius.fromValue as? NSNumber)?.doubleValue, 1.4)
+        let opacity = try XCTUnwrap(model.animation(forKey: "pace.opacity") as? CABasicAnimation)
+        XCTAssertEqual(try XCTUnwrap(opacity.fromValue as? NSNumber).doubleValue, 0.93, accuracy: 0.001)
+    }
+
+    func testPaceTickColorsScaleAndReduceMotion() throws {
+        let tick = PaceTickLayer()
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try XCTUnwrap(NSAppearance(named: name))
+            tick.updateColors(for: appearance)
+            var expected: CGColor?
+            appearance.performAsCurrentDrawingAppearance { expected = NSColor.labelColor.cgColor }
+            XCTAssertEqual(tick.bodyLayer.backgroundColor, expected)
+            let outline = try XCTUnwrap(tick.strokeLayer.backgroundColor)
+            XCTAssertEqual(outline.alpha, 0.4, accuracy: 0.0001)
+            let color = try XCTUnwrap(NSColor(cgColor: outline)?.usingColorSpace(.deviceRGB))
+            XCTAssertEqual(color.redComponent, name == .darkAqua ? 0 : 1, accuracy: 0.0001)
+        }
+        for scale in [1.0, 2.0] {
+            tick.updateGeometry(center: CGPoint(x: 75, y: 9), scale: scale)
+            XCTAssertEqual(tick.position, CGPoint(x: 75, y: 9))
+            for child in [tick, tick.bodyLayer, tick.strokeLayer] { XCTAssertEqual(child.contentsScale, scale) }
+        }
+        tick.setHovered(true, reduceMotion: true)
+        XCTAssertEqual(tick.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        XCTAssertNil(tick.bodyLayer.animationKeys())
+        tick.setHovered(false, reduceMotion: true)
+        XCTAssertEqual(tick.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        XCTAssertNil(tick.strokeLayer.animationKeys())
+    }
+
+    func testPaceHoverAnimationKeepsHeatRectAndRuntimeReduceMotion() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = paceProbeFixture(now: now)
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        defer { fixture.host.setMenuContentVisible(false); window.orderOut(nil) }
+        fixture.host.layoutSubtreeIfNeeded()
+        let view = fixture.views[0]
+        view.markerReduceMotionForTesting = false
+        fixture.host.setPaceMenuTracking(true)
+        let heat = view.markerHitRect
+        let overlay = try XCTUnwrap(view.subviews.last)
+        overlay.appearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        overlay.viewDidChangeEffectiveAppearance()
+        let outline = try XCTUnwrap(view.markerLayerForTesting.strokeLayer.backgroundColor)
+        XCTAssertEqual(try XCTUnwrap(NSColor(cgColor: outline)?.usingColorSpace(.deviceRGB)).redComponent, 0, accuracy: 0.001)
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        XCTAssertEqual(view.markerHitRect, heat)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        XCTAssertNotNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        view.markerReduceMotionForTesting = true
+        view.refreshMarkerAccessibility()
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        view.markerReduceMotionForTesting = false
+        view.refreshMarkerAccessibility()
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys(), "Disabling Reduce Motion does not replay")
+        view.updateHover(at: NSPoint(x: -100, y: -100))
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        XCTAssertEqual(view.markerHitRect, heat)
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertTrue(view.hasPendingCloseForTesting)
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.animation(forKey: "pace.bounds")?.duration, 0.15)
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+        view.clearInteraction()
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        XCTAssertNil(view.markerLayerForTesting.strokeLayer.animationKeys())
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        XCTAssertFalse(view.hasPendingShowForTesting)
     }
 
     func testPaceMarkerOverlayAndExactTrackingBoundary() throws {
@@ -218,6 +366,7 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertTrue(views[0].hasPendingShowForTesting)
             views[0].firePendingShowForTesting()
             XCTAssertTrue(views[0].isTooltipVisible)
+            XCTAssertEqual(views[0].markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
             XCTAssertNotNil(views[0].tooltipContent?.body)
             XCTAssertTrue(popovers[0].anchorView === host)
             XCTAssertEqual(popovers[0].preferredEdge, .minY)
@@ -239,6 +388,8 @@ final class DashboardComponentsTests: XCTestCase {
             self.enterPace(views[1])
             XCTAssertFalse(views[0].isTooltipVisible)
             XCTAssertTrue(views[1].isTooltipVisible)
+            XCTAssertEqual(views[0].markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+            XCTAssertEqual(views[1].markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
             XCTAssertEqual(popovers[0].showCount, 1)
             XCTAssertEqual(popovers[1].showCount, 0)
             XCTAssertEqual((popovers[0].contentViewController as? QuotaPaceTooltipViewController)?.content,

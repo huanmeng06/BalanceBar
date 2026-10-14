@@ -2826,6 +2826,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // the notification boundary so an already-running timer cannot
             // outlive the user's accessibility preference.
             self.updateActivityIcon()
+            (self.statusMenu.items.first?.view as? MenuHoverLinkHostView)?.paceViews.forEach {
+                $0.refreshMarkerAccessibility()
+            }
         }
     }
 

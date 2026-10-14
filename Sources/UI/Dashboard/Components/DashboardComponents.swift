@@ -411,20 +411,153 @@ final class QuotaProgressView: NSView {
     }
 }
 
+/// Geometry is animated directly, never raster-scaled with a transform.
+final class PaceTickLayer: CALayer {
+    static let restSize = CGSize(width: 2, height: 8)
+    static let hoverSize = CGSize(width: 3.5, height: 11)
+    private(set) var isHovered = false
+    var strokeLayer: CALayer { sublayers!.first { $0.name == "pace.stroke" }! }
+    var bodyLayer: CALayer { sublayers!.first { $0.name == "pace.body" }! }
+
+    override init() {
+        super.init()
+        let stroke = CALayer()
+        stroke.name = "pace.stroke"
+        let body = CALayer()
+        body.name = "pace.body"
+        addSublayer(stroke)
+        addSublayer(body)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bounds = CGRect(x: 0, y: 0, width: 16, height: 18)
+        applyMetrics(hovered: false)
+        CATransaction.commit()
+    }
+
+    override init(layer: Any) {
+        super.init(layer: layer)
+        if let source = layer as? PaceTickLayer {
+            // Explicitly copy children so model and presentation instances
+            // never share our stored geometry references.
+            bounds = source.bounds
+            position = source.position
+            contentsScale = source.contentsScale
+            sublayers = [source.strokeLayer, source.bodyLayer].map { original in
+                let copy = CALayer()
+                copy.name = original.name
+                copy.bounds = original.bounds
+                copy.position = original.position
+                copy.anchorPoint = original.anchorPoint
+                copy.cornerRadius = original.cornerRadius
+                copy.opacity = original.opacity
+                copy.backgroundColor = original.backgroundColor
+                copy.contentsScale = original.contentsScale
+                return copy
+            }
+            isHovered = source.isHovered
+        }
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    private func applyMetrics(hovered: Bool) {
+        let size = hovered ? Self.hoverSize : Self.restSize
+        let stroke: CGFloat = hovered ? 1 : 0.75
+        bodyLayer.bounds = CGRect(origin: .zero, size: size)
+        bodyLayer.cornerRadius = size.width / 2
+        bodyLayer.opacity = hovered ? 1 : 0.85
+        strokeLayer.bounds = CGRect(x: 0, y: 0, width: size.width + stroke * 2, height: size.height + stroke * 2)
+        strokeLayer.cornerRadius = strokeLayer.bounds.width / 2
+        bodyLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        strokeLayer.position = bodyLayer.position
+    }
+
+    func updateGeometry(center: CGPoint, scale: CGFloat) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        position = center
+        for node in [self, strokeLayer, bodyLayer] { node.contentsScale = scale > 0 ? scale : 1 }
+        CATransaction.commit()
+    }
+
+    func updateColors(for appearance: NSAppearance) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        appearance.performAsCurrentDrawingAppearance {
+            bodyLayer.backgroundColor = NSColor.labelColor.cgColor
+            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            strokeLayer.backgroundColor = (dark ? NSColor.black : NSColor.white).withAlphaComponent(0.4).cgColor
+        }
+        CATransaction.commit()
+    }
+
+    func setHovered(_ hovered: Bool, reduceMotion: Bool, immediately: Bool = false) {
+        guard isHovered != hovered || reduceMotion || immediately else { return }
+        let nodes = [bodyLayer, strokeLayer]
+        let starts = nodes.map { node -> (CGRect, CGFloat, Float) in
+            let visible = node.presentation() ?? node
+            return (visible.bounds, visible.cornerRadius, visible.opacity)
+        }
+        nodes.forEach { $0.removeAllAnimations() }
+        isHovered = hovered
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        applyMetrics(hovered: hovered)
+        CATransaction.commit()
+        guard !reduceMotion, !immediately else { return }
+        for (index, node) in nodes.enumerated() {
+            let values: [(String, Any, Any)] = [
+                ("bounds", NSValue(rect: starts[index].0), NSValue(rect: node.bounds)),
+                ("cornerRadius", starts[index].1, node.cornerRadius),
+                ("opacity", starts[index].2, node.opacity)
+            ]
+            for (key, from, to) in values {
+                let animation: CABasicAnimation
+                if hovered {
+                    let spring = CASpringAnimation(keyPath: key)
+                    spring.damping = 18
+                    spring.stiffness = 320
+                    spring.mass = 1
+                    spring.initialVelocity = 0
+                    spring.duration = spring.settlingDuration
+                    animation = spring
+                } else {
+                    animation = CABasicAnimation(keyPath: key)
+                    animation.duration = 0.15
+                    animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                }
+                animation.fromValue = from
+                animation.toValue = to
+                node.add(animation, forKey: "pace.\(key)")
+            }
+        }
+    }
+}
+
 private final class QuotaPaceMarkerOverlay: NSView {
-    var centerX: CGFloat = 0
+    let tick = PaceTickLayer()
+    var centerX: CGFloat = 0 { didSet { updateGeometry() } }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    override func draw(_ dirtyRect: NSRect) {
-        let marker = NSBezierPath(
-            roundedRect: NSRect(x: centerX - 1, y: bounds.midY - 4, width: 2, height: 8),
-            xRadius: 1, yRadius: 1
-        )
-        NSColor.labelColor.withAlphaComponent(0.85).setFill()
-        marker.fill()
-        NSColor.controlBackgroundColor.withAlphaComponent(0.75).setStroke()
-        marker.lineWidth = 0.75
-        marker.stroke()
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.addSublayer(tick)
+        tick.updateColors(for: effectiveAppearance)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() { super.layout(); updateGeometry() }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); updateGeometry() }
+    override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); updateGeometry() }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        tick.updateColors(for: effectiveAppearance)
+    }
+
+    private func updateGeometry() {
+        tick.updateGeometry(center: CGPoint(x: centerX, y: bounds.midY), scale: window?.backingScaleFactor ?? 1)
     }
 }
 
@@ -434,7 +567,13 @@ final class QuotaProgressPaceView: NSView {
     private(set) var quotaWindow: OfficialQuotaWindow
     private(set) var pace: OfficialQuotaUsagePace?
     private(set) var prediction: OfficialQuotaUsagePrediction?
-    private let marker = QuotaPaceMarkerOverlay()
+    private let marker = QuotaPaceMarkerOverlay(frame: .zero)
+    var markerLayerForTesting: PaceTickLayer { marker.tick }
+    var markerReduceMotionForTesting: Bool?
+    private var reduceMarkerMotion: Bool { markerReduceMotionForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    func refreshMarkerAccessibility() {
+        if reduceMarkerMotion { marker.tick.setHovered(isHovered, reduceMotion: true) }
+    }
     private var trackingAreaReference: NSTrackingArea?
     private var showTimer: Timer?
     private var closeTimer: Timer?
@@ -579,6 +718,7 @@ final class QuotaProgressPaceView: NSView {
             closeTimer = nil
             guard !isHovered else { return }
             isHovered = true
+            marker.tick.setHovered(true, reduceMotion: reduceMarkerMotion)
             if isTooltipVisible { return }
             if immediately { showTooltip(); return }
             let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
@@ -590,6 +730,7 @@ final class QuotaProgressPaceView: NSView {
             RunLoop.main.add(timer, forMode: .eventTracking)
         } else if isHovered {
             isHovered = false
+            marker.tick.setHovered(false, reduceMotion: reduceMarkerMotion)
             showTimer?.invalidate()
             showTimer = nil
             let timer = Timer(timeInterval: 0.1, repeats: false) { [weak self] _ in
@@ -602,8 +743,9 @@ final class QuotaProgressPaceView: NSView {
         }
     }
 
-    func clearInteraction() {
+    func clearInteraction(animateMarkerExit: Bool = false) {
         isHovered = false
+        marker.tick.setHovered(false, reduceMotion: reduceMarkerMotion, immediately: !animateMarkerExit)
         showTimer?.invalidate(); showTimer = nil
         closeTimer?.invalidate(); closeTimer = nil
         dismissTooltip()
@@ -636,11 +778,12 @@ final class QuotaProgressPaceView: NSView {
 
     func adoptVisibleTooltip(from previous: QuotaProgressPaceView) {
         guard let shared = previous.popover, shared.isShown else { return }
-        clearInteraction()
+        clearInteraction(animateMarkerExit: true)
         previous.popover = nil
-        previous.clearInteraction()
+        previous.clearInteraction(animateMarkerExit: true)
         popover = shared
         isHovered = true
+        marker.tick.setHovered(true, reduceMotion: reduceMarkerMotion)
         showTooltip()
     }
 
