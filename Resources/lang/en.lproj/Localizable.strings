@@ -511,22 +511,20 @@
 "dashboard.logs.page.export_failed" = "Diagnostic log export failed";
 "quota.pace.status.unused" = "You have not started yet";
 "quota.pace.status.fast" = "Usage is a little fast";
-"quota.pace.status.normal" = "Usage is right on pace";
+"quota.pace.status.normal" = "You’re using it just right";
 "quota.pace.status.slow" = "You have plenty left";
-"quota.pace.body.unused" = "All yours. Make something great.";
-"quota.pace.body.fast" = "At this pace, you’ll run out in about %1$@h %2$@m (%3$@).";
-"quota.pace.body.fast_minutes" = "At this pace, you’ll run out in about %1$@ min (%2$@).";
-"quota.pace.body.normal" = "At your current pace, your quota should last until it resets.";
-"quota.pace.body.slow" = "At your current pace, this cycle’s quota should last until it resets.";
-"quota.pace.body.exhausted" = "Wait for it to reset.";
-"quota.pace.body.under_minute" = "At this pace, you’ll run out in less than a minute (%1$@).";
+"quota.pace.body.unused" = "This cycle’s quota is still full.";
+"quota.pace.body.fast" = "At this cycle’s average pace, you’ll run out around %1$@, before the reset.";
+"quota.pace.body.normal" = "Your usage is roughly in step with the time elapsed.";
+"quota.pace.body.slow" = "You have more quota left than the time elapsed calls for. Use it comfortably.";
+"quota.pace.body.exhausted" = "Resets at %1$@.";
 
 "quota.pace.status.exhausted" = "Quota used up";
 
-"quota.pace.body.qualitative.fast" = "Usage is ahead of the time elapsed. Keep an eye on further use.";
+"quota.pace.body.qualitative.fast" = "You’re using it a little ahead of schedule. Consider slowing down.";
 
-"quota.pace.body.qualitative.normal" = "Usage is roughly in line with the time elapsed.";
 
-"quota.pace.body.qualitative.slow" = "There is still plenty of quota this cycle. Use it as needed.";
 
 "quota.pace.time.tomorrow" = "Tomorrow %1$@";
+
+"quota.pace.body.reset_unavailable" = "The reset time is currently unavailable.";

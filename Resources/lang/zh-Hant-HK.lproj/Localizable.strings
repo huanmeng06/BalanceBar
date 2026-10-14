@@ -511,22 +511,20 @@
 "dashboard.logs.page.export_failed" = "診斷日誌匯出失敗";
 "quota.pace.status.unused" = "還未開始用";
 "quota.pace.status.fast" = "用得有點快";
-"quota.pace.status.normal" = "用量剛剛好";
+"quota.pace.status.normal" = "用得剛剛好";
 "quota.pace.status.slow" = "用得很從容";
-"quota.pace.body.unused" = "額度滿滿，盡情發揮吧！";
-"quota.pace.body.fast" = "照這個速度，預計約 %1$@ 小時 %2$@ 分鐘後（%3$@）用完。";
-"quota.pace.body.fast_minutes" = "照這個速度，預計約 %1$@ 分鐘後（%2$@）用完。";
-"quota.pace.body.normal" = "照目前的使用節奏，額度預計能撐到重置。";
-"quota.pace.body.slow" = "照目前的使用節奏，這輪額度預計能撐到重置。";
-"quota.pace.body.exhausted" = "等待重置。";
-"quota.pace.body.under_minute" = "照這個速度，預計不到 1 分鐘後（%1$@）用完。";
+"quota.pace.body.unused" = "這一輪額度還是滿的。";
+"quota.pace.body.fast" = "照這一輪的平均速度，大約 %1$@ 會用完，早於重置時間。";
+"quota.pace.body.normal" = "和時間進度基本同步。";
+"quota.pace.body.slow" = "額度比時間進度更充裕，放心用。";
+"quota.pace.body.exhausted" = "將在%1$@重置。";
 
 "quota.pace.status.exhausted" = "額度已用完";
 
-"quota.pace.body.qualitative.fast" = "目前用量比時間進度快一些，留意後續使用。";
+"quota.pace.body.qualitative.fast" = "比時間進度快一些，可以適當放慢。";
 
-"quota.pace.body.qualitative.normal" = "目前用量與時間進度大致相當。";
 
-"quota.pace.body.qualitative.slow" = "這輪額度還比較充裕，可以按需使用。";
 
 "quota.pace.time.tomorrow" = "明天 %1$@";
+
+"quota.pace.body.reset_unavailable" = "暫時無法取得重置時間。";

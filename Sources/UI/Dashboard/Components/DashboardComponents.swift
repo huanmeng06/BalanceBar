@@ -655,7 +655,7 @@ final class QuotaProgressPaceView: NSView {
 
     var tooltipContent: QuotaPaceTooltipContent? {
         guard let pace else { return nil }
-        return QuotaPaceTooltipContent(pace: pace, prediction: prediction, now: presentationNow, timeZone: displayTimeZone)
+        return QuotaPaceTooltipContent(pace: pace, prediction: prediction, resetAt: quotaWindow.resetAt, now: presentationNow, timeZone: displayTimeZone)
     }
 
     private var accessibilityText: String {
@@ -697,48 +697,61 @@ struct QuotaPaceTooltipContent: Equatable {
         self.body = body
     }
 
-    init(pace: OfficialQuotaUsagePace, prediction: OfficialQuotaUsagePrediction?,
+    init(pace: OfficialQuotaUsagePace, prediction: OfficialQuotaUsagePrediction?, resetAt: Date? = nil,
          language: AppLanguage = .selected, now: Date = Date(), timeZone: TimeZone = .autoupdatingCurrent) {
-        if pace.status == .unused {
-            title = pace.status.title(language: language)
+        title = pace.actualRemaining == 0
+            ? tr(.keyQuotaPaceStatusExhausted, language: language) : pace.status.title(language: language)
+        switch pace.status {
+        case .unused:
             body = tr(.keyQuotaPaceBodyUnused, language: language)
-        } else if pace.actualRemaining == 0 {
-            title = tr(.keyQuotaPaceStatusExhausted, language: language)
-            body = tr(.keyQuotaPaceBodyExhausted, language: language)
-        } else if case .runsOut(let seconds) = prediction {
-            title = OfficialQuotaUsagePace.Status.fast.title(language: language)
-            let time = Self.exhaustionTime(now.addingTimeInterval(seconds), now: now, timeZone: timeZone, language: language)
-            if seconds < 60 {
-                body = tr(.keyQuotaPaceBodyUnderMinute, arguments: [time], language: language)
+        case _ where pace.actualRemaining == 0:
+            if let resetAt, resetAt.timeIntervalSince1970.isFinite, resetAt > now {
+                body = tr(.keyQuotaPaceBodyExhausted,
+                    arguments: [Self.displayTime(resetAt, now: now, timeZone: timeZone, language: language)], language: language)
             } else {
-                let minutes = Int(ceil(seconds / 60))
-                body = minutes < 60
-                    ? tr(.keyQuotaPaceBodyFastMinutes, arguments: ["\(minutes)", time], language: language)
-                    : tr(.keyQuotaPaceBodyFast, arguments: ["\(minutes / 60)", "\(minutes % 60)", time], language: language)
+                body = tr(.keyQuotaPaceBodyResetUnavailable, language: language)
             }
-        } else {
-            title = pace.status.title(language: language)
-            if prediction == .lastsUntilReset {
-                body = tr(pace.status == .slow ? .keyQuotaPaceBodySlow : .keyQuotaPaceBodyNormal, language: language)
+        case .fast:
+            if case .runsOut(let seconds) = prediction, seconds.isFinite, seconds > 0,
+               let resetAt, resetAt.timeIntervalSince1970.isFinite, resetAt > now,
+               now.addingTimeInterval(seconds) < resetAt,
+               let rounded = Self.roundedExhaustionDate(now.addingTimeInterval(seconds), now: now, timeZone: timeZone),
+               rounded < resetAt {
+                body = tr(.keyQuotaPaceBodyFast,
+                    arguments: [Self.displayTime(rounded, now: now, timeZone: timeZone, language: language)], language: language)
             } else {
-                let key: LocalizationKey = switch pace.status {
-                case .fast: .keyQuotaPaceBodyQualitativeFast
-                case .normal: .keyQuotaPaceBodyQualitativeNormal
-                case .slow: .keyQuotaPaceBodyQualitativeSlow
-                case .unused: .keyQuotaPaceBodyUnused
-                }
-                body = tr(key, language: language)
+                body = tr(.keyQuotaPaceBodyQualitativeFast, language: language)
             }
+        case .normal:
+            body = tr(.keyQuotaPaceBodyNormal, language: language)
+        case .slow:
+            body = tr(.keyQuotaPaceBodySlow, language: language)
         }
     }
 
-    static func exhaustionTime(_ date: Date, now: Date, timeZone: TimeZone, language: AppLanguage) -> String {
+    /// Round the actual instant on the configured local clock, including
+    /// DST folds/gaps. Ties move forward; never display a past estimate.
+    static func roundedExhaustionDate(_ date: Date, now: Date, timeZone: TimeZone) -> Date? {
+        guard date.timeIntervalSince1970.isFinite, now.timeIntervalSince1970.isFinite, date > now else { return nil }
+        let calendar = AppDisplayTime.calendar(timeZone: timeZone)
+        func floorToFiveMinutes(_ value: Date) -> Date? {
+            guard let minuteStart = calendar.dateInterval(of: .minute, for: value)?.start else { return nil }
+            return calendar.date(byAdding: .minute, value: -(calendar.component(.minute, from: value) % 5), to: minuteStart)
+        }
+        guard let floor = floorToFiveMinutes(date) else { return nil }
+        let rounded = date.timeIntervalSince(floor) >= 150
+            ? calendar.date(byAdding: .minute, value: 5, to: floor) : floor
+        guard let rounded else { return nil }
+        if rounded > now { return rounded }
+        return floorToFiveMinutes(now).flatMap { calendar.date(byAdding: .minute, value: 5, to: $0) }
+    }
+
+    static func displayTime(_ date: Date, now: Date, timeZone: TimeZone, language: AppLanguage) -> String {
         let calendar = AppDisplayTime.calendar(timeZone: timeZone)
         let time = AppDisplayTime.formatter(timeZone: timeZone, dateFormat: "HH:mm").string(from: date)
-        if calendar.isDate(date, inSameDayAs: now) { return time }
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) {
-            return tr(.keyQuotaPaceTimeTomorrow, arguments: [time], language: language)
-        }
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)).day ?? 0
+        if days == 0 { return time }
+        if days == 1 { return tr(.keyQuotaPaceTimeTomorrow, arguments: [time], language: language) }
         let formatter = DateFormatter()
         let localeID: String = switch AppLanguage.resolved(for: language, preferredLanguages: Locale.preferredLanguages) {
         case .simplifiedChinese: "zh_CN"
@@ -757,7 +770,12 @@ struct QuotaPaceTooltipContent: Equatable {
         formatter.locale = Locale(identifier: localeID)
         formatter.calendar = calendar
         formatter.timeZone = timeZone
-        formatter.setLocalizedDateFormatFromTemplate("yMd")
+        if (2...6).contains(days) {
+            formatter.setLocalizedDateFormatFromTemplate("EEE")
+        } else {
+            let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+            formatter.setLocalizedDateFormatFromTemplate(sameYear ? "Md" : "yMd")
+        }
         return "\(formatter.string(from: date)) \(time)"
     }
 }
@@ -768,7 +786,9 @@ final class QuotaPaceTooltipViewController: NSViewController {
     private(set) var layoutRevision = 0
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
     private let bodyLabel = NSTextField(wrappingLabelWithString: "")
+    private let stack = NSStackView()
     private var textConstraints: [NSLayoutConstraint] = []
+    var visibleLabelsForTesting: [NSTextField] { stack.arrangedSubviews.compactMap { $0 as? NSTextField }.filter { !$0.isHidden } }
 
     init(content: QuotaPaceTooltipContent) {
         self.content = content
@@ -787,8 +807,21 @@ final class QuotaPaceTooltipViewController: NSViewController {
             label.maximumNumberOfLines = 0
             label.cell?.wraps = true
             label.cell?.truncatesLastVisibleLine = false
-            view.addSubview(label)
+            label.lineBreakMode = .byWordWrapping
+            label.usesSingleLineMode = false
+            label.setContentCompressionResistancePriority(.required, for: .vertical)
         }
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
+            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -10)
+        ])
         layoutContent()
     }
 
@@ -805,24 +838,18 @@ final class QuotaPaceTooltipViewController: NSViewController {
         bodyLabel.stringValue = content.body ?? ""
         bodyLabel.isHidden = bodyLabel.stringValue.isEmpty
         let labels = bodyLabel.isHidden ? [titleLabel] : [titleLabel, bodyLabel]
-        // Measure NSTextField's cell, including its internal text insets.
-        // Constraints determine the final frames and fitting size.
-        let width = min(232, max(1, labels.map { ceil($0.cell!.cellSize.width) }.max() ?? 1))
+        stack.setViews(labels, in: .top)
         NSLayoutConstraint.deactivate(textConstraints)
-        textConstraints = []
+        for label in labels {
+            label.preferredMaxLayoutWidth = 0
+            label.invalidateIntrinsicContentSize()
+        }
+        let width = min(232, max(1, labels.map { ceil($0.intrinsicContentSize.width) }.max() ?? 1))
+        textConstraints = labels.map { $0.widthAnchor.constraint(equalToConstant: width) }
         for label in labels {
             label.preferredMaxLayoutWidth = width
-            let height = ceil(label.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: 100_000)).height) + 2
-            textConstraints += [label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
-                label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
-                label.widthAnchor.constraint(equalToConstant: width),
-                label.heightAnchor.constraint(equalToConstant: height)]
+            label.invalidateIntrinsicContentSize()
         }
-        textConstraints.append(titleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 10))
-        if !bodyLabel.isHidden {
-            textConstraints.append(bodyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6))
-        }
-        textConstraints.append(labels.last!.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -10))
         NSLayoutConstraint.activate(textConstraints)
         contentSize = view.fittingSize
         view.setFrameSize(contentSize)

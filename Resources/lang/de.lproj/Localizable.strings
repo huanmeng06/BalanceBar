@@ -511,22 +511,20 @@
 "dashboard.logs.page.export_failed" = "Export der Diagnoseprotokolle fehlgeschlagen";
 "quota.pace.status.unused" = "Noch nicht genutzt";
 "quota.pace.status.fast" = "Etwas schneller Verbrauch";
-"quota.pace.status.normal" = "Verbrauch im richtigen Tempo";
+"quota.pace.status.normal" = "Du nutzt es im richtigen Tempo";
 "quota.pace.status.slow" = "Noch reichlich verfügbar";
-"quota.pace.body.unused" = "Alles für dich. Mach etwas Großartiges daraus!";
-"quota.pace.body.fast" = "Bei diesem Tempo ist das Kontingent voraussichtlich in etwa %1$@ Std. %2$@ Min. aufgebraucht (%3$@).";
-"quota.pace.body.fast_minutes" = "Bei diesem Tempo ist das Kontingent voraussichtlich in etwa %1$@ Min. aufgebraucht (%2$@).";
-"quota.pace.body.normal" = "Bei deinem aktuellen Tempo sollte das Kontingent bis zum Zurücksetzen reichen.";
-"quota.pace.body.slow" = "Bei deinem aktuellen Tempo sollte das Kontingent dieses Zeitraums bis zum Zurücksetzen reichen.";
-"quota.pace.body.exhausted" = "Warte auf das Zurücksetzen.";
-"quota.pace.body.under_minute" = "Bei diesem Tempo ist das Kontingent voraussichtlich in weniger als einer Minute aufgebraucht (%1$@).";
+"quota.pace.body.unused" = "Das Kontingent dieses Zeitraums ist noch vollständig verfügbar.";
+"quota.pace.body.fast" = "Beim durchschnittlichen Tempo dieses Zeitraums ist das Kontingent etwa um %1$@ aufgebraucht, noch vor dem Zurücksetzen.";
+"quota.pace.body.normal" = "Deine Nutzung entspricht ungefähr dem Zeitverlauf.";
+"quota.pace.body.slow" = "Du hast im Verhältnis zum Zeitverlauf mehr Kontingent übrig. Nutze es entspannt.";
+"quota.pace.body.exhausted" = "Wird um %1$@ zurückgesetzt.";
 
 "quota.pace.status.exhausted" = "Kontingent aufgebraucht";
 
-"quota.pace.body.qualitative.fast" = "Die Nutzung liegt vor dem Zeitverlauf. Behalte die weitere Nutzung im Blick.";
+"quota.pace.body.qualitative.fast" = "Du verbrauchst etwas schneller als der Zeitverlauf. Du kannst etwas langsamer machen.";
 
-"quota.pace.body.qualitative.normal" = "Die Nutzung entspricht ungefähr dem Zeitverlauf.";
 
-"quota.pace.body.qualitative.slow" = "In diesem Zeitraum ist noch reichlich Kontingent verfügbar. Nutze es nach Bedarf.";
 
 "quota.pace.time.tomorrow" = "Morgen %1$@";
+
+"quota.pace.body.reset_unavailable" = "Die Zeit des Zurücksetzens ist derzeit nicht verfügbar.";

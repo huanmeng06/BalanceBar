@@ -322,40 +322,38 @@ final class DashboardComponentsTests: XCTestCase {
             now: now, colorConfiguration: .default, cycleStart: start)
         let pace = try XCTUnwrap(view.pace)
         XCTAssertEqual(pace.status, .normal)
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: view.prediction, language: .simplifiedChinese,
-            now: now, timeZone: TimeZone(secondsFromGMT: 0)!),
-            QuotaPaceTooltipContent(title: "用得有点快", body: "照这个速度，预计约 2 小时 51 分钟后（明天 01:04）用完。"))
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: view.prediction, resetAt: quota.resetAt,
+            language: .simplifiedChinese, now: now, timeZone: TimeZone(secondsFromGMT: 0)!),
+            QuotaPaceTooltipContent(title: "用得刚刚好", body: "和时间进度基本同步。"))
         let original = view.prediction
         view.update(window: quota, now: now.addingTimeInterval(60), cycleStart: start)
         XCTAssertNotEqual(view.prediction, original)
-        XCTAssertLessThan(try XCTUnwrap(view.pace?.expectedRemaining), 62)
         view.update(window: quota, now: quota.resetAt!, cycleStart: start)
         XCTAssertNil(view.pace)
         XCTAssertNil(view.prediction)
         XCTAssertTrue(view.markerHitRect.isEmpty)
         XCTAssertEqual(view.accessibilityLabel(), "")
         view.update(window: quota, now: now)
-        XCTAssertNotNil(view.tooltipContent?.body, "No trusted start gets qualitative copy, not a fabricated forecast")
+        XCTAssertNotNil(view.tooltipContent?.body)
         XCTAssertEqual(view.accessibilityLabel(), [view.tooltipContent!.title, view.tooltipContent!.body!].joined(separator: "\n"))
         let unused = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 100, reset: quota.resetAt!), now: now))
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .simplifiedChinese).body, "额度满满，尽情发挥吧！")
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .english).body, "All yours. Make something great.")
-        let exhausted = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 0, reset: quota.resetAt!), now: now))
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, language: .simplifiedChinese).body, "等待重置。")
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 59.9), language: .simplifiedChinese, now: now, timeZone: TimeZone(secondsFromGMT: 0)!).body,
-            "照这个速度，预计不到 1 分钟后（22:14）用完。")
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 119.1), language: .simplifiedChinese, now: now, timeZone: TimeZone(secondsFromGMT: 0)!).body,
-            "照这个速度，预计约 2 分钟后（22:15）用完。")
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .lastsUntilReset, language: .simplifiedChinese).body,
-            "照目前的使用节奏，额度预计能撑到重置。")
-        let slow = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 80, reset: quota.resetAt!), now: now))
-        XCTAssertEqual(QuotaPaceTooltipContent(pace: slow, prediction: .lastsUntilReset, language: .simplifiedChinese).body,
-            "照目前的使用节奏，这轮额度预计能撑到重置。")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .simplifiedChinese).body, "这一轮额度还是满的。")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .english).body, "This cycle’s quota is still full.")
         let week = paceWindow(remaining: 50, reset: now.addingTimeInterval(302_400), kind: .sevenDay)
         view.update(window: week, now: now)
         XCTAssertNotNil(view.pace)
         XCTAssertNil(view.prediction)
         XCTAssertNotNil(view.tooltipContent?.body)
+        let fastWeek = paceWindow(remaining: 20, reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        view.update(window: fastWeek, now: now)
+        XCTAssertEqual(view.pace?.status, .fast)
+        XCTAssertNil(view.prediction)
+        XCTAssertFalse(view.tooltipContent!.body!.contains(":"))
+        let emptyWeek = paceWindow(remaining: 0, reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        view.update(window: emptyWeek, now: now, timeZone: TimeZone(secondsFromGMT: 0)!)
+        XCTAssertNil(view.prediction)
+        XCTAssertEqual(view.tooltipContent?.title, tr(.keyQuotaPaceStatusExhausted))
+        XCTAssertTrue(view.tooltipContent!.body!.contains(":"), "Weekly reset time is factual and still available")
     }
 
     func testCompactPaceTooltipHasOnlyTitleAndOptionalSentenceAcrossAllLanguages() throws {
@@ -364,18 +362,18 @@ final class DashboardComponentsTests: XCTestCase {
             for remaining in [0.0, 40, 60, 80, 100] {
                 let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: remaining, reset: now.addingTimeInterval(11_160)), now: now))
                 for prediction: OfficialQuotaUsagePrediction? in [nil, .runsOut(after: 10_260), .lastsUntilReset] {
-                    let content = QuotaPaceTooltipContent(pace: pace, prediction: prediction, language: language,
+                    let content = QuotaPaceTooltipContent(pace: pace, prediction: prediction, resetAt: now.addingTimeInterval(11_160), language: language,
                         now: now, timeZone: TimeZone(secondsFromGMT: 0)!)
                     let controller = QuotaPaceTooltipViewController(content: content)
                     controller.loadViewIfNeeded()
-                    let labels = controller.view.subviews.compactMap { $0 as? NSTextField }.filter { !$0.isHidden }
+                    let labels = controller.visibleLabelsForTesting
                     XCTAssertEqual(labels.map(\.stringValue), [content.title, try XCTUnwrap(content.body)])
                     XCTAssertEqual(labels.count, 2)
                     XCTAssertLessThanOrEqual(controller.contentSize.width, 260)
                     for label in labels {
-                        XCTAssertTrue(controller.view.bounds.contains(label.frame))
-                        XCTAssertEqual(label.alignmentRect(forFrame: label.frame).minX, 14, accuracy: 0.01)
-                        XCTAssertEqual(controller.view.bounds.maxX - label.alignmentRect(forFrame: label.frame).maxX, 14, accuracy: 0.01)
+                        XCTAssertTrue(controller.view.bounds.contains(label.convert(label.bounds, to: controller.view)))
+                        XCTAssertEqual(label.superview!.convert(label.alignmentRect(forFrame: label.frame), to: controller.view).minX, 14, accuracy: 0.01)
+                        XCTAssertEqual(controller.view.bounds.maxX - label.superview!.convert(label.alignmentRect(forFrame: label.frame), to: controller.view).maxX, 14, accuracy: 0.01)
                         XCTAssertEqual(label.maximumNumberOfLines, 0)
                         XCTAssertFalse(label.cell!.truncatesLastVisibleLine)
                         let measured = label.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: label.frame.width, height: 100_000))
@@ -391,40 +389,86 @@ final class DashboardComponentsTests: XCTestCase {
         }
         let titleOnly = QuotaPaceTooltipViewController(content: QuotaPaceTooltipContent(title: "用量刚刚好", body: nil))
         titleOnly.loadViewIfNeeded()
-        let label = try XCTUnwrap(titleOnly.view.subviews.compactMap { $0 as? NSTextField }.first { !$0.isHidden })
+        let label = try XCTUnwrap(titleOnly.visibleLabelsForTesting.first)
         XCTAssertEqual(label.stringValue, "用量刚刚好")
         XCTAssertLessThan(titleOnly.contentSize.width, 200)
         XCTAssertLessThan(titleOnly.contentSize.height, 76)
-        XCTAssertGreaterThanOrEqual(label.frame.width, label.cell!.cellSize.width)
+        XCTAssertGreaterThanOrEqual(label.frame.width, label.intrinsicContentSize.width)
+        let compact = titleOnly.contentSize
+        titleOnly.update(content: QuotaPaceTooltipContent(title: "用得有点快", body: "照这一轮的平均速度，大约明天 00:20 会用完，早于重置时间。"))
+        XCTAssertEqual(titleOnly.visibleLabelsForTesting.count, 2)
+        XCTAssertGreaterThan(titleOnly.contentSize.height, compact.height)
+        titleOnly.update(content: QuotaPaceTooltipContent(title: "用量刚刚好", body: nil))
+        XCTAssertEqual(titleOnly.visibleLabelsForTesting.count, 1)
+        XCTAssertEqual(titleOnly.contentSize, compact)
     }
 
-    func testPaceExhaustionTitlesAndConfiguredCalendarTimes() throws {
+    func testPaceTitlesFollowRoundedDifferenceAndForecastOnlyFast() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let reset = now.addingTimeInterval(9000)
+        let utc = TimeZone(secondsFromGMT: 0)!
+        for (remaining, status) in [(44.0, OfficialQuotaUsagePace.Status.fast), (45, .normal), (55, .normal), (56, .slow)] {
+            let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: remaining, reset: reset), now: now))
+            XCTAssertEqual(pace.status, status)
+            let content = QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 6000), resetAt: reset,
+                language: .simplifiedChinese, now: now, timeZone: utc)
+            if status == .fast {
+                XCTAssertEqual(content.title, "用得有点快")
+                XCTAssertEqual(content.body, "照这一轮的平均速度，大约 23:55 会用完，早于重置时间。")
+            } else {
+                XCTAssertEqual(content.title, status == .normal ? "用得刚刚好" : "用得很从容")
+                XCTAssertFalse(content.body!.contains("用完"))
+                XCTAssertFalse(content.body!.contains("撑到"))
+            }
+        }
+        let fast = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 40, reset: reset), now: now))
+        for prediction: OfficialQuotaUsagePrediction? in [nil, .lastsUntilReset, .runsOut(after: .nan), .runsOut(after: .infinity), .runsOut(after: -1), .runsOut(after: 0), .runsOut(after: 9000)] {
+            let content = QuotaPaceTooltipContent(pace: fast, prediction: prediction, resetAt: reset,
+                language: .simplifiedChinese, now: now, timeZone: utc)
+            XCTAssertEqual(content.body, "比时间进度快一些，可以适当放慢。")
+        }
+        let nearReset = now.addingTimeInterval(70)
+        let inconsistent = QuotaPaceTooltipContent(pace: fast, prediction: .runsOut(after: 60), resetAt: nearReset,
+            language: .simplifiedChinese, now: now, timeZone: utc)
+        XCTAssertEqual(inconsistent.body, "比时间进度快一些，可以适当放慢。", "Rounded time past reset must fall back")
         let exhausted = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 0, reset: now.addingTimeInterval(540)), now: now))
         XCTAssertEqual(exhausted.status, .normal)
-        let content = QuotaPaceTooltipContent(pace: exhausted, prediction: .runsOut(after: 0), language: .simplifiedChinese)
-        XCTAssertEqual(content.title, "额度已用完")
-        XCTAssertEqual(content.body, "等待重置。")
-        let utc = TimeZone(secondsFromGMT: 0)!
-        let laterDay = QuotaPaceTooltipContent.exhaustionTime(now.addingTimeInterval(172_800), now: now, timeZone: utc, language: .simplifiedChinese)
-        XCTAssertTrue(laterDay.contains("2023"))
-        XCTAssertTrue(laterDay.hasSuffix("22:13"))
-        let date = now.addingTimeInterval(10_260)
-        XCTAssertEqual(QuotaPaceTooltipContent.exhaustionTime(date, now: now, timeZone: utc, language: .simplifiedChinese), "明天 01:04")
-        XCTAssertEqual(QuotaPaceTooltipContent.exhaustionTime(date, now: now, timeZone: TimeZone(secondsFromGMT: 8 * 3600)!, language: .simplifiedChinese), "09:04")
-        let formatter = ISO8601DateFormatter()
-        let beforeDST = formatter.date(from: "2026-03-08T06:50:00Z")!
-        XCTAssertEqual(QuotaPaceTooltipContent.exhaustionTime(beforeDST.addingTimeInterval(1200), now: beforeDST,
-            timeZone: TimeZone(identifier: "America/New_York")!, language: .english), "03:10")
-        let lastMinute = formatter.date(from: "2026-10-14T23:58:50Z")!
-        let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 60, reset: now.addingTimeInterval(11_160)), now: now))
-        let raw = QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 61), language: .simplifiedChinese, now: lastMinute, timeZone: utc)
-        XCTAssertEqual(raw.body, "照这个速度，预计约 2 分钟后（23:59）用完。", "Absolute time uses raw seconds, not the rounded two minutes")
-        XCTAssertEqual(raw.title, "用得有点快")
-        for remaining in [40.0, 62.0, 80.0] {
-            let value = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: remaining, reset: now.addingTimeInterval(11_160)), now: now))
-            XCTAssertNotNil(QuotaPaceTooltipContent(pace: value, prediction: nil, language: .simplifiedChinese).body)
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, resetAt: reset,
+            language: .simplifiedChinese, now: now, timeZone: utc),
+            QuotaPaceTooltipContent(title: "额度已用完", body: "将在明天 00:43重置。"))
+        for invalid: Date? in [nil, now, now.addingTimeInterval(-1), Date(timeIntervalSince1970: .infinity)] {
+            XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, resetAt: invalid,
+                language: .simplifiedChinese, now: now, timeZone: utc).body, "重置时间暂不可用。")
         }
+        let tiny = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 0.1, reset: now.addingTimeInterval(540)), now: now))
+        XCTAssertEqual(tiny.roundedActual, 0)
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: tiny, prediction: nil, language: .simplifiedChinese).title, "用得刚刚好")
+    }
+
+    func testPaceFiveMinuteRoundingAndCalendarLabels() throws {
+        let iso = ISO8601DateFormatter()
+        func date(_ value: String) -> Date { iso.date(from: value)! }
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let now = date("2026-10-14T18:00:00Z")
+        func rounded(_ value: String, relativeTo current: Date = now, zone: TimeZone = utc) -> Date {
+            QuotaPaceTooltipContent.roundedExhaustionDate(date(value), now: current, timeZone: zone)!
+        }
+        XCTAssertEqual(rounded("2026-10-14T19:21:00Z"), date("2026-10-14T19:20:00Z"))
+        XCTAssertEqual(rounded("2026-10-14T19:22:30Z"), date("2026-10-14T19:25:00Z"))
+        XCTAssertEqual(rounded("2026-10-14T18:01:00Z"), date("2026-10-14T18:05:00Z"))
+        XCTAssertNil(QuotaPaceTooltipContent.roundedExhaustionDate(now, now: now, timeZone: utc))
+        XCTAssertNil(QuotaPaceTooltipContent.roundedExhaustionDate(Date(timeIntervalSince1970: .nan), now: now, timeZone: utc))
+        let midnight = rounded("2026-10-14T23:58:00Z")
+        XCTAssertEqual(QuotaPaceTooltipContent.displayTime(midnight, now: now, timeZone: utc, language: .simplifiedChinese), "明天 00:00")
+        XCTAssertEqual(QuotaPaceTooltipContent.displayTime(date("2026-10-14T19:20:00Z"), now: now, timeZone: TimeZone(secondsFromGMT: 8 * 3600)!, language: .simplifiedChinese), "03:20")
+        XCTAssertEqual(QuotaPaceTooltipContent.displayTime(date("2026-10-16T14:00:00Z"), now: now, timeZone: utc, language: .simplifiedChinese), "周五 14:00")
+        let crossYear = QuotaPaceTooltipContent.displayTime(date("2027-01-10T14:00:00Z"), now: date("2026-12-30T18:00:00Z"), timeZone: utc, language: .simplifiedChinese)
+        XCTAssertTrue(crossYear.contains("2027"))
+        XCTAssertTrue(crossYear.hasSuffix("14:00"))
+        let ny = TimeZone(identifier: "America/New_York")!
+        XCTAssertEqual(rounded("2026-03-08T06:58:00Z", relativeTo: date("2026-03-08T06:00:00Z"), zone: ny), date("2026-03-08T07:00:00Z"))
+        XCTAssertEqual(rounded("2026-11-01T05:58:00Z", relativeTo: date("2026-11-01T05:00:00Z"), zone: ny), date("2026-11-01T06:00:00Z"))
+        XCTAssertEqual(rounded("2026-11-01T06:21:00Z", relativeTo: date("2026-11-01T06:00:00Z"), zone: ny), date("2026-11-01T06:20:00Z"))
     }
 
     func testPaceContinuousRefreshKeepsPresentationAndSkipsIdenticalLayout() throws {
@@ -456,6 +500,8 @@ final class DashboardComponentsTests: XCTestCase {
         for tick in 1...5 {
             view.update(window: quota, now: now.addingTimeInterval(Double(tick) * 60), cycleStart: now.addingTimeInterval(-9000))
             XCTAssertTrue(probe.contentViewController === controller)
+            if tick == 1 { XCTAssertEqual(controller.layoutRevision, revision) }
+            XCTAssertEqual(probe.contentSize, controller.contentSize)
             XCTAssertTrue(view.isTooltipVisible)
             XCTAssertFalse(view.hasPendingShowForTesting)
             XCTAssertEqual(probe.showCount, 1)

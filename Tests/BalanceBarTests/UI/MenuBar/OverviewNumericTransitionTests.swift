@@ -661,12 +661,12 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             menuInput: input, settings: makeSettings(timeZone: TimeZone(secondsFromGMT: 8 * 3600)!))
         let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
         let pace = try XCTUnwrap(host.paceViews.first)
-        XCTAssertTrue(try XCTUnwrap(pace.tooltipContent?.body).contains("07:53"))
+        XCTAssertTrue(try XCTUnwrap(pace.tooltipContent?.body).contains("07:55"))
         controller.menuWillOpen(controller.statusMenuForTesting)
         controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 40), refreshDate: now,
             menuInput: input, settings: makeSettings(timeZone: TimeZone(secondsFromGMT: 0)!))
         XCTAssertTrue(host.paceViews.first === pace)
-        XCTAssertTrue(try XCTUnwrap(pace.tooltipContent?.body).contains("23:53"))
+        XCTAssertTrue(try XCTUnwrap(pace.tooltipContent?.body).contains("23:55"))
         controller.menuDidClose(controller.statusMenuForTesting)
     }
 

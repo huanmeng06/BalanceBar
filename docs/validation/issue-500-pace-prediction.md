@@ -21,11 +21,13 @@ Unobserved special resets before app startup cannot be established from the avai
 
 - Require a valid live pace window, a finite trusted start matching its duration, at least 3% of the cycle elapsed, and at least 1% consumed.
 - Average use = `(100 - remaining) / elapsed`; remaining time = `remaining / average use`.
-- Compare unrounded predicted seconds with the time to reset. Only strictly earlier exhaustion gets a specific duration; equality counts as lasting until reset.
-- Round the visible duration up to minutes. Under one minute uses a short phrase; under one hour omits zero hours. Absolute exhaustion time uses raw predicted seconds plus the same calculation time, formatted HH:mm in the configured display timezone; next-day dates get localized tomorrow copy.
-- Rounded pace status and marker geometry are unchanged. Tooltip presentation overrides exhausted quota with an exhausted title, and reliable early exhaustion with the fast title; this supersedes the previous normal-title/early-body choice.
-- Full allowance gets the encouraging unused copy. Zero allowance gets factual exhausted copy. Otherwise insufficient/unverified data gets a qualitative pace sentence, not a made-up forecast.
-- Tooltip contains just a title and optional sentence, at most 260pt wide, with Auto Layout and actual NSTextField cell fitting. VoiceOver receives that same content.
+- Compare unrounded predicted seconds with the time to reset. Equality counts as lasting until reset in the calculator, but the UI makes no coverage promise for normal/slow states.
+- Titles follow the existing rounded integer difference (fast below -5, slow above +5, normal otherwise), with only full/actually empty quota taking factual precedence. Normal titles are never overridden by prediction.
+- Only a fast state with a trustworthy early-exhaustion result displays a forecast. The body explicitly says this cycle's average pace; it is a linear reference, not a recent rate or a guarantee of future activity.
+- Round the raw absolute exhaustion instant to the nearest local five-minute mark (ties forward); if it falls at/before now, use the next future mark. If the rounded instant is not before reset, use qualitative fast copy instead.
+- Reset times are factual and remain minute-precise. Same-day clock, localized tomorrow, weekday for days 2–6, and month/day (year across years) use the configured display timezone. Seven-day exhaustion prediction stays disabled; seven-day factual reset time remains available.
+- Full allowance gets calm factual copy; empty quota gives its valid reset time or an unavailable message. Normal/slow and unpredicted fast states get the approved qualitative sentences, without exhaustion or lasts-until-reset promises for normal/slow.
+- Tooltip contains just a title and optional sentence, at most 260pt wide. A vertical NSStackView, native label intrinsic sizes, preferredMaxLayoutWidth and fittingSize determine height, with no manual cell-height slack or fixed row height. VoiceOver receives the same content.
 
 ## AppKit verification boundary
 

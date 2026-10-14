@@ -511,22 +511,20 @@
 "dashboard.logs.page.export_failed" = "診断ログの書き出しに失敗しました";
 "quota.pace.status.unused" = "まだ使い始めていません";
 "quota.pace.status.fast" = "少し速いペースです";
-"quota.pace.status.normal" = "ちょうどよいペースです";
+"quota.pace.status.normal" = "ちょうどよく使えています";
 "quota.pace.status.slow" = "まだ余裕があります";
-"quota.pace.body.unused" = "利用枠はたっぷりあります。思いきり創作しましょう！";
-"quota.pace.body.fast" = "このペースなら、約 %1$@ 時間 %2$@ 分後に使い切る見込みです (%3$@)。";
-"quota.pace.body.fast_minutes" = "このペースなら、約 %1$@ 分後に使い切る見込みです (%2$@)。";
-"quota.pace.body.normal" = "今のペースなら、リセットまで利用枠が持つ見込みです。";
-"quota.pace.body.slow" = "今のペースなら、この期間の利用枠はリセットまで持つ見込みです。";
-"quota.pace.body.exhausted" = "リセットをお待ちください。";
-"quota.pace.body.under_minute" = "このペースなら、1 分以内に使い切る見込みです (%1$@)。";
+"quota.pace.body.unused" = "この期間の利用枠はまだ満額です。";
+"quota.pace.body.fast" = "この期間の平均ペースなら、リセットより前の %1$@ ごろに使い切る見込みです。";
+"quota.pace.body.normal" = "経過時間とほぼ同じペースで使えています。";
+"quota.pace.body.slow" = "経過時間に比べて利用枠に余裕があります。安心して使えます。";
+"quota.pace.body.exhausted" = "%1$@ にリセットされます。";
 
 "quota.pace.status.exhausted" = "利用枠を使い切りました";
 
-"quota.pace.body.qualitative.fast" = "経過時間に比べて使用がやや多めです。今後の使用量に気をつけましょう。";
+"quota.pace.body.qualitative.fast" = "経過時間に比べて少し速いペースです。少しゆっくり使ってもよさそうです。";
 
-"quota.pace.body.qualitative.normal" = "使用量は経過時間におおむね見合っています。";
 
-"quota.pace.body.qualitative.slow" = "この期間の利用枠にはまだ余裕があります。必要に応じて使いましょう。";
 
 "quota.pace.time.tomorrow" = "明日 %1$@";
+
+"quota.pace.body.reset_unavailable" = "リセット時刻は現在確認できません。";
