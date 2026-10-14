@@ -514,13 +514,9 @@
     case keyQuotaPaceBodyFast = "quota.pace.body.fast"
     case keyQuotaPaceBodyNormal = "quota.pace.body.normal"
     case keyQuotaPaceBodySlow = "quota.pace.body.slow"
-    case keyQuotaPaceActual = "quota.pace.actual"
-    case keyQuotaPaceExpected = "quota.pace.expected"
-    case keyQuotaPaceDifferenceMore = "quota.pace.difference.more"
-    case keyQuotaPaceDifferenceLess = "quota.pace.difference.less"
-    case keyQuotaPaceDifferenceEqual = "quota.pace.difference.equal"
-    case keyQuotaPaceResetHoursMinutes = "quota.pace.reset.hours_minutes"
-    case keyQuotaPaceResetDaysHours = "quota.pace.reset.days_hours"
+    case keyQuotaPaceBodyFastMinutes = "quota.pace.body.fast_minutes"
+    case keyQuotaPaceBodyExhausted = "quota.pace.body.exhausted"
+    case keyQuotaPaceBodyUnderMinute = "quota.pace.body.under_minute"
 
     var rawKey: String { rawValue }
 }

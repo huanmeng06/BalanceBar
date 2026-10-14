@@ -2355,6 +2355,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var overviewMenuWasSeen = false
     private var overviewNumericOpenWorkItem: DispatchWorkItem?
     private var quotaPaceTimer: Timer?
+    // Only current-window discontinuity flags, not a usage history or rate sample.
+    private var untrustedQuotaPaceResetDates = Set<Date>()
     var quotaPaceNowForTesting: Date?
     var quotaPaceTimerForTesting: Timer? { quotaPaceTimer }
     var overviewNumericReduceMotionForTesting: Bool?
@@ -2901,6 +2903,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
         overviewMenuWasSeen = false
+        untrustedQuotaPaceResetDates.removeAll()
         stopBankedResetCountdownTimer()
         stopQuotaPaceTracking()
         cancelPendingOverviewNumericTransitions()
@@ -2936,6 +2939,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         let taskIconVisibilityChanged = self.settings.showIcon != settings.showIcon
         let iconSizeChanged = self.settings.iconSize != settings.iconSize
+        updateQuotaPaceCycleTrust(snapshot: snapshot, input: menuInput)
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
@@ -3057,6 +3061,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // database-watcher fallback remains intact. Reuse the current menu
         // hierarchy when that read produces the same semantic input.
         guard menuInput != input else { return }
+        if menuInput.openAIAccount != input.openAIAccount || menuInput.activeClient != input.activeClient {
+            untrustedQuotaPaceResetDates.removeAll()
+        }
         menuInput = input
         rebuildOrDeferMenu(forceDefer: deferRebuild)
         refreshQuotaPaceViews()
@@ -6518,6 +6525,37 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         bankedResetCountdownNowForTesting ?? Date()
     }
 
+    private func updateQuotaPaceCycleTrust(snapshot next: Snapshot, input: MenuInput) {
+        // A provider-less error is not evidence that the account changed.
+        let knownProviderChanged = !snapshot.provider.isEmpty && !next.provider.isEmpty
+            && snapshot.provider != next.provider
+        let sameIdentity = !knownProviderChanged
+            && menuInput.openAIAccount == input.openAIAccount && menuInput.activeClient == input.activeClient
+        if !sameIdentity { untrustedQuotaPaceResetDates.removeAll() }
+        let windows = next.officialQuotaWindowsForMenu
+        let dates = Set(windows.filter { $0.kind == .fiveHour }.compactMap(\.resetAt))
+        // Missing/error snapshots must not silently restore an invalid cycle.
+        if !dates.isEmpty { untrustedQuotaPaceResetDates.formIntersection(dates) }
+        guard sameIdentity else { return }
+        for window in windows where window.kind == .fiveHour {
+            guard let reset = window.resetAt,
+                  let previous = snapshot.officialQuotaWindowsForMenu.first(where: {
+                      $0.kind == window.kind && $0.resetAt == reset
+                  }) else { continue }
+            if window.remaining > previous.remaining + 0.0001 {
+                // Allowance restoration without a new deadline invalidates
+                // the inferred start, including while the menu is closed.
+                untrustedQuotaPaceResetDates.insert(reset)
+            }
+        }
+    }
+
+    private func quotaPaceCycleStart(for window: OfficialQuotaWindow) -> Date? {
+        guard menuInput.activeClient == .codex, let reset = window.resetAt,
+              !untrustedQuotaPaceResetDates.contains(reset) else { return nil }
+        return OfficialQuotaUsagePrediction.verifiedCycleStart(for: window)
+    }
+
     private func refreshQuotaPaceViews() {
         guard isStatusMenuTracking,
               let host = statusMenu.items.first?.view as? MenuHoverLinkHostView else { return }
@@ -6534,7 +6572,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if identityMatches, let window = windows.first(where: {
                 OverviewNumericPresentation.identity(for: $0, provider: snapshot.provider) == view.numericIdentity
             }) {
-                view.update(window: window, now: now)
+                view.update(window: window, now: now, cycleStart: quotaPaceCycleStart(for: window))
             } else {
                 view.invalidatePresentation()
             }
@@ -6962,7 +7000,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             window: window,
             identity: plan.identity,
             now: quotaPaceNowForTesting ?? Date(),
-            colorConfiguration: settings.quotaProgressColorConfiguration
+            colorConfiguration: settings.quotaProgressColorConfiguration,
+            cycleStart: quotaPaceCycleStart(for: window)
         )
         host.frame = frame.insetBy(dx: 0, dy: -6.5)
         if plan.animates, let target = plan.toProgress {

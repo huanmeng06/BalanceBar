@@ -433,7 +433,7 @@ final class QuotaProgressPaceView: NSView {
     let numericIdentity: OverviewNumericIdentity
     private(set) var quotaWindow: OfficialQuotaWindow
     private(set) var pace: OfficialQuotaUsagePace?
-    private(set) var resetText = ""
+    private(set) var prediction: OfficialQuotaUsagePrediction?
     private let marker = QuotaPaceMarkerOverlay()
     private var trackingAreaReference: NSTrackingArea?
     private var showTimer: Timer?
@@ -442,6 +442,9 @@ final class QuotaProgressPaceView: NSView {
     private(set) var isHovered = false
     private(set) var isMenuTracking = false
     var isTooltipVisible: Bool { popover?.isShown == true }
+    // Background XCTest parks native windows offscreen and denies key focus.
+    // Inject only system presentation; production always uses NSPopover.
+    var makePopoverForTesting: (() -> NSPopover)?
     var hasPendingShowForTesting: Bool { showTimer != nil }
     var hasPendingCloseForTesting: Bool { closeTimer != nil }
 
@@ -450,7 +453,8 @@ final class QuotaProgressPaceView: NSView {
         window: OfficialQuotaWindow,
         identity: OverviewNumericIdentity,
         now: Date,
-        colorConfiguration: QuotaProgressColorConfiguration
+        colorConfiguration: QuotaProgressColorConfiguration,
+        cycleStart: Date? = nil
     ) {
         self.progress = QuotaProgressView(percentage: percentage, colorConfiguration: colorConfiguration)
         self.quotaWindow = window
@@ -462,7 +466,7 @@ final class QuotaProgressPaceView: NSView {
         addSubview(progress)
         addSubview(marker)
         setAccessibilityRole(.staticText)
-        update(window: window, now: now)
+        update(window: window, now: now, cycleStart: cycleStart)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -480,14 +484,14 @@ final class QuotaProgressPaceView: NSView {
         progress.setPercentage(value, animated: animated, duration: duration)
     }
 
-    func update(window: OfficialQuotaWindow, now: Date) {
+    func update(window: OfficialQuotaWindow, now: Date, cycleStart: Date? = nil) {
         let next = OfficialQuotaUsagePace.make(for: window, now: now)
         if quotaWindow.resetAt != window.resetAt || pace?.expectedRemaining != next?.expectedRemaining {
             clearInteraction()
         }
         quotaWindow = window
         pace = next
-        resetText = Self.resetText(for: window.resetAt, now: now)
+        prediction = OfficialQuotaUsagePrediction.make(for: window, cycleStart: cycleStart, now: now)
         marker.isHidden = next == nil
         marker.centerX = markerCenterX
         marker.needsDisplay = true
@@ -495,17 +499,6 @@ final class QuotaProgressPaceView: NSView {
         setAccessibilityLabel(accessibilityText)
         setAccessibilityHelp(accessibilityText)
         if isTooltipVisible { showTooltip() }
-    }
-
-    static func resetText(for resetAt: Date?, now: Date) -> String {
-        guard let resetAt else { return "" }
-        let seconds = resetAt.timeIntervalSince(now)
-        guard seconds.isFinite, seconds > 0, seconds < Double(Int.max) else { return "" }
-        let minutes = max(1, Int(ceil(seconds / 60)))
-        if minutes >= 24 * 60 {
-            return tr(.keyQuotaPaceResetDaysHours, arguments: ["\(minutes / 1440)", "\((minutes % 1440) / 60)"])
-        }
-        return tr(.keyQuotaPaceResetHoursMinutes, arguments: ["\(minutes / 60)", "\(minutes % 60)"])
     }
 
     var markerCenterX: CGFloat {
@@ -550,6 +543,7 @@ final class QuotaProgressPaceView: NSView {
         isMenuTracking = false
         clearInteraction()
         pace = nil
+        prediction = nil
         marker.isHidden = true
         updateTrackingAreas()
         setAccessibilityLabel("")
@@ -606,16 +600,31 @@ final class QuotaProgressPaceView: NSView {
     override func mouseEntered(with event: NSEvent) { forwardHover(event) }
     override func mouseMoved(with event: NSEvent) { forwardHover(event) }
     override func mouseExited(with event: NSEvent) { updateHover(at: NSPoint(x: -100, y: -100)) }
-    private func forwardHover(_ event: NSEvent) {
+    private var menuHoverHost: MenuHoverLinkHostView? {
         var ancestor = superview
         while let view = ancestor {
-            if let host = view as? MenuHoverLinkHostView {
-                host.forwardHover(atHostPoint: host.convert(event.locationInWindow, from: nil))
-                return
-            }
+            if let host = view as? MenuHoverLinkHostView { return host }
             ancestor = view.superview
         }
-        updateHover(at: convert(event.locationInWindow, from: nil))
+        return nil
+    }
+
+    private func forwardHover(_ event: NSEvent) {
+        if let host = menuHoverHost {
+            host.forwardHover(atHostPoint: host.convert(event.locationInWindow, from: nil))
+        } else {
+            updateHover(at: convert(event.locationInWindow, from: nil))
+        }
+    }
+
+    func adoptVisibleTooltip(from previous: QuotaProgressPaceView) {
+        guard let shared = previous.popover, shared.isShown else { return }
+        clearInteraction()
+        previous.popover = nil
+        previous.clearInteraction()
+        popover = shared
+        isHovered = true
+        showTooltip()
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -627,56 +636,80 @@ final class QuotaProgressPaceView: NSView {
     func firePendingShowForTesting() { showTimer?.fire() }
     func firePendingCloseForTesting() { closeTimer?.fire() }
 
+    var tooltipContent: QuotaPaceTooltipContent? {
+        guard let pace else { return nil }
+        return QuotaPaceTooltipContent(pace: pace, prediction: prediction)
+    }
+
     private var accessibilityText: String {
-        guard let pace else { return "" }
-        return [pace.status.title, pace.status.body,
-            tr(.keyQuotaPaceActual, arguments: ["\(pace.roundedActual)"]),
-            tr(.keyQuotaPaceExpected, arguments: ["\(pace.roundedExpected)"]),
-            pace.differenceText, resetText].joined(separator: "\n")
+        guard let content = tooltipContent else { return "" }
+        return [content.title, content.body].compactMap { $0 }.joined(separator: "\n")
     }
 
     private func showTooltip() {
         guard isMenuTracking, isHovered, window?.isVisible == true,
-              !markerHitRect.isEmpty, let pace else { return }
-        let content = QuotaPaceTooltipContent(title: pace.status.title, body: pace.status.body,
-            actual: Double(pace.roundedActual), expected: Double(pace.roundedExpected),
-            difference: pace.roundedDifference, reset: resetText)
+              !markerHitRect.isEmpty, let content = tooltipContent else { return }
         let controller = QuotaPaceTooltipViewController(content: content)
         controller.loadViewIfNeeded()
+        let anchorView = (menuHoverHost as NSView?) ?? self
+        let anchor = anchorView.convert(markerHitRect, from: self)
         if let popover, popover.isShown {
             popover.contentViewController = controller
             popover.contentSize = controller.contentSize
+            popover.positioningRect = anchor
             return
         }
-        let nextPopover = DashboardTextTooltip.makePopover()
+        let nextPopover = makePopoverForTesting?() ?? DashboardTextTooltip.makePopover()
         nextPopover.contentViewController = controller
         nextPopover.contentSize = controller.contentSize
-        nextPopover.show(relativeTo: markerHitRect, of: self, preferredEdge: .maxY)
+        // A common menu anchor lets 5h/7d transfer the same native window
+        // without closing/reopening a transient popover during menu tracking.
+        nextPopover.show(relativeTo: anchor, of: anchorView, preferredEdge: .maxY)
         popover = nextPopover.isShown ? nextPopover : nil
     }
 }
 
-extension OfficialQuotaUsagePace {
-    var differenceText: String { Self.differenceText(roundedDifference) }
-    static func differenceText(_ difference: Int) -> String {
-        if difference == 0 { return tr(.keyQuotaPaceDifferenceEqual) }
-        return tr(difference > 0 ? .keyQuotaPaceDifferenceMore : .keyQuotaPaceDifferenceLess,
-            arguments: ["\(abs(difference))"])
+struct QuotaPaceTooltipContent: Equatable {
+    let title: String
+    let body: String?
+
+    init(title: String, body: String?) {
+        self.title = title
+        self.body = body
+    }
+
+    init(pace: OfficialQuotaUsagePace, prediction: OfficialQuotaUsagePrediction?, language: AppLanguage = .selected) {
+        title = pace.status.title(language: language)
+        if pace.status == .unused {
+            body = tr(.keyQuotaPaceBodyUnused, language: language)
+        } else if pace.actualRemaining == 0 {
+            body = tr(.keyQuotaPaceBodyExhausted, language: language)
+        } else {
+            switch prediction {
+            case .runsOut(let seconds):
+                if seconds < 60 {
+                    body = tr(.keyQuotaPaceBodyUnderMinute, language: language)
+                } else {
+                    // Production estimates are earlier than a verified 5h reset.
+                    let minutes = Int(ceil(seconds / 60))
+                    if minutes < 60 {
+                        body = tr(.keyQuotaPaceBodyFastMinutes, arguments: ["\(minutes)"], language: language)
+                    } else {
+                        body = tr(.keyQuotaPaceBodyFast, arguments: ["\(minutes / 60)", "\(minutes % 60)"], language: language)
+                    }
+                }
+            case .lastsUntilReset:
+                body = tr(pace.status == .slow ? .keyQuotaPaceBodySlow : .keyQuotaPaceBodyNormal, language: language)
+            case nil:
+                body = nil
+            }
+        }
     }
 }
 
-private struct QuotaPaceTooltipContent {
-    let title: String
-    let body: String
-    let actual: Double
-    let expected: Double
-    let difference: Int
-    let reset: String
-}
-
-private final class QuotaPaceTooltipViewController: NSViewController {
-    private let content: QuotaPaceTooltipContent
-    private(set) var contentSize = NSSize(width: 220, height: 0)
+final class QuotaPaceTooltipViewController: NSViewController {
+    let content: QuotaPaceTooltipContent
+    private(set) var contentSize = NSSize.zero
 
     init(content: QuotaPaceTooltipContent) {
         self.content = content
@@ -689,59 +722,44 @@ private final class QuotaPaceTooltipViewController: NSViewController {
         let title = NSTextField(wrappingLabelWithString: content.title)
         title.font = .systemFont(ofSize: 12, weight: .semibold)
         title.textColor = .labelColor
-        let body = NSTextField(wrappingLabelWithString: content.body)
-        DashboardTextTooltip.configure(body)
-        let rows = [
-            tr(.keyQuotaPaceActual, arguments: [content.actual.formatted(.number.precision(.fractionLength(0)))]),
-            tr(.keyQuotaPaceExpected, arguments: [content.expected.formatted(.number.precision(.fractionLength(0)))]),
-            OfficialQuotaUsagePace.differenceText(content.difference),
-            content.reset
-        ]
-        let data = NSTextField(wrappingLabelWithString: rows.joined(separator: "\n"))
-        data.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        data.textColor = .labelColor
-        data.lineBreakMode = .byWordWrapping
-        data.usesSingleLineMode = false
-        let stack = NSStackView(views: [title, body, data])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 4
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        var labels = [title]
+        if let text = content.body, !text.isEmpty {
+            let body = NSTextField(wrappingLabelWithString: text)
+            DashboardTextTooltip.configure(body)
+            labels.append(body)
+        }
+        let textWidth = min(180, max(1, labels.map { label in
+            ceil((label.stringValue as NSString).size(withAttributes: [.font: label.font!]).width) + 2
+        }.max() ?? 1))
         let container = NSView()
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
-            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
-            title.widthAnchor.constraint(equalToConstant: 200),
-            body.widthAnchor.constraint(equalToConstant: 200),
-            data.widthAnchor.constraint(equalToConstant: 200)
-        ])
-        container.frame = NSRect(x: 0, y: 0, width: 220, height: 94)
+        var y: CGFloat = 8
+        for label in labels.reversed() {
+            label.preferredMaxLayoutWidth = textWidth
+            label.maximumNumberOfLines = 0
+            label.cell?.wraps = true
+            label.cell?.truncatesLastVisibleLine = false
+            let measured = (label.stringValue as NSString).boundingRect(
+                with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: label.font!])
+            let height = max(ceil(label.fittingSize.height), ceil(measured.height) + 2)
+            label.frame = NSRect(x: 10, y: y, width: textWidth, height: height)
+            y += height + 4
+        }
+        labels.forEach(container.addSubview)
+        contentSize = NSSize(width: textWidth + 20, height: y - 4 + 8)
+        container.frame = NSRect(origin: .zero, size: contentSize)
         view = container
-        container.layoutSubtreeIfNeeded()
-        contentSize = NSSize(width: 220, height: max(76, stack.fittingSize.height + 16))
-        container.frame.size.height = contentSize.height
     }
 }
 
 private extension OfficialQuotaUsagePace.Status {
-    var title: String {
+    func title(language: AppLanguage) -> String {
         switch self {
-        case .unused: tr(.keyQuotaPaceStatusUnused)
-        case .fast: tr(.keyQuotaPaceStatusFast)
-        case .normal: tr(.keyQuotaPaceStatusNormal)
-        case .slow: tr(.keyQuotaPaceStatusSlow)
-        }
-    }
-
-    var body: String {
-        switch self {
-        case .unused: tr(.keyQuotaPaceBodyUnused)
-        case .fast: tr(.keyQuotaPaceBodyFast)
-        case .normal: tr(.keyQuotaPaceBodyNormal)
-        case .slow: tr(.keyQuotaPaceBodySlow)
+        case .unused: tr(.keyQuotaPaceStatusUnused, language: language)
+        case .fast: tr(.keyQuotaPaceStatusFast, language: language)
+        case .normal: tr(.keyQuotaPaceStatusNormal, language: language)
+        case .slow: tr(.keyQuotaPaceStatusSlow, language: language)
         }
     }
 }
@@ -1456,7 +1474,9 @@ final class MenuHoverLinkHostView: NSView {
         link?.updateHover(atHostPoint: point, in: self)
         let next = paceViews.first { $0.isMenuTracking && $0.markerHitRect.contains($0.convert(point, from: self)) }
         let switchImmediately = next != nil && hoveredPaceView !== next && hoveredPaceView?.isTooltipVisible == true
-        if switchImmediately { hoveredPaceView?.clearInteraction() }
+        if switchImmediately, let next, let previous = hoveredPaceView {
+            next.adoptVisibleTooltip(from: previous)
+        }
         for paceView in paceViews {
             paceView.updateHover(at: paceView.convert(point, from: self), immediately: switchImmediately && paceView === next)
         }

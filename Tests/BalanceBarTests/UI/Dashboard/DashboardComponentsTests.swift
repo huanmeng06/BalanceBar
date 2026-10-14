@@ -34,6 +34,39 @@ private final class FixedPreviewRowAccessory: NSView, SettingsRowAccessoryLayout
     }
 }
 
+/// Isolates native window presentation from the mandatory background host
+/// policy. Content, anchor, ownership and timing still use production code.
+@MainActor
+private final class QuotaPacePopoverProbe: NSPopover {
+    private var showing = false
+    private var controller: NSViewController?
+    private var size = NSSize.zero
+    private var rect = NSRect.zero
+    private(set) var showCount = 0
+    weak var anchorView: NSView?
+
+    override var isShown: Bool { showing }
+    override var contentViewController: NSViewController? {
+        get { controller }
+        set { controller = newValue }
+    }
+    override var contentSize: NSSize {
+        get { size }
+        set { size = newValue }
+    }
+    override var positioningRect: NSRect {
+        get { rect }
+        set { rect = newValue }
+    }
+    override func show(relativeTo positioningRect: NSRect, of positioningView: NSView, preferredEdge: NSRectEdge) {
+        rect = positioningRect
+        anchorView = positioningView
+        showing = true
+        showCount += 1
+    }
+    override func close() { showing = false }
+}
+
 @MainActor
 final class DashboardComponentsTests: XCTestCase {
     private func paceWindow(remaining: Double = 50, reset: Date, kind: OfficialQuotaWindow.Kind = .fiveHour) -> OfficialQuotaWindow {
@@ -133,91 +166,86 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(view.isTooltipVisible)
     }
 
-    func testPaceTooltipTimersAndSwitchingInsideRealMenuTrackingLoop() {
-        let now = Date(timeIntervalSince1970: 1_700_000_000)
+    private func paceProbeFixture(now: Date) -> (menu: NSMenu, host: MenuHoverLinkHostView,
+                                               views: [QuotaProgressPaceView], popovers: [QuotaPacePopoverProbe]) {
         let menu = NSMenu(title: "Quota pace tracking regression")
         let item = NSMenuItem()
         let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
         let section = NSView(frame: host.bounds)
         host.addSubview(section)
-        let five = paceWindow(reset: now.addingTimeInterval(9_000))
-        let week = paceWindow(reset: now.addingTimeInterval(302_400), kind: .sevenDay)
-        let views = [five, week].enumerated().map { index, quota in
+        let quotas = [paceWindow(reset: now.addingTimeInterval(9_000)),
+                      paceWindow(reset: now.addingTimeInterval(302_400), kind: .sevenDay)]
+        let views = quotas.enumerated().map { index, quota in
             let view = QuotaProgressPaceView(percentage: 50, window: quota,
                 identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
-                now: now, colorConfiguration: .default)
+                now: now, colorConfiguration: .default,
+                cycleStart: OfficialQuotaUsagePrediction.verifiedCycleStart(for: quota))
             view.frame = NSRect(x: 10, y: 10 + CGFloat(index) * 30, width: 200, height: 18)
             section.addSubview(view)
             return view
         }
+        let popovers = views.map { _ in QuotaPacePopoverProbe() }
+        for (index, view) in views.enumerated() { view.makePopoverForTesting = { popovers[index] } }
         item.view = host
         menu.addItem(item)
+        return (menu, host, views, popovers)
+    }
+
+    private func enterPace(_ view: QuotaProgressPaceView) {
+        let event = NSEvent.enterExitEvent(with: .mouseEntered,
+            location: view.convert(NSPoint(x: view.markerCenterX, y: 9), to: nil), modifierFlags: [],
+            timestamp: 0, windowNumber: view.window?.windowNumber ?? 0, context: nil,
+            eventNumber: 1, trackingNumber: 1, userData: nil)!
+        view.mouseEntered(with: event)
+    }
+
+    func testPacePopoverCoordinationInsideRealMenuTrackingLoop() {
+        let (menu, host, views, popovers) = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
         host.setMenuContentVisible(true)
-        var stage = 0
+        var completed = false
         var attempts = 0
-        var changedAt = Date()
-        func enter(_ view: QuotaProgressPaceView) {
-            let point = view.convert(NSPoint(x: view.markerCenterX, y: 9), to: nil)
-            let event = NSEvent.enterExitEvent(with: .mouseEntered, location: point, modifierFlags: [],
-                timestamp: 0, windowNumber: host.window?.windowNumber ?? 0, context: nil,
-                eventNumber: 1, trackingNumber: 1, userData: nil)!
-            view.mouseEntered(with: event)
-        }
         let probe = Timer(timeInterval: 0.02, repeats: true) { timer in
             attempts += 1
-            guard attempts < 100 else {
-                XCTFail("Real menu tracking probe timed out at stage \(stage)")
-                timer.invalidate()
-                menu.cancelTracking()
-                return
-            }
+            guard attempts < 50 else { timer.invalidate(); menu.cancelTracking(); return }
             guard host.window != nil else { return }
-            let elapsed = Date().timeIntervalSince(changedAt)
-            switch stage {
-            case 0:
-                host.layoutSubtreeIfNeeded()
-                host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
-                XCTAssertFalse(views[0].isHovered)
-                enter(views[0])
-                XCTAssertTrue(views[0].hasPendingShowForTesting)
-                XCTAssertFalse(views[0].isTooltipVisible)
-                changedAt = Date()
-                stage = 1
-            case 1 where elapsed >= 0.36:
-                XCTAssertTrue(views[0].isTooltipVisible, "300ms timer must present inside NSMenu tracking")
-                host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
-                XCTAssertTrue(views[0].hasPendingCloseForTesting)
-                changedAt = Date()
-                stage = 2
-            case 2 where elapsed >= 0.04:
-                enter(views[0])
-                XCTAssertFalse(views[0].hasPendingCloseForTesting)
-                changedAt = Date()
-                stage = 3
-            case 3 where elapsed >= 0.14:
-                XCTAssertTrue(views[0].isTooltipVisible, "Cancelled old close must not dismiss after reentry")
-                enter(views[1])
-                XCTAssertFalse(views[0].isTooltipVisible)
-                XCTAssertTrue(views[1].isTooltipVisible, "A visible tooltip switches without another 300ms delay")
-                host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
-                changedAt = Date()
-                stage = 4
-            case 4 where elapsed >= 0.14:
-                XCTAssertFalse(views[1].isTooltipVisible)
-                enter(views[0])
-                XCTAssertTrue(views[0].hasPendingShowForTesting)
-                host.setMenuContentVisible(false)
-                stage = 5
-                timer.invalidate()
-                menu.cancelTracking()
-            default: break
-            }
+            timer.invalidate()
+            host.layoutSubtreeIfNeeded()
+            host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+            XCTAssertFalse(views[0].isHovered)
+            self.enterPace(views[0])
+            XCTAssertTrue(views[0].hasPendingShowForTesting)
+            views[0].firePendingShowForTesting()
+            XCTAssertTrue(views[0].isTooltipVisible)
+            XCTAssertNotNil(views[0].tooltipContent?.body)
+            XCTAssertTrue(popovers[0].anchorView === host)
+            host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+            XCTAssertTrue(views[0].hasPendingCloseForTesting)
+            self.enterPace(views[0])
+            views[0].firePendingCloseForTesting()
+            XCTAssertTrue(views[0].isTooltipVisible)
+            self.enterPace(views[1])
+            XCTAssertFalse(views[0].isTooltipVisible)
+            XCTAssertTrue(views[1].isTooltipVisible)
+            XCTAssertEqual(popovers[0].showCount, 1)
+            XCTAssertEqual(popovers[1].showCount, 0)
+            XCTAssertEqual((popovers[0].contentViewController as? QuotaPaceTooltipViewController)?.content,
+                views[1].tooltipContent)
+            XCTAssertNil(views[1].tooltipContent?.body)
+            XCTAssertEqual(popovers[0].positioningRect, host.convert(views[1].markerHitRect, from: views[1]))
+            host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+            views[1].firePendingCloseForTesting()
+            XCTAssertFalse(views[1].isTooltipVisible)
+            self.enterPace(views[0])
+            XCTAssertTrue(views[0].hasPendingShowForTesting)
+            host.setMenuContentVisible(false)
+            completed = true
+            menu.cancelTracking()
         }
         RunLoop.main.add(probe, forMode: .eventTracking)
         menu.popUp(positioning: nil, at: .zero, in: nil)
         probe.invalidate()
         host.setMenuContentVisible(false)
-        XCTAssertEqual(stage, 5, "Menu must remain open through the native popover lifecycle")
+        XCTAssertTrue(completed, "The real menu must attach and execute the event-routing probe")
         for view in views {
             XCTAssertFalse(view.isTooltipVisible)
             XCTAssertFalse(view.hasPendingShowForTesting)
@@ -226,33 +254,123 @@ final class DashboardComponentsTests: XCTestCase {
         menu.removeAllItems()
     }
 
-    func testPaceUpdateInvalidationAndNaturalLocalizedCopy() throws {
+    func testPaceRealDelaysReentryAndCloseInEventTrackingMode() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let quota = paceWindow(reset: now.addingTimeInterval(11_160))
+        let quota = paceWindow(reset: now.addingTimeInterval(9_000))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
         let view = QuotaProgressPaceView(percentage: 50, window: quota,
             identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
-            now: now, colorConfiguration: .default)
-        XCTAssertEqual(view.pace?.roundedDifference, -12)
-        XCTAssertEqual(view.resetText, tr(.keyQuotaPaceResetHoursMinutes, arguments: ["3", "6"]))
-        view.update(window: quota, now: now.addingTimeInterval(60))
+            now: now, colorConfiguration: .default,
+            cycleStart: OfficialQuotaUsagePrediction.verifiedCycleStart(for: quota))
+        view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
+        root.addSubview(view)
+        let window = NSWindow(contentRect: root.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = root
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { view.setMenuTracking(false); window.orderOut(nil) }
+        root.layoutSubtreeIfNeeded()
+        view.makePopoverForTesting = { QuotaPacePopoverProbe() }
+        view.setMenuTracking(true)
+        func runTracking(until deadline: Date) {
+            while Date() < deadline { _ = RunLoop.current.run(mode: .eventTracking, before: deadline) }
+        }
+        func exitPace() { view.updateHover(at: NSPoint(x: -100, y: -100)) }
+        enterPace(view)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        let entered = Date()
+        runTracking(until: entered.addingTimeInterval(0.2))
+        XCTAssertFalse(view.isTooltipVisible, "The 300ms delay must not fire early")
+        runTracking(until: entered.addingTimeInterval(0.36))
+        XCTAssertTrue(view.isTooltipVisible)
+        exitPace()
+        let exited = Date()
+        runTracking(until: exited.addingTimeInterval(0.04))
+        XCTAssertTrue(view.isTooltipVisible, "The 100ms close delay must not fire early")
+        enterPace(view)
+        runTracking(until: Date().addingTimeInterval(0.14))
+        XCTAssertTrue(view.isTooltipVisible, "The cancelled old close must not dismiss after reentry")
+        exitPace()
+        runTracking(until: Date().addingTimeInterval(0.14))
+        XCTAssertFalse(view.isTooltipVisible)
+        enterPace(view)
+        view.setMenuTracking(false)
+        runTracking(until: Date().addingTimeInterval(0.36))
+        XCTAssertFalse(view.isTooltipVisible)
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+    }
+
+    func testPaceUpdateInvalidationAndCompactPredictionCopy() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quota = paceWindow(remaining: 60, reset: now.addingTimeInterval(11_160))
+        let start = OfficialQuotaUsagePrediction.verifiedCycleStart(for: quota)
+        let view = QuotaProgressPaceView(percentage: 60, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+            now: now, colorConfiguration: .default, cycleStart: start)
+        let pace = try XCTUnwrap(view.pace)
+        XCTAssertEqual(pace.status, .normal)
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: view.prediction, language: .simplifiedChinese),
+            QuotaPaceTooltipContent(title: "用量刚刚好", body: "照这个速度，预计约 2 小时 51 分后用完。"))
+        let original = view.prediction
+        view.update(window: quota, now: now.addingTimeInterval(60), cycleStart: start)
+        XCTAssertNotEqual(view.prediction, original)
         XCTAssertLessThan(try XCTUnwrap(view.pace?.expectedRemaining), 62)
-        view.update(window: quota, now: quota.resetAt!)
+        view.update(window: quota, now: quota.resetAt!, cycleStart: start)
         XCTAssertNil(view.pace)
+        XCTAssertNil(view.prediction)
         XCTAssertTrue(view.markerHitRect.isEmpty)
         XCTAssertEqual(view.accessibilityLabel(), "")
         view.update(window: quota, now: now)
+        XCTAssertNil(view.tooltipContent?.body, "No trusted cycle start means title only")
+        XCTAssertEqual(view.accessibilityLabel(), view.tooltipContent?.title)
+        let unused = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 100, reset: quota.resetAt!), now: now))
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .simplifiedChinese).body, "额度满满，尽情发挥吧！")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .english).body, "All yours. Make something great.")
+        let exhausted = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 0, reset: quota.resetAt!), now: now))
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, language: .simplifiedChinese).body, "额度已用完，等待重置。")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 59.9), language: .simplifiedChinese).body,
+            "照这个速度，预计不到 1 分钟后用完。")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 119.1), language: .simplifiedChinese).body,
+            "照这个速度，预计约 2 分后用完。")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: .lastsUntilReset, language: .simplifiedChinese).body,
+            "照目前的使用节奏，额度预计能撑到重置。")
+        let slow = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 80, reset: quota.resetAt!), now: now))
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: slow, prediction: .lastsUntilReset, language: .simplifiedChinese).body,
+            "照目前的使用节奏，这轮额度预计能撑到重置。")
+        let week = paceWindow(remaining: 50, reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        view.update(window: week, now: now)
         XCTAssertNotNil(view.pace)
+        XCTAssertNil(view.prediction)
+        XCTAssertNil(view.tooltipContent?.body)
+    }
+
+    func testCompactPaceTooltipHasOnlyTitleAndOptionalSentenceAcrossAllLanguages() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 60, reset: now.addingTimeInterval(11_160)), now: now))
         for language in AppLanguage.allCases where language != .system {
-            let actual = tr(.keyQuotaPaceActual, arguments: ["50"], language: language)
-            let difference = tr(.keyQuotaPaceDifferenceLess, arguments: ["12"], language: language)
-            XCTAssertTrue(actual.contains("50%"), language.rawValue)
-            XCTAssertTrue(difference.contains("12%"), language.rawValue)
-            XCTAssertFalse(difference.contains("%@"))
-            XCTAssertFalse(tr(.keyQuotaPaceResetDaysHours, arguments: ["2", "3"], language: language).contains("%@"))
+            let content = QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 10_260), language: language)
+            let controller = QuotaPaceTooltipViewController(content: content)
+            controller.loadViewIfNeeded()
+            let labels = controller.view.subviews.compactMap { $0 as? NSTextField }
+            XCTAssertEqual(labels.map(\.stringValue), [content.title, try XCTUnwrap(content.body)])
+            XCTAssertEqual(labels.count, 2)
+            XCTAssertLessThanOrEqual(controller.contentSize.width, 200)
+            XCTAssertTrue(labels.allSatisfy { controller.view.bounds.contains($0.frame) })
+            XCTAssertTrue(labels.allSatisfy { $0.maximumNumberOfLines == 0 && !$0.stringValue.contains("%@") })
+            let body = labels[1]
+            XCTAssertTrue(body.stringValue.contains("2"), language.rawValue)
+            XCTAssertTrue(body.stringValue.contains("51"), language.rawValue)
+            XCTAssertFalse(body.stringValue.contains("%"))
+            let measured = (body.stringValue as NSString).boundingRect(
+                with: NSSize(width: body.frame.width, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: body.font!])
+            XCTAssertGreaterThanOrEqual(body.frame.height, ceil(measured.height))
         }
-        XCTAssertEqual(tr(.keyQuotaPaceBodyFast, language: .simplifiedChinese),
-            "如果继续按目前的平均速度使用，额度可能提前用完，可以适当放慢。")
-        XCTAssertEqual(tr(.keyQuotaPaceDifferenceLess, arguments: ["12"], language: .simplifiedChinese), "比参考少剩 12%")
+        let titleOnly = QuotaPaceTooltipViewController(content: QuotaPaceTooltipContent(title: "用量刚刚好", body: nil))
+        titleOnly.loadViewIfNeeded()
+        XCTAssertEqual(titleOnly.view.subviews.compactMap { $0 as? NSTextField }.map(\.stringValue), ["用量刚刚好"])
+        XCTAssertLessThan(titleOnly.contentSize.width, 200)
+        XCTAssertLessThan(titleOnly.contentSize.height, 76)
     }
 
     func testDashboardSectionsPreserveNavigationOrderAndMetadata() {

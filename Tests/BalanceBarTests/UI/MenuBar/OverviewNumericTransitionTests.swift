@@ -620,7 +620,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         defer { controller.teardown() }
         controller.quotaPaceNowForTesting = now
         controller.overviewNumericReduceMotionForTesting = true
-        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 60), refreshDate: now,
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 40), refreshDate: now,
             menuInput: makeMenuInput(), settings: makeSettings())
         let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
         let pace = try XCTUnwrap(host.paceViews.first)
@@ -630,18 +630,21 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         controller.quotaPaceNowForTesting = now.addingTimeInterval(60)
         controller.menuWillOpen(controller.statusMenuForTesting)
         XCTAssertEqual(try XCTUnwrap(pace.pace?.expectedRemaining), 100 * 8_940.0 / 18_000, accuracy: 0.0001)
+        let initialPrediction = pace.prediction
+        XCTAssertNotNil(initialPrediction)
         let timer = try XCTUnwrap(controller.quotaPaceTimerForTesting)
         XCTAssertEqual(timer.timeInterval, 60)
         controller.quotaPaceNowForTesting = now.addingTimeInterval(120)
         timer.fire()
+        XCTAssertNotEqual(pace.prediction, initialPrediction)
         XCTAssertEqual(try XCTUnwrap(pace.pace?.expectedRemaining), 100 * 8_880.0 / 18_000, accuracy: 0.0001)
         XCTAssertTrue(controller.menuItemsForTesting.first?.view === host)
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
-        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 44, resetAt: reset), refreshDate: now,
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 35, resetAt: reset), refreshDate: now,
             menuInput: makeMenuInput(), settings: makeSettings())
         XCTAssertTrue(host.paceViews.first === pace)
-        XCTAssertEqual(pace.progress.percentage, 44)
-        XCTAssertEqual(pace.pace?.roundedActual, 44)
+        XCTAssertEqual(pace.progress.percentage, 35)
+        XCTAssertEqual(pace.pace?.roundedActual, 35)
         controller.menuDidClose(controller.statusMenuForTesting)
         XCTAssertNil(controller.quotaPaceTimerForTesting)
         XCTAssertFalse(timer.isValid)
@@ -679,6 +682,42 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertNotNil(replacement.pace)
         XCTAssertTrue(replacement.isMenuTracking)
         XCTAssertNotNil(controller.quotaPaceTimerForTesting)
+    }
+
+    func testPredictionRestorationGuardSurvivesClosedMenuAndRecoversOnNewDeadline() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let reset = now.addingTimeInterval(9_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 40, resetAt: reset), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        func currentPace() throws -> QuotaProgressPaceView {
+            try XCTUnwrap((controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)?.paceViews.first)
+        }
+        XCTAssertNotNil(try currentPace().prediction)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 60, resetAt: reset), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertNotNil(try currentPace().pace)
+        XCTAssertNil(try currentPace().prediction)
+        XCTAssertNil(try currentPace().tooltipContent?.body)
+        controller.update(snapshot: .error("Temporary quota failure"), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertNil(try currentPace().prediction)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 55, resetAt: reset), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertNil(try currentPace().prediction)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 80, resetAt: now.addingTimeInterval(12_000)), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertNotNil(try currentPace().prediction)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 50), refreshDate: now,
+            menuInput: makeMenuInput(activeClient: .claude), settings: makeSettings())
+        XCTAssertNil(try currentPace().prediction, "Five-hour semantics were only checked for Codex")
     }
 
     func testFirstOpenShowsCurrentValuesAndLaterOpenStartsFromLastSeen() throws {

@@ -292,6 +292,44 @@ struct OfficialQuotaUsagePace: Equatable {
     }
 }
 
+/// Average use since a verified cycle start, never a recent activity rate.
+/// Callers must supply a trustworthy start; a duration/reset pair alone is
+/// not sufficient evidence for every quota window or reset mechanism.
+enum OfficialQuotaUsagePrediction: Equatable {
+    case runsOut(after: TimeInterval)
+    case lastsUntilReset
+
+    static func make(
+        for window: OfficialQuotaWindow,
+        cycleStart: Date?,
+        now: Date = Date()
+    ) -> Self? {
+        guard OfficialQuotaUsagePace.make(for: window, now: now) != nil,
+              let cycleStart, cycleStart.timeIntervalSince1970.isFinite,
+              let duration = window.durationSeconds,
+              let resetAt = window.resetAt,
+              abs(resetAt.timeIntervalSince(cycleStart) - duration) < 0.001 else { return nil }
+        let elapsed = now.timeIntervalSince(cycleStart)
+        let used = 100 - window.remaining
+        guard elapsed >= duration * 0.03, elapsed > 0, used >= 1 else { return nil }
+        let averageUsePerSecond = used / elapsed
+        let secondsRemaining = window.remaining / averageUsePerSecond
+        guard secondsRemaining.isFinite, secondsRemaining >= 0 else { return nil }
+        return secondsRemaining < resetAt.timeIntervalSince(now)
+            ? .runsOut(after: secondsRemaining) : .lastsUntilReset
+    }
+
+    /// The documented Codex five-hour window starts with the first request.
+    /// Weekly/special-reset starts remain unverified; do not infer them here.
+    /// See docs/validation/issue-500-pace-prediction.md for evidence and limits.
+    static func verifiedCycleStart(for window: OfficialQuotaWindow) -> Date? {
+        guard window.kind == .fiveHour,
+              let duration = window.durationSeconds, duration == 18_000,
+              let resetAt = window.resetAt else { return nil }
+        return resetAt.addingTimeInterval(-duration)
+    }
+}
+
 enum OfficialQuotaWindowResolution: Equatable {
     case selected(OfficialQuotaWindow)
     case legacy(OfficialQuotaWindow?)

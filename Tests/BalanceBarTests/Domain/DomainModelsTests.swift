@@ -10,6 +10,74 @@ func withLunaReserveUserFacingEnabled(_ body: () throws -> Void) rethrows {
 }
 
 final class DomainModelsTests: XCTestCase {
+    func testQuotaPredictionUsesWholeCycleAverageAndUnroundedValues() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let start = now.addingTimeInterval(-6_840)
+        func window(_ remaining: Double) -> OfficialQuotaWindow {
+            OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(11_160))
+        }
+        for (remaining, seconds) in [(50.0, 6_840.0), (60.0, 10_260.0)] {
+            let quota = window(remaining)
+            guard case .runsOut(let actual) = OfficialQuotaUsagePrediction.make(for: quota, cycleStart: start, now: now) else {
+                return XCTFail("Expected exhaustion before reset")
+            }
+            XCTAssertEqual(actual, seconds, accuracy: 0.000001)
+        }
+        XCTAssertEqual(OfficialQuotaUsagePace.make(for: window(60), now: now)?.status, .normal)
+        XCTAssertEqual(OfficialQuotaUsagePrediction.make(for: window(62), cycleStart: start, now: now), .lastsUntilReset)
+        XCTAssertEqual(OfficialQuotaUsagePrediction.make(for: window(80), cycleStart: start, now: now), .lastsUntilReset)
+        guard case .runsOut(let fractional) = OfficialQuotaUsagePrediction.make(for: window(54.4), cycleStart: start, now: now) else {
+            return XCTFail("Expected a raw-value estimate")
+        }
+        XCTAssertEqual(fractional, 54.4 / (45.6 / 6_840), accuracy: 0.000001)
+    }
+
+    func testQuotaPredictionRequiresVerifiedStartAndObservationThresholds() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func quota(remaining: Double = 99, elapsed: Double = 540, kind: OfficialQuotaWindow.Kind = .fiveHour,
+                   duration: Double? = 18_000) -> OfficialQuotaWindow {
+            OfficialQuotaWindow(kind: kind, remaining: remaining, label: "quota", daysText: "quota", reset: nil,
+                durationSeconds: duration, resetAt: now.addingTimeInterval((duration ?? 18_000) - elapsed))
+        }
+        let start = now.addingTimeInterval(-540)
+        XCTAssertNotNil(OfficialQuotaUsagePrediction.make(for: quota(), cycleStart: start, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(elapsed: 539.99),
+            cycleStart: now.addingTimeInterval(-539.99), now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(remaining: 99.0001), cycleStart: start, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(remaining: 100), cycleStart: start, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(), cycleStart: nil, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(), cycleStart: now, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(), cycleStart: Date(timeIntervalSince1970: .nan), now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.verifiedCycleStart(for: quota(kind: .sevenDay, duration: 604_800)))
+        XCTAssertNil(OfficialQuotaUsagePrediction.verifiedCycleStart(for: quota(kind: .other)))
+        XCTAssertNil(OfficialQuotaUsagePrediction.verifiedCycleStart(for: quota(duration: 17_999.5)))
+        XCTAssertEqual(OfficialQuotaUsagePrediction.verifiedCycleStart(for: quota()), start)
+        for window in [quota(remaining: .nan), quota(remaining: .infinity), quota(remaining: -1),
+                       quota(remaining: 101), quota(kind: .other), quota(duration: nil),
+                       quota(duration: 0), quota(elapsed: 18_000)] {
+            XCTAssertNil(OfficialQuotaUsagePrediction.make(for: window, cycleStart: start, now: now))
+        }
+        XCTAssertEqual(OfficialQuotaUsagePrediction.make(for: quota(remaining: 0), cycleStart: start, now: now), .runsOut(after: 0))
+    }
+
+    func testQuotaPredictionComparesRawSecondsAtResetBoundary() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let start = now.addingTimeInterval(-9_000)
+        for remaining in [50.0, 50.00000001] {
+            let window = OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000))
+            XCTAssertEqual(OfficialQuotaUsagePrediction.make(for: window, cycleStart: start, now: now), .lastsUntilReset)
+        }
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 49.99999999, label: "5h", daysText: "5h",
+            reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000))
+        guard case .runsOut(let seconds) = OfficialQuotaUsagePrediction.make(for: window, cycleStart: start, now: now) else {
+            return XCTFail("Even a normally titled estimate strictly before reset should show a time")
+        }
+        XCTAssertLessThan(seconds, 9_000)
+        XCTAssertEqual(OfficialQuotaUsagePace.make(for: window, now: now)?.status, .normal)
+    }
+
     func testPaceClassificationUsesIndividuallyRoundedDisplayValues() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         for (actual, expected, difference, status) in [
