@@ -759,8 +759,11 @@ final class MenuBarTextView: NSView {
 /// events in its own visible bounds, leaving nested ticket scrolling to its host.
 final class AggregationOverviewScrollView: NSScrollView {
     private var wheelMonitor: Any?
+    private var isMenuContentVisible = false
 
     func setMenuContentVisible(_ visible: Bool) {
+        guard isMenuContentVisible != visible else { return }
+        isMenuContentVisible = visible
         if let wheelMonitor { NSEvent.removeMonitor(wheelMonitor) }
         wheelMonitor = nil
         guard visible else { return }

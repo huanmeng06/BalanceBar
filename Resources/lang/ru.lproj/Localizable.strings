@@ -513,5 +513,4 @@
 "aggregation.loading" = "Обновление…";
 "aggregation.stale" = "Последние достоверные данные · повторная попытка";
 "aggregation.unavailable" = "Баланс недоступен";
-"aggregation.updated" = "Последнее обновление";
 "aggregation.manage_in_cc_switch" = "Управляйте поставщиком по умолчанию в CC Switch в режиме агрегации";

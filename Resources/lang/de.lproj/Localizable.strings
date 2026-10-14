@@ -513,5 +513,4 @@
 "aggregation.loading" = "Wird aktualisiert…";
 "aggregation.stale" = "Letzte verlässliche Daten · neuer Versuch";
 "aggregation.unavailable" = "Guthaben nicht verfügbar";
-"aggregation.updated" = "Zuletzt aktualisiert";
 "aggregation.manage_in_cc_switch" = "Standardanbieter im Aggregationsmodus in CC Switch verwalten";

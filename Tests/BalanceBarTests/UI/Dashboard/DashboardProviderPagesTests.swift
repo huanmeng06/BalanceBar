@@ -105,7 +105,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             snapshot: .placeholder,
             quickSwitchSummaries: [:],
             refreshDate: nil,
-            revision: 1
+            revision: 1, snapshotProviderID: (choices as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )
 
         let first = coordinator.makeDetailPage(choice: choices[0], input: input)
@@ -138,7 +138,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             snapshot: .placeholder,
             quickSwitchSummaries: [:],
             refreshDate: nil,
-            revision: 1
+            revision: 1, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )
         let page = coordinator.makeDetailPage(choice: choice, input: input)
         let refreshButton = try XCTUnwrap(
@@ -151,7 +151,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             snapshot: .placeholder,
             quickSwitchSummaries: [:],
             refreshDate: nil,
-            revision: 2
+            revision: 2, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )
         XCTAssertTrue(coordinator.refreshMountedPage(input: newerInput))
         XCTAssertFalse(coordinator.refreshMountedPage(input: input))
@@ -173,7 +173,7 @@ final class DashboardProviderPagesTests: XCTestCase {
         let initial = DashboardProviderPageInput(
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .official("Current", 75, "7-day", "initial-reset", Date()),
-            quickSwitchSummaries: [:], refreshDate: nil, revision: 1
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 1, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )
         let page = coordinator.makeDetailPage(choice: choice, input: initial)
         XCTAssertTrue(try XCTUnwrap(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("initial-reset") }).isHidden == false)
@@ -181,7 +181,7 @@ final class DashboardProviderPagesTests: XCTestCase {
         let newer = DashboardProviderPageInput(
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .official("Current", 65, "7-day", "new-reset", Date()),
-            quickSwitchSummaries: [:], refreshDate: nil, revision: 2
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 2, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )
         XCTAssertTrue(coordinator.refreshMountedPage(input: newer))
         XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("new-reset") })
@@ -198,12 +198,12 @@ final class DashboardProviderPagesTests: XCTestCase {
         let input = DashboardProviderPageInput(
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .official("Gone Provider", 75, "7-day", "old-reset", Date()),
-            quickSwitchSummaries: [:], refreshDate: nil, revision: 1
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 1, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )
         let page = coordinator.makeDetailPage(choice: choice, input: input)
         let updated = DashboardProviderPageInput(
             choices: [], selectedProviderID: nil, snapshot: .placeholder,
-            quickSwitchSummaries: [:], refreshDate: nil, revision: 2
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 2, snapshotProviderID: ([] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )
         XCTAssertTrue(coordinator.refreshMountedPage(input: updated))
         XCTAssertNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue == "Gone Provider" })
@@ -223,7 +223,7 @@ final class DashboardProviderPagesTests: XCTestCase {
         let other = ProviderChoice(id: "other", name: "Other", isCurrent: false)
         let initial = DashboardProviderPageInput(
             choices: [other], selectedProviderID: other.id, snapshot: .placeholder,
-            quickSwitchSummaries: [other.id: "$1.00"], refreshDate: nil, revision: 1
+            quickSwitchSummaries: [other.id: "$1.00"], refreshDate: nil, revision: 1, snapshotProviderID: ([other] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )
         let page = coordinator.makeDetailPage(choice: other, input: initial)
         let initialAction = try XCTUnwrap(descendants(of: page, as: NSButton.self).first)
@@ -235,7 +235,7 @@ final class DashboardProviderPagesTests: XCTestCase {
         let updated = DashboardProviderPageInput(
             choices: [current], selectedProviderID: current.id,
             snapshot: .official("Other", 80, "7-day", "reset", Date()),
-            quickSwitchSummaries: [:], refreshDate: nil, revision: 2
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 2, snapshotProviderID: ([current] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )
         XCTAssertTrue(coordinator.refreshMountedPage(input: updated))
         XCTAssertTrue(initialAction.isEnabled)
@@ -254,11 +254,11 @@ final class DashboardProviderPagesTests: XCTestCase {
         let page = coordinator.makeOverviewPage(input: DashboardProviderPageInput(
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .official("Current", 90, "7-day", "overview-reset", Date()),
-            quickSwitchSummaries: [:], refreshDate: nil, revision: 1
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 1, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         ))
         XCTAssertTrue(coordinator.refreshMountedPage(input: DashboardProviderPageInput(
             choices: [], selectedProviderID: nil, snapshot: .placeholder,
-            quickSwitchSummaries: [:], refreshDate: nil, revision: 2
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 2, snapshotProviderID: ([] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )))
         XCTAssertNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue == "Current" })
         XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue == "—" })
@@ -278,7 +278,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .official("Current", 80, "5-hour", "1h0m", Date(), lunaReserve: reserve),
             quickSwitchSummaries: [:], refreshDate: nil, revision: 1,
-            currentProviderIsOfficial: true
+            currentProviderIsOfficial: true, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         ))
         let card = try XCTUnwrap(
             descendants(of: page, as: NSView.self).first {
@@ -291,7 +291,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .official("Current", 80, "5-hour", "1h0m", Date()),
             quickSwitchSummaries: [:], refreshDate: nil, revision: 2,
-            currentProviderIsOfficial: true
+            currentProviderIsOfficial: true, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )))
         XCTAssertTrue(card.isHidden)
 
@@ -299,7 +299,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .placeholder,
             quickSwitchSummaries: [:], refreshDate: nil, revision: 3,
-            currentProviderIsOfficial: true
+            currentProviderIsOfficial: true, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )))
         XCTAssertTrue(card.isHidden)
     }
@@ -318,7 +318,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .official("Current", 80, "5-hour", "1h0m", Date(), lunaReserve: reserve),
             quickSwitchSummaries: [:], refreshDate: nil, revision: 1,
-            currentProviderIsOfficial: true
+            currentProviderIsOfficial: true, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         ))
         let card = try XCTUnwrap(
             descendants(of: page, as: NSView.self).first {
@@ -335,7 +335,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .official("Current", 80, "5-hour", "1h0m", Date()),
             quickSwitchSummaries: [:], refreshDate: nil, revision: 2,
-            currentProviderIsOfficial: true
+            currentProviderIsOfficial: true, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )))
         XCTAssertFalse(card.isHidden)
         XCTAssertEqual(
@@ -349,7 +349,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             choices: [choice], selectedProviderID: choice.id,
             snapshot: .placeholder,
             quickSwitchSummaries: [:], refreshDate: nil, revision: 3,
-            currentProviderIsOfficial: true
+            currentProviderIsOfficial: true, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         )))
         XCTAssertFalse(card.isHidden)
         XCTAssertEqual(
@@ -375,7 +375,7 @@ final class DashboardProviderPagesTests: XCTestCase {
                 snapshot: .official("Current", 75, "7-day", "initial-reset", Date()),
                 quickSwitchSummaries: [:],
                 refreshDate: nil,
-                revision: 1
+                revision: 1, snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
             )
         )
 
@@ -445,7 +445,7 @@ final class DashboardProviderPagesTests: XCTestCase {
             snapshot: .official("Current", 90, "7-day", "overview-reset", Date()),
             quickSwitchSummaries: [other.id: "$1.00"],
             refreshDate: nil,
-            revision: 1
+            revision: 1, snapshotProviderID: ([current, other] as [ProviderChoice]).first(where: { $0.isCurrent })?.id
         ))
         let switchButton = try XCTUnwrap(
             descendants(of: page, as: NSButton.self).first {
@@ -520,7 +520,7 @@ extension DashboardProviderPagesTests {
         var requests = 0
         let coordinator = DashboardProviderPageCoordinator(actions: .init(onRefresh: { requests += 1 }, onSwitchProvider: { _ in }, onOpenProvider: { _ in }, onSelectProvider: { _ in }, isSortAlphabetically: { false }, setSortAlphabetically: { _ in }))
         let input: (Int, UInt64) -> DashboardProviderPageInput = { minutes, revision in
-            .init(choices: [choice], selectedProviderID: choice.id, snapshot: snapshot, quickSwitchSummaries: [:], refreshDate: date, revision: revision, displayTimeZone: AppTimeZoneSelection.fixedOffset(minutes: minutes).resolved())
+            .init(choices: [choice], selectedProviderID: choice.id, snapshot: snapshot, quickSwitchSummaries: [:], refreshDate: date, revision: revision, displayTimeZone: AppTimeZoneSelection.fixedOffset(minutes: minutes).resolved(), snapshotProviderID: ([choice] as [ProviderChoice]).first(where: { $0.isCurrent })?.id)
         }
         let page = coordinator.makeDetailPage(choice: choice, input: input(0, 1))
         XCTAssertTrue(descendants(of: page, as: NSTextField.self).contains { $0.stringValue.contains("23:30:00") })
@@ -528,5 +528,43 @@ extension DashboardProviderPagesTests {
         XCTAssertTrue(descendants(of: page, as: NSTextField.self).contains { $0.stringValue.contains("05:15:00") })
         XCTAssertFalse(descendants(of: page, as: NSTextField.self).contains { $0.stringValue.contains("23:30:00") })
         XCTAssertEqual(requests, 0)
+    }
+}
+
+extension DashboardProviderPagesTests {
+    func testAggregationDefaultCannotPopulateSameNamedDirectProviderDetailOrOverview() throws {
+        let direct = ProviderChoice(id: "direct", name: "tokenshop", isCurrent: true)
+        let route = ProviderChoice(id: "route", name: "tokenshop", isCurrent: false)
+        let balance = Snapshot.balance("tokenshop", 2.67, "CNY", nil, Date(timeIntervalSince1970: 100), progressPercentage: nil)
+        let official = Snapshot.official("tokenshop", 94, "5h", nil, Date(timeIntervalSince1970: 200))
+        let input = DashboardProviderPageInput(choices: [direct, route], selectedProviderID: direct.id,
+            snapshot: official, quickSwitchSummaries: [:], refreshDate: official.date, revision: 1,
+            snapshotProviderID: route.id, aggregatedSnapshots: [direct.id: balance, route.id: official], isAggregationMode: true)
+        XCTAssertEqual(input.snapshot(for: direct.id), balance)
+        XCTAssertEqual(input.snapshot(for: route.id), official)
+        XCTAssertEqual(input.refreshDate(for: direct.id), balance.date)
+        let coordinator = DashboardProviderPageCoordinator(actions: .init(onRefresh: {}, onSwitchProvider: { _ in },
+            onOpenProvider: { _ in }, onSelectProvider: { _ in }, isSortAlphabetically: { false }, setSortAlphabetically: { _ in }))
+        defer { coordinator.teardown() }
+        let detail = coordinator.makeDetailPage(choice: direct, input: input)
+        let labels = descendants(of: detail, as: NSTextField.self).map(\.stringValue)
+        XCTAssertTrue(labels.contains(balance.overviewLargeAmount))
+        XCTAssertFalse(labels.contains(official.overviewLargeAmount))
+        let overview = coordinator.makeOverviewPage(input: input)
+        let overviewLabels = descendants(of: overview, as: NSTextField.self).map(\.stringValue)
+        XCTAssertTrue(overviewLabels.contains(balance.overviewLargeAmount))
+        XCTAssertFalse(overviewLabels.contains(official.overviewLargeAmount))
+    }
+
+    func testAggregationMissingProviderAndUnknownNormalOwnershipNeverBorrowGlobalQuota() {
+        let input = DashboardProviderPageInput(choices: [ProviderChoice(id: "direct", name: "same", isCurrent: true)],
+            selectedProviderID: nil, snapshot: .official("same", 94, "5h", nil, Date()),
+            quickSwitchSummaries: ["direct": "$2.67"], refreshDate: Date(), revision: 1,
+            snapshotProviderID: "route", aggregatedSnapshots: [:], isAggregationMode: true)
+        XCTAssertNil(input.snapshot(for: "direct"))
+        XCTAssertNil(input.refreshDate(for: "direct"))
+        let normal = DashboardProviderPageInput(choices: input.choices, selectedProviderID: nil, snapshot: input.snapshot,
+            quickSwitchSummaries: [:], refreshDate: Date(), revision: 2)
+        XCTAssertNil(normal.snapshot(for: "direct"))
     }
 }

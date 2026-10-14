@@ -513,5 +513,4 @@
 "aggregation.loading" = "正在刷新…";
 "aggregation.stale" = "上次可信数据 · 正在重试";
 "aggregation.unavailable" = "余额暂不可用";
-"aggregation.updated" = "上次更新";
 "aggregation.manage_in_cc_switch" = "聚合模式请在 CC Switch 中管理默认供应商";

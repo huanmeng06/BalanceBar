@@ -18,8 +18,8 @@ struct AggregationDisplayIdentity: Hashable {
     var numericScope: String { "codex|\(providerID)|\(accountScope)|\(configurationRevision)" }
 }
 
-struct AggregatedProviderDisplay {
-    enum Status { case loading, fresh, stale, unavailable, error }
+struct AggregatedProviderDisplay: Equatable {
+    enum Status: Equatable { case loading, fresh, stale, unavailable, error }
     let entry: AggregatedProviderEntry
     let identity: AggregationDisplayIdentity
     var snapshot: Snapshot
@@ -27,7 +27,13 @@ struct AggregatedProviderDisplay {
     var status: Status
     var reason: String?
     var fetchedAt: Date?
-    var requestCredentials: CodexRequestCredentials? = nil
+    /// Only display semantics participate; source credentials remain private to refresh.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.identity == rhs.identity && lhs.entry.role == rhs.entry.role
+            && lhs.entry.source.name == rhs.entry.source.name && lhs.snapshot == rhs.snapshot
+            && lhs.account == rhs.account && lhs.status == rhs.status
+            && lhs.reason == rhs.reason && lhs.fetchedAt == rhs.fetchedAt
+    }
 }
 
 /// CC Switch owns this private device file. Only these fields are decoded;

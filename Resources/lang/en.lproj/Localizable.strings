@@ -513,5 +513,4 @@
 "aggregation.loading" = "Refreshing…";
 "aggregation.stale" = "Last known data · retrying";
 "aggregation.unavailable" = "Balance unavailable";
-"aggregation.updated" = "Last updated";
 "aggregation.manage_in_cc_switch" = "Manage the default provider in CC Switch aggregation mode";

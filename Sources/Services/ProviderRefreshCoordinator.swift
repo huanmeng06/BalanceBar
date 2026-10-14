@@ -221,6 +221,7 @@ struct ProviderRefreshActions {
     let quickSwitchSummaryChanged: (String) -> Void
     var notificationSnapshot: ((AssistantClient, String, Snapshot) -> Void)? = nil
     var aggregationChanged: (([AggregatedProviderDisplay], Bool) -> Void)? = nil
+    var ownedRender: ((String, Snapshot) -> Void)? = nil
 }
 
 /// Persists only the local observation state needed to survive menu rebuilds
@@ -311,6 +312,8 @@ final class ProviderRefreshCoordinator {
     private var aggregationPending: [AggregationDisplayIdentity] = []
     private var aggregationReader: CCSwitchAggregationRepository?
     private var aggregationBlocked = false
+    private var aggregationOfficialRequests: [AggregationDisplayIdentity: OfficialQuotaRequestContext] = [:]
+    private var lastAggregationPublication: (displays: [AggregatedProviderDisplay], blocked: Bool)?
     private var standardPublicationEpoch = OfficialResponseGeneration()
     private struct CachedCodexResetForecast {
         let forecast: CodexResetForecast
@@ -411,7 +414,7 @@ final class ProviderRefreshCoordinator {
             let identity = aggregationIdentity(entry)
             if var display = aggregationDisplays[identity] {
                 display = AggregatedProviderDisplay(entry: entry, identity: identity, snapshot: display.snapshot,
-                    account: display.account, status: display.status, reason: display.reason, fetchedAt: display.fetchedAt, requestCredentials: display.requestCredentials)
+                    account: display.account, status: display.status, reason: display.reason, fetchedAt: display.fetchedAt)
                 aggregationDisplays[identity] = display
             } else {
                 let profile = entry.source.officialAccessToken != nil
@@ -462,17 +465,17 @@ final class ProviderRefreshCoordinator {
     private func cancelAggregationTransport(_ display: AggregatedProviderDisplay) {
         if let query = display.entry.source.query {
             balanceAPIClient.cancelBalance(query: query, client: .codex, providerID: display.identity.providerID)
-        } else if display.entry.source.isOfficial {
-            let source = display.entry.source
-            let credentials = display.requestCredentials ?? source.officialAccessToken.map {
-                CodexRequestCredentials(accessToken: $0, accountKey: source.officialAccount?.email?.lowercased())
-            } ?? officialQuotaClient.codexRequestCredentials()
-            officialQuotaClient.cancelQuota(client: .codex, providerID: source.id, requestCredentials: credentials)
+        }
+        if let context = aggregationOfficialRequests.removeValue(forKey: display.identity) {
+            officialQuotaClient.cancelQuota(context: context)
         }
     }
 
     private func publishAggregation() {
         let displays = aggregationEntries.compactMap { aggregationDisplays[aggregationIdentity($0)] }
+        guard lastAggregationPublication?.displays != displays
+            || lastAggregationPublication?.blocked != aggregationBlocked else { return }
+        lastAggregationPublication = (displays, aggregationBlocked)
         actions.aggregationChanged?(displays, aggregationBlocked)
     }
 
@@ -497,9 +500,11 @@ final class ProviderRefreshCoordinator {
             display.status = .loading
             let source = display.entry.source
             if source.isOfficial {
-                display.requestCredentials = source.officialAccessToken.map {
+                let credentials = source.officialAccessToken.map {
                     CodexRequestCredentials(accessToken: $0, accountKey: source.officialAccount?.email?.lowercased())
                 } ?? officialQuotaClient.codexRequestCredentials()
+                aggregationOfficialRequests[identity] = OfficialQuotaRequestContext(client: .codex,
+                    providerID: source.id, storedAccessToken: source.officialAccessToken, credentials: credentials)
             }
             aggregationDisplays[identity] = display
             publishAggregation()
@@ -509,6 +514,7 @@ final class ProviderRefreshCoordinator {
                 self.performOnQueue {
                     guard isValid(), var current = self.aggregationDisplays[identity] else { return }
                     self.aggregationRequests.removeValue(forKey: identity)
+                    self.aggregationOfficialRequests.removeValue(forKey: identity)
                     if snapshot.kind == .error {
                         current.reason = snapshot.message
                         current.status = current.fetchedAt == nil ? .error : .stale
@@ -527,7 +533,7 @@ final class ProviderRefreshCoordinator {
             }
             if source.isOfficial {
                 fetchOfficialQuota(providerID: source.id, providerName: source.name, client: .codex,
-                    source: source, isValid: isValid, completion: finish)
+                    source: source, requestContext: aggregationOfficialRequests[identity], isValid: isValid, completion: finish)
             } else if let query = source.query {
                 fetchBalance(providerID: source.id, providerName: source.name, query: query, client: .codex,
                     isValid: isValid, completion: finish)
@@ -827,6 +833,7 @@ final class ProviderRefreshCoordinator {
 
     private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient,
                                     source: ProviderSummarySource? = nil,
+                                    requestContext: OfficialQuotaRequestContext? = nil,
                                     isValid: @escaping () -> Bool = { true },
                                     completion: ((Snapshot) -> Void)? = nil) {
         func publish(_ snapshot: Snapshot, providerID: String, client: AssistantClient,
@@ -850,19 +857,17 @@ final class ProviderRefreshCoordinator {
         }
         // Freeze the account before transport starts. Never assign a late
         // response to the auth profile that happens to be current on arrival.
-        let credentials = client == .codex ? source?.officialAccessToken.map {
+        let credentials = requestContext?.credentials ?? (client == .codex ? source?.officialAccessToken.map {
             CodexRequestCredentials(accessToken: $0, accountKey: source?.officialAccount?.email?.lowercased())
-        } ?? officialQuotaClient.codexRequestCredentials() : nil
+        } ?? officialQuotaClient.codexRequestCredentials() : nil)
+        let context = requestContext ?? OfficialQuotaRequestContext(client: client, providerID: providerID,
+            storedAccessToken: source?.officialAccessToken, credentials: credentials)
         let credentialsMatch = { [weak self] in
             guard let self, isValid() else { return false }
             return client != .codex || source?.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials
         }
         let accountKey = credentials?.accountKey
-        officialQuotaClient.fetchQuota(
-            client: client,
-            providerID: providerID,
-            requestCredentials: credentials
-        ) { [weak self] result in
+        officialQuotaClient.fetchQuota(context: context) { [weak self] result in
             guard let self else { return }
             self.performOnQueue {
                 guard credentialsMatch() else { return }
@@ -1160,7 +1165,8 @@ final class ProviderRefreshCoordinator {
                 }
                 guard self.actions.isActiveClient(client) else { return }
                 guard self.actions.currentProvider(client)?.id == providerID else { return }
-                self.actions.render(next)
+                if let ownedRender = self.actions.ownedRender { ownedRender(providerID, next) }
+                else { self.actions.render(next) }
             }
         }
     }
@@ -1179,7 +1185,8 @@ final class ProviderRefreshCoordinator {
             DispatchQueue.main.async {
                 guard (client != .codex || epoch.isCurrent()), self.actions.isActiveClient(client) else { return }
                 guard self.actions.currentProvider(client)?.id == providerID else { return }
-                self.actions.render(next)
+                if let ownedRender = self.actions.ownedRender { ownedRender(providerID, next) }
+                else { self.actions.render(next) }
             }
         }
     }

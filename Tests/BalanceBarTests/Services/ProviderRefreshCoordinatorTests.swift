@@ -2930,3 +2930,106 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(fixture.quotaRequestCount, 2)
     }
 }
+
+extension ProviderRefreshCoordinatorTests {
+    func testAggregationUnchangedSyncDoesNotRepublishPresentation() throws {
+        let reader = try aggregationFixture()
+        let ready = expectation(description: "fresh balance")
+        var done = false
+        var publications = 0
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "4.73") }
+        let coordinator = aggregationCoordinator { displays, _ in
+            publications += 1
+            if displays.first?.status == .fresh, !done { done = true; ready.fulfill() }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [ready], timeout: 3)
+        waitForCoordinator(coordinator)
+        let previous = publications
+        coordinator.performAsync { for _ in 0..<20 { _ = coordinator.refreshAggregation(reader: reader, force: false) } }
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(publications, previous)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+    }
+
+    func testAggregationStoredTokenQuotaActuallyStopsWhenOfficialDefaultIsRemoved() throws {
+        try addAggregationMembers(4)
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET settings_config='{\"auth\":{\"tokens\":{\"access_token\":\"fixture-stored-token\"}}}' WHERE id='codex-replacement'")
+        }
+        let reader = try aggregationFixture(members: (0..<4).map { "member-\($0)" }, route: "codex-replacement")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StoppedAggregationQuotaProtocol.self]
+        let stoppedSession = URLSession(configuration: configuration)
+        defer { stoppedSession.invalidateAndCancel(); StoppedAggregationQuotaProtocol.reset() }
+        StoppedAggregationQuotaProtocol.reset()
+        let started = expectation(description: "stored token transport started")
+        let stopped = expectation(description: "stored token transport stopLoading observed")
+        StoppedAggregationQuotaProtocol.onStart = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-stored-token")
+            started.fulfill()
+        }
+        StoppedAggregationQuotaProtocol.onStop = { stopped.fulfill() }
+        let official = OfficialQuotaClient(session: stoppedSession, credentialReader: FixtureCredentialReader(codexToken: "different-local-token"))
+        var actions = makeActions()
+        let defaults = UserDefaults(suiteName: temporaryDirectoryURL.lastPathComponent + ".Aggregation")!
+        var sawOldOfficialData = false
+        var newDefaultPublished = false
+        let newDefaultReady = expectation(description: "replacement default publishes its own fresh data")
+        actions.aggregationChanged = { displays, _ in
+            if displays.contains(where: { $0.identity.providerID == "codex-replacement" && $0.status == .fresh }) { sawOldOfficialData = true }
+            if displays.first?.identity.providerID == "codex-custom", displays.first?.status == .fresh, !newDefaultPublished {
+                newDefaultPublished = true
+                newDefaultReady.fulfill()
+            }
+        }
+        let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: official,
+            balanceAPIClient: BalanceAPIClient(session: stoppedSession), balanceProgressStore: ProviderBalanceProgressStore(defaults: defaults),
+            codexResetObservationStore: CodexResetObservationStore(defaults: defaults), actions: actions)
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [started], timeout: 3)
+        _ = try aggregationFixture(members: (0..<4).map { "member-\($0)" }, route: "codex-custom")
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [stopped, newDefaultReady], timeout: 3)
+        waitForCoordinator(coordinator)
+        let credentials = CodexRequestCredentials(accessToken: "fixture-stored-token", accountKey: nil)
+        XCTAssertFalse(official.isRequestInFlight(client: .codex, providerID: "codex-replacement",
+            credentialSource: .storedAccessToken, requestCredentials: credentials, storedAccessToken: "fixture-stored-token"))
+        XCTAssertFalse(sawOldOfficialData)
+        XCTAssertLessThanOrEqual(StoppedAggregationQuotaProtocol.maximumActive, 2)
+        coordinator.stopAggregation()
+        waitForCoordinator(coordinator)
+    }
+}
+
+private final class StoppedAggregationQuotaProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var active = 0
+    private static var maximum = 0
+    static var onStart: ((URLRequest) -> Void)?
+    static var onStop: (() -> Void)?
+    private var counted = false
+    private var isQuota = false
+    static var maximumActive: Int { lock.lock(); defer { lock.unlock() }; return maximum }
+    static func reset() { lock.lock(); defer { lock.unlock() }; active = 0; maximum = 0; onStart = nil; onStop = nil }
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        isQuota = request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-stored-token"
+        Self.lock.lock(); counted = true; Self.active += 1; Self.maximum = max(Self.maximum, Self.active); Self.lock.unlock()
+        if isQuota { Self.onStart?(request); return }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"balance":"4.73","quota":{"unit":"USD"}}"#.utf8))
+        finishActive()
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    private func finishActive() {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        if counted { counted = false; Self.active -= 1 }
+    }
+    override func stopLoading() {
+        finishActive()
+        if isQuota { Self.onStop?() }
+    }
+}

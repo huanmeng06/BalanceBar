@@ -513,5 +513,4 @@
 "aggregation.loading" = "更新中…";
 "aggregation.stale" = "前回の信頼できるデータ · 再試行中";
 "aggregation.unavailable" = "残高を取得できません";
-"aggregation.updated" = "最終更新";
 "aggregation.manage_in_cc_switch" = "集約モードのデフォルトプロバイダーは CC Switch で管理してください";

@@ -777,8 +777,8 @@ enum CodexBankedResetFormatting {
     }
 }
 
-struct Snapshot {
-    enum Kind { case placeholder, official, balance, error }
+struct Snapshot: Equatable {
+    enum Kind: Equatable { case placeholder, official, balance, error }
     let kind: Kind
     let provider: String
     let amount: Double?

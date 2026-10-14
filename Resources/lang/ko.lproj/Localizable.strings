@@ -513,5 +513,4 @@
 "aggregation.loading" = "새로 고치는 중…";
 "aggregation.stale" = "마지막으로 확인된 데이터 · 재시도 중";
 "aggregation.unavailable" = "잔액을 사용할 수 없음";
-"aggregation.updated" = "마지막 업데이트";
 "aggregation.manage_in_cc_switch" = "집계 모드의 기본 공급자는 CC Switch에서 관리하세요";

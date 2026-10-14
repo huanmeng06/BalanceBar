@@ -513,5 +513,4 @@
 "aggregation.loading" = "Aggiornamento…";
 "aggregation.stale" = "Ultimi dati attendibili · nuovo tentativo";
 "aggregation.unavailable" = "Saldo non disponibile";
-"aggregation.updated" = "Ultimo aggiornamento";
 "aggregation.manage_in_cc_switch" = "Gestisci il fornitore predefinito in CC Switch in modalità aggregazione";

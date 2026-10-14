@@ -434,7 +434,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             currentProviderName: { [weak self] in self?.currentProviderName() ?? tr(.keyAppNotFound) },
             currentProviderIsOfficial: { [weak self] in
                 guard let self, self.activeClient == .codex else { return false }
-                return self.ccSwitchRepository.loadCurrent(appType: self.activeClient.appType)?.isOfficial == true
+                return self.currentProviderIsOfficialCache
             },
             providerChoices: { [weak self] in self?.providerChoicesCache ?? [] },
             snapshot: { [weak self] in self?.snapshot ?? .placeholder },
@@ -456,7 +456,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     return self.ccSwitchRepository.loadChoices(appType: client.appType)
                 },
                 displayTimeZone: { [weak self] in self?.preferences.effectiveDisplayTimeZone ?? .autoupdatingCurrent }
-            )
+            ),
+            snapshotProviderID: { [weak self] in self?.snapshotProviderID },
+            aggregationSnapshots: { [weak self] in
+                guard let self, self.activeClient == .codex else { return [:] }
+                return Dictionary(uniqueKeysWithValues: self.aggregationDisplays.map { ($0.identity.providerID, $0.snapshot) })
+            },
+            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -571,6 +577,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var databaseWatcher: CCSwitchDatabaseWatcher!
     private var aggregationRepository: CCSwitchAggregationRepository!
     private var aggregationDisplays: [AggregatedProviderDisplay] = []
+    private var snapshotProviderID: String?
     private var aggregationQuickSwitchBlocked = false
     private var currentProviderIsOfficialCache = false
     private var currentAccountProfileCache: CodexAccountProfile?
@@ -774,21 +781,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 aggregationChanged: { [weak self] displays, blocked in
                     DispatchQueue.main.async { [weak self] in
-                        guard let self else { return }
-                        let wasAggregating = !self.aggregationDisplays.isEmpty
+                        guard let self, self.aggregationDisplays != displays || self.aggregationQuickSwitchBlocked != blocked else { return }
+                        let previousDefault = self.aggregationDisplays.first
+                        let dashboardChanged = self.aggregationDisplays.map { ($0.identity, $0.snapshot) }.elementsEqual(
+                            displays.map { ($0.identity, $0.snapshot) }, by: { $0.0 == $1.0 && $0.1 == $1.1 }) == false
                         self.aggregationDisplays = displays
                         self.aggregationQuickSwitchBlocked = blocked
-                        if self.activeClient == .codex, let first = displays.first {
-                            self.render(first.snapshot, immediately: true)
-                        } else if self.activeClient == .codex, wasAggregating {
-                            // The direct pointer may be different from the old
-                            // default route. Never relabel that route's numbers.
-                            self.render(.placeholder, immediately: true)
-                        } else {
-                            self.refreshStatusItemMenuInput()
+                        if self.activeClient == .codex {
+                            if previousDefault != displays.first {
+                                self.updateStatusItem(for: self.snapshot, refreshDashboard: false)
+                            } else { self.refreshStatusItemMenuInput() }
+                            if dashboardChanged {
+                                self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
+                            }
                         }
                     }
-                }
+                },
+                ownedRender: { [weak self] providerID, snapshot in self?.render(snapshot, providerID: providerID) }
             )
         )
         providerSwitchCoordinator = ProviderSwitchCoordinator(
@@ -1035,9 +1044,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         refreshDashboard: Bool = true,
         deferMenuRebuild: Bool = false
     ) {
+        let display = activeClient == .codex ? aggregationDisplays.first : nil
         statusItemController.update(
-            snapshot: snapshot,
-            refreshDate: refreshDate(for: snapshot),
+            snapshot: display?.snapshot ?? snapshot,
+            refreshDate: display?.fetchedAt ?? refreshDate(for: snapshot),
             menuInput: makeStatusItemMenuInput(),
             settings: makeStatusItemSettings(),
             deferMenuRebuild: deferMenuRebuild
@@ -2071,6 +2081,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func setActiveClient(_ client: AssistantClient) {
         guard client != activeClient else { return }
         activeClient = client
+        snapshotProviderID = nil
         SwitchLog.write("active client changed; client=\(client.rawValue)")
         lastProviderID = nil
         providerRefreshCoordinator.resetCadence()
@@ -2094,7 +2105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         refreshStatusItemMenuInput(deferRebuild: true)
         if hasCachedSnapshot, let cached {
             lastProviderID = cached.providerID
-            render(cached.snapshot, immediately: true, deferMenuRebuild: true)
+            render(cached.snapshot, providerID: cached.providerID, immediately: true, deferMenuRebuild: true)
         }
         if client != .grok || currentProvider != nil {
             refresh(reason: .clientChanged)
@@ -2160,8 +2171,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
-    private func render(_ next: Snapshot, immediately: Bool = false, deferMenuRebuild: Bool = false) {
+    private func render(_ next: Snapshot, providerID: String? = nil, immediately: Bool = false, deferMenuRebuild: Bool = false) {
         let apply = {
+            if let providerID { self.snapshotProviderID = providerID }
+            else if next != self.snapshot { self.snapshotProviderID = nil }
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }

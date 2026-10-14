@@ -282,7 +282,7 @@ final class QuotaProgressView: NSView {
         }
     }
     var fillRatio: Double { percentage / 100 }
-    let colorConfiguration: QuotaProgressColorConfiguration
+    private(set) var colorConfiguration: QuotaProgressColorConfiguration
     let fillOrigin: QuotaProgressFillOrigin
     private var interpolator: OverviewNumericInterpolator?
     private var pendingAnimatedPercentage: Double?
@@ -305,6 +305,23 @@ final class QuotaProgressView: NSView {
 
     deinit {
         interpolator?.cancel()
+    }
+
+    func setColorConfiguration(_ configuration: QuotaProgressColorConfiguration) {
+        let normalized = configuration.normalized()
+        guard colorConfiguration != normalized else { return }
+        colorConfiguration = normalized
+        needsDisplay = true
+    }
+
+    /// Prepare a closed menu without starting a timer in its retained window.
+    func preparePercentage(from start: Double, to target: Double, duration: TimeInterval) {
+        interpolator?.cancel()
+        interpolator = nil
+        percentage = min(100, max(0, start))
+        let target = min(100, max(0, target))
+        pendingAnimatedPercentage = abs(target - percentage) > 0.0001 ? target : nil
+        pendingAnimatedDuration = duration
     }
 
     func setPercentage(

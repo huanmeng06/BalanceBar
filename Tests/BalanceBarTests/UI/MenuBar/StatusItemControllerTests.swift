@@ -2916,15 +2916,15 @@ extension StatusItemControllerTests {
 }
 
 extension StatusItemControllerTests {
-    private func aggregationInput(count: Int, amount: Double = 4.73) -> StatusItemController.MenuInput {
+    private func aggregationInput(count: Int, amount: Double = 4.73, date: Date = Date(timeIntervalSince1970: 1_700_000_000)) -> StatusItemController.MenuInput {
         let displays = (0..<count).map { index -> AggregatedProviderDisplay in
             let id = "provider-\(index)"
             return AggregatedProviderDisplay(
                 entry: AggregatedProviderEntry(source: ProviderSummarySource(id: id, name: "tokenshop",
                     isOfficial: false, query: nil, officialAccessToken: nil), role: index == 0 ? .default : .member),
                 identity: AggregationDisplayIdentity(providerID: id, accountScope: id, configurationRevision: "fixture"),
-                snapshot: .balance("tokenshop", amount + Double(index), index == 1 ? "CNY" : "USD", nil, Date(), progressPercentage: nil),
-                account: nil, status: .fresh, reason: nil, fetchedAt: Date())
+                snapshot: .balance("tokenshop", amount + Double(index), index == 1 ? "CNY" : "USD", nil, date, progressPercentage: nil),
+                account: nil, status: .fresh, reason: nil, fetchedAt: date)
         }
         return StatusItemController.MenuInput(choices: [ProviderChoice(id: "provider-0", name: "tokenshop", isCurrent: true)],
             quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [],
@@ -3002,5 +3002,131 @@ extension StatusItemControllerTests {
         let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
         XCTAssertFalse(quick.items.contains { $0.identifier?.rawValue == "aggregation.quickSwitch.hint" })
         XCTAssertTrue(quick.items.filter { $0.representedObject is String }.allSatisfy(\.isEnabled))
+    }
+}
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testAggregationRepeatedEqualInputsKeepClosedAndOpenMenusAndNumericUpdatesDoNotReflow() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = true
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 12), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let viewport = try XCTUnwrap(menu.items.first?.view)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        let placements = controller.aggregationPlacementCountForTesting
+        for _ in 0..<20 { controller.updateMenu(input: aggregationInput(count: 12)) }
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
+        XCTAssertTrue(menu.items.first?.view === viewport)
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        for _ in 0..<20 { controller.updateMenu(input: aggregationInput(count: 12)) }
+        controller.updateMenu(input: aggregationInput(count: 12, amount: 14.73))
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
+        XCTAssertTrue(menu.items.first?.view === viewport)
+    }
+
+    @MainActor
+    func testAggregationCardsHaveNoBottomStatusSpaceAndStaleHintUsesExistingTimestamp() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let original = aggregationInput(count: 4)
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: original, settings: makeSettings())
+        let scroll = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        for wrapper in document.subviews {
+            let host = try XCTUnwrap(wrapper.subviews.first { $0 is MenuHoverLinkHostView })
+            XCTAssertEqual(host.frame.minY, 0)
+            let isDefault = wrapper.identifier?.rawValue == "aggregation.provider.provider-0"
+            XCTAssertEqual(wrapper.frame.height, host.frame.height + (isDefault ? 20 : 0), accuracy: 0.5)
+            XCTAssertFalse(wrapper.subviews.compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Last updated" })
+        }
+        var displays = original.aggregatedProviders
+        displays[1].status = .stale
+        displays[1].reason = "Fixture network failure"
+        let staleInput = StatusItemController.MenuInput(choices: original.choices, quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: true, showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true, showStatusMenu: false, aggregatedProviders: displays, aggregationQuickSwitchBlocked: true)
+        controller.updateMenu(input: staleInput)
+        let wrapper = try XCTUnwrap(document.subviews.first { $0.identifier?.rawValue == "aggregation.provider.provider-1" })
+        func fields(_ view: NSView) -> [NSTextField] { (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap(fields) }
+        let time = try XCTUnwrap(fields(wrapper).first { $0.identifier?.rawValue == "overview.refreshTime" })
+        XCTAssertTrue(time.stringValue.hasPrefix("⚠︎"))
+        XCTAssertEqual(time.toolTip, "Fixture network failure")
+        XCTAssertTrue(time.accessibilityLabel()?.contains("Fixture network failure") == true)
+        XCTAssertEqual(wrapper.frame.height, wrapper.subviews.first { $0 is MenuHoverLinkHostView }?.frame.height)
+    }
+
+    @MainActor
+    func testAggregationLinksOpenEachCardsOwnWebsiteAndSingleCardKeepsOriginalAction() throws {
+        var opened: [URL] = []
+        var currentWebsiteOpens = 0
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: { currentWebsiteOpens += 1 },
+            openStatusLink: { opened.append($0) }, iconChanged: { _ in }))
+        defer { controller.teardown() }
+        let urls = [URL(string: "https://grok.example/billing")!, URL(string: "https://deepseek.example/balance")!,
+            URL(string: "custom-scheme://example/billing")!, URL(string: "https://fixture:fixture@example/billing")!]
+        var displays = aggregationInput(count: 4).aggregatedProviders
+        for index in displays.indices {
+            displays[index].snapshot = .balance("same-name", 4.73, "USD", urls[index], try XCTUnwrap(displays[index].fetchedAt), progressPercentage: nil)
+        }
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, aggregatedProviders: displays, aggregationQuickSwitchBlocked: true)
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input, settings: makeSettings())
+        func links(_ view: NSView) -> [HoverLinkTextField] { (view as? HoverLinkTextField).map { [$0] } ?? view.subviews.flatMap(links) }
+        let scroll = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
+        let cards = try XCTUnwrap(scroll.documentView).subviews
+        for index in cards.indices {
+            if index < 2 { try XCTUnwrap(links(cards[index]).first).onActivate?() }
+            else { XCTAssertTrue(links(cards[index]).isEmpty) }
+        }
+        XCTAssertEqual(opened, Array(urls.prefix(2)))
+        XCTAssertEqual(currentWebsiteOpens, 0)
+        controller.update(snapshot: displays[0].snapshot, refreshDate: displays[0].fetchedAt,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        try XCTUnwrap(links(controller.statusMenuForTesting.items.first!.view!).first).onActivate?()
+        XCTAssertEqual(currentWebsiteOpens, 1)
+    }
+}
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testClosedAggregationValuesArePreparedWithoutRebuildAndProgressLayoutRespondsToSettings() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = true
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 2), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let scroll = try XCTUnwrap(menu.items.first?.view as? NSScrollView)
+        let root = try XCTUnwrap(scroll.documentView)
+        func values(_ view: NSView) -> [OverviewNumericTextView] {
+            (view as? OverviewNumericTextView).map { [$0] } ?? view.subviews.flatMap(values)
+        }
+        controller.updateMenu(input: aggregationInput(count: 2, amount: 14.73))
+        XCTAssertEqual(Set(values(root).map(\.currentValue)), Set([14.73, 15.73]))
+        XCTAssertFalse(values(root).contains(where: \.isDigitRollingForTesting))
+        XCTAssertTrue(menu.items.first?.view === scroll)
+        var displays = aggregationInput(count: 2).aggregatedProviders
+        for i in displays.indices {
+            displays[i].snapshot = .balance(displays[i].snapshot.provider, 4.73, "USD", nil,
+                try XCTUnwrap(displays[i].fetchedAt), progressPercentage: 50)
+        }
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, aggregatedProviders: displays)
+        controller.updateMenu(input: input)
+        func progress(_ view: NSView) -> [QuotaProgressView] {
+            (view as? QuotaProgressView).map { [$0] } ?? view.subviews.flatMap(progress)
+        }
+        XCTAssertEqual(progress(root).count, 2)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showQuotaProgressBar: false)
+        controller.update(snapshot: .placeholder, refreshDate: nil, menuInput: input, settings: settings)
+        XCTAssertTrue(progress(root).isEmpty)
     }
 }
