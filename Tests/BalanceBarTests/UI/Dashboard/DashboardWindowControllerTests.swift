@@ -3816,10 +3816,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(overview.bounds.size, frames.cardSize)
 
-        let progressViews = overview.subviews.compactMap { $0 as? QuotaProgressView }
+        overview.layoutSubtreeIfNeeded()
+        let progressViews = allControls(of: overview, as: QuotaProgressView.self)
         XCTAssertEqual(progressViews.map(\.percentage), [80, 45])
         XCTAssertEqual(
-            progressViews.map(\.frame),
+            progressViews.map { $0.convert($0.bounds, to: overview) },
             frames.quotaRows.map(\.progress)
         )
         let percentageLabels = allControls(of: overview, as: NSTextField.self)
@@ -3979,7 +3980,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(reserveOverview.bounds.size, reserveFrames.cardSize)
         XCTAssertEqual(
-            reserveOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: reserveOverview, as: QuotaProgressView.self).map(\.percentage),
             [80, 45, 45]
         )
         XCTAssertNotNil(
@@ -4021,7 +4022,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(unavailableOverview.bounds.size, unavailableFrames.cardSize)
         XCTAssertEqual(
-            unavailableOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: unavailableOverview, as: QuotaProgressView.self).map(\.percentage),
             [80, 45]
         )
         XCTAssertNotNil(
@@ -4064,7 +4065,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let thresholdOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertEqual(
-            thresholdOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: thresholdOverview, as: QuotaProgressView.self).map(\.percentage),
             [0, 45, 45]
         )
         XCTAssertNotNil(
@@ -4084,7 +4085,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let hiddenExhaustedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertEqual(
-            hiddenExhaustedOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: hiddenExhaustedOverview, as: QuotaProgressView.self).map(\.percentage),
             [45, 45]
         )
         XCTAssertFalse(
@@ -4108,7 +4109,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let disabledOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertEqual(
-            disabledOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: disabledOverview, as: QuotaProgressView.self).map(\.percentage),
             [0, 45]
         )
         XCTAssertFalse(
@@ -4205,7 +4206,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             includesQuotaProgress: false
         )
         XCTAssertEqual(overview.bounds.size, frames.cardSize)
-        XCTAssertTrue(overview.subviews.compactMap { $0 as? QuotaProgressView }.isEmpty)
+        XCTAssertTrue(allControls(of: overview, as: QuotaProgressView.self).isEmpty)
         let withProgressHeight = OpenCodexCardLayout.frames(
             for: .quota,
             includesAccount: true,
@@ -4354,7 +4355,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(overview.bounds.size, frames.cardSize)
         XCTAssertEqual(
-            overview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: overview, as: QuotaProgressView.self).map(\.percentage),
             [80, 45]
         )
         let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
@@ -4607,7 +4608,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 .contains { $0.stringValue == tr(.keyCodexBankedResetTitle) }
         )
         XCTAssertEqual(
-            emptyOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            allControls(of: emptyOverview, as: QuotaProgressView.self).map(\.percentage),
             [80, 45]
         )
     }
@@ -5062,7 +5063,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidencePrefix)), name)
             XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetConfidenceHigh)), name)
             XCTAssertEqual(
-                overview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+                allControls(of: overview, as: QuotaProgressView.self).map(\.percentage),
                 [80, 45],
                 name
             )

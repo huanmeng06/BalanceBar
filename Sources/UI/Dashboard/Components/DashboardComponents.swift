@@ -411,77 +411,14 @@ final class QuotaProgressView: NSView {
     }
 }
 
-final class QuotaProgressPaceView: NSView {
-    private let progress: QuotaProgressView
-    private let pace: OfficialQuotaUsagePace
-    private let resetText: String
-    private var trackingAreaReference: NSTrackingArea?
-    private var tooltipWorkItem: DispatchWorkItem?
-    private var popover: NSPopover?
-
-    init(
-        percentage: Double,
-        expectedRemaining: OfficialQuotaUsagePace,
-        resetText: String,
-        colorConfiguration: QuotaProgressColorConfiguration
-    ) {
-        self.progress = QuotaProgressView(
-            percentage: percentage,
-            colorConfiguration: colorConfiguration
-        )
-        self.pace = expectedRemaining
-        self.resetText = resetText
-        super.init(frame: .zero)
-        identifier = NSUserInterfaceItemIdentifier("quotaProgressPace")
-        wantsLayer = true
-        addSubview(progress)
-        progress.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            progress.leadingAnchor.constraint(equalTo: leadingAnchor),
-            progress.trailingAnchor.constraint(equalTo: trailingAnchor),
-            progress.centerYAnchor.constraint(equalTo: centerYAnchor),
-            progress.heightAnchor.constraint(equalToConstant: 5)
-        ])
-        setAccessibilityRole(.staticText)
-        setAccessibilityLabel(accessibilityText)
-        setAccessibilityHelp(accessibilityText)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    deinit {
-        tooltipWorkItem?.cancel()
-        popover?.close()
-    }
-
-    func setPercentage(_ value: Double, animated: Bool, duration: TimeInterval) {
-        progress.setPercentage(value, animated: animated, duration: duration)
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
-        let center = markerCenterX
-        let hitRect = NSRect(x: center - 8, y: 0, width: 16, height: 18)
-            .intersection(bounds)
-        guard !hitRect.isEmpty else { return }
-        let area = NSTrackingArea(
-            rect: hitRect,
-            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingAreaReference = area
-    }
+private final class QuotaPaceMarkerOverlay: NSView {
+    var centerX: CGFloat = 0
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        let x = markerCenterX
         let marker = NSBezierPath(
-            roundedRect: NSRect(x: x - 1, y: bounds.midY - 4, width: 2, height: 8),
-            xRadius: 1,
-            yRadius: 1
+            roundedRect: NSRect(x: centerX - 1, y: bounds.midY - 4, width: 2, height: 8),
+            xRadius: 1, yRadius: 1
         )
         NSColor.labelColor.withAlphaComponent(0.85).setFill()
         marker.fill()
@@ -489,61 +426,237 @@ final class QuotaProgressPaceView: NSView {
         marker.lineWidth = 0.75
         marker.stroke()
     }
+}
 
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-        tooltipWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.showTooltip() }
-        tooltipWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+final class QuotaProgressPaceView: NSView {
+    let progress: QuotaProgressView
+    let numericIdentity: OverviewNumericIdentity
+    private(set) var quotaWindow: OfficialQuotaWindow
+    private(set) var pace: OfficialQuotaUsagePace?
+    private(set) var resetText = ""
+    private let marker = QuotaPaceMarkerOverlay()
+    private var trackingAreaReference: NSTrackingArea?
+    private var showTimer: Timer?
+    private var closeTimer: Timer?
+    private var popover: NSPopover?
+    private(set) var isHovered = false
+    private(set) var isMenuTracking = false
+    var isTooltipVisible: Bool { popover?.isShown == true }
+    var hasPendingShowForTesting: Bool { showTimer != nil }
+    var hasPendingCloseForTesting: Bool { closeTimer != nil }
+
+    init(
+        percentage: Double,
+        window: OfficialQuotaWindow,
+        identity: OverviewNumericIdentity,
+        now: Date,
+        colorConfiguration: QuotaProgressColorConfiguration
+    ) {
+        self.progress = QuotaProgressView(percentage: percentage, colorConfiguration: colorConfiguration)
+        self.quotaWindow = window
+        self.numericIdentity = identity
+        super.init(frame: .zero)
+        identifier = NSUserInterfaceItemIdentifier("quotaProgressPace")
+        progress.identifier = OverviewNumericPresentation.progressIdentifier(for: identity)
+        wantsLayer = true
+        addSubview(progress)
+        addSubview(marker)
+        setAccessibilityRole(.staticText)
+        update(window: window, now: now)
     }
 
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        tooltipWorkItem?.cancel()
-        tooltipWorkItem = nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.popover?.close()
-            self?.popover = nil
+    required init?(coder: NSCoder) { nil }
+
+    // Hover is forwarded by the menu host; decoration must not consume clicks or scrolling.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    deinit {
+        showTimer?.invalidate()
+        closeTimer?.invalidate()
+        popover?.close()
+    }
+
+    func setPercentage(_ value: Double, animated: Bool, duration: TimeInterval) {
+        progress.setPercentage(value, animated: animated, duration: duration)
+    }
+
+    func update(window: OfficialQuotaWindow, now: Date) {
+        let next = OfficialQuotaUsagePace.make(for: window, now: now)
+        if quotaWindow.resetAt != window.resetAt || pace?.expectedRemaining != next?.expectedRemaining {
+            clearInteraction()
+        }
+        quotaWindow = window
+        pace = next
+        resetText = Self.resetText(for: window.resetAt, now: now)
+        marker.isHidden = next == nil
+        marker.centerX = markerCenterX
+        marker.needsDisplay = true
+        updateTrackingAreas()
+        setAccessibilityLabel(accessibilityText)
+        setAccessibilityHelp(accessibilityText)
+        if isTooltipVisible { showTooltip() }
+    }
+
+    static func resetText(for resetAt: Date?, now: Date) -> String {
+        guard let resetAt else { return "" }
+        let seconds = resetAt.timeIntervalSince(now)
+        guard seconds.isFinite, seconds > 0, seconds < Double(Int.max) else { return "" }
+        let minutes = max(1, Int(ceil(seconds / 60)))
+        if minutes >= 24 * 60 {
+            return tr(.keyQuotaPaceResetDaysHours, arguments: ["\(minutes / 1440)", "\((minutes % 1440) / 60)"])
+        }
+        return tr(.keyQuotaPaceResetHoursMinutes, arguments: ["\(minutes / 60)", "\(minutes % 60)"])
+    }
+
+    var markerCenterX: CGFloat {
+        1 + max(0, bounds.width - 2) * CGFloat((pace?.expectedRemaining ?? 0) / 100)
+    }
+
+    var markerHitRect: NSRect {
+        guard pace != nil else { return .zero }
+        return NSRect(x: markerCenterX - 8, y: bounds.midY - 9, width: 16, height: 18)
+            .intersection(bounds).intersection(visibleRect)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        // Keep the original track frame exact: Auto Layout rounds a 5pt child
+        // centered inside an 18pt host by half a point on a 1x backing scale.
+        progress.frame = NSRect(x: 0, y: bounds.midY - 2.5, width: bounds.width, height: 5)
+        marker.frame = bounds
+        let next = markerCenterX
+        if marker.centerX != next { clearInteraction() }
+        marker.centerX = next
+        marker.needsDisplay = true
+    }
+
+    override func updateTrackingAreas() {
+        if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
+        trackingAreaReference = nil
+        super.updateTrackingAreas()
+        guard !markerHitRect.isEmpty else { return }
+        let area = NSTrackingArea(rect: markerHitRect,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingAreaReference = area
+    }
+
+    func invalidatePresentation() {
+        clearInteraction()
+        pace = nil
+        marker.isHidden = true
+        updateTrackingAreas()
+        setAccessibilityLabel("")
+        setAccessibilityHelp("")
+    }
+
+    func setMenuTracking(_ active: Bool) {
+        isMenuTracking = active
+        if !active { clearInteraction() }
+    }
+
+    func updateHover(at point: NSPoint, immediately: Bool = false) {
+        let hovering = isMenuTracking && window != nil && !isHidden && markerHitRect.contains(point)
+        if hovering {
+            closeTimer?.invalidate()
+            closeTimer = nil
+            guard !isHovered else { return }
+            isHovered = true
+            if isTooltipVisible { return }
+            if immediately { showTooltip(); return }
+            let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
+                self?.showTimer = nil
+                self?.showTooltip()
+            }
+            showTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+            RunLoop.main.add(timer, forMode: .eventTracking)
+        } else if isHovered {
+            isHovered = false
+            showTimer?.invalidate()
+            showTimer = nil
+            let timer = Timer(timeInterval: 0.1, repeats: false) { [weak self] _ in
+                self?.closeTimer = nil
+                self?.dismissTooltip()
+            }
+            closeTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+            RunLoop.main.add(timer, forMode: .eventTracking)
         }
     }
 
-    private var markerCenterX: CGFloat {
-        let percentage = min(100, max(0, pace.expectedRemaining))
-        let inset: CGFloat = 1
-        return inset + (bounds.width - inset * 2) * CGFloat(percentage / 100)
+    func clearInteraction() {
+        isHovered = false
+        showTimer?.invalidate(); showTimer = nil
+        closeTimer?.invalidate(); closeTimer = nil
+        dismissTooltip()
     }
 
+    private func dismissTooltip() {
+        popover?.close()
+        popover = nil
+    }
+
+    override func mouseEntered(with event: NSEvent) { forwardHover(event) }
+    override func mouseMoved(with event: NSEvent) { forwardHover(event) }
+    override func mouseExited(with event: NSEvent) { updateHover(at: NSPoint(x: -100, y: -100)) }
+    private func forwardHover(_ event: NSEvent) {
+        if let host = superview as? MenuHoverLinkHostView {
+            host.forwardHover(atHostPoint: host.convert(event.locationInWindow, from: nil))
+        } else {
+            updateHover(at: convert(event.locationInWindow, from: nil))
+        }
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { clearInteraction() }
+        super.viewWillMove(toWindow: newWindow)
+    }
+    override func removeFromSuperview() { clearInteraction(); super.removeFromSuperview() }
+
+    func firePendingShowForTesting() { showTimer?.fire() }
+    func firePendingCloseForTesting() { closeTimer?.fire() }
+
     private var accessibilityText: String {
-        tr(.keyQuotaPaceAccessibility, arguments: [
-            pace.actualRemaining.formatted(.number.precision(.fractionLength(0))),
-            pace.expectedRemaining.formatted(.number.precision(.fractionLength(0))),
-            pace.roundedDifference >= 0 ? "+\(pace.roundedDifference)" : "\(pace.roundedDifference)"
-        ])
+        guard let pace else { return "" }
+        return [pace.status.title, pace.status.body,
+            tr(.keyQuotaPaceActual, arguments: ["\(pace.roundedActual)"]),
+            tr(.keyQuotaPaceExpected, arguments: ["\(pace.roundedExpected)"]),
+            pace.differenceText, resetText].joined(separator: "\n")
     }
 
     private func showTooltip() {
-        guard window != nil else { return }
-        let content = QuotaPaceTooltipContent(
-            title: pace.status.title,
-            body: pace.status.body,
-            actual: pace.actualRemaining,
-            expected: pace.expectedRemaining,
-            difference: pace.roundedDifference,
-            reset: resetText
-        )
+        guard isMenuTracking, isHovered, window?.isVisible == true,
+              !markerHitRect.isEmpty, let pace else { return }
+        let content = QuotaPaceTooltipContent(title: pace.status.title, body: pace.status.body,
+            actual: Double(pace.roundedActual), expected: Double(pace.roundedExpected),
+            difference: pace.roundedDifference, reset: resetText)
         let controller = QuotaPaceTooltipViewController(content: content)
         controller.loadViewIfNeeded()
+        if let popover, popover.isShown {
+            popover.contentViewController = controller
+            popover.contentSize = controller.contentSize
+            return
+        }
         let nextPopover = DashboardTextTooltip.makePopover()
         nextPopover.contentViewController = controller
         nextPopover.contentSize = controller.contentSize
-        nextPopover.show(
-            relativeTo: NSRect(x: markerCenterX - 8, y: bounds.midY - 9, width: 16, height: 18),
-            of: self,
-            preferredEdge: .maxY
-        )
-        popover?.close()
-        popover = nextPopover
+        nextPopover.show(relativeTo: markerHitRect, of: self, preferredEdge: .maxY)
+        popover = nextPopover.isShown ? nextPopover : nil
+    }
+}
+
+extension OfficialQuotaUsagePace {
+    var differenceText: String { Self.differenceText(roundedDifference) }
+    static func differenceText(_ difference: Int) -> String {
+        if difference == 0 { return tr(.keyQuotaPaceDifferenceEqual) }
+        return tr(difference > 0 ? .keyQuotaPaceDifferenceMore : .keyQuotaPaceDifferenceLess,
+            arguments: ["\(abs(difference))"])
     }
 }
 
@@ -576,8 +689,8 @@ private final class QuotaPaceTooltipViewController: NSViewController {
         let rows = [
             tr(.keyQuotaPaceActual, arguments: [content.actual.formatted(.number.precision(.fractionLength(0)))]),
             tr(.keyQuotaPaceExpected, arguments: [content.expected.formatted(.number.precision(.fractionLength(0)))]),
-            tr(.keyQuotaPaceDifference, arguments: [content.difference >= 0 ? "+\(content.difference)" : "\(content.difference)"]),
-            tr(.keyQuotaPaceReset, arguments: [content.reset])
+            OfficialQuotaUsagePace.differenceText(content.difference),
+            content.reset
         ]
         let data = NSTextField(wrappingLabelWithString: rows.joined(separator: "\n"))
         data.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
@@ -1184,14 +1297,33 @@ class HoverLinkTextField: NSTextField {
     }
 }
 
-/// A local event bridge for one Provider link hosted by an `NSMenuItem.view`.
-/// It intentionally tracks the card only to forward movement; the link keeps
-/// the glyph-only hit test and activation boundary but not its own hover owner.
+/// A local event bridge for links and quota markers in an `NSMenuItem.view`.
+/// The card forwards movement; each element retains its precise hover boundary.
 final class MenuHoverLinkHostView: NSView {
     private weak var link: HoverLinkTextField?
     private weak var ticketScrollView: BankedResetTicketScrollView?
     private var trackingAreaReference: NSTrackingArea?
     private var ticketScrollMonitor: Any?
+    private var resignActiveObserver: NSObjectProtocol?
+    private weak var hoveredPaceView: QuotaProgressPaceView?
+
+    var paceViews: [QuotaProgressPaceView] { subviews.compactMap { $0 as? QuotaProgressPaceView } }
+
+    func setPaceMenuTracking(_ active: Bool) {
+        paceViews.forEach { $0.setMenuTracking(active) }
+        if !active { clearPaceHover() }
+        refreshTrackingArea()
+    }
+
+    func clearPaceHover() {
+        paceViews.forEach { $0.clearInteraction() }
+        hoveredPaceView = nil
+    }
+
+    deinit {
+        if let ticketScrollMonitor { NSEvent.removeMonitor(ticketScrollMonitor) }
+        if let resignActiveObserver { NotificationCenter.default.removeObserver(resignActiveObserver) }
+    }
 
     var trackedLink: HoverLinkTextField? { link }
 
@@ -1216,6 +1348,7 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        clearPaceHover()
         if handleTicketScroll(event) {
             return
         }
@@ -1240,6 +1373,7 @@ final class MenuHoverLinkHostView: NSView {
         if newWindow == nil {
             removeTrackingAreaReference()
             removeTicketScrollMonitor()
+            clearPaceHover()
             link?.clearHoverState()
         }
         super.viewWillMove(toWindow: newWindow)
@@ -1255,6 +1389,7 @@ final class MenuHoverLinkHostView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         link?.clearHoverState()
+        paceViews.forEach { $0.updateHover(at: NSPoint(x: -100, y: -100)) }
     }
 
     override func removeFromSuperview() {
@@ -1264,10 +1399,17 @@ final class MenuHoverLinkHostView: NSView {
 
     func forwardHover(atHostPoint point: NSPoint) {
         link?.updateHover(atHostPoint: point, in: self)
+        let next = paceViews.first { $0.isMenuTracking && $0.markerHitRect.contains($0.convert(point, from: self)) }
+        let switchImmediately = next != nil && hoveredPaceView !== next && hoveredPaceView?.isTooltipVisible == true
+        if switchImmediately { hoveredPaceView?.clearInteraction() }
+        for paceView in paceViews {
+            paceView.updateHover(at: paceView.convert(point, from: self), immediately: switchImmediately && paceView === next)
+        }
+        if let next { hoveredPaceView = next }
     }
 
     private func installTrackingArea() {
-        guard link != nil, !bounds.isEmpty else { return }
+        guard (link != nil || !paceViews.isEmpty), !bounds.isEmpty else { return }
         let area = NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
@@ -1299,6 +1441,7 @@ final class MenuHoverLinkHostView: NSView {
     private func synchronizeHoverState() {
         guard let window else {
             link?.clearHoverState()
+            clearPaceHover()
             return
         }
         let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
@@ -1308,7 +1451,8 @@ final class MenuHoverLinkHostView: NSView {
     private func tearDownWindowTracking() {
         removeTrackingAreaReference()
         removeTicketScrollMonitor()
-            link?.clearHoverState()
+        clearPaceHover()
+        link?.clearHoverState()
     }
 
     private func handleTicketScroll(_ event: NSEvent) -> Bool {
@@ -1321,14 +1465,23 @@ final class MenuHoverLinkHostView: NSView {
 
     private func installTicketScrollMonitor() {
         removeTicketScrollMonitor()
-        guard ticketScrollView != nil, window != nil else { return }
-        ticketScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self, self.handleTicketScroll(event) else { return event }
-            return nil
+        guard (ticketScrollView != nil || !paceViews.isEmpty), window != nil else { return }
+        resignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.clearPaceHover() }
+        ticketScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            self.clearPaceHover()
+            if event.type == .scrollWheel, self.handleTicketScroll(event) { return nil }
+            return event
         }
     }
 
     private func removeTicketScrollMonitor() {
+        if let resignActiveObserver {
+            NotificationCenter.default.removeObserver(resignActiveObserver)
+            self.resignActiveObserver = nil
+        }
         if let ticketScrollMonitor {
             NSEvent.removeMonitor(ticketScrollMonitor)
             self.ticketScrollMonitor = nil

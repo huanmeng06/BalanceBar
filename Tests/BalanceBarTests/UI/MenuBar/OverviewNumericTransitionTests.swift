@@ -606,6 +606,76 @@ final class OverviewNumericTransitionTests: XCTestCase {
 
 @MainActor
 final class OverviewNumericPresentationControllerTests: XCTestCase {
+    private func timedPaceSnapshot(now: Date, remaining: Double, resetAt: Date? = nil) -> Snapshot {
+        let reset = resetAt ?? now.addingTimeInterval(9_000)
+        return Snapshot.official("OpenAI Official", remaining, "5h", "obsolete", now,
+            windows: [OfficialQuotaWindow(kind: .fiveHour, remaining: remaining,
+                label: "5h", daysText: "5h", reset: "obsolete", durationSeconds: 18_000, resetAt: reset)])
+    }
+
+    func testPaceMinuteTickAndQuotaRefreshKeepExistingProgressAndView() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let reset = now.addingTimeInterval(9_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 60), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let pace = try XCTUnwrap(host.paceViews.first)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        XCTAssertEqual(pace.progress.identifier, OverviewNumericPresentation.progressIdentifier(for: pace.numericIdentity))
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(60)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertEqual(try XCTUnwrap(pace.pace?.expectedRemaining), 100 * 8_940.0 / 18_000, accuracy: 0.0001)
+        let timer = try XCTUnwrap(controller.quotaPaceTimerForTesting)
+        XCTAssertEqual(timer.timeInterval, 60)
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(120)
+        timer.fire()
+        XCTAssertEqual(try XCTUnwrap(pace.pace?.expectedRemaining), 100 * 8_880.0 / 18_000, accuracy: 0.0001)
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === host)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 44, resetAt: reset), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(host.paceViews.first === pace)
+        XCTAssertEqual(pace.progress.percentage, 44)
+        XCTAssertEqual(pace.pace?.roundedActual, 44)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        XCTAssertFalse(timer.isValid)
+        XCTAssertFalse(pace.isMenuTracking)
+    }
+
+    func testPaceInvalidWindowCanRecoverInPlaceAndIdentitySwitchClearsIt() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 60, resetAt: now), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let pace = try XCTUnwrap(host.paceViews.first)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertNil(pace.pace)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 60), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertNotNil(pace.pace)
+        XCTAssertNotNil(controller.quotaPaceTimerForTesting)
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(9_000)
+        controller.quotaPaceTimerForTesting?.fire()
+        XCTAssertNil(pace.pace)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        controller.quotaPaceNowForTesting = now
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 60), refreshDate: now,
+            menuInput: makeMenuInput(activeClient: .claude), settings: makeSettings())
+        XCTAssertNil(pace.pace)
+        XCTAssertTrue(pace.markerHitRect.isEmpty)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+    }
+
     func testFirstOpenShowsCurrentValuesAndLaterOpenStartsFromLastSeen() throws {
         let controller = makeController()
         defer { controller.teardown() }

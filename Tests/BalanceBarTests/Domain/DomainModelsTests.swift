@@ -10,6 +10,29 @@ func withLunaReserveUserFacingEnabled(_ body: () throws -> Void) rethrows {
 }
 
 final class DomainModelsTests: XCTestCase {
+    func testPaceClassificationUsesIndividuallyRoundedDisplayValues() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for (actual, expected, difference, status) in [
+            (54.4, 59.6, -6, OfficialQuotaUsagePace.Status.fast),
+            (59.6, 54.4, 6, .slow),
+            (54.5, 59.6, -5, .normal),
+            (59.6, 54.5, 5, .normal),
+            (44.5, 50, -5, .normal),
+            (0, 0.1, 0, .normal),
+            (99, 50, 49, .slow),
+            (99.99995, 50, 50, .unused)
+        ] {
+            let window = OfficialQuotaWindow(kind: .fiveHour, remaining: actual,
+                label: "5h", daysText: "5h", reset: nil, durationSeconds: 18_000,
+                resetAt: now.addingTimeInterval(expected / 100 * 18_000))
+            let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window, now: now))
+            XCTAssertEqual(pace.roundedDifference, difference)
+            XCTAssertEqual(pace.roundedActual - pace.roundedExpected, difference)
+            XCTAssertEqual(pace.status, status)
+            XCTAssertEqual(pace.expectedRemaining, expected, accuracy: 0.0001)
+        }
+    }
+
     func testOfficialQuotaUsagePaceUsesWindowSpecificDurationAndReset() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let fiveHour = OfficialQuotaWindow(

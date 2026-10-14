@@ -250,7 +250,9 @@ struct OfficialQuotaUsagePace: Equatable {
     let difference: Double
     let status: Status
 
-    var roundedDifference: Int { Int(difference.rounded()) }
+    var roundedActual: Int { Int(actualRemaining.rounded()) }
+    var roundedExpected: Int { Int(expectedRemaining.rounded()) }
+    var roundedDifference: Int { roundedActual - roundedExpected }
 
     static func make(
         for window: OfficialQuotaWindow,
@@ -270,13 +272,13 @@ struct OfficialQuotaUsagePace: Equatable {
         let elapsed = now.timeIntervalSince(resetAt) + duration
         guard elapsed >= 0, elapsed <= duration else { return nil }
         let expected = min(100, max(0, 100 * (resetAt.timeIntervalSince(now) / duration)))
-        let difference = window.remaining - expected
+        let difference = Double(Int(window.remaining.rounded()) - Int(expected.rounded()))
         let status: Status
-        if window.remaining == 100 {
+        if window.remaining >= 100 - 0.0001 {
             status = .unused
-        } else if difference <= -5.5 {
+        } else if difference < -5 {
             status = .fast
-        } else if difference >= 5.5 {
+        } else if difference > 5 {
             status = .slow
         } else {
             status = .normal

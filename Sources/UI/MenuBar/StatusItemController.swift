@@ -2220,6 +2220,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var presentedOverviewNumerics: [OverviewNumericSample] = []
     private var overviewMenuWasSeen = false
     private var overviewNumericOpenWorkItem: DispatchWorkItem?
+    private var quotaPaceTimer: Timer?
+    private var quotaPaceAccount: OpenAIAccountPresentation?
+    private var quotaPaceClient: AssistantClient?
+    var quotaPaceNowForTesting: Date?
+    var quotaPaceTimerForTesting: Timer? { quotaPaceTimer }
     var overviewNumericReduceMotionForTesting: Bool?
     var bankedResetCountdownNowForTesting: Date?
     var bankedResetCountdownTimerForTesting: Timer? { bankedResetCountdownTimer }
@@ -2691,6 +2696,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     deinit {
+        quotaPaceTimer?.invalidate()
         removeRightClickMonitor()
         removeStatusItemWindowObservation()
         if let screenParametersObserver {
@@ -2764,6 +2770,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         isStatusMenuTracking = false
         overviewMenuWasSeen = false
         stopBankedResetCountdownTimer()
+        stopQuotaPaceTracking()
         cancelPendingOverviewNumericTransitions()
         lastSeenOverviewNumerics = [:]
         presentedOverviewNumerics = []
@@ -2829,6 +2836,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         rebuildOrDeferMenu(forceDefer: deferMenuRebuild)
         applyInPlaceOverviewNumericUpdatesIfTracking()
         syncBankedResetCountdownTimer()
+        refreshQuotaPaceViews()
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
     }
 
@@ -2918,6 +2926,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard menuInput != input else { return }
         menuInput = input
         rebuildOrDeferMenu(forceDefer: deferRebuild)
+        refreshQuotaPaceViews()
     }
 
     private func updateStatusItemVisibility(_ visibility: StatusItemVisibility) {
@@ -3021,6 +3030,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             rebuildStatusMenu()
         }
         isStatusMenuTracking = true
+        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setPaceMenuTracking(true)
+        refreshQuotaPaceViews()
         overviewMenuWasSeen = true
         playPendingOverviewNumericTransitions()
         syncBankedResetCountdownTimer()
@@ -3038,6 +3049,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         isStatusMenuTracking = false
         stopBankedResetCountdownTimer()
+        stopQuotaPaceTracking()
         cancelPendingOverviewNumericTransitions()
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
@@ -5701,6 +5713,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
         )
         let officialQuotaWindows = quotaPresentation.windows
+        quotaPaceAccount = menuInput.openAIAccount
+        quotaPaceClient = menuInput.activeClient
         let lunaReserve = quotaPresentation.lunaReserve
         let bankedReset = quotaPresentation.bankedReset
         let nearestExpiryText = bankedReset.flatMap {
@@ -5775,33 +5789,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
                 let plan = overviewNumericPlan(for: sample)
                 if settings.showQuotaProgressBar {
-                    if settings.showQuotaPaceIndicator,
-                       let pace = OfficialQuotaUsagePace.make(for: window),
-                       let reset = window.resetDisplayText(timeZone: settings.displayTimeZone) {
-                        let progress = QuotaProgressPaceView(
-                            percentage: plan.startProgress ?? plan.toProgress ?? window.remaining,
-                            expectedRemaining: pace,
-                            resetText: reset,
-                            colorConfiguration: settings.quotaProgressColorConfiguration
-                        )
-                        progress.frame = row.progress.insetBy(dx: 0, dy: -6)
-                        progress.identifier = OverviewNumericPresentation.progressIdentifier(for: sample.identity)
-                        if plan.animates, let target = plan.toProgress {
-                            progress.setPercentage(
-                                target,
-                                animated: true,
-                                duration: OverviewNumericTransition.duration(for: plan.format)
-                            )
-                        }
-                        view.addSubview(progress)
-                    } else {
-                        view.addSubview(
-                            makeOverviewNumericProgress(
-                                plan: plan,
-                                frame: row.progress
-                            )
-                        )
-                    }
+                    view.addSubview(makeOverviewQuotaProgress(plan: plan, frame: row.progress, window: window))
                 }
 
                 let amount = makeOverviewNumericAmount(plan: plan, sample: sample, frame: row.amount)
@@ -6078,17 +6066,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
             let amount: NSView
             let marqueeAmountText: String
-            if snapshot.kind == .balance, let sample = presentedOverviewNumerics.first {
+            if snapshot.kind == .balance || (snapshot.kind == .official
+                && officialQuotaWindows.count == 1 && officialQuotaWindows[0].kind != .other),
+               let sample = presentedOverviewNumerics.first {
                 let plan = overviewNumericPlan(for: sample)
                 if settings.showQuotaProgressBar,
                    sample.progressPercentage != nil,
                    let progressFrame = layout.progress {
-                    view.addSubview(
-                        makeOverviewNumericProgress(
-                            plan: plan,
-                            frame: progressFrame
-                        )
-                    )
+                    if snapshot.kind == .official, let window = officialQuotaWindows.first {
+                        view.addSubview(makeOverviewQuotaProgress(plan: plan, frame: progressFrame, window: window))
+                    } else {
+                        view.addSubview(makeOverviewNumericProgress(plan: plan, frame: progressFrame))
+                    }
                 }
                 // With or without the progress bar, the balance amount frame's
                 // top sits 1pt above the shorter detail row. Pin the glyphs
@@ -6302,6 +6291,45 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func bankedResetCountdownNow() -> Date {
         bankedResetCountdownNowForTesting ?? Date()
+    }
+
+    private func refreshQuotaPaceViews() {
+        guard isStatusMenuTracking,
+              let host = statusMenu.items.first?.view as? MenuHoverLinkHostView else { return }
+        let now = quotaPaceNowForTesting ?? Date()
+        let windows = snapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+        ).windows
+        let identityMatches = snapshot.kind == .official
+            && quotaPaceAccount == menuInput.openAIAccount && quotaPaceClient == menuInput.activeClient
+            && settings.showQuotaProgressBar && settings.showQuotaPaceIndicator
+        for view in host.paceViews {
+            if identityMatches, let window = windows.first(where: {
+                OverviewNumericPresentation.identity(for: $0, provider: snapshot.provider) == view.numericIdentity
+            }) {
+                view.update(window: window, now: now)
+            } else {
+                view.invalidatePresentation()
+            }
+        }
+        if host.paceViews.contains(where: { $0.pace != nil }) {
+            guard quotaPaceTimer == nil else { return }
+            let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.refreshQuotaPaceViews() }
+            timer.tolerance = 1
+            quotaPaceTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+            RunLoop.main.add(timer, forMode: .eventTracking)
+        } else {
+            quotaPaceTimer?.invalidate()
+            quotaPaceTimer = nil
+        }
+    }
+
+    private func stopQuotaPaceTracking() {
+        quotaPaceTimer?.invalidate()
+        quotaPaceTimer = nil
+        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setPaceMenuTracking(false)
     }
 
     private func syncBankedResetCountdownTimer() {
@@ -6792,6 +6820,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         configureBankedResetSourceLink(link, forecast: forecast)
         link.configure(plan: plan, sample: sample)
         return link
+    }
+
+    private func makeOverviewQuotaProgress(
+        plan: OverviewNumericTransitionPlan,
+        frame: NSRect,
+        window: OfficialQuotaWindow
+    ) -> NSView {
+        guard settings.showQuotaPaceIndicator,
+              window.kind == .fiveHour || window.kind == .sevenDay else {
+            return makeOverviewNumericProgress(plan: plan, frame: frame)
+        }
+        let host = QuotaProgressPaceView(
+            percentage: plan.startProgress ?? plan.toProgress ?? window.remaining,
+            window: window,
+            identity: plan.identity,
+            now: quotaPaceNowForTesting ?? Date(),
+            colorConfiguration: settings.quotaProgressColorConfiguration
+        )
+        host.frame = frame.insetBy(dx: 0, dy: -6.5)
+        if plan.animates, let target = plan.toProgress {
+            host.setPercentage(target, animated: true, duration: OverviewNumericTransition.duration(for: plan.format))
+        }
+        return host
     }
 
     private func makeOverviewNumericProgress(

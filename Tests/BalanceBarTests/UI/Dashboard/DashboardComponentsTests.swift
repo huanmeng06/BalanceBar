@@ -36,6 +36,125 @@ private final class FixedPreviewRowAccessory: NSView, SettingsRowAccessoryLayout
 
 @MainActor
 final class DashboardComponentsTests: XCTestCase {
+    private func paceWindow(remaining: Double = 50, reset: Date, kind: OfficialQuotaWindow.Kind = .fiveHour) -> OfficialQuotaWindow {
+        OfficialQuotaWindow(kind: kind, remaining: remaining, label: "quota", daysText: "quota",
+            reset: "obsolete", durationSeconds: kind == .sevenDay ? 604_800 : 18_000, resetAt: reset)
+    }
+
+    func testPaceMarkerOverlayAndExactTrackingBoundary() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quota = paceWindow(reset: now.addingTimeInterval(9_000))
+        let view = QuotaProgressPaceView(percentage: 50, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+            now: now, colorConfiguration: .default)
+        view.frame = NSRect(x: 0, y: 0, width: 200, height: 18)
+        view.layoutSubtreeIfNeeded()
+        view.updateTrackingAreas()
+        XCTAssertNil(view.hitTest(NSPoint(x: 100, y: 9)))
+        XCTAssertTrue(view.subviews.first === view.progress)
+        XCTAssertTrue(view.subviews.last?.isHidden == false)
+        XCTAssertEqual(view.progress.frame.height, 5)
+        XCTAssertEqual(view.markerHitRect, NSRect(x: 92, y: 0, width: 16, height: 18))
+        let area = try XCTUnwrap(view.trackingAreas.first)
+        XCTAssertEqual(area.rect, view.markerHitRect)
+        XCTAssertTrue(area.options.contains(.activeAlways))
+        XCTAssertFalse(area.options.contains(.inVisibleRect))
+        XCTAssertFalse(area.options.contains(.activeInKeyWindow))
+        for seconds in [18_000.0, 1.0] {
+            view.update(window: paceWindow(reset: now.addingTimeInterval(seconds)), now: now)
+            XCTAssertGreaterThanOrEqual(view.markerHitRect.minX, 0)
+            XCTAssertLessThanOrEqual(view.markerHitRect.maxX, 200)
+            XCTAssertGreaterThanOrEqual(view.markerCenterX, 1)
+            XCTAssertLessThanOrEqual(view.markerCenterX, 199)
+        }
+    }
+
+    func testPaceHostForwardsHoverAndCancelsReentryAndRemovalTasks() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 70))
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        let menu = NSMenu()
+        let item = NSMenuItem()
+        item.view = host
+        menu.addItem(item)
+        window.contentView = host
+        let quota = paceWindow(reset: now.addingTimeInterval(9_000))
+        let view = QuotaProgressPaceView(percentage: 50, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+            now: now, colorConfiguration: .default)
+        view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
+        host.addSubview(view)
+        view.layoutSubtreeIfNeeded()
+        host.setPaceMenuTracking(true)
+        let inside = host.convert(NSPoint(x: view.markerCenterX, y: 9), from: view)
+        host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        host.forwardHover(atHostPoint: inside)
+        XCTAssertTrue(view.isHovered)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertTrue(view.hasPendingCloseForTesting)
+        host.forwardHover(atHostPoint: inside)
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+        view.firePendingCloseForTesting()
+        XCTAssertTrue(view.isHovered)
+        view.firePendingShowForTesting()
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertFalse(view.isTooltipVisible, "An invisible window must not show a popover")
+        let weekly = paceWindow(reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        let weeklyView = QuotaProgressPaceView(percentage: 50, window: weekly,
+            identity: OverviewNumericPresentation.identity(for: weekly, provider: "Official"),
+            now: now, colorConfiguration: .default)
+        weeklyView.frame = NSRect(x: 10, y: 40, width: 200, height: 18)
+        host.addSubview(weeklyView)
+        host.setPaceMenuTracking(true)
+        host.forwardHover(atHostPoint: host.convert(NSPoint(x: weeklyView.markerCenterX, y: 9), from: weeklyView))
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertTrue(weeklyView.hasPendingShowForTesting)
+        host.setPaceMenuTracking(false)
+        XCTAssertFalse(weeklyView.hasPendingShowForTesting)
+        XCTAssertFalse(weeklyView.hasPendingCloseForTesting)
+        XCTAssertFalse(view.isHovered)
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+        host.setPaceMenuTracking(true)
+        host.forwardHover(atHostPoint: inside)
+        view.removeFromSuperview()
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+        XCTAssertFalse(view.isTooltipVisible)
+    }
+
+    func testPaceUpdateInvalidationAndNaturalLocalizedCopy() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quota = paceWindow(reset: now.addingTimeInterval(11_160))
+        let view = QuotaProgressPaceView(percentage: 50, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+            now: now, colorConfiguration: .default)
+        XCTAssertEqual(view.pace?.roundedDifference, -12)
+        XCTAssertEqual(view.resetText, tr(.keyQuotaPaceResetHoursMinutes, arguments: ["3", "6"]))
+        view.update(window: quota, now: now.addingTimeInterval(60))
+        XCTAssertLessThan(try XCTUnwrap(view.pace?.expectedRemaining), 62)
+        view.update(window: quota, now: quota.resetAt!)
+        XCTAssertNil(view.pace)
+        XCTAssertTrue(view.markerHitRect.isEmpty)
+        XCTAssertEqual(view.accessibilityLabel(), "")
+        view.update(window: quota, now: now)
+        XCTAssertNotNil(view.pace)
+        for language in AppLanguage.allCases where language != .system {
+            let actual = tr(.keyQuotaPaceActual, arguments: ["50"], language: language)
+            let difference = tr(.keyQuotaPaceDifferenceLess, arguments: ["12"], language: language)
+            XCTAssertTrue(actual.contains("50%"), language.rawValue)
+            XCTAssertTrue(difference.contains("12%"), language.rawValue)
+            XCTAssertFalse(difference.contains("%@"))
+            XCTAssertFalse(tr(.keyQuotaPaceResetDaysHours, arguments: ["2", "3"], language: language).contains("%@"))
+        }
+        XCTAssertEqual(tr(.keyQuotaPaceBodyFast, language: .simplifiedChinese),
+            "如果继续按目前的平均速度使用，额度可能提前用完，可以适当放慢。")
+        XCTAssertEqual(tr(.keyQuotaPaceDifferenceLess, arguments: ["12"], language: .simplifiedChinese), "比参考少剩 12%")
+    }
+
     func testDashboardSectionsPreserveNavigationOrderAndMetadata() {
         let sections = DashboardSection.allCases
 

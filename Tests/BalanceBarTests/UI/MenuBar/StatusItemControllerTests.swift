@@ -14,6 +14,35 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testPaceAccountSwitchAndTeardownStopTimerAndInvalidateOldMarker() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.quotaPaceNowForTesting = now
+        let quota = OfficialQuotaWindow(kind: .fiveHour, remaining: 50, label: "5h", daysText: "5h",
+            reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000))
+        let snapshot = Snapshot.official("OpenAI Official", 50, "5h", nil, now, windows: [quota])
+        func input(_ email: String) -> StatusItemController.MenuInput {
+            StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                openAIAccount: OpenAIAccountPresentation(email: email), statusLinks: [],
+                showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false,
+                showStatusMenu: false)
+        }
+        controller.start(snapshot: snapshot, refreshDate: now, menuInput: input("first@example.invalid"), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let pace = try XCTUnwrap(host.paceViews.first)
+        let timer = try XCTUnwrap(controller.quotaPaceTimerForTesting)
+        controller.updateMenu(input: input("second@example.invalid"))
+        XCTAssertNil(pace.pace)
+        XCTAssertFalse(pace.isTooltipVisible)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        XCTAssertFalse(timer.isValid)
+        controller.teardown()
+        XCTAssertFalse(pace.isMenuTracking)
+    }
+
+    @MainActor
     func testRightClickOpenAgentOpensCurrentAgentWithoutOpeningCCSwitch() {
         var agentOpens = 0
         var ccSwitchOpens = 0
