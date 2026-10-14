@@ -243,6 +243,7 @@ final class AggregationNoteTagView: NSView {
             textColor: .secondaryLabelColor, frame: NSRect(x: 5, y: 1, width: max(0, frame.width - 10), height: 15))
         super.init(frame: frame)
         textView.respectsReduceMotion = true
+        textView.centersTextWhenFits = true
         wantsLayer = true
         layer?.cornerRadius = 4
         addSubview(textView)
@@ -305,6 +306,9 @@ final class AccountMarqueeView: NSView {
     private var scrollIsSuspended = false
     var hasActiveScrollTimer: Bool { scrollActivityTimer != nil }
     var respectsReduceMotion = false
+    var centersTextWhenFits = false {
+        didSet { configureContentIfNeeded(force: true) }
+    }
 
     private var isActuallyVisible: Bool {
         guard window != nil, !isHiddenOrHasHiddenAncestor, !visibleRect.isEmpty else { return false }
@@ -430,6 +434,7 @@ final class AccountMarqueeView: NSView {
             fadeWidth: Self.defaultEdgeFadeWidth,
             contentLeadingInset: leadingInkAnchor == nil ? 0 : Self.leadingInkInset(of: accountLabel)
         )
+        accountLabel.alignment = centersTextWhenFits && !nextLayout.isScrollable ? .center : .left
         guard force
             || contentLayout != nextLayout
             || configuredText != text
@@ -6233,13 +6238,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         let available = max(0, header.convert(time.frame, from: time.superview).minX - 6 - titleFrame.minX)
         let measure = NSTextField(labelWithString: text)
-        measure.font = .systemFont(ofSize: 11)
+        let font = NSFont.systemFont(ofSize: 11)
+        measure.font = font
         measure.usesSingleLineMode = true
-        let textWidth = max(AccountMarqueeView.textWidth(of: text, font: measure.font!),
+        let textWidth = max(AccountMarqueeView.textWidth(of: text, font: font),
                             measure.cell?.cellSize.width ?? 0)
         // Include cell drawing insets and breathing room so short aliases never
         // acquire an unnecessary marquee/fade just because glyph advances fit.
-        let width = min(available / 2, max(48, ceil(textWidth) + 14))
+        let width = min(available / 2, max(36, ceil(textWidth) + 14))
         let titleWidth = min(ceil(title.cell?.cellSize.width ?? titleFrame.width), max(0, available - width - 6))
         title.frame = NSRect(x: titleFrame.minX, y: titleFrame.minY, width: titleWidth, height: titleFrame.height)
         let frame = NSRect(x: title.frame.maxX + 6, y: titleFrame.midY - 8.5, width: width, height: 17)
