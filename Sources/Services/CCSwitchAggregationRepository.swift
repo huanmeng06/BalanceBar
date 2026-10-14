@@ -30,7 +30,8 @@ struct AggregatedProviderDisplay: Equatable {
     /// Only display semantics participate; source credentials remain private to refresh.
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.identity == rhs.identity && lhs.entry.role == rhs.entry.role
-            && lhs.entry.source.name == rhs.entry.source.name && lhs.snapshot == rhs.snapshot
+            && lhs.entry.source.name == rhs.entry.source.name && lhs.entry.source.notes == rhs.entry.source.notes
+            && lhs.snapshot == rhs.snapshot
             && lhs.account == rhs.account && lhs.status == rhs.status
             && lhs.reason == rhs.reason && lhs.fetchedAt == rhs.fetchedAt
     }

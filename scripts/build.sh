@@ -292,6 +292,8 @@ bundle_minimum_system="$(plutil -extract LSMinimumSystemVersion raw -o - "$bundl
 [[ "$bundle_minimum_system" == "$balancebar_deployment_target" ]] \
     || die "Info.plist minimum OS is $bundle_minimum_system; expected $balancebar_deployment_target"
 if [[ "$variant" == "dev" ]]; then
+    task_build_sha="$(git -C "$repo_root" rev-parse HEAD)"
+    plutil -replace BalanceBarBuildSHA -string "$task_build_sha" "$bundle_plist"
     plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
 fi

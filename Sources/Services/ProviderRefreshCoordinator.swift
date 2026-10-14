@@ -302,6 +302,8 @@ final class ProviderRefreshCoordinator {
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
     private var lastQuickSwitchFetch: [AssistantClient: Date] = [:]
+    private var quickSwitchSourceRevisions: [AssistantClient: [String: String]] = [:]
+    private var lastStandardSourceKey: String?
     private var quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaryPayloads: [String: QuickSwitchSummaryPayload] = [:]
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
@@ -390,6 +392,8 @@ final class ProviderRefreshCoordinator {
     /// Called on the refresh owner queue before the ordinary single-provider path.
     @discardableResult
     func refreshAggregation(reader: CCSwitchAggregationRepository, force: Bool) -> Bool {
+        SwitchLog.write("aggregation refresh triggered; force=\(force)", level: .debug,
+            category: "refresh.aggregation", throttleKey: "aggregation-trigger-\(force)", minimumInterval: 1)
         aggregationReader = reader
         let state = reader.load()
         aggregationBlocked = reader.blocksQuickSwitch()
@@ -430,6 +434,9 @@ final class ProviderRefreshCoordinator {
             let due = aggregationAttempts[identity].map { now().timeIntervalSince($0) >= interval } ?? true
             if (force || due), aggregationRequests[identity] == nil, !aggregationPending.contains(identity) {
                 aggregationPending.append(identity)
+            } else {
+                SwitchLog.write("aggregation refresh skipped; ttl=\(!due && !force); coalesced=\(aggregationRequests[identity] != nil || aggregationPending.contains(identity))",
+                    level: .debug, category: "refresh.aggregation", throttleKey: "aggregation-skip", minimumInterval: 1)
             }
         }
         publishAggregation()
@@ -476,6 +483,8 @@ final class ProviderRefreshCoordinator {
         guard lastAggregationPublication?.displays != displays
             || lastAggregationPublication?.blocked != aggregationBlocked else { return }
         lastAggregationPublication = (displays, aggregationBlocked)
+        SwitchLog.write("aggregation presentation published; providers=\(displays.count)", level: .debug,
+            category: "refresh.aggregation", throttleKey: "aggregation-publication", minimumInterval: 1)
         actions.aggregationChanged?(displays, aggregationBlocked)
     }
 
@@ -497,6 +506,8 @@ final class ProviderRefreshCoordinator {
             let request = UUID()
             aggregationRequests[identity] = request
             aggregationAttempts[identity] = now()
+            SwitchLog.write("aggregation request dispatched; in_flight=\(aggregationRequests.count); pending=\(aggregationPending.count)",
+                level: .debug, category: "refresh.aggregation")
             display.status = .loading
             let source = display.entry.source
             if source.isOfficial {
@@ -551,6 +562,7 @@ final class ProviderRefreshCoordinator {
     func resetCadence() {
         performOnQueue { [weak self] in
             guard let self else { return }
+            self.lastStandardSourceKey = nil
             self.lastBalanceFetch = nil
             self.lastOfficialFetch = nil
             self.lastQuickSwitchFetch = [:]
@@ -583,6 +595,8 @@ final class ProviderRefreshCoordinator {
         forceBalance: Bool,
         switched: Bool
     ) {
+        let sourceKey = "\(client.appType)|\(current.id)|\(current.configurationRevision)"
+        let sourceChanged = lastStandardSourceKey != sourceKey
         guard let query = current.query else {
             guard current.isOfficial, client == .codex else {
                 if current.isOfficial {
@@ -602,7 +616,8 @@ final class ProviderRefreshCoordinator {
             }
             let currentDate = now()
             let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= 60 } ?? true
-            guard forceBalance || switched || due else { return }
+            guard forceBalance || switched || sourceChanged || due else { return }
+            lastStandardSourceKey = sourceKey
             lastOfficialFetch = currentDate
             fetchOfficialQuota(providerID: current.id, providerName: current.name, client: client)
             return
@@ -611,7 +626,8 @@ final class ProviderRefreshCoordinator {
         let interval = TimeInterval(max(query.intervalMinutes, 1) * 60)
         let currentDate = now()
         let due = lastBalanceFetch.map { currentDate.timeIntervalSince($0) >= interval } ?? true
-        guard forceBalance || switched || due else { return }
+        guard forceBalance || switched || sourceChanged || due else { return }
+        lastStandardSourceKey = sourceKey
         lastBalanceFetch = currentDate
         fetchBalance(
             providerID: current.id,
@@ -635,21 +651,28 @@ final class ProviderRefreshCoordinator {
     func refreshQuickSwitchSummaries(
         force: Bool,
         for requestedClient: AssistantClient? = nil,
-        providerIDs: Set<String>? = nil
+        providerIDs: Set<String>? = nil,
+        configurationChanged: Bool = false
     ) {
         let client = requestedClient ?? .codex
         queue.async { [weak self] in
             guard let self else { return }
             let currentDate = self.now()
             let due = self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
-            guard force || due else { return }
-            self.lastQuickSwitchFetch[client] = currentDate
+            SwitchLog.write("quick-switch refresh triggered; force=\(force); ttl_due=\(due); configuration_event=\(configurationChanged)", level: .debug,
+                category: "refresh.summary", throttleKey: "summary-trigger-\(force)", minimumInterval: 1)
+            guard force || due || configurationChanged else { return }
+            guard let sources = try? self.repository.loadSummarySourcesChecked(appType: client.appType) else { return }
+            let previousRevisions = self.quickSwitchSourceRevisions[client] ?? [:]
+            self.quickSwitchSourceRevisions[client] = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.configurationRevision) })
+            if force || due { self.lastQuickSwitchFetch[client] = currentDate }
             let aggregationIDs: Set<String>
             if client == .codex, let reader = self.aggregationReader, case .active(let entries) = reader.load() {
                 _ = self.refreshAggregation(reader: reader, force: force)
                 aggregationIDs = Set(entries.map(\.providerID))
             } else { aggregationIDs = [] }
-            for source in self.repository.loadSummarySources(appType: client.appType) {
+            for source in sources {
+                guard force || due || previousRevisions[source.id] != source.configurationRevision else { continue }
                 if aggregationIDs.contains(source.id) { continue }
                 if let providerIDs, !providerIDs.contains(source.id) { continue }
                 if source.isOfficial {

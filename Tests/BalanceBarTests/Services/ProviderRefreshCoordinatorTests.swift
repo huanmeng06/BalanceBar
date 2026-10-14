@@ -3033,3 +3033,56 @@ private final class StoppedAggregationQuotaProtocol: URLProtocol {
         if isQuota { Self.onStop?() }
     }
 }
+
+extension ProviderRefreshCoordinatorTests {
+    func testConfigurationEventsRespectTTLButSourceChangeAndManualRefreshQueryImmediately() throws {
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let changed = DispatchSemaphore(value: 0)
+        let counter = IncrementingCounter()
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "\(counter.next()).00") }
+        let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: makeActions { _ in changed.signal() }, now: { clock.now })
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForEvent(changed)
+        for _ in 0..<20 { coordinator.refreshQuickSwitchSummaries(force: false, for: .codex, configurationChanged: true) }
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET name='Codex renamed' WHERE id='codex-custom'")
+        }
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex, configurationChanged: true)
+        waitForEvent(changed)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
+        waitForEvent(changed)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+    }
+
+    func testStandardProviderConfigurationRevisionBypassesTTLWithoutForcingUnchangedSources() throws {
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let initial = expectation(description: "initial source rendered")
+        let replaced = expectation(description: "changed source rendered")
+        var renderCount = 0
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "4.73") }
+        var actions = makeActions()
+        actions = ProviderRefreshActions(currentProvider: actions.currentProvider, isActiveClient: actions.isActiveClient,
+            render: { _ in
+                renderCount += 1
+                if renderCount == 1 { initial.fulfill() } else { replaced.fulfill() }
+            }, storeClientSnapshot: actions.storeClientSnapshot, quickSwitchSummaryChanged: actions.quickSwitchSummaryChanged)
+        let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: actions, now: { clock.now })
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: false, switched: false)
+        wait(for: [initial], timeout: 2)
+        for _ in 0..<20 { coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: false, switched: false) }
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        try withDatabase { db in try execute(db, sql: "UPDATE providers SET name='Renamed' WHERE id='codex-custom'") }
+        let replacement = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        XCTAssertNotEqual(replacement.configurationRevision, current.configurationRevision)
+        coordinator.refreshStandardProvider(current: replacement, client: .codex, forceBalance: false, switched: false)
+        wait(for: [replaced], timeout: 2)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+    }
+}

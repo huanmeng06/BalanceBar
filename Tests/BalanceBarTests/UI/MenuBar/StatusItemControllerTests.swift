@@ -542,7 +542,7 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testClientSwitchLayoutsOnceAndDefersMenuRebuildUntilOpen() {
+    func testClientSwitchLayoutsOnceAndAppliesDeferredRebuildWhileClosed() {
         let controller = makeController()
         defer { controller.teardown() }
 
@@ -654,13 +654,12 @@ final class StatusItemControllerTests: XCTestCase {
             menuIdentities
         )
         XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
-
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuildBefore + 1,
+            "the deferred rebuild must complete while closed")
         controller.menuWillOpen(controller.statusMenuForTesting)
-        XCTAssertEqual(
-            controller.statusMenuRebuildCountForTesting,
-            rebuildBefore + 1,
-            "opening the status menu must apply the deferred rebuild"
-        )
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuildBefore + 1,
+            "opening must not rebuild mounted menu content")
         XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
         XCTAssertTrue(
             controller.menuItemsForTesting.contains { $0.submenu != nil },
@@ -2916,18 +2915,18 @@ extension StatusItemControllerTests {
 }
 
 extension StatusItemControllerTests {
-    private func aggregationInput(count: Int, amount: Double = 4.73, date: Date = Date(timeIntervalSince1970: 1_700_000_000)) -> StatusItemController.MenuInput {
+    private func aggregationInput(count: Int, amount: Double = 4.73, date: Date = Date(timeIntervalSince1970: 1_700_000_000), summaries: [String: String] = [:], choices: [ProviderChoice]? = nil, notes: [Int: String] = [:]) -> StatusItemController.MenuInput {
         let displays = (0..<count).map { index -> AggregatedProviderDisplay in
             let id = "provider-\(index)"
             return AggregatedProviderDisplay(
                 entry: AggregatedProviderEntry(source: ProviderSummarySource(id: id, name: "tokenshop",
-                    isOfficial: false, query: nil, officialAccessToken: nil), role: index == 0 ? .default : .member),
+                    isOfficial: false, query: nil, officialAccessToken: nil, notes: notes[index]), role: index == 0 ? .default : .member),
                 identity: AggregationDisplayIdentity(providerID: id, accountScope: id, configurationRevision: "fixture"),
                 snapshot: .balance("tokenshop", amount + Double(index), index == 1 ? "CNY" : "USD", nil, date, progressPercentage: nil),
                 account: nil, status: .fresh, reason: nil, fetchedAt: date)
         }
-        return StatusItemController.MenuInput(choices: [ProviderChoice(id: "provider-0", name: "tokenshop", isCurrent: true)],
-            quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [],
+        return StatusItemController.MenuInput(choices: choices ?? [ProviderChoice(id: "provider-0", name: "tokenshop", isCurrent: true)],
+            quickSwitchSummaries: summaries, activeClient: .codex, openAIAccount: nil, statusLinks: [],
             showQuickSwitchMenu: true, showOpenChatGPTMenu: true, showOpenCCSwitchMenu: true, showStatusMenu: false,
             aggregatedProviders: displays, aggregationQuickSwitchBlocked: count > 0)
     }
@@ -2949,7 +2948,7 @@ extension StatusItemControllerTests {
         XCTAssertTrue(submenu.items.filter { $0.representedObject is String }.allSatisfy { !$0.isEnabled && $0.state == .off })
         XCTAssertTrue(submenu.items.contains { $0.title == tr(.keyAggregationManageInCCSwitch) })
         for card in document.subviews {
-            XCTAssertGreaterThan(card.frame.height, 80)
+            XCTAssertGreaterThan(card.frame.height, 60)
             XCTAssertEqual(card.frame.width, OpenCodexCardLayout.cardWidth)
             XCTAssertTrue(document.bounds.contains(card.frame))
         }
@@ -2995,13 +2994,20 @@ extension StatusItemControllerTests {
         defer { controller.teardown() }
         controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 4), settings: makeSettings())
         let menu = controller.statusMenuForTesting
+        let originalRoot = menu.items.first?.view
         controller.menuWillOpen(menu)
         defer { controller.menuDidClose(menu) }
         controller.updateMenu(input: aggregationInput(count: 0))
-        XCTAssertFalse(menu.items.first?.view is NSScrollView)
+        let retained = menu.items.first?.view as? NSScrollView
+        XCTAssertNotNil(retained)
+        XCTAssertTrue(retained?.documentView is MenuHoverLinkHostView)
         let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
         XCTAssertFalse(quick.items.contains { $0.identifier?.rawValue == "aggregation.quickSwitch.hint" })
         XCTAssertTrue(quick.items.filter { $0.representedObject is String }.allSatisfy(\.isEnabled))
+        XCTAssertTrue(menu.items.first?.view === originalRoot)
+        controller.updateMenu(input: aggregationInput(count: 4))
+        XCTAssertTrue(menu.items.first?.view === originalRoot)
+        XCTAssertEqual((originalRoot as? NSScrollView)?.documentView?.subviews.count, 4)
     }
 }
 
@@ -3040,8 +3046,7 @@ extension StatusItemControllerTests {
         for wrapper in document.subviews {
             let host = try XCTUnwrap(wrapper.subviews.first { $0 is MenuHoverLinkHostView })
             XCTAssertEqual(host.frame.minY, 0)
-            let isDefault = wrapper.identifier?.rawValue == "aggregation.provider.provider-0"
-            XCTAssertEqual(wrapper.frame.height, host.frame.height + (isDefault ? 20 : 0), accuracy: 0.5)
+            XCTAssertEqual(wrapper.frame.height, host.frame.height, accuracy: 0.5)
             XCTAssertFalse(wrapper.subviews.compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Last updated" })
         }
         var displays = original.aggregatedProviders
@@ -3128,5 +3133,127 @@ extension StatusItemControllerTests {
             horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showQuotaProgressBar: false)
         controller.update(snapshot: .placeholder, refreshDate: nil, menuInput: input, settings: settings)
         XCTAssertTrue(progress(root).isEmpty)
+    }
+}
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testAggregationWindowMountRepairsOutOfRangeViewportAndKeepsVisibleCardsAfterLifecycleUpdates() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 12), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let scroll = try XCTUnwrap(menu.items.first?.view as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: scroll.frame.width, height: scroll.frame.height),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { scroll.removeFromSuperview(); window.close() }
+        func mountAndAssertVisible() {
+            window.contentView?.addSubview(scroll)
+            window.contentView?.layoutSubtreeIfNeeded()
+            scroll.layoutSubtreeIfNeeded()
+            XCTAssertTrue(scroll.window === window)
+            XCTAssertGreaterThan(scroll.contentView.bounds.width, 0)
+            XCTAssertGreaterThan(scroll.contentView.bounds.height, 0)
+            let visible = scroll.contentView.documentVisibleRect
+            XCTAssertTrue(document.subviews.contains {
+                let card = $0.subviews.first { !($0 is NSTextField) } ?? $0
+                return !$0.isHidden && !card.isHidden && !document.convert(card.bounds, from: card).intersection(visible).isEmpty
+            },
+                "mounted viewport must intersect a real card: \(visible)")
+        }
+        // Reattachment can expose an obsolete clip offset before AppKit lays out.
+        scroll.contentView.setBoundsOrigin(NSPoint(x: 0, y: document.frame.height + 100))
+        mountAndAssertVisible()
+        controller.menuWillOpen(menu)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 20))
+        controller.updateMenu(input: aggregationInput(count: 12, amount: 9.12))
+        scroll.frame.size.height = 120
+        scroll.tile()
+        mountAndAssertVisible()
+        controller.menuDidClose(menu)
+        scroll.removeFromSuperview()
+        scroll.contentView.setBoundsOrigin(NSPoint(x: 0, y: document.frame.height + 100))
+        mountAndAssertVisible()
+        controller.menuWillOpen(menu)
+        controller.updateMenu(input: aggregationInput(count: 4))
+        mountAndAssertVisible()
+        controller.menuDidClose(menu)
+    }
+}
+
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testQuickSwitchSummaryOnlyUpdatesRetainMenuItemsAndMountedOverviewAcrossOpenClose() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 4), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let root = menu.items.first?.view
+        let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        let row = try XCTUnwrap(quick.items.first { $0.representedObject as? String == "provider-0" })
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        let placements = controller.aggregationPlacementCountForTesting
+        for index in 0..<20 {
+            controller.updateMenu(input: aggregationInput(count: 4, summaries: ["provider-0": "$\(index).73"]))
+        }
+        XCTAssertTrue(row.attributedTitle?.string.contains("$19.73") == true)
+        controller.menuWillOpen(menu)
+        controller.updateMenu(input: aggregationInput(count: 4, summaries: ["provider-0": "$20.73"]))
+        controller.menuDidClose(menu)
+        controller.menuWillOpen(menu)
+        XCTAssertTrue(menu.items.first?.view === root)
+        XCTAssertTrue(quick.items.contains { $0 === row })
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
+        controller.menuDidClose(menu)
+    }
+
+    @MainActor
+    func testDeferredStructureRebuildSurvivesImmediateReopenAndRunsOnlyAfterClose() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 4), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let root = menu.items.first?.view
+        let before = controller.statusMenuRebuildCountForTesting
+        let choices = [ProviderChoice(id: "provider-0", name: "tokenshop", isCurrent: true), ProviderChoice(id: "new", name: "new", isCurrent: false)]
+        controller.menuWillOpen(menu)
+        controller.updateMenu(input: aggregationInput(count: 4, choices: choices))
+        controller.menuDidClose(menu)
+        controller.menuWillOpen(menu)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertTrue(menu.items.first?.view === root)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, before)
+        controller.menuDidClose(menu)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, before + 1)
+        let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        XCTAssertTrue(quick.items.contains { $0.representedObject as? String == "new" })
+    }
+
+    @MainActor
+    func testAggregationNotesMeasuredWithoutDefaultFooterAndChangingNotesKeepsCard() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 4), settings: makeSettings())
+        let scroll = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        let wrapper = document.subviews[0]
+        let card = try XCTUnwrap(wrapper.subviews.first { $0 is MenuHoverLinkHostView })
+        XCTAssertEqual(wrapper.frame.height, card.frame.height)
+        let notes = "Fixture note with a long second line. " + String(repeating: "note ", count: 40)
+        controller.updateMenu(input: aggregationInput(count: 4, notes: [0: notes]))
+        XCTAssertTrue(wrapper.subviews.contains { $0 === card })
+        let label = try XCTUnwrap(wrapper.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "aggregation.notes" })
+        XCTAssertEqual(label.toolTip, notes)
+        XCTAssertFalse(label.isHidden)
+        XCTAssertGreaterThan(wrapper.frame.height, card.frame.height)
+        XCTAssertLessThanOrEqual(wrapper.frame.height - card.frame.height, 54)
+        controller.updateMenu(input: aggregationInput(count: 4))
+        XCTAssertEqual(wrapper.frame.height, card.frame.height)
+        XCTAssertTrue(label.isHidden)
     }
 }

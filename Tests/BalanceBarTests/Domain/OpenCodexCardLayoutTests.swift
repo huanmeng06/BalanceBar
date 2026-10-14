@@ -818,3 +818,21 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertFalse(BalanceRefreshReason.scheduled.forcesStandardProviderBalance)
     }
 }
+
+
+extension OpenCodexCardLayoutTests {
+    func testAggregationBalanceTitleLinkRemovesFooterWithoutOverlappingAmountAndTimestamp() {
+        for showsProgress in [false, true] {
+            let ordinary = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: showsProgress)
+            let compact = OpenCodexCardLayout.frames(for: .balance, includesBalanceLink: false, includesQuotaProgress: showsProgress)
+            XCTAssertNil(compact.link)
+            XCTAssertNil(compact.linkPrefix)
+            XCTAssertLessThan(compact.cardSize.height, ordinary.cardSize.height)
+            XCTAssertGreaterThanOrEqual(compact.refreshTime.minY, compact.amount.maxY)
+            XCTAssertTrue(CGRect(origin: .zero, size: compact.cardSize).contains(compact.amount))
+            XCTAssertEqual(compact.progress, ordinary.progress)
+        }
+        XCTAssertFalse(BalanceRefreshReason.databaseChanged.forcesStandardProviderBalance)
+        XCTAssertTrue(BalanceRefreshReason.manual.forcesStandardProviderBalance)
+    }
+}

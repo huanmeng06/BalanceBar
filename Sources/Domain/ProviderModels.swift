@@ -132,6 +132,7 @@ struct ProviderSummarySource {
     let websiteURL: URL?
     let configurationRevision: String
     let officialAccount: CodexAccountProfile?
+    let notes: String?
 
     init(
         id: String,
@@ -141,7 +142,8 @@ struct ProviderSummarySource {
         officialAccessToken: String?,
         websiteURL: URL? = nil,
         configurationRevision: String = "",
-        officialAccount: CodexAccountProfile? = nil
+        officialAccount: CodexAccountProfile? = nil,
+        notes: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -151,6 +153,7 @@ struct ProviderSummarySource {
         self.websiteURL = websiteURL
         self.configurationRevision = configurationRevision
         self.officialAccount = officialAccount
+        self.notes = notes
     }
 }
 
@@ -162,9 +165,10 @@ enum BalanceRefreshReason: Equatable {
     case providerChanged
     case clientChanged
     case configurationChanged
+    case databaseChanged
 
     var forcesStandardProviderBalance: Bool {
-        self != .scheduled
+        self != .scheduled && self != .databaseChanged
     }
 }
 
@@ -636,6 +640,7 @@ enum OpenCodexCardLayout {
     static func frames(
         for category: OpenCodexCardCategory,
         linkPrefixWidth: CGFloat = 62,
+        includesBalanceLink: Bool = true,
         includesAccount: Bool = false,
         includesSubscription: Bool = false,
         subscriptionTextWidth: CGFloat? = nil,
@@ -737,13 +742,16 @@ enum OpenCodexCardLayout {
             let textShift = includesQuotaProgress
                 ? quotaProgressGapCompression
                 : quotaRowHeight - lunaReserveNoProgressRowHeight
+            // The amount already occupies the bottom row. Removing its adjacent
+            // link permits only the measured header gap to collapse.
+            let removedLinkGap: CGFloat = includesBalanceLink ? 0 : 8
             return OpenCodexCardFrames(
-                cardSize: CGSize(width: cardWidth, height: 102 - textShift),
-                title: CGRect(x: horizontalInset, y: 75 - textShift, width: 189, height: 20),
-                refreshTime: CGRect(x: refreshTimeX, y: 76 - textShift, width: 81, height: 17),
+                cardSize: CGSize(width: cardWidth, height: 102 - textShift - removedLinkGap),
+                title: CGRect(x: horizontalInset, y: 75 - textShift - removedLinkGap, width: 189, height: 20),
+                refreshTime: CGRect(x: refreshTimeX, y: 76 - textShift - removedLinkGap, width: 81, height: 17),
                 account: nil,
                 subscription: nil,
-                quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift, width: 128, height: 18),
+                quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift - removedLinkGap, width: 128, height: 18),
                 reset: nil,
                 amount: CGRect(
                     x: amountX,
@@ -756,13 +764,13 @@ enum OpenCodexCardLayout {
                 progress: includesQuotaProgress
                     ? CGRect(x: horizontalInset, y: 8, width: contentWidth, height: quotaProgressHeight)
                     : nil,
-                linkPrefix: CGRect(
+                linkPrefix: includesBalanceLink ? CGRect(
                     x: horizontalInset,
                     y: 28 - textShift,
                     width: linkPrefixWidth,
                     height: 17
-                ),
-                link: CGRect(x: linkX, y: 28 - textShift, width: linkWidth, height: 17),
+                ) : nil,
+                link: includesBalanceLink ? CGRect(x: linkX, y: 28 - textShift, width: linkWidth, height: 17) : nil,
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,

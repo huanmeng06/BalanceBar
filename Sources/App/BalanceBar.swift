@@ -747,8 +747,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     }
                     self.refreshStatusItemMenuInput()
                 }
-                self?.refresh(reason: .configurationChanged)
-                self?.refreshMonitoredQuickSwitchSummaries(force: true)
+                SwitchLog.write("refresh triggered; origin=file-watcher; force=false", level: .debug, category: "refresh")
+                self?.refresh(reason: .databaseChanged)
+                self?.refreshMonitoredQuickSwitchSummaries(force: false, configurationChanged: true)
             }
         )
         providerRefreshCoordinator = ProviderRefreshCoordinator(
@@ -961,9 +962,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     /// reads `providerChoicesCache` / `currentProviderNameCache`.
     private func reloadCurrentProviderNameCache(appType: String? = nil) {
         let resolvedAppType = appType ?? activeClient.appType
-        let choices = ccSwitchRepository.loadChoices(appType: resolvedAppType)
+        let choices: [ProviderChoice]
+        let current: CCSwitchProvider?
+        do {
+            choices = try ccSwitchRepository.loadChoicesChecked(appType: resolvedAppType)
+            current = try ccSwitchRepository.loadCurrentChecked(appType: resolvedAppType)
+        } catch {
+            SwitchLog.write("provider cache retained; reason=database_read_failed; sqlite_code=\((error as? CCSwitchReadError)?.sqliteCode ?? -1)", level: .warning, category: "provider.read")
+            return
+        }
         let name = choices.first(where: { $0.isCurrent })?.name ?? tr(.keyAppNotFound2)
-        let official = ccSwitchRepository.loadCurrent(appType: resolvedAppType)?.isOfficial == true
+        let official = current?.isOfficial == true
         let profile = official && resolvedAppType == "codex" ? officialQuotaClient.codexAccountProfile() : nil
         let publish = { [weak self] in
             guard let self, self.activeClient.appType == resolvedAppType else { return }
@@ -1059,6 +1068,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard lifecycle.beginStart() else { return }
+        if AggregationOverviewScrollView.diagnosticsEnabled {
+            let sha = Bundle.main.object(forInfoDictionaryKey: "BalanceBarBuildSHA") as? String ?? "unknown"
+            SwitchLog.write("Dev artifact; path=\(Bundle.main.bundlePath); pid=\(ProcessInfo.processInfo.processIdentifier); build_sha=\(sha)", category: "ui.aggregation")
+        }
         if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -1849,18 +1862,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func refreshMonitoredQuickSwitchSummaries(
         force: Bool,
-        extraClients: [AssistantClient] = []
+        extraClients: [AssistantClient] = [],
+        configurationChanged: Bool = false
     ) {
         var seen = Set<AssistantClient>()
         for client in [activeClient] + extraClients where seen.insert(client).inserted {
-            providerRefreshCoordinator.refreshQuickSwitchSummaries(force: force, for: client)
+            providerRefreshCoordinator.refreshQuickSwitchSummaries(force: force, for: client, configurationChanged: configurationChanged)
         }
         for target in notificationCoordinator.monitoredNotificationTargets()
         where seen.insert(target.client).inserted {
             providerRefreshCoordinator.refreshQuickSwitchSummaries(
                 force: force,
                 for: target.client,
-                providerIDs: target.providerIDs
+                providerIDs: target.providerIDs,
+                configurationChanged: configurationChanged
             )
         }
     }
@@ -2138,11 +2153,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func refresh(reason: BalanceRefreshReason) {
         let client = activeClient
+        SwitchLog.write("provider refresh triggered; reason=\(reason); client=\(client.rawValue); force=\(reason.forcesStandardProviderBalance)",
+            level: .debug, category: "refresh", throttleKey: "provider-refresh-\(reason)", minimumInterval: 1)
         providerRefreshCoordinator.performAsync { [weak self] in
             guard let self else { return }
             if client == .codex, self.providerRefreshCoordinator.refreshAggregation(
                 reader: self.aggregationRepository, force: reason.forcesStandardProviderBalance) { return }
-            let current = self.ccSwitchRepository.loadCurrent(appType: client.appType)
+            let current: CCSwitchProvider?
+            do { current = try self.ccSwitchRepository.loadCurrentChecked(appType: client.appType) }
+            catch {
+                SwitchLog.write("provider refresh deferred; reason=database_read_failed; sqlite_code=\((error as? CCSwitchReadError)?.sqliteCode ?? -1); client=\(client.rawValue)",
+                    level: .warning, category: "provider.read")
+                return
+            }
             self.reloadCurrentProviderNameCache(appType: client.appType)
             guard let current else {
                 SwitchLog.write(

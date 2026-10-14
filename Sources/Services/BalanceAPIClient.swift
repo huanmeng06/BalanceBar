@@ -134,8 +134,10 @@ final class BalanceAPIClient {
         let key = Self.scopedRequestKey(query: query, client: client, providerID: providerID)
         let registry = inFlight
         guard let token = registry.register(key: key, completion: completion) else {
+            SwitchLog.write("balance transport coalesced; scope_omitted=true", level: .debug, category: "refresh.transport")
             return false
         }
+        SwitchLog.write("balance transport started; scope_omitted=true", level: .debug, category: "refresh.transport")
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"

@@ -281,8 +281,10 @@ final class OfficialQuotaClient {
         )
         let registry = inFlight
         guard let generation = registry.register(key: key, completion: completion) else {
+            SwitchLog.write("official-quota transport coalesced; scope_omitted=true", level: .debug, category: "refresh.transport")
             return false
         }
+        SwitchLog.write("official-quota transport started; scope_omitted=true", level: .debug, category: "refresh.transport")
 
         let parser = self.parser
         let task = session.dataTask(with: request) { data, response, error in

@@ -760,6 +760,71 @@ final class MenuBarTextView: NSView {
 final class AggregationOverviewScrollView: NSScrollView {
     private var wheelMonitor: Any?
     private var isMenuContentVisible = false
+    private var pendingDistanceFromTop: CGFloat?
+    private var isRestoringViewport = false
+    private var lastGeometry: String?
+    var diagnosticContext: (() -> String)?
+
+    static var diagnosticsEnabled: Bool {
+        Bundle.main.bundleIdentifier?.hasPrefix("com.huanmeng06.BalanceBar.dev") == true
+            || ProcessInfo.processInfo.environment["BALANCEBAR_AGGREGATION_DIAGNOSTICS"] == "1"
+    }
+
+    func restoreViewport(distanceFromTop: CGFloat) {
+        pendingDistanceFromTop = max(0, distanceFromTop)
+        tile()
+        layoutSubtreeIfNeeded()
+        constrainViewport(reason: "placement")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        tile()
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        constrainViewport(reason: "mount")
+    }
+
+    override func layout() {
+        super.layout()
+        constrainViewport(reason: "layout")
+    }
+
+    private func constrainViewport(reason: String) {
+        guard !isRestoringViewport, let documentView,
+              contentView.bounds.width > 0, contentView.bounds.height > 0 else { return }
+        isRestoringViewport = true
+        defer { isRestoringViewport = false }
+        let maximum = max(0, documentView.frame.height - contentView.bounds.height)
+        let desired = pendingDistanceFromTop.map { maximum - $0 } ?? contentView.bounds.origin.y
+        let origin = NSPoint(x: 0, y: min(maximum, max(0, desired)))
+        pendingDistanceFromTop = nil
+        if contentView.bounds.origin != origin { contentView.scroll(to: origin) }
+        reflectScrolledClipView(contentView)
+        logGeometry(reason: reason)
+    }
+
+    func logGeometry(reason: String) {
+        guard Self.diagnosticsEnabled, let documentView else { return }
+        let visible = contentView.documentVisibleRect
+        let cards = documentView.subviews.filter { $0.identifier?.rawValue.hasPrefix("aggregation.provider.") == true }
+        func cardRect(_ wrapper: NSView) -> NSRect {
+            let card = wrapper.subviews.first { !($0 is NSTextField) } ?? wrapper
+            return documentView.convert(card.bounds, from: card)
+        }
+        let count = cards.filter { !$0.isHidden && !cardRect($0).intersection(visible).isEmpty }.count
+        let geometry = "scroll=\(frame); clip=\(contentView.bounds); document=\(documentView.frame); visible=\(visible); attached=\(window != nil); window_visible=\(window?.isVisible ?? false); occlusion_visible=\(window?.occlusionState.contains(.visible) ?? false); document_hidden=\(documentView.isHidden); alpha=\(alphaValue); intersections=\(count); cards=\(cards.count)"
+        let context = diagnosticContext?() ?? ""
+        let signature = reason + "|" + geometry + "|" + context
+        guard lastGeometry != signature else { return }
+        lastGeometry = signature
+        let frames = cards.prefix(16).enumerated().map {
+            "index=\($0.offset),frame=\(cardRect($0.element)),hidden=\($0.element.isHidden),intersection=\(cardRect($0.element).intersection(visible))"
+        }.joined(separator: "; ")
+        SwitchLog.write("aggregation geometry; reason=\(reason); view=\(ObjectIdentifier(self)); \(geometry); \(context); [\(frames)]",
+            level: .debug, category: "ui.aggregation", throttleKey: "aggregation-geometry-\(reason)", minimumInterval: 0.25)
+    }
 
     func setMenuContentVisible(_ visible: Bool) {
         guard isMenuContentVisible != visible else { return }

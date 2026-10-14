@@ -352,3 +352,53 @@ extension CCSwitchRepositoryTests {
         XCTAssertNotEqual(before.configurationRevision, after.configurationRevision)
     }
 }
+
+
+extension CCSwitchRepositoryTests {
+    func testCheckedReadsDistinguishLockedDatabaseFromMissingCurrentProvider() throws {
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { try? execute(db, sql: "ROLLBACK") }
+            XCTAssertThrowsError(try repository.loadCurrentChecked(appType: "codex")) { error in
+                guard case CCSwitchReadError.sqlite(SQLITE_BUSY) = error else { return XCTFail("expected busy") }
+            }
+            XCTAssertThrowsError(try repository.loadChoicesChecked(appType: "codex"))
+        }
+        XCTAssertEqual(try repository.loadCurrentChecked(appType: "codex")?.id, "codex-custom")
+        XCTAssertNil(try repository.loadCurrentChecked(appType: "missing-app"))
+    }
+
+    func testOptionalNotesSupportsOldSchemaAndChangesWithoutInvalidatingRequestIdentity() throws {
+        let before = try repository.loadSummarySourcesChecked(appType: "codex")
+        XCTAssertTrue(before.allSatisfy { $0.notes == nil })
+        try withDatabase { db in
+            try execute(db, sql: "ALTER TABLE providers ADD COLUMN notes TEXT")
+            try execute(db, sql: "UPDATE providers SET notes='  Fixture note  ' WHERE id='codex-custom'")
+        }
+        let after = try repository.loadSummarySourcesChecked(appType: "codex")
+        XCTAssertEqual(after.first?.notes, "Fixture note")
+        XCTAssertEqual(after.first?.configurationRevision, before.first?.configurationRevision)
+        XCTAssertNil(after.last?.notes)
+    }
+}
+
+
+extension CCSwitchRepositoryTests {
+    func testBusyDatabasePreventsQuickSwitchBeforeSettingsOrProviderMutation() throws {
+        let reader = aggregationReader(try aggregationState(mode: "direct"))
+        let failed = expectation(description: "busy switch fails before process or config side effects")
+        let coordinator = ProviderSwitchCoordinator(repository: repository, aggregationRepository: reader,
+            actions: ProviderSwitchActions(changed: { XCTFail("busy read must not switch") }, failed: { message in
+                XCTAssertEqual(message, tr(.keyCCSwitchRepositoryUnableToOpenTheCcSwitchDatabase))
+                failed.fulfill()
+            }))
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { try? execute(db, sql: "ROLLBACK") }
+            coordinator.switchProvider(providerID: "codex-official", appType: "codex", providerName: "Fixture")
+            wait(for: [failed], timeout: 2)
+        }
+        XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+    }
+}

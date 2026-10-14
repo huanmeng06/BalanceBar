@@ -32,7 +32,12 @@ final class ProviderSwitchCoordinator {
                 self.actions.failed(tr(.keyAggregationManageInCCSwitch))
                 return
             }
-            let current = self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })
+            let current: ProviderChoice?
+            do { current = try self.repository.loadChoicesChecked(appType: appType).first(where: { $0.isCurrent }) }
+            catch {
+                self.actions.failed(tr(.keyCCSwitchRepositoryUnableToOpenTheCcSwitchDatabase))
+                return
+            }
             guard current?.id != providerID else { return }
             let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.ccswitch.desktop").first
             let applicationURL = running?.bundleURL ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop")

@@ -3641,6 +3641,10 @@ private func createProviderFixture(at databaseURL: URL, name: String, appType: S
     CREATE TABLE providers (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        settings_config TEXT NOT NULL DEFAULT '{}',
+        meta TEXT NOT NULL DEFAULT '{}',
+        category TEXT,
+        website_url TEXT,
         app_type TEXT NOT NULL,
         is_current INTEGER NOT NULL,
         sort_index INTEGER,

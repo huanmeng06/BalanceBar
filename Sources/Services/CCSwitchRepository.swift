@@ -8,6 +8,12 @@ struct CCSwitchProvider {
     let isOfficial: Bool
     let query: BalanceQuery?
     let queryFailure: BalanceQueryFailure?
+    var configurationRevision: String = ""
+}
+
+enum CCSwitchReadError: Error {
+    case sqlite(Int32)
+    var sqliteCode: Int32 { switch self { case .sqlite(let code): return code } }
 }
 
 final class CCSwitchRepository {
@@ -69,35 +75,44 @@ final class CCSwitchRepository {
     }
 
     func loadCurrent(appType: String) -> CCSwitchProvider? {
+        try? loadCurrentChecked(appType: appType)
+    }
+
+    func loadCurrentChecked(appType: String) throws -> CCSwitchProvider? {
         var database: OpaquePointer?
-        guard sqlite3_open_v2(
-            databaseURL.path,
-            &database,
-            SQLITE_OPEN_READONLY,
-            nil
-        ) == SQLITE_OK, let database else { return nil }
+        let openCode = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
+        guard openCode == SQLITE_OK, let database else {
+            if let database { sqlite3_close(database) }
+            throw CCSwitchReadError.sqlite(openCode)
+        }
+        sqlite3_busy_timeout(database, 100)
         defer { sqlite3_close(database) }
 
         let sql = "SELECT id, name, settings_config, meta, category, website_url FROM providers WHERE app_type = ? AND is_current = 1 LIMIT 1"
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { return nil }
+        let prepareCode = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+        guard prepareCode == SQLITE_OK, let statement else { throw CCSwitchReadError.sqlite(prepareCode) }
         defer { sqlite3_finalize(statement) }
         bind(appType, to: statement, at: 1)
-        guard sqlite3_step(statement) == SQLITE_ROW,
-              let id = text(from: statement, column: 0),
+        let stepCode = sqlite3_step(statement)
+        if stepCode == SQLITE_DONE { return nil }
+        guard stepCode == SQLITE_ROW else { throw CCSwitchReadError.sqlite(stepCode) }
+        guard let id = text(from: statement, column: 0),
               let name = text(from: statement, column: 1),
               let configText = text(from: statement, column: 2),
               let metaText = text(from: statement, column: 3) else { return nil }
         let category = text(from: statement, column: 4)
         let websiteText = text(from: statement, column: 5)
+        let revision = SHA256.hash(data: Data([id, name, configText, metaText, category ?? "", websiteText ?? ""].joined(separator: "\u{0}").utf8))
+            .map { String(format: "%02x", $0) }.joined()
         guard category != "official" else {
             return CCSwitchProvider(
                 id: id,
                 name: name,
                 isOfficial: true,
                 query: nil,
-                queryFailure: nil
+                queryFailure: nil,
+                configurationRevision: revision
             )
         }
 
@@ -114,11 +129,16 @@ final class CCSwitchRepository {
             name: name,
             isOfficial: false,
             query: query,
-            queryFailure: queryFailure
+            queryFailure: queryFailure,
+            configurationRevision: revision
         )
     }
 
     func loadChoices(appType: String) -> [ProviderChoice] {
+        (try? loadChoicesChecked(appType: appType)) ?? []
+    }
+
+    func loadChoicesChecked(appType: String) throws -> [ProviderChoice] {
         let observer = loadChoicesObserver
         observer?()
         let fileManager = FileManager.default
@@ -144,8 +164,9 @@ final class CCSwitchRepository {
                 level: .error,
                 category: "provider.read"
             )
-            return []
+            throw CCSwitchReadError.sqlite(openCode)
         }
+        sqlite3_busy_timeout(database, 100)
         defer { sqlite3_close(database) }
 
         let sql = "SELECT id, name, is_current FROM providers WHERE app_type = ? ORDER BY COALESCE(sort_index, 999999), created_at, id"
@@ -157,7 +178,7 @@ final class CCSwitchRepository {
                 level: .error,
                 category: "provider.read"
             )
-            return []
+            throw CCSwitchReadError.sqlite(prepareCode)
         }
         defer { sqlite3_finalize(statement) }
         bind(appType, to: statement, at: 1)
@@ -174,7 +195,7 @@ final class CCSwitchRepository {
                     level: .error,
                     category: "provider.read"
                 )
-                break
+                throw CCSwitchReadError.sqlite(stepCode)
             }
             rowCount += 1
             guard let id = text(from: statement, column: 0),
@@ -228,7 +249,19 @@ final class CCSwitchRepository {
 
         if providerIDs?.isEmpty == true { return [] }
         let filter = providerIDs.map { " AND id IN (" + Array(repeating: "?", count: $0.count).joined(separator: ",") + ")" } ?? ""
-        let sql = "SELECT id, name, settings_config, meta, category, website_url, created_at FROM providers WHERE app_type = ?" + filter + " ORDER BY COALESCE(sort_index, 999999), created_at, id"
+        var columns: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "PRAGMA table_info(providers)", -1, &columns, nil) == SQLITE_OK,
+              let columns else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        var hasNotes = false
+        var columnStep = sqlite3_step(columns)
+        while columnStep == SQLITE_ROW {
+            if text(from: columns, column: 1) == "notes" { hasNotes = true }
+            columnStep = sqlite3_step(columns)
+        }
+        sqlite3_finalize(columns)
+        guard columnStep == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        let notesColumn = hasNotes ? "notes" : "NULL"
+        let sql = "SELECT id, name, settings_config, meta, category, website_url, created_at, \(notesColumn) FROM providers WHERE app_type = ?" + filter + " ORDER BY COALESCE(sort_index, 999999), created_at, id"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
               let statement else { throw CCSwitchAggregationReadError.databaseUnavailable }
@@ -247,6 +280,8 @@ final class CCSwitchRepository {
             let category = text(from: statement, column: 4)
             let websiteText = text(from: statement, column: 5)
             let websiteURL = safeWebsiteURL(from: websiteText)
+            let rawNotes = text(from: statement, column: 7)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let notes = rawNotes?.isEmpty == false ? rawNotes : nil
 
             let revisionData = Data([id, name, settingsText, metaText, category ?? "", websiteText ?? "", String(sqlite3_column_int64(statement, 6))].joined(separator: "\u{0}").utf8)
             let revision = SHA256.hash(data: revisionData).map { String(format: "%02x", $0) }.joined()
@@ -266,7 +301,8 @@ final class CCSwitchRepository {
                     officialAccessToken: accessToken,
                     websiteURL: websiteURL,
                     configurationRevision: revision,
-                    officialAccount: profile
+                    officialAccount: profile,
+                    notes: notes
                 ))
             } else {
                 let query = BalanceQuery.make(
@@ -282,7 +318,8 @@ final class CCSwitchRepository {
                     query: query,
                     officialAccessToken: nil,
                     websiteURL: websiteURL,
-                    configurationRevision: revision
+                    configurationRevision: revision,
+                    notes: notes
                 ))
             }
         }
