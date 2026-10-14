@@ -78,18 +78,24 @@ final class DashboardComponentsTests: XCTestCase {
         item.view = host
         menu.addItem(item)
         window.contentView = host
+        let section = NSView(frame: host.bounds)
+        host.addSubview(section)
         let quota = paceWindow(reset: now.addingTimeInterval(9_000))
         let view = QuotaProgressPaceView(percentage: 50, window: quota,
             identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
             now: now, colorConfiguration: .default)
         view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
-        host.addSubview(view)
+        section.addSubview(view)
         view.layoutSubtreeIfNeeded()
         host.setPaceMenuTracking(true)
         let inside = host.convert(NSPoint(x: view.markerCenterX, y: 9), from: view)
         host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
         XCTAssertFalse(view.hasPendingShowForTesting)
-        host.forwardHover(atHostPoint: inside)
+        let enter = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseEntered,
+            location: view.convert(NSPoint(x: view.markerCenterX, y: 9), to: nil), modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, trackingNumber: 1, userData: nil))
+        view.mouseEntered(with: enter)
         XCTAssertTrue(view.isHovered)
         XCTAssertTrue(view.hasPendingShowForTesting)
         host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
@@ -107,9 +113,10 @@ final class DashboardComponentsTests: XCTestCase {
             identity: OverviewNumericPresentation.identity(for: weekly, provider: "Official"),
             now: now, colorConfiguration: .default)
         weeklyView.frame = NSRect(x: 10, y: 40, width: 200, height: 18)
-        host.addSubview(weeklyView)
+        section.addSubview(weeklyView)
         host.setPaceMenuTracking(true)
-        host.forwardHover(atHostPoint: host.convert(NSPoint(x: weeklyView.markerCenterX, y: 9), from: weeklyView))
+        weeklyView.mouseMoved(with: makeMouseEvent(type: .mouseMoved,
+            location: weeklyView.convert(NSPoint(x: weeklyView.markerCenterX, y: 9), to: nil)))
         XCTAssertFalse(view.hasPendingShowForTesting)
         XCTAssertTrue(weeklyView.hasPendingShowForTesting)
         host.setPaceMenuTracking(false)
@@ -124,6 +131,99 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(view.hasPendingShowForTesting)
         XCTAssertFalse(view.hasPendingCloseForTesting)
         XCTAssertFalse(view.isTooltipVisible)
+    }
+
+    func testPaceTooltipTimersAndSwitchingInsideRealMenuTrackingLoop() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let menu = NSMenu(title: "Quota pace tracking regression")
+        let item = NSMenuItem()
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
+        let section = NSView(frame: host.bounds)
+        host.addSubview(section)
+        let five = paceWindow(reset: now.addingTimeInterval(9_000))
+        let week = paceWindow(reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        let views = [five, week].enumerated().map { index, quota in
+            let view = QuotaProgressPaceView(percentage: 50, window: quota,
+                identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+                now: now, colorConfiguration: .default)
+            view.frame = NSRect(x: 10, y: 10 + CGFloat(index) * 30, width: 200, height: 18)
+            section.addSubview(view)
+            return view
+        }
+        item.view = host
+        menu.addItem(item)
+        host.setMenuContentVisible(true)
+        var stage = 0
+        var attempts = 0
+        var changedAt = Date()
+        func enter(_ view: QuotaProgressPaceView) {
+            let point = view.convert(NSPoint(x: view.markerCenterX, y: 9), to: nil)
+            let event = NSEvent.enterExitEvent(with: .mouseEntered, location: point, modifierFlags: [],
+                timestamp: 0, windowNumber: host.window?.windowNumber ?? 0, context: nil,
+                eventNumber: 1, trackingNumber: 1, userData: nil)!
+            view.mouseEntered(with: event)
+        }
+        let probe = Timer(timeInterval: 0.02, repeats: true) { timer in
+            attempts += 1
+            guard attempts < 100 else {
+                XCTFail("Real menu tracking probe timed out at stage \(stage)")
+                timer.invalidate()
+                menu.cancelTracking()
+                return
+            }
+            guard host.window != nil else { return }
+            let elapsed = Date().timeIntervalSince(changedAt)
+            switch stage {
+            case 0:
+                host.layoutSubtreeIfNeeded()
+                host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+                XCTAssertFalse(views[0].isHovered)
+                enter(views[0])
+                XCTAssertTrue(views[0].hasPendingShowForTesting)
+                XCTAssertFalse(views[0].isTooltipVisible)
+                changedAt = Date()
+                stage = 1
+            case 1 where elapsed >= 0.36:
+                XCTAssertTrue(views[0].isTooltipVisible, "300ms timer must present inside NSMenu tracking")
+                host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+                XCTAssertTrue(views[0].hasPendingCloseForTesting)
+                changedAt = Date()
+                stage = 2
+            case 2 where elapsed >= 0.04:
+                enter(views[0])
+                XCTAssertFalse(views[0].hasPendingCloseForTesting)
+                changedAt = Date()
+                stage = 3
+            case 3 where elapsed >= 0.14:
+                XCTAssertTrue(views[0].isTooltipVisible, "Cancelled old close must not dismiss after reentry")
+                enter(views[1])
+                XCTAssertFalse(views[0].isTooltipVisible)
+                XCTAssertTrue(views[1].isTooltipVisible, "A visible tooltip switches without another 300ms delay")
+                host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+                changedAt = Date()
+                stage = 4
+            case 4 where elapsed >= 0.14:
+                XCTAssertFalse(views[1].isTooltipVisible)
+                enter(views[0])
+                XCTAssertTrue(views[0].hasPendingShowForTesting)
+                host.setMenuContentVisible(false)
+                stage = 5
+                timer.invalidate()
+                menu.cancelTracking()
+            default: break
+            }
+        }
+        RunLoop.main.add(probe, forMode: .eventTracking)
+        menu.popUp(positioning: nil, at: .zero, in: nil)
+        probe.invalidate()
+        host.setMenuContentVisible(false)
+        XCTAssertEqual(stage, 5, "Menu must remain open through the native popover lifecycle")
+        for view in views {
+            XCTAssertFalse(view.isTooltipVisible)
+            XCTAssertFalse(view.hasPendingShowForTesting)
+            XCTAssertFalse(view.hasPendingCloseForTesting)
+        }
+        menu.removeAllItems()
     }
 
     func testPaceUpdateInvalidationAndNaturalLocalizedCopy() throws {
@@ -1632,6 +1732,47 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(AccountEmailTextField.tooltipDelay, 0.15, accuracy: 0.001)
     }
 
+    func testForecastTooltipColorsResolveAgainstDisplayAppearanceAfterCreation() throws {
+        let content = DashboardForecastTooltipContent(title: "Official reset signal", body: "Body text",
+            source: "Source", disclaimer: "Disclaimer")
+        let appearances: [NSAppearance.Name] = [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua]
+        for creationName in appearances {
+            let creation = try XCTUnwrap(NSAppearance(named: creationName))
+            var controller: DashboardForecastTooltipViewController!
+            creation.performAsCurrentDrawingAppearance {
+                controller = DashboardForecastTooltipViewController(content: content)
+                controller.loadViewIfNeeded()
+            }
+            let labels = controller.view.subviews.compactMap { $0 as? NSTextField }
+            XCTAssertEqual(labels.count, 4)
+            for displayName in appearances + [.aqua, .darkAqua, .aqua] {
+                controller.view.appearance = try XCTUnwrap(NSAppearance(named: displayName))
+                for (index, label) in labels.enumerated() {
+                    var actual: NSColor!
+                    var expected: NSColor!
+                    label.effectiveAppearance.performAsCurrentDrawingAppearance {
+                        actual = label.textColor?.usingColorSpace(.deviceRGB)
+                        expected = (index < 2 ? NSColor.labelColor : NSColor.secondaryLabelColor).usingColorSpace(.deviceRGB)
+                    }
+                    let color = try XCTUnwrap(actual)
+                    let semantic = try XCTUnwrap(expected)
+                    XCTAssertEqual(color.redComponent, semantic.redComponent, accuracy: 0.001)
+                    XCTAssertEqual(color.greenComponent, semantic.greenComponent, accuracy: 0.001)
+                    XCTAssertEqual(color.blueComponent, semantic.blueComponent, accuracy: 0.001)
+                    XCTAssertEqual(color.alphaComponent, semantic.alphaComponent, accuracy: 0.001)
+                    if index == 1 {
+                        let brightness = (color.redComponent + color.greenComponent + color.blueComponent) / 3
+                        if displayName == .aqua || displayName == .accessibilityHighContrastAqua {
+                            XCTAssertLessThan(brightness, 0.5, "Body must not remain white after dark creation")
+                        } else {
+                            XCTAssertGreaterThan(brightness, 0.5, "Body must not remain black after light creation")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     func testForecastTooltipHasHierarchyAndFitsEveryLanguage() throws {
         let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-07T09:21:00Z"))
         let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
@@ -1770,6 +1911,33 @@ final class DashboardComponentsTests: XCTestCase {
         host.removeFromSuperview()
         XCTAssertFalse(link.isHoverHintScheduled)
         XCTAssertFalse(link.isHoverHintVisible)
+    }
+
+    func testForecastContentRefreshCancelsStaleHintButPreservesUnchangedHint() {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        let link = HoverLinkTextField(text: "83%")
+        link.frame = NSRect(x: 8, y: 2, width: 200, height: 20)
+        link.hoverHintDelay = 0.5
+        let first = DashboardForecastTooltipContent(title: "Source", body: "Forecast", source: "11:00", disclaimer: "Hint")
+        link.updateForecastTooltipContent(first)
+        host.addSubview(link)
+        link.layout()
+        host.track(link)
+        let point = host.convert(link.visibleTextHitRect.center, from: link)
+        host.forwardHover(atHostPoint: point)
+        XCTAssertTrue(link.isHoverHintScheduled)
+        link.updateForecastTooltipContent(first)
+        XCTAssertTrue(link.isHoverHintScheduled)
+        let latest = DashboardForecastTooltipContent(title: "Source", body: "Forecast", source: "11:05", disclaimer: "Hint")
+        link.updateForecastTooltipContent(latest)
+        XCTAssertFalse(link.isHoverHintScheduled)
+        XCTAssertFalse(link.isHoverHintVisible)
+        XCTAssertEqual(link.forecastTooltipContent, latest)
+        XCTAssertEqual(link.hoverHint, latest.plainText)
+        host.forwardHover(atHostPoint: NSPoint(x: 219, y: 23))
+        host.forwardHover(atHostPoint: point)
+        XCTAssertTrue(link.isHoverHintScheduled)
+        host.forwardHover(atHostPoint: NSPoint(x: 219, y: 23))
     }
 
     func testHoverLinkAlignmentChangesUpdateDrawingParagraphAndHoverGeometry() throws {

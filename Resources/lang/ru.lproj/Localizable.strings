@@ -466,6 +466,7 @@
 "codex.banked_reset.tooltip.disclaimer" = "Сторонний прогноз, не гарантия времени сброса этого аккаунта или выдачи карты сброса. Уверенность — категория модели, только для справки.";
 "codex.banked_reset.probability_24h" = "За 24 ч";
 "codex.banked_reset.probability_48h" = "За 48 ч";
+"codex.banked_reset.probability_48h_format" = "За 48 ч %1$@";
 "codex.banked_reset.high_probability" = "Выс. вер.";
 "codex.banked_reset.official_hint_no_time" = "Офиц. подсказка · Нет времени";
 "codex.banked_reset.official_hint_time" = "Офиц. подсказка · Есть время";

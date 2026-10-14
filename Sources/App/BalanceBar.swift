@@ -2340,9 +2340,9 @@ enum BalanceBarMain {
 // so the probe can verify wrapping and overlap headlessly.
 enum ErrorCardLayout {
     static let cardWidth: CGFloat = 304
-    static let horizontalInset: CGFloat = 14
+    static let horizontalInset: CGFloat = OverviewLayoutMetrics.default.horizontalInset
     static let contentWidth: CGFloat = cardWidth - horizontalInset * 2
-    static let detailWidth: CGFloat = 128
+    static let detailWidth: CGFloat = amountX - horizontalInset - 7
     static let amountWidth: CGFloat = 141
     static let amountX: CGFloat = cardWidth - horizontalInset - amountWidth
     static let refreshTimeWidth: CGFloat = 81

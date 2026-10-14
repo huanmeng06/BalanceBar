@@ -466,6 +466,7 @@
 "codex.banked_reset.tooltip.disclaimer" = "第三方预测，不代表当前账户的确定重置时间，也不保证发放重置卡；置信度由模型分类得出，仅供参考。";
 "codex.banked_reset.probability_24h" = "24 小时内";
 "codex.banked_reset.probability_48h" = "48 小时内";
+"codex.banked_reset.probability_48h_format" = "48 小时内 %1$@";
 "codex.banked_reset.high_probability" = "高概率";
 "codex.banked_reset.official_hint_no_time" = "官方重置提示 · 暂无具体时间点";
 "codex.banked_reset.official_hint_time" = "官方重置提示 · 具体时间点";

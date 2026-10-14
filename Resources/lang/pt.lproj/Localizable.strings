@@ -466,6 +466,7 @@
 "codex.banked_reset.tooltip.disclaimer" = "Previsão de terceiros, sem garantia do horário de reset desta conta ou de cartões de reset. A confiança é uma categoria do modelo, apenas para referência.";
 "codex.banked_reset.probability_24h" = "Em 24 h";
 "codex.banked_reset.probability_48h" = "Em 48 h";
+"codex.banked_reset.probability_48h_format" = "Em 48 h %1$@";
 "codex.banked_reset.high_probability" = "Alta prob.";
 "codex.banked_reset.official_hint_no_time" = "Aviso oficial · Sem hora específica";
 "codex.banked_reset.official_hint_time" = "Aviso oficial · Hora específica";

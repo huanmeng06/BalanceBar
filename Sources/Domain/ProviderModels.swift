@@ -183,6 +183,98 @@ enum OpenCodexCardCategory: Equatable, Hashable {
     }
 }
 
+/// Shared spacing contract for the overview card. Values describe one
+/// layout layer only: section spacing never changes text or ticket spacing.
+struct OverviewLayoutMetrics: Equatable {
+    let horizontalInset: CGFloat
+    let sectionSpacing: CGFloat
+    let subsectionSpacing: CGFloat
+    let quotaRowSpacing: CGFloat
+    let titleSubtitleSpacing: CGFloat
+    let subtitleProgressSpacing: CGFloat
+    let ticketSpacing: CGFloat
+
+    static let `default` = Self(
+        horizontalInset: 16,
+        sectionSpacing: 22,
+        subsectionSpacing: 16,
+        quotaRowSpacing: 12,
+        titleSubtitleSpacing: 2,
+        subtitleProgressSpacing: 7,
+        ticketSpacing: 8
+    )
+}
+
+enum OpenCodexOverviewSectionID: Hashable {
+    case account
+    case fiveHour
+    case sevenDay
+    case otherQuota(String)
+    case legacyQuota
+    case lunaReserve
+    case resetProbability
+    case bankedReset
+
+    static func quota(_ window: OfficialQuotaWindow, index: Int) -> Self {
+        switch window.kind {
+        case .fiveHour: return .fiveHour
+        case .sevenDay: return .sevenDay
+        case .other: return .otherQuota(window.label)
+        }
+    }
+
+    var identifier: String {
+        switch self {
+        case .account: return "account"
+        case .fiveHour: return "fiveHour"
+        case .sevenDay: return "sevenDay"
+        case .otherQuota(let label): return "otherQuota.\(label)"
+        case .legacyQuota: return "legacyQuota"
+        case .lunaReserve: return "lunaReserve"
+        case .resetProbability: return "resetProbability"
+        case .bankedReset: return "bankedReset"
+        }
+    }
+}
+
+struct OpenCodexAccountSectionFrames: Equatable {
+    let title: CGRect
+    let refreshTime: CGRect
+    let account: CGRect?
+    let subscription: CGRect?
+
+    func offsetBy(dy: CGFloat) -> Self {
+        Self(title: title.offsetBy(dx: 0, dy: dy), refreshTime: refreshTime.offsetBy(dx: 0, dy: dy),
+             account: account?.offsetBy(dx: 0, dy: dy), subscription: subscription?.offsetBy(dx: 0, dy: dy))
+    }
+}
+
+/// Placement belongs to the card; all content belongs to the section's local
+/// coordinate system. Ticket frames are separately document-local.
+struct OpenCodexOverviewSectionLayout: Equatable {
+    let id: OpenCodexOverviewSectionID
+    let frame: CGRect
+    let row: OpenCodexQuotaRowFrames?
+    var header: OpenCodexAccountSectionFrames? = nil
+    var isVisible: Bool { true }
+    var height: CGFloat { frame.height }
+    var cardRow: OpenCodexQuotaRowFrames? { row?.offsetBy(dx: frame.minX, dy: frame.minY) }
+}
+
+enum OpenCodexTicketLayoutMode: Equatable {
+    case compact
+    case expanded
+}
+
+struct OpenCodexTicketTextMetrics: Equatable {
+    let titleWidth: CGFloat
+    let windowWidth: CGFloat
+    let resetWidth: CGFloat
+    let amountWidth: CGFloat
+
+    static let empty = Self(titleWidth: 0, windowWidth: 0, resetWidth: 0, amountWidth: 0)
+}
+
 /// Frames used by official quota and balance overview cards.
 /// Keeping these values in a pure helper makes the visual baseline testable
 /// without launching AppKit or the status menu.
@@ -205,16 +297,20 @@ struct OpenCodexCardFrames: Equatable {
     /// banked-reset section is hidden. Its amount is the large primary
     /// figure; `reset` is the data-source subtitle under the title.
     let bankedResetProbabilityRow: OpenCodexQuotaRowFrames?
-    /// Extra line under the data-source subtitle. Ordinary mode packs
-    /// 24h+48h; strong-signal mode uses the same slot for the gray
-    /// official-hint line.
+    /// Subtitle slot shared by the unified 48h forecast, official hint,
+    /// and countdown progress presentations.
     let bankedResetForecastMetrics: CGRect?
     let bankedResetForecastConfidence: CGRect?
+    /// Document-local frames for every ticket, including unscrolled 1–2 lists.
+    /// Never union these with card-coordinate section placements.
     let bankedResetDetailRows: [OpenCodexQuotaRowFrames]
     /// Host-coordinate clip for the detailed ticket list. Nil when the
     /// overview has no tickets. 1–2 tickets fill this rect; 3+ clip to
     /// `bankedResetTicketViewportMaxHeight` and scroll inside it.
     let bankedResetTicketViewport: CGRect?
+
+    /// Produced by the section compositor, never inferred from child frames.
+    var sectionLayouts: [OpenCodexOverviewSectionLayout] = []
 }
 
 struct OpenCodexQuotaRowFrames: Equatable {
@@ -248,9 +344,28 @@ struct OpenCodexQuotaRowFrames: Equatable {
     }
 }
 
+extension OpenCodexQuotaRowFrames {
+    func withResetVisible(_ visible: Bool) -> Self {
+        Self(quotaDetail: quotaDetail, reset: visible ? reset : .zero,
+             amount: amount, progress: progress, icon: icon, window: window, badge: badge, chrome: chrome)
+    }
+
+    func offsetBy(dx: CGFloat = 0, dy: CGFloat) -> Self {
+        func translated(_ rect: CGRect) -> CGRect {
+            rect.isEmpty ? .zero : rect.offsetBy(dx: dx, dy: dy)
+        }
+        return Self(quotaDetail: translated(quotaDetail), reset: translated(reset),
+                    amount: translated(amount), progress: translated(progress),
+                    icon: translated(icon), window: translated(window),
+                    badge: translated(badge), chrome: translated(chrome))
+    }
+}
+
 enum OpenCodexCardLayout {
     static let cardWidth: CGFloat = 304
-    static let horizontalInset: CGFloat = 14
+    static let showsSectionOutlines = false
+    static let metrics = OverviewLayoutMetrics.default
+    static let horizontalInset: CGFloat = metrics.horizontalInset
     static let contentWidth = cardWidth - horizontalInset * 2
     static let subscriptionWidth: CGFloat = 78
     static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
@@ -273,12 +388,12 @@ enum OpenCodexCardLayout {
     static let quotaDetailPointSize: CGFloat = 13
     static let quotaResetPointSize: CGFloat = 13
     static let quotaRowHeight: CGFloat = 60
-    static let quotaRowGap: CGFloat = 14
+    static let quotaRowGap: CGFloat = metrics.quotaRowSpacing
     static let quotaBottomInset: CGFloat = 8
     static let quotaTitleGap: CGFloat = 11
     static let quotaAmountOffset: CGFloat = 10
     static let quotaResetOffset: CGFloat = 20
-    static let quotaDetailOffset: CGFloat = 39
+    static let quotaDetailOffset: CGFloat = quotaResetOffset + quotaResetHeight + metrics.titleSubtitleSpacing
     static let quotaAmountHeight: CGFloat = 48
     static let quotaResetHeight: CGFloat = 17
     static let quotaDetailHeight: CGFloat = 18
@@ -287,15 +402,15 @@ enum OpenCodexCardLayout {
     /// `quotaRowHeight` so the unused gap under the subtitle shrinks;
     /// title/subtitle/amount stay the same distance from the row top.
     static let quotaProgressRowHeight: CGFloat = 52
-    static let quotaProgressResetOffset: CGFloat = 12
-    static let quotaProgressDetailOffset: CGFloat = 31
+    static let quotaProgressResetOffset: CGFloat = quotaProgressHeight + metrics.subtitleProgressSpacing
+    static let quotaProgressDetailOffset: CGFloat = quotaProgressResetOffset + quotaResetHeight + metrics.titleSubtitleSpacing
     /// Unused subtitle-to-bar slot removed from the original 60pt row.
     static var quotaProgressGapCompression: CGFloat {
         quotaRowHeight - quotaProgressRowHeight
     }
     /// Visible gap from a progress bar's top to the subtitle or link above it.
     static var quotaProgressTopGap: CGFloat {
-        quotaProgressResetOffset - quotaProgressHeight
+        metrics.subtitleProgressSpacing
     }
     /// Space from a progress-row top to its title, matching official 5h/7d.
     static var quotaTitleTopInset: CGFloat {
@@ -303,7 +418,7 @@ enum OpenCodexCardLayout {
     }
     /// Visible gap from a bar or 24h line to the next block's title.
     static var quotaVisibleBlockGap: CGFloat {
-        quotaRowGap + quotaTitleTopInset
+        metrics.sectionSpacing + quotaTitleTopInset
     }
     static var quotaProgressAmountOffset: CGFloat {
         max(0, quotaAmountOffset - quotaProgressGapCompression)
@@ -317,17 +432,19 @@ enum OpenCodexCardLayout {
     /// Keep this taller than the two-line summary so the type title is not
     /// marquee-truncated.
     static let bankedResetDetailRowHeight: CGFloat = 72
+    static let bankedResetExpandedDetailRowHeight: CGFloat = 96
     static let bankedResetTicketIconSize = CGSize(width: 31, height: 24)
     static let bankedResetTicketIconGap: CGFloat = 8
     static let bankedResetRemainingWidth: CGFloat = 120
-    static let bankedResetChromeInset: CGFloat = 8
+    static let bankedResetChromeInset: CGFloat = 12
     static let bankedResetChromeCornerRadius: CGFloat = 10
+    static let bankedResetTicketLineGap: CGFloat = 2
     /// Gap between the reset-card summary and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
     /// The probability footer and reset-card summary use the same visible
     /// section spacing as the standard quota blocks.
     static var bankedResetProbabilitySummaryGap: CGFloat {
-        quotaVisibleBlockGap
+        metrics.subsectionSpacing
     }
     /// The second visible row under the title/primary-value band. Ordinary
     /// mode packs 24h+48h; strong-signal mode shows a hint or time progress.
@@ -480,30 +597,34 @@ enum OpenCodexCardLayout {
     /// third so leftover cards remain obvious. 1–2 cards stay unclipped.
     static let bankedResetVisibleTicketLimit: CGFloat = 2.5
 
-    static func bankedResetTicketStackHeight(cardCount: Int) -> CGFloat {
+    static func bankedResetTicketStackHeight(cardCount: Int, rowHeight: CGFloat = bankedResetDetailRowHeight) -> CGFloat {
         guard cardCount > 0 else { return 0 }
-        return CGFloat(cardCount) * bankedResetDetailRowHeight
-            + CGFloat(cardCount - 1) * quotaRowGap
+        return CGFloat(cardCount) * rowHeight
+            + CGFloat(cardCount - 1) * metrics.ticketSpacing
     }
 
     static var bankedResetTicketViewportMaxHeight: CGFloat {
-        let fullVisibleRows = floor(bankedResetVisibleTicketLimit)
-        let partialRow = bankedResetVisibleTicketLimit - fullVisibleRows
-        return fullVisibleRows * bankedResetDetailRowHeight
-            + fullVisibleRows * quotaRowGap
-            + partialRow * bankedResetDetailRowHeight
+        bankedResetTicketViewportMaxHeight(rowHeight: bankedResetDetailRowHeight)
     }
 
-    static func bankedResetVisibleTicketStackHeight(cardCount: Int) -> CGFloat {
+    static func bankedResetTicketViewportMaxHeight(rowHeight: CGFloat) -> CGFloat {
+        let fullVisibleRows = floor(bankedResetVisibleTicketLimit)
+        let partialRow = bankedResetVisibleTicketLimit - fullVisibleRows
+        return fullVisibleRows * rowHeight
+            + fullVisibleRows * metrics.ticketSpacing
+            + partialRow * rowHeight
+    }
+
+    static func bankedResetVisibleTicketStackHeight(cardCount: Int, rowHeight: CGFloat = bankedResetDetailRowHeight) -> CGFloat {
         min(
-            bankedResetTicketStackHeight(cardCount: cardCount),
-            bankedResetTicketViewportMaxHeight
+            bankedResetTicketStackHeight(cardCount: cardCount, rowHeight: rowHeight),
+            bankedResetTicketViewportMaxHeight(rowHeight: rowHeight)
         )
     }
 
-    static func bankedResetTicketsNeedScroll(cardCount: Int) -> Bool {
-        bankedResetTicketStackHeight(cardCount: cardCount)
-            > bankedResetTicketViewportMaxHeight + 0.5
+    static func bankedResetTicketsNeedScroll(cardCount: Int, rowHeight: CGFloat = bankedResetDetailRowHeight) -> Bool {
+        bankedResetTicketStackHeight(cardCount: cardCount, rowHeight: rowHeight)
+            > bankedResetTicketViewportMaxHeight(rowHeight: rowHeight) + 0.5
     }
 
     static func frames(
@@ -522,13 +643,14 @@ enum OpenCodexCardLayout {
         bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
         includesBankedResetNearestExpiry: Bool = false,
         includesBankedResetForecastMetrics: Bool = true,
-        includesResetProbability: Bool? = nil
+        includesResetProbability: Bool? = nil,
+        bankedResetTicketMetrics: [OpenCodexTicketTextMetrics] = []
     ) -> OpenCodexCardFrames {
         let showsProbability = includesResetProbability ?? includesBankedReset
-        let recognizedWindowCount = officialQuotaWindows.filter { $0.kind != .other }.count
+        let hasWindows = !officialQuotaWindows.isEmpty
         if category == .quota,
-           recognizedWindowCount > 1 || includesLunaReserve || includesBankedReset || showsProbability {
-            return expandedQuotaFrames(
+           hasWindows || includesLunaReserve || includesBankedReset || showsProbability {
+            return composedQuotaFrames(
                 windows: officialQuotaWindows,
                 includesAccount: includesAccount,
                 includesSubscription: includesSubscription,
@@ -542,7 +664,8 @@ enum OpenCodexCardLayout {
                 bankedResetDisplayMode: bankedResetDisplayMode,
                 includesBankedResetNearestExpiry: includesBankedResetNearestExpiry,
                 includesBankedResetForecastMetrics: includesBankedResetForecastMetrics,
-                includesResetProbability: showsProbability
+                includesResetProbability: showsProbability,
+                bankedResetTicketMetrics: bankedResetTicketMetrics
             )
         }
 
@@ -556,57 +679,51 @@ enum OpenCodexCardLayout {
             let accountWidth = hasSubscription
                 ? accountWidth(forSubscriptionTextWidth: subscriptionTextWidth)
                 : contentWidth
+            // Preserve the scalar compatibility profile, but construct its
+            // local sections before exporting historical global frames.
+            let headerOrigin = 75 - textShift
+            let localHeader = OpenCodexAccountSectionFrames(
+                title: CGRect(x: horizontalInset, y: accountShift, width: 189, height: 20),
+                refreshTime: CGRect(x: refreshTimeX, y: accountShift + 1, width: 81, height: 17),
+                account: includesAccount ? CGRect(x: horizontalInset, y: 0, width: accountWidth, height: 17) : nil,
+                subscription: hasSubscription ? CGRect(x: subscriptionX, y: 0, width: subscriptionWidth, height: 17) : nil)
+            let header = localHeader.offsetBy(dy: headerOrigin)
+            let rowOrigin: CGFloat = includesQuotaProgress ? 8 : 0
+            let localRow = OpenCodexQuotaRowFrames(
+                quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift - rowOrigin, width: 128, height: quotaDetailHeight),
+                reset: CGRect(x: horizontalInset, y: 28 - textShift - rowOrigin, width: 128, height: quotaResetHeight),
+                amount: CGRect(x: amountX, y: max(0, 18 - textShift) - rowOrigin, width: amountWidth,
+                               height: includesQuotaProgress ? quotaAmountHeight : lunaReserveNoProgressAmountHeight),
+                progress: includesQuotaProgress ? CGRect(x: horizontalInset, y: 0, width: contentWidth, height: quotaProgressHeight) : .zero)
+            let row = localRow.offsetBy(dy: rowOrigin)
             return OpenCodexCardFrames(
                 cardSize: CGSize(width: cardWidth, height: 102 + accountShift - textShift),
-                title: CGRect(x: horizontalInset, y: 75 + accountShift - textShift, width: 189, height: 20),
-                refreshTime: CGRect(x: refreshTimeX, y: 76 + accountShift - textShift, width: 81, height: 17),
-                account: includesAccount
-                    ? CGRect(x: horizontalInset, y: 75 - textShift, width: accountWidth, height: 17)
-                    : nil,
-                subscription: hasSubscription
-                    ? CGRect(
-                        x: subscriptionX,
-                        y: 75 - textShift,
-                        width: subscriptionWidth,
-                        height: 17
-                    )
-                    : nil,
-                quotaDetail: CGRect(
-                    x: horizontalInset,
-                    y: 47 - textShift,
-                    width: 128,
-                    height: quotaDetailHeight
-                ),
-                reset: CGRect(
-                    x: horizontalInset,
-                    y: 28 - textShift,
-                    width: 128,
-                    height: quotaResetHeight
-                ),
-                amount: CGRect(
-                    x: amountX,
-                    y: max(0, 18 - textShift),
-                    width: amountWidth,
-                    height: includesQuotaProgress ? quotaAmountHeight : lunaReserveNoProgressAmountHeight
-                ),
-                progress: includesQuotaProgress
-                    ? CGRect(
-                        x: horizontalInset,
-                        y: 8,
-                        width: contentWidth,
-                        height: quotaProgressHeight
-                    )
-                    : nil,
+                title: header.title,
+                refreshTime: header.refreshTime,
+                account: header.account,
+                subscription: header.subscription,
+                quotaDetail: row.quotaDetail,
+                reset: row.reset,
+                amount: row.amount,
+                progress: includesQuotaProgress ? row.progress : nil,
                 linkPrefix: nil,
                 link: nil,
-                quotaRows: [],
+                quotaRows: [row],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
                 bankedResetProbabilityRow: nil,
                 bankedResetForecastMetrics: nil,
                 bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
-                bankedResetTicketViewport: nil
+                bankedResetTicketViewport: nil,
+                sectionLayouts: [
+                    .init(id: .account,
+                          frame: CGRect(x: 0, y: headerOrigin, width: cardWidth, height: 20 + accountShift),
+                          row: nil, header: localHeader),
+                    .init(id: .legacyQuota,
+                          frame: CGRect(x: 0, y: rowOrigin, width: cardWidth, height: 47 - textShift + quotaDetailHeight - rowOrigin),
+                          row: localRow)
+                ]
             )
         case .balance:
             let linkWidth: CGFloat = linkPrefixWidth == 62 ? 148 : 136
@@ -652,7 +769,7 @@ enum OpenCodexCardLayout {
         }
     }
 
-    private static func expandedQuotaFrames(
+    private static func composedQuotaFrames(
         windows: [OfficialQuotaWindow],
         includesAccount: Bool,
         includesSubscription: Bool,
@@ -666,7 +783,8 @@ enum OpenCodexCardLayout {
         bankedResetDisplayMode: CodexBankedResetDisplayMode,
         includesBankedResetNearestExpiry: Bool,
         includesBankedResetForecastMetrics: Bool,
-        includesResetProbability: Bool
+        includesResetProbability: Bool,
+        bankedResetTicketMetrics: [OpenCodexTicketTextMetrics]
     ) -> OpenCodexCardFrames {
         let windowCount = windows.count
         let rowHeight = includesQuotaProgress ? quotaProgressRowHeight : lunaReserveNoProgressRowHeight
@@ -679,14 +797,13 @@ enum OpenCodexCardLayout {
         let windowResetOffset = includesQuotaProgress
             ? quotaProgressResetOffset
             : quotaResetOffset
-        let rowGap = quotaRowGap
+        let ticketGap = metrics.ticketSpacing
         let bottomInset = quotaBottomInset
         let titleGap = quotaTitleGap
         let accountShift: CGFloat = includesAccount ? 19 : 0
         let reserveRowHeight = includesLunaReserve
             ? (includesLunaReserveProgress ? quotaProgressRowHeight : lunaReserveNoProgressRowHeight)
             : 0
-        let reserveGap = includesLunaReserve && windowCount > 0 ? rowGap : 0
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
         let showsForecastMetrics = includesResetProbability && includesBankedResetForecastMetrics
@@ -699,90 +816,58 @@ enum OpenCodexCardLayout {
         let cardSummaryHeight = includesBankedReset
             ? bankedResetSummaryHeight()
             : 0
-        let probabilityCardGap = includesBankedReset && includesResetProbability
-            ? bankedResetProbabilitySummaryGap
-            : 0
-        let bankedDetailHeight = bankedResetDetailRowHeight
-        let bankedVisibleTicketStackHeight = bankedResetVisibleTicketStackHeight(
-            cardCount: bankedDetailCount
-        )
-        let bankedTicketsNeedScroll = bankedResetTicketsNeedScroll(cardCount: bankedDetailCount)
+        let ticketContentMaxX = cardWidth - horizontalInset - bankedResetChromeInset
+        let ticketTextX = horizontalInset + bankedResetChromeInset
+            + bankedResetTicketIconSize.width + bankedResetTicketIconGap
+        let fullTicketTextWidth = ticketContentMaxX - ticketTextX
+        let ticketInputs = (0..<bankedDetailCount).map { index -> (mode: OpenCodexTicketLayoutMode, amountWidth: CGFloat, height: CGFloat) in
+            guard bankedResetTicketMetrics.indices.contains(index) else {
+                return (.compact, bankedResetRemainingWidth, bankedResetDetailRowHeight)
+            }
+            let measured = bankedResetTicketMetrics[index]
+            let textWidth = measured.windowWidth
+            // Preserve the existing column when it fits; otherwise reclaim unused
+            // countdown space before deciding that an additional line is needed.
+            let amountWidth = textWidth <= fullTicketTextWidth - bankedResetRemainingWidth - 6
+                && measured.amountWidth <= bankedResetRemainingWidth
+                ? bankedResetRemainingWidth : measured.amountWidth
+            let expanded = textWidth + amountWidth + 6 > fullTicketTextWidth
+            return (expanded ? .expanded : .compact, amountWidth,
+                    expanded ? bankedResetExpandedDetailRowHeight : bankedResetDetailRowHeight)
+        }
+        let ticketHeights = ticketInputs.map(\.height)
+        let ticketStackHeight = ticketHeights.reduce(0, +)
+            + CGFloat(max(0, bankedDetailCount - 1)) * ticketGap
+        // The viewport shows the first two complete tickets and half of the third,
+        // including mixed compact/expanded lists in their displayed order.
+        let ticketViewportHeight = ticketHeights.prefix(2).reduce(0, +)
+            + (ticketHeights.count > 2 ? ticketHeights[2] / 2 + ticketGap * 2
+               : CGFloat(max(0, ticketHeights.count - 1)) * ticketGap)
+        let bankedVisibleTicketStackHeight = min(ticketStackHeight, ticketViewportHeight)
         let bankedDetailBlockHeight = bankedDetailCount > 0
             ? bankedVisibleTicketStackHeight + bankedResetSummaryDetailGap
             : 0
-        let bankedBlockHeight = probabilityBlockHeight
-            + probabilityCardGap
-            + cardSummaryHeight
-            + bankedDetailBlockHeight
-        let bankedLeadingGap = (includesBankedReset || includesResetProbability)
-            && (windowCount > 0 || includesLunaReserve) ? rowGap : 0
-        let quotaLift = bankedBlockHeight + bankedLeadingGap
-        let rowAreaHeight = CGFloat(windowCount) * rowHeight
-            + CGFloat(max(0, windowCount - 1)) * rowGap
-            + reserveGap
-            + reserveRowHeight
-            + quotaLift
-        let baseTitleY = bottomInset + rowAreaHeight + titleGap
-        let titleY = baseTitleY + accountShift
-        let cardHeight = titleY + 20 + 7
-        let hasSubscription = includesAccount && includesSubscription
-        let accountWidth = hasSubscription
-            ? accountWidth(forSubscriptionTextWidth: subscriptionTextWidth)
-            : contentWidth
         let reserveInsertionIndex: Int? = {
             guard includesLunaReserve else { return nil }
             if let lunaReserveInsertionIndex {
                 return min(max(0, lunaReserveInsertionIndex), windowCount)
             }
-            guard let fiveHourIndex = windows.firstIndex(where: { $0.kind == .fiveHour }) else {
-                // Pro accounts currently expose only the 7-day window, so the
-                // Reserve belongs immediately above that first standard row.
-                return 0
-            }
-            return fiveHourIndex + 1
+            return windows.firstIndex(where: { $0.kind == .fiveHour }).map { $0 + 1 } ?? 0
         }()
-        let reserveRowsBelow: Int = {
-            guard includesLunaReserve else { return 0 }
-            guard let reserveInsertionIndex else { return windowCount }
-            return windowCount - reserveInsertionIndex
-        }()
-        let rows = windows.enumerated().map { index, _ in
-            let yWithoutReserve = bottomInset
-                + quotaLift
-                + CGFloat(windowCount - 1 - index) * (rowHeight + rowGap)
-            let isAboveReserve = reserveInsertionIndex.map { index < $0 } ?? false
-            let y = yWithoutReserve
-                + (isAboveReserve ? reserveRowHeight + reserveGap : 0)
-            return OpenCodexQuotaRowFrames(
-                quotaDetail: CGRect(
-                    x: horizontalInset,
-                    y: y + windowDetailOffset - windowContentShift,
-                    width: 128,
-                    height: quotaDetailHeight
-                ),
-                reset: CGRect(
-                    x: horizontalInset,
-                    y: y + windowResetOffset - windowContentShift,
-                    width: 128,
-                    height: quotaResetHeight
-                ),
-                // Same title+subtitle band as 重置概率. Progress stays at row origin.
-                amount: CGRect(
-                    x: amountX,
-                    y: y + windowResetOffset - windowContentShift,
-                    width: amountWidth,
-                    height: bankedResetTextBandAmountHeight
-                ),
-                progress: includesQuotaProgress
-                    ? CGRect(
-                        x: horizontalInset,
-                        y: y,
-                        width: contentWidth,
-                        height: quotaProgressHeight
-                    )
-                    : .zero
+        func metricRow(detailOffset: CGFloat, resetOffset: CGFloat,
+                       amountOffset: CGFloat, amountHeight: CGFloat, progress: Bool) -> OpenCodexQuotaRowFrames {
+            OpenCodexQuotaRowFrames(
+                quotaDetail: CGRect(x: horizontalInset, y: detailOffset, width: 128, height: quotaDetailHeight),
+                reset: CGRect(x: horizontalInset, y: resetOffset, width: 128, height: quotaResetHeight),
+                amount: CGRect(x: amountX, y: amountOffset, width: amountWidth, height: amountHeight),
+                progress: progress ? CGRect(x: horizontalInset, y: 0, width: contentWidth, height: quotaProgressHeight) : .zero
             )
         }
+        let localQuotaRow = metricRow(
+            detailOffset: windowDetailOffset - windowContentShift,
+            resetOffset: windowResetOffset - windowContentShift,
+            amountOffset: windowResetOffset - windowContentShift,
+            amountHeight: bankedResetTextBandAmountHeight, progress: includesQuotaProgress)
         let reserveContentShift = includesLunaReserveProgress
             ? 0
             : quotaRowHeight - lunaReserveNoProgressRowHeight
@@ -798,98 +883,69 @@ enum OpenCodexCardLayout {
         let reserveAmountHeight = includesLunaReserveProgress
             ? quotaAmountHeight
             : lunaReserveNoProgressAmountHeight
-        let lunaReserveRow = includesLunaReserve
-            ? OpenCodexQuotaRowFrames(
-                quotaDetail: CGRect(
-                    x: horizontalInset,
-                    y: bottomInset
-                        + quotaLift
-                        + CGFloat(reserveRowsBelow) * (rowHeight + rowGap)
-                        + reserveDetailOffset
-                        - reserveContentShift,
-                    width: 128,
-                    height: quotaDetailHeight
-                ),
-                reset: CGRect(
-                    x: horizontalInset,
-                    y: bottomInset
-                        + quotaLift
-                        + CGFloat(reserveRowsBelow) * (rowHeight + rowGap)
-                        + reserveResetOffset
-                        - reserveContentShift,
-                    width: 128,
-                    height: quotaResetHeight
-                ),
-                amount: CGRect(
-                    x: amountX,
-                    y: bottomInset
-                        + quotaLift
-                        + CGFloat(reserveRowsBelow) * (rowHeight + rowGap)
-                        + max(0, reserveAmountOffset - reserveContentShift),
-                    width: amountWidth,
-                    height: reserveAmountHeight
-                ),
-                progress: includesLunaReserveProgress
-                    ? CGRect(
-                        x: horizontalInset,
-                        y: bottomInset
-                            + quotaLift
-                            + CGFloat(reserveRowsBelow) * (rowHeight + rowGap),
-                        width: contentWidth,
-                        height: quotaProgressHeight
-                    )
-                    : .zero
-            )
+        let localReserveRow = includesLunaReserve
+            ? metricRow(
+                        detailOffset: reserveDetailOffset - reserveContentShift,
+                        resetOffset: reserveResetOffset - reserveContentShift,
+                        amountOffset: max(0, reserveAmountOffset - reserveContentShift),
+                        amountHeight: reserveAmountHeight, progress: includesLunaReserveProgress)
             : nil
-        let cardSummaryY = bottomInset + bankedDetailBlockHeight
-        let probabilityBottomY = cardSummaryY + cardSummaryHeight + probabilityCardGap
-        // The former source row is the probability subtitle. Keep it inside
-        // the same two-line band instead of creating a third forecast row.
-        let probabilityRowY = probabilityBottomY
-        // Row origin is the subtitle bottom. Title, subtitle, and amount
-        // keep the same two-line relationship; the unused progress-bar
-        // slot is not part of the block height.
-        func quotaBandFrames(
-            rowY: CGFloat,
-            showsReset: Bool,
-            resetY: CGFloat? = nil,
-            resetWidth: CGFloat = 128
-        ) -> OpenCodexQuotaRowFrames {
-            OpenCodexQuotaRowFrames(
-                quotaDetail: CGRect(
-                    x: horizontalInset,
-                    y: rowY + quotaDetailOffset - quotaResetOffset,
-                    width: 128,
-                    height: quotaDetailHeight
-                ),
-                reset: showsReset
-                    ? CGRect(
-                        x: horizontalInset,
-                        y: resetY ?? rowY,
-                        width: resetWidth,
-                        height: quotaResetHeight
-                    )
-                    : .zero,
-                amount: CGRect(
-                    x: amountX,
-                    y: rowY,
-                    width: amountWidth,
-                    height: bankedResetTextBandAmountHeight
-                ),
-                progress: .zero
-            )
+        // Build local content first; the root inserts only adjacent spacing.
+        var body: [(id: OpenCodexOverviewSectionID, height: CGFloat, row: OpenCodexQuotaRowFrames?)] =
+            windows.enumerated().map { (.quota($0.element, index: $0.offset), rowHeight, localQuotaRow) }
+        if let reserveInsertionIndex, let localReserveRow {
+            body.insert((.lunaReserve, reserveRowHeight, localReserveRow), at: reserveInsertionIndex)
         }
-        let summaryShowsExpiry = includesBankedReset && includesBankedResetNearestExpiry
-        let bankedResetSummaryRow = includesBankedReset
-            ? quotaBandFrames(rowY: cardSummaryY, showsReset: summaryShowsExpiry)
-            : nil
-        let bankedResetProbabilityRow = includesResetProbability
-            ? quotaBandFrames(
-                rowY: probabilityRowY,
-                showsReset: true,
-                resetY: nil
-            )
-            : nil
+        func bandRow(y: CGFloat, showsReset: Bool) -> OpenCodexQuotaRowFrames {
+            metricRow(
+                      detailOffset: y + quotaDetailOffset - quotaResetOffset,
+                      resetOffset: y, amountOffset: y,
+                      amountHeight: bankedResetTextBandAmountHeight, progress: false)
+                .withResetVisible(showsReset)
+        }
+        if includesResetProbability {
+            body.append((.resetProbability, probabilityBlockHeight, bandRow(y: 0, showsReset: true)))
+        }
+        if includesBankedReset {
+            body.append((.bankedReset, cardSummaryHeight + bankedDetailBlockHeight,
+                         bandRow(y: bankedDetailBlockHeight, showsReset: includesBankedResetNearestExpiry)))
+        }
+        func spacing(from: OpenCodexOverviewSectionID, to: OpenCodexOverviewSectionID) -> CGFloat {
+            if from == .resetProbability && to == .bankedReset { return metrics.subsectionSpacing }
+            if to == .resetProbability || to == .bankedReset { return metrics.sectionSpacing }
+            return metrics.quotaRowSpacing
+        }
+        let rowAreaHeight = body.enumerated().reduce(CGFloat.zero) { sum, item in
+            sum + item.element.height + (item.offset + 1 < body.count
+                ? spacing(from: item.element.id, to: body[item.offset + 1].id) : 0)
+        }
+        let baseTitleY = bottomInset + rowAreaHeight + titleGap
+        let titleY = baseTitleY + accountShift
+        let cardHeight = titleY + 20 + 7
+        let hasSubscription = includesAccount && includesSubscription
+        let accountWidth = hasSubscription ? accountWidth(forSubscriptionTextWidth: subscriptionTextWidth) : contentWidth
+        let localHeader = OpenCodexAccountSectionFrames(
+            title: CGRect(x: horizontalInset, y: accountShift, width: 189, height: 20),
+            refreshTime: CGRect(x: refreshTimeX, y: accountShift + 1, width: 81, height: 17),
+            account: includesAccount ? CGRect(x: horizontalInset, y: 0, width: accountWidth, height: 17) : nil,
+            subscription: hasSubscription ? CGRect(x: subscriptionX, y: 0, width: subscriptionWidth, height: 17) : nil)
+        let header = localHeader.offsetBy(dy: baseTitleY)
+        var sections = [OpenCodexOverviewSectionLayout(id: .account,
+            frame: CGRect(x: 0, y: baseTitleY, width: cardWidth, height: 20 + accountShift), row: nil, header: localHeader)]
+        var cursor = bottomInset + rowAreaHeight
+        for (index, block) in body.enumerated() {
+            cursor -= block.height
+            sections.append(.init(id: block.id,
+                frame: CGRect(x: 0, y: cursor, width: cardWidth, height: block.height), row: block.row))
+            if index + 1 < body.count { cursor -= spacing(from: block.id, to: body[index + 1].id) }
+        }
+        let rows = windows.enumerated().compactMap { index, window in
+            sections.first { $0.id == .quota(window, index: index) }?.cardRow
+        }
+        let lunaReserveRow = sections.first { $0.id == .lunaReserve }?.cardRow
+        let bankedResetSummaryRow = sections.first { $0.id == .bankedReset }?.cardRow
+        let bankedResetProbabilityRow = sections.first { $0.id == .resetProbability }?.cardRow
+        let probabilityRowY = sections.first { $0.id == .resetProbability }?.frame.minY ?? 0
         let bankedResetForecastMetrics = showsForecastMetrics
             ? CGRect(
                 x: horizontalInset,
@@ -898,36 +954,45 @@ enum OpenCodexCardLayout {
                 height: forecastLineHeight
             )
             : nil
-        let bankedResetDetailRows: [OpenCodexQuotaRowFrames] = {
+        /// Document-local frames for every ticket, including unscrolled 1–2 lists.
+    /// Never union these with card-coordinate section placements.
+    let bankedResetDetailRows: [OpenCodexQuotaRowFrames] = {
             guard includesBankedReset, bankedDetailCount > 0 else { return [] }
             let iconSize = bankedResetTicketIconSize
             let chromeInset = bankedResetChromeInset
-            let innerX = horizontalInset + chromeInset
-            let innerRight = cardWidth - horizontalInset - chromeInset
-            let textX = innerX + iconSize.width + bankedResetTicketIconGap
-            let remainingX = innerRight - bankedResetRemainingWidth
-            let titleWidth = max(64, remainingX - textX - 6)
-            let lineWidth = max(64, innerRight - textX)
-            let lineGap: CGFloat = 2
+            let contentMinX = horizontalInset + chromeInset
+            let contentMaxX = cardWidth - horizontalInset - chromeInset
+            let textX = contentMinX + iconSize.width + bankedResetTicketIconGap
+            let lineWidth = max(0, contentMaxX - textX)
+            let lineGap = bankedResetTicketLineGap
             return (0..<bankedDetailCount).map { index in
-                // Unclipped 1–2 card lists stay in host coordinates so the
-                // existing two-ticket menu still paints at bottomInset.
-                // Clipped lists use document coordinates with y = 0 at the
-                // last ticket; the scroll view sits at `bottomInset`.
-                let originY: CGFloat = bankedTicketsNeedScroll ? 0 : bottomInset
+                let input = ticketInputs[index]
+                let ticketLayoutMode = input.mode
+                let bankedDetailHeight = input.height
+                let remainingX = contentMaxX - input.amountWidth
+                let titleWidth = max(0, remainingX - textX - 6)
+                let textBlockHeight = ticketLayoutMode == .expanded
+                    ? quotaDetailHeight * 2 + quotaResetHeight * 2 + lineGap * 3
+                    : quotaDetailHeight + quotaResetHeight * 2 + lineGap * 2
+                // All lists use document-local coordinates, including 1–2 tickets.
+                let originY: CGFloat = 0
                 let y = originY
-                    + CGFloat(bankedDetailCount - 1 - index) * (bankedDetailHeight + rowGap)
-                let expiryY = y + chromeInset
+                    + ticketHeights.dropFirst(index + 1).reduce(0, +)
+                    + CGFloat(bankedDetailCount - 1 - index) * ticketGap
+                let textBlockY = y + (bankedDetailHeight - textBlockHeight) / 2
+                let expiryY = ticketLayoutMode == .expanded
+                    ? textBlockY + quotaDetailHeight + lineGap : textBlockY
                 let windowY = expiryY + quotaResetHeight + lineGap
                 let titleY = windowY + quotaResetHeight + lineGap
-                let textBottom = expiryY
-                let textTop = titleY + quotaDetailHeight
-                let iconY = (textBottom + textTop - iconSize.height) / 2
+                let amountY = ticketLayoutMode == .expanded
+                    ? textBlockY
+                    : windowY + (quotaResetHeight - quotaDetailHeight) / 2
+                let iconY = y + (bankedDetailHeight - iconSize.height) / 2
                 return OpenCodexQuotaRowFrames(
                     quotaDetail: CGRect(
                         x: textX,
                         y: titleY,
-                        width: titleWidth,
+                        width: lineWidth,
                         height: quotaDetailHeight
                     ),
                     reset: CGRect(
@@ -937,14 +1002,14 @@ enum OpenCodexCardLayout {
                         height: quotaResetHeight
                     ),
                     amount: CGRect(
-                        x: remainingX,
-                        y: y + (bankedDetailHeight - quotaDetailHeight) / 2,
-                        width: bankedResetRemainingWidth,
+                        x: ticketLayoutMode == .expanded ? textX : remainingX,
+                        y: amountY,
+                        width: ticketLayoutMode == .expanded ? lineWidth : input.amountWidth,
                         height: quotaDetailHeight
                     ),
                     progress: .zero,
                     icon: CGRect(
-                        x: innerX,
+                        x: contentMinX,
                         y: iconY,
                         width: iconSize.width,
                         height: iconSize.height
@@ -952,7 +1017,7 @@ enum OpenCodexCardLayout {
                     window: CGRect(
                         x: textX,
                         y: windowY,
-                        width: lineWidth,
+                        width: ticketLayoutMode == .expanded ? lineWidth : titleWidth,
                         height: quotaResetHeight
                     ),
                     chrome: CGRect(
@@ -967,19 +1032,10 @@ enum OpenCodexCardLayout {
 
         return OpenCodexCardFrames(
             cardSize: CGSize(width: cardWidth, height: cardHeight),
-            title: CGRect(x: horizontalInset, y: titleY, width: 189, height: 20),
-            refreshTime: CGRect(x: refreshTimeX, y: titleY + 1, width: 81, height: 17),
-            account: includesAccount
-                ? CGRect(x: horizontalInset, y: baseTitleY, width: accountWidth, height: 17)
-                : nil,
-            subscription: hasSubscription
-                ? CGRect(
-                    x: subscriptionX,
-                    y: baseTitleY,
-                    width: subscriptionWidth,
-                    height: 17
-                )
-                : nil,
+            title: header.title,
+            refreshTime: header.refreshTime,
+            account: header.account,
+            subscription: header.subscription,
             quotaDetail: .zero,
             reset: nil,
             amount: .zero,
@@ -996,11 +1052,12 @@ enum OpenCodexCardLayout {
             bankedResetTicketViewport: bankedDetailCount > 0
                 ? CGRect(
                     x: 0,
-                    y: bottomInset,
+                    y: sections.first { $0.id == .bankedReset }!.frame.minY,
                     width: cardWidth,
                     height: bankedVisibleTicketStackHeight
                 )
-                : nil
+                : nil,
+            sectionLayouts: sections
         )
     }
 

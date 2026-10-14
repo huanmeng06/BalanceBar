@@ -491,6 +491,7 @@
     case keyCodexBankedResetTooltipSource = "codex.banked_reset.tooltip.source"
     case keyCodexBankedResetTooltipDisclaimer = "codex.banked_reset.tooltip.disclaimer"
     case keyCodexBankedResetProbability24h = "codex.banked_reset.probability_24h"
+    case keyCodexBankedResetProbability48hFormat = "codex.banked_reset.probability_48h_format"
     case keyCodexBankedResetProbability48h = "codex.banked_reset.probability_48h"
     case keyCodexBankedResetHighProbability = "codex.banked_reset.high_probability"
     case keyCodexBankedResetOfficialHintNoTime = "codex.banked_reset.official_hint_no_time"

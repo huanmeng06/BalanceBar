@@ -466,6 +466,7 @@
 "codex.banked_reset.tooltip.disclaimer" = "Third-party forecast, not a guaranteed reset time for this account or a promise of reset cards. Confidence is a model category, for reference only.";
 "codex.banked_reset.probability_24h" = "Within 24h";
 "codex.banked_reset.probability_48h" = "Within 48h";
+"codex.banked_reset.probability_48h_format" = "Within 48h %1$@";
 "codex.banked_reset.high_probability" = "High Prob.";
 "codex.banked_reset.official_hint_no_time" = "Official reset hint · No specific time";
 "codex.banked_reset.official_hint_time" = "Official reset hint · Specific time";

@@ -3,6 +3,17 @@ import XCTest
 @testable import BalanceBar
 
 final class LocalizationTests: XCTestCase {
+    func testResetForecastSubtitleUsesOneLocalizedPlaceholderAcrossAllLanguages() {
+        for language in allLanguages {
+            for value in ["0%", "34%", "100%", "--%"] {
+                let text = tr(.keyCodexBankedResetProbability48hFormat, arguments: [value], language: language)
+                XCTAssertEqual(text, tr(.keyCodexBankedResetProbability48h, language: language) + " " + value)
+                XCTAssertFalse(text.contains("%@"))
+            }
+        }
+        XCTAssertEqual(tr(.keyCodexBankedResetProbability48hFormat, arguments: ["34%"], language: .french), "Sous 48 h 34%")
+    }
+
     private let allLanguages: [AppLanguage] = AppLanguage.allCases.filter { $0 != .system }
 
     private let resourceDirectories: [String: AppLanguage] = [
@@ -1253,7 +1264,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 501)
+        XCTAssertEqual(expectedKeys.count, 502)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
