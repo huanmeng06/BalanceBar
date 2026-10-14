@@ -44,6 +44,7 @@ private final class QuotaPacePopoverProbe: NSPopover {
     private var rect = NSRect.zero
     private(set) var showCount = 0
     weak var anchorView: NSView?
+    private(set) var preferredEdge: NSRectEdge?
 
     override var isShown: Bool { showing }
     override var contentViewController: NSViewController? {
@@ -61,6 +62,7 @@ private final class QuotaPacePopoverProbe: NSPopover {
     override func show(relativeTo positioningRect: NSRect, of positioningView: NSView, preferredEdge: NSRectEdge) {
         rect = positioningRect
         anchorView = positioningView
+        self.preferredEdge = preferredEdge
         showing = true
         showCount += 1
     }
@@ -218,6 +220,7 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertTrue(views[0].isTooltipVisible)
             XCTAssertNotNil(views[0].tooltipContent?.body)
             XCTAssertTrue(popovers[0].anchorView === host)
+            XCTAssertEqual(popovers[0].preferredEdge, .minY)
             let contentController = popovers[0].contentViewController
             views[0].pointerLocationForTesting = NSPoint(x: views[0].markerCenterX, y: 9)
             let now = Date(timeIntervalSince1970: 1_700_000_000)

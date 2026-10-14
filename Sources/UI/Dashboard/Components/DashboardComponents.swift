@@ -683,7 +683,7 @@ final class QuotaProgressPaceView: NSView {
         nextPopover.contentSize = controller.contentSize
         // A common menu anchor lets 5h/7d transfer the same native window
         // without closing/reopening a transient popover during menu tracking.
-        nextPopover.show(relativeTo: anchor, of: anchorView, preferredEdge: .maxY)
+        nextPopover.show(relativeTo: anchor, of: anchorView, preferredEdge: .minY)
         popover = nextPopover.isShown ? nextPopover : nil
     }
 }
