@@ -665,17 +665,30 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         host.layoutSubtreeIfNeeded()
         controller.menuWillOpen(controller.statusMenuForTesting)
         let view = try XCTUnwrap(host.paceViews.first)
+        let sections = Array(host.sectionFocus.sections.values)
+        sections.forEach { $0.focusReduceMotionForTesting = false; $0.focusReduceTransparencyForTesting = false }
         view.markerReduceMotionForTesting = false
         view.updateHover(at: NSPoint(x: view.markerCenterX, y: view.bounds.midY))
         XCTAssertNotNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        host.sectionFocus.pendingTimerForTesting?.fire()
+        let receded = try XCTUnwrap(sections.first { $0.focusState == .receded })
+        XCTAssertNotNil(receded.layer?.animation(forKey: "sectionFocus.radius"))
+        sections.forEach { $0.focusReduceMotionForTesting = true; $0.focusReduceTransparencyForTesting = true }
         view.markerReduceMotionForTesting = true
         NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
         XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        XCTAssertEqual(receded.alphaValue, 0.5)
+        XCTAssertTrue(receded.contentFilters.isEmpty)
+        XCTAssertNil(receded.layer?.animation(forKey: "sectionFocus.radius"))
+        sections.forEach { $0.focusReduceMotionForTesting = false; $0.focusReduceTransparencyForTesting = false }
         view.markerReduceMotionForTesting = false
         NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        XCTAssertFalse(receded.contentFilters.isEmpty)
+        XCTAssertNil(receded.layer?.animation(forKey: "sectionFocus.radius"), "Disabling Reduce Motion does not replay")
         controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertTrue(sections.allSatisfy { $0.alphaValue == 1 && $0.contentFilters.isEmpty })
         XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
         XCTAssertFalse(view.hasPendingShowForTesting)
     }

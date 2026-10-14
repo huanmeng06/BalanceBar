@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import XCTest
 @testable import BalanceBar
 
@@ -224,6 +225,217 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(view.hasPendingShowForTesting)
     }
 
+    private func focusSections() -> [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView] {
+        Dictionary(uniqueKeysWithValues: [OpenCodexOverviewSectionID.account, .fiveHour, .sevenDay, .lunaReserve, .resetProbability, .bankedReset].map { id in
+            let view = OpenCodexOverviewSectionView(layout: OpenCodexOverviewSectionLayout(id: id,
+                frame: NSRect(x: 0, y: 0, width: 220, height: 40), row: nil))
+            view.focusReduceMotionForTesting = true
+            return (id, view)
+        })
+    }
+
+    func testSectionFocusTrackingDelaysSwitchAndRetiredEvents() throws {
+        let controller = SectionFocusController()
+        let sections = focusSections()
+        controller.update(sections: sections)
+        controller.isActive = true
+        func run(_ seconds: TimeInterval) {
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end { _ = RunLoop.current.run(mode: .eventTracking, before: end) }
+        }
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        let cancelled = try XCTUnwrap(controller.pendingTimerForTesting)
+        controller.hoverChanged(.fiveHour, isHovering: false)
+        cancelled.fire()
+        XCTAssertNil(controller.focusedID)
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        run(0.1)
+        XCTAssertNil(controller.focusedID)
+        run(0.08)
+        XCTAssertEqual(controller.focusedID, .fiveHour)
+        for (id, section) in sections {
+            XCTAssertEqual(section.focusState, id == .fiveHour ? .focused : .receded)
+            XCTAssertEqual(section.alphaValue, id == .fiveHour ? 1 : 0.5)
+        }
+        controller.hoverChanged(.fiveHour, isHovering: false)
+        let staleExit = try XCTUnwrap(controller.pendingTimerForTesting)
+        controller.hoverChanged(.sevenDay, isHovering: true)
+        controller.hoverChanged(.fiveHour, isHovering: false)
+        staleExit.fire()
+        XCTAssertEqual(controller.focusedID, .sevenDay)
+        XCTAssertNil(controller.pendingTimerForTesting)
+        controller.hoverChanged(.sevenDay, isHovering: false)
+        run(0.04)
+        XCTAssertEqual(controller.focusedID, .sevenDay)
+        run(0.06)
+        XCTAssertNil(controller.focusedID)
+        XCTAssertTrue(sections.values.allSatisfy { $0.alphaValue == 1 && $0.contentFilters.isEmpty })
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        let staleEnter = try XCTUnwrap(controller.pendingTimerForTesting)
+        controller.reset()
+        controller.isActive = false
+        staleEnter.fire()
+        XCTAssertNil(controller.focusedID)
+    }
+
+    func testSectionFocusFilterOwnershipLateCompletionAndAccessibility() throws {
+        let section = try XCTUnwrap(focusSections()[.account])
+        section.focusReduceMotionForTesting = false
+        section.wantsLayer = true
+        let foreign = try XCTUnwrap(CIFilter(name: "CISepiaTone"))
+        foreign.name = "unrelated"
+        section.contentFilters = [foreign]
+        section.setFocusState(.normal, animated: false)
+        XCTAssertEqual(section.contentFilters.count, 1)
+        section.setFocusState(.receded, animated: true)
+        let node = try XCTUnwrap(section.layer)
+        XCTAssertEqual((node.value(forKeyPath: "filters.balancebarSectionFocusBlur.inputRadius") as? NSNumber)?.doubleValue, 3)
+        XCTAssertEqual(node.animation(forKey: "sectionFocus.radius")?.duration, 0.25)
+        let count = section.focusTransitionCountForTesting
+        section.setFocusState(.receded, animated: true)
+        XCTAssertEqual(section.focusTransitionCountForTesting, count)
+        section.setFocusState(.normal, animated: true)
+        XCTAssertEqual(node.animation(forKey: "sectionFocus.radius")?.duration, 0.2)
+        let oldCompletion = try XCTUnwrap(section.focusRestoreCompletionForTesting)
+        section.setFocusState(.receded, animated: true)
+        oldCompletion()
+        XCTAssertTrue(section.contentFilters.contains { $0.name == "balancebarSectionFocusBlur" })
+        section.focusReduceMotionForTesting = true
+        section.setFocusState(.receded, animated: false)
+        XCTAssertNil(node.animation(forKey: "sectionFocus.radius"))
+        XCTAssertEqual(section.alphaValue, 0.5)
+        section.focusReduceTransparencyForTesting = true
+        section.setFocusState(.receded, animated: false)
+        XCTAssertEqual(section.contentFilters.map(\.name), ["unrelated"])
+        section.focusReduceTransparencyForTesting = false
+        section.setFocusState(.receded, animated: false)
+        XCTAssertTrue(section.contentFilters.contains { $0.name == "balancebarSectionFocusBlur" })
+        section.setFocusState(.normal, animated: false)
+        XCTAssertEqual(section.alphaValue, 1)
+        XCTAssertEqual(section.contentFilters.map(\.name), ["unrelated"])
+        oldCompletion()
+        XCTAssertEqual(section.contentFilters.map(\.name), ["unrelated"])
+        let fallback = try XCTUnwrap(focusSections()[.fiveHour])
+        var attempts = 0
+        fallback.focusFilterFactoryForTesting = { attempts += 1; return nil }
+        fallback.setFocusState(.receded, animated: true)
+        fallback.setFocusState(.receded, animated: true)
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(fallback.alphaValue, 0.5)
+        XCTAssertTrue(fallback.contentFilters.isEmpty)
+    }
+
+    func testSectionFocusHostRefreshInvalidationAndRetiredCallback() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = paceProbeFixture(now: now)
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        defer { fixture.host.setPaceMenuTracking(false); window.orderOut(nil) }
+        fixture.host.layoutSubtreeIfNeeded()
+        fixture.host.setPaceMenuTracking(true)
+        let view = fixture.views[0]
+        let section = try XCTUnwrap(view.superview as? OpenCodexOverviewSectionView)
+        let other = try XCTUnwrap(fixture.views[1].superview as? OpenCodexOverviewSectionView)
+        section.focusReduceMotionForTesting = true
+        other.focusReduceMotionForTesting = true
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        fixture.host.sectionFocus.pendingTimerForTesting?.fire()
+        XCTAssertEqual(fixture.host.sectionFocus.focusedID, .fiveHour)
+        let count = other.focusTransitionCountForTesting
+        let monitor = fixture.host.monitorRegistrationCountForTesting
+        for _ in 0..<10 { fixture.host.reconcilePaceMenuTracking() }
+        XCTAssertEqual(other.focusTransitionCountForTesting, count)
+        XCTAssertEqual(fixture.host.monitorRegistrationCountForTesting, monitor)
+        let oldCallback = try XCTUnwrap(view.onHoverChanged)
+        view.invalidatePresentation()
+        XCTAssertNil(fixture.host.sectionFocus.focusedID)
+        XCTAssertEqual(other.alphaValue, 1)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+        section.removeFromSuperview()
+        fixture.host.reconcileSectionFocus()
+        fixture.views[1].updateHover(at: NSPoint(x: fixture.views[1].markerCenterX, y: 9))
+        fixture.host.sectionFocus.pendingTimerForTesting?.fire()
+        oldCallback(true)
+        oldCallback(false)
+        XCTAssertEqual(fixture.host.sectionFocus.focusedID, .sevenDay)
+        fixture.views[1].removeFromSuperview()
+        XCTAssertNil(fixture.host.sectionFocus.focusedID)
+        XCTAssertNil(fixture.host.sectionFocus.pendingTimerForTesting)
+        XCTAssertEqual(other.alphaValue, 1)
+    }
+
+    func testSectionFocusHostReplacementChecksActualViewsCycleAndHeatRect() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = paceProbeFixture(now: now)
+        let host = fixture.host
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        defer { host.setPaceMenuTracking(false); window.orderOut(nil) }
+        host.layoutSubtreeIfNeeded()
+        host.setPaceMenuTracking(true)
+        let old = fixture.views[0]
+        let oldSection = try XCTUnwrap(old.superview as? OpenCodexOverviewSectionView)
+        host.focusPointerLocationForTesting = host.convert(NSPoint(x: old.markerCenterX, y: 9), from: old)
+        old.updateHover(at: NSPoint(x: old.markerCenterX, y: 9))
+        host.sectionFocus.pendingTimerForTesting?.fire()
+        XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
+        let stale = try XCTUnwrap(old.onHoverChanged)
+        host.beginFocusSectionReplacement()
+        oldSection.removeFromSuperview()
+        let replacement = OpenCodexMetricSectionView(layout: OpenCodexOverviewSectionLayout(
+            id: .fiveHour, frame: oldSection.frame, row: nil))
+        let pace = QuotaProgressPaceView(percentage: 50, window: old.quotaWindow,
+            identity: old.numericIdentity, now: now, colorConfiguration: .default)
+        pace.frame = old.frame
+        replacement.addSubview(pace)
+        host.addSubview(replacement)
+        host.finishFocusSectionReplacement()
+        XCTAssertTrue(host.sectionFocus.sections[.fiveHour] === replacement)
+        XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
+        XCTAssertTrue(pace.isHovered)
+        XCTAssertNil(host.sectionFocus.pendingTimerForTesting)
+        stale(false)
+        XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
+        // A new cycle cannot inherit the active focus from the replaced quota.
+        host.beginFocusSectionReplacement()
+        pace.update(window: paceWindow(reset: now.addingTimeInterval(8_000)), now: now)
+        host.focusPointerLocationForTesting = host.convert(NSPoint(x: pace.markerCenterX, y: 9), from: pace)
+        host.finishFocusSectionReplacement()
+        XCTAssertNil(host.sectionFocus.focusedID)
+        XCTAssertNotNil(host.sectionFocus.pendingTimerForTesting)
+        host.sectionFocus.pendingTimerForTesting?.fire()
+        XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
+        host.beginFocusSectionReplacement()
+        host.focusPointerLocationForTesting = NSPoint(x: -100, y: -100)
+        host.finishFocusSectionReplacement()
+        XCTAssertNil(host.sectionFocus.focusedID)
+        XCTAssertNil(host.sectionFocus.pendingTimerForTesting)
+    }
+
+    func testSectionFocusRegistryReplacementAndRemovalPreserveOrReset() throws {
+        let controller = SectionFocusController()
+        var sections = focusSections()
+        controller.update(sections: sections)
+        controller.isActive = true
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        controller.pendingTimerForTesting?.fire()
+        let old = try XCTUnwrap(sections[.fiveHour])
+        let untouched = try XCTUnwrap(sections[.sevenDay])
+        let transitions = untouched.focusTransitionCountForTesting
+        controller.update(sections: sections)
+        XCTAssertEqual(untouched.focusTransitionCountForTesting, transitions)
+        sections[.fiveHour] = OpenCodexOverviewSectionView(layout: OpenCodexOverviewSectionLayout(id: .fiveHour,
+            frame: old.frame, row: nil))
+        controller.update(sections: sections)
+        XCTAssertEqual(controller.focusedID, .fiveHour)
+        XCTAssertEqual(sections[.fiveHour]?.focusState, .focused)
+        XCTAssertTrue(old.contentFilters.isEmpty)
+        sections.removeValue(forKey: .fiveHour)
+        controller.update(sections: sections)
+        XCTAssertNil(controller.focusedID)
+        XCTAssertTrue(sections.values.allSatisfy { $0.alphaValue == 1 && $0.contentFilters.isEmpty })
+    }
+
     func testPaceMarkerOverlayAndExactTrackingBoundary() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let quota = paceWindow(reset: now.addingTimeInterval(9_000))
@@ -321,8 +533,6 @@ final class DashboardComponentsTests: XCTestCase {
         let menu = NSMenu(title: "Quota pace tracking regression")
         let item = NSMenuItem()
         let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
-        let section = NSView(frame: host.bounds)
-        host.addSubview(section)
         let quotas = [paceWindow(reset: now.addingTimeInterval(9_000)),
                       paceWindow(reset: now.addingTimeInterval(302_400), kind: .sevenDay)]
         let views = quotas.enumerated().map { index, quota in
@@ -330,7 +540,11 @@ final class DashboardComponentsTests: XCTestCase {
                 identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
                 now: now, colorConfiguration: .default,
                 cycleStart: OfficialQuotaUsagePrediction.verifiedCycleStart(for: quota))
-            view.frame = NSRect(x: 10, y: 10 + CGFloat(index) * 30, width: 200, height: 18)
+            let section = OpenCodexMetricSectionView(layout: OpenCodexOverviewSectionLayout(
+                id: index == 0 ? .fiveHour : .sevenDay,
+                frame: NSRect(x: 0, y: CGFloat(index) * 30, width: 220, height: 30), row: nil))
+            host.addSubview(section)
+            view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
             section.addSubview(view)
             return view
         }
@@ -368,6 +582,8 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertTrue(views[0].isTooltipVisible)
             XCTAssertEqual(views[0].markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
             XCTAssertNotNil(views[0].tooltipContent?.body)
+            host.sectionFocus.pendingTimerForTesting?.fire()
+            XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
             XCTAssertTrue(popovers[0].anchorView === host)
             XCTAssertEqual(popovers[0].preferredEdge, .minY)
             let contentController = popovers[0].contentViewController
@@ -390,6 +606,7 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertTrue(views[1].isTooltipVisible)
             XCTAssertEqual(views[0].markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
             XCTAssertEqual(views[1].markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+            XCTAssertEqual(host.sectionFocus.focusedID, .sevenDay)
             XCTAssertEqual(popovers[0].showCount, 1)
             XCTAssertEqual(popovers[1].showCount, 0)
             XCTAssertEqual((popovers[0].contentViewController as? QuotaPaceTooltipViewController)?.content,

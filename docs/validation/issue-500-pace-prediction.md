@@ -43,6 +43,16 @@ The clipped 16×18pt heat rect never grows with animation. Existing activeAlways
 
 Unit/integration checks establish model geometry, animation configuration, presentation-start selection, copies, timing and cleanup. They do not establish native animation appearance or a particular overshoot percentage; evaluate responsiveness and menu stability with the development bundle.
 
+## Official-card module focus
+
+Hovering a valid 5h/7d tick keeps its own section clear. All other actual section views within that official card (account, other quotas, reserve and reset modules) recede to alpha 0.5 and Gaussian radius 3. The common host, external section outlines, menu commands and independent Popover remain unchanged. First entry waits 150ms, then transitions for 250ms; departure waits 80ms and restores over 200ms. An active focus transfers immediately to the next module. Timers run in common/eventTracking modes with target and generation guards.
+
+The host registers its actual owned sections after replacement, checks the quota identity/cycle and current heat rect, and rejects retired-view callbacks. Value-only refreshes neither reinstall monitors nor replay focus transitions. Hard interaction/identity/lifecycle cleanup cancels pending work and restores all owned effects immediately. The existing workspace accessibility observer reapplies focus: Reduce Motion completes transitions immediately while retaining debounce; Reduce Transparency removes blur and retains only alpha 0.5.
+
+Each section appends its named CIGaussianBlur through [NSView.contentFilters](https://developer.apple.com/documentation/appkit/nsview/contentfilters). This lets AppKit configure rendering. Attached filter radius changes use the named layer key path as required by [CALayer.filters](https://developer.apple.com/documentation/quartzcore/calayer/filters), with explicit animation from presentation radius and guarded cleanup. Restoration removes only this effect's filter; unrelated filters/animations are retained. Failed filter creation degrades to alpha-only without a material overlay.
+
+Tests check timing, state distribution, native filter attachment/key-path access, stale completion rejection, actual-host callbacks, replacement/removal, idempotent refresh and accessibility/fallback state. The short real NSMenu tracking-loop probe now owns independent quota sections and checks focus transfer alongside existing Popover behavior. None of these background tests establishes visible Gaussian rendering, edge quality, animation continuity or performance. Actual blur and the 3/0.5 strength require user testing; alpha-only fallback must never be recorded as Gaussian PASS. The earlier intermittent native-menu diagnostic remains an unresolved manual gate.
+
 ## Release evidence still required
 
 Actual cursor hit testing, compact visual layout, all language wrapping, screen-edge placement, quota refresh, menu close/reopen and identity changes require the user development-bundle checklist. Weekly prediction stays withheld. When a reset scenario cannot establish a trustworthy clock/counter pair, keep its prediction withheld.

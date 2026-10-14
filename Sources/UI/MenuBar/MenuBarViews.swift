@@ -1,5 +1,6 @@
 import AppKit
 import QuartzCore
+import CoreImage
 
 final class PassthroughTextField: NSTextField {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -13,10 +14,181 @@ class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+enum SectionFocusState { case normal, focused, receded }
+
+/// Owns only selection and cancellable menu-tracking delays.
+@MainActor
+final class SectionFocusController {
+    private(set) var sections: [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView] = [:]
+    private(set) var hoveredID: OpenCodexOverviewSectionID?
+    private(set) var focusedID: OpenCodexOverviewSectionID?
+    private var timer: Timer?
+    private var generation = 0
+    var isActive = false
+    var pendingTimerForTesting: Timer? { timer }
+
+    func update(sections next: [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView]) {
+        let previous = sections
+        for (id, view) in previous where next[id] !== view { view.setFocusState(.normal, animated: false) }
+        sections = next
+        if let id = focusedID, next[id] == nil { reset(); return }
+        if let id = hoveredID, next[id] == nil { reset(); return }
+        for (id, view) in next where previous[id] !== view {
+            view.setFocusState(state(for: id), animated: false)
+        }
+    }
+
+    func hoverChanged(_ id: OpenCodexOverviewSectionID, isHovering: Bool) {
+        guard isActive, sections[id] != nil else { return }
+        if isHovering {
+            guard hoveredID != id else { return }
+            hoveredID = id
+            cancelPending()
+            if focusedID != nil { setFocus(id) }
+            else { schedule(after: 0.15, target: id) }
+        } else {
+            guard hoveredID == id else { return } // Retired/old leaves cannot cancel a new target.
+            hoveredID = nil
+            cancelPending()
+            if focusedID != nil { schedule(after: 0.08, target: nil) }
+        }
+    }
+
+    private func schedule(after delay: TimeInterval, target: OpenCodexOverviewSectionID?) {
+        let token = generation
+        let next = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            // Installed only on RunLoop.main; keep the mutation synchronous in tracking mode.
+            MainActor.assumeIsolated {
+                guard let self, self.isActive, self.generation == token, self.hoveredID == target,
+                      target.map({ self.sections[$0] != nil }) ?? true else { return }
+                self.timer = nil
+                self.setFocus(target)
+            }
+        }
+        timer = next
+        RunLoop.main.add(next, forMode: .common)
+        RunLoop.main.add(next, forMode: .eventTracking)
+    }
+
+    private func cancelPending() { generation += 1; timer?.invalidate(); timer = nil }
+    private func state(for id: OpenCodexOverviewSectionID) -> SectionFocusState {
+        focusedID == nil ? .normal : (focusedID == id ? .focused : .receded)
+    }
+    private func setFocus(_ id: OpenCodexOverviewSectionID?) {
+        guard focusedID != id else { return }
+        focusedID = id
+        for (key, view) in sections { view.setFocusState(state(for: key), animated: true) }
+    }
+    func refreshAccessibility() {
+        for (id, view) in sections { view.setFocusState(state(for: id), animated: false) }
+    }
+    func reset() {
+        cancelPending()
+        hoveredID = nil
+        focusedID = nil
+        sections.values.forEach { $0.setFocusState(.normal, animated: false) }
+    }
+    deinit { timer?.invalidate() }
+}
+
 /// Section controls always use local coordinates; the menu host owns placement
 /// and event forwarding. Stable IDs also survive value-only refreshes.
 class OpenCodexOverviewSectionView: NSView {
     let sectionID: OpenCodexOverviewSectionID
+    private(set) var focusState: SectionFocusState = .normal
+    private var focusGeneration = 0
+    private var ownFocusFilter: CIFilter?
+    private var targetRadius: CGFloat = 0
+    private var targetAlpha: CGFloat = 1
+    private var ownsOpacityAnimation = false
+    private var blurUnavailable = false
+    var focusReduceMotionForTesting: Bool?
+    var focusReduceTransparencyForTesting: Bool?
+    var focusFilterFactoryForTesting: (() -> CIFilter?)?
+    private(set) var focusTransitionCountForTesting = 0
+    var focusRestoreCompletionForTesting: (() -> Void)?
+    private static let blurName = "balancebarSectionFocusBlur"
+    private static let radiusPath = "filters.balancebarSectionFocusBlur.inputRadius"
+
+    private var hasOwnFocusFilter: Bool {
+        ownFocusFilter != nil && contentFilters.contains { $0.name == Self.blurName }
+    }
+
+    func setFocusState(_ state: SectionFocusState, animated: Bool) {
+        let reduceMotion = focusReduceMotionForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reduceTransparency = focusReduceTransparencyForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        let receded = state == .receded
+        let alpha: CGFloat = receded ? 0.5 : 1
+        var radius: CGFloat = receded && !reduceTransparency ? 3 : 0
+        focusState = state
+        if blurUnavailable { radius = 0 }
+        if radius > 0, !hasOwnFocusFilter {
+            let filter: CIFilter?
+            if let factory = focusFilterFactoryForTesting { filter = factory() }
+            else { filter = CIFilter(name: "CIGaussianBlur") }
+            if let filter, !contentFilters.contains(where: { $0.name == Self.blurName }) {
+                wantsLayer = true
+                filter.name = Self.blurName
+                filter.setValue(0, forKey: kCIInputRadiusKey) // Configure before attaching.
+                ownFocusFilter = filter
+                contentFilters = contentFilters + [filter]
+            } else { radius = 0; blurUnavailable = true } // Supported alpha-only fallback, never pretend blur passed.
+        }
+        guard !animated || targetRadius != radius || targetAlpha != alpha else { return }
+        focusGeneration += 1
+        focusTransitionCountForTesting += 1
+        let token = focusGeneration
+        let filter = ownFocusFilter
+        let duration = receded ? 0.25 : 0.2
+        let animate = animated && !reduceMotion
+        let visibleAlpha = CGFloat(layer?.presentation()?.opacity ?? Float(alphaValue))
+        if ownsOpacityAnimation { layer?.removeAnimation(forKey: "opacity"); ownsOpacityAnimation = false }
+        if animate {
+            // Start the AppKit opacity animator at the current visible alpha.
+            alphaValue = visibleAlpha
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = duration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                animator().alphaValue = alpha
+            }
+            ownsOpacityAnimation = true
+        } else { alphaValue = alpha }
+        var from = targetRadius
+        if hasOwnFocusFilter, let node = layer {
+            if let visible = node.presentation(), (visible.filters as? [CIFilter])?.contains(where: { $0.name == Self.blurName }) == true {
+                from = (visible.value(forKeyPath: Self.radiusPath) as? NSNumber)?.doubleValue ?? targetRadius
+            } else { from = (node.value(forKeyPath: Self.radiusPath) as? NSNumber)?.doubleValue ?? targetRadius }
+            node.removeAnimation(forKey: "sectionFocus.radius")
+        }
+        targetAlpha = alpha
+        targetRadius = radius
+        guard hasOwnFocusFilter, let node = layer else { return } // No invalid KVC on an absent filter.
+        let cleanup: () -> Void = { [weak self, weak filter] in
+            guard let self, self.focusGeneration == token, self.targetRadius == 0,
+                  let filter, self.ownFocusFilter === filter else { return }
+            self.contentFilters = self.contentFilters.filter { $0.name != Self.blurName }
+            self.ownFocusFilter = nil
+            self.focusRestoreCompletionForTesting = nil
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        node.setValue(radius, forKeyPath: Self.radiusPath)
+        if animate {
+            let animation = CABasicAnimation(keyPath: Self.radiusPath)
+            animation.fromValue = from
+            animation.toValue = radius
+            animation.duration = duration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            if radius == 0 {
+                focusRestoreCompletionForTesting = cleanup
+                CATransaction.setCompletionBlock(cleanup)
+            }
+            node.add(animation, forKey: "sectionFocus.radius")
+        }
+        CATransaction.commit()
+        if !animate, radius == 0 { cleanup() }
+    }
+
     var measuredHeight: CGFloat { frame.height }
     override var intrinsicContentSize: NSSize { NSSize(width: frame.width, height: measuredHeight) }
 
@@ -30,6 +202,12 @@ class OpenCodexOverviewSectionView: NSView {
         sectionID = layout.id
         super.init(frame: layout.frame)
         identifier = NSUserInterfaceItemIdentifier("codex.overview.section.\(layout.id.identifier)")
+    }
+
+    override func removeFromSuperview() {
+        (superview as? MenuHoverLinkHostView)?.focusSectionWillBeRemoved(self)
+        setFocusState(.normal, animated: false)
+        super.removeFromSuperview()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

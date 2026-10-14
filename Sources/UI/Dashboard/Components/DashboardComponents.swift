@@ -581,7 +581,8 @@ final class QuotaProgressPaceView: NSView {
     private var presentationNow = Date()
     private var displayTimeZone = TimeZone.autoupdatingCurrent
     var pointerLocationForTesting: NSPoint?
-    private(set) var isHovered = false
+    var onHoverChanged: ((Bool) -> Void)?
+    private(set) var isHovered = false { didSet { if oldValue != isHovered { onHoverChanged?(isHovered) } } }
     private(set) var isMenuTracking = false
     var isTooltipVisible: Bool { popover?.isShown == true }
     // Background XCTest parks native windows offscreen and denies key focus.
@@ -631,6 +632,7 @@ final class QuotaProgressPaceView: NSView {
         let next = OfficialQuotaUsagePace.make(for: window, now: now)
         if quotaWindow.resetAt != window.resetAt || quotaWindow.kind != window.kind
             || quotaWindow.durationSeconds != window.durationSeconds || next == nil {
+            menuHoverHost?.invalidateSectionFocus(for: self)
             clearInteraction()
         }
         quotaWindow = window
@@ -696,6 +698,7 @@ final class QuotaProgressPaceView: NSView {
     }
 
     func invalidatePresentation() {
+        menuHoverHost?.invalidateSectionFocus(for: self)
         isMenuTracking = false
         clearInteraction()
         pace = nil
@@ -791,7 +794,7 @@ final class QuotaProgressPaceView: NSView {
         if newWindow == nil { clearInteraction() }
         super.viewWillMove(toWindow: newWindow)
     }
-    override func removeFromSuperview() { clearInteraction(); super.removeFromSuperview() }
+    override func removeFromSuperview() { menuHoverHost?.invalidateSectionFocus(for: self); clearInteraction(); super.removeFromSuperview() }
 
     func firePendingShowForTesting() { showTimer?.fire() }
     func firePendingCloseForTesting() { closeTimer?.fire() }
@@ -1580,6 +1583,10 @@ class HoverLinkTextField: NSTextField {
 /// A local event bridge for links and quota markers in an `NSMenuItem.view`.
 /// The card forwards movement; each element retains its precise hover boundary.
 final class MenuHoverLinkHostView: NSView {
+    let sectionFocus = SectionFocusController()
+    private var replacingFocusSections = false
+    private var replacementPace: (OverviewNumericIdentity, OfficialQuotaWindow)?
+    var focusPointerLocationForTesting: NSPoint?
     var overviewLayout: OpenCodexCardFrames?
     var providerIdentity = ""
     var forecastContentKey: StatusItemController.ForecastContentKey?
@@ -1642,13 +1649,76 @@ final class MenuHoverLinkHostView: NSView {
     /// Data refresh only reconciles replaced children. A matching monitor
     /// keeps its identity; menu open/close owns activation and teardown.
     func reconcilePaceMenuTracking() {
+        reconcileSectionFocus()
         paceViews.forEach { $0.setMenuTracking(paceMenuTracking) }
         installTicketScrollMonitor()
     }
 
     func clearPaceHover() {
+        sectionFocus.reset()
         paceViews.forEach { $0.clearInteraction() }
         hoveredPaceView = nil
+    }
+
+    func beginFocusSectionReplacement() {
+        let id = sectionFocus.hoveredID ?? sectionFocus.focusedID
+        let section = id.flatMap { sectionFocus.sections[$0] }
+        replacementPace = paceViews.first { pace in section.map { pace.isDescendant(of: $0) } ?? false }
+            .map { ($0.numericIdentity, $0.quotaWindow) }
+        replacingFocusSections = true
+    }
+    func finishFocusSectionReplacement() {
+        replacingFocusSections = false
+        if let (identity, previous) = replacementPace {
+            let matching = paceViews.contains {
+                $0.numericIdentity == identity && $0.quotaWindow.kind == previous.kind
+                    && $0.quotaWindow.durationSeconds == previous.durationSeconds
+                    && $0.quotaWindow.resetAt == previous.resetAt && $0.pace != nil
+            }
+            if !matching { sectionFocus.reset() }
+        }
+        replacementPace = nil
+        reconcilePaceMenuTracking()
+        if let window, paceMenuTracking {
+            let point = focusPointerLocationForTesting ?? convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            forwardHover(atHostPoint: point)
+            let valid = paceViews.contains { $0.pace != nil && $0.isHovered }
+            if !valid { sectionFocus.reset() }
+        }
+    }
+
+    func reconcileSectionFocus() {
+        guard !replacingFocusSections else { return }
+        sectionFocus.isActive = paceMenuTracking
+        let sections = Dictionary(uniqueKeysWithValues: subviews.compactMap {
+            ($0 as? OpenCodexOverviewSectionView).map { ($0.sectionID, $0) }
+        })
+        sectionFocus.update(sections: sections)
+        for (id, section) in sections {
+            let views = paceViews.filter { $0.isDescendant(of: section) }
+            for pace in views {
+                pace.onHoverChanged = { [weak self, weak section, weak pace] hovered in
+                    guard let self, !self.replacingFocusSections, let section, let pace,
+                          self.sectionFocus.sections[id] === section, section.superview === self,
+                          pace.isDescendant(of: section) else { return }
+                    self.sectionFocus.hoverChanged(id, isHovering: hovered)
+                }
+                if pace.isHovered, pace.pace != nil { sectionFocus.hoverChanged(id, isHovering: true) }
+            }
+        }
+    }
+
+    func focusSectionWillBeRemoved(_ section: OpenCodexOverviewSectionView) {
+        guard !replacingFocusSections, sectionFocus.sections[section.sectionID] === section else { return }
+        if sectionFocus.focusedID == section.sectionID || sectionFocus.hoveredID == section.sectionID { sectionFocus.reset() }
+    }
+
+    func invalidateSectionFocus(for pace: QuotaProgressPaceView) {
+        guard !replacingFocusSections else { return }
+        let affected = [sectionFocus.focusedID, sectionFocus.hoveredID].compactMap { $0 }.contains { id in
+            sectionFocus.sections[id].map { pace.isDescendant(of: $0) } ?? false
+        }
+        if affected { sectionFocus.reset() }
     }
 
     var trackedLink: HoverLinkTextField? { link }

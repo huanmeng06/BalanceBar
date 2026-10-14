@@ -2829,6 +2829,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             (self.statusMenu.items.first?.view as? MenuHoverLinkHostView)?.paceViews.forEach {
                 $0.refreshMarkerAccessibility()
             }
+            MainActor.assumeIsolated {
+                (self.statusMenu.items.first?.view as? MenuHoverLinkHostView)?.sectionFocus.refreshAccessibility()
+            }
         }
     }
 
@@ -7111,12 +7114,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let quotaIdentityChanged = host.quotaPaceAccount != menuInput.openAIAccount
             || host.quotaPaceClient != menuInput.activeClient
         if providerChanged || quotaIdentityChanged {
+            host.clearPaceHover()
             host.paceViews.forEach { $0.invalidatePresentation() }
         }
         if previous != next || providerChanged || quotaIdentityChanged || host.forecastContentKey != nextForecastKey || host.bankedResetCardIDs != nextCardIDs {
             // Topology or local geometry changes may replace affected sections;
             // unchanged sections keep their controls and animation state.
             guard let proposed = makeOverviewMenuItem(for: snapshot).view as? MenuHoverLinkHostView else { return }
+            host.beginFocusSectionReplacement()
+            defer { host.finishFocusSectionReplacement() }
             let oldSections = Dictionary(uniqueKeysWithValues: host.subviews.compactMap {
                 ($0 as? OpenCodexOverviewSectionView).map { ($0.sectionID, $0) }
             })
