@@ -6232,8 +6232,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return
         }
         let available = max(0, header.convert(time.frame, from: time.superview).minX - 6 - titleFrame.minX)
-        let width = min(available / 3, ceil(AccountMarqueeView.textWidth(of: text,
-            font: .systemFont(ofSize: 11))) + 10)
+        let measure = NSTextField(labelWithString: text)
+        measure.font = .systemFont(ofSize: 11)
+        measure.usesSingleLineMode = true
+        let textWidth = max(AccountMarqueeView.textWidth(of: text, font: measure.font!),
+                            measure.cell?.cellSize.width ?? 0)
+        // Include cell drawing insets and breathing room so short aliases never
+        // acquire an unnecessary marquee/fade just because glyph advances fit.
+        let width = min(available / 2, max(48, ceil(textWidth) + 14))
         let titleWidth = min(ceil(title.cell?.cellSize.width ?? titleFrame.width), max(0, available - width - 6))
         title.frame = NSRect(x: titleFrame.minX, y: titleFrame.minY, width: titleWidth, height: titleFrame.height)
         let frame = NSRect(x: title.frame.maxX + 6, y: titleFrame.midY - 8.5, width: width, height: 17)

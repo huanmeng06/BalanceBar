@@ -3321,12 +3321,20 @@ extension StatusItemControllerTests {
         XCTAssertEqual(tag.frame.minX, title.frame.maxX + 6)
         XCTAssertLessThanOrEqual(tag.frame.maxX, layout.refreshTime.minX - 6)
         XCTAssertTrue(tag.textView.isScrollable)
+        XCTAssertGreaterThan(tag.frame.width, (layout.refreshTime.minX - 6 - layout.title.minX) / 3)
         XCTAssertFalse(tag.textView.hasActiveScrollTimer)
         XCTAssertEqual(wrapper.frame.height, card.frame.height)
         XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
         let otherTags = document.subviews.dropFirst().map { $0.subviews.first!.subviews.compactMap { $0 as? AggregationNoteTagView } }
         XCTAssertEqual(otherTags[0].first?.textView.accountLabel.stringValue, "Grok")
         XCTAssertEqual(otherTags[1].first?.textView.accountLabel.stringValue, "GPT")
+        for shortTag in otherTags.prefix(2).compactMap({ $0.first }) {
+            shortTag.layoutSubtreeIfNeeded()
+            shortTag.textView.layoutSubtreeIfNeeded()
+            XCTAssertGreaterThanOrEqual(shortTag.frame.width, 48)
+            XCTAssertFalse(shortTag.textView.isScrollable)
+            XCTAssertFalse(shortTag.textView.showsEdgeFade)
+        }
         XCTAssertTrue(otherTags[2].isEmpty)
         controller.updateMenu(input: aggregationInput(count: 4, notes: [0: text, 1: "Grok", 2: "GPT", 3: "   "]))
         XCTAssertTrue(card.subviews.contains { $0 === tag })
