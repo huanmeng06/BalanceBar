@@ -515,5 +515,5 @@
 "aggregation.unavailable" = "残高を取得できません";
 "aggregation.manage_in_cc_switch" = "集約モードのデフォルトプロバイダーは CC Switch で管理してください";
 
-"balance.recharge.label" = "前回のチャージ";
+"balance.recharge.label" = "チャージ";
 "balance.recharge.observed" = "アプリが検出した残高の純増額です。時刻は増加を初めて確認した時点で、支払い記録ではありません。";

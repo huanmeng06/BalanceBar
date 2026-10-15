@@ -515,5 +515,5 @@
 "aggregation.unavailable" = "Saldo indisponível";
 "aggregation.manage_in_cc_switch" = "Gira o fornecedor predefinido no CC Switch em modo de agregação";
 
-"balance.recharge.label" = "Última recarga";
+"balance.recharge.label" = "Recarga";
 "balance.recharge.observed" = "Aumento líquido do saldo detetado localmente. A data é a primeira observação desta app, não um comprovativo de pagamento.";

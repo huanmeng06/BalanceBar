@@ -515,5 +515,5 @@
 "aggregation.unavailable" = "Guthaben nicht verfügbar";
 "aggregation.manage_in_cc_switch" = "Standardanbieter im Aggregationsmodus in CC Switch verwalten";
 
-"balance.recharge.label" = "Letzte Aufladung";
+"balance.recharge.label" = "Aufladung";
 "balance.recharge.observed" = "Lokal erkannter Nettoanstieg des Guthabens. Der Zeitpunkt ist die erste Beobachtung durch diese App, kein Zahlungsbeleg.";

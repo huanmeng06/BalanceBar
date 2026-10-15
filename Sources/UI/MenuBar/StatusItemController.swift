@@ -240,7 +240,7 @@ final class AggregationNoteTagView: NSView {
 
     init(text: String, frame: NSRect) {
         textView = AccountMarqueeView(text: text, font: .systemFont(ofSize: 11),
-            textColor: .secondaryLabelColor, frame: NSRect(x: 5, y: 1, width: max(0, frame.width - 10), height: 15))
+            textColor: .secondaryLabelColor, frame: NSRect(x: 6, y: 0, width: max(0, frame.width - 12), height: 15))
         super.init(frame: frame)
         textView.respectsReduceMotion = true
         textView.centersTextWhenFits = true
@@ -258,15 +258,23 @@ final class AggregationNoteTagView: NSView {
         setAccessibilityLabel(text)
     }
 
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let color = NSColor.quaternaryLabelColor.usingColorSpace(.deviceRGB) ?? .quaternaryLabelColor
+            layer?.backgroundColor = color.withAlphaComponent(color.alphaComponent * 0.65).cgColor
+        }
+    }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
+        needsDisplay = true
     }
 
     override func layout() {
         super.layout()
-        layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
-        textView.frame = NSRect(x: 5, y: 1, width: max(0, bounds.width - 10), height: 15)
+        textView.frame = NSRect(x: 6, y: 0, width: max(0, bounds.width - 12), height: 15)
     }
 }
 
@@ -6163,14 +6171,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
                             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
                         let layout = makeOverviewCardLayout(for: display.snapshot, presentation: presentation, account: context.account, aggregation: true)
-                        if (existing.snapshot.progressPercentage == nil) != (display.snapshot.progressPercentage == nil)
-                            || (host.overviewLayout?.progress == nil) != (layout.progress == nil) {
-                            host.setMenuContentVisible(false)
-                            host.removeFromSuperview()
-                            existing.card = makeOverviewMenuItem(for: display.snapshot, context: context).view!
-                            existing.wrapper.addSubview(existing.card)
-                        } else {
-                            reconcileBalanceLayout(in: host, next: layout)
+                        reconcileBalanceLayout(in: host, next: layout)
+                        if layout.progress == nil {
+                            host.subviews.compactMap { $0 as? QuotaProgressView }.forEach { $0.removeFromSuperview() }
+                        } else if !host.subviews.contains(where: { $0 is QuotaProgressView }),
+                                  let frame = layout.progress,
+                                  let sample = OverviewNumericPresentation.samples(snapshot: display.snapshot, providerIdentity: context.identity,
+                                      lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+                                      hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+                                      showBankedReset: settings.showBankedReset).first {
+                            host.addSubview(makeOverviewNumericProgress(plan: overviewNumericPlan(for: sample), frame: frame))
                         }
                         let labels = existing.card.subviews.compactMap { $0 as? NSTextField }
                         labels.first { $0.font?.pointSize == 15 }?.stringValue = display.snapshot.overviewProvider
@@ -6203,6 +6213,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             updateAggregationNotes(in: record.card, context: context)
             updateBalanceRecharge(in: record.card, context: context)
+            alignSingleLineBalance(in: record.card, snapshot: context.snapshot)
             record.card.frame.origin = .zero
             let size = record.card.frame.size
             if record.wrapper.frame.size != size { needsPlacement = true; record.wrapper.frame.size = size }
@@ -6310,17 +6321,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 ceil(max(AccountMarqueeView.textWidth(of: text, font: font), measure.cell?.cellSize.width ?? 0)) + 14))
         }
         let gaps = CGFloat(labels.count - 1) * 4
-        let budget = max(0, available - min(64, titleFrame.width) - 6 - gaps)
-        let minimum = labels.indices.map { CGFloat($0 == 2 ? 24 : 36) }
+        let budget = max(0, available - min(labels.count > 2 ? 48 : 64, titleFrame.width) - 8 - gaps)
+        let minimum = labels.indices.map { index in
+            labels[index].count <= 6 ? desired[index] : CGFloat(index == 2 ? 24 : 36)
+        }
         let extra = max(0, min(desired.reduce(0, +) - minimum.reduce(0, +), budget - minimum.reduce(0, +)))
         let wantedExtra = max(1, desired.reduce(0, +) - minimum.reduce(0, +))
-        let widths = labels.indices.map { minimum[$0] + extra * max(0, desired[$0] - minimum[$0]) / wantedExtra }
-        let titleWidth = min(ceil(title.cell?.cellSize.width ?? titleFrame.width), max(0, available - widths.reduce(0, +) - gaps - 6))
+        let minimumScale = min(1, budget / max(1, minimum.reduce(0, +)))
+        let widths = labels.indices.map { minimum[$0] * minimumScale + extra * max(0, desired[$0] - minimum[$0]) / wantedExtra }
+        let titleWidth = min(ceil(title.cell?.cellSize.width ?? titleFrame.width), max(0, available - widths.reduce(0, +) - gaps - 8))
         title.frame = NSRect(x: titleFrame.minX, y: titleFrame.minY, width: titleWidth, height: titleFrame.height)
-        var x = title.frame.maxX + 6
+        var x = title.frame.maxX + 8
+        let capCenter = title.frame.maxY - title.firstBaselineOffsetFromTop + (title.font?.capHeight ?? 0) / 2
         for index in labels.indices {
             let id = NSUserInterfaceItemIdentifier(prefix + ".\(index)")
-            let frame = NSRect(x: x, y: titleFrame.midY - 8.5, width: widths[index], height: 17)
+            let frame = NSRect(x: x, y: capCenter - 7.5, width: widths[index], height: 15)
             let tag = existing.first { $0.identifier == id } ?? AggregationNoteTagView(text: labels[index], frame: frame)
             tag.identifier = id
             tag.originalTitleFrame = titleFrame
@@ -6340,10 +6355,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         for child in host.subviews where !(child is QuotaProgressView) {
             if child is OverviewNumericTextView || (child as? NSTextField)?.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize {
                 child.frame = next.amount
+            } else if child.identifier?.rawValue == "overview.quotaDetail" {
+                child.frame.origin.y = next.quotaDetail.minY
             } else { child.frame.origin.y += shift }
         }
         host.frame.size = next.cardSize
         host.overviewLayout = next
+    }
+
+    private func alignSingleLineBalance(in card: NSView, snapshot: Snapshot) {
+        guard snapshot.kind == .balance, snapshot.balanceRecharge == nil,
+              let host = card as? MenuHoverLinkHostView, host.overviewLayout?.link == nil,
+              let amount = descendantViews(of: card, as: OverviewNumericTextView.self).first,
+              let detail = descendantViews(of: card, as: AccountMarqueeView.self).first(where: {
+                  $0.identifier?.rawValue == "overview.quotaDetail"
+              }) else { return }
+        let baseline = amount.convert(NSPoint(x: 0, y: amount.bounds.height - amount.textField.firstBaselineOffsetFromTop), to: detail.superview)
+        let localBaseline = detail.accountLabel.convert(NSPoint(x: 0, y: detail.accountLabel.bounds.height
+            - detail.accountLabel.firstBaselineOffsetFromTop), to: detail).y
+        detail.frame.origin.y = baseline.y - localBaseline
     }
 
     private func updateBalanceRecharge(in card: NSView, context: OverviewCardContext) {
@@ -6358,16 +6388,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.identifier = id
         if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout, row.intersects(layout.amount) {
             label.frame = overviewMarqueeFrame(row, avoidingAmountFrame: layout.amount,
-                amountText: context.snapshot.overviewLargeAmount, minimumAmountGap: 6)
+                amountText: numericSamples(for: context).first.map { overviewNumericPlan(for: $0).layoutReservationText }
+                    ?? context.snapshot.overviewLargeAmount, minimumAmountGap: 12)
         } else { label.frame = row }
         label.lineBreakMode = .byTruncatingTail
         let prefix = tr(.keyBalanceRechargeLabel)
         let amount = Snapshot.balance("", Double(recharge.amountCents) / 100, unit, nil, recharge.observedAt).overviewLargeAmount
-        let text = prefix + " " + amount + " · " + recharge.dateText(timeZone: settings.displayTimeZone)
-        let attributed = NSMutableAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize), .foregroundColor: NSColor.secondaryLabelColor])
-        attributed.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: NSRange(location: 0, length: (prefix as NSString).length))
-        label.attributedStringValue = attributed
-        label.toolTip = text + "\n" + tr(.keyBalanceRechargeObserved)
+        let text = prefix + " +" + amount + " · " + recharge.dateText(timeZone: settings.displayTimeZone)
+        label.usesSingleLineMode = true
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
+        label.attributedStringValue = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize),
+            .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph])
+        label.toolTip = prefix + " +" + amount + " · "
+            + recharge.dateText(timeZone: settings.displayTimeZone, includesTime: true)
+            + "\n" + tr(.keyBalanceRechargeObserved)
         label.setAccessibilityLabel(label.toolTip)
         if label.superview == nil { card.addSubview(label) }
     }
@@ -6421,7 +6457,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && snapshot.kind == .official
                 && lunaReserve?.remaining != nil,
             lunaReserveInsertionIndex: presentation.lunaReserveInsertionIndex,
-            includesQuotaProgress: settings.showQuotaProgressBar,
+            includesQuotaProgress: settings.showQuotaProgressBar && (!isBalance || snapshot.progressPercentage != nil),
             includesBankedReset: settings.showBankedReset
                 && snapshot.kind == .official
                 && bankedReset != nil,
@@ -6887,9 +6923,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     layout.quotaDetail,
                     avoidingAmountFrame: amount.frame,
                     amountText: marqueeAmountText,
-                    amountFont: amountFont
+                    amountFont: amountFont,
+                    minimumAmountGap: isBalance ? 12 : 0
                 )
             )
+            quotaDetail.identifier = NSUserInterfaceItemIdentifier("overview.quotaDetail")
             if isBalance {
                 if supplied == nil {
                     let linkPrefix = makeOverviewLabel(tr(.keyStatusItemControllerOfficialLink), font: .systemFont(ofSize: 12))
@@ -6927,6 +6965,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.view = view
         if supplied != nil { updateAggregationNotes(in: view, context: context) }
         updateBalanceRecharge(in: view, context: context)
+        alignSingleLineBalance(in: view, snapshot: context.snapshot)
         return item
     }
 
@@ -7739,6 +7778,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             reconcileBalanceLayout(in: host, next: makeOverviewCardLayout(for: snapshot, presentation: presentation,
                 account: context.account, aggregation: !menuInput.aggregatedProviders.isEmpty))
             updateBalanceRecharge(in: host, context: context)
+            alignSingleLineBalance(in: host, snapshot: context.snapshot)
         }
         let samples = numericSamples(for: context)
         let reduceMotion = shouldReduceOverviewNumericMotion()

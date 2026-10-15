@@ -782,14 +782,14 @@ struct BalanceRecharge: Codable, Equatable {
     let amountCents: Int
     let observedAt: Date
 
-    func dateText(now: Date = Date(), timeZone: TimeZone) -> String {
+    func dateText(now: Date = Date(), timeZone: TimeZone, includesTime: Bool = false) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = calendar
         formatter.timeZone = timeZone
-        if calendar.isDate(observedAt, inSameDayAs: now) { formatter.dateFormat = "MM/dd, HH:mm" }
+        if includesTime { formatter.dateFormat = "yyyy/MM/dd, HH:mm:ss zzz" }
         else if calendar.component(.year, from: observedAt) == calendar.component(.year, from: now) { formatter.dateFormat = "MM/dd" }
         else { formatter.dateFormat = "yyyy/MM/dd" }
         return formatter.string(from: observedAt)
