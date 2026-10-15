@@ -517,3 +517,11 @@
 
 "balance.recharge.label" = "チャージ";
 "balance.recharge.observed" = "アプリが検出した残高の純増額です。時刻は増加を初めて確認した時点で、支払い記録ではありません。";
+
+"balance.used_since" = "%1$@以降 %2$@ 使用";
+"balance.used" = "%1$@ 使用";
+"balance.recording.started_on" = "%1$@から記録";
+"balance.recording.started" = "記録開始";
+"balance.reference_on" = "%1$@の残高 %2$@ に対して残り %3$@";
+"balance.reference" = "基準残高 %1$@ に対して残り %2$@";
+"balance.reference_unavailable" = "残高の基準を確認できません";

@@ -2788,6 +2788,12 @@ extension ProviderRefreshCoordinatorTests {
         DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "4.73") }
         let coordinator = aggregationCoordinator { displays, _ in
             let fresh = displays.filter { $0.status == .fresh }
+            for display in fresh {
+                XCTAssertEqual(display.snapshot.progressPercentage, 100)
+                XCTAssertEqual(display.snapshot.balanceProgressContext?.baselineCents, 473)
+                XCTAssertNotNil(display.snapshot.balanceProgressContext?.baselineObservedAt)
+                XCTAssertNil(display.snapshot.balanceRecharge)
+            }
             if phase == 0, fresh.count == 1, !firstDone { firstDone = true; first.fulfill() }
             if phase == 1, fresh.count == 2, !addedDone { addedDone = true; added.fulfill() }
             if phase == 2, fresh.count == 2, DelayedBalanceURLProtocol.requestCount == 4, !refreshedDone {
@@ -3137,6 +3143,7 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(snapshots.map { $0.0 }, ["claude-custom", "claude-wallet-peer", "claude-custom"])
         XCTAssertEqual(snapshots.map { $0.1.amount }, [3, 13, 13])
         XCTAssertNil(snapshots[0].1.balanceRecharge)
+        XCTAssertNotNil(snapshots[0].1.balanceProgressContext)
         XCTAssertNil(snapshots[0].1.progressPercentage)
         XCTAssertEqual(snapshots[1].1.balanceRecharge?.amountCents, 1000)
         XCTAssertEqual(snapshots[2].1.balanceRecharge, snapshots[1].1.balanceRecharge)
@@ -3197,6 +3204,7 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(snapshots.map { $0.0 }, ["codex-custom", "codex-wallet-peer", "codex-custom"])
         XCTAssertEqual(snapshots.map { $0.1.amount }, [3, 13, 13])
         XCTAssertNil(snapshots[0].1.balanceRecharge)
+        XCTAssertNotNil(snapshots[0].1.balanceProgressContext)
         XCTAssertNil(snapshots[0].1.progressPercentage)
         XCTAssertEqual(snapshots[1].1.balanceRecharge?.amountCents, 1000)
         XCTAssertEqual(snapshots[2].1.balanceRecharge, snapshots[1].1.balanceRecharge)

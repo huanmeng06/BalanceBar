@@ -517,3 +517,11 @@
 
 "balance.recharge.label" = "增值";
 "balance.recharge.observed" = "軟件偵測到的餘額淨增量；時間為本軟件首次觀察到上升的時刻，並非付款帳單紀錄。";
+
+"balance.used_since" = "自 %1$@ 起已用 %2$@";
+"balance.used" = "已用 %1$@";
+"balance.recording.started_on" = "%1$@ 開始記錄";
+"balance.recording.started" = "開始記錄";
+"balance.reference_on" = "相對 %1$@ 的 %2$@，剩餘 %3$@";
+"balance.reference" = "相對基準餘額 %1$@，剩餘 %2$@";
+"balance.reference_unavailable" = "尚無可確認的餘額基準";

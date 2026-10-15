@@ -517,3 +517,11 @@
 
 "balance.recharge.label" = "Recharge";
 "balance.recharge.observed" = "Hausse nette du solde détectée localement. La date correspond à sa première observation par cette app, pas à un reçu de paiement.";
+
+"balance.used_since" = "Depuis le %1$@ : %2$@ utilisés";
+"balance.used" = "%1$@ utilisés";
+"balance.recording.started_on" = "Suivi depuis le %1$@";
+"balance.recording.started" = "Suivi commencé";
+"balance.reference_on" = "Sur le solde du %1$@ de %2$@, %3$@ restants";
+"balance.reference" = "Sur le solde initial de %1$@, %2$@ restants";
+"balance.reference_unavailable" = "Solde de référence indisponible";

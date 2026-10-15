@@ -517,3 +517,11 @@
 
 "balance.recharge.label" = "充值";
 "balance.recharge.observed" = "软件检测到的余额净增量；时间为本软件首次观察到上涨的时刻，并非支付账单记录。";
+
+"balance.used_since" = "自 %1$@ 起已用 %2$@";
+"balance.used" = "已用 %1$@";
+"balance.recording.started_on" = "%1$@ 开始记录";
+"balance.recording.started" = "开始记录";
+"balance.reference_on" = "相对 %1$@ 的 %2$@，剩余 %3$@";
+"balance.reference" = "相对基准余额 %1$@，剩余 %2$@";
+"balance.reference_unavailable" = "尚无可确认的余额基准";

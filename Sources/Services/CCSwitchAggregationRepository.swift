@@ -90,7 +90,8 @@ enum AggregationWalletPresentation {
             if let amount = selected.snapshot.amount, selected.snapshot.kind == .balance {
                 snapshot = .balance(first.entry.source.name, amount, unit, first.entry.source.websiteURL ?? first.entry.source.query?.websiteURL,
                     selected.snapshot.date ?? selected.fetchedAt ?? .distantPast,
-                    progressPercentage: selected.snapshot.balanceProgressPercentage, recharge: selected.snapshot.balanceRecharge)
+                    progressPercentage: selected.snapshot.balanceProgressPercentage ?? ProviderBalanceProgressStore.minimumVisibleProgressPercentage,
+                    recharge: selected.snapshot.balanceRecharge, progressContext: selected.snapshot.balanceProgressContext)
             } else { snapshot = selected.snapshot }
             var notes: [String] = []
             let noteMembers = members.enumerated().sorted {

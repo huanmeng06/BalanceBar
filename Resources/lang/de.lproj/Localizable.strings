@@ -517,3 +517,11 @@
 
 "balance.recharge.label" = "Aufladung";
 "balance.recharge.observed" = "Lokal erkannter Nettoanstieg des Guthabens. Der Zeitpunkt ist die erste Beobachtung durch diese App, kein Zahlungsbeleg.";
+
+"balance.used_since" = "Seit %1$@: %2$@ verbraucht";
+"balance.used" = "%1$@ verbraucht";
+"balance.recording.started_on" = "Erfasst seit %1$@";
+"balance.recording.started" = "Erfassung begonnen";
+"balance.reference_on" = "Vom Guthaben am %1$@: %2$@, noch %3$@";
+"balance.reference" = "Vom Ausgangsguthaben %1$@: noch %2$@";
+"balance.reference_unavailable" = "Kein verlässlicher Guthabenbezug";

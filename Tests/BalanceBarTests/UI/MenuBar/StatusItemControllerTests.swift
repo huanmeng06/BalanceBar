@@ -3363,7 +3363,7 @@ extension StatusItemControllerTests {
         XCTAssertFalse(card.subviews.contains { $0 is AggregationNoteTagView })
         XCTAssertEqual(title.frame, layout.title)
         let ordinary = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: layout.progress != nil)
-        XCTAssertEqual(ordinary.cardSize.height - layout.cardSize.height, 8)
+        XCTAssertEqual(ordinary.cardSize.height, layout.cardSize.height)
         XCTAssertEqual(ordinary.cardSize.height - ordinary.refreshTime.maxY, layout.cardSize.height - layout.refreshTime.maxY)
     }
 
@@ -3422,7 +3422,7 @@ extension StatusItemControllerTests {
 extension StatusItemControllerTests {
     private func sharedWalletInput(keys: [String] = ["same", "same", "same"], notes: [String] = ["GPT", "Grok", "Other"],
                                    units: [String] = ["USD", "USD", "USD"], recharge: BalanceRecharge? = nil,
-                                   defaultIndex: Int = 0, names: [String]? = nil, displayOrders: [Int]? = nil) -> StatusItemController.MenuInput {
+                                   defaultIndex: Int = 0, names: [String]? = nil, displayOrders: [Int]? = nil, progressContext: BalanceProgressContext? = nil) -> StatusItemController.MenuInput {
         let displays = keys.indices.map { index -> AggregatedProviderDisplay in
             let id = "member-\(index)"
             let query = BalanceQuery(url: "https://wallet.example/balance", websiteURL: URL(string: "https://wallet.example"),
@@ -3432,8 +3432,8 @@ extension StatusItemControllerTests {
                 officialAccessToken: nil, notes: notes[index])
             return AggregatedProviderDisplay(entry: .init(source: source, role: index == defaultIndex ? .default : .member, displayOrder: displayOrders?[index]),
                 identity: .init(providerID: id, accountScope: keys[index], configurationRevision: "fixture"),
-                snapshot: .balance("tokenshop", 3.73, units[index], query.websiteURL, Date(timeIntervalSince1970: 1_700_000_000),
-                    progressPercentage: 37.3, recharge: recharge), account: nil, status: .fresh, reason: nil,
+                snapshot: .balance("tokenshop", progressContext.map { Double($0.lastCents) / 100 } ?? 3.73, units[index], query.websiteURL, Date(timeIntervalSince1970: 1_700_000_000),
+                    progressPercentage: progressContext.map { $0.referenceCents > 0 ? Double($0.lastCents) / Double($0.referenceCents) * 100 : 1 } ?? 37.3, recharge: recharge, progressContext: progressContext), account: nil, status: .fresh, reason: nil,
                 fetchedAt: Date(timeIntervalSince1970: 1_700_000_000))
         }
         return .init(choices: [], quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [],
@@ -3476,7 +3476,7 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testSharedWalletRechargeAddsAndRemovesOnlyNecessaryRowWithoutReplacingCard() throws {
+    func testSharedWalletSubtitleKeepsFixedRowWithoutReplacingCard() throws {
         let controller = makeController()
         defer { controller.teardown() }
         controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: sharedWalletInput(), settings: makeSettings())
@@ -3488,8 +3488,8 @@ extension StatusItemControllerTests {
         let recharge = BalanceRecharge(amountCents: 1000, observedAt: Date(timeIntervalSince1970: 1_700_000_000))
         controller.updateMenu(input: sharedWalletInput(recharge: recharge))
         XCTAssertTrue(wrapper.subviews.first === card)
-        XCTAssertEqual(card.frame.height, height + 8)
-        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.recharge" })
+        XCTAssertEqual(card.frame.height, height)
+        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.subtitle" })
         XCTAssertTrue(label.stringValue.contains("$10.00"))
         XCTAssertTrue(label.toolTip?.contains(tr(.keyBalanceRechargeObserved)) == true)
         let layout = try XCTUnwrap(card.overviewLayout)
@@ -3508,7 +3508,7 @@ extension StatusItemControllerTests {
         controller.updateMenu(input: sharedWalletInput())
         XCTAssertTrue(wrapper.subviews.first === card)
         XCTAssertEqual(card.frame.height, height)
-        XCTAssertFalse(card.subviews.contains { $0.identifier?.rawValue == "balance.recharge" })
+        XCTAssertTrue(card.subviews.contains { $0.identifier?.rawValue == "balance.subtitle" })
     }
 
     @MainActor
@@ -3719,7 +3719,7 @@ extension StatusItemControllerTests {
 
 extension StatusItemControllerTests {
     @MainActor
-    func testBalanceSingleLineBaselineAndFirstRechargeKeepCardAndViewport() throws {
+    func testBalanceFixedSubtitleAndFirstRechargeKeepCardAndViewport() throws {
         func input(recharge: BalanceRecharge? = nil) -> StatusItemController.MenuInput {
             var displays = sharedWalletInput(recharge: recharge).aggregatedProviders
             for i in displays.indices {
@@ -3737,12 +3737,11 @@ extension StatusItemControllerTests {
         let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
         let wrapper = try XCTUnwrap(viewport.documentView?.subviews.first)
         let card = try XCTUnwrap(wrapper.subviews.first as? MenuHoverLinkHostView)
-        XCTAssertNil(card.overviewLayout?.progress)
+        XCTAssertNotNil(card.overviewLayout?.progress)
         let detail = try XCTUnwrap(card.subviews.compactMap { $0 as? AccountMarqueeView }.first { $0.identifier?.rawValue == "overview.quotaDetail" })
         let amount = try XCTUnwrap(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
-        let baseline = amount.frame.maxY - amount.textField.firstBaselineOffsetFromTop
-        let detailBaseline = detail.accountLabel.convert(NSPoint(x: 0, y: detail.accountLabel.bounds.height - detail.accountLabel.firstBaselineOffsetFromTop), to: card).y
-        XCTAssertEqual(baseline, detailBaseline, accuracy: 0.5)
+        let height = card.frame.height
+        XCTAssertEqual(detail.frame.minY, card.overviewLayout?.quotaDetail.minY)
         let recharge = BalanceRecharge(amountCents: 1000, observedAt: Date())
         controller.updateMenu(input: input(recharge: recharge))
         XCTAssertTrue(controller.statusMenuForTesting.items.first?.view === viewport)
@@ -3750,7 +3749,7 @@ extension StatusItemControllerTests {
         XCTAssertTrue(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first === amount)
         XCTAssertNotNil(card.overviewLayout?.progress)
         XCTAssertEqual(detail.frame.minY, card.overviewLayout?.quotaDetail.minY)
-        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.recharge" })
+        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.subtitle" })
         XCTAssertTrue(label.stringValue.contains("+$10.00"))
         XCTAssertFalse(label.stringValue.contains(":"))
         XCTAssertTrue(label.toolTip?.contains(":") == true)
@@ -3760,7 +3759,100 @@ extension StatusItemControllerTests {
         XCTAssertEqual(label.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, .secondaryLabelColor)
         controller.updateMenu(input: input())
         XCTAssertTrue(wrapper.subviews.first === card)
+        XCTAssertEqual(card.frame.height, height)
+        XCTAssertNotNil(card.overviewLayout?.progress)
+        XCTAssertTrue(card.subviews.contains { $0 is QuotaProgressView })
+        XCTAssertEqual(label.stringValue, tr(.keyBalanceRecordingStarted))
+
+    }
+}
+
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testAllAggregationSubtitlesKeepHeightCardIdentityAndProgressPreference() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        func input(_ context: BalanceProgressContext?, recharge: BalanceRecharge? = nil) -> StatusItemController.MenuInput {
+            sharedWalletInput(recharge: recharge, progressContext: context)
+        }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input(nil), settings: makeSettings())
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
+        let wrapper = try XCTUnwrap(viewport.documentView?.subviews.first)
+        let card = try XCTUnwrap(wrapper.subviews.first as? MenuHoverLinkHostView)
+        let frames = try XCTUnwrap(card.overviewLayout)
+        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.subtitle" })
+        let placements = controller.aggregationPlacementCountForTesting
+        for date in [start, nil] {
+            for last in [400, 334] {
+                let context = BalanceProgressContext(baselineCents: 400, lastCents: last, peakCents: 400, baselineObservedAt: date)
+                let next = input(context)
+                XCTAssertEqual(AggregationWalletPresentation.cards(next.aggregatedProviders).first?.snapshot.balanceProgressContext, context)
+                controller.updateMenu(input: next)
+                XCTAssertTrue(wrapper.subviews.first === card)
+                XCTAssertEqual(card.overviewLayout, frames)
+                XCTAssertTrue(card.subviews.contains { $0 === label })
+                XCTAssertEqual(label.stringValue, next.aggregatedProviders[0].snapshot.balanceSubtitle(timeZone: makeSettings().displayTimeZone))
+            }
+        }
+        controller.updateMenu(input: input(nil, recharge: .init(amountCents: 100, observedAt: start)))
+        XCTAssertTrue(card.subviews.contains { $0 === label })
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showQuotaProgressBar: false)
+        controller.update(snapshot: .placeholder, refreshDate: nil, menuInput: input(nil), settings: settings)
+        let updated = try XCTUnwrap(wrapper.subviews.first as? MenuHoverLinkHostView)
+        XCTAssertNil(updated.overviewLayout?.progress)
+        XCTAssertNotNil(updated.overviewLayout?.balanceRecharge)
+        XCTAssertTrue(updated.subviews.contains { $0.identifier?.rawValue == "balance.subtitle" })
+    }
+
+    @MainActor
+    func testBaselineHelperMatchesAppKitAnchorsThroughFlippedAndUnflippedParents() {
+        final class Flipped: NSView { override var isFlipped: Bool { true } }
+        for host in [NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 100)), Flipped(frame: NSRect(x: 0, y: 0, width: 300, height: 100))] {
+            let amount = NSTextField(labelWithString: "$3.34")
+            amount.font = .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            let detail = NSTextField(labelWithString: "Balance")
+            detail.font = .systemFont(ofSize: 13)
+            for label in [amount, detail] { label.translatesAutoresizingMaskIntoConstraints = false; host.addSubview(label) }
+            NSLayoutConstraint.activate([
+                amount.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+                amount.topAnchor.constraint(equalTo: host.topAnchor, constant: 10),
+                amount.widthAnchor.constraint(equalToConstant: 120), amount.heightAnchor.constraint(equalToConstant: 48),
+                detail.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 130),
+                detail.widthAnchor.constraint(equalToConstant: 120), detail.heightAnchor.constraint(equalToConstant: 18),
+                detail.firstBaselineAnchor.constraint(equalTo: amount.firstBaselineAnchor)])
+            host.layoutSubtreeIfNeeded()
+            XCTAssertEqual(StatusItemController.overviewBaselineY(for: amount, in: host),
+                StatusItemController.overviewBaselineY(for: detail, in: host), accuracy: 0.5)
+        }
+    }
+}
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testOrdinaryBalanceKeepsLinkAndOriginalProgressVisibility() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let context = BalanceProgressContext(baselineCents: 400, lastCents: 334, peakCents: 400, baselineObservedAt: date)
+        let snapshot = Snapshot.balance("single", 3.34, "USD", URL(string: "https://fixture.example"), date,
+            progressPercentage: 83.5, progressContext: context)
+        controller.start(snapshot: snapshot, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
+        let card = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
+        XCTAssertNotNil(card.overviewLayout?.link)
+        XCTAssertNil(card.overviewLayout?.balanceRecharge)
         XCTAssertNil(card.overviewLayout?.progress)
-        XCTAssertFalse(card.subviews.contains { $0 is QuotaProgressView })
+        XCTAssertFalse(card.subviews.contains { $0.identifier?.rawValue == "balance.subtitle" })
+        let recharge = BalanceRecharge(amountCents: 100, observedAt: date)
+        let charged = Snapshot.balance("single", 3.34, "USD", URL(string: "https://fixture.example"), date,
+            progressPercentage: 83.5, recharge: recharge, progressContext: context)
+        controller.update(snapshot: charged, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
+        let updated = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
+        XCTAssertNotNil(updated.overviewLayout?.link)
+        XCTAssertNotNil(updated.overviewLayout?.balanceRecharge)
+        XCTAssertNotNil(updated.overviewLayout?.progress)
     }
 }

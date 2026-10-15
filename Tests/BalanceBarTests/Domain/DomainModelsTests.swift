@@ -2888,7 +2888,7 @@ extension DomainModelsTests {
             try store.observe(amount: amount, unit: "USD", identity: id,
                 sampleSequence: store.beginSample(), observedAt: date).get()
         }
-        XCTAssertNil(try observe(3, firstDate).displayProgress)
+        XCTAssertEqual(try observe(3, firstDate).displayProgress, 100)
         let increased = try observe(13, rechargeDate)
         XCTAssertEqual(increased.recharge?.amountCents, 1000)
         XCTAssertEqual(increased.displayProgress, 100)
@@ -2920,8 +2920,114 @@ extension DomainModelsTests {
             sampleSequence: store.beginSample(), observedAt: Date()).get()
         XCTAssertEqual(observation.progress, 11 / 13 * 100, accuracy: 0.000001)
         XCTAssertEqual(observation.recharge?.observedAt, Date(timeIntervalSinceReferenceDate: 10))
+        XCTAssertNil(observation.progressContext.baselineObservedAt)
         let records = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))) as? [String: [String: Any]])
         XCTAssertEqual(records[key]?["peakCents"] as? Int, 1300)
         XCTAssertNil(records[key]?["baselineObservedAt"])
+    }
+}
+
+extension DomainModelsTests {
+    func testRechargeSurvivesOldSchemaRoundTripAndCodexNameMigration() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let query = makeBalanceProgressQuery()
+        let legacy = ProviderBalanceProgressIdentity(client: .codex, providerID: "deepseek-fixture", query: query)
+        let original = ProviderBalanceProgressStore(defaults: defaults)
+        let time = Date(timeIntervalSince1970: 1_700_000_000)
+        for amount in [3.0, 3.22] {
+            _ = try original.observe(amount: amount, unit: "CNY", identity: legacy,
+                sampleSequence: original.beginSample(), observedAt: time).get()
+        }
+        let data = try XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))
+        var records = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: [String: Any]])
+        for key in records.keys {
+            records[key]?.removeValue(forKey: "peakCents")
+            records[key]?.removeValue(forKey: "baselineObservedAt")
+        }
+        defaults.set(try JSONSerialization.data(withJSONObject: records), forKey: ProviderBalanceProgressStore.storageKey)
+        let named = ProviderBalanceProgressIdentity(client: .codex, providerID: "deepseek-fixture", query: query, providerName: "DeepSeek fixture")
+        let upgraded = ProviderBalanceProgressStore(defaults: defaults)
+        upgraded.prepareMigration(identities: [named])
+        let observed = try upgraded.observe(amount: 3.20, unit: "CNY", identity: named,
+            sampleSequence: upgraded.beginSample(), observedAt: time.addingTimeInterval(120)).get()
+        XCTAssertEqual(observed.recharge, BalanceRecharge(amountCents: 22, observedAt: time))
+        XCTAssertEqual(observed.progress, 3.20 / 3.22 * 100, accuracy: 0.000001)
+        let restarted = ProviderBalanceProgressStore(defaults: defaults)
+        restarted.prepareMigration(identities: [named])
+        let afterRestart = try restarted.observe(amount: 3.19, unit: "CNY", identity: named,
+            sampleSequence: restarted.beginSample(), observedAt: time.addingTimeInterval(180)).get()
+        XCTAssertEqual(afterRestart.recharge, observed.recharge)
+    }
+}
+
+
+extension DomainModelsTests {
+    func testBalanceSubtitlePriorityCentsAndReferenceDates() throws {
+        let zone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let parser = ISO8601DateFormatter()
+        let start = try XCTUnwrap(parser.date(from: "2026-10-12T12:00:00Z"))
+        let now = try XCTUnwrap(parser.date(from: "2026-10-15T12:00:00Z"))
+        func snapshot(last: Int = 334, date: Date? = start, recharge: BalanceRecharge? = nil) -> Snapshot {
+            .balance("same", Double(last) / 100, "USD", nil, now, progressPercentage: Double(last) / 4,
+                recharge: recharge, progressContext: .init(baselineCents: 400, lastCents: last, peakCents: 400, baselineObservedAt: date))
+        }
+        XCTAssertEqual(snapshot().balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSince, arguments: ["10/12", "$0.66"]))
+        XCTAssertEqual(snapshot(last: 400).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStartedOn, arguments: ["10/12"]))
+        XCTAssertEqual(snapshot(date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsed, arguments: ["$0.66"]))
+        XCTAssertEqual(snapshot(last: 400, date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
+        XCTAssertEqual(Snapshot.balance("old", 3.34, "USD", nil, now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
+        let recharge = BalanceRecharge(amountCents: 100, observedAt: now)
+        XCTAssertEqual(snapshot(recharge: recharge).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRechargeLabel) + " +$1.00 · 10/15")
+        let lastYear = try XCTUnwrap(parser.date(from: "2025-12-31T23:30:00Z"))
+        XCTAssertTrue(snapshot(date: lastYear).balanceSubtitle(now: now, timeZone: zone).contains("2025/12/31"))
+        let east = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
+        XCTAssertTrue(snapshot(date: lastYear).balanceSubtitle(now: now, timeZone: east).contains("01/01"))
+        XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("$4.00"))
+        XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("84%"))
+        XCTAssertFalse(snapshot(date: nil).balanceProgressTooltip(now: now, timeZone: zone).contains("10/"))
+    }
+
+    func testProgressContextSurvivesSnapshotCacheAndRejectedOlderSamples() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        let id = ProviderBalanceProgressIdentity(client: .codex, providerID: "context", query: makeBalanceProgressQuery())
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let first = try store.observe(amount: 4, unit: "USD", identity: id, sampleSequence: store.beginSample(), observedAt: start).get()
+        XCTAssertEqual(first.progressContext.baselineObservedAt, start)
+        let older = store.beginSample()
+        let latest = try store.observe(amount: 3.34, unit: "USD", identity: id, sampleSequence: store.beginSample(), observedAt: start.addingTimeInterval(60)).get()
+        let late = try store.observe(amount: 10, unit: "USD", identity: id, sampleSequence: older, observedAt: start.addingTimeInterval(120)).get()
+        XCTAssertFalse(late.accepted)
+        XCTAssertEqual(late.progressContext, latest.progressContext)
+        XCTAssertEqual(latest.progressContext.consumedCents, 66)
+        let snapshot = Snapshot.balance("Provider", late.amount, late.unit, nil, late.observedAt,
+            progressPercentage: late.displayProgress, recharge: late.recharge, progressContext: late.progressContext)
+        var cache = ProviderBalanceSnapshotCache()
+        cache.store(snapshot, clientID: "codex", providerID: "context")
+        let failed = cache.errorSnapshot(clientID: "codex", providerID: "context", providerName: "Provider", reason: "fixture")
+        XCTAssertEqual(failed.balanceProgressContext, latest.progressContext)
+        XCTAssertEqual(failed.balanceRecharge, snapshot.balanceRecharge)
+    }
+}
+
+extension DomainModelsTests {
+    func testBalanceSubtitleArgumentsRenderInEveryLanguage() {
+        let examples: [(LocalizationKey, [String])] = [
+            (.keyBalanceUsedSince, ["10/12", "$0.66"]),
+            (.keyBalanceUsed, ["$0.66"]),
+            (.keyBalanceRecordingStartedOn, ["10/12"]),
+            (.keyBalanceRecordingStarted, []),
+            (.keyBalanceReferenceOn, ["10/12", "$4.00", "84%"]),
+            (.keyBalanceReference, ["$4.00", "84%"]),
+            (.keyBalanceReferenceUnavailable, [])]
+        for language in AppLanguage.allCases where language != .system {
+            for (key, arguments) in examples {
+                let text = tr(key, arguments: arguments, language: language)
+                XCTAssertFalse(text.contains("⟦"), "\(language): \(key)")
+                for argument in arguments { XCTAssertTrue(text.contains(argument), "\(language): \(key): \(text)") }
+            }
+        }
     }
 }

@@ -517,3 +517,11 @@
 
 "balance.recharge.label" = "Top-up";
 "balance.recharge.observed" = "Locally detected net balance increase; the time is when this app first observed it, not a payment receipt.";
+
+"balance.used_since" = "Since %1$@: %2$@ used";
+"balance.used" = "%1$@ used";
+"balance.recording.started_on" = "Recording since %1$@";
+"balance.recording.started" = "Recording started";
+"balance.reference_on" = "Of %1$@ balance %2$@, %3$@ remains";
+"balance.reference" = "Of baseline %1$@, %2$@ remains";
+"balance.reference_unavailable" = "Balance reference unavailable";

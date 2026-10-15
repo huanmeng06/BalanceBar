@@ -517,3 +517,11 @@
 
 "balance.recharge.label" = "Recarga";
 "balance.recharge.observed" = "Aumento líquido do saldo detetado localmente. A data é a primeira observação desta app, não um comprovativo de pagamento.";
+
+"balance.used_since" = "Desde %1$@: %2$@ usados";
+"balance.used" = "%1$@ usados";
+"balance.recording.started_on" = "Registo desde %1$@";
+"balance.recording.started" = "Registo iniciado";
+"balance.reference_on" = "Do saldo de %1$@ de %2$@, resta %3$@";
+"balance.reference" = "Do saldo inicial de %1$@, resta %2$@";
+"balance.reference_unavailable" = "Saldo de referência indisponível";

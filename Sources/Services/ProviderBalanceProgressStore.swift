@@ -106,9 +106,9 @@ final class ProviderBalanceProgressStore {
         let recharge: BalanceRecharge?
         let observedAt: Date
         let accepted: Bool
+        let progressContext: BalanceProgressContext
 
-        // Without a detected increase, the baseline has no visible reference.
-        var displayProgress: Double? { recharge == nil ? nil : progress }
+        var displayProgress: Double { progress }
     }
 
     static let storageKey = "balancebar.providerBalanceProgress.v1"
@@ -243,7 +243,9 @@ final class ProviderBalanceProgressStore {
         }
         return .success(Observation(amount: Double(next.lastCents) / 100, unit: next.unit,
             progress: percentage(currentCents: next.lastCents, baselineCents: next.peakCents ?? next.baselineCents),
-            recharge: next.recharge, observedAt: next.observedAt ?? observedAt, accepted: accepted))
+            recharge: next.recharge, observedAt: next.observedAt ?? observedAt, accepted: accepted,
+            progressContext: BalanceProgressContext(baselineCents: next.baselineCents, lastCents: next.lastCents,
+                peakCents: next.peakCents, baselineObservedAt: next.baselineObservedAt)))
     }
 
     private func persist() {

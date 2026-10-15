@@ -517,3 +517,11 @@
 
 "balance.recharge.label" = "Пополнение";
 "balance.recharge.observed" = "Локально обнаруженный чистый прирост баланса. Время первого наблюдения этим приложением, а не платёжная квитанция.";
+
+"balance.used_since" = "С %1$@ использовано %2$@";
+"balance.used" = "Использовано %1$@";
+"balance.recording.started_on" = "Учёт с %1$@";
+"balance.recording.started" = "Учёт начат";
+"balance.reference_on" = "От баланса на %1$@ в %2$@ осталось %3$@";
+"balance.reference" = "От начального баланса %1$@ осталось %2$@";
+"balance.reference_unavailable" = "Исходный баланс неизвестен";
