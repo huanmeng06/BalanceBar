@@ -514,3 +514,6 @@
 "aggregation.stale" = "마지막으로 확인된 데이터 · 재시도 중";
 "aggregation.unavailable" = "잔액을 사용할 수 없음";
 "aggregation.manage_in_cc_switch" = "집계 모드의 기본 공급자는 CC Switch에서 관리하세요";
+
+"balance.recharge.label" = "최근 충전";
+"balance.recharge.observed" = "앱이 감지한 잔액 순증가액입니다. 시간은 증가를 처음 확인한 시점이며 결제 기록이 아닙니다.";

@@ -777,6 +777,25 @@ enum CodexBankedResetFormatting {
     }
 }
 
+/// A locally observed net balance increase, not a provider payment receipt.
+struct BalanceRecharge: Codable, Equatable {
+    let amountCents: Int
+    let observedAt: Date
+
+    func dateText(now: Date = Date(), timeZone: TimeZone) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = calendar
+        formatter.timeZone = timeZone
+        if calendar.isDate(observedAt, inSameDayAs: now) { formatter.dateFormat = "MM/dd, HH:mm" }
+        else if calendar.component(.year, from: observedAt) == calendar.component(.year, from: now) { formatter.dateFormat = "MM/dd" }
+        else { formatter.dateFormat = "yyyy/MM/dd" }
+        return formatter.string(from: observedAt)
+    }
+}
+
 struct Snapshot: Equatable {
     enum Kind: Equatable { case placeholder, official, balance, error }
     let kind: Kind
@@ -787,6 +806,7 @@ struct Snapshot: Equatable {
     let message: String?
     let websiteURL: URL?
     let balanceProgressPercentage: Double?
+    var balanceRecharge: BalanceRecharge? = nil
     let officialQuotaWindows: [OfficialQuotaWindow]
     let lunaReserve: LunaReserveQuota?
     let bankedReset: CodexBankedReset?
@@ -897,9 +917,10 @@ struct Snapshot: Equatable {
         _ unit: String,
         _ websiteURL: URL?,
         _ date: Date,
-        progressPercentage: Double? = nil
+        progressPercentage: Double? = nil,
+        recharge: BalanceRecharge? = nil
     ) -> Snapshot {
-        Snapshot(
+        var snapshot = Snapshot(
             kind: .balance,
             provider: provider,
             amount: amount,
@@ -910,6 +931,8 @@ struct Snapshot: Equatable {
             balanceProgressPercentage: progressPercentage,
             officialQuotaWindows: []
         )
+        snapshot.balanceRecharge = recharge
+        return snapshot
     }
 
     static func error(_ message: String) -> Snapshot {
@@ -928,7 +951,7 @@ struct Snapshot: Equatable {
 
     static func providerError(_ provider: String, reason: String, cachedBalance: Snapshot?) -> Snapshot {
         let cached = cachedBalance?.kind == .balance ? cachedBalance : nil
-        return Snapshot(
+        var snapshot = Snapshot(
             kind: .error,
             provider: provider,
             amount: cached?.amount,
@@ -939,6 +962,8 @@ struct Snapshot: Equatable {
             balanceProgressPercentage: cached?.balanceProgressPercentage,
             officialQuotaWindows: []
         )
+        snapshot.balanceRecharge = cached?.balanceRecharge
+        return snapshot
     }
 
     /// Only recognized Codex windows participate in the expanded menu card.

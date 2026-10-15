@@ -514,3 +514,6 @@
 "aggregation.stale" = "Last known data · retrying";
 "aggregation.unavailable" = "Balance unavailable";
 "aggregation.manage_in_cc_switch" = "Manage the default provider in CC Switch aggregation mode";
+
+"balance.recharge.label" = "Last top-up";
+"balance.recharge.observed" = "Locally detected net balance increase; the time is when this app first observed it, not a payment receipt.";

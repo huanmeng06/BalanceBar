@@ -319,6 +319,8 @@ struct OpenCodexCardFrames: Equatable {
     /// `bankedResetTicketViewportMaxHeight` and scroll inside it.
     let bankedResetTicketViewport: CGRect?
 
+    var balanceRecharge: CGRect? = nil
+
     /// Produced by the section compositor, never inferred from child frames.
     var sectionLayouts: [OpenCodexOverviewSectionLayout] = []
 }
@@ -641,6 +643,7 @@ enum OpenCodexCardLayout {
         for category: OpenCodexCardCategory,
         linkPrefixWidth: CGFloat = 62,
         includesBalanceSubtitle: Bool = true,
+        includesBalanceRecharge: Bool = false,
         includesAccount: Bool = false,
         includesSubscription: Bool = false,
         subscriptionTextWidth: CGFloat? = nil,
@@ -743,17 +746,18 @@ enum OpenCodexCardLayout {
                 ? quotaProgressGapCompression
                 : quotaRowHeight - lunaReserveNoProgressRowHeight
             let subtitleShift: CGFloat = includesBalanceSubtitle ? 0 : 8
+            let rechargeShift: CGFloat = includesBalanceRecharge ? 25 : 0
             return OpenCodexCardFrames(
-                cardSize: CGSize(width: cardWidth, height: 102 - textShift - subtitleShift),
-                title: CGRect(x: horizontalInset, y: 75 - textShift - subtitleShift, width: 189, height: 20),
-                refreshTime: CGRect(x: refreshTimeX, y: 76 - textShift - subtitleShift, width: 81, height: 17),
+                cardSize: CGSize(width: cardWidth, height: 102 - textShift - subtitleShift + rechargeShift),
+                title: CGRect(x: horizontalInset, y: 75 - textShift - subtitleShift + rechargeShift, width: 189, height: 20),
+                refreshTime: CGRect(x: refreshTimeX, y: 76 - textShift - subtitleShift + rechargeShift, width: 81, height: 17),
                 account: nil,
                 subscription: nil,
-                quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift - subtitleShift, width: 128, height: 18),
+                quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift - subtitleShift + rechargeShift, width: 128, height: 18),
                 reset: nil,
                 amount: CGRect(
                     x: amountX,
-                    y: max(0, 18 - textShift),
+                    y: max(0, 18 - textShift) + rechargeShift,
                     width: amountWidth,
                     // Keep the 48pt box when the progress slot collapses.
                     // A 42pt box would leave its top 5pt below the detail row.
@@ -764,11 +768,11 @@ enum OpenCodexCardLayout {
                     : nil,
                 linkPrefix: includesBalanceSubtitle ? CGRect(
                     x: horizontalInset,
-                    y: 28 - textShift,
+                    y: 28 - textShift + rechargeShift,
                     width: linkPrefixWidth,
                     height: 17
                 ) : nil,
-                link: includesBalanceSubtitle ? CGRect(x: linkX, y: 28 - textShift, width: linkWidth, height: 17) : nil,
+                link: includesBalanceSubtitle ? CGRect(x: linkX, y: 28 - textShift + rechargeShift, width: linkWidth, height: 17) : nil,
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
@@ -776,7 +780,9 @@ enum OpenCodexCardLayout {
                 bankedResetForecastMetrics: nil,
                 bankedResetForecastConfidence: nil,
                 bankedResetDetailRows: [],
-                bankedResetTicketViewport: nil
+                bankedResetTicketViewport: nil,
+                balanceRecharge: includesBalanceRecharge
+                    ? CGRect(x: horizontalInset, y: includesQuotaProgress ? 18 : 0, width: contentWidth, height: 17) : nil
             )
         }
     }

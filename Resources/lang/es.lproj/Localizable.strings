@@ -514,3 +514,6 @@
 "aggregation.stale" = "Últimos datos fiables · reintentando";
 "aggregation.unavailable" = "Saldo no disponible";
 "aggregation.manage_in_cc_switch" = "Gestiona el proveedor predeterminado en CC Switch en modo de agregación";
+
+"balance.recharge.label" = "Última recarga";
+"balance.recharge.observed" = "Aumento neto del saldo detectado localmente. La fecha es la primera observación de esta app, no un recibo de pago.";

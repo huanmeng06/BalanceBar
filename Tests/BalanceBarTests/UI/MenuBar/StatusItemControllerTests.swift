@@ -3403,3 +3403,115 @@ extension StatusItemControllerTests {
         XCTAssertNil(unavailableSubtitle.toolTip)
     }
 }
+
+
+extension StatusItemControllerTests {
+    private func sharedWalletInput(keys: [String] = ["same", "same", "same"], notes: [String] = ["GPT", "Grok", "Other"],
+                                   units: [String] = ["USD", "USD", "USD"], recharge: BalanceRecharge? = nil,
+                                   defaultIndex: Int = 0) -> StatusItemController.MenuInput {
+        let displays = keys.indices.map { index -> AggregatedProviderDisplay in
+            let id = "member-\(index)"
+            let query = BalanceQuery(url: "https://wallet.example/balance", websiteURL: URL(string: "https://wallet.example"),
+                apiKey: keys[index], intervalMinutes: 5, timeoutSeconds: 10, isRightCode: false,
+                subscriptionPrefix: "/codex", nativeBalanceProvider: nil, isNewAPI: false, additionalHeaders: [:])
+            let source = ProviderSummarySource(id: id, name: "tokenshop", isOfficial: false, query: query,
+                officialAccessToken: nil, notes: notes[index])
+            return AggregatedProviderDisplay(entry: .init(source: source, role: index == defaultIndex ? .default : .member),
+                identity: .init(providerID: id, accountScope: keys[index], configurationRevision: "fixture"),
+                snapshot: .balance("tokenshop", 3.73, units[index], query.websiteURL, Date(timeIntervalSince1970: 1_700_000_000),
+                    progressPercentage: 37.3, recharge: recharge), account: nil, status: .fresh, reason: nil,
+                fetchedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        }
+        return .init(choices: [], quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [],
+            showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
+            aggregatedProviders: displays, aggregationQuickSwitchBlocked: true)
+    }
+
+    @MainActor
+    func testSharedWalletMenuHasOneAmountTwoCenteredTagsAndOverflow() throws {
+        let input = sharedWalletInput()
+        let cards = AggregationWalletPresentation.cards(input.aggregatedProviders)
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards[0].snapshot.amount, 3.73)
+        XCTAssertEqual(cards[0].groupedProviderIDs, ["member-0", "member-1", "member-2"])
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input, settings: makeSettings())
+        let scroll = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        XCTAssertEqual(document.subviews.count, 1)
+        let card = try XCTUnwrap(document.subviews.first?.subviews.first as? MenuHoverLinkHostView)
+        let tags = card.subviews.compactMap { $0 as? AggregationNoteTagView }.sorted { $0.frame.minX < $1.frame.minX }
+        XCTAssertEqual(tags.map { $0.textView.accountLabel.stringValue }, ["GPT", "Grok", "+1"])
+        XCTAssertTrue(tags.allSatisfy { $0.frame.maxX <= card.overviewLayout!.refreshTime.minX - 6 })
+        XCTAssertTrue(tags.allSatisfy { $0.textView.accountLabel.alignment == .center })
+        XCTAssertTrue(tags.last?.toolTip?.contains("Other") == true)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        let placements = controller.aggregationPlacementCountForTesting
+        controller.updateMenu(input: input)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
+        let removed = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false,
+            aggregatedProviders: Array(input.aggregatedProviders.dropFirst()), aggregationQuickSwitchBlocked: true)
+        controller.updateMenu(input: removed)
+        XCTAssertTrue(document.subviews.first?.subviews.first === card)
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
+        XCTAssertEqual(card.subviews.compactMap { $0 as? AggregationNoteTagView }.map { $0.textView.accountLabel.stringValue }.sorted(), ["Grok", "Other"])
+    }
+
+    @MainActor
+    func testSharedWalletRechargeAddsAndRemovesOnlyNecessaryRowWithoutReplacingCard() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: sharedWalletInput(), settings: makeSettings())
+        let scroll = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        let wrapper = try XCTUnwrap(document.subviews.first)
+        let card = try XCTUnwrap(wrapper.subviews.first as? MenuHoverLinkHostView)
+        let height = card.frame.height
+        let recharge = BalanceRecharge(amountCents: 1000, observedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        controller.updateMenu(input: sharedWalletInput(recharge: recharge))
+        XCTAssertTrue(wrapper.subviews.first === card)
+        XCTAssertEqual(card.frame.height, height + 25)
+        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.recharge" })
+        XCTAssertTrue(label.stringValue.contains("$10.00"))
+        XCTAssertTrue(label.toolTip?.contains(tr(.keyBalanceRechargeObserved)) == true)
+        let layout = try XCTUnwrap(card.overviewLayout)
+        XCTAssertLessThanOrEqual(label.frame.maxY, layout.amount.minY)
+        XCTAssertGreaterThan(label.frame.minY, try XCTUnwrap(layout.progress).maxY)
+        let window = NSWindow(contentRect: scroll.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { scroll.removeFromSuperview(); window.close() }
+        window.contentView?.addSubview(scroll)
+        window.contentView?.layoutSubtreeIfNeeded()
+        scroll.layoutSubtreeIfNeeded()
+        XCTAssertFalse(wrapper.frame.intersection(scroll.contentView.documentVisibleRect).isEmpty)
+        controller.updateMenu(input: sharedWalletInput())
+        XCTAssertTrue(wrapper.subviews.first === card)
+        XCTAssertEqual(card.frame.height, height)
+        XCTAssertFalse(card.subviews.contains { $0.identifier?.rawValue == "balance.recharge" })
+    }
+
+    @MainActor
+    func testWalletGroupingSeparatesCredentialsCurrenciesAndKeepsDefaultFirst() {
+        XCTAssertEqual(AggregationWalletPresentation.cards(sharedWalletInput(keys: ["same", "different", "same"]).aggregatedProviders).count, 2)
+        XCTAssertEqual(AggregationWalletPresentation.cards(sharedWalletInput(units: ["USD", "CNY", "USD"]).aggregatedProviders).count, 2)
+        let reordered = AggregationWalletPresentation.cards(sharedWalletInput(keys: ["other", "same", "same"], defaultIndex: 2).aggregatedProviders)
+        XCTAssertEqual(reordered.first?.groupedProviderIDs, ["member-1", "member-2"])
+        XCTAssertEqual(reordered.first?.entry.role, .default)
+        let deduplicated = AggregationWalletPresentation.cards(sharedWalletInput(notes: ["GPT", "GPT", " "]).aggregatedProviders)
+        XCTAssertEqual(deduplicated.first?.groupedNotes, ["GPT"])
+        var mixed = sharedWalletInput().aggregatedProviders
+        mixed[0].snapshot = .providerError("tokenshop", reason: "Fixture failure", cachedBalance: nil)
+        mixed[0].status = .error
+        mixed[0].fetchedAt = nil
+        let partial = AggregationWalletPresentation.cards(mixed)
+        XCTAssertEqual(partial.count, 1)
+        XCTAssertEqual(partial[0].status, .fresh)
+        XCTAssertEqual(partial[0].snapshot.amount, 3.73)
+        mixed[1].snapshot = .balance("tokenshop", 8, "CNY", nil, Date())
+        XCTAssertEqual(AggregationWalletPresentation.cards(mixed).count, 3, "unknown currency cannot bridge USD and CNY")
+    }
+}

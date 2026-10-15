@@ -39,7 +39,7 @@ Path(sys.argv[2]).write_text('import AppKit\nimport Foundation\n' + metrics + '\
     + 'struct OpenCodexQuotaRowFrames: Equatable {}\n'
     + 'struct OpenCodexOverviewSectionLayout: Equatable {}\n' + frames + '\n'
     + 'enum OpenCodexCardLayout {\n' + constants + '\n' + compression + '\n'
-    + 'static func balance(linkPrefixWidth: CGFloat = 62, includesQuotaProgress: Bool = true, includesBalanceSubtitle: Bool = true) -> OpenCodexCardFrames {'
+    + 'static func balance(linkPrefixWidth: CGFloat = 62, includesQuotaProgress: Bool = true, includesBalanceSubtitle: Bool = true, includesBalanceRecharge: Bool = false) -> OpenCodexCardFrames {'
     + body + '\n}\n}\n')
 PY
 
@@ -54,7 +54,14 @@ for progress in [false, true] {
     require(compact.link == nil && compact.linkPrefix == nil, "aggregation has no subtitle row")
     require(ordinary.cardSize.height - compact.cardSize.height == 8, "aggregation collapses subtitle space")
     require(ordinary.cardSize.height - ordinary.refreshTime.maxY == compact.cardSize.height - compact.refreshTime.maxY, "timestamp remains anchored to top")
-    for frames in [ordinary, compact] {
+    let recharge = OpenCodexCardLayout.balance(includesQuotaProgress: progress, includesBalanceSubtitle: false, includesBalanceRecharge: true)
+    require(recharge.cardSize.height == compact.cardSize.height + 25, "recharge row owns only its necessary height")
+    require(recharge.balanceRecharge != nil, "recharge row has a measured slot")
+    if let row = recharge.balanceRecharge {
+        require(row.maxY <= recharge.amount.minY, "recharge does not overlap amount")
+        if let bar = recharge.progress { require(row.minY > bar.maxY, "recharge stays above progress") }
+    }
+    for frames in [ordinary, compact, recharge] {
         let bounds = CGRect(origin: .zero, size: frames.cardSize)
         for rect in [frames.title, frames.refreshTime, frames.quotaDetail, frames.amount] {
             require(bounds.contains(rect), "all essential fields remain inside the card")

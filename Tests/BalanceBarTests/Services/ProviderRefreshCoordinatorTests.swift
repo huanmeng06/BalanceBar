@@ -3086,3 +3086,60 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
     }
 }
+
+
+extension ProviderRefreshCoordinatorTests {
+    func testSharedWalletLateTransportPublishesAuthoritativeBalanceAndOneRecharge() throws {
+        try withDatabase { db in
+            try execute(db, sql: """
+                INSERT INTO providers SELECT 'claude-wallet-peer', 'Peer', settings_config, meta,
+                    category, website_url, app_type, 0, 2, 2 FROM providers WHERE id='claude-custom'
+                """)
+        }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: temporaryDirectoryURL.lastPathComponent + ".Wallet"))
+        defer { defaults.removePersistentDomain(forName: temporaryDirectoryURL.lastPathComponent + ".Wallet") }
+        let oldStarted = DispatchSemaphore(value: 0)
+        let releaseOld = DispatchSemaphore(value: 0)
+        defer { releaseOld.signal() }
+        let counter = IncrementingCounter()
+        DelayedBalanceURLProtocol.setHandler { _ in
+            switch counter.next() {
+            case 1: return DelayedBalanceURLProtocol.success(amount: "3")
+            case 2:
+                oldStarted.signal()
+                return .init(data: Data(#"{"balance":20,"quota":{"unit":"USD"}}"#.utf8), statusCode: 200, delayUntil: releaseOld)
+            default: return DelayedBalanceURLProtocol.success(amount: "13")
+            }
+        }
+        let published = DispatchSemaphore(value: 0)
+        let lock = NSLock()
+        var values: [(String, Snapshot)] = []
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let coordinator = ProviderRefreshCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(), balanceAPIClient: BalanceAPIClient(session: session),
+            balanceProgressStore: ProviderBalanceProgressStore(defaults: defaults),
+            queue: DispatchQueue(label: "test.shared-wallet-observations"),
+            actions: .init(currentProvider: { _ in nil }, isActiveClient: { _ in false }, render: { _ in },
+                storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in },
+                notificationSnapshot: { _, id, snapshot in
+                    lock.lock(); values.append((id, snapshot)); lock.unlock(); published.signal()
+                }), now: { clock.now })
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude, providerIDs: ["claude-custom"])
+        waitForEvent(published)
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude, providerIDs: ["claude-custom"])
+        waitForEvent(oldStarted)
+        clock.advance(by: 60)
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude, providerIDs: ["claude-wallet-peer"])
+        waitForEvent(published)
+        releaseOld.signal()
+        waitForEvent(published)
+        lock.lock(); let snapshots = values; lock.unlock()
+        XCTAssertEqual(snapshots.map { $0.0 }, ["claude-custom", "claude-wallet-peer", "claude-custom"])
+        XCTAssertEqual(snapshots.map { $0.1.amount }, [3, 13, 13])
+        XCTAssertNil(snapshots[0].1.balanceRecharge)
+        XCTAssertEqual(snapshots[1].1.balanceRecharge?.amountCents, 1000)
+        XCTAssertEqual(snapshots[2].1.balanceRecharge, snapshots[1].1.balanceRecharge)
+        XCTAssertEqual(snapshots[2].1.date, snapshots[1].1.date)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+    }
+}

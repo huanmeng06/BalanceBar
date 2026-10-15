@@ -399,6 +399,9 @@ final class ProviderRefreshCoordinator {
         aggregationBlocked = reader.blocksQuickSwitch()
         let entries: [AggregatedProviderEntry]
         if case .active(let active) = state { entries = active } else { entries = [] }
+        balanceProgressStore.prepareMigration(identities: entries.compactMap { entry in
+            entry.source.query.map { ProviderBalanceProgressIdentity(client: .codex, providerID: entry.providerID, query: $0) }
+        })
         let identities = Set(entries.map(aggregationIdentity))
         if !entries.isEmpty {
             standardPublicationEpoch.invalidate()
@@ -534,7 +537,7 @@ final class ProviderRefreshCoordinator {
                         current.snapshot = snapshot
                         current.status = .fresh
                         current.reason = nil
-                        current.fetchedAt = self.now()
+                        current.fetchedAt = snapshot.date ?? self.now()
                         self.actions.notificationSnapshot?(.codex, identity.providerID, snapshot)
                     }
                     self.aggregationDisplays[identity] = current
@@ -671,6 +674,9 @@ final class ProviderRefreshCoordinator {
                 _ = self.refreshAggregation(reader: reader, force: force)
                 aggregationIDs = Set(entries.map(\.providerID))
             } else { aggregationIDs = [] }
+            self.balanceProgressStore.prepareMigration(identities: sources.compactMap { source in
+                source.query.map { ProviderBalanceProgressIdentity(client: client, providerID: source.id, query: $0) }
+            })
             for source in sources {
                 guard force || due || previousRevisions[source.id] != source.configurationRevision else { continue }
                 if aggregationIDs.contains(source.id) { continue }
@@ -716,38 +722,41 @@ final class ProviderRefreshCoordinator {
                     continue
                 }
                 guard let query = source.query else { continue }
+                let sampleSequence = self.balanceProgressStore.beginSample()
                 self.balanceAPIClient.fetchBalance(
                     query: query,
                     client: client,
                     providerID: source.id
                 ) { [weak self] result in
                     guard let self, case .success(let response) = result else { return }
-                    let identity = ProviderBalanceProgressIdentity(
-                        client: client,
-                        providerID: source.id,
-                        query: query
-                    )
-                    guard case .success = self.balanceProgressStore.update(
-                        amount: response.output.amount,
-                        unit: response.output.unit,
-                        identity: identity
-                    ) else { return }
-                    self.updateQuickSwitchSummary(
-                        providerID: source.id,
-                        payload: .formatted(Self.formatBalanceSummary(response.output.amount, unit: response.output.unit))
-                    )
-                    self.actions.notificationSnapshot?(
-                        client,
-                        source.id,
-                        .balance(
-                            source.name,
-                            response.output.amount,
-                            response.output.unit,
-                            query.websiteURL,
-                            Date(),
-                            progressPercentage: nil
+                    self.performOnQueue {
+                        guard self.quickSwitchSourceRevisions[client]?[source.id] == source.configurationRevision else { return }
+                        let identity = ProviderBalanceProgressIdentity(
+                            client: client,
+                            providerID: source.id,
+                            query: query
                         )
-                    )
+                        guard case .success(let observation) = self.balanceProgressStore.observe(
+                            amount: response.output.amount, unit: response.output.unit,
+                            identity: identity, sampleSequence: sampleSequence, observedAt: self.now()
+                        ) else { return }
+                        self.actions.notificationSnapshot?(
+                            client,
+                            source.id,
+                            .balance(
+                                source.name,
+                                observation.amount,
+                                observation.unit,
+                                query.websiteURL,
+                                observation.observedAt,
+                                progressPercentage: observation.progress, recharge: observation.recharge
+                            )
+                        )
+                        self.updateQuickSwitchSummary(
+                            providerID: source.id,
+                            payload: .formatted(Self.formatBalanceSummary(observation.amount, unit: observation.unit))
+                        )
+                    }
                 }
             }
         }
@@ -791,6 +800,9 @@ final class ProviderRefreshCoordinator {
             if let completion { completion(.providerError(providerName, reason: reason, cachedBalance: nil)) }
             else { renderBalanceError(providerID: providerID, providerName: providerName, reason: reason, client: client) }
         }
+        let identity = ProviderBalanceProgressIdentity(client: client, providerID: providerID, query: query)
+        balanceProgressStore.prepareMigration(identities: [identity])
+        let sampleSequence = balanceProgressStore.beginSample()
         guard balanceAPIClient.fetchBalance(
             query: query,
             client: client,
@@ -801,38 +813,27 @@ final class ProviderRefreshCoordinator {
                 guard isValid() else { return }
                 switch result {
                 case .success(let response):
-                    let identity = ProviderBalanceProgressIdentity(
-                        client: client,
-                        providerID: providerID,
-                        query: query
-                    )
-                    let progressResult = self.balanceProgressStore.update(
-                        amount: response.output.amount,
-                        unit: response.output.unit,
-                        identity: identity
-                    )
-                    guard case .success(let progressPercentage) = progressResult else {
+                    let progressResult = self.balanceProgressStore.observe(
+                        amount: response.output.amount, unit: response.output.unit,
+                        identity: identity, sampleSequence: sampleSequence, observedAt: self.now())
+                    guard case .success(let observation) = progressResult else {
                         if case .failure(let error) = progressResult {
-                            fail(
-                                providerID: providerID,
-                                providerName: providerName,
-                                reason: error.userVisibleReason(language: AppLanguage.resolved),
-                                client: client
-                            )
+                            fail(providerID: providerID, providerName: providerName,
+                                reason: error.userVisibleReason(language: AppLanguage.resolved), client: client)
                         }
                         return
                     }
                     self.updateQuickSwitchSummary(
                         providerID: providerID,
-                        payload: .formatted(Self.formatBalanceSummary(response.output.amount, unit: response.output.unit))
+                        payload: .formatted(Self.formatBalanceSummary(observation.amount, unit: observation.unit))
                     )
                     let balanceSnapshot = Snapshot.balance(
                         providerName,
-                        response.output.amount,
-                        response.output.unit,
+                        observation.amount,
+                        observation.unit,
                         query.websiteURL,
-                        Date(),
-                        progressPercentage: progressPercentage
+                        observation.observedAt,
+                        progressPercentage: observation.progress, recharge: observation.recharge
                     )
                     if let completion { completion(balanceSnapshot) }
                     else { self.renderForCurrentProvider(balanceSnapshot, providerID: providerID, client: client) }

@@ -27,6 +27,8 @@ struct AggregatedProviderDisplay: Equatable {
     var status: Status
     var reason: String?
     var fetchedAt: Date?
+    var groupedNotes: [String]? = nil
+    var groupedProviderIDs: [String]? = nil
     /// Only display semantics participate; source credentials remain private to refresh.
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.identity == rhs.identity && lhs.entry.role == rhs.entry.role
@@ -34,6 +36,71 @@ struct AggregatedProviderDisplay: Equatable {
             && lhs.snapshot == rhs.snapshot
             && lhs.account == rhs.account && lhs.status == rhs.status
             && lhs.reason == rhs.reason && lhs.fetchedAt == rhs.fetchedAt
+            && lhs.groupedNotes == rhs.groupedNotes && lhs.groupedProviderIDs == rhs.groupedProviderIDs
+    }
+}
+
+/// Menu-only projection. Original Provider records remain available to every
+/// identity-sensitive consumer; amounts are selected, never summed.
+enum AggregationWalletPresentation {
+    static func cards(_ displays: [AggregatedProviderDisplay]) -> [AggregatedProviderDisplay] {
+        var groups: [[AggregatedProviderDisplay]] = []
+        var indices: [String: Int] = [:]
+        func walletID(_ display: AggregatedProviderDisplay) -> String? {
+            guard !display.entry.source.isOfficial, let query = display.entry.source.query else { return nil }
+            return ProviderBalanceProgressIdentity(client: .codex, providerID: display.entry.providerID, query: query).walletID
+        }
+        func unit(_ display: AggregatedProviderDisplay) -> String? {
+            let value = display.snapshot.unit?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            return value?.isEmpty == false ? value : nil
+        }
+        var currencies: [String: Set<String>] = [:]
+        for display in displays {
+            if let wallet = walletID(display), let currency = unit(display) { currencies[wallet, default: []].insert(currency) }
+        }
+        for display in displays {
+            guard let wallet = walletID(display) else { groups.append([display]); continue }
+            // An unknown/error record can join the single established currency,
+            // but must not bridge two different currency accounts.
+            let known = currencies[wallet] ?? []
+            let currency = unit(display) ?? (known.count == 1 ? known.first! : "unknown")
+            let key = wallet + "|" + currency
+            if let index = indices[key] { groups[index].append(display) }
+            else { indices[key] = groups.count; groups.append([display]) }
+        }
+        groups = groups.enumerated().sorted { lhs, rhs in
+            let leftDefault = lhs.element.contains { $0.entry.role == .default }
+            let rightDefault = rhs.element.contains { $0.entry.role == .default }
+            return leftDefault == rightDefault ? lhs.offset < rhs.offset : leftDefault
+        }.map(\.element)
+        return groups.map { members in
+            let first = members[0]
+            guard let scope = walletID(first) else { return first }
+            let valid = members.filter { $0.snapshot.kind == .balance }
+            let selected = (valid.isEmpty ? members : valid).max {
+                let left = $0.fetchedAt ?? .distantPast
+                let right = $1.fetchedAt ?? .distantPast
+                return left == right ? $0.status != .fresh && $1.status == .fresh : left < right
+            } ?? first
+            let unit = unit(selected) ?? "unknown"
+            let wallet = scope + "|" + unit
+            let snapshot: Snapshot
+            if let amount = selected.snapshot.amount, selected.snapshot.kind == .balance {
+                snapshot = .balance(first.entry.source.name, amount, unit, first.entry.source.websiteURL ?? first.entry.source.query?.websiteURL,
+                    selected.snapshot.date ?? selected.fetchedAt ?? .distantPast,
+                    progressPercentage: selected.snapshot.balanceProgressPercentage, recharge: selected.snapshot.balanceRecharge)
+            } else { snapshot = selected.snapshot }
+            var notes: [String] = []
+            for member in members {
+                if let note = member.entry.source.notes?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !note.isEmpty, !notes.contains(note) { notes.append(note) }
+            }
+            return AggregatedProviderDisplay(entry: AggregatedProviderEntry(source: first.entry.source,
+                role: members.contains { $0.entry.role == .default } ? .default : .member),
+                identity: AggregationDisplayIdentity(providerID: "wallet:" + wallet, accountScope: wallet, configurationRevision: wallet),
+                snapshot: snapshot, account: nil, status: selected.status, reason: selected.reason, fetchedAt: selected.fetchedAt,
+                groupedNotes: notes, groupedProviderIDs: members.map { $0.entry.providerID })
+        }
     }
 }
 
