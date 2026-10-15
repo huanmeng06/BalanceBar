@@ -834,3 +834,21 @@ extension OpenCodexCardLayoutTests {
         XCTAssertTrue(BalanceRefreshReason.manual.forcesStandardProviderBalance)
     }
 }
+
+
+extension OpenCodexCardLayoutTests {
+    func testBalanceRechargeReusesOfficialQuotaRowSlots() throws {
+        for progress in [false, true] {
+            let official = OpenCodexCardLayout.frames(for: .quota, includesQuotaProgress: progress)
+            let balance = OpenCodexCardLayout.frames(for: .balance, includesBalanceSubtitle: false,
+                includesBalanceRecharge: true, includesQuotaProgress: progress)
+            XCTAssertEqual(official.quotaDetail, balance.quotaDetail)
+            let reset = try XCTUnwrap(official.reset)
+            let recharge = try XCTUnwrap(balance.balanceRecharge)
+            XCTAssertEqual(reset.minY, recharge.minY)
+            XCTAssertEqual(reset.height, recharge.height)
+            XCTAssertEqual(official.amount.origin, balance.amount.origin)
+            XCTAssertEqual(official.progress, balance.progress)
+        }
+    }
+}

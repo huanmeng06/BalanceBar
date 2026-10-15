@@ -3324,7 +3324,15 @@ extension StatusItemControllerTests {
         tag.textView.layoutSubtreeIfNeeded()
         XCTAssertEqual(tag.toolTip, text.trimmingCharacters(in: .whitespacesAndNewlines))
         XCTAssertEqual(tag.textView.accountLabel.font?.pointSize, 11)
-        XCTAssertEqual(tag.frame.minX, title.frame.maxX + 6)
+        XCTAssertEqual(tag.frame.minX, title.frame.maxX + 8)
+        XCTAssertEqual(tag.frame.height, 15)
+        XCTAssertEqual(tag.frame.midY, title.frame.maxY - title.firstBaselineOffsetFromTop + (title.font?.capHeight ?? 0) / 2, accuracy: 0.5)
+        tag.appearance = NSAppearance(named: .aqua)
+        tag.updateLayer()
+        let light = tag.layer?.backgroundColor
+        tag.appearance = NSAppearance(named: .darkAqua)
+        tag.updateLayer()
+        XCTAssertNotEqual(light, tag.layer?.backgroundColor)
         XCTAssertLessThanOrEqual(tag.frame.maxX, layout.refreshTime.minX - 6)
         XCTAssertTrue(tag.textView.isScrollable)
         XCTAssertEqual(tag.textView.accountLabel.alignment, .left)
@@ -3354,7 +3362,7 @@ extension StatusItemControllerTests {
         controller.updateMenu(input: aggregationInput(count: 4))
         XCTAssertFalse(card.subviews.contains { $0 is AggregationNoteTagView })
         XCTAssertEqual(title.frame, layout.title)
-        let ordinary = OpenCodexCardLayout.frames(for: .balance)
+        let ordinary = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: layout.progress != nil)
         XCTAssertEqual(ordinary.cardSize.height - layout.cardSize.height, 8)
         XCTAssertEqual(ordinary.cardSize.height - ordinary.refreshTime.maxY, layout.cardSize.height - layout.refreshTime.maxY)
     }
@@ -3487,7 +3495,7 @@ extension StatusItemControllerTests {
         let layout = try XCTUnwrap(card.overviewLayout)
         XCTAssertEqual(label.frame.maxY + 2, layout.quotaDetail.minY)
         let amountGlyphWidth = AccountMarqueeView.textWidth(of: "$3.73", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
-        XCTAssertLessThanOrEqual(label.frame.maxX + 6, layout.amount.maxX - amountGlyphWidth + 0.5)
+        XCTAssertLessThanOrEqual(label.frame.maxX + 12, layout.amount.maxX - amountGlyphWidth + 0.5)
         XCTAssertEqual(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first?.frame, layout.amount)
         XCTAssertGreaterThan(label.frame.minY, try XCTUnwrap(layout.progress).maxY)
         let window = NSWindow(contentRect: scroll.frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -3705,5 +3713,54 @@ extension StatusItemControllerTests {
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
         XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
         controller.menuDidClose(menu)
+    }
+}
+
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testBalanceSingleLineBaselineAndFirstRechargeKeepCardAndViewport() throws {
+        func input(recharge: BalanceRecharge? = nil) -> StatusItemController.MenuInput {
+            var displays = sharedWalletInput(recharge: recharge).aggregatedProviders
+            for i in displays.indices {
+                displays[i].snapshot = .balance("tokenshop", 12, "USD", nil, Date(),
+                    progressPercentage: recharge == nil ? nil : 12 / 13 * 100, recharge: recharge)
+            }
+            return .init(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false,
+                showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
+                aggregatedProviders: displays, aggregationQuickSwitchBlocked: true)
+        }
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input(), settings: makeSettings())
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
+        let wrapper = try XCTUnwrap(viewport.documentView?.subviews.first)
+        let card = try XCTUnwrap(wrapper.subviews.first as? MenuHoverLinkHostView)
+        XCTAssertNil(card.overviewLayout?.progress)
+        let detail = try XCTUnwrap(card.subviews.compactMap { $0 as? AccountMarqueeView }.first { $0.identifier?.rawValue == "overview.quotaDetail" })
+        let amount = try XCTUnwrap(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        let baseline = amount.frame.maxY - amount.textField.firstBaselineOffsetFromTop
+        let detailBaseline = detail.accountLabel.convert(NSPoint(x: 0, y: detail.accountLabel.bounds.height - detail.accountLabel.firstBaselineOffsetFromTop), to: card).y
+        XCTAssertEqual(baseline, detailBaseline, accuracy: 0.5)
+        let recharge = BalanceRecharge(amountCents: 1000, observedAt: Date())
+        controller.updateMenu(input: input(recharge: recharge))
+        XCTAssertTrue(controller.statusMenuForTesting.items.first?.view === viewport)
+        XCTAssertTrue(wrapper.subviews.first === card)
+        XCTAssertTrue(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first === amount)
+        XCTAssertNotNil(card.overviewLayout?.progress)
+        XCTAssertEqual(detail.frame.minY, card.overviewLayout?.quotaDetail.minY)
+        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.recharge" })
+        XCTAssertTrue(label.stringValue.contains("+$10.00"))
+        XCTAssertFalse(label.stringValue.contains(":"))
+        XCTAssertTrue(label.toolTip?.contains(":") == true)
+        XCTAssertTrue(label.usesSingleLineMode)
+        let paragraph = try XCTUnwrap(label.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        XCTAssertEqual(paragraph.lineBreakMode, .byTruncatingTail)
+        XCTAssertEqual(label.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, .secondaryLabelColor)
+        controller.updateMenu(input: input())
+        XCTAssertTrue(wrapper.subviews.first === card)
+        XCTAssertNil(card.overviewLayout?.progress)
+        XCTAssertFalse(card.subviews.contains { $0 is QuotaProgressView })
     }
 }

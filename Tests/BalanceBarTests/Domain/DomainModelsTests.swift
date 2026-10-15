@@ -2023,7 +2023,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(try progress(store, amount: 5.20, unit: "USD", identity: identity), 100)
         XCTAssertEqual(
             try progress(store, amount: 1, unit: "USD", identity: identity),
-            100 / 4.2,
+            100 / 5.2,
             accuracy: 0.000001
         )
     }
@@ -2051,7 +2051,7 @@ final class DomainModelsTests: XCTestCase {
         let restored = ProviderBalanceProgressStore(defaults: defaults)
         XCTAssertEqual(
             try progress(restored, amount: 1, unit: "USD", identity: identity),
-            100,
+            100 / 4.01,
             accuracy: 0.000001
         )
 
@@ -2681,13 +2681,13 @@ extension DomainModelsTests {
         XCTAssertEqual(charged.progress, 100)
         let later = start.addingTimeInterval(60)
         XCTAssertEqual(try sample(12, b, date: later).recharge?.observedAt, start)
-        XCTAssertEqual(try sample(3.73, b).progress, 37.3, accuracy: 0.00001)
+        XCTAssertEqual(try sample(3.73, b).progress, 3.73 / 12 * 100, accuracy: 0.00001)
         XCTAssertEqual(try sample(3.73, a).recharge?.amountCents, 1000)
         let restored = ProviderBalanceProgressStore(defaults: defaults)
         let value = try restored.observe(amount: 3, unit: "USD", identity: a,
             sampleSequence: restored.beginSample(), observedAt: later).get()
         XCTAssertEqual(value.recharge, charged.recharge)
-        XCTAssertEqual(value.progress, 30)
+        XCTAssertEqual(value.progress, 25)
         let next = try sample(4.73, a)
         XCTAssertEqual(next.recharge?.amountCents, 100)
         XCTAssertEqual(next.progress, 100)
@@ -2747,10 +2747,10 @@ extension DomainModelsTests {
             BalanceRecharge(amountCents: 1000, observedAt: try XCTUnwrap(parse.date(from: iso)))
                 .dateText(now: now, timeZone: try XCTUnwrap(TimeZone(identifier: zone)))
         }
-        XCTAssertEqual(try text("2026-10-14T00:30:00Z"), "10/14, 00:30")
+        XCTAssertEqual(try text("2026-10-14T00:30:00Z"), "10/14")
         XCTAssertEqual(try text("2026-10-02T14:30:00Z"), "10/02")
         XCTAssertEqual(try text("2025-12-28T14:30:00Z"), "2025/12/28")
-        XCTAssertEqual(try text("2026-10-14T00:30:00Z", "America/Los_Angeles"), "10/13, 17:30")
+        XCTAssertEqual(try text("2026-10-14T00:30:00Z", "America/Los_Angeles"), "10/13")
     }
 }
 
@@ -2795,7 +2795,7 @@ extension DomainModelsTests {
         let value = try restored.observe(amount: 12, unit: "USD", identity: b,
             sampleSequence: restored.beginSample(), observedAt: Date()).get()
         XCTAssertEqual(value.recharge?.amountCents, 1000)
-        XCTAssertEqual(value.progress, 100)
+        XCTAssertEqual(value.progress, 12 / 13 * 100, accuracy: 0.000001)
     }
 
     func testNameMigrationAdoptsOnlyAgreeingQueryRecordsAndNeverReimportsOnRename() throws {
@@ -2862,7 +2862,7 @@ extension DomainModelsTests {
         let value = try store.observe(amount: 3.73, unit: "USD", identity: peers[0],
             sampleSequence: store.beginSample(), observedAt: date.addingTimeInterval(60)).get()
         XCTAssertEqual(value.recharge, BalanceRecharge(amountCents: 1000, observedAt: date))
-        XCTAssertEqual(value.progress, 37.3, accuracy: 0.00001)
+        XCTAssertEqual(value.progress, 3.73 / 13 * 100, accuracy: 0.00001)
         let cny = try store.observe(amount: 100, unit: "CNY", identity: peers[1],
             sampleSequence: store.beginSample(), observedAt: date).get()
         XCTAssertNil(cny.recharge)
@@ -2872,5 +2872,56 @@ extension DomainModelsTests {
         let persistent = try restarted.observe(amount: 3, unit: "USD", identity: peers[1],
             sampleSequence: restarted.beginSample(), observedAt: date).get()
         XCTAssertEqual(persistent.recharge, value.recharge)
+    }
+}
+
+
+extension DomainModelsTests {
+    func testRechargeProgressUsesPostIncreasePeakAndPersistsOptionalBaselineTime() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let id = ProviderBalanceProgressIdentity(client: .codex, providerID: "peak", query: makeBalanceProgressQuery())
+        let firstDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let rechargeDate = firstDate.addingTimeInterval(60)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        func observe(_ amount: Double, _ date: Date) throws -> ProviderBalanceProgressStore.Observation {
+            try store.observe(amount: amount, unit: "USD", identity: id,
+                sampleSequence: store.beginSample(), observedAt: date).get()
+        }
+        XCTAssertNil(try observe(3, firstDate).displayProgress)
+        let increased = try observe(13, rechargeDate)
+        XCTAssertEqual(increased.recharge?.amountCents, 1000)
+        XCTAssertEqual(increased.displayProgress, 100)
+        let spent = try observe(12, rechargeDate.addingTimeInterval(60))
+        XCTAssertEqual(try XCTUnwrap(spent.displayProgress), 12 / 13 * 100, accuracy: 0.000001)
+        XCTAssertEqual(spent.recharge, increased.recharge)
+        let data = try XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))
+        let records = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: [String: Any]])
+        let state = try XCTUnwrap(records.values.first)
+        XCTAssertEqual(state["peakCents"] as? Int, 1300)
+        XCTAssertNotNil(state["baselineObservedAt"])
+        let restarted = ProviderBalanceProgressStore(defaults: defaults)
+        let afterRestart = try restarted.observe(amount: 11, unit: "USD", identity: id,
+            sampleSequence: restarted.beginSample(), observedAt: rechargeDate.addingTimeInterval(120)).get()
+        XCTAssertEqual(afterRestart.progress, 11 / 13 * 100, accuracy: 0.000001)
+        XCTAssertEqual(afterRestart.recharge?.observedAt, rechargeDate)
+    }
+
+    func testLegacyPeakMigrationUsesSavedPostIncreaseBalanceWithoutInventingBaselineDate() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let id = ProviderBalanceProgressIdentity(client: .codex, providerID: "legacy-peak", query: makeBalanceProgressQuery())
+        let key = "wallet:" + id.accountingID + ":USD"
+        let old: [String: Any] = ["baselineCents": 1300, "lastCents": 1200, "unit": "USD",
+            "recharge": ["amountCents": 1000, "observedAt": 10.0], "sampleSequence": 7]
+        defaults.set(try JSONSerialization.data(withJSONObject: [key: old]), forKey: ProviderBalanceProgressStore.storageKey)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        let observation = try store.observe(amount: 11, unit: "USD", identity: id,
+            sampleSequence: store.beginSample(), observedAt: Date()).get()
+        XCTAssertEqual(observation.progress, 11 / 13 * 100, accuracy: 0.000001)
+        XCTAssertEqual(observation.recharge?.observedAt, Date(timeIntervalSinceReferenceDate: 10))
+        let records = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))) as? [String: [String: Any]])
+        XCTAssertEqual(records[key]?["peakCents"] as? Int, 1300)
+        XCTAssertNil(records[key]?["baselineObservedAt"])
     }
 }

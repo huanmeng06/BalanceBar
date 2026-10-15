@@ -1108,3 +1108,14 @@ extension OverviewNumericTransitionTests {
         XCTAssertNotEqual(samples("codex|grok|new-account").first?.identity, a.first?.identity)
     }
 }
+
+
+extension OverviewNumericTransitionTests {
+    func testCurrencySymbolUsesSmallerMediumFontWhileDigitsRetainQuotaFont() {
+        let digits = NSFont.monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaAmountPointSize, weight: .semibold)
+        let symbol = OverviewNumericTextView.currencySymbolFont(for: digits)
+        XCTAssertEqual(symbol.pointSize, 31 * 0.65, accuracy: 0.01)
+        XCTAssertEqual(digits.pointSize, 31)
+        XCTAssertNotEqual(symbol.fontName, digits.fontName)
+    }
+}

@@ -515,5 +515,5 @@
 "aggregation.unavailable" = "Solde indisponible";
 "aggregation.manage_in_cc_switch" = "Gérez le fournisseur par défaut dans CC Switch en mode agrégation";
 
-"balance.recharge.label" = "Dernière recharge";
+"balance.recharge.label" = "Recharge";
 "balance.recharge.observed" = "Hausse nette du solde détectée localement. La date correspond à sa première observation par cette app, pas à un reçu de paiement.";
