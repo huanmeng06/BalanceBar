@@ -654,7 +654,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
         ApplicationWindowPresentation.presentInBackground(window)
-        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
         let countdown = try XCTUnwrap(descendants(host).compactMap { $0 as? OverviewNumericHoverLinkTextField }
             .first { $0.sample?.format == .remainingMinutes })
         let countdownValue = countdown.sample?.value
@@ -691,7 +691,8 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             XCTAssertTrue(lines.contains { $0.contains("event=content.update.deferred;") && $0.contains("source=\(source)") })
         }
         controller.menuDidClose(controller.statusMenuForTesting)
-        host.finishMenuDismissal() // Auxiliary cleanup can precede isVisible=false.
+        host.finishMenuDismissal() // Auxiliary cleanup must not restore a still-visible window.
+        XCTAssertTrue(host.isMenuDismissing)
         XCTAssertTrue(window.isVisible)
         controller.update(snapshot: snapshot(remaining: 10, onlyWeek: true), refreshDate: now,
             menuInput: makeMenuInput(), settings: makeSettings())

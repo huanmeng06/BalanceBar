@@ -713,7 +713,7 @@ final class DashboardComponentsTests: XCTestCase {
         let window = PaceDismissalWindowProbe(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
         ApplicationWindowPresentation.presentInBackground(window)
-        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
         let trace = try XCTUnwrap(MenuDismissalTrace.beginRound(menu: fixture.menu))
         host.setDismissalTrace(trace)
         host.quotaPaceAccount = OpenAIAccountPresentation(email: "secret@example.invalid")
@@ -733,7 +733,7 @@ final class DashboardComponentsTests: XCTestCase {
         host.setMenuContentVisible(false)
         XCTAssertGreaterThan(lines.count, exitStart)
         XCTAssertFalse(lines[exitStart...].contains { $0.contains("event=filter.remove;") })
-        host.finishMenuDismissal()
+        host.finishMenuDismissal(beforeOpening: true)
         XCTAssertTrue(lines.contains { $0.contains("event=filter.remove;") })
         for event in ["marker.enter", "marker.leave", "hover.timer.fire", "popover.show.request",
                       "popover.willClose", "popover.didClose", "dismissal.begin", "dismissal.cleanup", "section.suspend"] {
@@ -762,7 +762,7 @@ final class DashboardComponentsTests: XCTestCase {
         let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
         ApplicationWindowPresentation.presentInBackground(window)
-        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
         host.layoutSubtreeIfNeeded()
         let old = try XCTUnwrap(MenuDismissalTrace.beginRound(menu: fixture.menu))
         host.setDismissalTrace(old)
@@ -774,7 +774,7 @@ final class DashboardComponentsTests: XCTestCase {
         view.firePendingShowForTesting()
         view.dismissTooltip(animated: true)
         host.setMenuContentVisible(false)
-        host.finishMenuDismissal()
+        host.finishMenuDismissal(beforeOpening: true)
         let next = try XCTUnwrap(MenuDismissalTrace.beginRound(menu: fixture.menu))
         XCTAssertGreaterThan(next.round, old.round)
         host.setDismissalTrace(next)
@@ -791,13 +791,88 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(callback.contains("active_matches=false;"))
     }
 
+    func testWillMoveWithoutEarlierRemoveFreezesUntilExplicitNextOpen() throws {
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let host = fixture.host
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        host.layoutSubtreeIfNeeded()
+        host.setMenuContentVisible(true)
+        let view = fixture.views[0]
+        let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+        other.focusReduceTransparencyForTesting = false
+        other.focusReduceMotionForTesting = false
+        enterPace(view)
+        host.sectionFocus.pendingTimerForTesting?.fire()
+        let count = other.focusTransitionCountForTesting
+        host.viewWillMove(toWindow: nil)
+        view.viewWillMove(toWindow: nil)
+        host.viewDidMoveToWindow()
+        host.setPaceMenuTracking(false)
+        XCTAssertTrue(host.isMenuDismissing)
+        XCTAssertFalse(view.isMenuTracking)
+        XCTAssertTrue(other.isFocusSuspended)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.focusTransitionCountForTesting, count)
+        XCTAssertNil(host.sectionFocus.pendingTimerForTesting)
+        // If the hidden-window notification is absent, next-open is the
+        // explicit safe reset point. It must resume the same surviving views.
+        host.setMenuContentVisible(true)
+        XCTAssertFalse(host.isMenuDismissing)
+        XCTAssertFalse(other.isFocusSuspended)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.alphaValue, 1)
+        XCTAssertTrue(view.isMenuTracking)
+        enterPace(view)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        host.setMenuContentVisible(false)
+    }
+
+    func testDismissalExperimentsAreDevelopmentOnlyAndKeepShowAnimation() throws {
+        for mode in [PaceDismissalExperiment.full, .focusOff, .popoverCloseOff] {
+            let args = ["app", "--pace-dismissal-experiment", mode.rawValue]
+            XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: args), mode)
+            XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.app", arguments: args), .full)
+            let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+            let host = fixture.host
+            host.dismissalExperiment = mode
+            let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+            window.contentView = host
+            ApplicationWindowPresentation.presentInBackground(window)
+            host.layoutSubtreeIfNeeded()
+            host.setMenuContentVisible(true)
+            defer { window.orderOut(nil); host.setMenuContentVisible(false); host.finishMenuDismissal() }
+            fixture.views.forEach { $0.markerReduceMotionForTesting = false }
+            host.sectionFocus.sections.values.forEach {
+                $0.focusReduceMotionForTesting = false
+                $0.focusReduceTransparencyForTesting = false
+            }
+            enterPace(fixture.views[0])
+            fixture.views[0].firePendingShowForTesting()
+            let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+            XCTAssertEqual(other.contentFilters.isEmpty, mode == .focusOff)
+            XCTAssertEqual(other.alphaValue, mode == .focusOff ? 1 : 0.5)
+            XCTAssertEqual(fixture.popovers[0].showAnimationFlags, [true])
+            enterPace(fixture.views[1])
+            XCTAssertTrue(fixture.views[1].isTooltipVisible)
+            XCTAssertEqual(fixture.popovers[0].showCount, 1)
+            fixture.views[1].updateHover(at: NSPoint(x: -100, y: -100))
+            fixture.views[1].firePendingCloseForTesting()
+            XCTAssertEqual(fixture.popovers[0].closeAnimationFlags, [mode != .popoverCloseOff])
+        }
+        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app", "--pace-dismissal-experiment"]), .full)
+        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app", "--pace-dismissal-experiment", "unknown"]), .full)
+    }
+
     func testMenuDismissalPreservesOutgoingFiltersAndCancelsAllHoverWork() throws {
         let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
         let host = fixture.host
         let window = PaceDismissalWindowProbe(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
         ApplicationWindowPresentation.presentInBackground(window)
-        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
         host.layoutSubtreeIfNeeded()
         host.setMenuContentVisible(true)
         let view = fixture.views[0]
@@ -836,10 +911,14 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(host.isMenuDismissing, "A still-visible window must retain outgoing visuals")
         window.reportedOcclusionState = []
         NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        XCTAssertTrue(host.isMenuDismissing, "Occlusion is not proof the old window finished exiting")
+        window.orderOut(nil)
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
         XCTAssertFalse(host.isMenuDismissing)
         XCTAssertTrue(other.contentFilters.isEmpty)
         XCTAssertEqual(other.alphaValue, 1)
         XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        ApplicationWindowPresentation.presentInBackground(window)
         host.setMenuContentVisible(true)
         XCTAssertTrue(view.isMenuTracking)
         enterPace(view)
@@ -853,6 +932,9 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(view.hasPendingShowForTesting)
         host.setMenuContentVisible(false)
         host.removeFromSuperview()
+        XCTAssertTrue(host.isMenuDismissing)
+        window.orderOut(nil)
+        host.finishMenuDismissal()
         XCTAssertFalse(host.isMenuDismissing)
         XCTAssertTrue(other.contentFilters.isEmpty)
     }

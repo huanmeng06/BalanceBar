@@ -2,6 +2,24 @@ import AppKit
 import QuartzCore
 import CoreImage
 
+/// Process-local development controls for single-variable comparison runs.
+/// Production ignores these arguments; the default keeps the complete effect.
+enum PaceDismissalExperiment: String {
+    case full
+    case focusOff = "focus-off"
+    case popoverCloseOff = "popover-close-off"
+
+    static let current = resolve(bundleIdentifier: Bundle.main.bundleIdentifier, arguments: ProcessInfo.processInfo.arguments)
+
+    static func resolve(bundleIdentifier: String?, arguments: [String]) -> Self {
+        guard MenuDismissalTrace.isEnabled(bundleIdentifier: bundleIdentifier),
+              let index = arguments.firstIndex(of: "--pace-dismissal-experiment"),
+              arguments.indices.contains(index + 1),
+              let mode = Self(rawValue: arguments[index + 1]) else { return .full }
+        return mode
+    }
+}
+
 /// Event-boundary diagnostics only: capture time/state on the main thread,
 /// then let the existing log writer persist asynchronously. No animation polling.
 @MainActor
@@ -14,7 +32,7 @@ final class MenuDismissalTrace {
     private weak var menu: NSMenu?
     weak var host: MenuHoverLinkHostView?
 
-    static func isEnabled(bundleIdentifier: String?) -> Bool {
+    nonisolated static func isEnabled(bundleIdentifier: String?) -> Bool {
         bundleIdentifier == "com.huanmeng06.BalanceBar.dev"
             || bundleIdentifier?.hasPrefix("com.huanmeng06.BalanceBar.dev.") == true
     }
@@ -44,9 +62,9 @@ final class MenuDismissalTrace {
         sequence += 1
         let now = DispatchTime.now().uptimeNanoseconds
         let source = view ?? host
-        let window = source?.window
+        let window = source?.window ?? host?.outgoingMenuWindow
         let sectionCount = host?.subviews.filter { $0 is OpenCodexOverviewSectionView }.count ?? 0
-        let message = "event=\(event); round=\(round); seq=\(sequence); mono_ns=\(now); elapsed_ms=\(Double(now - start) / 1_000_000); wall_s=\(Date().timeIntervalSince1970); host_round=\(host?.dismissalTrace?.round ?? 0); view=\(Self.id(source)); host=\(Self.id(host)); window=\(Self.id(window)); popover=\(Self.id(popover)); tracking=\(host?.isPaceMenuTracking ?? false); content_visible=\(host?.isMenuContentVisible ?? false); dismissing=\(host?.isMenuDismissing ?? false); window_visible=\(window?.isVisible ?? false); occlusion=\(window?.occlusionState.rawValue ?? 0); items=\(menu?.numberOfItems ?? 0); sections=\(sectionCount); \(details)"
+        let message = "event=\(event); experiment=\((host?.dismissalExperiment ?? .current).rawValue); round=\(round); seq=\(sequence); mono_ns=\(now); elapsed_ms=\(Double(now - start) / 1_000_000); wall_s=\(Date().timeIntervalSince1970); host_round=\(host?.dismissalTrace?.round ?? 0); view=\(Self.id(source)); host=\(Self.id(host)); window=\(Self.id(window)); attached_window=\(Self.id(source?.window)); popover=\(Self.id(popover)); tracking=\(host?.isPaceMenuTracking ?? false); content_visible=\(host?.isMenuContentVisible ?? false); dismissing=\(host?.isMenuDismissing ?? false); window_visible=\(window?.isVisible ?? false); occlusion=\(window?.occlusionState.rawValue ?? 0); items=\(menu?.numberOfItems ?? 0); sections=\(sectionCount); \(details)"
         if let sink = Self.sinkForTesting { sink(message) }
         else { SwitchLog.write(message, level: .debug, category: "ui.menu.dismissal") }
     }
@@ -88,10 +106,12 @@ final class SectionFocusController {
     private var generation = 0
     private var isMenuDismissing = false
     var dismissalTrace: MenuDismissalTrace?
+    var experiment = PaceDismissalExperiment.current
     var isActive = false
     var pendingTimerForTesting: Timer? { timer }
 
     func update(sections next: [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView]) {
+        guard !isMenuDismissing else { return }
         let previous = sections
         for (id, view) in previous where next[id] !== view { view.setFocusState(.normal, animated: false) }
         sections = next
@@ -103,7 +123,7 @@ final class SectionFocusController {
     }
 
     func hoverChanged(_ id: OpenCodexOverviewSectionID, isHovering: Bool, pace: QuotaProgressPaceView? = nil) {
-        guard isActive, sections[id] != nil || pace != nil else { return }
+        guard isActive, !isMenuDismissing, sections[id] != nil || pace != nil else { return }
         if isHovering {
             if hoveredID == id {
                 // A matching replacement adopts the outstanding phase, not a new delay.
@@ -192,7 +212,7 @@ final class SectionFocusController {
     }
     private func cancelPending() { generation += 1; timer?.invalidate(); timer = nil; phase = nil }
     private func state(for id: OpenCodexOverviewSectionID) -> SectionFocusState {
-        focusedID == nil ? .normal : (focusedID == id ? .focused : .receded)
+        experiment == .focusOff || focusedID == nil ? .normal : (focusedID == id ? .focused : .receded)
     }
     private func setFocus(_ id: OpenCodexOverviewSectionID?) {
         guard focusedID != id else { return }
@@ -205,6 +225,7 @@ final class SectionFocusController {
         presentedPace?.refreshMarkerAccessibility()
     }
     func suspendForMenuDismissal() {
+        guard !isMenuDismissing else { return }
         dismissalTrace?.record("focus.suspend")
         isActive = false
         isMenuDismissing = true
@@ -216,16 +237,20 @@ final class SectionFocusController {
         targetPace = nil
         sections.values.forEach { $0.suspendFocusTransition() }
     }
-    func reset() {
-        dismissalTrace?.record("focus.reset")
+    func finishMenuDismissal() {
         isMenuDismissing = false
+        reset()
+    }
+    func reset() {
+        guard !isMenuDismissing else { return }
+        dismissalTrace?.record("focus.reset")
         cancelPending()
         hoveredID = nil
         focusedID = nil
         presentedPace?.dismissTooltip(animated: false)
         presentedPace = nil
         targetPace = nil
-        sections.values.forEach { $0.setFocusState(.normal, animated: false) }
+        sections.values.forEach { $0.restoreFocusAfterDismissal() }
     }
     deinit { timer?.invalidate() }
 }
@@ -235,6 +260,7 @@ final class SectionFocusController {
 class OpenCodexOverviewSectionView: NSView {
     let sectionID: OpenCodexOverviewSectionID
     private(set) var focusState: SectionFocusState = .normal
+    private(set) var isFocusSuspended = false
     var dismissalTrace: MenuDismissalTrace?
     private var focusGeneration = 0
     private var ownFocusFilter: CIFilter?
@@ -255,6 +281,7 @@ class OpenCodexOverviewSectionView: NSView {
     }
 
     func setFocusState(_ state: SectionFocusState, animated: Bool) {
+        guard !isFocusSuspended else { return }
         let reduceMotion = focusReduceMotionForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let reduceTransparency = focusReduceTransparencyForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         let receded = state == .receded
@@ -305,7 +332,7 @@ class OpenCodexOverviewSectionView: NSView {
         defer { traceFocus("section.focus") }
         guard hasOwnFocusFilter, let node = layer else { return } // No invalid KVC on an absent filter.
         let cleanup: () -> Void = { [weak self, weak filter] in
-            guard let self, self.focusGeneration == token, self.targetRadius == 0,
+            guard let self, !self.isFocusSuspended, self.focusGeneration == token, self.targetRadius == 0,
                   let filter, self.ownFocusFilter === filter else { return }
             self.contentFilters = self.contentFilters.filter { $0.name != Self.blurName }
             self.ownFocusFilter = nil
@@ -334,6 +361,8 @@ class OpenCodexOverviewSectionView: NSView {
     /// Freeze the visible state while the native menu exits. Do not detach a
     /// content filter or brighten a still-visible outgoing menu.
     func suspendFocusTransition() {
+        guard !isFocusSuspended else { return }
+        isFocusSuspended = true
         defer { traceFocus("section.suspend") }
         focusGeneration += 1 // Retire any restoration completion before removing its animation.
         focusRestoreCompletionForTesting = nil
@@ -359,6 +388,11 @@ class OpenCodexOverviewSectionView: NSView {
         targetRadius = radius
     }
 
+    func restoreFocusAfterDismissal() {
+        isFocusSuspended = false
+        setFocusState(.normal, animated: false)
+    }
+
     private func traceFocus(_ event: String) {
         guard let dismissalTrace else { return }
         var radius = targetRadius
@@ -370,7 +404,7 @@ class OpenCodexOverviewSectionView: NSView {
             visibleRadius = (visible.value(forKeyPath: Self.radiusPath) as? NSNumber)?.doubleValue
         }
         dismissalTrace.record(event, view: self,
-            details: "section=\(sectionID.identifier); alpha=\(alphaValue); presentation_alpha=\(layer?.presentation()?.opacity ?? Float(alphaValue)); radius=\(radius); presentation_radius=\(visibleRadius.map { String($0) } ?? "na"); target_radius=\(targetRadius); owned_filter=\(hasOwnFocusFilter); filters=\(contentFilters.count); opacity_animation=\(layer?.animation(forKey: "opacity") != nil); blur_animation=\(layer?.animation(forKey: "sectionFocus.radius") != nil); generation=\(focusGeneration)")
+            details: "section=\(sectionID.identifier); alpha=\(alphaValue); presentation_alpha=\(layer?.presentation()?.opacity ?? Float(alphaValue)); radius=\(radius); presentation_radius=\(visibleRadius.map { String($0) } ?? "na"); target_radius=\(targetRadius); suspended=\(isFocusSuspended); owned_filter=\(hasOwnFocusFilter); filters=\(contentFilters.count); opacity_animation=\(layer?.animation(forKey: "opacity") != nil); blur_animation=\(layer?.animation(forKey: "sectionFocus.radius") != nil); generation=\(focusGeneration)")
     }
 
     var measuredHeight: CGFloat { frame.height }
@@ -391,7 +425,7 @@ class OpenCodexOverviewSectionView: NSView {
     override func removeFromSuperview() {
         dismissalTrace?.record("section.remove", view: self, details: "section=\(sectionID.identifier)")
         (superview as? MenuHoverLinkHostView)?.focusSectionWillBeRemoved(self)
-        setFocusState(.normal, animated: false)
+        if !isFocusSuspended { setFocusState(.normal, animated: false) }
         super.removeFromSuperview()
     }
 

@@ -116,3 +116,43 @@ Target **20 trials**: light 8, dark 8, Reduce Transparency 4. In each group run 
 Record the screen and note the approximate time/trial of a white panel. If FAIL occurs, preserve that recording and export the log; do not discard it to chase a clean 20-run result. Reopen must display latest values, with no resumed outgoing callback or stale Tooltip. This is user-operated GUI testing; Worker does not automate foreground UI.
 
 Analyze events by round and `mono_ns` (not asynchronous writer timestamps alone). `content.update` records gate acceptance, not proof that every call changed a value. If menu/section destruction occurs during exit, fix its actual caller; if an effect restoration runs early, fix that task/completion; if application content/effects remain stable during a recorded flash, plan a separate single-variable native-Popover-animation comparison. Do not infer that absent destruction proves a system bug, add guessed closing delays, or alter private/native menu window opacity. New diagnostic GUI result remains **PENDING**, and the previous `082f0700` result remains FAIL.
+
+
+## Freeze before native detachment; development A/B/C comparison (2026-10-15)
+
+The user supplied a new review report for `b2b52c29`: it reports twelve closes with host `viewWillMove(nil)` before `menuDidClose`, filter removal while the outgoing window remained visible, and no `focus.suspend`. The quoted 09:25:04 UTC sequence and ~535ms Popover close durations are evidence supplied by that report, not independent reanalysis of a raw log file available in this round. Static source confirms the host, pace child and section removal callbacks could restore effects before the late close delegate callback. This evidence supersedes menu reconstruction as the leading explanation for that reported batch (which kept its item/section counts). WindowServer causation and the independent Popover contribution remain unproven.
+
+The host now starts dismissal in the earliest applicable `removeFromSuperview` or `viewWillMove(nil)` entry while the old menu window is still visible, before super triggers child callbacks. It stops interaction and freezes effects before detach. `viewDidMoveToWindow`, repeated tracking changes, direct child invalidation/removal, section removal, accessibility reconciliation and old animation completions cannot restore a suspended effect. Section suspension is independent of the host still being attached. Ordinary removal/replacement of a component in a live menu retains normal cleanup; it does not initiate whole-menu dismissal.
+
+The outgoing window is retained by weak identity across host detachment. `host.window == nil` and occlusion changes are not completion criteria. Ordinary cleanup requires the retained window no longer report `isVisible`, or its object to be gone; the next `menuWillOpen` explicitly restores before presentation when no notification arrived. Window notifications check window identity and a dismissal generation. Captured pace views remain owned through retirement so removed children can be reset at that safe point; phase timers and input monitors stop immediately. No repeating cleanup timer, guessed wait, private window access or WindowServer-completion claim is introduced. Logs now include `view.removeFromSuperview`, `attached_window` separately from the retained outgoing-window snapshot, the experiment mode, and deferred cleanup. A suspend may correctly precede the willMove log when removeFromSuperview was the first entry.
+
+### Single-bundle comparisons
+
+`--pace-dismissal-experiment` is process-local, development-only and not persisted. Production ignores it. Defaults and unknown/missing values use **C / full**. All three modes share the lifecycle fix and otherwise unchanged Tooltip content, appearance, show animation, anchor, spring and timing:
+
+- **A / focus-off**: Tooltip remains; module Gaussian blur and alpha recession are disabled. Marker hover animation remains.
+- **B / popover-close-off**: Module effects remain; initial Tooltip show animation remains, but close requests set animates=false from the start, including ordinary hover departure. This does not claim to reverse an already-started native animation or guarantee a zero close duration.
+- **C / full**: Full module effect and original native Popover animation policy. This is also a normal Finder launch with no arguments.
+
+Quit the old development process before each group, then run exactly one command (never start these concurrently):
+
+```sh
+# A
+open -n "/Users/huan_meeng/.codex/worktrees/7d8e/BalanceBar/build/dev/BalanceBar-dev.app" --args --pace-dismissal-experiment focus-off
+# B
+open -n "/Users/huan_meeng/.codex/worktrees/7d8e/BalanceBar/build/dev/BalanceBar-dev.app" --args --pace-dismissal-experiment popover-close-off
+# C (default)
+open -n "/Users/huan_meeng/.codex/worktrees/7d8e/BalanceBar/build/dev/BalanceBar-dev.app" --args --pace-dismissal-experiment full
+```
+
+Use the same appearance/account/menu configuration for the primary A/B/C groups; Reduce Motion and Reduce Transparency must be off so the comparison isolates the intended effect. Each group targets 20 fast closes: four scenarios five times each (fully shown hover then desktop click; close during restoration; 5h/7d transfer then immediate close; quick close/reopen including at least one quota refresh/minute tick over the session). Record the screen and export the existing development log. Verify experiment=focus-off/popover-close-off/full in the trace before assigning results. Afterwards separately regress C in dark mode, Reduce Transparency and Reduce Motion; do not mix those settings changes into the single-variable conclusion. A visible FAIL should be preserved, not discarded to chase clean trials.
+
+The required trace property is suspension before child reset/filter removal on detach while departing_visible=true, with no focus.reset/filter.remove before the safe cleanup or explicit next-open boundary. Reopen must restore alpha1/no owned filter and working hover. Compare actual close-request/didClose timing per instance, not the animates hint alone. GUI and each A/B/C result remain PENDING until user-operated testing. If C still flashes with application effect state preserved, use the comparisons to select the next investigation; do not declare the OS the cause merely because app-level mutation is absent.
+
+### Automated evidence
+
+Unsigned Debug build PASS, `/tmp/BalanceBar-Issue500-Detach-build.log`; final source also compiled in **174 serial affected XCTest / 0 failures**, `/tmp/BalanceBar-Issue500-Detach-tests-final.log`. Same five UI classes and two official-countdown production paths as the preceding iteration. New cases exercise actual parent/child detachment before the delegate close while the old window stays visible, all cleanup/invalidation paths, stale restoration completion, retained old-window notification after detach, removed children restoration, real rebuilt 5h/7d rows, a separate direct-willMove route without an earlier removal entry, next-open fallback and all three development policies. Existing active component removal, native menu event forwarding, identity, refresh, accessibility and timing tests pass.
+
+Thirteen key methods each repeated five times: **65 / 0 failures**, `/tmp/BalanceBar-Issue500-Detach-stress.log`. An initial regression assertion incorrectly required willMove before suspend; actual contentView detachment first invoked removeFromSuperview and suspended earlier. The test now checks the earliest removal entry, suspend, actual detach and then delegate close, and a separate test covers willMove-first. Its initial failed log `/tmp/BalanceBar-Issue500-Detach-tests.log` is retained; it is not counted as PASS.
+
+`./scripts/build.sh dev`, signature verification, `git diff --check` and the bundled **517-key / 12-language** resource probe PASS. Logs `/tmp/BalanceBar-Issue500-Detach-dev.log`, `...-resource.log`. Development executable SHA-256 **`24bdf5ea123a1e0668cceb9e661b2c0fb3aa8a8719a434bec9ee91147235bb9f`**. Background state/routing tests do not establish native visual success; previous early-exit observations and the b2b52c29 user FAIL remain retained. Full CI remains deferred while Draft.

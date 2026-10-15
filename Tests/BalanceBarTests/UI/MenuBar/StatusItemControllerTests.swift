@@ -52,7 +52,7 @@ final class StatusItemControllerTests: XCTestCase {
         let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
         ApplicationWindowPresentation.presentInBackground(window)
-        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
         controller.update(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
         XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
         let items = controller.menuItemsForTesting.map(ObjectIdentifier.init)
@@ -72,6 +72,95 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertFalse(host.isMenuDismissing)
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
         XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    @MainActor
+    func testWindowDetachesBeforeDelegateCloseSuspendsEveryCleanupPath() throws {
+        var lines: [String] = []
+        MenuDismissalTrace.sinkForTesting = { lines.append($0) }
+        defer { MenuDismissalTrace.sinkForTesting = nil }
+        let controller = makeController()
+        defer { controller.teardown() }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.quotaPaceNowForTesting = now
+        let windows = [OfficialQuotaWindow(kind: .fiveHour, remaining: 40, label: "5h", daysText: "5h",
+                reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000)),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 40, label: "7d", daysText: "7d",
+                reset: nil, durationSeconds: 604_800, resetAt: now.addingTimeInterval(302_400))]
+        controller.start(snapshot: .official("OpenAI Official", 40, "quota", nil, now, windows: windows),
+            refreshDate: now, menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        host.layoutSubtreeIfNeeded()
+        let pace = try XCTUnwrap(host.paceViews.first)
+        pace.updateHover(at: NSPoint(x: pace.markerCenterX, y: 9))
+        host.sectionFocus.pendingTimerForTesting?.fire() // Focus only; no real Popover is presented.
+        let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+        other.focusReduceMotionForTesting = false
+        other.focusReduceTransparencyForTesting = false
+        other.setFocusState(.receded, animated: false)
+        other.setFocusState(.normal, animated: true)
+        let completion = try XCTUnwrap(other.focusRestoreCompletionForTesting)
+        let items = controller.menuItemsForTesting.map(ObjectIdentifier.init)
+        let start = lines.count
+        window.contentView = nil // Actual AppKit parent/child callbacks, before menuDidClose.
+        XCTAssertNil(host.window)
+        XCTAssertTrue(window.isVisible)
+        XCTAssertTrue(host.isMenuDismissing)
+        XCTAssertTrue(host.outgoingMenuWindow === window)
+        XCTAssertTrue(other.isFocusSuspended)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        let frozenAlpha = other.alphaValue
+        XCTAssertNil(host.sectionFocus.pendingTimerForTesting)
+        XCTAssertFalse(pace.isMenuTracking)
+        completion()
+        host.sectionFocus.reset()
+        host.sectionFocus.refreshAccessibility()
+        host.clearPaceHover()
+        host.setPaceMenuTracking(false)
+        host.setPaceMenuTracking(true)
+        pace.clearInteraction()
+        pace.setMenuTracking(false)
+        pace.invalidatePresentation()
+        pace.removeFromSuperview()
+        other.removeFromSuperview()
+        other.setFocusState(.normal, animated: false)
+        XCTAssertEqual(other.alphaValue, frozenAlpha)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        controller.update(snapshot: .official("OpenAI Official", 40, "quota", nil, now, windows: windows),
+            refreshDate: now, menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuDidClose(controller.statusMenuForTesting)
+        host.finishMenuDismissal()
+        XCTAssertTrue(host.isMenuDismissing, "Host.window=nil must not imply the outgoing menu window is hidden")
+        XCTAssertEqual(controller.menuItemsForTesting.map(ObjectIdentifier.init), items)
+        let exitLines = Array(lines[start...])
+        let beginRemoval = try XCTUnwrap(exitLines.firstIndex {
+            $0.contains("event=view.removeFromSuperview;") || $0.contains("event=view.willMoveToWindow;")
+        })
+        let detached = try XCTUnwrap(exitLines.firstIndex { $0.contains("event=view.didMoveToWindow;") })
+        let suspend = try XCTUnwrap(exitLines.firstIndex { $0.contains("event=focus.suspend;") })
+        let closed = try XCTUnwrap(exitLines.firstIndex { $0.contains("event=menu.didClose;") })
+        XCTAssertLessThan(beginRemoval, suspend)
+        XCTAssertLessThan(suspend, detached)
+        XCTAssertLessThan(detached, closed)
+        XCTAssertFalse(exitLines.contains { $0.contains("event=focus.reset;") || $0.contains("event=filter.remove;") })
+        window.orderOut(nil)
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        host.finishMenuDismissal()
+        XCTAssertFalse(host.isMenuDismissing)
+        XCTAssertFalse(other.isFocusSuspended)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.alphaValue, 1)
+        XCTAssertEqual(pace.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let reopened = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertEqual(reopened.paceViews.count, 2)
+        XCTAssertTrue(reopened.paceViews.allSatisfy { $0.isMenuTracking })
         controller.menuDidClose(controller.statusMenuForTesting)
     }
 

@@ -3169,7 +3169,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuDismissalTrace = MenuDismissalTrace.beginRound(menu: statusMenu)
         menuDismissalTrace?.host = statusMenu.items.first?.view as? MenuHoverLinkHostView
         menuDismissalTrace?.record("menu.willOpen", view: statusMenu.items.first?.view)
-        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.finishMenuDismissal()
+        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.finishMenuDismissal(beforeOpening: true)
         if statusMenuNeedsRebuild {
             statusMenuNeedsRebuild = false
             rebuildStatusMenu(reason: "nextOpen")

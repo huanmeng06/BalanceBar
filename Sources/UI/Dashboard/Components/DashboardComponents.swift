@@ -572,6 +572,7 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     var markerReduceMotionForTesting: Bool?
     private var reduceMarkerMotion: Bool { markerReduceMotionForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     func refreshMarkerAccessibility() {
+        guard !isMenuDismissalSuspended else { return }
         if reduceMarkerMotion {
             marker.tick.setHovered(isHovered, reduceMotion: true)
             popover?.animates = false
@@ -584,6 +585,8 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     private var popover: NSPopover?
     private var closingPopovers: [NSPopover] = []
     var dismissalTrace: MenuDismissalTrace?
+    var dismissalExperiment = PaceDismissalExperiment.current
+    private var isMenuDismissalSuspended = false
     private var popoverTraces: [ObjectIdentifier: MenuDismissalTrace] = [:]
     var closingPopoverCountForTesting: Int { closingPopovers.count }
     private var presentationNow = Date()
@@ -644,10 +647,12 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     }
 
     func setPercentage(_ value: Double, animated: Bool, duration: TimeInterval) {
+        guard !isMenuDismissalSuspended else { return }
         progress.setPercentage(value, animated: animated, duration: duration)
     }
 
     func update(window: OfficialQuotaWindow, now: Date, cycleStart: Date? = nil, timeZone: TimeZone = .autoupdatingCurrent) {
+        guard !isMenuDismissalSuspended else { return }
         let next = OfficialQuotaUsagePace.make(for: window, now: now)
         if quotaWindow.resetAt != window.resetAt || quotaWindow.kind != window.kind
             || quotaWindow.durationSeconds != window.durationSeconds || next == nil {
@@ -686,6 +691,7 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
 
     override func layout() {
         super.layout()
+        guard !isMenuDismissalSuspended else { return }
         // Keep the original track frame exact: Auto Layout rounds a 5pt child
         // centered inside an 18pt host by half a point on a 1x backing scale.
         progress.frame = NSRect(x: 0, y: bounds.midY - 2.5, width: bounds.width, height: 5)
@@ -705,6 +711,12 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     }
 
     override func updateTrackingAreas() {
+        if isMenuDismissalSuspended {
+            if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
+            trackingAreaReference = nil
+            super.updateTrackingAreas()
+            return
+        }
         if trackingAreaReference?.rect == markerHitRect { return }
         if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
         trackingAreaReference = nil
@@ -717,6 +729,10 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     }
 
     func invalidatePresentation() {
+        if isMenuDismissalSuspended || menuHoverHost?.isMenuDismissing == true {
+            stopMenuInteractionPreservingVisuals()
+            return
+        }
         menuHoverHost?.invalidateSectionFocus(for: self)
         isMenuTracking = false
         clearInteraction()
@@ -729,6 +745,10 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     }
 
     func setMenuTracking(_ active: Bool) {
+        if isMenuDismissalSuspended {
+            if !active { stopMenuInteractionPreservingVisuals() }
+            return
+        }
         isMenuTracking = active
         if !active { clearInteraction() }
     }
@@ -741,6 +761,10 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     }
 
     func clearInteraction() {
+        if isMenuDismissalSuspended || menuHoverHost?.isMenuDismissing == true {
+            stopMenuInteractionPreservingVisuals()
+            return
+        }
         if let host = menuHoverHost { host.invalidateSectionFocus(for: self) }
         else { detachedInteraction.invalidateInteraction(for: self) }
         isHovered = false
@@ -749,9 +773,16 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     }
 
     func stopMenuInteractionPreservingVisuals() {
+        isMenuDismissalSuspended = true
         isMenuTracking = false
         isHovered = false
+        updateTrackingAreas()
         dismissTooltip(animated: false)
+    }
+
+    func finishMenuInteractionAfterDismissal() {
+        isMenuDismissalSuspended = false
+        clearInteraction()
     }
 
     func dismissTooltip(animated: Bool) {
@@ -762,7 +793,7 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
         popover = nil
         departing.delegate = self
         closingPopovers.append(departing)
-        departing.animates = animated && !reduceMarkerMotion
+        departing.animates = animated && !reduceMarkerMotion && dismissalExperiment != .popoverCloseOff
         (popoverTraces[ObjectIdentifier(departing)] ?? dismissalTrace)?.record("popover.close.request", view: self,
             popover: departing, details: "animates=\(departing.animates); closing=\(closingPopovers.count)")
         departing.close()
@@ -818,10 +849,13 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil { clearInteraction() }
+        if newWindow == nil { setMenuTracking(false) }
         super.viewWillMove(toWindow: newWindow)
     }
-    override func removeFromSuperview() { menuHoverHost?.invalidateSectionFocus(for: self); clearInteraction(); super.removeFromSuperview() }
+    override func removeFromSuperview() {
+        setMenuTracking(false)
+        super.removeFromSuperview()
+    }
 
     func firePendingShowForTesting() { hoverInteraction.firePendingShowForTesting(for: self) }
     func firePendingCloseForTesting() { hoverInteraction.firePendingCloseForTesting(for: self) }
@@ -1634,8 +1668,13 @@ final class MenuHoverLinkHostView: NSView {
     private(set) var isMenuContentVisible = false
     private(set) var isMenuDismissing = false
     var isPaceMenuTracking: Bool { paceMenuTracking }
+    var outgoingMenuWindow: NSWindow? { dismissalWindow }
     private(set) var dismissalTrace: MenuDismissalTrace?
     private var menuDismissalObserver: NSObjectProtocol?
+    private weak var dismissalWindow: NSWindow?
+    private var dismissalGeneration = 0
+    private var dismissalPaceViews: [QuotaProgressPaceView] = []
+    var dismissalExperiment = PaceDismissalExperiment.current
     private var ticketBoundsObserver: NSObjectProtocol?
 
     deinit {
@@ -1646,12 +1685,15 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func setMenuContentVisible(_ visible: Bool) {
+        let wasActive = isMenuContentVisible || paceMenuTracking
         isMenuContentVisible = visible
         if visible {
-            finishMenuDismissal()
+            finishMenuDismissal(beforeOpening: true)
             setPaceMenuTracking(true)
-        } else {
+        } else if wasActive || isMenuDismissing {
             beginMenuDismissal()
+        } else {
+            setPaceMenuTracking(false)
         }
         refreshMarqueeVisibility()
     }
@@ -1680,9 +1722,15 @@ final class MenuHoverLinkHostView: NSView {
             return
         }
         isMenuDismissing = true
+        isMenuContentVisible = false
+        dismissalWindow = departingWindow
+        dismissalGeneration += 1
+        let token = dismissalGeneration
+        let trace = dismissalTrace
         paceMenuTracking = false
+        dismissalPaceViews = paceViews
         sectionFocus.suspendForMenuDismissal()
-        paceViews.forEach { $0.stopMenuInteractionPreservingVisuals() }
+        dismissalPaceViews.forEach { $0.stopMenuInteractionPreservingVisuals() }
         removeTrackingAreaReference()
         removeTicketScrollMonitor()
         link?.clearHoverState()
@@ -1691,23 +1739,42 @@ final class MenuHoverLinkHostView: NSView {
         menuDismissalObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: departingWindow, queue: .main
         ) { [weak self, weak departingWindow] _ in
-            self?.dismissalTrace?.record("window.occlusion", view: self)
-            guard let self, self.isMenuDismissing, let departingWindow,
-                  self.window === departingWindow,
-                  !departingWindow.occlusionState.contains(.visible) else { return }
+            trace?.record("window.occlusion", view: self)
+            guard let self, self.isMenuDismissing, self.dismissalGeneration == token, let departingWindow,
+                  self.dismissalWindow === departingWindow else { return }
             self.finishMenuDismissal()
         }
     }
 
-    func finishMenuDismissal() {
+    func finishMenuDismissal(beforeOpening: Bool = false) {
         guard isMenuDismissing else { return }
-        dismissalTrace?.record("dismissal.cleanup", view: self)
+        guard beforeOpening || dismissalWindow?.isVisible != true else {
+            dismissalTrace?.record("dismissal.cleanup.deferred", view: self,
+                details: "departing_window=\(MenuDismissalTrace.id(dismissalWindow)); departing_visible=true")
+            return
+        }
+        dismissalTrace?.record("dismissal.cleanup", view: self,
+            details: "before_opening=\(beforeOpening); departing_window=\(MenuDismissalTrace.id(dismissalWindow)); departing_visible=\(dismissalWindow?.isVisible ?? false)")
+        dismissalGeneration += 1
         if let menuDismissalObserver {
             NotificationCenter.default.removeObserver(menuDismissalObserver)
             self.menuDismissalObserver = nil
         }
         isMenuDismissing = false
-        clearPaceHover()
+        dismissalWindow = nil
+        sectionFocus.finishMenuDismissal()
+        var visited = Set<ObjectIdentifier>()
+        for pace in dismissalPaceViews + paceViews where visited.insert(ObjectIdentifier(pace)).inserted {
+            pace.finishMenuInteractionAfterDismissal()
+        }
+        dismissalPaceViews.removeAll()
+    }
+
+    func prepareForMenuWindowDetachment() -> Bool {
+        if !isMenuDismissing, isMenuContentVisible || paceMenuTracking, window?.isVisible == true {
+            beginMenuDismissal()
+        }
+        return isMenuDismissing
     }
 
     func refreshMarqueeVisibility() {
@@ -1739,10 +1806,7 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func setPaceMenuTracking(_ active: Bool) {
-        if isMenuDismissing {
-            guard active else { return }
-            finishMenuDismissal()
-        }
+        guard !isMenuDismissing else { return }
         if paceMenuTracking != active {
             paceMenuTracking = active
             if !active { clearPaceHover() }
@@ -1796,6 +1860,8 @@ final class MenuHoverLinkHostView: NSView {
     func reconcileSectionFocus() {
         guard !isMenuDismissing, !replacingFocusSections else { return }
         sectionFocus.isActive = paceMenuTracking
+        sectionFocus.experiment = dismissalExperiment
+        paceViews.forEach { $0.dismissalExperiment = dismissalExperiment }
         let sections = Dictionary(uniqueKeysWithValues: subviews.compactMap {
             ($0 as? OpenCodexOverviewSectionView).map { ($0.sectionID, $0) }
         })
@@ -1815,12 +1881,12 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func focusSectionWillBeRemoved(_ section: OpenCodexOverviewSectionView) {
-        guard !replacingFocusSections, sectionFocus.sections[section.sectionID] === section else { return }
+        guard !isMenuDismissing, !replacingFocusSections, sectionFocus.sections[section.sectionID] === section else { return }
         if sectionFocus.focusedID == section.sectionID || sectionFocus.hoveredID == section.sectionID { sectionFocus.reset() }
     }
 
     func invalidateSectionFocus(for pace: QuotaProgressPaceView) {
-        guard !replacingFocusSections else { return }
+        guard !isMenuDismissing, !replacingFocusSections else { return }
         sectionFocus.invalidateInteraction(for: pace)
         let affected = [sectionFocus.focusedID, sectionFocus.hoveredID].compactMap { $0 }.contains { id in
             sectionFocus.sections[id].map { pace.isDescendant(of: $0) } ?? false
@@ -1873,6 +1939,10 @@ final class MenuHoverLinkHostView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         dismissalTrace?.record("view.didMoveToWindow", view: self)
+        if isMenuDismissing {
+            finishMenuDismissal()
+            return
+        }
         refreshTrackingArea()
         synchronizeHoverState()
         installTicketScrollMonitor()
@@ -1883,11 +1953,9 @@ final class MenuHoverLinkHostView: NSView {
         dismissalTrace?.record("view.willMoveToWindow", view: self,
             details: "next_window=\(MenuDismissalTrace.id(newWindow))")
         if newWindow == nil {
-            finishMenuDismissal()
-            removeTrackingAreaReference()
-            removeTicketScrollMonitor()
-            clearPaceHover()
-            link?.clearHoverState()
+            _ = prepareForMenuWindowDetachment()
+            tearDownWindowTracking() // A suspended host stops input without restoring visuals.
+            finishMenuDismissal() // Only finishes if the retained old window is already hidden.
         }
         super.viewWillMove(toWindow: newWindow)
     }
@@ -1906,10 +1974,12 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     override func removeFromSuperview() {
+        dismissalTrace?.record("view.removeFromSuperview", view: self)
+        _ = prepareForMenuWindowDetachment()
         setMenuContentVisible(false)
-        finishMenuDismissal()
         tearDownWindowTracking()
         super.removeFromSuperview()
+        finishMenuDismissal()
     }
 
     func forwardHover(atHostPoint point: NSPoint) {
