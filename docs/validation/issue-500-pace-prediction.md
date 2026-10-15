@@ -156,3 +156,12 @@ Unsigned Debug build PASS, `/tmp/BalanceBar-Issue500-Detach-build.log`; final so
 Thirteen key methods each repeated five times: **65 / 0 failures**, `/tmp/BalanceBar-Issue500-Detach-stress.log`. An initial regression assertion incorrectly required willMove before suspend; actual contentView detachment first invoked removeFromSuperview and suspended earlier. The test now checks the earliest removal entry, suspend, actual detach and then delegate close, and a separate test covers willMove-first. Its initial failed log `/tmp/BalanceBar-Issue500-Detach-tests.log` is retained; it is not counted as PASS.
 
 `./scripts/build.sh dev`, signature verification, `git diff --check` and the bundled **517-key / 12-language** resource probe PASS. Logs `/tmp/BalanceBar-Issue500-Detach-dev.log`, `...-resource.log`. Development executable SHA-256 **`24bdf5ea123a1e0668cceb9e661b2c0fb3aa8a8719a434bec9ee91147235bb9f`**. Background state/routing tests do not establish native visual success; previous early-exit observations and the b2b52c29 user FAIL remain retained. Full CI remains deferred while Draft.
+
+
+## 用户选择 B：默认关闭气泡退出动画（2026-10-15）
+
+基准 c7f627971fd252d5ddae0ecb6b64b1defaf756c1。用户选择 B，本轮默认策略替代此前默认 C：保留模块模糊、刻度动画和气泡出现动画，仅禁用使用节奏 Popover 退出动画。开发包无参数即 B；生产包忽略诊断参数并采用 B。A/C 仅保留为开发诊断覆盖。保留提前冻结与退出保护。
+
+用户选择不等同 GUI PASS；此前白闪 FAIL 和原生菜单提前退出历史继续保留。新开发包人工 PENDING：正常启动无需参数，检查模糊与出现效果、移出及点击外部关闭、快速重入、5h/7d 切换、刷新和关闭重开，并覆盖深浅色及辅助功能。日志应为 experiment=popover-close-off。
+
+验证：unsigned Debug XCTest 构建通过；DashboardComponentsTests、StatusItemControllerTests 共122项／0失败；默认B、显式A/B/C和退出冻结3例各5轮，共15次／0失败。开发包构建、签名验证、517键／12语言资源probe及git diff --check通过。使用原专属DerivedData，日志为 /tmp/BalanceBar-Issue500-BDefault-{tests,repeat,dev,resource}.log。可执行文件SHA-256：3a3db94f6671eb92ce4c075984453a7fbd3febec1278358572cd64e8c47dcb40。自动测试不证明真实GUI白闪消除，Full CI未启动。

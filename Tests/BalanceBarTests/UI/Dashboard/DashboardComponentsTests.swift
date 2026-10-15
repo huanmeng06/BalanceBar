@@ -547,11 +547,13 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(view.isTooltipVisible)
     }
 
-    private func paceProbeFixture(now: Date) -> (menu: NSMenu, host: MenuHoverLinkHostView,
+    private func paceProbeFixture(now: Date, experiment: PaceDismissalExperiment = .full) -> (menu: NSMenu, host: MenuHoverLinkHostView,
                                                views: [QuotaProgressPaceView], popovers: [QuotaPacePopoverProbe]) {
         let menu = NSMenu(title: "Quota pace tracking regression")
         let item = NSMenuItem()
         let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
+        // Existing native-close regressions explicitly exercise C; default B is tested separately.
+        host.dismissalExperiment = experiment
         let quotas = [paceWindow(reset: now.addingTimeInterval(9_000)),
                       paceWindow(reset: now.addingTimeInterval(302_400), kind: .sevenDay)]
         let views = quotas.enumerated().map { index, quota in
@@ -830,11 +832,38 @@ final class DashboardComponentsTests: XCTestCase {
         host.setMenuContentVisible(false)
     }
 
+    func testDefaultDismissalPolicyKeepsFocusAndShowButClosesWithoutAnimation() throws {
+        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app"]), .popoverCloseOff)
+        XCTAssertEqual(MenuHoverLinkHostView(frame: .zero).dismissalExperiment, .popoverCloseOff)
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000), experiment: .current)
+        let host = fixture.host
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        host.layoutSubtreeIfNeeded()
+        host.setMenuContentVisible(true)
+        defer { window.orderOut(nil); host.setMenuContentVisible(false); host.finishMenuDismissal() }
+        fixture.views.forEach { $0.markerReduceMotionForTesting = false }
+        host.sectionFocus.sections.values.forEach {
+            $0.focusReduceMotionForTesting = false
+            $0.focusReduceTransparencyForTesting = false
+        }
+        enterPace(fixture.views[0])
+        fixture.views[0].firePendingShowForTesting()
+        let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.alphaValue, 0.5)
+        XCTAssertEqual(fixture.popovers[0].showAnimationFlags, [true])
+        fixture.views[0].updateHover(at: NSPoint(x: -100, y: -100))
+        fixture.views[0].firePendingCloseForTesting()
+        XCTAssertEqual(fixture.popovers[0].closeAnimationFlags, [false])
+    }
+
     func testDismissalExperimentsAreDevelopmentOnlyAndKeepShowAnimation() throws {
         for mode in [PaceDismissalExperiment.full, .focusOff, .popoverCloseOff] {
             let args = ["app", "--pace-dismissal-experiment", mode.rawValue]
             XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: args), mode)
-            XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.app", arguments: args), .full)
+            XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.app", arguments: args), .popoverCloseOff)
             let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
             let host = fixture.host
             host.dismissalExperiment = mode
@@ -862,8 +891,8 @@ final class DashboardComponentsTests: XCTestCase {
             fixture.views[1].firePendingCloseForTesting()
             XCTAssertEqual(fixture.popovers[0].closeAnimationFlags, [mode != .popoverCloseOff])
         }
-        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app", "--pace-dismissal-experiment"]), .full)
-        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app", "--pace-dismissal-experiment", "unknown"]), .full)
+        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app", "--pace-dismissal-experiment"]), .popoverCloseOff)
+        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app", "--pace-dismissal-experiment", "unknown"]), .popoverCloseOff)
     }
 
     func testMenuDismissalPreservesOutgoingFiltersAndCancelsAllHoverWork() throws {

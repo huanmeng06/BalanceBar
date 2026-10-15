@@ -3,7 +3,7 @@ import QuartzCore
 import CoreImage
 
 /// Process-local development controls for single-variable comparison runs.
-/// Production ignores these arguments; the default keeps the complete effect.
+/// Production ignores diagnostic overrides and uses B: animated show, immediate close.
 enum PaceDismissalExperiment: String {
     case full
     case focusOff = "focus-off"
@@ -15,7 +15,7 @@ enum PaceDismissalExperiment: String {
         guard MenuDismissalTrace.isEnabled(bundleIdentifier: bundleIdentifier),
               let index = arguments.firstIndex(of: "--pace-dismissal-experiment"),
               arguments.indices.contains(index + 1),
-              let mode = Self(rawValue: arguments[index + 1]) else { return .full }
+              let mode = Self(rawValue: arguments[index + 1]) else { return .popoverCloseOff }
         return mode
     }
 }
