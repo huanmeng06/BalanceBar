@@ -3513,12 +3513,13 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testNameGroupingIgnoresCredentialsSeparatesCurrenciesAndKeepsDefaultFirst() {
+    func testNameGroupingIgnoresCredentialsSeparatesCurrenciesAndKeepsInputOrder() {
         XCTAssertEqual(AggregationWalletPresentation.cards(sharedWalletInput(keys: ["same", "different", "same"]).aggregatedProviders).count, 1)
         XCTAssertEqual(AggregationWalletPresentation.cards(sharedWalletInput(units: ["USD", "CNY", "USD"]).aggregatedProviders).count, 2)
         let reordered = AggregationWalletPresentation.cards(sharedWalletInput(keys: ["other", "same", "same"], defaultIndex: 2, names: ["other", "tokenshop", "tokenshop"]).aggregatedProviders)
-        XCTAssertEqual(reordered.first?.groupedProviderIDs, ["member-1", "member-2"])
-        XCTAssertEqual(reordered.first?.entry.role, .default)
+        XCTAssertEqual(reordered.first?.groupedProviderIDs, ["member-0"])
+        XCTAssertEqual(reordered[1].groupedProviderIDs, ["member-1", "member-2"])
+        XCTAssertEqual(reordered[1].entry.role, .default)
         let deduplicated = AggregationWalletPresentation.cards(sharedWalletInput(notes: ["GPT", "GPT", " "]).aggregatedProviders)
         XCTAssertEqual(deduplicated.first?.groupedNotes, ["GPT"])
         var mixed = sharedWalletInput().aggregatedProviders

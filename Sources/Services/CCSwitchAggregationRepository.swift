@@ -70,11 +70,6 @@ enum AggregationWalletPresentation {
             if let index = indices[key] { groups[index].append(display) }
             else { indices[key] = groups.count; groups.append([display]) }
         }
-        groups = groups.enumerated().sorted { lhs, rhs in
-            let leftDefault = lhs.element.contains { $0.entry.role == .default }
-            let rightDefault = rhs.element.contains { $0.entry.role == .default }
-            return leftDefault == rightDefault ? lhs.offset < rhs.offset : leftDefault
-        }.map(\.element)
         return groups.map { members in
             let first = members[0]
             guard let scope = walletID(first) else { return first }
@@ -181,19 +176,23 @@ final class CCSwitchAggregationRepository {
                 guard codex.mode == "proxy", codex.attached == true,
                       codex.stack?.enabled == true else { return .inactive }
                 guard isRunning(), let route = codex.proxy_route, !route.isEmpty else { return .untrusted }
-                var seen: Set<String> = [route]
-                let ids = [route] + (codex.stack?.members ?? []).filter { !$0.isEmpty && seen.insert($0).inserted }
+                var seen: Set<String> = []
+                var ids = (codex.stack?.members ?? []).filter { !$0.isEmpty && seen.insert($0).inserted }
+                if seen.insert(route).inserted { ids.append(route) }
                 let rows = try sources(ids)
                 let after = try deviceState()
                 guard before.version == after.version, codex == after.apps.codex else { continue }
                 let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
                 guard let defaultSource = byID[route] else { return .untrusted }
                 let displayOrders = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) })
-                let entries = [AggregatedProviderEntry(source: defaultSource, role: .default, displayOrder: displayOrders[route])]
-                    + ids.dropFirst().compactMap { id -> AggregatedProviderEntry? in
-                        guard let source = byID[id], !source.isOfficial else { return nil }
-                        return AggregatedProviderEntry(source: source, role: .member, displayOrder: displayOrders[id])
+                let entries = ids.compactMap { id -> AggregatedProviderEntry? in
+                    guard let source = byID[id] else { return nil }
+                    if id == route {
+                        return AggregatedProviderEntry(source: defaultSource, role: .default, displayOrder: displayOrders[id])
                     }
+                    guard !source.isOfficial else { return nil }
+                    return AggregatedProviderEntry(source: source, role: .member, displayOrder: displayOrders[id])
+                }
                 return .active(entries)
             } catch { return .untrusted }
         }

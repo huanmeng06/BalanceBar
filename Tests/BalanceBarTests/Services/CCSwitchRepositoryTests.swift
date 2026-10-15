@@ -246,7 +246,7 @@ extension CCSwitchRepositoryTests {
         }
     }
 
-    func testAggregationDefaultFirstStableDedupAndOfficialOnlyDefault() throws {
+    func testAggregationPreservesCCSwitchOrderAndOfficialOnlyDefault() throws {
         let data = try aggregationState(route: "codex-custom",
             members: ["deleted", "codex-custom", "codex-official", "claude-other", "codex-custom"])
         guard case .active(let entries) = aggregationReader(data).load() else { return XCTFail("valid default") }
@@ -267,9 +267,9 @@ extension CCSwitchRepositoryTests {
             guard case .active(let entries) = aggregationReader(try aggregationState(members: members + members)).load() else {
                 return XCTFail("valid aggregation")
             }
-            XCTAssertEqual(entries.map(\.providerID), ["codex-official"] + members)
+            XCTAssertEqual(entries.map(\.providerID), members + ["codex-official"])
             XCTAssertEqual(entries.count, count + 1)
-            XCTAssertTrue(entries.dropFirst().allSatisfy { $0.source.name == "tokenshop" && $0.role == .member })
+            XCTAssertTrue(entries.filter { $0.role == .member }.allSatisfy { $0.source.name == "tokenshop" })
         }
     }
 
@@ -417,7 +417,7 @@ extension CCSwitchRepositoryTests {
         let reader = aggregationReader(try aggregationState(members: ["codex-custom", "peer"]))
         func displays() throws -> [AggregatedProviderDisplay] {
             guard case .active(let entries) = reader.load() else { throw NSError(domain: "Fixture", code: 1) }
-            XCTAssertEqual(entries.map(\.providerID), ["codex-official", "codex-custom", "peer"])
+            XCTAssertEqual(entries.map(\.providerID), ["codex-custom", "peer", "codex-official"])
             let date = Date(timeIntervalSince1970: 100)
             return entries.map { entry in
                 .init(entry: entry, identity: .init(providerID: entry.providerID, accountScope: entry.providerID,
@@ -428,11 +428,11 @@ extension CCSwitchRepositoryTests {
             }
         }
         let before = try displays()
-        XCTAssertEqual(AggregationWalletPresentation.cards(before).last?.groupedNotes, ["Grok", "GPT"])
+        XCTAssertEqual(AggregationWalletPresentation.cards(before).first?.groupedNotes, ["Grok", "GPT"])
         try withDatabase { db in try execute(db, sql: "UPDATE providers SET sort_index=0 WHERE id='peer'") }
         let after = try displays()
         XCTAssertNotEqual(before, after, "display order must invalidate semantic publication even with unchanged IDs/data")
-        XCTAssertEqual(AggregationWalletPresentation.cards(after).last?.groupedNotes, ["GPT", "Grok"])
+        XCTAssertEqual(AggregationWalletPresentation.cards(after).first?.groupedNotes, ["GPT", "Grok"])
         XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
     }
 }
