@@ -961,12 +961,31 @@ struct Snapshot: Equatable {
         guard let context = balanceProgressContext else { return tr(.keyBalanceRecordingStarted) }
         let used = balanceMoney(cents: context.consumedCents)
         if let date = context.baselineObservedAt {
-            let text = BalanceRecharge.dateText(for: date, now: now, timeZone: timeZone)
-            return context.consumedCents > 0
-                ? tr(.keyBalanceUsedSince, arguments: [text, used])
-                : tr(.keyBalanceRecordingStartedOn, arguments: [text])
+            switch relativeBalanceDate(for: date, now: now, timeZone: timeZone) {
+            case .today:
+                return tr(.keyBalanceUsedSinceToday, arguments: [used])
+            case .yesterday:
+                return tr(.keyBalanceUsedSinceYesterday, arguments: [used])
+            case .absolute(let text):
+                return tr(.keyBalanceUsedSince, arguments: [text, used])
+            }
         }
         return context.consumedCents > 0 ? tr(.keyBalanceUsed, arguments: [used]) : tr(.keyBalanceRecordingStarted)
+    }
+
+    private enum RelativeBalanceDate {
+        case today
+        case yesterday
+        case absolute(String)
+    }
+
+    private func relativeBalanceDate(for date: Date, now: Date, timeZone: TimeZone) -> RelativeBalanceDate {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        if calendar.isDate(date, inSameDayAs: now) { return .today }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(date, inSameDayAs: yesterday) { return .yesterday }
+        return .absolute(BalanceRecharge.dateText(for: date, now: now, timeZone: timeZone))
     }
 
     func balanceProgressTooltip(now: Date = Date(), timeZone: TimeZone) -> String {

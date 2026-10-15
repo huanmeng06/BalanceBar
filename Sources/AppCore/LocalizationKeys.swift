@@ -1,6 +1,8 @@
   // Stable typed keys for every bundled Localizable.strings resource.
   enum LocalizationKey: String, CaseIterable {
     case keyBalanceUsedSince = "balance.used_since"
+    case keyBalanceUsedSinceToday = "balance.used_since_today"
+    case keyBalanceUsedSinceYesterday = "balance.used_since_yesterday"
     case keyBalanceUsed = "balance.used"
     case keyBalanceRecordingStartedOn = "balance.recording.started_on"
     case keyBalanceRecordingStarted = "balance.recording.started"

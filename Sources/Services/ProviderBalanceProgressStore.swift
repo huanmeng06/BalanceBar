@@ -229,7 +229,15 @@ final class ProviderBalanceProgressStore {
         var next = previous ?? State(baselineCents: cents, lastCents: cents, unit: unit,
             peakCents: cents, baselineObservedAt: observedAt)
         if accepted {
-            if let previous, cents > previous.lastCents {
+            if let previous, previous.baselineObservedAt == nil {
+                // Legacy records without a trustworthy observation date cannot
+                // support historical consumption. Rebase on the first accepted
+                // sample while preserving an independently observed recharge.
+                next = State(baselineCents: cents, lastCents: cents, unit: unit,
+                    recharge: previous.recharge, observedAt: observedAt,
+                    sampleSequence: sampleSequence, peakCents: cents,
+                    baselineObservedAt: observedAt)
+            } else if let previous, cents > previous.lastCents {
                 next.recharge = BalanceRecharge(amountCents: cents - previous.lastCents, observedAt: observedAt)
                 next = State(baselineCents: cents, lastCents: cents, unit: unit, recharge: next.recharge,
                     observedAt: observedAt, sampleSequence: sampleSequence, peakCents: cents, baselineObservedAt: observedAt)

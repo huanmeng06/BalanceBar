@@ -519,6 +519,8 @@
 "balance.recharge.observed" = "Hausse nette du solde détectée localement. La date correspond à sa première observation par cette app, pas à un reçu de paiement.";
 
 "balance.used_since" = "Depuis le %1$@ : %2$@ utilisés";
+"balance.used_since_today" = "Depuis aujourd’hui : %1$@ utilisés";
+"balance.used_since_yesterday" = "Depuis hier : %1$@ utilisés";
 "balance.used" = "%1$@ utilisés";
 "balance.recording.started_on" = "Suivi depuis le %1$@";
 "balance.recording.started" = "Suivi commencé";

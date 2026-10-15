@@ -519,6 +519,8 @@
 "balance.recharge.observed" = "앱이 감지한 잔액 순증가액입니다. 시간은 증가를 처음 확인한 시점이며 결제 기록이 아닙니다.";
 
 "balance.used_since" = "%1$@ 이후 %2$@ 사용";
+"balance.used_since_today" = "오늘부터 %1$@ 사용";
+"balance.used_since_yesterday" = "어제부터 %1$@ 사용";
 "balance.used" = "%1$@ 사용";
 "balance.recording.started_on" = "%1$@부터 기록";
 "balance.recording.started" = "기록 시작";

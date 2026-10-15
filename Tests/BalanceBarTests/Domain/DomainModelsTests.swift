@@ -2696,7 +2696,7 @@ extension DomainModelsTests {
         XCTAssertNil(otherCurrency.recharge)
     }
 
-    func testWalletMigrationOnlyAdoptsAgreeingLegacyRecordsWithoutInventingDate() throws {
+    func testWalletMigrationOnlyAdoptsAgreeingLegacyRecordsAndRebasesMissingDate() throws {
         let (defaults, suiteName) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let query = makeBalanceProgressQuery()
@@ -2713,7 +2713,7 @@ extension DomainModelsTests {
         store.prepareMigration(identities: [a, b])
         let value = try store.observe(amount: 3, unit: "USD", identity: a,
             sampleSequence: store.beginSample(), observedAt: Date()).get()
-        XCTAssertEqual(value.progress, 30)
+        XCTAssertEqual(value.progress, 100)
         XCTAssertNil(value.recharge)
         try seed(400)
         let conflict = ProviderBalanceProgressStore(defaults: defaults)
@@ -2823,7 +2823,7 @@ extension DomainModelsTests {
         let store = ProviderBalanceProgressStore(defaults: defaults)
         store.prepareMigration(identities: [a, b])
         let migrated = try sample(store, a, 3)
-        XCTAssertEqual(migrated.progress, 30)
+        XCTAssertEqual(migrated.progress, 100)
         XCTAssertNil(migrated.recharge)
         let renamed = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query, providerName: "renamed")
         let restart = ProviderBalanceProgressStore(defaults: defaults)
@@ -2907,7 +2907,7 @@ extension DomainModelsTests {
         XCTAssertEqual(afterRestart.recharge?.observedAt, rechargeDate)
     }
 
-    func testLegacyPeakMigrationUsesSavedPostIncreaseBalanceWithoutInventingBaselineDate() throws {
+    func testLegacyPeakMigrationRebasesMissingBaselineDateAndPreservesRecharge() throws {
         let (defaults, suite) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let id = ProviderBalanceProgressIdentity(client: .codex, providerID: "legacy-peak", query: makeBalanceProgressQuery())
@@ -2918,12 +2918,12 @@ extension DomainModelsTests {
         let store = ProviderBalanceProgressStore(defaults: defaults)
         let observation = try store.observe(amount: 11, unit: "USD", identity: id,
             sampleSequence: store.beginSample(), observedAt: Date()).get()
-        XCTAssertEqual(observation.progress, 11 / 13 * 100, accuracy: 0.000001)
+        XCTAssertEqual(observation.progress, 100, accuracy: 0.000001)
         XCTAssertEqual(observation.recharge?.observedAt, Date(timeIntervalSinceReferenceDate: 10))
-        XCTAssertNil(observation.progressContext.baselineObservedAt)
+        XCTAssertEqual(observation.progressContext.baselineObservedAt, observation.observedAt)
         let records = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))) as? [String: [String: Any]])
-        XCTAssertEqual(records[key]?["peakCents"] as? Int, 1300)
-        XCTAssertNil(records[key]?["baselineObservedAt"])
+        XCTAssertEqual(records[key]?["peakCents"] as? Int, 1100)
+        XCTAssertNotNil(records[key]?["baselineObservedAt"])
     }
 }
 
@@ -2952,7 +2952,7 @@ extension DomainModelsTests {
         let observed = try upgraded.observe(amount: 3.20, unit: "CNY", identity: named,
             sampleSequence: upgraded.beginSample(), observedAt: time.addingTimeInterval(120)).get()
         XCTAssertEqual(observed.recharge, BalanceRecharge(amountCents: 22, observedAt: time))
-        XCTAssertEqual(observed.progress, 3.20 / 3.22 * 100, accuracy: 0.000001)
+        XCTAssertEqual(observed.progress, 100, accuracy: 0.000001)
         let restarted = ProviderBalanceProgressStore(defaults: defaults)
         restarted.prepareMigration(identities: [named])
         let afterRestart = try restarted.observe(amount: 3.19, unit: "CNY", identity: named,
@@ -2973,7 +2973,7 @@ extension DomainModelsTests {
                 recharge: recharge, progressContext: .init(baselineCents: 400, lastCents: last, peakCents: 400, baselineObservedAt: date))
         }
         XCTAssertEqual(snapshot().balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSince, arguments: ["10/12", "$0.66"]))
-        XCTAssertEqual(snapshot(last: 400).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStartedOn, arguments: ["10/12"]))
+        XCTAssertEqual(snapshot(last: 400).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSince, arguments: ["10/12", "$0.00"]))
         XCTAssertEqual(snapshot(date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsed, arguments: ["$0.66"]))
         XCTAssertEqual(snapshot(last: 400, date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
         XCTAssertEqual(Snapshot.balance("old", 3.34, "USD", nil, now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
@@ -2986,6 +2986,9 @@ extension DomainModelsTests {
         XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("$4.00"))
         XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("84%"))
         XCTAssertFalse(snapshot(date: nil).balanceProgressTooltip(now: now, timeZone: zone).contains("10/"))
+        XCTAssertEqual(snapshot(date: now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceToday, arguments: ["$0.66"]))
+        let yesterday = try XCTUnwrap(parser.date(from: "2026-10-14T12:00:00Z"))
+        XCTAssertEqual(snapshot(date: yesterday).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceYesterday, arguments: ["$0.66"]))
     }
 
     func testProgressContextSurvivesSnapshotCacheAndRejectedOlderSamples() throws {
@@ -3016,6 +3019,8 @@ extension DomainModelsTests {
     func testBalanceSubtitleArgumentsRenderInEveryLanguage() {
         let examples: [(LocalizationKey, [String])] = [
             (.keyBalanceUsedSince, ["10/12", "$0.66"]),
+            (.keyBalanceUsedSinceToday, ["$0.00"]),
+            (.keyBalanceUsedSinceYesterday, ["$0.66"]),
             (.keyBalanceUsed, ["$0.66"]),
             (.keyBalanceRecordingStartedOn, ["10/12"]),
             (.keyBalanceRecordingStarted, []),

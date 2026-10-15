@@ -519,6 +519,8 @@
 "balance.recharge.observed" = "Aumento netto del saldo rilevato localmente. La data indica la prima osservazione dell’app, non una ricevuta di pagamento.";
 
 "balance.used_since" = "Dal %1$@: %2$@ utilizzati";
+"balance.used_since_today" = "Da oggi: %1$@ utilizzati";
+"balance.used_since_yesterday" = "Da ieri: %1$@ utilizzati";
 "balance.used" = "%1$@ utilizzati";
 "balance.recording.started_on" = "Registrazione dal %1$@";
 "balance.recording.started" = "Registrazione iniziata";
