@@ -55,10 +55,12 @@ for progress in [false, true] {
     require(ordinary.cardSize.height - compact.cardSize.height == 8, "aggregation collapses subtitle space")
     require(ordinary.cardSize.height - ordinary.refreshTime.maxY == compact.cardSize.height - compact.refreshTime.maxY, "timestamp remains anchored to top")
     let recharge = OpenCodexCardLayout.balance(includesQuotaProgress: progress, includesBalanceSubtitle: false, includesBalanceRecharge: true)
-    require(recharge.cardSize.height == compact.cardSize.height + 25, "recharge row owns only its necessary height")
+    require(recharge.cardSize.height == compact.cardSize.height + 8, "recharge reuses the original subtitle slot")
     require(recharge.balanceRecharge != nil, "recharge row has a measured slot")
     if let row = recharge.balanceRecharge {
-        require(row.maxY <= recharge.amount.minY, "recharge does not overlap amount")
+        require(row.maxY + 2 == recharge.quotaDetail.minY, "recharge sits directly below remaining balance")
+        require(row.minY == ordinary.link!.minY, "recharge uses the original link subtitle baseline")
+        require(recharge.amount == compact.amount, "recharge never pushes the amount into a separate row")
         if let bar = recharge.progress { require(row.minY > bar.maxY, "recharge stays above progress") }
     }
     for frames in [ordinary, compact, recharge] {

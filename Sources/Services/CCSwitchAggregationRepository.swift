@@ -7,6 +7,7 @@ struct AggregatedProviderEntry {
     enum Role: String { case `default`, member }
     let source: ProviderSummarySource
     let role: Role
+    var displayOrder: Int? = nil
     var providerID: String { source.id }
 }
 
@@ -32,6 +33,7 @@ struct AggregatedProviderDisplay: Equatable {
     /// Only display semantics participate; source credentials remain private to refresh.
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.identity == rhs.identity && lhs.entry.role == rhs.entry.role
+            && lhs.entry.displayOrder == rhs.entry.displayOrder
             && lhs.entry.source.name == rhs.entry.source.name && lhs.entry.source.notes == rhs.entry.source.notes
             && lhs.snapshot == rhs.snapshot
             && lhs.account == rhs.account && lhs.status == rhs.status
@@ -91,7 +93,12 @@ enum AggregationWalletPresentation {
                     progressPercentage: selected.snapshot.balanceProgressPercentage, recharge: selected.snapshot.balanceRecharge)
             } else { snapshot = selected.snapshot }
             var notes: [String] = []
-            for member in members {
+            let noteMembers = members.enumerated().sorted {
+                let left = $0.element.entry.displayOrder ?? $0.offset
+                let right = $1.element.entry.displayOrder ?? $1.offset
+                return left == right ? $0.offset < $1.offset : left < right
+            }.map(\.element)
+            for member in noteMembers {
                 if let note = member.entry.source.notes?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !note.isEmpty, !notes.contains(note) { notes.append(note) }
             }
@@ -180,10 +187,11 @@ final class CCSwitchAggregationRepository {
                 guard before.version == after.version, codex == after.apps.codex else { continue }
                 let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
                 guard let defaultSource = byID[route] else { return .untrusted }
-                let entries = [AggregatedProviderEntry(source: defaultSource, role: .default)]
+                let displayOrders = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) })
+                let entries = [AggregatedProviderEntry(source: defaultSource, role: .default, displayOrder: displayOrders[route])]
                     + ids.dropFirst().compactMap { id -> AggregatedProviderEntry? in
                         guard let source = byID[id], !source.isOfficial else { return nil }
-                        return AggregatedProviderEntry(source: source, role: .member)
+                        return AggregatedProviderEntry(source: source, role: .member, displayOrder: displayOrders[id])
                     }
                 return .active(entries)
             } catch { return .untrusted }

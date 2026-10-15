@@ -3414,7 +3414,7 @@ extension StatusItemControllerTests {
 extension StatusItemControllerTests {
     private func sharedWalletInput(keys: [String] = ["same", "same", "same"], notes: [String] = ["GPT", "Grok", "Other"],
                                    units: [String] = ["USD", "USD", "USD"], recharge: BalanceRecharge? = nil,
-                                   defaultIndex: Int = 0, names: [String]? = nil) -> StatusItemController.MenuInput {
+                                   defaultIndex: Int = 0, names: [String]? = nil, displayOrders: [Int]? = nil) -> StatusItemController.MenuInput {
         let displays = keys.indices.map { index -> AggregatedProviderDisplay in
             let id = "member-\(index)"
             let query = BalanceQuery(url: "https://wallet.example/balance", websiteURL: URL(string: "https://wallet.example"),
@@ -3422,7 +3422,7 @@ extension StatusItemControllerTests {
                 subscriptionPrefix: "/codex", nativeBalanceProvider: nil, isNewAPI: false, additionalHeaders: [:])
             let source = ProviderSummarySource(id: id, name: names?[index] ?? "tokenshop", isOfficial: false, query: query,
                 officialAccessToken: nil, notes: notes[index])
-            return AggregatedProviderDisplay(entry: .init(source: source, role: index == defaultIndex ? .default : .member),
+            return AggregatedProviderDisplay(entry: .init(source: source, role: index == defaultIndex ? .default : .member, displayOrder: displayOrders?[index]),
                 identity: .init(providerID: id, accountScope: keys[index], configurationRevision: "fixture"),
                 snapshot: .balance("tokenshop", 3.73, units[index], query.websiteURL, Date(timeIntervalSince1970: 1_700_000_000),
                     progressPercentage: 37.3, recharge: recharge), account: nil, status: .fresh, reason: nil,
@@ -3480,12 +3480,15 @@ extension StatusItemControllerTests {
         let recharge = BalanceRecharge(amountCents: 1000, observedAt: Date(timeIntervalSince1970: 1_700_000_000))
         controller.updateMenu(input: sharedWalletInput(recharge: recharge))
         XCTAssertTrue(wrapper.subviews.first === card)
-        XCTAssertEqual(card.frame.height, height + 25)
+        XCTAssertEqual(card.frame.height, height + 8)
         let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.recharge" })
         XCTAssertTrue(label.stringValue.contains("$10.00"))
         XCTAssertTrue(label.toolTip?.contains(tr(.keyBalanceRechargeObserved)) == true)
         let layout = try XCTUnwrap(card.overviewLayout)
-        XCTAssertLessThanOrEqual(label.frame.maxY, layout.amount.minY)
+        XCTAssertEqual(label.frame.maxY + 2, layout.quotaDetail.minY)
+        let amountGlyphWidth = AccountMarqueeView.textWidth(of: "$3.73", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
+        XCTAssertLessThanOrEqual(label.frame.maxX + 6, layout.amount.maxX - amountGlyphWidth + 0.5)
+        XCTAssertEqual(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first?.frame, layout.amount)
         XCTAssertGreaterThan(label.frame.minY, try XCTUnwrap(layout.progress).maxY)
         let window = NSWindow(contentRect: scroll.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -3669,5 +3672,38 @@ extension StatusItemControllerTests {
         controller.updateMenu(input: aggregationInput(count: 12, amount: 9.12, showStatusMenu: true))
         XCTAssertTrue(menu.items.first?.view === viewport)
         assertAggregationPopupMounts(menu, viewport: viewport, expectedDistance: 80)
+    }
+}
+
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testNoteSortChangesOnNextOpenWithoutReplacingWalletOrReflowingCards() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: sharedWalletInput(displayOrders: [1, 0, 2]), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let item = try XCTUnwrap(menu.items.first)
+        let viewport = try XCTUnwrap(item.view as? NSScrollView)
+        let card = try XCTUnwrap(viewport.documentView?.subviews.first?.subviews.first)
+        func tags() -> [String] {
+            card.subviews.compactMap { $0 as? AggregationNoteTagView }.sorted { $0.frame.minX < $1.frame.minX }
+                .map { $0.textView.accountLabel.stringValue }
+        }
+        XCTAssertEqual(tags(), ["Grok", "GPT", "+1"])
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        let placements = controller.aggregationPlacementCountForTesting
+        controller.menuWillOpen(menu)
+        controller.updateMenu(input: sharedWalletInput(displayOrders: [0, 1, 2]))
+        controller.menuDidClose(menu)
+        controller.menuWillOpen(menu)
+        XCTAssertEqual(tags(), ["GPT", "Grok", "+1"])
+        XCTAssertTrue(menu.items.first === item)
+        XCTAssertTrue(item.view === viewport)
+        XCTAssertTrue(viewport.documentView?.subviews.first?.subviews.first === card)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
+        controller.menuDidClose(menu)
     }
 }

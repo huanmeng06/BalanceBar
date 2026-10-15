@@ -6338,7 +6338,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         host.subviews.first { $0.identifier?.rawValue == "balance.recharge" }?.removeFromSuperview()
         let shift = next.cardSize.height - previous.cardSize.height
         for child in host.subviews where !(child is QuotaProgressView) {
-            child.frame.origin.y += shift
+            if child is OverviewNumericTextView || (child as? NSTextField)?.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize {
+                child.frame = next.amount
+            } else { child.frame.origin.y += shift }
         }
         host.frame.size = next.cardSize
         host.overviewLayout = next
@@ -6354,7 +6356,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         let label = card.subviews.first { $0.identifier == id } as? NSTextField ?? makeOverviewLabel("", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize))
         label.identifier = id
-        label.frame = row
+        if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout, row.intersects(layout.amount) {
+            label.frame = overviewMarqueeFrame(row, avoidingAmountFrame: layout.amount,
+                amountText: context.snapshot.overviewLargeAmount, minimumAmountGap: 6)
+        } else { label.frame = row }
         label.lineBreakMode = .byTruncatingTail
         let prefix = tr(.keyBalanceRechargeLabel)
         let amount = Snapshot.balance("", Double(recharge.amountCents) / 100, unit, nil, recharge.observedAt).overviewLargeAmount

@@ -745,8 +745,9 @@ enum OpenCodexCardLayout {
             let textShift = includesQuotaProgress
                 ? quotaProgressGapCompression
                 : quotaRowHeight - lunaReserveNoProgressRowHeight
-            let subtitleShift: CGFloat = includesBalanceSubtitle ? 0 : 8
-            let rechargeShift: CGFloat = includesBalanceRecharge ? 25 : 0
+            let inlineRecharge = includesBalanceRecharge && !includesBalanceSubtitle
+            let subtitleShift: CGFloat = includesBalanceSubtitle || inlineRecharge ? 0 : 8
+            let rechargeShift: CGFloat = includesBalanceRecharge && !inlineRecharge ? 25 : 0
             return OpenCodexCardFrames(
                 cardSize: CGSize(width: cardWidth, height: 102 - textShift - subtitleShift + rechargeShift),
                 title: CGRect(x: horizontalInset, y: 75 - textShift - subtitleShift + rechargeShift, width: 189, height: 20),
@@ -782,7 +783,7 @@ enum OpenCodexCardLayout {
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil,
                 balanceRecharge: includesBalanceRecharge
-                    ? CGRect(x: horizontalInset, y: includesQuotaProgress ? 18 : 0, width: contentWidth, height: 17) : nil
+                    ? CGRect(x: horizontalInset, y: inlineRecharge ? 28 - textShift : (includesQuotaProgress ? 18 : 0), width: contentWidth, height: 17) : nil
             )
         }
     }

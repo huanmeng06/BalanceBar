@@ -402,3 +402,37 @@ extension CCSwitchRepositoryTests {
         XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
     }
 }
+
+
+extension CCSwitchRepositoryTests {
+    func testAggregationNoteOrderReloadsDatabaseSortWithoutChangingRegisteredMembers() throws {
+        try withDatabase { db in
+            try execute(db, sql: "ALTER TABLE providers ADD COLUMN notes TEXT")
+            try execute(db, sql: "UPDATE providers SET notes='Grok' WHERE id='codex-custom'")
+            try execute(db, sql: """
+                INSERT INTO providers SELECT 'peer', name, settings_config, meta, category, website_url,
+                    app_type, 0, 3, 3, 'GPT' FROM providers WHERE id='codex-custom'
+                """)
+        }
+        let reader = aggregationReader(try aggregationState(members: ["codex-custom", "peer"]))
+        func displays() throws -> [AggregatedProviderDisplay] {
+            guard case .active(let entries) = reader.load() else { throw NSError(domain: "Fixture", code: 1) }
+            XCTAssertEqual(entries.map(\.providerID), ["codex-official", "codex-custom", "peer"])
+            let date = Date(timeIntervalSince1970: 100)
+            return entries.map { entry in
+                .init(entry: entry, identity: .init(providerID: entry.providerID, accountScope: entry.providerID,
+                    configurationRevision: "fixture"), snapshot: entry.source.isOfficial
+                    ? .official(entry.source.name, 90, "quota", nil, date)
+                    : .balance(entry.source.name, 3.73, "USD", nil, date), account: nil, status: .fresh,
+                    reason: nil, fetchedAt: date)
+            }
+        }
+        let before = try displays()
+        XCTAssertEqual(AggregationWalletPresentation.cards(before).last?.groupedNotes, ["Grok", "GPT"])
+        try withDatabase { db in try execute(db, sql: "UPDATE providers SET sort_index=0 WHERE id='peer'") }
+        let after = try displays()
+        XCTAssertNotEqual(before, after, "display order must invalidate semantic publication even with unchanged IDs/data")
+        XCTAssertEqual(AggregationWalletPresentation.cards(after).last?.groupedNotes, ["GPT", "Grok"])
+        XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+    }
+}

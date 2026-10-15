@@ -3202,3 +3202,37 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 }
+
+extension ProviderRefreshCoordinatorTests {
+    func testAggregationSortRepublishesTagsWithinTTLWithoutStartingRequests() throws {
+        try withDatabase { db in
+            try execute(db, sql: "ALTER TABLE providers ADD COLUMN notes TEXT")
+            try execute(db, sql: "UPDATE providers SET notes='Grok' WHERE id='codex-custom'")
+            try execute(db, sql: """
+                INSERT INTO providers SELECT 'peer', name, settings_config, meta, category, website_url,
+                    app_type, 0, 3, 3, 'GPT' FROM providers WHERE id='codex-custom'
+                """)
+        }
+        let reader = try aggregationFixture(members: ["peer"])
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "3.73") }
+        let first = expectation(description: "initial fresh notes")
+        let reordered = expectation(description: "sort-only publication")
+        var initialPublished = false
+        var reorderPublished = false
+        let coordinator = aggregationCoordinator { displays, _ in
+            guard displays.count == 2, displays.allSatisfy({ $0.status == .fresh }) else { return }
+            let notes = AggregationWalletPresentation.cards(displays).first?.groupedNotes
+            if notes == ["Grok", "GPT"], !initialPublished { initialPublished = true; first.fulfill() }
+            if notes == ["GPT", "Grok"], !reorderPublished { reorderPublished = true; reordered.fulfill() }
+        }
+        defer { coordinator.stopAggregation() }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [first], timeout: 3)
+        let requests = DelayedBalanceURLProtocol.requestCount
+        XCTAssertEqual(requests, 2)
+        try withDatabase { db in try execute(db, sql: "UPDATE providers SET sort_index=0 WHERE id='peer'") }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [reordered], timeout: 3)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, requests)
+    }
+}
