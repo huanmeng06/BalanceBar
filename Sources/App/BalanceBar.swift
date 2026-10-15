@@ -1138,6 +1138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "database"
         )
         refresh(reason: .initial)
+        scheduleStartupAggregationReconciliation()
         refreshMonitoredQuickSwitchSummaries(force: true, extraClients: [.claude])
         providerRefreshCoordinator.prefetchCurrentBalance(for: .claude)
         activityCoordinator.start(interval: activityPollInterval)
@@ -1145,6 +1146,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // The file watcher handles normal CC Switch writes. This inexpensive
         // read is a fallback for a missed filesystem notification.
         configureRefreshTimers()
+    }
+
+    /// CC Switch can finish attaching its proxy stack just after BalanceBar's
+    /// first read. Recheck once after launch so a transient default-only read
+    /// cannot leave the menu stuck on one provider until manual refresh.
+    private func scheduleStartupAggregationReconciliation() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self, self.activeClient == .codex else { return }
+            guard case .active = self.aggregationRepository.load() else { return }
+            SwitchLog.write(
+                "startup aggregation reconciliation; source=delayed-launch-read",
+                level: .debug,
+                category: "refresh.aggregation"
+            )
+            self.refresh(reason: .configurationChanged)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
