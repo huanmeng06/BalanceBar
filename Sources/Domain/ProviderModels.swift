@@ -410,6 +410,8 @@ enum OpenCodexCardLayout {
     static let quotaResetHeight: CGFloat = 17
     static let quotaDetailHeight: CGFloat = 18
     static let quotaProgressHeight: CGFloat = 5
+    /// Compact balance cards keep the title close to the first body label.
+    static let balanceHeaderGap: CGFloat = 4
     /// Official 5h/7d rows that draw a progress bar. 8pt shorter than
     /// `quotaRowHeight` so the unused gap under the subtitle shrinks;
     /// title/subtitle/amount stay the same distance from the row top.
@@ -742,14 +744,14 @@ enum OpenCodexCardLayout {
                 ? quotaProgressGapCompression
                 : quotaRowHeight - lunaReserveNoProgressRowHeight
             let inlineRecharge = includesBalanceRecharge && !includesBalanceSubtitle
-            let subtitleShift: CGFloat = includesBalanceSubtitle || inlineRecharge ? 0 : 8
             let rechargeShift: CGFloat = includesBalanceRecharge && !inlineRecharge ? 25 : 0
             let row = quotaRowFrames(includesProgress: includesQuotaProgress,
                                      hasSubtitle: includesBalanceSubtitle || includesBalanceRecharge)
+            let titleY = row.quotaDetail.maxY + balanceHeaderGap + rechargeShift
             return OpenCodexCardFrames(
-                cardSize: CGSize(width: cardWidth, height: 102 - textShift - subtitleShift + rechargeShift),
-                title: CGRect(x: horizontalInset, y: 75 - textShift - subtitleShift + rechargeShift, width: 189, height: 20),
-                refreshTime: CGRect(x: refreshTimeX, y: 76 - textShift - subtitleShift + rechargeShift, width: 81, height: 17),
+                cardSize: CGSize(width: cardWidth, height: titleY + 27),
+                title: CGRect(x: horizontalInset, y: titleY, width: 189, height: 20),
+                refreshTime: CGRect(x: refreshTimeX, y: titleY + 1, width: 81, height: 17),
                 account: nil,
                 subscription: nil,
                 quotaDetail: row.quotaDetail.offsetBy(dx: 0, dy: rechargeShift),

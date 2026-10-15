@@ -2986,9 +2986,9 @@ extension DomainModelsTests {
         XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("$4.00"))
         XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("84%"))
         XCTAssertFalse(snapshot(date: nil).balanceProgressTooltip(now: now, timeZone: zone).contains("10/"))
-        XCTAssertEqual(snapshot(date: now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceToday, arguments: ["$0.66"]))
+        XCTAssertEqual(snapshot(date: now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceToday, arguments: ["12:00", "$0.66"]))
         let yesterday = try XCTUnwrap(parser.date(from: "2026-10-14T12:00:00Z"))
-        XCTAssertEqual(snapshot(date: yesterday).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceYesterday, arguments: ["$0.66"]))
+        XCTAssertEqual(snapshot(date: yesterday).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceYesterday, arguments: ["昨日 12:00", "$0.66"]))
     }
 
     func testProgressContextSurvivesSnapshotCacheAndRejectedOlderSamples() throws {
@@ -3019,8 +3019,8 @@ extension DomainModelsTests {
     func testBalanceSubtitleArgumentsRenderInEveryLanguage() {
         let examples: [(LocalizationKey, [String])] = [
             (.keyBalanceUsedSince, ["10/12", "$0.66"]),
-            (.keyBalanceUsedSinceToday, ["$0.00"]),
-            (.keyBalanceUsedSinceYesterday, ["$0.66"]),
+            (.keyBalanceUsedSinceToday, ["12:00", "$0.00"]),
+            (.keyBalanceUsedSinceYesterday, ["14:20", "$0.66"]),
             (.keyBalanceUsed, ["$0.66"]),
             (.keyBalanceRecordingStartedOn, ["10/12"]),
             (.keyBalanceRecordingStarted, []),

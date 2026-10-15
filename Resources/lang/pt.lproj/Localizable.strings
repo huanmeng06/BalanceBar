@@ -519,8 +519,9 @@
 "balance.recharge.observed" = "Aumento líquido do saldo detetado localmente. A data é a primeira observação desta app, não um comprovativo de pagamento.";
 
 "balance.used_since" = "Desde %1$@: %2$@ usados";
-"balance.used_since_today" = "Desde hoje: %1$@ usados";
-"balance.used_since_yesterday" = "Desde ontem: %1$@ usados";
+"balance.used_since_today" = "Desde %1$@: %2$@ usados";
+"balance.used_since_yesterday" = "Desde %1$@: %2$@ usados";
+"balance.yesterday" = "ontem";
 "balance.used" = "%1$@ usados";
 "balance.recording.started_on" = "Registo desde %1$@";
 "balance.recording.started" = "Registo iniciado";

@@ -331,9 +331,9 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertNil(official.link)
 
         let balance = OpenCodexCardLayout.frames(for: .balance, linkPrefixWidth: 62)
-        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 94))
-        XCTAssertEqual(balance.title, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 67, width: 189, height: 20))
-        XCTAssertEqual(balance.refreshTime, CGRect(x: OpenCodexCardLayout.refreshTimeX, y: 68, width: 81, height: 17))
+        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 88))
+        XCTAssertEqual(balance.title, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 61, width: 189, height: 20))
+        XCTAssertEqual(balance.refreshTime, CGRect(x: OpenCodexCardLayout.refreshTimeX, y: 62, width: 81, height: 17))
         XCTAssertNil(balance.account)
         XCTAssertNil(balance.subscription)
         XCTAssertEqual(balance.quotaDetail, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 39, width: 128, height: 18))
@@ -400,7 +400,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertLessThan(expanded.cardSize.height + 8, withProgress.cardSize.height)
 
         let balance = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: false)
-        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 102 - shift))
+        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 78))
         XCTAssertNil(balance.progress)
         XCTAssertEqual(balance.linkPrefix?.minY, 28 - shift)
         XCTAssertEqual(balance.link?.minY, 28 - shift)

@@ -519,8 +519,9 @@
 "balance.recharge.observed" = "Locally detected net balance increase; the time is when this app first observed it, not a payment receipt.";
 
 "balance.used_since" = "Since %1$@: %2$@ used";
-"balance.used_since_today" = "Since today: %1$@ used";
-"balance.used_since_yesterday" = "Since yesterday: %1$@ used";
+"balance.used_since_today" = "Since %1$@: %2$@ used";
+"balance.used_since_yesterday" = "Since %1$@: %2$@ used";
+"balance.yesterday" = "yesterday";
 "balance.used" = "%1$@ used";
 "balance.recording.started_on" = "Recording since %1$@";
 "balance.recording.started" = "Recording started";

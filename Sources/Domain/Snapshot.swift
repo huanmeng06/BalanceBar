@@ -809,6 +809,17 @@ struct BalanceRecharge: Codable, Equatable {
         else { formatter.dateFormat = "yyyy/MM/dd" }
         return formatter.string(from: date)
     }
+
+    static func clockText(for date: Date, timeZone: TimeZone) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = calendar
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
 }
 
 struct Snapshot: Equatable {
@@ -962,10 +973,10 @@ struct Snapshot: Equatable {
         let used = balanceMoney(cents: context.consumedCents)
         if let date = context.baselineObservedAt {
             switch relativeBalanceDate(for: date, now: now, timeZone: timeZone) {
-            case .today:
-                return tr(.keyBalanceUsedSinceToday, arguments: [used])
-            case .yesterday:
-                return tr(.keyBalanceUsedSinceYesterday, arguments: [used])
+            case .today(let text):
+                return tr(.keyBalanceUsedSinceToday, arguments: [text, used])
+            case .yesterday(let text):
+                return tr(.keyBalanceUsedSinceYesterday, arguments: [text, used])
             case .absolute(let text):
                 return tr(.keyBalanceUsedSince, arguments: [text, used])
             }
@@ -974,17 +985,20 @@ struct Snapshot: Equatable {
     }
 
     private enum RelativeBalanceDate {
-        case today
-        case yesterday
+        case today(String)
+        case yesterday(String)
         case absolute(String)
     }
 
     private func relativeBalanceDate(for date: Date, now: Date, timeZone: TimeZone) -> RelativeBalanceDate {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
-        if calendar.isDate(date, inSameDayAs: now) { return .today }
+        let clock = BalanceRecharge.clockText(for: date, timeZone: timeZone)
+        if calendar.isDate(date, inSameDayAs: now) { return .today(clock) }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-           calendar.isDate(date, inSameDayAs: yesterday) { return .yesterday }
+           calendar.isDate(date, inSameDayAs: yesterday) {
+            return .yesterday(tr(.keyBalanceYesterday) + " " + clock)
+        }
         return .absolute(BalanceRecharge.dateText(for: date, now: now, timeZone: timeZone))
     }
 

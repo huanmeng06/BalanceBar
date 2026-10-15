@@ -1267,6 +1267,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
         guard applied else { return }
         configureApplicationMenu()
+        // Recreate status-menu labels immediately after changing the selected
+        // language; the existing cards may otherwise retain cached text.
+        refreshStatusItemMenuInput()
         rebuildDashboardForLanguageChange()
         render(snapshot)
         refresh(reason: .configurationChanged)

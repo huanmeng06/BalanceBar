@@ -519,8 +519,9 @@
 "balance.recharge.observed" = "Lokal erkannter Nettoanstieg des Guthabens. Der Zeitpunkt ist die erste Beobachtung durch diese App, kein Zahlungsbeleg.";
 
 "balance.used_since" = "Seit %1$@: %2$@ verbraucht";
-"balance.used_since_today" = "Seit heute: %1$@ verbraucht";
-"balance.used_since_yesterday" = "Seit gestern: %1$@ verbraucht";
+"balance.used_since_today" = "Seit %1$@: %2$@ verbraucht";
+"balance.used_since_yesterday" = "Seit %1$@: %2$@ verbraucht";
+"balance.yesterday" = "gestern";
 "balance.used" = "%1$@ verbraucht";
 "balance.recording.started_on" = "Erfasst seit %1$@";
 "balance.recording.started" = "Erfassung begonnen";
