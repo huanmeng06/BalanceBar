@@ -2919,7 +2919,7 @@ extension StatusItemControllerTests {
         let displays = (0..<count).map { index -> AggregatedProviderDisplay in
             let id = "provider-\(index)"
             return AggregatedProviderDisplay(
-                entry: AggregatedProviderEntry(source: ProviderSummarySource(id: id, name: "tokenshop",
+                entry: AggregatedProviderEntry(source: ProviderSummarySource(id: id, name: "provider-\(index)",
                     isOfficial: false, query: nil, officialAccessToken: nil, notes: notes[index]), role: index == 0 ? .default : .member),
                 identity: AggregationDisplayIdentity(providerID: id, accountScope: id, configurationRevision: "fixture"),
                 snapshot: .balance("tokenshop", amount + Double(index), index == 1 ? "CNY" : "USD", nil, date, progressPercentage: nil),
@@ -3077,6 +3077,11 @@ extension StatusItemControllerTests {
             URL(string: "custom-scheme://example/billing")!, URL(string: "https://fixture:fixture@example/billing")!]
         var displays = aggregationInput(count: 4).aggregatedProviders
         for index in displays.indices {
+            let old = displays[index]
+            let source = ProviderSummarySource(id: old.entry.providerID, name: old.entry.source.name,
+                isOfficial: false, query: nil, officialAccessToken: nil, websiteURL: urls[index])
+            displays[index] = AggregatedProviderDisplay(entry: .init(source: source, role: old.entry.role),
+                identity: old.identity, snapshot: old.snapshot, account: nil, status: old.status, reason: nil, fetchedAt: old.fetchedAt)
             displays[index].snapshot = .balance("same-name", 4.73, "USD", urls[index], try XCTUnwrap(displays[index].fetchedAt), progressPercentage: nil)
         }
         let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
@@ -3408,13 +3413,13 @@ extension StatusItemControllerTests {
 extension StatusItemControllerTests {
     private func sharedWalletInput(keys: [String] = ["same", "same", "same"], notes: [String] = ["GPT", "Grok", "Other"],
                                    units: [String] = ["USD", "USD", "USD"], recharge: BalanceRecharge? = nil,
-                                   defaultIndex: Int = 0) -> StatusItemController.MenuInput {
+                                   defaultIndex: Int = 0, names: [String]? = nil) -> StatusItemController.MenuInput {
         let displays = keys.indices.map { index -> AggregatedProviderDisplay in
             let id = "member-\(index)"
             let query = BalanceQuery(url: "https://wallet.example/balance", websiteURL: URL(string: "https://wallet.example"),
                 apiKey: keys[index], intervalMinutes: 5, timeoutSeconds: 10, isRightCode: false,
                 subscriptionPrefix: "/codex", nativeBalanceProvider: nil, isNewAPI: false, additionalHeaders: [:])
-            let source = ProviderSummarySource(id: id, name: "tokenshop", isOfficial: false, query: query,
+            let source = ProviderSummarySource(id: id, name: names?[index] ?? "tokenshop", isOfficial: false, query: query,
                 officialAccessToken: nil, notes: notes[index])
             return AggregatedProviderDisplay(entry: .init(source: source, role: index == defaultIndex ? .default : .member),
                 identity: .init(providerID: id, accountScope: keys[index], configurationRevision: "fixture"),
@@ -3495,10 +3500,10 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testWalletGroupingSeparatesCredentialsCurrenciesAndKeepsDefaultFirst() {
-        XCTAssertEqual(AggregationWalletPresentation.cards(sharedWalletInput(keys: ["same", "different", "same"]).aggregatedProviders).count, 2)
+    func testNameGroupingIgnoresCredentialsSeparatesCurrenciesAndKeepsDefaultFirst() {
+        XCTAssertEqual(AggregationWalletPresentation.cards(sharedWalletInput(keys: ["same", "different", "same"]).aggregatedProviders).count, 1)
         XCTAssertEqual(AggregationWalletPresentation.cards(sharedWalletInput(units: ["USD", "CNY", "USD"]).aggregatedProviders).count, 2)
-        let reordered = AggregationWalletPresentation.cards(sharedWalletInput(keys: ["other", "same", "same"], defaultIndex: 2).aggregatedProviders)
+        let reordered = AggregationWalletPresentation.cards(sharedWalletInput(keys: ["other", "same", "same"], defaultIndex: 2, names: ["other", "tokenshop", "tokenshop"]).aggregatedProviders)
         XCTAssertEqual(reordered.first?.groupedProviderIDs, ["member-1", "member-2"])
         XCTAssertEqual(reordered.first?.entry.role, .default)
         let deduplicated = AggregationWalletPresentation.cards(sharedWalletInput(notes: ["GPT", "GPT", " "]).aggregatedProviders)
@@ -3514,4 +3519,43 @@ extension StatusItemControllerTests {
         mixed[1].snapshot = .balance("tokenshop", 8, "CNY", nil, Date())
         XCTAssertEqual(AggregationWalletPresentation.cards(mixed).count, 3, "unknown currency cannot bridge USD and CNY")
     }
+    @MainActor
+    func testExactNameGroupingIgnoresHostsPathsParsersAndAmountsButNotSpelling() throws {
+        func displays(_ names: [String]) -> [AggregatedProviderDisplay] {
+            sharedWalletInput(keys: ["one", "two", "three"], names: names).aggregatedProviders
+        }
+        XCTAssertEqual(AggregationWalletPresentation.cards(displays(["same", "same", "same"])).count, 1)
+        for names in [["same", "Same", "same "], ["", "", " "], ["one", "two", "three"]] {
+            XCTAssertEqual(AggregationWalletPresentation.cards(displays(names)).count, 3)
+        }
+        var official = displays(["same", "same", "same"])
+        let old = official[1]
+        official[1] = .init(entry: .init(source: .init(id: old.entry.providerID, name: "same", isOfficial: true,
+            query: nil, officialAccessToken: nil), role: .default), identity: old.identity,
+            snapshot: .official("same", 90, "quota", nil, Date()), account: nil, status: .fresh, reason: nil, fetchedAt: Date())
+        XCTAssertEqual(AggregationWalletPresentation.cards(official).count, 2, "official card remains independent")
+        var mixed = displays(["same", "same", "same"])
+        let firstSource = mixed[0].entry.source
+        let query = BalanceQuery(url: "https://unrelated.example/new/path", websiteURL: URL(string: "https://unrelated.example"),
+            apiKey: "different", intervalMinutes: 1, timeoutSeconds: 1, isRightCode: true,
+            subscriptionPrefix: "/different", nativeBalanceProvider: nil, isNewAPI: true, additionalHeaders: ["Account": "other"])
+        mixed[1] = .init(entry: .init(source: .init(id: "other", name: "same", isOfficial: false, query: query,
+            officialAccessToken: nil, notes: "Grok"), role: .member), identity: mixed[1].identity,
+            snapshot: .balance("same", 42, "USD", query.websiteURL, Date(timeIntervalSince1970: 1_700_000_010)),
+            account: nil, status: .fresh, reason: nil, fetchedAt: Date(timeIntervalSince1970: 1_700_000_010))
+        let result = AggregationWalletPresentation.cards(mixed)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].snapshot.amount, 42, "latest amount is selected, never summed")
+        XCTAssertEqual(result[0].snapshot.websiteURL, firstSource.query?.websiteURL)
+        mixed[0].fetchedAt = mixed[1].fetchedAt
+        mixed[0].status = .stale
+        XCTAssertEqual(AggregationWalletPresentation.cards(mixed)[0].snapshot.amount, 42, "fresh wins a timestamp tie")
+        mixed[0].fetchedAt = mixed[1].fetchedAt?.addingTimeInterval(-1)
+        mixed.indices.forEach { mixed[$0].status = .stale; mixed[$0].reason = "offline" }
+        let offline = AggregationWalletPresentation.cards(mixed)
+        XCTAssertEqual(offline[0].snapshot.amount, 42)
+        XCTAssertEqual(offline[0].status, .stale)
+        XCTAssertEqual(offline[0].reason, "offline")
+    }
+
 }

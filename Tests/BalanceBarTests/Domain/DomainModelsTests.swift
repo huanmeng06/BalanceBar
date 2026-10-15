@@ -2753,3 +2753,124 @@ extension DomainModelsTests {
         XCTAssertEqual(try text("2026-10-14T00:30:00Z", "America/Los_Angeles"), "10/13, 17:30")
     }
 }
+
+
+extension DomainModelsTests {
+    func testCodexNameAccountingIgnoresQueryButPreservesExactNameAndClientBoundaries() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let other = makeBalanceProgressQuery(url: "https://other.example/different", apiKey: "other")
+        func identity(_ name: String, _ query: BalanceQuery, id: String = "a", client: AssistantClient = .codex) -> ProviderBalanceProgressIdentity {
+            .init(client: client, providerID: id, query: query, providerName: name)
+        }
+        let a = identity("tokenshop", query)
+        let b = identity("tokenshop", other, id: "b")
+        XCTAssertNotEqual(a.walletID, b.walletID, "request/query identity remains separate")
+        XCTAssertEqual(a.accountingID, b.accountingID)
+        for name in ["Tokenshop", " tokenshop", "tokenshop ", "different"] {
+            XCTAssertNotEqual(a.accountingID, identity(name, query).accountingID)
+        }
+        XCTAssertNotEqual(identity(" ", query).accountingID, identity(" ", query, id: "b").accountingID)
+        XCTAssertNotEqual(identity("tokenshop", query, client: .claude).accountingID,
+                          identity("tokenshop", other, client: .claude).accountingID)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        store.prepareMigration(identities: [a, b])
+        func sample(_ amount: Double, _ identity: ProviderBalanceProgressIdentity, order: UInt64? = nil) throws -> ProviderBalanceProgressStore.Observation {
+            try store.observe(amount: amount, unit: "USD", identity: identity,
+                sampleSequence: order ?? store.beginSample(), observedAt: Date(timeIntervalSince1970: 100)).get()
+        }
+        XCTAssertNil(try sample(3, a).recharge)
+        let old = store.beginSample()
+        XCTAssertEqual(try sample(13, b).recharge?.amountCents, 1000)
+        XCTAssertEqual(try sample(13, a).recharge?.amountCents, 1000)
+        let ignored = try sample(20, b, order: old)
+        XCTAssertFalse(ignored.accepted)
+        XCTAssertEqual(ignored.amount, 13)
+        XCTAssertEqual(ignored.recharge?.amountCents, 1000)
+        let renamed = identity("renamed", query)
+        store.prepareMigration(identities: [renamed, b])
+        XCTAssertNil(try sample(30, renamed).recharge)
+        let restored = ProviderBalanceProgressStore(defaults: defaults)
+        let value = try restored.observe(amount: 12, unit: "USD", identity: b,
+            sampleSequence: restored.beginSample(), observedAt: Date()).get()
+        XCTAssertEqual(value.recharge?.amountCents, 1000)
+        XCTAssertEqual(value.progress, 100)
+    }
+
+    func testNameMigrationAdoptsOnlyAgreeingQueryRecordsAndNeverReimportsOnRename() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let other = makeBalanceProgressQuery(url: "https://other.example/usage", apiKey: "other")
+        let oldA = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query)
+        let oldB = ProviderBalanceProgressIdentity(client: .codex, providerID: "b", query: other)
+        let a = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query, providerName: "same")
+        let b = ProviderBalanceProgressIdentity(client: .codex, providerID: "b", query: other, providerName: "same")
+        func seed(second: Double) {
+            defaults.removePersistentDomain(forName: suiteName)
+            let old = ProviderBalanceProgressStore(defaults: defaults)
+            _ = old.update(amount: 10, unit: "USD", identity: oldA)
+            _ = old.update(amount: 10, unit: "USD", identity: oldB)
+            _ = old.update(amount: 3, unit: "USD", identity: oldA)
+            _ = old.update(amount: second, unit: "USD", identity: oldB)
+        }
+        func sample(_ store: ProviderBalanceProgressStore, _ id: ProviderBalanceProgressIdentity, _ amount: Double) throws -> ProviderBalanceProgressStore.Observation {
+            try store.observe(amount: amount, unit: "USD", identity: id,
+                sampleSequence: store.beginSample(), observedAt: Date()).get()
+        }
+        seed(second: 3)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        store.prepareMigration(identities: [a, b])
+        let migrated = try sample(store, a, 3)
+        XCTAssertEqual(migrated.progress, 30)
+        XCTAssertNil(migrated.recharge)
+        let renamed = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query, providerName: "renamed")
+        let restart = ProviderBalanceProgressStore(defaults: defaults)
+        restart.prepareMigration(identities: [renamed, b])
+        XCTAssertNil(try sample(restart, renamed, 13).recharge, "rename starts a baseline instead of replaying old query state")
+        seed(second: 4)
+        let conflict = ProviderBalanceProgressStore(defaults: defaults)
+        conflict.prepareMigration(identities: [a, b])
+        let initial = try sample(conflict, b, 13)
+        XCTAssertNil(initial.recharge)
+        XCTAssertEqual(initial.progress, 100)
+    }
+}
+
+
+extension DomainModelsTests {
+    func testNameMigrationPreservesAgreeingRechargeAndCurrencyWithoutFabricatingEvents() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let other = makeBalanceProgressQuery(url: "https://peer.example/usage", apiKey: "peer")
+        let queries = [query, other]
+        let old = ProviderBalanceProgressStore(defaults: defaults)
+        let date = Date(timeIntervalSince1970: 100)
+        for (index, query) in queries.enumerated() {
+            let id = ProviderBalanceProgressIdentity(client: .codex, providerID: "p\(index)", query: query)
+            for amount in [3.0, 13.0] {
+                _ = try old.observe(amount: amount, unit: "USD", identity: id,
+                    sampleSequence: old.beginSample(), observedAt: date).get()
+            }
+        }
+        let peers = queries.enumerated().map { ProviderBalanceProgressIdentity(client: .codex,
+            providerID: "p\($0.offset)", query: $0.element, providerName: "same") }
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        store.prepareMigration(identities: peers)
+        let value = try store.observe(amount: 3.73, unit: "USD", identity: peers[0],
+            sampleSequence: store.beginSample(), observedAt: date.addingTimeInterval(60)).get()
+        XCTAssertEqual(value.recharge, BalanceRecharge(amountCents: 1000, observedAt: date))
+        XCTAssertEqual(value.progress, 37.3, accuracy: 0.00001)
+        let cny = try store.observe(amount: 100, unit: "CNY", identity: peers[1],
+            sampleSequence: store.beginSample(), observedAt: date).get()
+        XCTAssertNil(cny.recharge)
+        XCTAssertEqual(cny.progress, 100)
+        let restarted = ProviderBalanceProgressStore(defaults: defaults)
+        restarted.prepareMigration(identities: peers)
+        let persistent = try restarted.observe(amount: 3, unit: "USD", identity: peers[1],
+            sampleSequence: restarted.beginSample(), observedAt: date).get()
+        XCTAssertEqual(persistent.recharge, value.recharge)
+    }
+}

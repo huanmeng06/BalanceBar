@@ -6,15 +6,21 @@ struct ProviderBalanceProgressIdentity: Hashable {
     let providerID: String
     let endpoint: String
     let credentialFingerprint: String
+    /// Retained query fingerprint for legacy migration, never the Codex name group.
     let walletID: String
+    let accountingID: String
+    let usesNameScope: Bool
 
-    init(client: AssistantClient, providerID: String, query: BalanceQuery) {
+    init(client: AssistantClient, providerID: String, query: BalanceQuery, providerName: String? = nil) {
         let fields: [Any] = [client.rawValue, query.url, query.apiKey,
             query.additionalHeaders.sorted { $0.key < $1.key }.map { [$0.key, $0.value] },
             query.isRightCode, query.subscriptionPrefix, query.isNewAPI,
             String(describing: query.nativeBalanceProvider)]
         let data = (try? JSONSerialization.data(withJSONObject: fields)) ?? Data()
         self.walletID = Self.sha256(data.base64EncodedString())
+        self.usesNameScope = client == .codex && providerName != nil
+        self.accountingID = Self.nameScope(client: client, name: providerName)
+            ?? (usesNameScope ? "unnamed:" + Self.sha256(providerID) : walletID)
         self.clientID = client.rawValue
         self.providerID = providerID
         self.endpoint = query.url
@@ -26,6 +32,15 @@ struct ProviderBalanceProgressIdentity: Hashable {
         self.credentialFingerprint = Self.sha256(
             [query.apiKey, headerMaterial].joined(separator: "\u{1F}")
         )
+    }
+
+    /// Exact CC Switch name: preserve case and surrounding whitespace.
+    /// Blank names never identify a shared group.
+    static func nameScope(client: AssistantClient, name: String?) -> String? {
+        guard client == .codex, let name,
+              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let data = try? JSONSerialization.data(withJSONObject: [client.rawValue, name])
+        return "name:" + sha256((data ?? Data()).base64EncodedString())
     }
 
     var storageKey: String {
@@ -100,9 +115,17 @@ final class ProviderBalanceProgressStore {
     private var states: [String: State]
     private var sequence: UInt64 = 0
     private var preparedWallets: Set<String> = []
+    // Migration is one-way: a renamed group must not reimport the same old
+    // query record, including after a restart or after conflicting records.
+    private var migratedNameScopes: Set<String>
+    private var consumedLegacyKeys: Set<String>
+    private static let migrationKey = "balancebar.providerBalanceProgress.nameMigration.v1"
 
     init(defaults: UserDefaults = .standard, minimumProgressBaselineCentsProvider: (() -> Int)? = nil) {
         self.defaults = defaults
+        let migration = defaults.dictionary(forKey: Self.migrationKey)
+        migratedNameScopes = Set(migration?["scopes"] as? [String] ?? [])
+        consumedLegacyKeys = Set(migration?["consumed"] as? [String] ?? [])
         self.minimumProgressBaselineCentsProvider = minimumProgressBaselineCentsProvider ?? {
             AppPreferences.balanceDisplayThresholdCents(defaults: defaults)
         }
@@ -122,27 +145,63 @@ final class ProviderBalanceProgressStore {
     }
 
     private func walletKey(_ identity: ProviderBalanceProgressIdentity, unit: String) -> String {
-        "wallet:" + identity.walletID + ":" + unit
+        "wallet:" + identity.accountingID + ":" + unit
     }
 
-    /// Legacy per-Provider records have no timestamp. Migrate only agreeing
-    /// records, and never manufacture recharge metadata for them.
+    func needsNameMigration(_ identity: ProviderBalanceProgressIdentity) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return identity.usesNameScope && !migratedNameScopes.contains(identity.accountingID)
+    }
+
+    /// Called with the complete source list before dispatch. Only agreeing old
+    /// records migrate; ambiguity establishes a new live baseline, not a recharge.
     func prepareMigration(identities: [ProviderBalanceProgressIdentity]) {
         lock.lock(); defer { lock.unlock() }
         var changed = false
-        for (wallet, peers) in Dictionary(grouping: identities, by: \.walletID) {
-            guard preparedWallets.insert(wallet).inserted else { continue }
-            let legacy = peers.compactMap { states[$0.storageKey] }
-            guard let first = legacy.first,
-                  legacy.allSatisfy({ $0.baselineCents == first.baselineCents && $0.lastCents == first.lastCents && $0.unit == first.unit }),
-                  let identity = peers.first else { continue }
-            let key = walletKey(identity, unit: first.unit)
-            if states[key] == nil {
-                states[key] = State(baselineCents: first.baselineCents, lastCents: first.lastCents, unit: first.unit)
+        let owners = Dictionary(grouping: identities, by: \.walletID)
+        for (scope, peers) in Dictionary(grouping: identities, by: \.accountingID) {
+            guard let identity = peers.first else { continue }
+            if identity.usesNameScope {
+                guard migratedNameScopes.insert(scope).inserted else { continue }
+                var keys: Set<String> = []
+                var consumed: Set<String> = []
+                var ambiguous = false
+                for peer in peers {
+                    let prefix = "wallet:" + peer.walletID + ":"
+                    let queryKeys = states.keys.filter { $0.hasPrefix(prefix) }
+                    keys.formUnion(queryKeys.isEmpty ? [peer.storageKey] : queryKeys)
+                    consumed.formUnion(queryKeys + [peer.storageKey])
+                    if Set((owners[peer.walletID] ?? []).map(\.accountingID)).count > 1 { ambiguous = true }
+                }
+                let alreadyConsumed = !consumed.isDisjoint(with: consumedLegacyKeys)
+                consumedLegacyKeys.formUnion(consumed)
                 changed = true
+                guard !ambiguous, !alreadyConsumed else { continue }
+                let old = keys.compactMap { states[$0] }
+                for (unit, records) in Dictionary(grouping: old, by: \.unit) {
+                    guard let first = records.first,
+                          records.allSatisfy({ $0.baselineCents == first.baselineCents && $0.lastCents == first.lastCents && $0.recharge == first.recharge }) else { continue }
+                    let key = walletKey(identity, unit: unit)
+                    if states[key] == nil {
+                        states[key] = records.max { ($0.sampleSequence ?? 0) < ($1.sampleSequence ?? 0) }
+                    }
+                }
+            } else {
+                guard preparedWallets.insert(scope).inserted else { continue }
+                let old = peers.compactMap { states[$0.storageKey] }
+                guard let first = old.first,
+                      old.allSatisfy({ $0.baselineCents == first.baselineCents && $0.lastCents == first.lastCents && $0.unit == first.unit }) else { continue }
+                let key = walletKey(identity, unit: first.unit)
+                if states[key] == nil {
+                    states[key] = State(baselineCents: first.baselineCents, lastCents: first.lastCents, unit: first.unit)
+                    changed = true
+                }
             }
         }
-        if changed { persist() }
+        if changed {
+            persist()
+            defaults.set(["scopes": Array(migratedNameScopes), "consumed": Array(consumedLegacyKeys)], forKey: Self.migrationKey)
+        }
     }
 
     func update(amount: Double, unit: String, identity: ProviderBalanceProgressIdentity) -> Result<Double, ProviderBalanceProgressError> {

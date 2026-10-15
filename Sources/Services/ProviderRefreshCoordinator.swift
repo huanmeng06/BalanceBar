@@ -399,9 +399,17 @@ final class ProviderRefreshCoordinator {
         aggregationBlocked = reader.blocksQuickSwitch()
         let entries: [AggregatedProviderEntry]
         if case .active(let active) = state { entries = active } else { entries = [] }
-        balanceProgressStore.prepareMigration(identities: entries.compactMap { entry in
-            entry.source.query.map { ProviderBalanceProgressIdentity(client: .codex, providerID: entry.providerID, query: $0) }
-        })
+        let progressIdentities = entries.compactMap { entry in
+            entry.source.query.map { ProviderBalanceProgressIdentity(client: .codex, providerID: entry.providerID,
+                query: $0, providerName: entry.source.name) }
+        }
+        if progressIdentities.contains(where: balanceProgressStore.needsNameMigration),
+           let sources = try? repository.loadSummarySourcesChecked(appType: "codex") {
+            balanceProgressStore.prepareMigration(identities: sources.filter { !$0.isOfficial }.compactMap { source in
+                source.query.map { ProviderBalanceProgressIdentity(client: .codex, providerID: source.id,
+                    query: $0, providerName: source.name) }
+            })
+        }
         let identities = Set(entries.map(aggregationIdentity))
         if !entries.isEmpty {
             standardPublicationEpoch.invalidate()
@@ -675,7 +683,7 @@ final class ProviderRefreshCoordinator {
                 aggregationIDs = Set(entries.map(\.providerID))
             } else { aggregationIDs = [] }
             self.balanceProgressStore.prepareMigration(identities: sources.compactMap { source in
-                source.query.map { ProviderBalanceProgressIdentity(client: client, providerID: source.id, query: $0) }
+                source.query.map { ProviderBalanceProgressIdentity(client: client, providerID: source.id, query: $0, providerName: source.name) }
             })
             for source in sources {
                 guard force || due || previousRevisions[source.id] != source.configurationRevision else { continue }
@@ -734,7 +742,7 @@ final class ProviderRefreshCoordinator {
                         let identity = ProviderBalanceProgressIdentity(
                             client: client,
                             providerID: source.id,
-                            query: query
+                            query: query, providerName: source.name
                         )
                         guard case .success(let observation) = self.balanceProgressStore.observe(
                             amount: response.output.amount, unit: response.output.unit,
@@ -800,8 +808,17 @@ final class ProviderRefreshCoordinator {
             if let completion { completion(.providerError(providerName, reason: reason, cachedBalance: nil)) }
             else { renderBalanceError(providerID: providerID, providerName: providerName, reason: reason, client: client) }
         }
-        let identity = ProviderBalanceProgressIdentity(client: client, providerID: providerID, query: query)
-        balanceProgressStore.prepareMigration(identities: [identity])
+        let identity = ProviderBalanceProgressIdentity(client: client, providerID: providerID, query: query, providerName: providerName)
+        if balanceProgressStore.needsNameMigration(identity) {
+            // Include every same-name peer before deciding whether old query
+            // records agree. A partial list could adopt a conflicting baseline.
+            if let sources = try? repository.loadSummarySourcesChecked(appType: client.appType) {
+                balanceProgressStore.prepareMigration(identities: sources.filter { !$0.isOfficial }.compactMap { source in
+                    source.query.map { ProviderBalanceProgressIdentity(client: client, providerID: source.id,
+                        query: $0, providerName: source.name) }
+                })
+            }
+        } else if client != .codex { balanceProgressStore.prepareMigration(identities: [identity]) }
         let sampleSequence = balanceProgressStore.beginSample()
         guard balanceAPIClient.fetchBalance(
             query: query,

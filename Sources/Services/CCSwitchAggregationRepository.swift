@@ -47,8 +47,8 @@ enum AggregationWalletPresentation {
         var groups: [[AggregatedProviderDisplay]] = []
         var indices: [String: Int] = [:]
         func walletID(_ display: AggregatedProviderDisplay) -> String? {
-            guard !display.entry.source.isOfficial, let query = display.entry.source.query else { return nil }
-            return ProviderBalanceProgressIdentity(client: .codex, providerID: display.entry.providerID, query: query).walletID
+            guard !display.entry.source.isOfficial else { return nil }
+            return ProviderBalanceProgressIdentity.nameScope(client: .codex, name: display.entry.source.name)
         }
         func unit(_ display: AggregatedProviderDisplay) -> String? {
             let value = display.snapshot.unit?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
