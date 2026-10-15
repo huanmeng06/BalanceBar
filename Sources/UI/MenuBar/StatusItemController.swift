@@ -6423,30 +6423,61 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             card.subviews.first { $0.identifier == id }?.removeFromSuperview()
             return
         }
-        let label = card.subviews.first { $0.identifier == id } as? NSTextField ?? makeOverviewLabel("", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize))
-        label.identifier = id
-        if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout, row.intersects(layout.amount) {
-            label.frame = overviewMarqueeFrame(row, avoidingAmountFrame: layout.amount,
-                amountText: numericSamples(for: context).first.map { overviewNumericPlan(for: $0).layoutReservationText }
-                    ?? context.snapshot.overviewLargeAmount, minimumAmountGap: 12)
-        } else { label.frame = row }
-        label.lineBreakMode = .byTruncatingTail
         let text = context.snapshot.balanceSubtitle(timeZone: settings.displayTimeZone)
-        label.usesSingleLineMode = true
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineBreakMode = .byTruncatingTail
-        label.attributedStringValue = NSAttributedString(string: text, attributes: [
-            .font: NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize),
-            .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph])
+        let subtitleFont = NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize)
+        let frame: NSRect
+        if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout, row.intersects(layout.amount) {
+            frame = overviewMarqueeFrame(row, avoidingAmountFrame: layout.amount,
+                amountText: numericSamples(for: context).first.map { overviewNumericPlan(for: $0).layoutReservationText }
+                    ?? context.snapshot.overviewLargeAmount, amountFont: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaAmountPointSize, weight: .semibold), minimumAmountGap: 12)
+        } else { frame = row }
+        let needsMarquee = textWidth(text, font: subtitleFont) > frame.width + 0.5
+        let existing = card.subviews.first { $0.identifier == id }
+        let label: NSView
+        if needsMarquee {
+            let marquee: AccountMarqueeView
+            if let existing = existing as? AccountMarqueeView {
+                marquee = existing
+            } else {
+                existing?.removeFromSuperview()
+                marquee = makeMarqueeOverviewLabel(text, font: subtitleFont,
+                    textColor: .secondaryLabelColor, frame: frame)
+                card.addSubview(marquee)
+            }
+            marquee.identifier = id
+            marquee.frame = frame
+            marquee.updateText(text, preserveScrollPosition: false)
+            label = marquee
+        } else {
+            let textField: NSTextField
+            if let existing = existing as? NSTextField {
+                textField = existing
+            } else {
+                existing?.removeFromSuperview()
+                textField = makeOverviewLabel("", font: subtitleFont)
+                card.addSubview(textField)
+            }
+            textField.identifier = id
+            textField.frame = frame
+            textField.lineBreakMode = .byTruncatingTail
+            textField.usesSingleLineMode = true
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineBreakMode = .byTruncatingTail
+            textField.attributedStringValue = NSAttributedString(string: text, attributes: [
+                .font: subtitleFont,
+                .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph])
+            label = textField
+        }
+        let tooltip: String
         if let recharge = context.snapshot.balanceRecharge {
-            label.toolTip = context.snapshot.balanceSubtitle(timeZone: settings.displayTimeZone)
+            tooltip = context.snapshot.balanceSubtitle(timeZone: settings.displayTimeZone)
                 + " · " + recharge.dateText(timeZone: settings.displayTimeZone, includesTime: true)
                 + "\n" + tr(.keyBalanceRechargeObserved)
         } else {
-            label.toolTip = text + "\n" + context.snapshot.balanceProgressTooltip(timeZone: settings.displayTimeZone)
+            tooltip = text + "\n" + context.snapshot.balanceProgressTooltip(timeZone: settings.displayTimeZone)
         }
-        label.setAccessibilityLabel(label.toolTip)
-        if label.superview == nil { card.addSubview(label) }
+        label.toolTip = tooltip
+        label.setAccessibilityLabel(tooltip)
     }
 
     private func updateAggregationTimestamp(in card: NSView, display: AggregatedProviderDisplay) {
