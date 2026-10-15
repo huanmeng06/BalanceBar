@@ -73,6 +73,7 @@ private final class QuotaPacePopoverProbe: NSPopover {
     }
     override func close() {
         closeAnimationFlags.append(animates)
+        delegate?.popoverWillClose?(Notification(name: NSPopover.willCloseNotification, object: self))
         if !delaysCloseCompletion { completeClose() }
     }
     func completeClose() {
@@ -697,6 +698,97 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(view.isTooltipVisible)
         XCTAssertFalse(view.hasPendingShowForTesting)
         XCTAssertFalse(view.hasPendingCloseForTesting)
+    }
+
+    func testDismissalTracePolicyMonotonicCaptureAndNoContentLogging() throws {
+        XCTAssertTrue(MenuDismissalTrace.isEnabled(bundleIdentifier: "com.huanmeng06.BalanceBar.dev"))
+        XCTAssertTrue(MenuDismissalTrace.isEnabled(bundleIdentifier: "com.huanmeng06.BalanceBar.dev.test"))
+        XCTAssertFalse(MenuDismissalTrace.isEnabled(bundleIdentifier: "com.huanmeng06.BalanceBar.app"))
+        XCTAssertFalse(MenuDismissalTrace.isEnabled(bundleIdentifier: nil))
+        var lines: [String] = []
+        MenuDismissalTrace.sinkForTesting = { lines.append($0) }
+        defer { MenuDismissalTrace.sinkForTesting = nil }
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let host = fixture.host
+        let window = PaceDismissalWindowProbe(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        let trace = try XCTUnwrap(MenuDismissalTrace.beginRound(menu: fixture.menu))
+        host.setDismissalTrace(trace)
+        host.quotaPaceAccount = OpenAIAccountPresentation(email: "secret@example.invalid")
+        host.addSubview(NSTextField(labelWithString: "secret tooltip text"))
+        host.setMenuContentVisible(true)
+        host.layoutSubtreeIfNeeded()
+        fixture.views[0].markerReduceMotionForTesting = false
+        host.sectionFocus.sections.values.forEach {
+            $0.focusReduceMotionForTesting = false
+            $0.focusReduceTransparencyForTesting = false
+        }
+        enterPace(fixture.views[0])
+        fixture.views[0].firePendingShowForTesting()
+        fixture.views[0].updateHover(at: NSPoint(x: -100, y: -100))
+        fixture.views[0].firePendingCloseForTesting()
+        let exitStart = lines.count
+        host.setMenuContentVisible(false)
+        XCTAssertGreaterThan(lines.count, exitStart)
+        XCTAssertFalse(lines[exitStart...].contains { $0.contains("event=filter.remove;") })
+        host.finishMenuDismissal()
+        XCTAssertTrue(lines.contains { $0.contains("event=filter.remove;") })
+        for event in ["marker.enter", "marker.leave", "hover.timer.fire", "popover.show.request",
+                      "popover.willClose", "popover.didClose", "dismissal.begin", "dismissal.cleanup", "section.suspend"] {
+            XCTAssertTrue(lines.contains { $0.contains("event=\(event);") }, event)
+        }
+        func field(_ line: String, _ key: String) -> String? {
+            line.components(separatedBy: "; ").first { $0.hasPrefix("\(key)=") }.map { String($0.dropFirst(key.count + 1)) }
+        }
+        let sequences = lines.compactMap { field($0, "seq").flatMap(Int.init) }
+        let times = lines.compactMap { field($0, "mono_ns").flatMap(UInt64.init) }
+        XCTAssertEqual(sequences, Array(1...lines.count))
+        XCTAssertEqual(times.count, lines.count)
+        XCTAssertEqual(times, times.sorted())
+        XCTAssertTrue(lines.allSatisfy { field($0, "round") == String(trace.round) })
+        XCTAssertTrue(lines.contains { $0.contains("sections=2;") && $0.contains("items=1;") })
+        XCTAssertFalse(lines.joined().contains("secret"))
+        XCTAssertFalse(lines.joined().contains("@example"))
+    }
+
+    func testOldPopoverCloseTraceKeepsOriginalRoundAfterReopen() throws {
+        var lines: [String] = []
+        MenuDismissalTrace.sinkForTesting = { lines.append($0) }
+        defer { MenuDismissalTrace.sinkForTesting = nil }
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let host = fixture.host
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        host.layoutSubtreeIfNeeded()
+        let old = try XCTUnwrap(MenuDismissalTrace.beginRound(menu: fixture.menu))
+        host.setDismissalTrace(old)
+        host.setMenuContentVisible(true)
+        let view = fixture.views[0]
+        let departing = fixture.popovers[0]
+        departing.delaysCloseCompletion = true
+        enterPace(view)
+        view.firePendingShowForTesting()
+        view.dismissTooltip(animated: true)
+        host.setMenuContentVisible(false)
+        host.finishMenuDismissal()
+        let next = try XCTUnwrap(MenuDismissalTrace.beginRound(menu: fixture.menu))
+        XCTAssertGreaterThan(next.round, old.round)
+        host.setDismissalTrace(next)
+        host.setMenuContentVisible(true)
+        let newPopover = QuotaPacePopoverProbe()
+        view.makePopoverForTesting = { newPopover }
+        enterPace(view)
+        view.firePendingShowForTesting()
+        departing.completeClose()
+        XCTAssertTrue(view.isTooltipVisible)
+        let callback = try XCTUnwrap(lines.last { $0.contains("event=popover.didClose;") })
+        XCTAssertTrue(callback.contains("round=\(old.round);"))
+        XCTAssertTrue(callback.contains("host_round=\(next.round);"))
+        XCTAssertTrue(callback.contains("active_matches=false;"))
     }
 
     func testMenuDismissalPreservesOutgoingFiltersAndCancelsAllHoverWork() throws {

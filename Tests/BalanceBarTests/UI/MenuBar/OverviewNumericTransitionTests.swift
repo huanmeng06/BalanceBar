@@ -622,6 +622,92 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             quotaPredictionAccountKey: "pace@example.com")
     }
 
+    @MainActor
+    func testDeactivationBeforeDidCloseDefersEveryContentMutationAndAppliesLatestOnOpen() throws {
+        var lines: [String] = []
+        MenuDismissalTrace.sinkForTesting = { lines.append($0) }
+        defer { MenuDismissalTrace.sinkForTesting = nil }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.bankedResetCountdownNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        func snapshot(remaining: Double, onlyWeek: Bool) -> Snapshot {
+            let windows = [
+                OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                    reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000)),
+                OfficialQuotaWindow(kind: .sevenDay, remaining: remaining, label: "7d", daysText: "7d",
+                    reset: nil, durationSeconds: 604_800, resetAt: now.addingTimeInterval(302_400))
+            ]
+            return .official("OpenAI Official", remaining, "quota", nil, now,
+                windows: onlyWeek ? [windows[1]] : windows, bankedReset: CodexBankedReset(cards: []),
+                resetForecast: CodexResetForecast(probability24h: .percent(20), probability48h: .percent(35),
+                    confidence: .low, updatedAt: now, isCached: false,
+                    officialSignal: CodexResetOfficialSignal(probability: .percent(71), targetAt: now.addingTimeInterval(3_665))))
+        }
+        func descendants(_ node: NSView) -> [NSView] { node.subviews.flatMap { [$0] + descendants($0) } }
+        controller.start(snapshot: snapshot(remaining: 40, onlyWeek: false), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        let countdown = try XCTUnwrap(descendants(host).compactMap { $0 as? OverviewNumericHoverLinkTextField }
+            .first { $0.sample?.format == .remainingMinutes })
+        let countdownValue = countdown.sample?.value
+        let timer = try XCTUnwrap(controller.bankedResetCountdownTimerForTesting)
+        let paceTimer = try XCTUnwrap(controller.quotaPaceTimerForTesting)
+        let views = host.paceViews
+        let sections = host.subviews.map(ObjectIdentifier.init)
+        let labels = descendants(host).compactMap { ($0 as? NSTextField)?.stringValue }
+        let items = controller.menuItemsForTesting.map(ObjectIdentifier.init)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+        XCTAssertTrue(host.isMenuDismissing)
+        let deadline = Date().addingTimeInterval(OverviewNumericTransition.openDelay + 0.05)
+        while Date() < deadline { RunLoop.main.run(mode: .default, before: deadline) }
+        controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(120)
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(120)
+        timer.fire()
+        paceTimer.fire()
+        // Numeric-only refresh, then a structural change, both in the gap
+        // before AppKit delivers menuDidClose.
+        for onlyWeek in [false, true] {
+            controller.update(snapshot: snapshot(remaining: 10, onlyWeek: onlyWeek), refreshDate: now.addingTimeInterval(120),
+                menuInput: makeMenuInput(), settings: makeSettings())
+            XCTAssertEqual(host.subviews.map(ObjectIdentifier.init), sections)
+            XCTAssertEqual(host.paceViews.map(ObjectIdentifier.init), views.map(ObjectIdentifier.init))
+            XCTAssertEqual(descendants(host).compactMap { ($0 as? NSTextField)?.stringValue }, labels)
+            XCTAssertTrue(views.allSatisfy { $0.progress.percentage == 40 && $0.pace?.roundedActual == 40 })
+        }
+        XCTAssertEqual(countdown.sample?.value, countdownValue)
+        XCTAssertEqual(controller.menuItemsForTesting.map(ObjectIdentifier.init), items)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        for source in ["sections", "numerics", "numerics.open", "pace", "countdown.timer"] {
+            XCTAssertTrue(lines.contains { $0.contains("event=content.update.deferred;") && $0.contains("source=\(source)") })
+        }
+        controller.menuDidClose(controller.statusMenuForTesting)
+        host.finishMenuDismissal() // Auxiliary cleanup can precede isVisible=false.
+        XCTAssertTrue(window.isVisible)
+        controller.update(snapshot: snapshot(remaining: 10, onlyWeek: true), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds, "Still-visible native menu must never rebuild")
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let latest = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertEqual(latest.paceViews.count, 1)
+        XCTAssertEqual(latest.paceViews.first?.quotaWindow.kind, .sevenDay)
+        XCTAssertEqual(latest.paceViews.first?.progress.percentage, 10)
+        let latestCountdown = try XCTUnwrap(descendants(latest).compactMap { $0 as? OverviewNumericHoverLinkTextField }
+            .first { $0.sample?.format == .remainingMinutes })
+        XCTAssertEqual(latestCountdown.sample?.value, 59)
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
     func testWeeklyPredictionConsumesMatchingContextAndMinuteTickKeepsViews() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let windows = [

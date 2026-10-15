@@ -2350,6 +2350,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
+    private var menuDismissalTrace: MenuDismissalTrace?
     private var lastSeenOverviewNumerics: [OverviewNumericIdentity: OverviewNumericSample] = [:]
     private var presentedOverviewNumerics: [OverviewNumericSample] = []
     private var overviewMenuWasSeen = false
@@ -2923,6 +2924,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         invalidateBitmapContentCache()
         menuBarContentStack.removeFromSuperview()
         statusMenu.delegate = nil
+        menuDismissalTrace?.record("menu.teardown.removeAllItems", view: statusMenu.items.first?.view)
         statusMenu.removeAllItems()
         removeRightClickMonitor()
         if let statusItem {
@@ -3164,11 +3166,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        menuDismissalTrace = MenuDismissalTrace.beginRound(menu: statusMenu)
+        menuDismissalTrace?.host = statusMenu.items.first?.view as? MenuHoverLinkHostView
+        menuDismissalTrace?.record("menu.willOpen", view: statusMenu.items.first?.view)
         (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.finishMenuDismissal()
         if statusMenuNeedsRebuild {
             statusMenuNeedsRebuild = false
-            rebuildStatusMenu()
+            rebuildStatusMenu(reason: "nextOpen")
         }
+        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
         isStatusMenuTracking = true
         (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setMenuContentVisible(true)
         refreshQuotaPaceViews()
@@ -3181,6 +3187,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        menuDismissalTrace?.record("menu.didClose", view: statusMenu.items.first?.view,
+            details: "controller_tracking=\(isStatusMenuTracking); rebuild_pending=\(statusMenuNeedsRebuild)")
         if overviewMenuWasSeen {
             lastSeenOverviewNumerics = OverviewNumericTransition.commitSeenValues(
                 presentedOverviewNumerics
@@ -3249,12 +3257,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func rebuildOrDeferMenu(forceDefer: Bool = false) {
         guard statusItem != nil else { return }
-        let dismissing = (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.isMenuDismissing == true
-        if isStatusMenuTracking || dismissing || forceDefer {
+        let host = statusMenu.items.first?.view as? MenuHoverLinkHostView
+        if isStatusMenuTracking || host?.isMenuDismissing == true || host?.window?.isVisible == true || forceDefer {
             statusMenuNeedsRebuild = true
+            menuDismissalTrace?.record("menu.rebuild.deferred", view: host,
+                details: "controller_tracking=\(isStatusMenuTracking); force=\(forceDefer)")
         } else {
-            rebuildStatusMenu()
+            rebuildStatusMenu(reason: "idleUpdate")
         }
+    }
+
+    /// All tracking-time mutations share the same gate, including the gap
+    /// between application deactivation and the native menu delegate callback.
+    private func menuContentHostForUpdate(_ source: String) -> MenuHoverLinkHostView? {
+        guard let host = statusMenu.items.first?.view as? MenuHoverLinkHostView else { return nil }
+        guard isStatusMenuTracking, host.isMenuContentVisible, !host.isMenuDismissing else {
+            if isStatusMenuTracking || host.isMenuDismissing || host.window?.isVisible == true {
+                statusMenuNeedsRebuild = true
+                menuDismissalTrace?.record("content.update.deferred", view: host, details: "source=\(source)")
+            }
+            return nil
+        }
+        menuDismissalTrace?.record("content.update", view: host, details: "source=\(source)")
+        return host
     }
 
     private func refreshNativeCodexIconAppearance() {
@@ -5686,7 +5711,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return item
     }
 
-    private func rebuildStatusMenu() {
+    private func rebuildStatusMenu(reason: String) {
+        menuDismissalTrace?.record("menu.rebuild.removeAllItems", view: statusMenu.items.first?.view,
+            details: "reason=\(reason)")
         statusMenuRebuildCountForTesting += 1
         statusMenu.removeAllItems()
         statusMenu.addItem(makeOverviewMenuItem(for: snapshot))
@@ -5724,6 +5751,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             action: #selector(quit),
             keyEquivalent: "q"
         ).target = self
+        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
+        menuDismissalTrace?.record("menu.rebuild.complete", view: statusMenu.items.first?.view,
+            details: "reason=\(reason)")
         let statusWindow = statusItem?.button?.window
         SwitchLog.write(
             "status menu rendered; item_count=\(statusMenu.items.count); status_visible=\(isVisible); button_window=\(statusWindow != nil); window_visible=\(statusWindow?.isVisible ?? false); window_occlusion_visible=\(statusWindow?.occlusionState.contains(.visible) ?? false); window_occlusion_raw=\(statusWindow?.occlusionState.rawValue ?? 0); image=\(statusItem?.button?.image != nil)",
@@ -6533,11 +6563,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func refreshQuotaPaceViews() {
-        guard isStatusMenuTracking,
-              let host = statusMenu.items.first?.view as? MenuHoverLinkHostView,
-              !host.isMenuDismissing else { return }
-        if !host.isMenuContentVisible { host.setMenuContentVisible(true) }
-        else { host.reconcilePaceMenuTracking() }
+        guard let host = menuContentHostForUpdate("pace") else { return }
+        host.reconcilePaceMenuTracking()
         let now = quotaPaceNowForTesting ?? Date()
         let windows = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
@@ -6575,7 +6602,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func syncBankedResetCountdownTimer() {
-        let shouldRun = isStatusMenuTracking
+        let shouldRun = menuContentHostForUpdate("countdown.timer") != nil
             && settings.showBankedReset
             && snapshot.kind == .official
             && snapshot.officialQuotaMenuPresentation(
@@ -7021,9 +7048,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard statusMenu.items.first?.view != nil else { return }
         cancelPendingOverviewNumericTransitions()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.isStatusMenuTracking,
-                  let overview = self.statusMenu.items.first?.view else { return }
+            guard let self else { return }
             self.overviewNumericOpenWorkItem = nil
+            guard let overview = self.menuContentHostForUpdate("numerics.open") else { return }
             self.playOverviewNumericTransitions(in: overview)
         }
         overviewNumericOpenWorkItem = work
@@ -7074,8 +7101,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func reconcileOverviewSectionsIfTracking() {
-        guard isStatusMenuTracking, snapshot.kind == .official,
-              let host = statusMenu.items.first?.view as? MenuHoverLinkHostView,
+        guard let host = menuContentHostForUpdate("sections"), snapshot.kind == .official,
               let previous = host.overviewLayout else { return }
         let presentation = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
@@ -7210,7 +7236,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func applyInPlaceOverviewNumericUpdatesIfTracking() {
-        guard isStatusMenuTracking, let overview = statusMenu.items.first?.view else { return }
+        guard let overview = menuContentHostForUpdate("numerics") else { return }
         let samples = currentOverviewNumericSamples()
         presentedOverviewNumerics = samples
         let reduceMotion = shouldReduceOverviewNumericMotion()

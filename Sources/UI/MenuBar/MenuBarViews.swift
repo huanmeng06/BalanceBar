@@ -2,6 +2,56 @@ import AppKit
 import QuartzCore
 import CoreImage
 
+/// Event-boundary diagnostics only: capture time/state on the main thread,
+/// then let the existing log writer persist asynchronously. No animation polling.
+@MainActor
+final class MenuDismissalTrace {
+    static var sinkForTesting: ((String) -> Void)?
+    private static var nextRound = 0
+    let round: Int
+    private var sequence = 0
+    private let start = DispatchTime.now().uptimeNanoseconds
+    private weak var menu: NSMenu?
+    weak var host: MenuHoverLinkHostView?
+
+    static func isEnabled(bundleIdentifier: String?) -> Bool {
+        bundleIdentifier == "com.huanmeng06.BalanceBar.dev"
+            || bundleIdentifier?.hasPrefix("com.huanmeng06.BalanceBar.dev.") == true
+    }
+
+    static func beginRound(menu: NSMenu? = nil) -> MenuDismissalTrace? {
+        guard isEnabled(bundleIdentifier: Bundle.main.bundleIdentifier) || sinkForTesting != nil else { return nil }
+        return MenuDismissalTrace(menu: menu)
+    }
+
+    private init(menu: NSMenu?) {
+        Self.nextRound += 1
+        round = Self.nextRound
+        self.menu = menu
+    }
+
+    static func id(_ object: AnyObject?) -> String {
+        object.map { String(describing: ObjectIdentifier($0)) } ?? "nil"
+    }
+
+    nonisolated func record(_ event: String, view: NSView? = nil, popover: NSPopover? = nil, details: String = "") {
+        // Legacy controller entry points are not annotated, but all menu
+        // mutation is synchronous on the main actor. Do not enqueue capture.
+        MainActor.assumeIsolated { capture(event, view: view, popover: popover, details: details) }
+    }
+
+    private func capture(_ event: String, view: NSView?, popover: NSPopover?, details: String) {
+        sequence += 1
+        let now = DispatchTime.now().uptimeNanoseconds
+        let source = view ?? host
+        let window = source?.window
+        let sectionCount = host?.subviews.filter { $0 is OpenCodexOverviewSectionView }.count ?? 0
+        let message = "event=\(event); round=\(round); seq=\(sequence); mono_ns=\(now); elapsed_ms=\(Double(now - start) / 1_000_000); wall_s=\(Date().timeIntervalSince1970); host_round=\(host?.dismissalTrace?.round ?? 0); view=\(Self.id(source)); host=\(Self.id(host)); window=\(Self.id(window)); popover=\(Self.id(popover)); tracking=\(host?.isPaceMenuTracking ?? false); content_visible=\(host?.isMenuContentVisible ?? false); dismissing=\(host?.isMenuDismissing ?? false); window_visible=\(window?.isVisible ?? false); occlusion=\(window?.occlusionState.rawValue ?? 0); items=\(menu?.numberOfItems ?? 0); sections=\(sectionCount); \(details)"
+        if let sink = Self.sinkForTesting { sink(message) }
+        else { SwitchLog.write(message, level: .debug, category: "ui.menu.dismissal") }
+    }
+}
+
 final class PassthroughTextField: NSTextField {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
@@ -37,6 +87,7 @@ final class SectionFocusController {
     private var timer: Timer?
     private var generation = 0
     private var isMenuDismissing = false
+    var dismissalTrace: MenuDismissalTrace?
     var isActive = false
     var pendingTimerForTesting: Timer? { timer }
 
@@ -85,10 +136,16 @@ final class SectionFocusController {
 
     private func schedule(_ nextPhase: Phase, after delay: TimeInterval, target: OpenCodexOverviewSectionID?) {
         let token = generation
+        let trace = dismissalTrace
+        trace?.record("hover.timer.schedule", details: "phase=\(nextPhase); generation=\(token); delay=\(delay)")
         phase = nextPhase
         let next = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.isActive, self.generation == token, self.hoveredID == target else { return }
+                guard let self, self.isActive, self.generation == token, self.hoveredID == target else {
+                    trace?.record("hover.timer.ignored", details: "phase=\(nextPhase); generation=\(token)")
+                    return
+                }
+                trace?.record("hover.timer.fire", details: "phase=\(nextPhase); generation=\(token)")
                 self.timer = nil
                 self.phase = nil
                 switch nextPhase {
@@ -148,6 +205,7 @@ final class SectionFocusController {
         presentedPace?.refreshMarkerAccessibility()
     }
     func suspendForMenuDismissal() {
+        dismissalTrace?.record("focus.suspend")
         isActive = false
         isMenuDismissing = true
         cancelPending()
@@ -159,6 +217,7 @@ final class SectionFocusController {
         sections.values.forEach { $0.suspendFocusTransition() }
     }
     func reset() {
+        dismissalTrace?.record("focus.reset")
         isMenuDismissing = false
         cancelPending()
         hoveredID = nil
@@ -176,6 +235,7 @@ final class SectionFocusController {
 class OpenCodexOverviewSectionView: NSView {
     let sectionID: OpenCodexOverviewSectionID
     private(set) var focusState: SectionFocusState = .normal
+    var dismissalTrace: MenuDismissalTrace?
     private var focusGeneration = 0
     private var ownFocusFilter: CIFilter?
     private var targetRadius: CGFloat = 0
@@ -242,12 +302,14 @@ class OpenCodexOverviewSectionView: NSView {
         }
         targetAlpha = alpha
         targetRadius = radius
+        defer { traceFocus("section.focus") }
         guard hasOwnFocusFilter, let node = layer else { return } // No invalid KVC on an absent filter.
         let cleanup: () -> Void = { [weak self, weak filter] in
             guard let self, self.focusGeneration == token, self.targetRadius == 0,
                   let filter, self.ownFocusFilter === filter else { return }
             self.contentFilters = self.contentFilters.filter { $0.name != Self.blurName }
             self.ownFocusFilter = nil
+            self.traceFocus("filter.remove")
             self.focusRestoreCompletionForTesting = nil
         }
         CATransaction.begin()
@@ -272,6 +334,7 @@ class OpenCodexOverviewSectionView: NSView {
     /// Freeze the visible state while the native menu exits. Do not detach a
     /// content filter or brighten a still-visible outgoing menu.
     func suspendFocusTransition() {
+        defer { traceFocus("section.suspend") }
         focusGeneration += 1 // Retire any restoration completion before removing its animation.
         focusRestoreCompletionForTesting = nil
         let visibleAlpha = CGFloat(layer?.presentation()?.opacity ?? Float(alphaValue))
@@ -296,6 +359,20 @@ class OpenCodexOverviewSectionView: NSView {
         targetRadius = radius
     }
 
+    private func traceFocus(_ event: String) {
+        guard let dismissalTrace else { return }
+        var radius = targetRadius
+        if hasOwnFocusFilter, let layer {
+            radius = (layer.value(forKeyPath: Self.radiusPath) as? NSNumber)?.doubleValue ?? targetRadius
+        }
+        var visibleRadius: Double?
+        if let visible = layer?.presentation(), (visible.filters as? [CIFilter])?.contains(where: { $0.name == Self.blurName }) == true {
+            visibleRadius = (visible.value(forKeyPath: Self.radiusPath) as? NSNumber)?.doubleValue
+        }
+        dismissalTrace.record(event, view: self,
+            details: "section=\(sectionID.identifier); alpha=\(alphaValue); presentation_alpha=\(layer?.presentation()?.opacity ?? Float(alphaValue)); radius=\(radius); presentation_radius=\(visibleRadius.map { String($0) } ?? "na"); target_radius=\(targetRadius); owned_filter=\(hasOwnFocusFilter); filters=\(contentFilters.count); opacity_animation=\(layer?.animation(forKey: "opacity") != nil); blur_animation=\(layer?.animation(forKey: "sectionFocus.radius") != nil); generation=\(focusGeneration)")
+    }
+
     var measuredHeight: CGFloat { frame.height }
     override var intrinsicContentSize: NSSize { NSSize(width: frame.width, height: measuredHeight) }
 
@@ -312,6 +389,7 @@ class OpenCodexOverviewSectionView: NSView {
     }
 
     override func removeFromSuperview() {
+        dismissalTrace?.record("section.remove", view: self, details: "section=\(sectionID.identifier)")
         (superview as? MenuHoverLinkHostView)?.focusSectionWillBeRemoved(self)
         setFocusState(.normal, animated: false)
         super.removeFromSuperview()

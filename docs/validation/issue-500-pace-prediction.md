@@ -81,3 +81,38 @@ Verification: unsigned Debug build PASS; five affected XCTest classes (Dashboard
 `./scripts/build.sh dev`, bundle signature verification, 517-key / 12-language bundled-resource probe and `git diff --check` PASS. Logs: `/tmp/BalanceBar-Issue500-Close-dev.log`, `...-resource.log`. Development executable SHA-256: `3979d52e6a72063e07daed459927b2e38cf935d7a785074729da2c728b6f5ed4`. Full CI remains deferred while Draft. Prior native-menu early-exit observations above remain unresolved manual gates.
 
 Manual retest PENDING (prior acceptance invalidated): launch the rebuilt `build/dev/BalanceBar-dev.app`, hover until blur and Tooltip appear, then click the desktop/another app to dismiss. All content and panel should leave coherently, without a blank milky panel remaining. Repeat after quota refresh and a minute tick, during entry/ordinary-exit transitions, and with rapid close/reopen or 5h/7d transfer. Reopen must show current values and restored module opacity/filter state; normal hover must work again. Check light/dark, screen edges, Reduce Motion and Reduce Transparency. Do not call this visible white-flash fix PASS from the background tests; user confirmation on the new artifact is required.
+
+
+## Continued white-flash FAIL: diagnostic development build (2026-10-15)
+
+The user explicitly reported **“仍然闪白”** on `082f0700`. Its GUI acceptance is FAIL, and the previous automated 166/35 results never established visual success. This iteration delivers instrumentation plus confirmed update-gate corrections, not a claim that the flash is fixed.
+
+All tracking-time content mutations now use one gate: controller tracking, host content visible, and host not dismissing. This includes structural section replacement, numeric/progress refresh, the delayed opening-number animation, quota pace, and reset countdown. During application deactivation before `menuDidClose`, current data is retained for next-open rebuilding while outgoing controls remain unchanged. Ordinary full rebuild also defers whenever the host's window is still `isVisible`, independently of the auxiliary occlusion cleanup flag. The next-open path intentionally rebuilds before presentation; actual application teardown remains separate.
+
+`MenuDismissalTrace` uses the existing asynchronous `SwitchLog` writer under **`ui.menu.dismissal`**. It is enabled by default for the development bundle identifier (and dev subidentifiers), disabled for production; no preference page, polling, new timer, window-opacity manipulation or animation parameter change is added. Each opening gets a process-local round and sequence. Monotonic nanoseconds, elapsed milliseconds and wall-clock seconds are captured synchronously at the event boundary before asynchronous persistence. The log contains process-local object identifiers, host-round association, tracking/visibility/dismissal flags, window-visible/occlusion snapshots, item/section counts, and section model/presentation alpha/radius/filter/animation state. It never reads account/header/Tooltip text or credentials.
+
+Events cover menu opening/close callbacks, app deactivation, marker enter/leave, hover-phase scheduling/firing/ignored generations, Popover show/transfer/close request/willClose/didClose, dismissal begin/cleanup, view attachment changes, full rebuild and its deferral, content-update gate acceptance/deferral, actual section add/remove and owned-filter removal. Window visibility is sampled at those boundaries; it is not a continuous recording or proof that occlusion equals animation completion. Popovers retain their originating trace through transfer/closing so a callback after reopen still logs the old round, with the current host round shown separately. Existing log rotation/export applies. Tracing has nonzero event-boundary overhead; it does not itself establish compositor causation.
+
+### Automated evidence
+
+- unsigned Debug build PASS, `/tmp/BalanceBar-Issue500-Trace-build-final.log`; final source compiled again by targeted XCTest.
+- **171 tests / 0 failures**, serial, `/tmp/BalanceBar-Issue500-Trace-tests-final.log`: DashboardComponentsTests, StatusItemControllerTests, OverviewNumericTransitionTests, OverviewNumericPresentationControllerTests, OpenCodexCardLayoutTests, plus the two DashboardProductionPathRegressionTests for official countdown text/progress.
+- **50 executions / 0 failures**, ten key methods repeated five times, `/tmp/BalanceBar-Issue500-Trace-stress-final.log`. Covers diagnostic policy/order/no-content logging, originating-round close callback, deactivation before delegate close, actual delayed numeric callback, latest values applied on reopen, still-visible rebuild deferral, filter freeze/late completion, stable Popover ownership, native menu routing, real tracking-loop delays and rapid reentry. These are background state/routing tests, not visual native-menu PASS.
+- Dev build, signature, `git diff --check`, and **517-key / 12-language** bundled-resource probe PASS; `/tmp/BalanceBar-Issue500-Trace-dev.log`, `...-resource.log`. Bundle ID `com.huanmeng06.BalanceBar.dev`; executable SHA-256 **`15023488ff1b968015477dbafc4ca9693c18b308ee385ef73bc47b9ef1154b65`**.
+- Initial diagnostic compile exposed explicit MainActor isolation versus legacy unannotated controller methods. Fixed by synchronous MainActor capture, without queueing the state read. An initial stress selector referenced the file's other test class and selected zero executions for the deactivation method; the corrected final run above verifies all 50 executions, not the empty suite. Earlier logs are retained under `...-build.log`, `...-stress.log`, `...-deactivation-stress.log`.
+- Full CI remains deferred while Draft. Earlier intermittent real-menu early exits and the user's new visible FAIL remain unresolved manual evidence.
+
+### How to collect the next reproduction
+
+Development app: `/Users/huan_meeng/.codex/worktrees/7d8e/BalanceBar/build/dev/BalanceBar-dev.app`. Quit the old development process and launch this bundle manually. Existing Logs page exports the log; the default development path is `~/Library/Logs/BalanceBar/Development/debug.log`. No diagnostic switch needs enabling.
+
+Target **20 trials**: light 8, dark 8, Reduce Transparency 4. In each group run four scenarios (twice for light/dark, once for Reduce Transparency):
+
+1. Hover until blur and Tooltip appear, then immediately click desktop/another app.
+2. Close during entry/ordinary-exit transition, including a quick leave/reenter.
+3. Transfer 5h/7d then close and quickly reopen.
+4. Close after quota refresh; include at least one real minute tick while hovering across the complete session.
+
+Record the screen and note the approximate time/trial of a white panel. If FAIL occurs, preserve that recording and export the log; do not discard it to chase a clean 20-run result. Reopen must display latest values, with no resumed outgoing callback or stale Tooltip. This is user-operated GUI testing; Worker does not automate foreground UI.
+
+Analyze events by round and `mono_ns` (not asynchronous writer timestamps alone). `content.update` records gate acceptance, not proof that every call changed a value. If menu/section destruction occurs during exit, fix its actual caller; if an effect restoration runs early, fix that task/completion; if application content/effects remain stable during a recorded flash, plan a separate single-variable native-Popover-animation comparison. Do not infer that absent destruction proves a system bug, add guessed closing delays, or alter private/native menu window opacity. New diagnostic GUI result remains **PENDING**, and the previous `082f0700` result remains FAIL.
