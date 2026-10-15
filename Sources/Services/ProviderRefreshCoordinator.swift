@@ -757,7 +757,7 @@ final class ProviderRefreshCoordinator {
                                 observation.unit,
                                 query.websiteURL,
                                 observation.observedAt,
-                                progressPercentage: observation.displayProgress, recharge: observation.recharge
+                                progressPercentage: observation.progress, recharge: observation.recharge
                             )
                         )
                         self.updateQuickSwitchSummary(
@@ -850,7 +850,7 @@ final class ProviderRefreshCoordinator {
                         observation.unit,
                         query.websiteURL,
                         observation.observedAt,
-                        progressPercentage: observation.displayProgress, recharge: observation.recharge
+                        progressPercentage: observation.progress, recharge: observation.recharge
                     )
                     if let completion { completion(balanceSnapshot) }
                     else { self.renderForCurrentProvider(balanceSnapshot, providerID: providerID, client: client) }

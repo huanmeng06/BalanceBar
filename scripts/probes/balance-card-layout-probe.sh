@@ -29,18 +29,16 @@ metrics = declaration(source, 'struct OverviewLayoutMetrics:')
 frames = declaration(source, 'struct OpenCodexCardFrames:')
 names = ['cardWidth', 'metrics', 'horizontalInset', 'contentWidth', 'amountWidth',
          'amountX', 'refreshTimeX', 'quotaRowHeight', 'quotaProgressRowHeight',
-         'quotaProgressHeight', 'lunaReserveNoProgressRowHeight', 'quotaAmountHeight',
-         'quotaDetailHeight', 'quotaResetHeight']
+         'quotaProgressHeight', 'lunaReserveNoProgressRowHeight']
 constants = '\n'.join(re.search(r'^    static let ' + name + r'\b[^\n]*', layout, re.M).group() for name in names)
 compression = declaration(layout, 'static var quotaProgressGapCompression:')
 start = layout.index('        case .balance:\n            let linkWidth:') + len('        case .balance:')
-end = layout.index('\n        }\n    }', start)
+end = layout.index('\n        }\n    }\n\n    private static func composedQuotaFrames', start)
 body = layout[start:end]
 Path(sys.argv[2]).write_text('import AppKit\nimport Foundation\n' + metrics + '\n'
-    + declaration(source, 'struct OpenCodexQuotaRowFrames:') + '\n'
+    + 'struct OpenCodexQuotaRowFrames: Equatable {}\n'
     + 'struct OpenCodexOverviewSectionLayout: Equatable {}\n' + frames + '\n'
     + 'enum OpenCodexCardLayout {\n' + constants + '\n' + compression + '\n'
-    + declaration(layout, 'static func quotaRowFrames(') + '\n'
     + 'static func balance(linkPrefixWidth: CGFloat = 62, includesQuotaProgress: Bool = true, includesBalanceSubtitle: Bool = true, includesBalanceRecharge: Bool = false) -> OpenCodexCardFrames {'
     + body + '\n}\n}\n')
 PY

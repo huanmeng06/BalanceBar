@@ -515,5 +515,5 @@
 "aggregation.unavailable" = "Баланс недоступен";
 "aggregation.manage_in_cc_switch" = "Управляйте поставщиком по умолчанию в CC Switch в режиме агрегации";
 
-"balance.recharge.label" = "Пополнение";
+"balance.recharge.label" = "Последнее пополнение";
 "balance.recharge.observed" = "Локально обнаруженный чистый прирост баланса. Время первого наблюдения этим приложением, а не платёжная квитанция.";

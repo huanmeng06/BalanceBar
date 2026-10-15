@@ -95,8 +95,6 @@ final class ProviderBalanceProgressStore {
         var recharge: BalanceRecharge? = nil
         var observedAt: Date? = nil
         var sampleSequence: UInt64? = nil
-        var peakCents: Int? = nil
-        var baselineObservedAt: Date? = nil
     }
 
     struct Observation {
@@ -106,9 +104,6 @@ final class ProviderBalanceProgressStore {
         let recharge: BalanceRecharge?
         let observedAt: Date
         let accepted: Bool
-
-        // Without a detected increase, the baseline has no visible reference.
-        var displayProgress: Double? { recharge == nil ? nil : progress }
     }
 
     static let storageKey = "balancebar.providerBalanceProgress.v1"
@@ -185,14 +180,10 @@ final class ProviderBalanceProgressStore {
                 let old = keys.compactMap { states[$0] }
                 for (unit, records) in Dictionary(grouping: old, by: \.unit) {
                     guard let first = records.first,
-                          records.allSatisfy({ $0.baselineCents == first.baselineCents && $0.lastCents == first.lastCents && $0.recharge == first.recharge && ($0.peakCents ?? $0.baselineCents) == (first.peakCents ?? first.baselineCents) }) else { continue }
+                          records.allSatisfy({ $0.baselineCents == first.baselineCents && $0.lastCents == first.lastCents && $0.recharge == first.recharge }) else { continue }
                     let key = walletKey(identity, unit: unit)
                     if states[key] == nil {
-                        var migrated = records.max { ($0.sampleSequence ?? 0) < ($1.sampleSequence ?? 0) }
-                        if !records.allSatisfy({ $0.baselineObservedAt == first.baselineObservedAt }) {
-                            migrated?.baselineObservedAt = nil
-                        }
-                        states[key] = migrated
+                        states[key] = records.max { ($0.sampleSequence ?? 0) < ($1.sampleSequence ?? 0) }
                     }
                 }
             } else {
@@ -226,23 +217,21 @@ final class ProviderBalanceProgressStore {
         let key = walletKey(identity, unit: unit)
         let previous = states[key]
         let accepted = sampleSequence > (previous?.sampleSequence ?? 0)
-        var next = previous ?? State(baselineCents: cents, lastCents: cents, unit: unit,
-            peakCents: cents, baselineObservedAt: observedAt)
+        var next = previous ?? State(baselineCents: cents, lastCents: cents, unit: unit)
         if accepted {
             if let previous, cents > previous.lastCents {
                 next.recharge = BalanceRecharge(amountCents: cents - previous.lastCents, observedAt: observedAt)
                 next = State(baselineCents: cents, lastCents: cents, unit: unit, recharge: next.recharge,
-                    observedAt: observedAt, sampleSequence: sampleSequence, peakCents: cents, baselineObservedAt: observedAt)
+                    observedAt: observedAt, sampleSequence: sampleSequence)
             } else {
                 next = State(baselineCents: next.baselineCents, lastCents: cents, unit: unit, recharge: next.recharge,
-                    observedAt: observedAt, sampleSequence: sampleSequence,
-                    peakCents: next.peakCents ?? next.baselineCents, baselineObservedAt: next.baselineObservedAt)
+                    observedAt: observedAt, sampleSequence: sampleSequence)
             }
             states[key] = next
             persist()
         }
         return .success(Observation(amount: Double(next.lastCents) / 100, unit: next.unit,
-            progress: percentage(currentCents: next.lastCents, baselineCents: next.peakCents ?? next.baselineCents),
+            progress: percentage(currentCents: next.lastCents, baselineCents: next.baselineCents, rechargeCents: next.recharge?.amountCents),
             recharge: next.recharge, observedAt: next.observedAt ?? observedAt, accepted: accepted))
     }
 
@@ -271,7 +260,7 @@ final class ProviderBalanceProgressStore {
         return cents.intValue
     }
 
-    private func percentage(currentCents: Int, baselineCents: Int) -> Double {
+    private func percentage(currentCents: Int, baselineCents: Int, rechargeCents: Int? = nil) -> Double {
         let minimumBaselineCents = max(
             1,
             minimumProgressBaselineCentsProvider()
@@ -281,7 +270,7 @@ final class ProviderBalanceProgressStore {
         }
         let percentage = min(
             100,
-            max(0, Double(currentCents) / Double(baselineCents) * 100)
+            max(0, Double(currentCents) / Double(rechargeCents ?? baselineCents) * 100)
         )
         return percentage == 0 ? Self.minimumVisibleProgressPercentage : percentage
     }

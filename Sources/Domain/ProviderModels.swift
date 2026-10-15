@@ -703,9 +703,13 @@ enum OpenCodexCardLayout {
                 subscription: hasSubscription ? CGRect(x: subscriptionX, y: 0, width: subscriptionWidth, height: 17) : nil)
             let header = localHeader.offsetBy(dy: headerOrigin)
             let rowOrigin: CGFloat = includesQuotaProgress ? 8 : 0
-            let row = quotaRowFrames(includesProgress: includesQuotaProgress, hasSubtitle: true,
-                                     amountHeight: includesQuotaProgress ? quotaAmountHeight : lunaReserveNoProgressAmountHeight)
-            let localRow = row.offsetBy(dy: -rowOrigin)
+            let localRow = OpenCodexQuotaRowFrames(
+                quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift - rowOrigin, width: 128, height: quotaDetailHeight),
+                reset: CGRect(x: horizontalInset, y: 28 - textShift - rowOrigin, width: 128, height: quotaResetHeight),
+                amount: CGRect(x: amountX, y: max(0, 18 - textShift) - rowOrigin, width: amountWidth,
+                               height: includesQuotaProgress ? quotaAmountHeight : lunaReserveNoProgressAmountHeight),
+                progress: includesQuotaProgress ? CGRect(x: horizontalInset, y: 0, width: contentWidth, height: quotaProgressHeight) : .zero)
+            let row = localRow.offsetBy(dy: rowOrigin)
             return OpenCodexCardFrames(
                 cardSize: CGSize(width: cardWidth, height: 102 + accountShift - textShift),
                 title: header.title,
@@ -744,18 +748,25 @@ enum OpenCodexCardLayout {
             let inlineRecharge = includesBalanceRecharge && !includesBalanceSubtitle
             let subtitleShift: CGFloat = includesBalanceSubtitle || inlineRecharge ? 0 : 8
             let rechargeShift: CGFloat = includesBalanceRecharge && !inlineRecharge ? 25 : 0
-            let row = quotaRowFrames(includesProgress: includesQuotaProgress,
-                                     hasSubtitle: includesBalanceSubtitle || includesBalanceRecharge)
             return OpenCodexCardFrames(
                 cardSize: CGSize(width: cardWidth, height: 102 - textShift - subtitleShift + rechargeShift),
                 title: CGRect(x: horizontalInset, y: 75 - textShift - subtitleShift + rechargeShift, width: 189, height: 20),
                 refreshTime: CGRect(x: refreshTimeX, y: 76 - textShift - subtitleShift + rechargeShift, width: 81, height: 17),
                 account: nil,
                 subscription: nil,
-                quotaDetail: row.quotaDetail.offsetBy(dx: 0, dy: rechargeShift),
+                quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift - subtitleShift + rechargeShift, width: 128, height: 18),
                 reset: nil,
-                amount: row.amount.offsetBy(dx: 0, dy: rechargeShift),
-                progress: includesQuotaProgress ? row.progress : nil,
+                amount: CGRect(
+                    x: amountX,
+                    y: max(0, 18 - textShift) + rechargeShift,
+                    width: amountWidth,
+                    // Keep the 48pt box when the progress slot collapses.
+                    // A 42pt box would leave its top 5pt below the detail row.
+                    height: 48
+                ),
+                progress: includesQuotaProgress
+                    ? CGRect(x: horizontalInset, y: 8, width: contentWidth, height: quotaProgressHeight)
+                    : nil,
                 linkPrefix: includesBalanceSubtitle ? CGRect(
                     x: horizontalInset,
                     y: 28 - textShift + rechargeShift,
@@ -772,22 +783,9 @@ enum OpenCodexCardLayout {
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil,
                 balanceRecharge: includesBalanceRecharge
-                    ? CGRect(x: horizontalInset, y: inlineRecharge ? row.reset.minY : (includesQuotaProgress ? 18 : 0), width: contentWidth, height: quotaResetHeight) : nil
+                    ? CGRect(x: horizontalInset, y: inlineRecharge ? 28 - textShift : (includesQuotaProgress ? 18 : 0), width: contentWidth, height: 17) : nil
             )
         }
-    }
-
-    /// Shared body slots for the scalar official quota card and balance card.
-    static func quotaRowFrames(includesProgress: Bool, hasSubtitle: Bool, amountHeight: CGFloat = quotaAmountHeight) -> OpenCodexQuotaRowFrames {
-        let textShift = includesProgress ? quotaProgressGapCompression
-            : quotaRowHeight - lunaReserveNoProgressRowHeight
-        return OpenCodexQuotaRowFrames(
-            quotaDetail: CGRect(x: horizontalInset, y: 47 - textShift - (hasSubtitle ? 0 : 8),
-                                width: 128, height: quotaDetailHeight),
-            reset: CGRect(x: horizontalInset, y: 28 - textShift, width: 128, height: quotaResetHeight),
-            amount: CGRect(x: amountX, y: max(0, 18 - textShift), width: amountWidth, height: amountHeight),
-            progress: includesProgress
-                ? CGRect(x: horizontalInset, y: 8, width: contentWidth, height: quotaProgressHeight) : .zero)
     }
 
     private static func composedQuotaFrames(
