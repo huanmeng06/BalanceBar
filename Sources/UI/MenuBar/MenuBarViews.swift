@@ -16,12 +16,24 @@ class PassthroughView: NSView {
 
 enum SectionFocusState { case normal, focused, receded }
 
-/// Owns only selection and cancellable menu-tracking delays.
+enum PaceHoverTiming {
+    static let tickToBlurDelay: TimeInterval = 0.12
+    static let blurDuration: TimeInterval = 0.18
+    static let tooltipDelay = tickToBlurDelay + blurDuration
+    static let exitDebounce: TimeInterval = 0.08
+    static let restoreDuration: TimeInterval = 0.2
+}
+
+/// One tracking-mode timeline owns focus and Popover requests for a card.
 @MainActor
 final class SectionFocusController {
     private(set) var sections: [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView] = [:]
     private(set) var hoveredID: OpenCodexOverviewSectionID?
     private(set) var focusedID: OpenCodexOverviewSectionID?
+    private weak var targetPace: QuotaProgressPaceView?
+    private weak var presentedPace: QuotaProgressPaceView?
+    private enum Phase { case focus, tooltip, exit }
+    private var phase: Phase?
     private var timer: Timer?
     private var generation = 0
     var isActive = false
@@ -38,31 +50,64 @@ final class SectionFocusController {
         }
     }
 
-    func hoverChanged(_ id: OpenCodexOverviewSectionID, isHovering: Bool) {
-        guard isActive, sections[id] != nil else { return }
+    func hoverChanged(_ id: OpenCodexOverviewSectionID, isHovering: Bool, pace: QuotaProgressPaceView? = nil) {
+        guard isActive, sections[id] != nil || pace != nil else { return }
         if isHovering {
-            guard hoveredID != id else { return }
+            if hoveredID == id {
+                // A matching replacement adopts the outstanding phase, not a new delay.
+                if let pace, targetPace !== pace {
+                    targetPace = pace
+                    if phase == nil { schedule(.tooltip, after: PaceHoverTiming.tooltipDelay, target: id) }
+                }
+                return
+            }
             hoveredID = id
+            targetPace = pace
             cancelPending()
-            if focusedID != nil { setFocus(id) }
-            else { schedule(after: 0.15, target: id) }
+            if let pace, let previous = presentedPace, previous.isTooltipVisible {
+                setFocus(id)
+                if previous !== pace { pace.adoptVisibleTooltip(from: previous) }
+                presentedPace = pace
+            } else if focusedID != nil {
+                setFocus(id)
+                if pace != nil { schedule(.tooltip, after: PaceHoverTiming.tooltipDelay, target: id) }
+            } else {
+                schedule(.focus, after: PaceHoverTiming.tickToBlurDelay, target: id)
+            }
         } else {
-            guard hoveredID == id else { return } // Retired/old leaves cannot cancel a new target.
+            guard hoveredID == id, pace == nil || targetPace === pace else { return }
             hoveredID = nil
             cancelPending()
-            if focusedID != nil { schedule(after: 0.08, target: nil) }
+            schedule(.exit, after: PaceHoverTiming.exitDebounce, target: nil)
         }
     }
 
-    private func schedule(after delay: TimeInterval, target: OpenCodexOverviewSectionID?) {
+    private func schedule(_ nextPhase: Phase, after delay: TimeInterval, target: OpenCodexOverviewSectionID?) {
         let token = generation
+        phase = nextPhase
         let next = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
-            // Installed only on RunLoop.main; keep the mutation synchronous in tracking mode.
             MainActor.assumeIsolated {
-                guard let self, self.isActive, self.generation == token, self.hoveredID == target,
-                      target.map({ self.sections[$0] != nil }) ?? true else { return }
+                guard let self, self.isActive, self.generation == token, self.hoveredID == target else { return }
                 self.timer = nil
-                self.setFocus(target)
+                self.phase = nil
+                switch nextPhase {
+                case .focus:
+                    self.setFocus(target)
+                    if self.targetPace != nil {
+                        // Start this delay when focus actually starts. A late tracking-loop
+                        // callback must not compress both phases into the same frame.
+                        self.schedule(.tooltip, after: PaceHoverTiming.blurDuration, target: target)
+                    }
+                case .tooltip:
+                    guard let pace = self.targetPace else { return }
+                    pace.showTooltip()
+                    if pace.isTooltipVisible { self.presentedPace = pace }
+                case .exit:
+                    self.setFocus(nil)
+                    self.presentedPace?.dismissTooltip(animated: true)
+                    self.presentedPace = nil
+                    self.targetPace = nil
+                }
             }
         }
         timer = next
@@ -70,7 +115,24 @@ final class SectionFocusController {
         RunLoop.main.add(next, forMode: .eventTracking)
     }
 
-    private func cancelPending() { generation += 1; timer?.invalidate(); timer = nil }
+    func hasPendingShow(for pace: QuotaProgressPaceView) -> Bool {
+        targetPace === pace && (phase == .focus || phase == .tooltip)
+    }
+    func hasPendingClose(for pace: QuotaProgressPaceView) -> Bool {
+        phase == .exit && (targetPace === pace || presentedPace === pace)
+    }
+    func firePendingShowForTesting(for pace: QuotaProgressPaceView) {
+        guard targetPace === pace else { return }
+        if phase == .focus { timer?.fire() }
+        if phase == .tooltip { timer?.fire() }
+    }
+    func firePendingCloseForTesting(for pace: QuotaProgressPaceView) {
+        if hasPendingClose(for: pace) { timer?.fire() }
+    }
+    func invalidateInteraction(for pace: QuotaProgressPaceView) {
+        if targetPace === pace || presentedPace === pace { reset() }
+    }
+    private func cancelPending() { generation += 1; timer?.invalidate(); timer = nil; phase = nil }
     private func state(for id: OpenCodexOverviewSectionID) -> SectionFocusState {
         focusedID == nil ? .normal : (focusedID == id ? .focused : .receded)
     }
@@ -81,11 +143,15 @@ final class SectionFocusController {
     }
     func refreshAccessibility() {
         for (id, view) in sections { view.setFocusState(state(for: id), animated: false) }
+        presentedPace?.refreshMarkerAccessibility()
     }
     func reset() {
         cancelPending()
         hoveredID = nil
         focusedID = nil
+        presentedPace?.dismissTooltip(animated: false)
+        presentedPace = nil
+        targetPace = nil
         sections.values.forEach { $0.setFocusState(.normal, animated: false) }
     }
     deinit { timer?.invalidate() }
@@ -139,7 +205,7 @@ class OpenCodexOverviewSectionView: NSView {
         focusTransitionCountForTesting += 1
         let token = focusGeneration
         let filter = ownFocusFilter
-        let duration = receded ? 0.25 : 0.2
+        let duration = receded ? PaceHoverTiming.blurDuration : PaceHoverTiming.restoreDuration
         let animate = animated && !reduceMotion
         let visibleAlpha = CGFloat(layer?.presentation()?.opacity ?? Float(alphaValue))
         if ownsOpacityAnimation { layer?.removeAnimation(forKey: "opacity"); ownsOpacityAnimation = false }
@@ -148,7 +214,7 @@ class OpenCodexOverviewSectionView: NSView {
             alphaValue = visibleAlpha
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = duration
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 animator().alphaValue = alpha
             }
             ownsOpacityAnimation = true
@@ -178,7 +244,7 @@ class OpenCodexOverviewSectionView: NSView {
             animation.fromValue = from
             animation.toValue = radius
             animation.duration = duration
-            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
             if radius == 0 {
                 focusRestoreCompletionForTesting = cleanup
                 CATransaction.setCompletionBlock(cleanup)

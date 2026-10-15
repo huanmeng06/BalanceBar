@@ -572,24 +572,38 @@ final class QuotaProgressPaceView: NSView {
     var markerReduceMotionForTesting: Bool?
     private var reduceMarkerMotion: Bool { markerReduceMotionForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     func refreshMarkerAccessibility() {
-        if reduceMarkerMotion { marker.tick.setHovered(isHovered, reduceMotion: true) }
+        if reduceMarkerMotion {
+            marker.tick.setHovered(isHovered, reduceMotion: true)
+            popover?.animates = false
+        }
     }
     private var trackingAreaReference: NSTrackingArea?
-    private var showTimer: Timer?
-    private var closeTimer: Timer?
+    // Detached previews/tests use the same coordinator, never a second timing implementation.
+    private lazy var detachedInteraction = SectionFocusController()
+    private var hoverInteraction: SectionFocusController { menuHoverHost?.sectionFocus ?? detachedInteraction }
     private var popover: NSPopover?
     private var presentationNow = Date()
     private var displayTimeZone = TimeZone.autoupdatingCurrent
     var pointerLocationForTesting: NSPoint?
     var onHoverChanged: ((Bool) -> Void)?
-    private(set) var isHovered = false { didSet { if oldValue != isHovered { onHoverChanged?(isHovered) } } }
+    private(set) var isHovered = false {
+        didSet {
+            guard oldValue != isHovered else { return }
+            if let onHoverChanged { onHoverChanged(isHovered) }
+            else {
+                hoverInteraction.isActive = isMenuTracking
+                hoverInteraction.hoverChanged(quotaWindow.kind == .sevenDay ? .sevenDay : .fiveHour,
+                    isHovering: isHovered, pace: self)
+            }
+        }
+    }
     private(set) var isMenuTracking = false
     var isTooltipVisible: Bool { popover?.isShown == true }
     // Background XCTest parks native windows offscreen and denies key focus.
     // Inject only system presentation; production always uses NSPopover.
     var makePopoverForTesting: (() -> NSPopover)?
-    var hasPendingShowForTesting: Bool { showTimer != nil }
-    var hasPendingCloseForTesting: Bool { closeTimer != nil }
+    var hasPendingShowForTesting: Bool { hoverInteraction.hasPendingShow(for: self) }
+    var hasPendingCloseForTesting: Bool { hoverInteraction.hasPendingClose(for: self) }
 
     init(
         percentage: Double,
@@ -619,8 +633,7 @@ final class QuotaProgressPaceView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     deinit {
-        showTimer?.invalidate()
-        closeTimer?.invalidate()
+        popover?.animates = false
         popover?.close()
     }
 
@@ -714,49 +727,25 @@ final class QuotaProgressPaceView: NSView {
         if !active { clearInteraction() }
     }
 
-    func updateHover(at point: NSPoint, immediately: Bool = false) {
+    func updateHover(at point: NSPoint) {
         let hovering = isMenuTracking && window != nil && !isHidden && markerHitRect.contains(point)
-        if hovering {
-            closeTimer?.invalidate()
-            closeTimer = nil
-            guard !isHovered else { return }
-            isHovered = true
-            marker.tick.setHovered(true, reduceMotion: reduceMarkerMotion)
-            if isTooltipVisible { return }
-            if immediately { showTooltip(); return }
-            let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
-                self?.showTimer = nil
-                self?.showTooltip()
-            }
-            showTimer = timer
-            RunLoop.main.add(timer, forMode: .common)
-            RunLoop.main.add(timer, forMode: .eventTracking)
-        } else if isHovered {
-            isHovered = false
-            marker.tick.setHovered(false, reduceMotion: reduceMarkerMotion)
-            showTimer?.invalidate()
-            showTimer = nil
-            let timer = Timer(timeInterval: 0.1, repeats: false) { [weak self] _ in
-                self?.closeTimer = nil
-                self?.dismissTooltip()
-            }
-            closeTimer = timer
-            RunLoop.main.add(timer, forMode: .common)
-            RunLoop.main.add(timer, forMode: .eventTracking)
-        }
+        guard hovering != isHovered else { return }
+        marker.tick.setHovered(hovering, reduceMotion: reduceMarkerMotion)
+        isHovered = hovering
     }
 
-    func clearInteraction(animateMarkerExit: Bool = false) {
+    func clearInteraction() {
+        if let host = menuHoverHost { host.invalidateSectionFocus(for: self) }
+        else { detachedInteraction.invalidateInteraction(for: self) }
         isHovered = false
-        marker.tick.setHovered(false, reduceMotion: reduceMarkerMotion, immediately: !animateMarkerExit)
-        showTimer?.invalidate(); showTimer = nil
-        closeTimer?.invalidate(); closeTimer = nil
-        dismissTooltip()
+        marker.tick.setHovered(false, reduceMotion: reduceMarkerMotion, immediately: true)
+        dismissTooltip(animated: false)
     }
 
-    private func dismissTooltip() {
+    func dismissTooltip(animated: Bool) {
+        popover?.animates = animated && !reduceMarkerMotion
         popover?.close()
-        popover = nil
+        popover = nil // Never transfer a native Popover whose close has already been requested.
     }
 
     override func mouseEntered(with event: NSEvent) { forwardHover(event) }
@@ -781,13 +770,11 @@ final class QuotaProgressPaceView: NSView {
 
     func adoptVisibleTooltip(from previous: QuotaProgressPaceView) {
         guard let shared = previous.popover, shared.isShown else { return }
-        clearInteraction(animateMarkerExit: true)
         previous.popover = nil
-        previous.clearInteraction(animateMarkerExit: true)
+        previous.marker.tick.setHovered(false, reduceMotion: previous.reduceMarkerMotion)
+        previous.isHovered = false
         popover = shared
-        isHovered = true
-        marker.tick.setHovered(true, reduceMotion: reduceMarkerMotion)
-        showTooltip()
+        showTooltip() // Existing content/anchor changes deliberately suppress native animation.
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -796,8 +783,8 @@ final class QuotaProgressPaceView: NSView {
     }
     override func removeFromSuperview() { menuHoverHost?.invalidateSectionFocus(for: self); clearInteraction(); super.removeFromSuperview() }
 
-    func firePendingShowForTesting() { showTimer?.fire() }
-    func firePendingCloseForTesting() { closeTimer?.fire() }
+    func firePendingShowForTesting() { hoverInteraction.firePendingShowForTesting(for: self) }
+    func firePendingCloseForTesting() { hoverInteraction.firePendingCloseForTesting(for: self) }
 
     var tooltipContent: QuotaPaceTooltipContent? {
         guard let pace else { return nil }
@@ -809,12 +796,13 @@ final class QuotaProgressPaceView: NSView {
         return [content.title, content.body].compactMap { $0 }.joined(separator: "\n")
     }
 
-    private func showTooltip() {
+    func showTooltip() {
         guard isMenuTracking, isHovered, window?.isVisible == true,
               !markerHitRect.isEmpty, let content = tooltipContent else { return }
         let anchorView = (menuHoverHost as NSView?) ?? self
         let anchor = anchorView.convert(markerHitRect, from: self)
         if let popover, popover.isShown {
+            popover.animates = false
             if let controller = popover.contentViewController as? QuotaPaceTooltipViewController {
                 controller.update(content: content)
                 if popover.contentSize != controller.contentSize { popover.contentSize = controller.contentSize }
@@ -827,6 +815,7 @@ final class QuotaProgressPaceView: NSView {
         let nextPopover = makePopoverForTesting?() ?? DashboardTextTooltip.makePopover()
         nextPopover.contentViewController = controller
         nextPopover.contentSize = controller.contentSize
+        nextPopover.animates = !reduceMarkerMotion
         // A common menu anchor lets 5h/7d transfer the same native window
         // without closing/reopening a transient popover during menu tracking.
         nextPopover.show(relativeTo: anchor, of: anchorView, preferredEdge: .minY)
@@ -1621,7 +1610,6 @@ final class MenuHoverLinkHostView: NSView {
     private var trackingAreaReference: NSTrackingArea?
     private var ticketScrollMonitor: Any?
     private var resignActiveObserver: NSObjectProtocol?
-    private weak var hoveredPaceView: QuotaProgressPaceView?
     private var paceMenuTracking = false
     private var monitoredWindow: ObjectIdentifier?
     private var monitoredViews = Set<ObjectIdentifier>()
@@ -1657,7 +1645,6 @@ final class MenuHoverLinkHostView: NSView {
     func clearPaceHover() {
         sectionFocus.reset()
         paceViews.forEach { $0.clearInteraction() }
-        hoveredPaceView = nil
     }
 
     func beginFocusSectionReplacement() {
@@ -1701,9 +1688,9 @@ final class MenuHoverLinkHostView: NSView {
                     guard let self, !self.replacingFocusSections, let section, let pace,
                           self.sectionFocus.sections[id] === section, section.superview === self,
                           pace.isDescendant(of: section) else { return }
-                    self.sectionFocus.hoverChanged(id, isHovering: hovered)
+                    self.sectionFocus.hoverChanged(id, isHovering: hovered, pace: pace)
                 }
-                if pace.isHovered, pace.pace != nil { sectionFocus.hoverChanged(id, isHovering: true) }
+                if pace.isHovered, pace.pace != nil { sectionFocus.hoverChanged(id, isHovering: true, pace: pace) }
             }
         }
     }
@@ -1715,6 +1702,7 @@ final class MenuHoverLinkHostView: NSView {
 
     func invalidateSectionFocus(for pace: QuotaProgressPaceView) {
         guard !replacingFocusSections else { return }
+        sectionFocus.invalidateInteraction(for: pace)
         let affected = [sectionFocus.focusedID, sectionFocus.hoveredID].compactMap { $0 }.contains { id in
             sectionFocus.sections[id].map { pace.isDescendant(of: $0) } ?? false
         }
@@ -1803,14 +1791,11 @@ final class MenuHoverLinkHostView: NSView {
     func forwardHover(atHostPoint point: NSPoint) {
         link?.updateHover(atHostPoint: point, in: self)
         let next = paceViews.first { $0.isMenuTracking && $0.markerHitRect.contains($0.convert(point, from: self)) }
-        let switchImmediately = next != nil && hoveredPaceView !== next && hoveredPaceView?.isTooltipVisible == true
-        if switchImmediately, let next, let previous = hoveredPaceView {
-            next.adoptVisibleTooltip(from: previous)
+        // Deliver the new target first so a late leave cannot cancel its timeline.
+        if let next { next.updateHover(at: next.convert(point, from: self)) }
+        for paceView in paceViews where paceView !== next {
+            paceView.updateHover(at: paceView.convert(point, from: self))
         }
-        for paceView in paceViews {
-            paceView.updateHover(at: paceView.convert(point, from: self), immediately: switchImmediately && paceView === next)
-        }
-        if let next { hoveredPaceView = next }
     }
 
     private func installTrackingArea() {
