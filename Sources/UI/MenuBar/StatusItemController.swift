@@ -2397,12 +2397,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showsAvailableUpdateBadge == rhs.showsAvailableUpdateBadge
         }
         func hasSameNativeItems(as other: Self) -> Bool {
-            choices.elementsEqual(other.choices) { $0.id == $1.id && $0.name == $1.name }
-                && activeClient == other.activeClient
+            activeClient == other.activeClient
                 && statusLinks == other.statusLinks && showQuickSwitchMenu == other.showQuickSwitchMenu
                 && showOpenChatGPTMenu == other.showOpenChatGPTMenu && showOpenCCSwitchMenu == other.showOpenCCSwitchMenu
                 && showStatusMenu == other.showStatusMenu && showsAvailableUpdateBadge == other.showsAvailableUpdateBadge
-                && aggregationQuickSwitchBlocked == other.aggregationQuickSwitchBlocked && language == other.language
+                && language == other.language
         }
     }
 
@@ -5835,13 +5834,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusMenuNeedsRebuild = false
         logAggregationLifecycle(reason: "rebuild-" + menuRebuildReason)
         statusMenuRebuildCountForTesting += 1
+        // A custom view must not move from a retired menu item to a new one.
+        // Keep card subtrees, but give each rebuilt item a fresh AppKit host.
+        let previousDistanceFromTop = aggregationViewport.flatMap { scroll in
+            scroll.documentView.map { max(0, $0.frame.height - scroll.contentView.bounds.maxY) }
+        }
+        if aggregationViewport != nil {
+            statusMenu.items.first?.view = nil
+            (aggregationViewport as? AggregationOverviewScrollView)?.setMenuContentVisible(false)
+            aggregationViewport = nil
+            aggregationViewportShowsSingleCard = false
+            if let aggregationBoundsObserver { NotificationCenter.default.removeObserver(aggregationBoundsObserver) }
+            aggregationBoundsObserver = nil
+        }
         statusMenu.removeAllItems()
         if menuInput.aggregatedProviders.isEmpty {
             clearAggregationOverview()
             statusMenu.addItem(makeOverviewMenuItem(for: snapshot))
         } else {
             let item = NSMenuItem()
-            item.view = makeAggregationOverview()
+            let viewport = makeAggregationOverview()
+            if let previousDistanceFromTop {
+                (viewport as? AggregationOverviewScrollView)?.restoreViewportAfterMount(distanceFromTop: previousDistanceFromTop)
+            }
+            item.view = viewport
             statusMenu.addItem(item)
         }
         statusMenu.addItem(.separator())
@@ -5927,6 +5943,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             submenu.minimumWidth = QuickSwitchTitleLayout.minimumTabLocation
                 + QuickSwitchTitleLayout.menuChromeWidth
             let empty = NSMenuItem(title: tr(.keyStatusItemControllerNoCodexProviderFound), action: nil, keyEquivalent: "")
+            empty.identifier = NSUserInterfaceItemIdentifier("quickSwitch.empty")
             empty.isEnabled = false
             submenu.addItem(empty)
         } else {
@@ -6028,12 +6045,40 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let summaries = choices.map { menuInput.quickSwitchSummaries[$0.id] ?? "…" }
         let layout = QuickSwitchTitleLayout.make(names: choices.map(\.name), summaries: summaries, font: font)
         submenu.minimumWidth = layout.minimumMenuWidth
+        var desired: [NSMenuItem] = []
+        if menuInput.aggregationQuickSwitchBlocked {
+            let id = NSUserInterfaceItemIdentifier("aggregation.quickSwitch.hint")
+            let hint = submenu.items.first { $0.identifier == id }
+                ?? NSMenuItem(title: tr(.keyAggregationManageInCCSwitch), action: nil, keyEquivalent: "")
+            hint.identifier = id
+            hint.isEnabled = false
+            desired.append(hint)
+        }
         for (index, choice) in choices.enumerated() {
-            guard let item = submenu.items.first(where: { $0.representedObject as? String == choice.id }) else { continue }
+            let item = submenu.items.first { $0.representedObject as? String == choice.id }
+                ?? NSMenuItem(title: "", action: #selector(switchProvider(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = choice.id
             applyQuickSwitchTitle(to: item, displayedName: QuickSwitchTitleLayout.truncatedName(choice.name,
                 fitting: layout.nameColumnWidth, font: font), summary: summaries[index], tabLocation: layout.tabLocation)
             item.state = !menuInput.aggregationQuickSwitchBlocked && choice.isCurrent ? .on : .off
             item.isEnabled = !menuInput.aggregationQuickSwitchBlocked
+            desired.append(item)
+        }
+        if choices.isEmpty {
+            let id = NSUserInterfaceItemIdentifier("quickSwitch.empty")
+            let empty = submenu.items.first { $0.identifier == id }
+                ?? NSMenuItem(title: tr(.keyStatusItemControllerNoCodexProviderFound), action: nil, keyEquivalent: "")
+            empty.identifier = id
+            empty.isEnabled = false
+            desired.append(empty)
+        }
+        // Reconcile only this submenu. Sorting or editing Providers must never
+        // retire the menu item that owns the mounted aggregation viewport.
+        for item in submenu.items where !desired.contains(where: { $0 === item }) { submenu.removeItem(item) }
+        for (index, item) in desired.enumerated() where index >= submenu.numberOfItems || submenu.item(at: index) !== item {
+            if item.menu === submenu { submenu.removeItem(item) }
+            submenu.insertItem(item, at: index)
         }
     }
 
@@ -6150,6 +6195,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 wrapper.addSubview(card)
                 document.addSubview(wrapper)
                 record = AggregationCard(wrapper: wrapper, card: card, snapshot: display.snapshot)
+                needsPlacement = true
+            }
+            if record.wrapper.superview !== document {
+                document.addSubview(record.wrapper)
                 needsPlacement = true
             }
             updateAggregationNotes(in: record.card, context: context)

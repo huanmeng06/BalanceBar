@@ -761,8 +761,10 @@ final class AggregationOverviewScrollView: NSScrollView {
     private var wheelMonitor: Any?
     private var isMenuContentVisible = false
     private var pendingDistanceFromTop: CGFloat?
+    private var restoreOnMount = false
     private var isRestoringViewport = false
     private var lastGeometry: String?
+    private(set) var mountCount = 0
     var diagnosticContext: (() -> String)?
 
     static var diagnosticsEnabled: Bool {
@@ -771,15 +773,23 @@ final class AggregationOverviewScrollView: NSScrollView {
     }
 
     func restoreViewport(distanceFromTop: CGFloat) {
-        pendingDistanceFromTop = max(0, distanceFromTop)
+        if !restoreOnMount { pendingDistanceFromTop = max(0, distanceFromTop) }
         tile()
         layoutSubtreeIfNeeded()
         constrainViewport(reason: "placement")
     }
 
+    /// A replacement menu host has no final viewport until AppKit attaches it.
+    func restoreViewportAfterMount(distanceFromTop: CGFloat) {
+        pendingDistanceFromTop = max(0, distanceFromTop)
+        restoreOnMount = true
+        if window != nil { constrainViewport(reason: "mount-restore") }
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
+        mountCount += 1
         tile()
         needsLayout = true
         layoutSubtreeIfNeeded()
@@ -792,8 +802,9 @@ final class AggregationOverviewScrollView: NSScrollView {
     }
 
     private func constrainViewport(reason: String) {
-        guard !isRestoringViewport, let documentView,
+        guard !isRestoringViewport, !restoreOnMount || window != nil, let documentView,
               contentView.bounds.width > 0, contentView.bounds.height > 0 else { return }
+        restoreOnMount = false
         isRestoringViewport = true
         defer { isRestoringViewport = false }
         let maximum = max(0, documentView.frame.height - contentView.bounds.height)
@@ -814,7 +825,7 @@ final class AggregationOverviewScrollView: NSScrollView {
             return documentView.convert(card.bounds, from: card)
         }
         let count = cards.filter { !$0.isHidden && !cardRect($0).intersection(visible).isEmpty }.count
-        let geometry = "scroll=\(frame); clip=\(contentView.bounds); document=\(documentView.frame); visible=\(visible); attached=\(window != nil); window_visible=\(window?.isVisible ?? false); occlusion_visible=\(window?.occlusionState.contains(.visible) ?? false); document_hidden=\(documentView.isHidden); alpha=\(alphaValue); intersections=\(count); cards=\(cards.count)"
+        let geometry = "scroll=\(frame); clip=\(contentView.bounds); document=\(documentView.frame); visible=\(visible); attached=\(window != nil); mounts=\(mountCount); window_visible=\(window?.isVisible ?? false); occlusion_visible=\(window?.occlusionState.contains(.visible) ?? false); document_hidden=\(documentView.isHidden); alpha=\(alphaValue); intersections=\(count); cards=\(cards.count)"
         let context = diagnosticContext?() ?? ""
         let signature = reason + "|" + geometry + "|" + context
         guard lastGeometry != signature else { return }
@@ -823,7 +834,7 @@ final class AggregationOverviewScrollView: NSScrollView {
             "index=\($0.offset),frame=\(cardRect($0.element)),hidden=\($0.element.isHidden),intersection=\(cardRect($0.element).intersection(visible))"
         }.joined(separator: "; ")
         SwitchLog.write("aggregation geometry; reason=\(reason); view=\(ObjectIdentifier(self)); \(geometry); \(context); [\(frames)]",
-            level: .debug, category: "ui.aggregation", throttleKey: "aggregation-geometry-\(reason)", minimumInterval: 0.25)
+            level: .debug, category: "ui.aggregation", throttleKey: "aggregation-geometry-\(ObjectIdentifier(self))-\(reason)", minimumInterval: 0.25)
     }
 
     func setMenuContentVisible(_ visible: Bool) {

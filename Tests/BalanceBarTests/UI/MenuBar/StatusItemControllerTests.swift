@@ -2915,7 +2915,7 @@ extension StatusItemControllerTests {
 }
 
 extension StatusItemControllerTests {
-    private func aggregationInput(count: Int, amount: Double = 4.73, date: Date = Date(timeIntervalSince1970: 1_700_000_000), summaries: [String: String] = [:], choices: [ProviderChoice]? = nil, notes: [Int: String] = [:]) -> StatusItemController.MenuInput {
+    private func aggregationInput(count: Int, amount: Double = 4.73, date: Date = Date(timeIntervalSince1970: 1_700_000_000), summaries: [String: String] = [:], choices: [ProviderChoice]? = nil, notes: [Int: String] = [:], showStatusMenu: Bool = false) -> StatusItemController.MenuInput {
         let displays = (0..<count).map { index -> AggregatedProviderDisplay in
             let id = "provider-\(index)"
             return AggregatedProviderDisplay(
@@ -2927,7 +2927,7 @@ extension StatusItemControllerTests {
         }
         return StatusItemController.MenuInput(choices: choices ?? [ProviderChoice(id: "provider-0", name: "tokenshop", isCurrent: true)],
             quickSwitchSummaries: summaries, activeClient: .codex, openAIAccount: nil, statusLinks: [],
-            showQuickSwitchMenu: true, showOpenChatGPTMenu: true, showOpenCCSwitchMenu: true, showStatusMenu: false,
+            showQuickSwitchMenu: true, showOpenChatGPTMenu: true, showOpenCCSwitchMenu: true, showStatusMenu: showStatusMenu,
             aggregatedProviders: displays, aggregationQuickSwitchBlocked: count > 0)
     }
 
@@ -3133,11 +3133,12 @@ extension StatusItemControllerTests {
         func progress(_ view: NSView) -> [QuotaProgressView] {
             (view as? QuotaProgressView).map { [$0] } ?? view.subviews.flatMap(progress)
         }
-        XCTAssertEqual(progress(root).count, 2)
+        let currentRoot = try XCTUnwrap((menu.items.first?.view as? NSScrollView)?.documentView)
+        XCTAssertEqual(progress(currentRoot).count, 2)
         let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
             horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showQuotaProgressBar: false)
         controller.update(snapshot: .placeholder, refreshDate: nil, menuInput: input, settings: settings)
-        XCTAssertTrue(progress(root).isEmpty)
+        XCTAssertTrue(progress(currentRoot).isEmpty)
     }
 }
 
@@ -3226,7 +3227,7 @@ extension StatusItemControllerTests {
         let before = controller.statusMenuRebuildCountForTesting
         let choices = [ProviderChoice(id: "provider-0", name: "tokenshop", isCurrent: true), ProviderChoice(id: "new", name: "new", isCurrent: false)]
         controller.menuWillOpen(menu)
-        controller.updateMenu(input: aggregationInput(count: 4, choices: choices))
+        controller.updateMenu(input: aggregationInput(count: 4, choices: choices, showStatusMenu: true))
         controller.menuDidClose(menu)
         controller.menuWillOpen(menu)
         RunLoop.main.run(until: Date().addingTimeInterval(0.02))
@@ -3558,4 +3559,115 @@ extension StatusItemControllerTests {
         XCTAssertEqual(offline[0].reason, "offline")
     }
 
+}
+
+
+extension StatusItemControllerTests {
+    /// Exercises AppKit's real menu window; ordinary NSWindow attachment cannot
+    /// detect a custom view stranded on a retired NSMenuItem.
+    @MainActor
+    private func assertAggregationPopupMounts(_ menu: NSMenu, viewport: AggregationOverviewScrollView,
+                                              expectedDistance: CGFloat? = nil, onMounted: (() -> Void)? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        var attached = false
+        var intersects = false
+        var distance: CGFloat?
+        var attempts = 0
+        let probe = Timer(timeInterval: 0.02, repeats: true) { timer in
+            attempts += 1
+            if viewport.window != nil, let document = viewport.documentView {
+                onMounted?()
+                viewport.layoutSubtreeIfNeeded()
+                attached = true
+                let visible = viewport.contentView.documentVisibleRect
+                intersects = visible.width > 0 && visible.height > 0 && document.subviews.contains {
+                    !$0.isHidden && !$0.frame.intersection(visible).isEmpty
+                }
+                distance = max(0, document.frame.height - viewport.contentView.bounds.maxY)
+            }
+            if attached || attempts >= 50 {
+                timer.invalidate()
+                menu.cancelTracking()
+            }
+        }
+        defer { probe.invalidate() }
+        RunLoop.main.add(probe, forMode: .eventTracking)
+        menu.popUp(positioning: nil, at: .zero, in: nil)
+        XCTAssertTrue(attached, "real NSMenu did not mount its custom viewport", file: file, line: line)
+        XCTAssertTrue(intersects, "mounted viewport has no visible card", file: file, line: line)
+        XCTAssertGreaterThan(viewport.mountCount, 0, file: file, line: line)
+        if let expectedDistance {
+            XCTAssertEqual(distance ?? -1, expectedDistance, accuracy: 2, file: file, line: line)
+        }
+    }
+
+    @MainActor
+    func testQuickSwitchReorderAddRenameAndRemoveKeepRealMenuHostMounted() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let choices = (0..<4).map { ProviderChoice(id: "p\($0)", name: "Provider \($0)", isCurrent: $0 == 0) }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 12, choices: choices), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let item = try XCTUnwrap(menu.items.first)
+        let viewport = try XCTUnwrap(item.view as? AggregationOverviewScrollView)
+        let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        let retained = try XCTUnwrap(quick.items.first { $0.representedObject as? String == "p0" })
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        let placements = controller.aggregationPlacementCountForTesting
+        assertAggregationPopupMounts(menu, viewport: viewport)
+        let changed = [ProviderChoice(id: "p3", name: "Renamed", isCurrent: false), choices[0],
+                       ProviderChoice(id: "new", name: "New", isCurrent: true)]
+        assertAggregationPopupMounts(menu, viewport: viewport, onMounted: {
+            controller.updateMenu(input: self.aggregationInput(count: 12, choices: changed))
+        })
+        XCTAssertTrue(menu.items.first === item)
+        XCTAssertTrue(item.view === viewport)
+        XCTAssertEqual(quick.items.compactMap { $0.representedObject as? String }, ["p3", "p0", "new"])
+        XCTAssertTrue(quick.items.contains { $0 === retained })
+        XCTAssertTrue(quick.items.filter { $0.representedObject is String }.allSatisfy { !$0.isEnabled && $0.state == .off })
+        assertAggregationPopupMounts(menu, viewport: viewport)
+        controller.updateMenu(input: aggregationInput(count: 12, choices: []))
+        XCTAssertTrue(quick.items.contains { $0.identifier?.rawValue == "quickSwitch.empty" })
+        controller.updateMenu(input: aggregationInput(count: 12, choices: choices))
+        XCTAssertFalse(quick.items.contains { $0.identifier?.rawValue == "quickSwitch.empty" })
+        assertAggregationPopupMounts(menu, viewport: viewport)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
+    }
+
+    @MainActor
+    func testRealMenuRebuildCreatesFreshViewportRemountsCardsAndRestoresScroll() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 12), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let oldItem = try XCTUnwrap(menu.items.first)
+        let oldViewport = try XCTUnwrap(oldItem.view as? AggregationOverviewScrollView)
+        assertAggregationPopupMounts(menu, viewport: oldViewport)
+        oldViewport.restoreViewport(distanceFromTop: 80)
+        let oldCards = try XCTUnwrap(oldViewport.documentView).subviews.map { $0.subviews.first! }
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        controller.updateMenu(input: aggregationInput(count: 12, showStatusMenu: true))
+        let newItem = try XCTUnwrap(menu.items.first)
+        let viewport = try XCTUnwrap(newItem.view as? AggregationOverviewScrollView)
+        XCTAssertFalse(newItem === oldItem)
+        XCTAssertNil(oldItem.view, "retired item must relinquish its custom view")
+        XCTAssertFalse(viewport === oldViewport, "never reassign the retired scroll view to a new menu item")
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        let cards = try XCTUnwrap(viewport.documentView).subviews.map { $0.subviews.first! }
+        XCTAssertEqual(cards.count, oldCards.count)
+        XCTAssertTrue(zip(cards, oldCards).allSatisfy { $0 === $1 }, "preserve cards and their inner scroll subtrees")
+        // Pre-mount layout must not consume the saved offset: AppKit can
+        // change the clip height when attaching the rebuilt custom menu view.
+        viewport.frame.size.height -= 20
+        viewport.needsLayout = true
+        viewport.layoutSubtreeIfNeeded()
+        viewport.frame.size.height += 20
+        assertAggregationPopupMounts(menu, viewport: viewport, expectedDistance: 80)
+        assertAggregationPopupMounts(menu, viewport: viewport, expectedDistance: 80)
+        controller.updateMenu(input: aggregationInput(count: 12, amount: 9.12, showStatusMenu: true))
+        XCTAssertTrue(menu.items.first?.view === viewport)
+        assertAggregationPopupMounts(menu, viewport: viewport, expectedDistance: 80)
+    }
 }
