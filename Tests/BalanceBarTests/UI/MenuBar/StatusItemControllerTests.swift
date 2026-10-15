@@ -3298,6 +3298,7 @@ extension StatusItemControllerTests {
         tag.layoutSubtreeIfNeeded()
         tag.textView.layoutSubtreeIfNeeded()
         XCTAssertFalse(tag.textView.isScrollable)
+        XCTAssertEqual(tag.textView.accountLabel.alignment, .center)
         XCTAssertFalse(tag.textView.hasActiveScrollTimer)
         host.removeFromSuperview()
     }

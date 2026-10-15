@@ -253,7 +253,11 @@ final class AggregationNoteTagView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func updateText(_ text: String) {
-        textView.updateText(text, preserveScrollPosition: true)
+        // The outer tag frame is assigned before this method during reuse.
+        // Sync the inner viewport first so centering is measured against the
+        // current width, and reset the marquee when the label identity changes.
+        textView.frame = NSRect(x: 6, y: 0, width: max(0, bounds.width - 12), height: 15)
+        textView.updateText(text, preserveScrollPosition: false)
         toolTip = text
         setAccessibilityLabel(text)
     }
@@ -427,10 +431,9 @@ final class AccountMarqueeView: NSView {
         // NSString reports glyph advances, whereas the NSTextField cell also
         // reserves drawing insets. A narrow label clips its own trailing glyphs
         // even after the outer viewport has scrolled all the way to the end.
-        let labelWidth = max(
-            Self.textWidth(of: text, font: font),
-            ceil(accountLabel.cell?.cellSize.width ?? 0)
-        )
+        let labelWidth = centersTextWhenFits
+            ? ceil(Self.textWidth(of: text, font: font))
+            : max(Self.textWidth(of: text, font: font), ceil(accountLabel.cell?.cellSize.width ?? 0))
         if let clip = opticalClipHost, let anchor = leadingInkAnchor {
             let inset = min(max(0, anchor), bounds.width)
             clip.frame = NSRect(x: bounds.minX + inset, y: bounds.minY,
