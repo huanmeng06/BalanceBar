@@ -3164,6 +3164,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.finishMenuDismissal()
         if statusMenuNeedsRebuild {
             statusMenuNeedsRebuild = false
             rebuildStatusMenu()
@@ -3193,12 +3194,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         cancelPendingOverviewNumericTransitions()
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
-        guard statusMenuNeedsRebuild else { return }
-        statusMenuNeedsRebuild = false
-        DispatchQueue.main.async { [weak self] in
-            guard let self, !self.isStatusMenuTracking else { return }
-            self.rebuildStatusMenu()
-        }
+        // Keep the outgoing menu intact for AppKit's dismissal. A main-queue
+        // hop is not a window-hidden boundary; rebuild on the next open instead.
     }
 
     /// Applies the user's Codex animation-mode choice immediately. The
@@ -3252,7 +3249,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func rebuildOrDeferMenu(forceDefer: Bool = false) {
         guard statusItem != nil else { return }
-        if isStatusMenuTracking || forceDefer {
+        let dismissing = (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.isMenuDismissing == true
+        if isStatusMenuTracking || dismissing || forceDefer {
             statusMenuNeedsRebuild = true
         } else {
             rebuildStatusMenu()
@@ -6536,7 +6534,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func refreshQuotaPaceViews() {
         guard isStatusMenuTracking,
-              let host = statusMenu.items.first?.view as? MenuHoverLinkHostView else { return }
+              let host = statusMenu.items.first?.view as? MenuHoverLinkHostView,
+              !host.isMenuDismissing else { return }
         if !host.isMenuContentVisible { host.setMenuContentVisible(true) }
         else { host.reconcilePaceMenuTracking() }
         let now = quotaPaceNowForTesting ?? Date()

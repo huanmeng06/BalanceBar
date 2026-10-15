@@ -43,6 +43,39 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testClosingMenuKeepsAllItemsUntilNextOpenAndDefersLateUpdates() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        controller.update(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        let items = controller.menuItemsForTesting.map(ObjectIdentifier.init)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        controller.menuDidClose(controller.statusMenuForTesting)
+        let deadline = Date().addingTimeInterval(0.05)
+        while Date() < deadline { RunLoop.main.run(mode: .default, before: deadline) }
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds,
+            "The next main-queue turn must not remove outgoing native menu items")
+        XCTAssertEqual(controller.menuItemsForTesting.map(ObjectIdentifier.init), items)
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertTrue(host.isMenuDismissing)
+        controller.updateMenu(input: makeMenuInput())
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertEqual(controller.menuItemsForTesting.map(ObjectIdentifier.init), items)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertFalse(host.isMenuDismissing)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    @MainActor
     func testRightClickOpenAgentOpensCurrentAgentWithoutOpeningCCSwitch() {
         var agentOpens = 0
         var ccSwitchOpens = 0

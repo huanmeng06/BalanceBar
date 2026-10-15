@@ -46,6 +46,7 @@ private final class QuotaPacePopoverProbe: NSPopover {
     private(set) var showCount = 0
     private(set) var showAnimationFlags: [Bool] = []
     private(set) var closeAnimationFlags: [Bool] = []
+    var delaysCloseCompletion = false
     weak var anchorView: NSView?
     private(set) var preferredEdge: NSRectEdge?
 
@@ -70,7 +71,19 @@ private final class QuotaPacePopoverProbe: NSPopover {
         showCount += 1
         showAnimationFlags.append(animates)
     }
-    override func close() { closeAnimationFlags.append(animates); showing = false }
+    override func close() {
+        closeAnimationFlags.append(animates)
+        if !delaysCloseCompletion { completeClose() }
+    }
+    func completeClose() {
+        showing = false
+        delegate?.popoverDidClose?(Notification(name: NSPopover.didCloseNotification, object: self))
+    }
+}
+
+private final class PaceDismissalWindowProbe: NSWindow {
+    var reportedOcclusionState: NSWindow.OcclusionState = .visible
+    override var occlusionState: NSWindow.OcclusionState { reportedOcclusionState }
 }
 
 private final class PacePresentationProbeLayer: CALayer {
@@ -684,6 +697,114 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(view.isTooltipVisible)
         XCTAssertFalse(view.hasPendingShowForTesting)
         XCTAssertFalse(view.hasPendingCloseForTesting)
+    }
+
+    func testMenuDismissalPreservesOutgoingFiltersAndCancelsAllHoverWork() throws {
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let host = fixture.host
+        let window = PaceDismissalWindowProbe(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { host.finishMenuDismissal(); window.orderOut(nil) }
+        host.layoutSubtreeIfNeeded()
+        host.setMenuContentVisible(true)
+        let view = fixture.views[0]
+        let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+        other.focusReduceMotionForTesting = false
+        other.focusReduceTransparencyForTesting = false
+        enterPace(view)
+        view.firePendingShowForTesting()
+        XCTAssertTrue(view.isTooltipVisible)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        // A pending exit's completion must not remove filters during menu fade.
+        other.setFocusState(.normal, animated: true)
+        let oldCompletion = try XCTUnwrap(other.focusRestoreCompletionForTesting)
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+        XCTAssertFalse(host.isMenuContentVisible)
+        XCTAssertTrue(host.isMenuDismissing)
+        XCTAssertFalse(view.isMenuTracking)
+        XCTAssertFalse(view.isTooltipVisible)
+        XCTAssertNil(host.sectionFocus.pendingTimerForTesting)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        XCTAssertNil(other.layer?.animation(forKey: "sectionFocus.radius"))
+        oldCompletion()
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        let alpha = other.alphaValue
+        let registrations = host.monitorRegistrationCountForTesting
+        // The controller's stop call, a late monitor and an accessibility event
+        // must not restore or reinstall anything in an outgoing menu.
+        host.setPaceMenuTracking(false)
+        host.clearPaceHover()
+        host.reconcilePaceMenuTracking()
+        host.sectionFocus.refreshAccessibility()
+        XCTAssertEqual(other.alphaValue, alpha)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        XCTAssertEqual(host.monitorRegistrationCountForTesting, registrations)
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        XCTAssertTrue(host.isMenuDismissing, "A still-visible window must retain outgoing visuals")
+        window.reportedOcclusionState = []
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        XCTAssertFalse(host.isMenuDismissing)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.alphaValue, 1)
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        host.setMenuContentVisible(true)
+        XCTAssertTrue(view.isMenuTracking)
+        enterPace(view)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        host.setMenuContentVisible(false)
+        // Reopen before an old hidden-window notification: the notification
+        // cannot clear the new interaction or wait a second entry delay.
+        host.setMenuContentVisible(true)
+        enterPace(view)
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        host.setMenuContentVisible(false)
+        host.removeFromSuperview()
+        XCTAssertFalse(host.isMenuDismissing)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+    }
+
+    func testAnimatedPopoverCloseStaysOwnedUntilCompletionAndCannotClearNewBubble() throws {
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { fixture.host.setPaceMenuTracking(false); window.orderOut(nil) }
+        fixture.host.layoutSubtreeIfNeeded()
+        fixture.host.setPaceMenuTracking(true)
+        let view = fixture.views[0]
+        view.markerReduceMotionForTesting = false
+        let departing = fixture.popovers[0]
+        departing.delaysCloseCompletion = true
+        enterPace(view)
+        view.firePendingShowForTesting()
+        view.updateHover(at: NSPoint(x: -100, y: -100))
+        view.firePendingCloseForTesting()
+        XCTAssertEqual(view.closingPopoverCountForTesting, 1)
+        XCTAssertEqual(departing.closeAnimationFlags, [true])
+        XCTAssertFalse(view.isTooltipVisible)
+        let next = QuotaPacePopoverProbe()
+        view.makePopoverForTesting = { next }
+        enterPace(view)
+        view.firePendingShowForTesting()
+        departing.completeClose()
+        XCTAssertEqual(view.closingPopoverCountForTesting, 0)
+        XCTAssertTrue(view.isTooltipVisible, "An old didClose must not clear the new Popover")
+        next.delaysCloseCompletion = true
+        view.updateHover(at: NSPoint(x: -100, y: -100))
+        view.firePendingCloseForTesting()
+        fixture.host.clearPaceHover()
+        fixture.host.clearPaceHover()
+        XCTAssertEqual(next.closeAnimationFlags, [true], "Do not send a second close during native animation")
+        XCTAssertFalse(next.animates)
+        XCTAssertEqual(view.closingPopoverCountForTesting, 1)
+        next.completeClose()
+        XCTAssertEqual(view.closingPopoverCountForTesting, 0)
+        enterPace(view)
+        view.firePendingShowForTesting()
+        next.completeClose() // Native transient outside-click dismissal.
+        XCTAssertFalse(view.isTooltipVisible)
     }
 
     func testPaceUnifiedTimelineOrderingAndNativeAnimationPolicy() throws {

@@ -36,6 +36,7 @@ final class SectionFocusController {
     private var phase: Phase?
     private var timer: Timer?
     private var generation = 0
+    private var isMenuDismissing = false
     var isActive = false
     var pendingTimerForTesting: Timer? { timer }
 
@@ -142,10 +143,23 @@ final class SectionFocusController {
         for (key, view) in sections { view.setFocusState(state(for: key), animated: true) }
     }
     func refreshAccessibility() {
+        guard !isMenuDismissing else { return }
         for (id, view) in sections { view.setFocusState(state(for: id), animated: false) }
         presentedPace?.refreshMarkerAccessibility()
     }
+    func suspendForMenuDismissal() {
+        isActive = false
+        isMenuDismissing = true
+        cancelPending()
+        hoveredID = nil
+        focusedID = nil
+        presentedPace?.dismissTooltip(animated: false)
+        presentedPace = nil
+        targetPace = nil
+        sections.values.forEach { $0.suspendFocusTransition() }
+    }
     func reset() {
+        isMenuDismissing = false
         cancelPending()
         hoveredID = nil
         focusedID = nil
@@ -253,6 +267,33 @@ class OpenCodexOverviewSectionView: NSView {
         }
         CATransaction.commit()
         if !animate, radius == 0 { cleanup() }
+    }
+
+    /// Freeze the visible state while the native menu exits. Do not detach a
+    /// content filter or brighten a still-visible outgoing menu.
+    func suspendFocusTransition() {
+        focusGeneration += 1 // Retire any restoration completion before removing its animation.
+        focusRestoreCompletionForTesting = nil
+        let visibleAlpha = CGFloat(layer?.presentation()?.opacity ?? Float(alphaValue))
+        if ownsOpacityAnimation {
+            layer?.removeAnimation(forKey: "opacity")
+            ownsOpacityAnimation = false
+            alphaValue = visibleAlpha
+            targetAlpha = visibleAlpha
+        }
+        guard hasOwnFocusFilter, let node = layer else { return }
+        let visible = node.presentation()
+        let source: CALayer
+        if let visible, (visible.filters as? [CIFilter])?.contains(where: { $0.name == Self.blurName }) == true {
+            source = visible
+        } else { source = node }
+        let radius = (source.value(forKeyPath: Self.radiusPath) as? NSNumber)?.doubleValue ?? targetRadius
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        node.removeAnimation(forKey: "sectionFocus.radius")
+        node.setValue(radius, forKeyPath: Self.radiusPath)
+        CATransaction.commit()
+        targetRadius = radius
     }
 
     var measuredHeight: CGFloat { frame.height }
