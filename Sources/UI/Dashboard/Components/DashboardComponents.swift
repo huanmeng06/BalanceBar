@@ -788,7 +788,7 @@ final class QuotaProgressPaceView: NSView {
 
     var tooltipContent: QuotaPaceTooltipContent? {
         guard let pace else { return nil }
-        return QuotaPaceTooltipContent(pace: pace, prediction: prediction, resetAt: quotaWindow.resetAt, now: presentationNow, timeZone: displayTimeZone)
+        return QuotaPaceTooltipContent(pace: pace, prediction: prediction, resetAt: quotaWindow.resetAt, windowKind: quotaWindow.kind, now: presentationNow, timeZone: displayTimeZone)
     }
 
     private var accessibilityText: String {
@@ -833,7 +833,7 @@ struct QuotaPaceTooltipContent: Equatable {
     }
 
     init(pace: OfficialQuotaUsagePace, prediction: OfficialQuotaUsagePrediction?, resetAt: Date? = nil,
-         language: AppLanguage = .selected, now: Date = Date(), timeZone: TimeZone = .autoupdatingCurrent) {
+         windowKind: OfficialQuotaWindow.Kind = .fiveHour, language: AppLanguage = .selected, now: Date = Date(), timeZone: TimeZone = .autoupdatingCurrent) {
         title = pace.actualRemaining == 0
             ? tr(.keyQuotaPaceStatusExhausted, language: language) : pace.status.title(language: language)
         switch pace.status {
@@ -850,7 +850,8 @@ struct QuotaPaceTooltipContent: Equatable {
             if case .runsOut(let seconds) = prediction, seconds.isFinite, seconds > 0,
                let resetAt, resetAt.timeIntervalSince1970.isFinite, resetAt > now,
                now.addingTimeInterval(seconds) < resetAt,
-               let rounded = Self.roundedExhaustionDate(now.addingTimeInterval(seconds), now: now, timeZone: timeZone),
+               let rounded = Self.roundedExhaustionDate(now.addingTimeInterval(seconds), now: now, timeZone: timeZone,
+                    windowKind: windowKind),
                rounded < resetAt {
                 body = tr(.keyQuotaPaceBodyFast,
                     arguments: [Self.displayTime(rounded, now: now, timeZone: timeZone, language: language)], language: language)
@@ -866,19 +867,21 @@ struct QuotaPaceTooltipContent: Equatable {
 
     /// Round the actual instant on the configured local clock, including
     /// DST folds/gaps. Ties move forward; never display a past estimate.
-    static func roundedExhaustionDate(_ date: Date, now: Date, timeZone: TimeZone) -> Date? {
+    static func roundedExhaustionDate(_ date: Date, now: Date, timeZone: TimeZone,
+                                      windowKind: OfficialQuotaWindow.Kind = .fiveHour) -> Date? {
         guard date.timeIntervalSince1970.isFinite, now.timeIntervalSince1970.isFinite, date > now else { return nil }
         let calendar = AppDisplayTime.calendar(timeZone: timeZone)
-        func floorToFiveMinutes(_ value: Date) -> Date? {
+        let interval = windowKind == .sevenDay ? 30 : 5
+        func floorToInterval(_ value: Date) -> Date? {
             guard let minuteStart = calendar.dateInterval(of: .minute, for: value)?.start else { return nil }
-            return calendar.date(byAdding: .minute, value: -(calendar.component(.minute, from: value) % 5), to: minuteStart)
+            return calendar.date(byAdding: .minute, value: -(calendar.component(.minute, from: value) % interval), to: minuteStart)
         }
-        guard let floor = floorToFiveMinutes(date) else { return nil }
-        let rounded = date.timeIntervalSince(floor) >= 150
-            ? calendar.date(byAdding: .minute, value: 5, to: floor) : floor
+        guard let floor = floorToInterval(date) else { return nil }
+        let rounded = date.timeIntervalSince(floor) >= Double(interval * 30)
+            ? calendar.date(byAdding: .minute, value: interval, to: floor) : floor
         guard let rounded else { return nil }
         if rounded > now { return rounded }
-        return floorToFiveMinutes(now).flatMap { calendar.date(byAdding: .minute, value: 5, to: $0) }
+        return floorToInterval(now).flatMap { calendar.date(byAdding: .minute, value: interval, to: $0) }
     }
 
     static func displayTime(_ date: Date, now: Date, timeZone: TimeZone, language: AppLanguage) -> String {

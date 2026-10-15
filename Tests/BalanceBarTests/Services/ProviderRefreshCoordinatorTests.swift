@@ -2189,6 +2189,72 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com"), journal)
     }
 
+    private func predictionWindows(now: Date, five: Double = 40, seven: Double = 40,
+                                   weeklyReset: Date? = nil) -> [OfficialQuotaWindow] {
+        [.init(kind: .fiveHour, remaining: five, label: "5h", daysText: "5h", reset: nil,
+            durationSeconds: 18_000, resetAt: now.addingTimeInterval(9000)),
+         .init(kind: .sevenDay, remaining: seven, label: "7d", daysText: "7d", reset: nil,
+            durationSeconds: 604_800, resetAt: weeklyReset ?? now.addingTimeInterval(300_000))]
+    }
+
+    func testPredictionContextsUseQuotaJournalWithoutForecastAndDeduplicateResetOnRestart() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = TestClock(date: base)
+        fixture.update { $0.windows = predictionWindows(now: base); $0.hasBankedReset = false; $0.forecastStatus = 503 }
+        var coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        let first = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(first.quotaPredictionAccountKey, "a@example.com")
+        XCTAssertEqual(first.quotaPredictionContexts.compactMap(\.inferredCycleStart).count, 2)
+        XCTAssertEqual(fixture.forecastRequestCount, 0)
+        clock.advance(by: 1)
+        let reset = base.addingTimeInterval(604_800)
+        fixture.update { $0.windows = predictionWindows(now: base, five: 100, seven: 100, weeklyReset: reset) }
+        let refreshed = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertNil(refreshed.quotaPredictionContexts.first { $0.cycle.kind == .fiveHour }?.inferredCycleStart)
+        XCTAssertEqual(refreshed.quotaPredictionContexts.first { $0.cycle.kind == .sevenDay }?.inferredCycleStart, base)
+        XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.state, .observed)
+        XCTAssertFalse(refreshed.resetForecast.isOfficialResetConfirmed, "No announcement request is required for prediction invalidation")
+        // Recreate coordinator as at restart; the same journal event must not re-invalidate a new cycle.
+        clock.advance(by: 18_144)
+        fixture.update { $0.windows = predictionWindows(now: base, five: 100, seven: 90, weeklyReset: reset) }
+        coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        let resumed = try observationRefresh(coordinator, fixture: fixture)
+        let weekly = try XCTUnwrap(resumed.quotaPredictionContexts.first { $0.cycle.kind == .sevenDay })
+        XCTAssertEqual(weekly.inferredCycleStart, base)
+        XCTAssertNotNil(OfficialQuotaUsagePrediction.make(for: resumed.officialQuotaWindows[1], cycleStart: weekly.inferredCycleStart, now: clock.now))
+        XCTAssertEqual(fixture.forecastRequestCount, 0)
+    }
+
+    func testPredictionRefillPersistsThroughFailuresPartialWindowsAndAccountSwitch() throws {
+        let fixture = ObservationFixture()
+        let store = try observationStore()
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = TestClock(date: base)
+        fixture.update { $0.windows = predictionWindows(now: base); $0.hasBankedReset = false }
+        var coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        _ = try observationRefresh(coordinator, fixture: fixture)
+        fixture.update { $0.windows = predictionWindows(now: base, five: 60, seven: 30) }
+        let refill = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertNil(refill.quotaPredictionContexts.first { $0.cycle.kind == .fiveHour }?.inferredCycleStart)
+        XCTAssertNotNil(refill.quotaPredictionContexts.first { $0.cycle.kind == .sevenDay }?.inferredCycleStart)
+        fixture.update { $0.quotaStatus = 503 }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).kind, .error)
+        fixture.update { $0.quotaStatus = 200; $0.windows = [predictionWindows(now: base, five: 55)[0]] }
+        coordinator = try observationCoordinator(fixture, store: store, clock: clock)
+        XCTAssertNil(try observationRefresh(coordinator, fixture: fixture).quotaPredictionContexts.first?.inferredCycleStart)
+        fixture.update { $0.email = "b@example.com" }
+        let other = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(other.quotaPredictionAccountKey, "b@example.com")
+        XCTAssertNotNil(other.quotaPredictionContexts.first?.inferredCycleStart)
+        fixture.update { $0.email = "a@example.com" }
+        XCTAssertNil(try observationRefresh(coordinator, fixture: fixture).quotaPredictionContexts.first?.inferredCycleStart)
+        fixture.update { $0.windows = [predictionWindows(now: base, seven: 25)[1]] }
+        XCTAssertNotNil(try observationRefresh(coordinator, fixture: fixture).quotaPredictionContexts.first?.inferredCycleStart,
+            "Missing five-hour window cannot invalidate healthy weekly basis")
+    }
+
     private func observationStore() throws -> CodexResetObservationStore {
         let name = "BalanceBarTests.coordinator-observation.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))

@@ -606,11 +606,68 @@ final class OverviewNumericTransitionTests: XCTestCase {
 
 @MainActor
 final class OverviewNumericPresentationControllerTests: XCTestCase {
+    private lazy var predictionStore: CodexResetObservationStore = {
+        let name = "BalanceBarTests.pace-context.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        return CodexResetObservationStore(defaults: defaults)
+    }()
     private func timedPaceSnapshot(now: Date, remaining: Double, resetAt: Date? = nil) -> Snapshot {
         let reset = resetAt ?? now.addingTimeInterval(9_000)
+        let windows = [OfficialQuotaWindow(kind: .fiveHour, remaining: remaining,
+            label: "5h", daysText: "5h", reset: "obsolete", durationSeconds: 18_000, resetAt: reset)]
         return Snapshot.official("OpenAI Official", remaining, "5h", "obsolete", now,
-            windows: [OfficialQuotaWindow(kind: .fiveHour, remaining: remaining,
-                label: "5h", daysText: "5h", reset: "obsolete", durationSeconds: 18_000, resetAt: reset)])
+            windows: windows, quotaPredictionContexts: predictionStore.updatePredictionContexts(
+                providerID: "official", accountKey: "pace@example.com", windows: windows, now: now),
+            quotaPredictionAccountKey: "pace@example.com")
+    }
+
+    func testWeeklyPredictionConsumesMatchingContextAndMinuteTickKeepsViews() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let windows = [
+            OfficialQuotaWindow(kind: .fiveHour, remaining: 40, label: "5h", daysText: "5h", reset: nil,
+                durationSeconds: 18_000, resetAt: now.addingTimeInterval(9000)),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 40, label: "7d", daysText: "7d", reset: nil,
+                durationSeconds: 604_800, resetAt: now.addingTimeInterval(302_400))]
+        let contexts = predictionStore.updatePredictionContexts(providerID: "official", accountKey: "pace@example.com",
+            windows: windows, now: now)
+        func snapshot(account: String = "pace@example.com", contexts: [QuotaPredictionContext]) -> Snapshot {
+            .official("OpenAI Official", 40, "7d", nil, now, windows: windows,
+                quotaPredictionContexts: contexts, quotaPredictionAccountKey: account)
+        }
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.start(snapshot: snapshot(contexts: []), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.prediction == nil }, "No UI metadata inference without a coordinator context")
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.update(snapshot: snapshot(account: "other@example.com", contexts: contexts), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.prediction == nil })
+        controller.update(snapshot: snapshot(contexts: contexts), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let weekly = try XCTUnwrap(host.paceViews.first { $0.quotaWindow.kind == .sevenDay })
+        XCTAssertNotNil(weekly.prediction)
+        let prediction = weekly.prediction
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(60)
+        try XCTUnwrap(controller.quotaPaceTimerForTesting).fire()
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === host)
+        XCTAssertTrue(host.paceViews.contains { $0 === weekly })
+        XCTAssertNotEqual(weekly.prediction, prediction)
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.prediction != nil })
+        // A context for a different deadline cannot qualify the current weekly window.
+        let wrongWindow = OfficialQuotaWindow(kind: .sevenDay, remaining: 40, label: "7d", daysText: "7d", reset: nil,
+            durationSeconds: 604_800, resetAt: now.addingTimeInterval(320_000))
+        let wrong = QuotaPredictionContext(cycle: try XCTUnwrap(QuotaPredictionCycle(window: wrongWindow)),
+            inferredCycleStart: now.addingTimeInterval(-284_800))
+        controller.update(snapshot: snapshot(contexts: contexts.filter { $0.cycle.kind == .fiveHour } + [wrong]), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertNil(weekly.prediction)
+        XCTAssertNotNil(host.paceViews.first { $0.quotaWindow.kind == .fiveHour }?.prediction)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
     }
 
     func testPaceMinuteTickAndQuotaRefreshKeepExistingProgressAndView() throws {
@@ -1248,7 +1305,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: activeClient,
-            openAIAccount: nil,
+            openAIAccount: OpenAIAccountPresentation(email: "pace@example.com"),
             statusLinks: [],
             showQuickSwitchMenu: false,
             showOpenChatGPTMenu: false,

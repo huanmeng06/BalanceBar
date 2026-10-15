@@ -1,31 +1,31 @@
 # Issue 500: cycle-average quota prediction
 
-## Evidence checked on 2026-10-14
+## Historical evidence checked on 2026-10-14
 
 - [OpenAI usage guidance](https://help.openai.com/en/articles/20001516-managing-usage-with-gpt-6-astra-in-work-and-codex) describes the five-hour window starting with the first request after the preceding window ends. It distinguishes this limit from a weekly allowance.
 - [OpenAI banked reset guidance](https://help.openai.com/en/articles/20001498-how-banked-codex-resets-work) says a full reset refreshes eligible five-hour/weekly windows and changes the weekly reset schedule. Automatic reset scope varies by announcement, and the usage dashboard can lag.
 - [Upstream Codex display model](https://github.com/openai/codex/blob/main/codex-rs/tui/src/status/rate_limits.rs) labels `used_percent` as percent used for the window, with server-supplied window duration and reset timestamp. [Upstream rate-limit adapter](https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/rate_limits.rs) preserves these fields.
 - BalanceBar's existing parser recognizes Codex 5h/7d by `limit_window_seconds`, maps `used_percent` to remaining quota, and retains a future absolute reset timestamp. Existing fixtures cover this field mapping; non-finite `used_percent` values are rejected before the existing remaining clamp so they cannot become a false full/empty quota; no extra usage requests were added.
 
-## Enabled and withheld cases
+## Standard-window metadata inference (2026-10-15 contract)
 
-The normal, recognized **exactly 18,000-second Codex window** is treated as a fixed request-started cycle whose deadline and cumulative counter describe the same period. Its inferred start is `resetAt - duration`. This is a documented-window interpretation, not a measurement of recent activity or a private backend guarantee.
+The approved contract now enables the recognized **18,000-second 5h and 604,800-second 7d Codex windows**. Both starts are explicitly inferred as `resetAt - durationSeconds`. This is a metadata interpretation and linear reference, not independent verification of all backend weekly/special-reset semantics, nor a measured activity start. Announcement time, local detection time and request completion time are never used as the prediction origin. Nonstandard/missing/invalid windows remain ineligible.
 
-The calculator requires an explicit trusted cycle start. UI callers default to no start. The menu controller only supplies a start for the five-hour rule above; **7d and nonstandard windows receive none**. Existing reference geometry/status remains separate from prediction eligibility.
+Eligibility belongs to the quota coordinator and CodexResetObservationStore. The existing independent quota journal is updated at the accepted account-scoped quota-response boundary, before credit/forecast requests. Prediction contexts read this journal, so a failed/missing announcement is not a prerequisite and watching/notEligible alone does not invalidate a cycle. Existing complete-snapshot reset recognition (prior consumption, both windows full, weekly reset jump at least 24 hours), credentials/response ownership and episode rules are unchanged. Quick-switch quota evidence uses the same boundary; no new request is added.
 
-A remaining-quota increase with an unchanged deadline means the counter could have been restored or recalibrated without a confirmed new cycle start. The controller suppresses prediction for that deadline, including updates while the menu is closed. This flag survives menu rebuilds and temporary missing/error snapshots, is cleared by identity/new-deadline changes, and stores no history or rate samples. A new valid clock still has to meet the observation threshold.
+A separate `.predictionCycles` property-list payload under the existing provider/account key stores only the current 5h/7d cycle identities, last valid remaining values, suppression flags, last accepted sample time and last processed quota-event ID. Original event/journal encoding is untouched. Missing legacy prediction records initialize from the first valid quota. A newly observed journal event invalidates existing old bases once, including missing windows; current windows with newer deadlines create new bases. Same-cycle quota increases suppress that window until a newer cycle; an event cannot clear its suppression. Duplicate events, missing/invalid windows, errors, stale timestamps and older deadlines do not resurrect an old basis. State is account/provider/window-kind isolated and survives restart; it is not a usage history or recent-rate sampler.
 
-Unobserved special resets before app startup cannot be established from the available fields. No general seven-day or special-reset rule is claimed verified. Confirm updated API state during manual reset scenarios before release; do not turn a synthetic fixture or green build into backend-semantic evidence.
+Snapshot carries QuotaPredictionContext plus account scope through compact/Reserve derivation. The menu accepts only matching account/client/window contexts; it has no refill/reset detector or Set<Date>. Missing/ineligible context means qualitative copy. Minute ticks recompute from the same stored origin and the current tick time without requests or persistence writes. Reset-event IDs use detectedAt only for identity/deduplication. First-time legacy initialization has no invented past counter history; unobserved reset discontinuities remain an inherent metadata-model limitation.
 
 ## Calculation and presentation
 
-- Require a valid live pace window, a finite trusted start matching its duration, at least 3% of the cycle elapsed, and at least 1% consumed.
+- Require a valid live standard window, an eligible finite metadata-inferred start matching its duration, at least 3% of the cycle elapsed, and at least 1% consumed (7d time threshold: 5h 2m 24s).
 - Average use = `(100 - remaining) / elapsed`; remaining time = `remaining / average use`.
 - Compare unrounded predicted seconds with the time to reset. Equality counts as lasting until reset in the calculator, but the UI makes no coverage promise for normal/slow states.
 - Titles follow the existing rounded integer difference (fast below -5, slow above +5, normal otherwise), with only full/actually empty quota taking factual precedence. Normal titles are never overridden by prediction.
-- Only a fast state with a trustworthy early-exhaustion result displays a forecast. The body explicitly says this cycle's average pace; it is a linear reference, not a recent rate or a guarantee of future activity.
-- Round the raw absolute exhaustion instant to the nearest local five-minute mark (ties forward); if it falls at/before now, use the next future mark. If the rounded instant is not before reset, use qualitative fast copy instead.
-- Reset times are factual and remain minute-precise. Same-day clock, localized tomorrow, weekday for days 2–6, and month/day (year across years) use the configured display timezone. Seven-day exhaustion prediction stays disabled; seven-day factual reset time remains available.
+- Only a fast state with an eligible early-exhaustion result displays a forecast. The body explicitly says this cycle's average pace; it is a linear reference, not a recent rate or a guarantee of future activity.
+- Round the raw absolute exhaustion instant to the nearest local five-minute mark for 5h, thirty-minute mark for 7d (ties forward); if it falls at/before now, use the next future mark. If the rounded instant is not before reset, use qualitative fast copy instead.
+- Reset times are factual and remain minute-precise. Same-day clock, localized tomorrow, weekday for days 2–6, and month/day (year across years) use the configured display timezone. Weekly forecast dates use the same localized day/weekday/year rules; factual reset times are never rounded to the forecast interval.
 - Full allowance gets calm factual copy; empty quota gives its valid reset time or an unavailable message. Normal/slow and unpredicted fast states get the approved qualitative sentences, without exhaustion or lasts-until-reset promises for normal/slow.
 - Tooltip contains just a title and optional sentence, at most 260pt wide. A vertical NSStackView, native label intrinsic sizes, preferredMaxLayoutWidth and fittingSize determine height, with no manual cell-height slack or fixed row height. VoiceOver receives the same content.
 
@@ -63,4 +63,4 @@ Regression probes record show/close animation policy and verify ordering, late c
 
 ## Release evidence still required
 
-Actual cursor hit testing, compact visual layout, all language wrapping, screen-edge placement, quota refresh, menu close/reopen and identity changes require the user development-bundle checklist. Weekly prediction stays withheld. When a reset scenario cannot establish a trustworthy clock/counter pair, keep its prediction withheld.
+Actual cursor hit testing, compact visual layout, all language wrapping, screen-edge placement, quota refresh, menu close/reopen and identity changes require the user development-bundle checklist. Both standard windows now use the approved metadata-inference contract. When evidence suppresses a cycle or its clock/counter pair is invalid, retain qualitative copy. Real global-reset, same-deadline refill and restart scenarios require manual acceptance; mathematical/API fixtures are not backend-semantic proof.

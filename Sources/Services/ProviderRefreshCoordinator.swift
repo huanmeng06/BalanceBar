@@ -272,6 +272,69 @@ final class CodexResetObservationStore {
         defaults.set(data, forKey: key(providerID: providerID, accountKey: accountKey) + ".quotaEvidence")
     }
 
+    // Separate payload/key: never migrate, overwrite or reinterpret reset-event records.
+    private struct PredictionWindow: Codable {
+        let cycle: QuotaPredictionCycle
+        var lastRemaining: Double
+        var suppressed: Bool
+    }
+    private struct PredictionEntry: Codable {
+        var windows: [PredictionWindow] = []
+        var lastProcessedResetEventID: Date?
+        var lastSampleAt: Date?
+    }
+
+    /// Called at the accepted quota-response boundary on the coordinator's serial queue.
+    /// Missing/invalid individual windows retain prior state and yield no context;
+    /// the other valid window remains independent.
+    func updatePredictionContexts(providerID: String, accountKey: String,
+                                  windows: [OfficialQuotaWindow], now: Date) -> [QuotaPredictionContext] {
+        guard !accountKey.isEmpty, now.timeIntervalSince1970.isFinite else { return [] }
+        let storageKey = key(providerID: providerID, accountKey: accountKey) + ".predictionCycles"
+        var entry = defaults.data(forKey: storageKey).flatMap {
+            try? PropertyListDecoder().decode(PredictionEntry.self, from: $0)
+        } ?? PredictionEntry()
+        if let last = entry.lastSampleAt, now < last { return [] }
+        // The independent quota journal already applies the complete-snapshot reset rule.
+        // Announcement state/request success is deliberately not a prerequisite here.
+        if let evidence = loadQuotaEvidence(providerID: providerID, accountKey: accountKey),
+           evidence.state == .observed, let event = evidence.detectedAt,
+           event.timeIntervalSince1970.isFinite, event <= now,
+           entry.lastProcessedResetEventID.map({ event > $0 }) ?? true {
+            for index in entry.windows.indices { entry.windows[index].suppressed = true }
+            entry.lastProcessedResetEventID = event
+        }
+        var contexts: [QuotaPredictionContext] = []
+        for kind in [OfficialQuotaWindow.Kind.fiveHour, .sevenDay] {
+            let matches = windows.filter { $0.kind == kind }
+            guard matches.count == 1, let window = matches.first,
+                  OfficialQuotaUsagePace.make(for: window, now: now) != nil,
+                  let cycle = QuotaPredictionCycle(window: window) else { continue }
+            let index: Int
+            if let existing = entry.windows.firstIndex(where: { $0.cycle.kind == kind }) {
+                index = existing
+                if entry.windows[index].cycle != cycle {
+                    // Old/out-of-order cycle metadata cannot resurrect an earlier basis.
+                    guard cycle.resetAt > entry.windows[index].cycle.resetAt else { continue }
+                    entry.windows[index] = PredictionWindow(cycle: cycle, lastRemaining: window.remaining, suppressed: false)
+                } else {
+                    if window.remaining > entry.windows[index].lastRemaining {
+                        entry.windows[index].suppressed = true
+                    }
+                    entry.windows[index].lastRemaining = window.remaining
+                }
+            } else {
+                index = entry.windows.count
+                entry.windows.append(PredictionWindow(cycle: cycle, lastRemaining: window.remaining, suppressed: false))
+            }
+            contexts.append(QuotaPredictionContext(cycle: cycle,
+                inferredCycleStart: entry.windows[index].suppressed ? nil : OfficialQuotaUsagePrediction.inferredCycleStart(for: window)))
+        }
+        entry.lastSampleAt = now
+        if let data = try? PropertyListEncoder().encode(entry) { defaults.set(data, forKey: storageKey) }
+        return contexts
+    }
+
     private func key(providerID: String, accountKey: String) -> String {
         keyPrefix + providerID + "." + accountKey
     }
@@ -489,9 +552,11 @@ final class ProviderRefreshCoordinator {
                             guard let currentSource = self.repository.loadSummarySources(appType: client.appType).first(where: { $0.id == source.id && $0.isOfficial }),
                                   currentSource.officialAccessToken == source.officialAccessToken,
                                   source.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
-                            if let accountKey = credentials.accountKey {
-                                self.recordCodexQuotaEvidence(providerID: source.id, accountKey: accountKey, windows: response.output.windows)
-                            }
+                            let quotaNow = self.now()
+                            let predictionContexts = credentials.accountKey.map {
+                                self.recordCodexQuotaEvidence(providerID: source.id, accountKey: $0,
+                                    windows: response.output.windows, timestamp: quotaNow)
+                            } ?? []
                             self.updateQuickSwitchSummary(
                                 providerID: source.id,
                                 payload: .officialWindows(response.output.windows)
@@ -504,9 +569,11 @@ final class ProviderRefreshCoordinator {
                                     response.output.remaining,
                                     response.output.label,
                                     response.output.reset,
-                                    Date(),
+                                    quotaNow,
                                     windows: response.output.windows,
-                                    lunaReserve: response.output.lunaReserve
+                                    lunaReserve: response.output.lunaReserve,
+                                    quotaPredictionContexts: predictionContexts,
+                                    quotaPredictionAccountKey: credentials.accountKey
                                 )
                             )
                         }
@@ -678,9 +745,12 @@ final class ProviderRefreshCoordinator {
                 let isCurrentQuota = { generation.isCurrent() }
                 switch result {
                 case .success(let response):
+                    let quotaNow = self.now()
+                    let predictionContexts: [QuotaPredictionContext]
                     if client == .codex, let accountKey {
-                        self.recordCodexQuotaEvidence(providerID: providerID, accountKey: accountKey, windows: response.output.windows)
-                    }
+                        predictionContexts = self.recordCodexQuotaEvidence(providerID: providerID, accountKey: accountKey,
+                            windows: response.output.windows, timestamp: quotaNow)
+                    } else { predictionContexts = [] }
                     self.updateQuickSwitchSummary(
                         providerID: providerID,
                         payload: .officialWindows(response.output.windows)
@@ -701,11 +771,13 @@ final class ProviderRefreshCoordinator {
                                 response.output.remaining,
                                 response.output.label,
                                 response.output.reset,
-                                Date(),
+                                quotaNow,
                                 windows: response.output.windows,
                                 lunaReserve: response.output.lunaReserve,
                                 bankedReset: bankedReset,
-                                resetForecast: resolvedForecast
+                                resetForecast: resolvedForecast,
+                                quotaPredictionContexts: predictionContexts,
+                                quotaPredictionAccountKey: client == .codex ? accountKey : nil
                             ),
                             providerID: providerID,
                             client: client,
@@ -777,24 +849,28 @@ final class ProviderRefreshCoordinator {
 
     /// Official quota evidence is captured before any forecast/credit transport.
     /// The journal is account-local and never by itself publishes a reset status.
-    private func recordCodexQuotaEvidence(providerID: String, accountKey: String, windows: [OfficialQuotaWindow]) {
-        guard let sample = CodexResetQuotaSample.make(from: windows) else { return }
-        let key = observationCacheKey(providerID: providerID, accountKey: accountKey)
-        var evidence = codexQuotaEvidence[key]
-            ?? codexResetObservationStore.loadQuotaEvidence(providerID: providerID, accountKey: accountKey)
-            ?? CodexResetObservation()
-        let timestamp = now()
-        if let previous = evidence.previousSample, previous.sevenDayResetAt <= timestamp {
-            // Preserve the actual rollover comparison. Drop an expired baseline
-            // only when this sample cannot establish a complete cycle transition.
-            let completesTransition = evidence.observedConsumption && sample.isComplete
-                && sample.sevenDayResetAt.timeIntervalSince(previous.sevenDayResetAt) >= CodexResetObservation.minimumResetCycleJump
-                && sample.sevenDayResetAt > timestamp
-            if !completesTransition { evidence = CodexResetObservation() }
+    private func recordCodexQuotaEvidence(providerID: String, accountKey: String,
+                                          windows: [OfficialQuotaWindow], timestamp: Date) -> [QuotaPredictionContext] {
+        guard timestamp.timeIntervalSince1970.isFinite else { return [] }
+        if let sample = CodexResetQuotaSample.make(from: windows) {
+            let key = observationCacheKey(providerID: providerID, accountKey: accountKey)
+            var evidence = codexQuotaEvidence[key]
+                ?? codexResetObservationStore.loadQuotaEvidence(providerID: providerID, accountKey: accountKey)
+                ?? CodexResetObservation()
+            if let previous = evidence.previousSample, previous.sevenDayResetAt <= timestamp {
+                // Preserve the actual rollover comparison. Drop an expired baseline
+                // only when this sample cannot establish a complete cycle transition.
+                let completesTransition = evidence.observedConsumption && sample.isComplete
+                    && sample.sevenDayResetAt.timeIntervalSince(previous.sevenDayResetAt) >= CodexResetObservation.minimumResetCycleJump
+                    && sample.sevenDayResetAt > timestamp
+                if !completesTransition { evidence = CodexResetObservation() }
+            }
+            evidence.observeLatestQuotaEvent(sample, now: timestamp)
+            codexQuotaEvidence[key] = evidence
+            codexResetObservationStore.saveQuotaEvidence(providerID: providerID, accountKey: accountKey, evidence: evidence)
         }
-        evidence.observeLatestQuotaEvent(sample, now: timestamp)
-        codexQuotaEvidence[key] = evidence
-        codexResetObservationStore.saveQuotaEvidence(providerID: providerID, accountKey: accountKey, evidence: evidence)
+        return codexResetObservationStore.updatePredictionContexts(
+            providerID: providerID, accountKey: accountKey, windows: windows, now: timestamp)
     }
 
     private func resetCodexQuotaEvidenceBaseline(providerID: String, accountKey: String, windows: [OfficialQuotaWindow], clearOnMissingSample: Bool = false) {

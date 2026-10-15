@@ -161,7 +161,7 @@ struct CodexBankedReset: Equatable {
 }
 
 struct OfficialQuotaWindow: Equatable {
-    enum Kind: Int, Equatable, Hashable {
+    enum Kind: Int, Equatable, Hashable, Codable {
         case fiveHour
         case sevenDay
         case other
@@ -258,11 +258,13 @@ struct OfficialQuotaUsagePace: Equatable {
         for window: OfficialQuotaWindow,
         now: Date = Date()
     ) -> Self? {
-        guard window.kind == .fiveHour || window.kind == .sevenDay,
+        guard now.timeIntervalSince1970.isFinite,
+              window.kind == .fiveHour || window.kind == .sevenDay,
               let duration = window.durationSeconds,
               duration.isFinite,
               duration > 0,
               let resetAt = window.resetAt,
+              resetAt.timeIntervalSince1970.isFinite,
               resetAt > now,
               window.remaining.isFinite,
               (0...100).contains(window.remaining) else {
@@ -292,9 +294,31 @@ struct OfficialQuotaUsagePace: Equatable {
     }
 }
 
-/// Average use since a verified cycle start, never a recent activity rate.
-/// Callers must supply a trustworthy start; a duration/reset pair alone is
-/// not sufficient evidence for every quota window or reset mechanism.
+/// A server window identity, independent of display labels or rounded quota.
+struct QuotaPredictionCycle: Codable, Equatable {
+    let kind: OfficialQuotaWindow.Kind
+    let durationSeconds: TimeInterval
+    let resetAt: Date
+
+    init?(window: OfficialQuotaWindow) {
+        guard let duration = window.durationSeconds,
+              (window.kind == .fiveHour && duration == 18_000)
+                || (window.kind == .sevenDay && duration == 604_800),
+              let reset = window.resetAt, reset.timeIntervalSince1970.isFinite else { return nil }
+        kind = window.kind
+        durationSeconds = duration
+        resetAt = reset
+    }
+}
+
+struct QuotaPredictionContext: Equatable {
+    let cycle: QuotaPredictionCycle
+    /// Inferred from server resetAt − duration, never a local detection/request time.
+    let inferredCycleStart: Date?
+}
+
+/// Average use since the supplied, eligible metadata-inferred cycle start.
+/// This is a linear reference, never a recent activity rate or a verified reset instant.
 enum OfficialQuotaUsagePrediction: Equatable {
     case runsOut(after: TimeInterval)
     case lastsUntilReset
@@ -304,7 +328,8 @@ enum OfficialQuotaUsagePrediction: Equatable {
         cycleStart: Date?,
         now: Date = Date()
     ) -> Self? {
-        guard OfficialQuotaUsagePace.make(for: window, now: now) != nil,
+        guard QuotaPredictionCycle(window: window) != nil,
+              OfficialQuotaUsagePace.make(for: window, now: now) != nil,
               let cycleStart, cycleStart.timeIntervalSince1970.isFinite,
               let duration = window.durationSeconds,
               let resetAt = window.resetAt,
@@ -319,14 +344,11 @@ enum OfficialQuotaUsagePrediction: Equatable {
             ? .runsOut(after: secondsRemaining) : .lastsUntilReset
     }
 
-    /// The documented Codex five-hour window starts with the first request.
-    /// Weekly/special-reset starts remain unverified; do not infer them here.
-    /// See docs/validation/issue-500-pace-prediction.md for evidence and limits.
-    static func verifiedCycleStart(for window: OfficialQuotaWindow) -> Date? {
-        guard window.kind == .fiveHour,
-              let duration = window.durationSeconds, duration == 18_000,
-              let resetAt = window.resetAt else { return nil }
-        return resetAt.addingTimeInterval(-duration)
+    /// Metadata inference for the two standard Codex windows. Qualification and
+    /// refill/reset invalidation belong to the account-scoped observation store.
+    static func inferredCycleStart(for window: OfficialQuotaWindow) -> Date? {
+        guard let cycle = QuotaPredictionCycle(window: window) else { return nil }
+        return cycle.resetAt.addingTimeInterval(-cycle.durationSeconds)
     }
 }
 
@@ -884,6 +906,8 @@ struct Snapshot {
     let websiteURL: URL?
     let balanceProgressPercentage: Double?
     let officialQuotaWindows: [OfficialQuotaWindow]
+    let quotaPredictionContexts: [QuotaPredictionContext]
+    let quotaPredictionAccountKey: String?
     let lunaReserve: LunaReserveQuota?
     let bankedReset: CodexBankedReset?
     let resetForecast: CodexResetForecast
@@ -911,7 +935,9 @@ struct Snapshot {
         lunaReserve: LunaReserveQuota? = nil,
         bankedReset: CodexBankedReset? = nil,
         resetForecast: CodexResetForecast = .unavailable,
-        menuBarUsesLunaReserve: Bool = false
+        menuBarUsesLunaReserve: Bool = false,
+        quotaPredictionContexts: [QuotaPredictionContext] = [],
+        quotaPredictionAccountKey: String? = nil
     ) {
         self.kind = kind
         self.provider = provider
@@ -922,6 +948,8 @@ struct Snapshot {
         self.websiteURL = websiteURL
         self.balanceProgressPercentage = balanceProgressPercentage
         self.officialQuotaWindows = officialQuotaWindows
+        self.quotaPredictionContexts = quotaPredictionContexts
+        self.quotaPredictionAccountKey = quotaPredictionAccountKey
         self.selectedOfficialQuotaWindowKind = selectedOfficialQuotaWindowKind
         self.lunaReserve = lunaReserve
         self.bankedReset = bankedReset
@@ -950,7 +978,9 @@ struct Snapshot {
         windows: [OfficialQuotaWindow] = [],
         lunaReserve: LunaReserveQuota? = nil,
         bankedReset: CodexBankedReset? = nil,
-        resetForecast: CodexResetForecast = .unavailable
+        resetForecast: CodexResetForecast = .unavailable,
+        quotaPredictionContexts: [QuotaPredictionContext] = [],
+        quotaPredictionAccountKey: String? = nil
     ) -> Snapshot {
         let fallbackWindows = windows.isEmpty
             ? [OfficialQuotaWindow(
@@ -983,7 +1013,9 @@ struct Snapshot {
             officialQuotaWindows: resolvedWindows,
             lunaReserve: lunaReserve,
             bankedReset: bankedReset,
-            resetForecast: resetForecast
+            resetForecast: resetForecast,
+            quotaPredictionContexts: quotaPredictionContexts,
+            quotaPredictionAccountKey: quotaPredictionAccountKey
         )
     }
 
@@ -1193,7 +1225,9 @@ struct Snapshot {
             lunaReserve: lunaReserve,
             bankedReset: bankedReset,
             resetForecast: resetForecast,
-            menuBarUsesLunaReserve: false
+            menuBarUsesLunaReserve: false,
+            quotaPredictionContexts: quotaPredictionContexts,
+            quotaPredictionAccountKey: quotaPredictionAccountKey
         )
     }
 
@@ -1218,7 +1252,9 @@ struct Snapshot {
             lunaReserve: lunaReserve,
             bankedReset: bankedReset,
             resetForecast: resetForecast,
-            menuBarUsesLunaReserve: true
+            menuBarUsesLunaReserve: true,
+            quotaPredictionContexts: quotaPredictionContexts,
+            quotaPredictionAccountKey: quotaPredictionAccountKey
         )
     }
 
