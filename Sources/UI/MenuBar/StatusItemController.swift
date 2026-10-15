@@ -6215,6 +6215,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 needsPlacement = true
             }
             updateAggregationNotes(in: record.card, context: context)
+            updateOverviewQuotaDetail(in: record.card, context: context)
             updateBalanceSubtitle(in: record.card, context: context)
             alignSingleLineBalance(in: record.card, snapshot: context.snapshot)
             record.card.frame.origin = .zero
@@ -6349,6 +6350,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             tag.layoutSubtreeIfNeeded()
             x += widths[index] + 4
         }
+    }
+
+    private func updateOverviewQuotaDetail(in card: NSView, context: OverviewCardContext) {
+        guard let host = card as? MenuHoverLinkHostView,
+              let layout = host.overviewLayout,
+              let detail = descendantViews(of: card, as: AccountMarqueeView.self).first(where: {
+                  $0.identifier?.rawValue == "overview.quotaDetail"
+              }) else { return }
+        let amountText = numericSamples(for: context).first.map { overviewNumericPlan(for: $0).layoutReservationText }
+            ?? context.snapshot.overviewLargeAmount
+        let amountFont = NSFont.monospacedDigitSystemFont(
+            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+            weight: .semibold
+        )
+        detail.frame = overviewMarqueeFrame(
+            layout.quotaDetail,
+            avoidingAmountFrame: layout.amount,
+            amountText: amountText,
+            amountFont: amountFont,
+            minimumAmountGap: context.snapshot.kind == .balance ? 12 : 0
+        )
+        detail.updateText(context.snapshot.overviewQuotaDetail, preserveScrollPosition: false)
     }
 
     private func reconcileBalanceLayout(in host: MenuHoverLinkHostView, next: OpenCodexCardFrames) {
