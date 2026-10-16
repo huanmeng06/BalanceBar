@@ -3,6 +3,23 @@ import XCTest
 @testable import BalanceBar
 
 final class StatusItemControllerTests: XCTestCase {
+    func testRechargeTooltipIncludesElapsedHoursAndMinutes() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .english
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-16T03:23:00Z"))
+        let zone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let text = StatusItemController.balanceRechargeTooltipText(startDate: start,
+            now: start.addingTimeInterval(6 * 3600 + 12 * 60), timeZone: zone, locale: Locale(identifier: "en_US"))
+        XCTAssertTrue(text.hasPrefix("10/16 03:23 · "))
+        XCTAssertTrue(text.contains("6 hours"))
+        XCTAssertTrue(text.contains("12 minutes"))
+        XCTAssertTrue(text.hasSuffix(" ago"))
+        let future = StatusItemController.balanceRechargeTooltipText(startDate: start,
+            now: start.addingTimeInterval(-60), timeZone: zone, locale: Locale(identifier: "en_US"))
+        XCTAssertFalse(future.contains("-"))
+    }
+
     /// The status item button must carry an image at all times (see
     /// `StatusItemController.placeholderButtonImage`), and that image must
     /// stay empty so it renders no pixels and does not affect item layout.

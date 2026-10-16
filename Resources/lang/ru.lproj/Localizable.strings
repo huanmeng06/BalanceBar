@@ -531,3 +531,5 @@
 
 "balance.recharge.last" = "последнего пополнения";
 "balance.used_since_recharge" = "С %1$@ использовано %2$@";
+
+"balance.elapsed.ago" = "%1$@ назад";

@@ -259,3 +259,32 @@ XCTest run is claimed for this three-line production change.
 等候数次时间更新，气泡不应消失或反复弹出；首次出现有动画，鼠标移出立即关闭。
 启用减少动态效果后不应播放弹出动画；账号变化不能继续显示旧邮箱。
 充值气泡原样保留。实际 GUI/动画、白屏 P0 仍待用户验收。
+
+
+## Recharge tooltip elapsed-time follow-up
+
+The last-recharge bubble retains its title and adds a second-line value such as
+`10/16 03:23 · 6 hours, 12 minutes ago`. Elapsed time is rounded down to whole
+minutes, future timestamps clamp to zero, and the absolute timestamp uses the
+application display time zone. System duration formatting plus a localized
+suffix covers all 12 application languages (522 keys).
+
+Elapsed content is resolved when the popover opens. Periodic card/timestamp
+updates keep the absolute hint identity unchanged and do not dismiss the open
+bubble; opening it again computes current elapsed time. Both direct and
+aggregation balance cards share this implementation. The preceding email
+continuity/animation fix remains in the same branch.
+
+Validation: StatusItemControllerTests, DashboardComponentsTests and
+LocalizationTests **185/185 PASS**, including deterministic six-hour/twelve-minute
+and future-time cases. Log `/private/tmp/issue493-elapsed-tooltip-tests-final.log`.
+An initial compile referenced the wrong locale owner and the first test run
+rejected unnumbered localization placeholders; both were corrected before the
+successful final run. Localization probe PASS (522 keys / 12 languages),
+unsigned Debug compilation via targeted XCTest PASS, diff check PASS.
+No new full local XCTest or Ready Full CI is claimed for these tooltip changes.
+
+如何人工测试：直连与聚合余额卡分别悬浮“上次充值”，确认标题仍在，正文为
+“10/16 03:23 · 6 小时 12 分钟前”这类日期与距今时长。保持悬浮经过刷新，
+弹窗不能闪断；移出再进入时距今时长应重新计算。切换语言后使用对应语言，
+邮箱气泡仍有弹出动画且不被相同内容刷新打断。GUI/白屏 P0 仍待人工。

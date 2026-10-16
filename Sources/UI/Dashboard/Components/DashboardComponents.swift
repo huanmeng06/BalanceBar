@@ -568,6 +568,8 @@ class HoverLinkTextField: NSTextField {
     var decoratesOnHover = true
     var underlinesHoverPhrase = false
     private(set) var textTooltipTitle: String?
+    /// Resolve changing elapsed time only when opening, preserving an open bubble.
+    var textTooltipTextProvider: (() -> String)?
 
     func updateTextTooltip(title: String, text: String) {
         guard textTooltipTitle != title || hoverHint != text else { return }
@@ -889,7 +891,7 @@ class HoverLinkTextField: NSTextField {
         if let content = forecastTooltipContent {
             controller = DashboardForecastTooltipViewController(content: content)
         } else {
-            controller = DashboardTextTooltipViewController(text: hoverHint, title: textTooltipTitle)
+            controller = DashboardTextTooltipViewController(text: textTooltipTextProvider?() ?? hoverHint, title: textTooltipTitle)
         }
         controller.loadViewIfNeeded()
         popover.contentViewController = controller

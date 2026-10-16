@@ -531,3 +531,5 @@
 
 "balance.recharge.last" = "마지막 충전";
 "balance.used_since_recharge" = "%1$@ 이후 사용액 %2$@";
+
+"balance.elapsed.ago" = "%1$@ 전";

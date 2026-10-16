@@ -531,3 +531,5 @@
 
 "balance.recharge.last" = "last top-up";
 "balance.used_since_recharge" = "Since %1$@: %2$@ used";
+
+"balance.elapsed.ago" = "%1$@ ago";

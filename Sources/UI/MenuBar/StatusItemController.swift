@@ -6518,11 +6518,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             link.updateTextTooltip(title: tr(.keyBalanceLastRecharge),
                 text: BalanceRecharge.dateText(for: startDate, timeZone: settings.displayTimeZone) + " "
                     + BalanceRecharge.clockText(for: startDate, timeZone: settings.displayTimeZone))
+            let timeZone = settings.displayTimeZone
+            link.textTooltipTextProvider = {
+                Self.balanceRechargeTooltipText(startDate: startDate, timeZone: timeZone)
+            }
             (card as? MenuHoverLinkHostView)?.track(link)
             label.toolTip = nil
             link.setAccessibilityHelp(tooltip)
         } else { label.toolTip = tooltip }
         label.setAccessibilityLabel(tooltip)
+    }
+
+    static func balanceRechargeTooltipText(startDate: Date, now: Date = Date(), timeZone: TimeZone, locale: Locale = TimeZoneCityCatalog.locale) -> String {
+        let formatter = DateComponentsFormatter()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        calendar.timeZone = timeZone
+        formatter.calendar = calendar
+        formatter.allowedUnits = [.hour, .minute]
+        formatter.unitsStyle = .full
+        formatter.zeroFormattingBehavior = .dropLeading
+        let minutes = max(0, floor(now.timeIntervalSince(startDate) / 60))
+        let duration = formatter.string(from: minutes * 60) ?? "0"
+        return BalanceRecharge.dateText(for: startDate, now: now, timeZone: timeZone) + " "
+            + BalanceRecharge.clockText(for: startDate, timeZone: timeZone) + " · "
+            + tr(.keyBalanceElapsedAgo, arguments: [duration])
     }
 
     private func updateAggregationTimestamp(in card: NSView, display: AggregatedProviderDisplay) {

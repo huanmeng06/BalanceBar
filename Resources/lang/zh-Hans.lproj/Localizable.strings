@@ -531,3 +531,5 @@
 
 "balance.recharge.last" = "上次充值";
 "balance.used_since_recharge" = "自%1$@已用 %2$@";
+
+"balance.elapsed.ago" = "%1$@前";

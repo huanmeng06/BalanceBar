@@ -531,3 +531,5 @@
 
 "balance.recharge.last" = "letzter Aufladung";
 "balance.used_since_recharge" = "Seit %1$@ verbraucht: %2$@";
+
+"balance.elapsed.ago" = "vor %1$@";
