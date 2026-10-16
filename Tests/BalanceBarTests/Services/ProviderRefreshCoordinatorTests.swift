@@ -3094,6 +3094,89 @@ extension ProviderRefreshCoordinatorTests {
     }
 }
 
+extension ProviderRefreshCoordinatorTests {
+    func testStandardProviderIgnoresLateResponseAfterAPIKeyChange() throws {
+        let oldStarted = expectation(description: "old key request started")
+        let rendered = expectation(description: "new key balance rendered")
+        let releaseOld = DispatchSemaphore(value: 0)
+        defer { releaseOld.signal() }
+        DelayedBalanceURLProtocol.setHandler { request in
+            if request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-key" {
+                oldStarted.fulfill()
+                return .init(data: Data(#"{"balance":"3","quota":{"unit":"USD"}}"#.utf8), statusCode: 200, delayUntil: releaseOld)
+            }
+            return DelayedBalanceURLProtocol.success(amount: "20")
+        }
+        let lock = NSLock()
+        var snapshots: [Snapshot] = []
+        var stored: [(String, Snapshot)] = []
+        var notifications: [Snapshot] = []
+        var actions = makeActions()
+        actions = ProviderRefreshActions(
+            currentProvider: actions.currentProvider,
+            isActiveClient: actions.isActiveClient,
+            render: { snapshot in
+                lock.lock(); snapshots.append(snapshot); lock.unlock(); rendered.fulfill()
+            },
+            storeClientSnapshot: { _, providerID, snapshot in
+                lock.lock(); stored.append((providerID, snapshot)); lock.unlock()
+            },
+            quickSwitchSummaryChanged: { _ in },
+            notificationSnapshot: { _, _, snapshot in
+                lock.lock(); notifications.append(snapshot); lock.unlock()
+            }
+        )
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: actions
+        )
+        let original = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshStandardProvider(current: original, client: .codex, forceBalance: true, switched: false)
+        wait(for: [oldStarted], timeout: 2)
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET meta=replace(meta, 'fixture-key', 'new-key'), settings_config=replace(settings_config, 'fixture-key', 'new-key') WHERE id='codex-custom'")
+        }
+        let replacement = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        XCTAssertNotEqual(replacement.configurationRevision, original.configurationRevision)
+        coordinator.refreshStandardProvider(current: replacement, client: .codex, forceBalance: true, switched: false)
+        wait(for: [rendered], timeout: 2)
+        releaseOld.signal()
+        waitForCoordinator(coordinator)
+        lock.lock(); let published = snapshots; let cached = stored; let notified = notifications; lock.unlock()
+        XCTAssertEqual(published.map(\.amount), [20])
+        XCTAssertEqual(cached.map(\.1.amount), [20])
+        XCTAssertEqual(notified.map(\.amount), [20])
+        XCTAssertEqual(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .defaultValue, client: .codex)["codex-custom"], "$20.00")
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+    }
+
+    func testQuickSwitchSummaryIsClearedWhenConfigurationRevisionChangesAndRefreshFails() throws {
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "3") }
+        let changed = DispatchSemaphore(value: 0)
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            actions: makeActions { _ in changed.signal() }
+        )
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-custom"])
+        waitForEvent(changed)
+        XCTAssertEqual(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .defaultValue, client: .codex)["codex-custom"], "$3.00")
+        try withDatabase { db in
+            try execute(db, sql: """
+                UPDATE providers SET settings_config='{"api_key":"new-key","base_url":"https://codex.provider.test"}',
+                    meta='{"usage_script":{"enabled":true,"accessToken":"new-key","baseUrl":"https://codex.provider.test","code":"url: `{{baseUrl}}/usage`"}}'
+                WHERE id='codex-custom'
+                """)
+        }
+        DelayedBalanceURLProtocol.setHandler { _ in
+            .init(data: Data(), statusCode: 401)
+        }
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-custom"], configurationChanged: true)
+        waitForCoordinator(coordinator)
+        XCTAssertNil(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .defaultValue, client: .codex)["codex-custom"])
+    }
+}
+
 
 extension ProviderRefreshCoordinatorTests {
     func testSharedQueryRejectedLateResponseDoesNotPublishOrNotify() throws {
@@ -3290,6 +3373,47 @@ extension ProviderRefreshCoordinatorTests {
         let inactive = try JSONSerialization.data(withJSONObject: ["apps": ["codex": ["mode": "direct"]]])
         try inactive.write(to: reader.stateURL, options: .atomic)
         let exited = expectation(description: "confirmed direct clears aggregation")
+        coordinator.performAsync {
+            XCTAssertFalse(coordinator.refreshAggregation(reader: reader, force: false))
+            XCTAssertTrue(latest.isEmpty)
+            XCTAssertFalse(blocked)
+            exited.fulfill()
+        }
+        wait(for: [exited], timeout: 3)
+        coordinator.stopAggregation()
+    }
+
+    func testConfirmedMissingAggregationStateExitsAfterAbsenceWindow() throws {
+        try addAggregationMembers(1)
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let url = temporaryDirectoryURL.appendingPathComponent("live-state.json")
+        try JSONSerialization.data(withJSONObject: ["apps": ["codex": ["mode": "proxy", "attached": true,
+            "proxy_route": "codex-custom", "stack": ["enabled": true, "members": ["member-0"]]]]]).write(to: url, options: .atomic)
+        let reader = CCSwitchAggregationRepository(repository: repository, stateURL: url, isRunning: { true }, now: { clock.now })
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "3") }
+        let ready = expectation(description: "trusted members")
+        var latest: [AggregatedProviderDisplay] = []
+        var blocked = false
+        var announced = false
+        let coordinator = aggregationCoordinator { displays, protection in
+            latest = displays; blocked = protection
+            if displays.count == 2 && displays.allSatisfy({ $0.status == .fresh }) && !announced {
+                announced = true; ready.fulfill()
+            }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [ready], timeout: 3)
+        try FileManager.default.removeItem(at: url)
+        let missing = expectation(description: "transient missing retains members")
+        coordinator.performAsync {
+            XCTAssertTrue(coordinator.refreshAggregation(reader: reader, force: false))
+            XCTAssertEqual(latest.count, 2)
+            XCTAssertTrue(blocked)
+            missing.fulfill()
+        }
+        wait(for: [missing], timeout: 3)
+        clock.advance(by: CCSwitchAggregationRepository.confirmedAbsenceInterval)
+        let exited = expectation(description: "confirmed absence clears aggregation")
         coordinator.performAsync {
             XCTAssertFalse(coordinator.refreshAggregation(reader: reader, force: false))
             XCTAssertTrue(latest.isEmpty)

@@ -4056,6 +4056,101 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testNewSameNameMemberInheritsMergedPartitionUntilDifferentBalancesConfirm() {
+        let start = Date()
+        var grouping = AggregationWalletGrouping()
+        func peers(_ amounts: [Double], offset: Double, fetched: [TimeInterval]? = nil, intervals: [Int]? = nil,
+                   loading: IndexSet = []) -> [AggregatedProviderDisplay] {
+            let fetched = fetched ?? Array(repeating: offset, count: amounts.count)
+            return amounts.indices.map { index in
+                let old = sharedWalletInput().aggregatedProviders[index]
+                let interval = intervals?[index] ?? 5
+                let query = BalanceQuery(
+                    url: old.entry.source.query!.url, websiteURL: old.entry.source.query!.websiteURL,
+                    apiKey: old.entry.source.query!.apiKey, intervalMinutes: interval, timeoutSeconds: 10,
+                    isRightCode: false, subscriptionPrefix: "/codex", nativeBalanceProvider: nil, isNewAPI: false,
+                    additionalHeaders: [:]
+                )
+                let source = ProviderSummarySource(
+                    id: old.entry.providerID, name: old.entry.source.name, isOfficial: false, query: query,
+                    officialAccessToken: nil, notes: old.entry.source.notes
+                )
+                let date = start.addingTimeInterval(fetched[index])
+                if loading.contains(index) {
+                    return AggregatedProviderDisplay(
+                        entry: .init(source: source, role: old.entry.role, displayOrder: old.entry.displayOrder),
+                        identity: old.identity, snapshot: .providerError("tokenshop", reason: "loading", cachedBalance: nil),
+                        account: nil, status: .loading, reason: nil, fetchedAt: nil
+                    )
+                }
+                return AggregatedProviderDisplay(
+                    entry: .init(source: source, role: old.entry.role, displayOrder: old.entry.displayOrder),
+                    identity: old.identity, snapshot: .balance("tokenshop", amounts[index], "USD", query.websiteURL, date),
+                    account: nil, status: .fresh, reason: nil, fetchedAt: date
+                )
+            }
+        }
+        XCTAssertEqual(grouping.cards(peers([3, 3], offset: 0), now: start).count, 1)
+        XCTAssertEqual(grouping.cards(peers([3, 3, 3], offset: 1, loading: [2]), now: start.addingTimeInterval(1)).count, 1)
+        XCTAssertEqual(grouping.cards(peers([3, 3, 3], offset: 2), now: start.addingTimeInterval(2)).first?.groupedProviderIDs?.count, 3)
+        XCTAssertEqual(grouping.cards(peers([3, 3, 9], offset: 3), now: start.addingTimeInterval(3)).count, 1)
+        let split = grouping.cards(peers([3, 3, 9], offset: 4), now: start.addingTimeInterval(4))
+        XCTAssertEqual(split.count, 2)
+        XCTAssertEqual(Set(split.map { $0.groupedProviderIDs?.count ?? 0 }), [2, 1])
+    }
+
+    @MainActor
+    func testSplitSameNameGroupsKeepSeparateIdentitiesWhenAThirdMemberJoins() {
+        let start = Date()
+        var grouping = AggregationWalletGrouping()
+        func peers(_ amounts: [Double], offset: Double) -> [AggregatedProviderDisplay] {
+            amounts.indices.map { index in
+                let old = sharedWalletInput().aggregatedProviders[index]
+                let date = start.addingTimeInterval(offset)
+                return AggregatedProviderDisplay(
+                    entry: old.entry, identity: old.identity,
+                    snapshot: .balance("tokenshop", amounts[index], "USD", old.entry.source.query?.websiteURL, date),
+                    account: nil, status: .fresh, reason: nil, fetchedAt: date
+                )
+            }
+        }
+        XCTAssertEqual(grouping.cards(peers([3, 9], offset: 0), now: start).count, 1)
+        XCTAssertEqual(grouping.cards(peers([3, 9], offset: 1), now: start.addingTimeInterval(1)).count, 2)
+        XCTAssertEqual(grouping.cards(peers([3, 9, 3], offset: 2), now: start.addingTimeInterval(2)).count, 3)
+        XCTAssertEqual(grouping.cards(peers([3, 9, 3], offset: 3), now: start.addingTimeInterval(3)).count, 2)
+    }
+
+    @MainActor
+    func testDifferentRefreshIntervalsStillConfirmASplitWithoutAThirtySecondWindow() {
+        let start = Date()
+        var grouping = AggregationWalletGrouping()
+        func peers(_ amounts: [Double], fetched: [TimeInterval]) -> [AggregatedProviderDisplay] {
+            amounts.indices.map { index in
+                let old = sharedWalletInput().aggregatedProviders[index]
+                let query = BalanceQuery(
+                    url: old.entry.source.query!.url, websiteURL: old.entry.source.query!.websiteURL,
+                    apiKey: old.entry.source.query!.apiKey, intervalMinutes: index == 0 ? 1 : 30, timeoutSeconds: 10,
+                    isRightCode: false, subscriptionPrefix: "/codex", nativeBalanceProvider: nil, isNewAPI: false,
+                    additionalHeaders: [:]
+                )
+                let source = ProviderSummarySource(
+                    id: old.entry.providerID, name: old.entry.source.name, isOfficial: false, query: query,
+                    officialAccessToken: nil, notes: old.entry.source.notes
+                )
+                let date = start.addingTimeInterval(fetched[index])
+                return AggregatedProviderDisplay(
+                    entry: .init(source: source, role: old.entry.role, displayOrder: old.entry.displayOrder),
+                    identity: old.identity, snapshot: .balance("tokenshop", amounts[index], "USD", query.websiteURL, date),
+                    account: nil, status: .fresh, reason: nil, fetchedAt: date
+                )
+            }
+        }
+        XCTAssertEqual(grouping.cards(peers([3, 9], fetched: [0, 0]), now: start).count, 1)
+        let now = start.addingTimeInterval(1800)
+        XCTAssertEqual(grouping.cards(peers([3, 9], fetched: [1740, 1800]), now: now).count, 2)
+    }
+
+    @MainActor
     func testDirectSameNameProviderIDsHaveDifferentNumericIdentity() throws {
         let controller = makeController()
         defer { controller.teardown() }

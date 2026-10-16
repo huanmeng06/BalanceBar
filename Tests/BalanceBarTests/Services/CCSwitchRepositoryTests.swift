@@ -296,6 +296,30 @@ extension CCSwitchRepositoryTests {
         XCTAssertTrue(reader.blocksQuickSwitch())
     }
 
+    func testAggregationConfirmedAbsenceClearsTrustedStateAfterWindow() throws {
+        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        var payload: Data? = try aggregationState()
+        let reader = CCSwitchAggregationRepository(
+            repository: repository,
+            isRunning: { true },
+            read: { _ in
+                guard let payload else { throw CocoaError(.fileReadNoSuchFile) }
+                return payload
+            },
+            now: { now }
+        )
+        guard case .active = reader.load() else { return XCTFail("expected aggregation") }
+        XCTAssertTrue(reader.blocksQuickSwitch())
+        payload = nil
+        guard case .untrusted = reader.load() else { return XCTFail("transient missing stays untrusted") }
+        XCTAssertTrue(reader.blocksQuickSwitch())
+        now.addTimeInterval(CCSwitchAggregationRepository.confirmedAbsenceInterval)
+        guard case .inactive = reader.load() else { return XCTFail("confirmed absence becomes inactive") }
+        XCTAssertFalse(reader.blocksQuickSwitch())
+        payload = try aggregationState(mode: "direct")
+        guard case .inactive = reader.load() else { return XCTFail("direct remains inactive") }
+    }
+
     func testAggregationQuickSwitchGuardAllowsLegacyAndOrdinaryModes() throws {
         let missing = CCSwitchAggregationRepository(repository: repository, read: { _ in throw CocoaError(.fileReadNoSuchFile) })
         XCTAssertFalse(missing.blocksQuickSwitch())

@@ -5,25 +5,32 @@ struct ProviderBalanceSnapshotCache {
     private struct Key: Hashable {
         let clientID: String
         let providerID: String
+        let configurationRevision: String
     }
 
     private var snapshots: [Key: Snapshot] = [:]
 
-    mutating func store(_ snapshot: Snapshot, clientID: String, providerID: String) {
+    mutating func store(
+        _ snapshot: Snapshot,
+        clientID: String,
+        providerID: String,
+        configurationRevision: String = ""
+    ) {
         guard snapshot.kind == .balance else { return }
-        snapshots[Key(clientID: clientID, providerID: providerID)] = snapshot
+        snapshots[Key(clientID: clientID, providerID: providerID, configurationRevision: configurationRevision)] = snapshot
     }
 
     func errorSnapshot(
         clientID: String,
         providerID: String,
         providerName: String,
-        reason: String
+        reason: String,
+        configurationRevision: String = ""
     ) -> Snapshot {
         Snapshot.providerError(
             providerName,
             reason: reason,
-            cachedBalance: snapshots[Key(clientID: clientID, providerID: providerID)]
+            cachedBalance: snapshots[Key(clientID: clientID, providerID: providerID, configurationRevision: configurationRevision)]
         )
     }
 }

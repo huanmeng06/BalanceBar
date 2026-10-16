@@ -1,3 +1,30 @@
+# Issue #493 / PR #506: identity and grouping follow-up
+
+Review baseline: `6e7b3578fb60e79406156c7f861d397cdaabd1f0`.
+This round keeps the original worktree, branch and Draft PR. No version change,
+merge, new Issue/task, independent review or interactive GUI test is included.
+
+## Follow-up disposition
+
+| Item | Implementation / evidence |
+| --- | --- |
+| B1 | A newly added same-name, same-currency member inherits the sole existing partition. Already-split groups keep their identities, and the newcomer stays separate until two aligned rounds confirm a new partition. |
+| B2 | Standard balance/official fetches capture `configurationRevision`, cancel the previous in-flight request for that Provider, and drop late results before ledger, notification, cache, Quick Switch summary and render. |
+| B3 | Balance snapshot cache keys include `configurationRevision`. An error for a new key cannot reuse the previous account's cached amount. |
+| B4 | Deleted sources notify and drop their Quick Switch summaries. A changed configuration revision drops the old payload silently, then a failed replacement fetch keeps it cleared. Cadence reset and name-only events do not wake waiters before the new result. |
+| B5 | Direct-card identity/notes use the current CC Switch choice, not the last successful snapshot. |
+| B6 | Split confirmation uses each member's own refresh window instead of a shared 30-second span. |
+| B7 | After known aggregation, a missing state file or missing `apps.codex` stays untrusted for 3 seconds, then becomes inactive and releases Quick Switch protection. Transient unreadable/corrupt state remains untrusted. |
+
+Local verification for this follow-up used `/private/tmp/BalanceBar-Issue493-DerivedData`.
+
+- Focused identity/cadence tests: 7/7 PASS (`/private/tmp/issue493-block-fix2.log`).
+- Broader classes: ProviderRefreshCoordinatorTests, CCSwitchRepositoryTests, DomainModelsTests, StatusItemControllerTests, 228/228 PASS (`/private/tmp/issue493-block-broader2.log`).
+- Unsigned Debug build PASS (`/private/tmp/issue493-debug-build.log`).
+- Localization probes PASS (521 keys / 12 languages).
+- Full serial XCTest: **1438 / 1 skip / 0 failures** (`/private/tmp/issue493-full-serial2.log`). An earlier full run had a 0.02s deferred-rebuild flake; the isolated method and this rerun both passed.
+
+
 # Issue #493 / PR #506: data and lifecycle rework
 
 Review baseline: `00aa44828aa62164b1b43dacc7e7a0e576c169dd`.
@@ -24,8 +51,9 @@ merge, new Issue/task, independent review or interactive GUI test is included.
 - Exact nonblank names; case and whitespace remain significant. Official cards
   are independent. Currencies are separate, and balance equality uses integer cents.
 - A confirmation round requires all peers to be successful/fresh, every peer to
-  have a new fetched timestamp, timestamps to span at most 30 seconds, and no
-  sample to be older than 120 seconds. Repaints do not advance confirmation.
+  have a new fetched timestamp, and each sample to remain within its own refresh
+  window (`max(intervalMinutes * 60, 120)` seconds). There is no shared 30-second
+  span across members. Repaints do not advance confirmation.
 - Two rounds agreeing on the same member partition confirm a split or remerge.
   A three-member group may become a pair plus a singleton. Amounts are selected,
   never summed. Existing order, member notes and each split member's website remain.

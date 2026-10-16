@@ -2004,6 +2004,26 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertNil(otherClient.amount)
         XCTAssertNil(otherClient.date)
+
+        cache.store(balance, clientID: "codex", providerID: "provider-one", configurationRevision: "rev-a")
+        let otherRevision = cache.errorSnapshot(
+            clientID: "codex",
+            providerID: "provider-one",
+            providerName: "Provider One",
+            reason: "Changed key",
+            configurationRevision: "rev-b"
+        )
+        XCTAssertNil(otherRevision.amount)
+        XCTAssertFalse(otherRevision.hasCachedBalance)
+        let sameRevision = cache.errorSnapshot(
+            clientID: "codex",
+            providerID: "provider-one",
+            providerName: "Provider One",
+            reason: "Retry",
+            configurationRevision: "rev-a"
+        )
+        XCTAssertEqual(sameRevision.amount, 12)
+        XCTAssertTrue(sameRevision.hasCachedBalance)
     }
 
     func testProviderBalanceProgressUsesDynamicRechargeBaseline() throws {

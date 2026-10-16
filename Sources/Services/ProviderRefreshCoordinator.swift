@@ -602,7 +602,8 @@ final class ProviderRefreshCoordinator {
             }
             if source.isOfficial {
                 fetchOfficialQuota(providerID: source.id, providerName: source.name, client: .codex,
-                    source: source, requestContext: aggregationOfficialRequests[identity], isValid: isValid, completion: finish)
+                    source: source, requestContext: aggregationOfficialRequests[identity],
+                    configurationRevision: source.configurationRevision, isValid: isValid, completion: finish)
             } else if let query = source.query {
                 fetchBalance(providerID: source.id, providerName: source.name, query: query, client: .codex,
                     isValid: isValid, onDiscard: { [weak self] in
@@ -672,16 +673,28 @@ final class ProviderRefreshCoordinator {
                     providerID: current.id,
                     providerName: current.name,
                     reason: reason,
-                    client: client
+                    client: client,
+                    configurationRevision: current.configurationRevision
                 )
                 return
             }
             let currentDate = now()
             let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= 60 } ?? true
             guard forceBalance || switched || sourceChanged || due else { return }
+            if standardIdentityChanged(from: lastStandardSourceKey, client: client, provider: current) != nil,
+               let previous = standardOfficialRequests[client] {
+                officialQuotaClient.cancelQuota(context: previous)
+            }
             lastStandardSourceKey = sourceKey
             lastOfficialFetch = currentDate
-            fetchOfficialQuota(providerID: current.id, providerName: current.name, client: client)
+            let revision = current.configurationRevision
+            fetchOfficialQuota(
+                providerID: current.id,
+                providerName: current.name,
+                client: client,
+                configurationRevision: revision,
+                isValid: { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
+            )
             return
         }
 
@@ -689,23 +702,33 @@ final class ProviderRefreshCoordinator {
         let currentDate = now()
         let due = lastBalanceFetch.map { currentDate.timeIntervalSince($0) >= interval } ?? true
         guard forceBalance || switched || sourceChanged || due else { return }
+        if let previousID = standardIdentityChanged(from: lastStandardSourceKey, client: client, provider: current) {
+            balanceAPIClient.cancelBalance(client: client, providerID: previousID)
+        }
         lastStandardSourceKey = sourceKey
         lastBalanceFetch = currentDate
+        let revision = current.configurationRevision
         fetchBalance(
             providerID: current.id,
             providerName: current.name,
             query: query,
-            client: client
+            client: client,
+            configurationRevision: revision,
+            isValid: { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
         )
     }
 
     func prefetchCurrentBalance(for client: AssistantClient) {
         queue.async { [weak self] in
             guard let self, let current = self.repository.loadCurrent(appType: client.appType) else { return }
+            let revision = current.configurationRevision
+            let isValid = { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
             if let query = current.query {
-                self.fetchBalance(providerID: current.id, providerName: current.name, query: query, client: client)
+                self.fetchBalance(providerID: current.id, providerName: current.name, query: query, client: client,
+                    configurationRevision: revision, isValid: isValid)
             } else if current.isOfficial, client == .codex {
-                self.fetchOfficialQuota(providerID: current.id, providerName: current.name, client: client)
+                self.fetchOfficialQuota(providerID: current.id, providerName: current.name, client: client,
+                    configurationRevision: revision, isValid: isValid)
             }
         }
     }
@@ -727,6 +750,7 @@ final class ProviderRefreshCoordinator {
             guard let sources = try? self.repository.loadSummarySourcesChecked(appType: client.appType) else { return }
             let previousRevisions = self.quickSwitchSourceRevisions[client] ?? [:]
             self.quickSwitchSourceRevisions[client] = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.configurationRevision) })
+            self.invalidateStaleQuickSwitchSummaries(client: client, sources: sources, previousRevisions: previousRevisions)
             if force || due { self.lastQuickSwitchFetch[client] = currentDate }
             let aggregationIDs: Set<String>
             if client == .codex, let reader = self.aggregationReader, case .active(let entries) = reader.load() {
@@ -751,11 +775,17 @@ final class ProviderRefreshCoordinator {
                         storedAccessToken: source.officialAccessToken,
                         requestCredentials: credentials
                     ) { [weak self] result in
-                        guard let self, case .success(let response) = result else { return }
+                        guard let self else { return }
                         self.performOnQueue {
                             guard let currentSource = self.repository.loadSummarySources(appType: client.appType).first(where: { $0.id == source.id && $0.isOfficial }),
                                   currentSource.officialAccessToken == source.officialAccessToken,
                                   source.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
+                            guard case .success(let response) = result else {
+                                if previousRevisions[source.id] != source.configurationRevision {
+                                    self.removeQuickSwitchSummary(providerID: source.id, client: client)
+                                }
+                                return
+                            }
                             if let accountKey = credentials.accountKey {
                                 self.recordCodexQuotaEvidence(providerID: source.id, accountKey: accountKey, windows: response.output.windows)
                             }
@@ -788,9 +818,15 @@ final class ProviderRefreshCoordinator {
                     client: client,
                     providerID: source.id
                 ) { [weak self] result in
-                    guard let self, case .success(let response) = result else { return }
+                    guard let self else { return }
                     self.performOnQueue {
                         guard self.quickSwitchSourceRevisions[client]?[source.id] == source.configurationRevision else { return }
+                        guard case .success(let response) = result else {
+                            if previousRevisions[source.id] != source.configurationRevision {
+                                self.removeQuickSwitchSummary(providerID: source.id, client: client)
+                            }
+                            return
+                        }
                         let identity = ProviderBalanceProgressIdentity(
                             client: client,
                             providerID: source.id,
@@ -835,6 +871,58 @@ final class ProviderRefreshCoordinator {
         }
     }
 
+    private func invalidateStaleQuickSwitchSummaries(
+        client: AssistantClient,
+        sources: [ProviderSummarySource],
+        previousRevisions: [String: String]
+    ) {
+        let current = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.configurationRevision) })
+        let deleted = Set(previousRevisions.keys.filter { current[$0] == nil })
+        quickSwitchSummaryLock.lock()
+        let missing = quickSwitchSummaryPayloads.keys.compactMap {
+            $0.client == client && current[$0.providerID] == nil ? $0.providerID : nil
+        }
+        quickSwitchSummaryLock.unlock()
+        deleted.union(missing).forEach { removeQuickSwitchSummary(providerID: $0, client: client) }
+        for source in sources where previousRevisions[source.id].map({ $0 != source.configurationRevision }) == true {
+            removeQuickSwitchSummary(providerID: source.id, client: client, notify: false)
+        }
+    }
+
+    private func removeQuickSwitchSummary(providerID: String, client: AssistantClient, notify: Bool = true) {
+        let identity = SummaryIdentity(client: client, providerID: providerID)
+        quickSwitchSummaryLock.lock()
+        let existed = quickSwitchSummaryPayloads.removeValue(forKey: identity) != nil
+        quickSwitchSummaryLock.unlock()
+        if existed, notify { actions.quickSwitchSummaryChanged(providerID) }
+    }
+
+    private func standardRequestIsCurrent(client: AssistantClient, providerID: String, revision: String) -> Bool {
+        guard let current = repository.loadCurrent(appType: client.appType) else { return false }
+        return current.id == providerID && current.configurationRevision == revision
+    }
+
+    /// Returns the previous Provider ID when client/id/revision actually changed.
+    /// `resetCadence()` clears the last source key; that is not an identity change.
+    @discardableResult
+    private func standardIdentityChanged(
+        from previousKey: String?,
+        client: AssistantClient,
+        provider: CCSwitchProvider
+    ) -> String? {
+        guard let previousKey else { return nil }
+        let parts = previousKey.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count == 3 else { return nil }
+        let previousID = String(parts[1])
+        let previousRevision = String(parts[2])
+        guard parts[0] != client.appType
+                || previousID != provider.id
+                || previousRevision != provider.configurationRevision else {
+            return nil
+        }
+        return previousID
+    }
+
     private func updateQuickSwitchSummary(
         providerID: String,
         client: AssistantClient,
@@ -857,13 +945,22 @@ final class ProviderRefreshCoordinator {
         providerName: String,
         query: BalanceQuery,
         client: AssistantClient,
+        configurationRevision: String = "",
         isValid: @escaping () -> Bool = { true },
         onDiscard: (() -> Void)? = nil,
         completion: ((Snapshot) -> Void)? = nil
     ) {
         func fail(providerID: String, providerName: String, reason: String, client: AssistantClient) {
             if let completion { completion(.providerError(providerName, reason: reason, cachedBalance: nil)) }
-            else { renderBalanceError(providerID: providerID, providerName: providerName, reason: reason, client: client) }
+            else {
+                renderBalanceError(
+                    providerID: providerID,
+                    providerName: providerName,
+                    reason: reason,
+                    client: client,
+                    configurationRevision: configurationRevision
+                )
+            }
         }
         let identity = ProviderBalanceProgressIdentity(client: client, providerID: providerID, query: query, providerName: providerName)
         if balanceProgressStore.needsNameMigration(identity) {
@@ -884,14 +981,17 @@ final class ProviderRefreshCoordinator {
             completion: { [weak self] result in
             guard let self else { return }
             self.performOnQueue {
-                guard isValid() else { return }
+                let requestIsCurrent = isValid()
+                let selectedMovedAway = !configurationRevision.isEmpty
+                    && self.repository.loadCurrent(appType: client.appType)?.id != providerID
+                guard requestIsCurrent || selectedMovedAway else { return }
                 switch result {
                 case .success(let response):
                     let progressResult = self.balanceProgressStore.observe(
                         amount: response.output.amount, unit: response.output.unit,
                         identity: identity, sampleSequence: sampleSequence, observedAt: self.now())
                     guard case .success(let observation) = progressResult else {
-                        if case .failure(let error) = progressResult {
+                        if requestIsCurrent, case .failure(let error) = progressResult {
                             fail(providerID: providerID, providerName: providerName,
                                 reason: error.userVisibleReason(language: AppLanguage.resolved), client: client)
                         }
@@ -913,18 +1013,36 @@ final class ProviderRefreshCoordinator {
                         recharge: observation.recharge,
                         progressContext: observation.progressContext
                     )
+                    guard requestIsCurrent else { return }
                     if let completion { completion(balanceSnapshot) }
-                    else { self.renderForCurrentProvider(balanceSnapshot, providerID: providerID, client: client) }
+                    else {
+                        self.renderForCurrentProvider(
+                            balanceSnapshot,
+                            providerID: providerID,
+                            client: client,
+                            configurationRevision: configurationRevision
+                        )
+                    }
                 case .failure(.nonHTTPS):
-                    fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), client: client)
+                    if requestIsCurrent {
+                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), client: client)
+                    }
                 case .failure(.transport(let error)):
-                    fail(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client)
+                    if requestIsCurrent {
+                        fail(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client)
+                    }
                 case .failure(.httpStatus):
-                    fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError), client: client)
+                    if requestIsCurrent {
+                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError), client: client)
+                    }
                 case .failure(.unsupportedFormat):
-                    fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), client: client)
+                    if requestIsCurrent {
+                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), client: client)
+                    }
                 case .failure(.invalidJSON):
-                    fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed), client: client)
+                    if requestIsCurrent {
+                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed), client: client)
+                    }
                 }
             }
             }
@@ -936,13 +1054,22 @@ final class ProviderRefreshCoordinator {
     private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient,
                                     source: ProviderSummarySource? = nil,
                                     requestContext: OfficialQuotaRequestContext? = nil,
+                                    configurationRevision: String = "",
                                     isValid: @escaping () -> Bool = { true },
                                     completion: ((Snapshot) -> Void)? = nil) {
         func publish(_ snapshot: Snapshot, providerID: String, client: AssistantClient,
                      isCurrentRequest: @escaping () -> Bool = { true }) {
             guard isValid(), isCurrentRequest() else { return }
             if let completion { completion(snapshot) }
-            else { renderForCurrentProvider(snapshot, providerID: providerID, client: client, isCurrentRequest: isCurrentRequest) }
+            else {
+                renderForCurrentProvider(
+                    snapshot,
+                    providerID: providerID,
+                    client: client,
+                    configurationRevision: configurationRevision,
+                    isCurrentRequest: isCurrentRequest
+                )
+            }
         }
         func fail(providerID: String, providerName: String, reason: String, client: AssistantClient,
                   isCurrentRequest: @escaping () -> Bool) {
@@ -1256,45 +1383,65 @@ final class ProviderRefreshCoordinator {
         _ next: Snapshot,
         providerID: String,
         client: AssistantClient,
+        configurationRevision: String = "",
         isCurrentRequest: @escaping () -> Bool = { true }
     ) {
         queue.async { [weak self] in
-            guard let self, isCurrentRequest(), self.repository.loadCurrent(appType: client.appType)?.id == providerID,
+            guard let self, isCurrentRequest(),
+                  self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
                   client != .codex || self.aggregationEntries.isEmpty else { return }
             let epoch = self.standardPublicationEpoch
             if next.kind == .balance {
-                self.providerBalanceSnapshots.store(next, clientID: client.rawValue, providerID: providerID)
+                self.providerBalanceSnapshots.store(
+                    next,
+                    clientID: client.rawValue,
+                    providerID: providerID,
+                    configurationRevision: configurationRevision
+                )
             }
             if next.kind == .official || next.kind == .balance {
                 self.actions.notificationSnapshot?(client, providerID, next)
             }
             DispatchQueue.main.async {
                 guard isCurrentRequest(), client != .codex || epoch.isCurrent() else { return }
+                guard let current = self.actions.currentProvider(client),
+                      current.id == providerID,
+                      current.configurationRevision == configurationRevision else { return }
                 if next.kind == .official || next.kind == .balance {
                     self.actions.storeClientSnapshot(client, providerID, next)
                 }
                 guard self.actions.isActiveClient(client) else { return }
-                guard self.actions.currentProvider(client)?.id == providerID else { return }
                 if let ownedRender = self.actions.ownedRender { ownedRender(providerID, next) }
                 else { self.actions.render(next) }
             }
         }
     }
 
-    private func renderBalanceError(providerID: String, providerName: String, reason: String, client: AssistantClient) {
+    private func renderBalanceError(
+        providerID: String,
+        providerName: String,
+        reason: String,
+        client: AssistantClient,
+        configurationRevision: String = ""
+    ) {
         queue.async { [weak self] in
-            guard let self, self.repository.loadCurrent(appType: client.appType)?.id == providerID,
+            guard let self,
+                  self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
                   client != .codex || self.aggregationEntries.isEmpty else { return }
             let epoch = self.standardPublicationEpoch
             let next = self.providerBalanceSnapshots.errorSnapshot(
                 clientID: client.rawValue,
                 providerID: providerID,
                 providerName: providerName,
-                reason: reason
+                reason: reason,
+                configurationRevision: configurationRevision
             )
             DispatchQueue.main.async {
-                guard (client != .codex || epoch.isCurrent()), self.actions.isActiveClient(client) else { return }
-                guard self.actions.currentProvider(client)?.id == providerID else { return }
+                guard (client != .codex || epoch.isCurrent()),
+                      self.actions.isActiveClient(client),
+                      let current = self.actions.currentProvider(client),
+                      current.id == providerID,
+                      current.configurationRevision == configurationRevision else { return }
                 if let ownedRender = self.actions.ownedRender { ownedRender(providerID, next) }
                 else { self.actions.render(next) }
             }

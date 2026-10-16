@@ -74,6 +74,18 @@ final class BalanceAPIClient {
             lock.lock()
             let entry = entries.removeValue(forKey: key)
             lock.unlock()
+            finishCancel(entry)
+        }
+
+        func cancel(prefix: String) {
+            lock.lock()
+            let matches = entries.filter { $0.key == prefix || $0.key.hasPrefix(prefix + ":") }
+            for key in matches.keys { entries.removeValue(forKey: key) }
+            lock.unlock()
+            matches.values.forEach { finishCancel($0) }
+        }
+
+        private func finishCancel(_ entry: Entry?) {
             entry?.task?.cancel()
             entry?.completions.forEach { $0(.failure(.transport(URLError(.cancelled)))) }
         }
@@ -104,6 +116,10 @@ final class BalanceAPIClient {
 
     func cancelBalance(query: BalanceQuery, client: AssistantClient, providerID: String) {
         inFlight.cancel(key: Self.scopedRequestKey(query: query, client: client, providerID: providerID))
+    }
+
+    func cancelBalance(client: AssistantClient, providerID: String) {
+        inFlight.cancel(prefix: Self.requestKey(client: client, providerID: providerID))
     }
 
     /// Whether a third-party balance request for this key is currently

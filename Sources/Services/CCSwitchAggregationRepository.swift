@@ -128,8 +128,8 @@ enum AggregationWalletPresentation {
 }
 
 /// Presentation-only hysteresis. A round requires every member to publish a
-/// new, successful sample within 30s; two such rounds confirm a partition.
-/// Re-rendering the same values never advances evidence. Nothing is persisted.
+/// new successful sample still within its own refresh window; two such rounds
+/// confirm a partition. Re-rendering the same values never advances evidence.
 struct AggregationWalletGrouping {
     private struct Evidence {
         var partitions: [String: String] = [:]
@@ -158,23 +158,29 @@ struct AggregationWalletGrouping {
             var state = evidence[key] ?? Evidence()
             let ids = Set(peers.map { $0.entry.providerID })
             if Set(state.partitions.keys) != ids {
-                let initial = state.partitions.isEmpty
                 state.partitions = state.partitions.filter { ids.contains($0.key) }
-                for id in ids where state.partitions[id] == nil { state.partitions[id] = initial ? "initial" : "new:" + id }
+                let remainingLabels = Set(state.partitions.values)
+                for id in ids where state.partitions[id] == nil {
+                    if remainingLabels.isEmpty {
+                        state.partitions[id] = "initial"
+                    } else if remainingLabels.count == 1, let label = remainingLabels.first {
+                        state.partitions[id] = label
+                    } else {
+                        state.partitions[id] = "new:" + id
+                    }
+                }
                 state.confirmations = 0
                 state.sampleDates = [:]
             }
-            let dates = peers.compactMap(\.fetchedAt)
             let valid = peers.allSatisfy { peer in
                 peer.status == .fresh && peer.snapshot.kind == .balance &&
                 peer.snapshot.amount.flatMap(AggregationWalletPresentation.cents) != nil &&
-                peer.fetchedAt.map { now.timeIntervalSince($0) >= 0 && now.timeIntervalSince($0) <= 120 } == true
+                Self.sampleIsFresh(peer, now: now)
             }
-            let newRound = valid && dates.count == peers.count &&
-                (dates.max()!.timeIntervalSince(dates.min()!) <= 30) && peers.allSatisfy {
-                    guard let date = $0.fetchedAt else { return false }
-                    return state.sampleDates[$0.entry.providerID].map { date > $0 } ?? true
-                }
+            let newRound = valid && peers.count == ids.count && peers.allSatisfy {
+                guard let date = $0.fetchedAt else { return false }
+                return state.sampleDates[$0.entry.providerID].map { date > $0 } ?? true
+            }
             if newRound {
                 let groups = Dictionary(grouping: peers, by: { AggregationWalletPresentation.cents($0.snapshot.amount!)! })
                     .values.map { $0.map { $0.entry.providerID }.sorted() }.sorted { $0.lexicographicallyPrecedes($1) }
@@ -193,6 +199,12 @@ struct AggregationWalletGrouping {
             partitions.merge(state.partitions) { _, new in new }
         }
         return AggregationWalletPresentation.cards(displays, partitions: partitions)
+    }
+
+    private static func sampleIsFresh(_ display: AggregatedProviderDisplay, now: Date) -> Bool {
+        guard let fetched = display.fetchedAt, fetched <= now else { return false }
+        let interval = TimeInterval(max(1, display.entry.source.query?.intervalMinutes ?? 1) * 60)
+        return now.timeIntervalSince(fetched) <= max(interval, 120)
     }
 }
 
@@ -236,14 +248,18 @@ final class CCSwitchAggregationRepository {
         }
     }
 
+    static let confirmedAbsenceInterval: TimeInterval = 3
+
     let stateURL: URL
     private let sources: ([String]) throws -> [ProviderSummarySource]
     private let read: (URL) throws -> Data
     private let isRunning: () -> Bool
+    private let now: () -> Date
     private let stateLock = NSLock()
     private var wasAggregating = false
+    private var absenceBegan: Date?
     private func rememberAggregation(_ active: Bool) {
-        stateLock.lock(); wasAggregating = active; stateLock.unlock()
+        stateLock.lock(); wasAggregating = active; absenceBegan = nil; stateLock.unlock()
     }
     private var lastKnownAggregation: Bool {
         stateLock.lock(); defer { stateLock.unlock() }; return wasAggregating
@@ -254,11 +270,13 @@ final class CCSwitchAggregationRepository {
          isRunning: @escaping () -> Bool = {
              !NSRunningApplication.runningApplications(withBundleIdentifier: "com.ccswitch.desktop").isEmpty
          },
-         read: @escaping (URL) throws -> Data = { try Data(contentsOf: $0) }) {
+         read: @escaping (URL) throws -> Data = { try Data(contentsOf: $0) },
+         now: @escaping () -> Date = Date.init) {
         self.stateURL = stateURL
         self.sources = { try repository.loadSummarySourcesChecked(appType: "codex", providerIDs: $0) }
         self.read = read
         self.isRunning = isRunning
+        self.now = now
     }
 
     private func deviceState() throws -> DeviceState { try JSONDecoder().decode(DeviceState.self, from: read(stateURL)) }
@@ -268,7 +286,7 @@ final class CCSwitchAggregationRepository {
             do {
                 let before = try deviceState()
                 guard before.version == nil || before.version == 1 else { return .untrusted }
-                guard let codex = before.apps.codex else { return lastKnownAggregation ? .untrusted : .inactive }
+                guard let codex = before.apps.codex else { return confirmedAbsenceOrUntrusted() }
                 guard !codex.pending, codex.mode == "direct" || codex.mode == "proxy" else { return .untrusted }
                 guard codex.mode == "proxy", codex.attached == true,
                       codex.stack?.enabled == true else { rememberAggregation(false); return .inactive }
@@ -292,9 +310,30 @@ final class CCSwitchAggregationRepository {
                 }
                 rememberAggregation(true)
                 return .active(entries)
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                return confirmedAbsenceOrUntrusted()
             } catch { return .untrusted }
         }
         return .untrusted
+    }
+
+    private func confirmedAbsenceOrUntrusted() -> State {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard wasAggregating else { return .inactive }
+        let current = now()
+        if absenceBegan == nil { absenceBegan = current }
+        if let started = absenceBegan, current.timeIntervalSince(started) >= Self.confirmedAbsenceInterval {
+            wasAggregating = false
+            absenceBegan = nil
+            return .inactive
+        }
+        return .untrusted
+    }
+
+    private func isProtectingAbsence() -> Bool {
+        if case .untrusted = confirmedAbsenceOrUntrusted() { return true }
+        return false
     }
 
     /// Recheck at the write boundary, even if the menu was built in another mode.
@@ -304,13 +343,13 @@ final class CCSwitchAggregationRepository {
         do {
             let state = try deviceState()
             guard state.version == nil || state.version == 1 else { return true }
-            guard let codex = state.apps.codex else { return lastKnownAggregation }
+            guard let codex = state.apps.codex else { return isProtectingAbsence() }
             let blocked = codex.pending || (codex.mode != "direct" && codex.mode != "proxy")
                 || (codex.mode == "proxy" && codex.stack?.enabled == true)
             if !codex.pending { rememberAggregation(codex.mode == "proxy" && codex.stack?.enabled == true) }
             return blocked
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return lastKnownAggregation
+            return isProtectingAbsence()
         } catch { return true }
     }
 }

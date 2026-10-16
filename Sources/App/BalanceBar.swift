@@ -923,8 +923,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             email: accountProfile?.email,
             subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
         )
-        let directProviderID = clientSnapshots[activeClient]?.providerID ?? lastProviderID
-            ?? providerChoicesCache.first(where: \.isCurrent)?.id
+        let directProviderID = providerChoicesCache.first(where: \.isCurrent)?.id ?? lastProviderID
         let directProviderNotes = aggregationDisplays.isEmpty || activeClient != .codex
             ? directProviderID.flatMap { providerNotesCache[activeClient.appType]?[$0] }.map { [$0] } ?? [] : []
         return StatusItemController.MenuInput(
