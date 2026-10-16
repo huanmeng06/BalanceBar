@@ -57,8 +57,11 @@ final class ProviderSwitchCoordinator {
     func switchProvider(providerID: String, appType: String, providerName: String) {
         queue.async { [weak self] in
             guard let self else { return }
-            guard appType != "codex" || !self.aggregationRepository.blocksQuickSwitch() else {
-                self.actions.failed(self.aggregationRepository.quickSwitchSafety().hint)
+            func safety() -> CCSwitchQuickSwitchSafety {
+                appType == "codex" ? self.aggregationRepository.quickSwitchSafety() : self.repository.quickSwitchSafety(appType: appType)
+            }
+            guard !safety().isBlocked else {
+                self.actions.failed(safety().hint)
                 return
             }
             let current: ProviderChoice?
@@ -76,7 +79,7 @@ final class ProviderSwitchCoordinator {
             }
             func validate() -> Bool {
                 self.isClientCurrent(appType)
-                    && (appType != "codex" || !self.aggregationRepository.blocksQuickSwitch())
+                    && !safety().isBlocked
                     && self.repository.configurationRevision(appType: appType, providerID: current.id) == currentRevision
                     && self.repository.configurationRevision(appType: appType, providerID: providerID) == targetRevision
                     && self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })?.id == current.id

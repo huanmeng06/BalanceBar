@@ -1,3 +1,93 @@
+# PR #506: Codex default-config and Claude proxy compatibility
+
+Review baseline: `910c71808d9bfdf166b11404b5631ecfc0f2d27a`.
+This section is the current rework result. All later sections are historical
+records and their PASS counts do not apply to this source tree.
+
+## Review disposition
+
+- Block 1 / P1: a missing Codex `config.toml` is treated as the built-in official
+  route only when the database current Provider is official and the remaining
+  local mode, authentication parsing, routing and proxy evidence checks pass.
+  Custom Providers still require their actual route. Invalid UTF-8, unreadable
+  files and conflicting/proxy evidence remain blocked. The regression starts
+  with only a fixture login, verifies malformed/custom/proxy rejection and then
+  switches successfully to a third-party Provider, creating its first TOML.
+- Block 2 / P1: shared safety accepts the client explicitly. Claude reads its
+  own local mode, per-client proxy history and effective settings environment;
+  it does not interpret Codex Stack as Claude aggregation. Its routing/auth
+  environment must match the current direct Provider; unsupported apiKeyHelper
+  or malformed environment fails closed. Synced database zero is not authority.
+  The switch coordinator validates Claude before termination and after exit;
+  the repository independently validates inside the write transaction and
+  before pointer changes. The former query-error-as-false bypass was removed.
+  Local state participates in Claude's file fingerprint/recovery checks.
+- Menu protection is cached separately per client on the main thread; Claude
+  safety is read on the existing background refresh queue. Codex callbacks
+  cannot authorize a Claude menu. No card/tooltip/layout changes were made.
+- Block 3 / P2: the final check and OS termination request are not atomic with
+  CCS. A disposable `/bin/sleep` child process regression enters proxy after
+  validation and before sending the actual termination signal, observes real
+  asynchronous exit, and verifies zero client/config/pointer writes and one
+  recovery request. It does not claim that no termination happened. The test
+  never stops or opens real CCS; real CCS timing remains manual acceptance.
+
+Upstream references: pinned `services/proxy.rs` get_takeover_status and
+`mode/current.rs` proxy_flags at `daf442e5d71078b41677a34518f63159fc7393cf`.
+Both clients use device mode, not the synchronized enabled setting.
+
+## Actual verification and remaining blocker
+
+- Complete serial XCTest: **1460 total / 1458 passed / 1 skipped / 1 failed**.
+  `/private/tmp/issue493-compat-full.log` and
+  `/private/tmp/issue493-compat-full-summary.json`.
+  Result bundle: `Test-BalanceBar-2026.10.16_10-59-46--0400.xcresult` under the
+  dedicated DerivedData `Logs/Test` directory.
+- The failure is recorded against
+  `UpdateTests.testUpdateServiceRequiresMatchingAssetAndPreventsDuplicateChecks`.
+  Runtime exception: `Task created in a session that has been invalidated`;
+  stack includes BalanceAPIClient.fetchBalance and
+  ProviderRefreshCoordinator.refreshQuickSwitchSummaries. This asynchronous
+  lifecycle failure is not fixed or proven unrelated by this narrow patch.
+  Full-suite acceptance remains blocked. No successful single-test rerun or
+  old HEAD's Full result substitutes for the failing full run.
+- Within that full run the affected classes all passed: CCSwitchRepositoryTests
+  38, ProviderRefreshCoordinatorTests 67, AppDelegateCompositionTests 49,
+  StatusItemControllerTests 85: **239 / 0 failures**. Four new regressions cover
+  the missing TOML, Claude history/config/write guard, Claude process boundaries,
+  and a real disposable process exit race.
+- Intermediate focused run: 238 tests / 1 fixture configuration failure; fixed
+  the new test's target payload to include a complete auth/config pair.
+  Next focused run: 239 / 1 SQLite disk-I/O fixture failure in the official
+  late-response test. That affected test/class passed in the full run above;
+  these failures are retained here, not reported as a clean focused run.
+- Localization (525 keys, 12 languages), balance-query, network-error,
+  balance-card and geometry probes PASS; git diff --check PASS.
+- Unsigned Debug and committed Dev artifact details are recorded in the durable
+  PR/Issue handoff after those commands complete. Existing task-specific
+  DerivedData is reused; no Ready Full CI or GUI was executed.
+
+## 如何人工测试
+
+开发版：原工作树 `build/dev/BalanceBar-dev.app`，以 PR 最新交接中的内嵌 SHA 为准。
+准备：只在测试账号/临时 Codex 配置目录验证首次安装；不要删除生产配置。
+
+1. 官方直连且只有正常 auth.json、没有 config.toml 时，Quick Switch 应可用；
+   首次切换第三方后生成有效配置。损坏文件/代理模式仍应禁用。
+2. Claude 代理下展开 Quick Switch：供应商和摘要置灰，管理入口可打开 CCS；
+   不停止 CCS、不改当前直连指针。通过 CCS 正常退出代理后恢复切换。
+3. 在 Codex 与 Claude 间切换，禁用状态各自独立；刷新和反复打开菜单不得误解锁。
+4. 真实 CCS 进入代理与切换请求的时序竞争仍待人工验证；不要在生产凭据上人为
+   破坏文件。还需验证排序后的白屏、CPU 和两层滚动，不能以本轮子进程测试替代。
+
+反馈：PASS + 精确 SHA + 范围，或 FAIL + 步骤 + 实际/预期 + 日志。
+Full failure keeps Issue at **ai:changes**; PR stays Draft. Manual acceptance,
+white-screen P0 and Ready Full/artifact smoke remain pending. No version/merge.
+
+---
+
+## Historical superseded validation records
+
 # PR #506: device-local Quick Switch safety (review baseline 8fb97e76)
 
 This section supersedes the older database-zero unlock rules recorded below.

@@ -43,6 +43,141 @@ final class CCSwitchRepositoryTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    func testOfficialDefaultWithoutConfigCanSwitchButCustomAndMalformedConfigCannot() throws {
+        let configURL = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.removeItem(at: configURL)
+        XCTAssertEqual(repository.quickSwitchSafety(), .blockedUntrusted, "custom route needs its configuration")
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET is_current = CASE WHEN id = 'codex-official' THEN 1 ELSE 0 END WHERE app_type = 'codex'")
+        }
+        try Data(#"{"tokens":{"access_token":"fixture-login"}}"#.utf8).write(to: temporaryDirectoryURL.appendingPathComponent(".codex/auth.json"))
+        XCTAssertEqual(repository.quickSwitchSafety(), .allowedDirect)
+        try Data([0xff]).write(to: configURL)
+        XCTAssertEqual(repository.quickSwitchSafety(), .blockedUntrusted, "corrupt is different from absent")
+        try FileManager.default.removeItem(at: configURL)
+        try writeDeviceMode("proxy")
+        XCTAssertEqual(repository.quickSwitchSafety(), .blockedRouting)
+        try writeDeviceMode("direct")
+        try withDatabase { db in
+            try execute(db, sql: #"UPDATE providers SET settings_config = '{"auth":{"OPENAI_API_KEY":"fixture-key"},"config":"model_provider = \"custom\"\n[model_providers.custom]\nbase_url = \"https://provider.example\"\n"}' WHERE id = 'codex-custom'"#)
+        }
+        try repository.switchCurrent(to: "codex-custom", appType: "codex")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: configURL.path))
+        XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+    }
+
+    private func prepareClaudeDirect() throws -> URL {
+        let url = temporaryDirectoryURL.appendingPathComponent(".claude/settings.json")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"env":{"ANTHROPIC_BASE_URL":"https://claude.example","ANTHROPIC_AUTH_TOKEN":"fixture"},"theme":"dark"}"#.utf8).write(to: url)
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET settings_config = '{\"env\":{\"ANTHROPIC_BASE_URL\":\"https://claude.example\",\"ANTHROPIC_AUTH_TOKEN\":\"fixture\"}}' WHERE id = 'claude-other'")
+            try execute(db, sql: "INSERT INTO providers SELECT 'claude-target', 'Target', '{}', '{}', 'official', NULL, 'claude', 0, 2, 2 WHERE NOT EXISTS (SELECT 1 FROM providers WHERE id = 'claude-target')")
+        }
+        try writeClaudeMode("direct")
+        return url
+    }
+
+    private func writeClaudeMode(_ mode: String) throws {
+        try JSONSerialization.data(withJSONObject: ["version": 1, "apps": ["codex": ["mode": "direct"], "claude": ["mode": mode]]])
+            .write(to: repository.deviceStateURL, options: .atomic)
+    }
+
+    func testClaudeUsesOwnModeHistoryConfigurationAndWriteGuard() throws {
+        let url = try prepareClaudeDirect()
+        let original = try Data(contentsOf: url)
+        XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .allowedDirect)
+        try writeClaudeMode("proxy")
+        XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .blockedRouting)
+        XCTAssertEqual(repository.quickSwitchSafety(), .allowedDirect, "Claude history must not lock Codex")
+        XCTAssertThrowsError(try repository.switchCurrent(to: "claude-target", appType: "claude"))
+        try FileManager.default.removeItem(at: repository.deviceStateURL)
+        let restarted = CCSwitchRepository(databaseURL: databaseURL, appSettingsURL: appSettingsURL, homeDirectoryURL: temporaryDirectoryURL)
+        XCTAssertEqual(restarted.quickSwitchSafety(appType: "claude"), .blockedUntrusted)
+        try writeClaudeMode("direct")
+        XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .allowedDirect)
+        try Data(#"{"env":{"ANTHROPIC_BASE_URL":"https://wrong.example"}}"#.utf8).write(to: url)
+        XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .blockedUntrusted)
+        try original.write(to: url)
+        for stage in ["beforePublish", "beforePointer"] {
+            try writeClaudeMode("direct")
+            repository.switchWriteObserver = { point in if point == stage { try! self.writeClaudeMode("proxy") } }
+            XCTAssertThrowsError(try repository.switchCurrent(to: "claude-target", appType: "claude"))
+            XCTAssertEqual(try currentValue(for: "claude-other"), 1)
+            XCTAssertEqual(try Data(contentsOf: url), original)
+        }
+        repository.switchWriteObserver = nil
+        try writeClaudeMode("direct")
+        try repository.switchCurrent(to: "claude-target", appType: "claude")
+        XCTAssertEqual(try currentValue(for: "claude-target"), 1)
+    }
+
+    func testClaudeProxyBeforeAndDuringTerminationNeverWrites() throws {
+        for phase in ["initial", "beforeTerminate", "duringTerminate"] {
+            let url = try prepareClaudeDirect()
+            let original = try Data(contentsOf: url)
+            var terminated = false
+            var stops = 0
+            var restores = 0
+            let finished = expectation(description: phase)
+            if phase == "initial" { try writeClaudeMode("proxy") }
+            let instance = ProviderSwitchRuntime.Instance(applicationURL: URL(fileURLWithPath: "/fixture/CCSwitch.app"), terminate: {
+                stops += 1
+                terminated = true
+                try! self.writeClaudeMode("proxy")
+                return true
+            }, isTerminated: { terminated })
+            let runtime = ProviderSwitchRuntime(running: {
+                if terminated { return nil }
+                if phase == "beforeTerminate" { try! self.writeClaudeMode("proxy") }
+                return instance
+            }, reopen: { _ in restores += 1 })
+            let queue = DispatchQueue(label: "fixture.claude.boundary")
+            let coordinator = ProviderSwitchCoordinator(repository: repository, queue: queue, runtime: runtime,
+                actions: .init(changed: { XCTFail("unsafe switch") }, failed: { _ in finished.fulfill() }))
+            coordinator.switchProvider(providerID: "claude-target", appType: "claude", providerName: "fixture")
+            wait(for: [finished], timeout: 3)
+            queue.sync {}
+            XCTAssertEqual(stops, phase == "duringTerminate" ? 1 : 0)
+            XCTAssertEqual(restores, stops)
+            XCTAssertEqual(try currentValue(for: "claude-other"), 1)
+            XCTAssertEqual(try Data(contentsOf: url), original)
+        }
+    }
+
+    func testRealHelperProcessTerminationRaceDoesNotPublishConfiguration() throws {
+        // A disposable CLI process exercises actual asynchronous process exit, never the user's CCS.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        defer { if process.isRunning { process.terminate() }; process.waitUntilExit() }
+        let configURL = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
+        let original = try Data(contentsOf: configURL)
+        var restores = 0
+        let finished = expectation(description: "process exit race aborts")
+        let runtime = ProviderSwitchRuntime(running: {
+            guard process.isRunning else { return nil }
+            return .init(applicationURL: URL(fileURLWithPath: "/fixture/CCSwitch.app"), terminate: {
+                // Enter proxy after the last validation but before the actual termination signal.
+                try! self.writeDeviceMode("proxy")
+                process.terminate()
+                return true
+            }, isTerminated: { !process.isRunning })
+        }, reopen: { _ in restores += 1 })
+        let queue = DispatchQueue(label: "fixture.real-process.boundary")
+        let coordinator = ProviderSwitchCoordinator(repository: repository, queue: queue, runtime: runtime,
+            actions: .init(changed: { XCTFail("race must abort") }, failed: { _ in finished.fulfill() }))
+        coordinator.switchProvider(providerID: "codex-official", appType: "codex", providerName: "fixture")
+        wait(for: [finished], timeout: 6)
+        queue.sync {}
+        XCTAssertFalse(process.isRunning)
+        XCTAssertEqual(restores, 1)
+        XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+        XCTAssertEqual(try Data(contentsOf: configURL), original)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+    }
+
     func testReadsCurrentProviderChoicesAndSummarySourcesFromFixture() throws {
         XCTAssertNotEqual(
             repository.databaseURL.standardizedFileURL.path,

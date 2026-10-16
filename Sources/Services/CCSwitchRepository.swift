@@ -210,16 +210,18 @@ final class CCSwitchRepository {
     }
 
     var deviceStateURL: URL { homeDirectoryURL.appendingPathComponent(".cc-switch/live-state.json") }
-    private var proxyHistoryKey: String {
-        let scope = homeDirectoryURL.standardizedFileURL.path + "|" + databaseURL.standardizedFileURL.path + "|codex"
+    private func proxyHistoryKey(appType: String) -> String {
+        let scope = homeDirectoryURL.standardizedFileURL.path + "|" + databaseURL.standardizedFileURL.path + "|" + appType
         return "quickSwitch.proxyObserved." + SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
-    func quickSwitchSafety(stateURL: URL? = nil, readState: (URL) throws -> Data = { try Data(contentsOf: $0) }) -> CCSwitchQuickSwitchSafety {
+    func quickSwitchSafety(appType: String = "codex", stateURL: URL? = nil, readState: (URL) throws -> Data = { try Data(contentsOf: $0) }) -> CCSwitchQuickSwitchSafety {
+        guard appType == "codex" || appType == "claude" else { return .blockedUntrusted }
+        let proxyHistoryKey = proxyHistoryKey(appType: appType)
         // Remember a local proxy observation even when the database is temporarily unavailable.
         if let data = try? readState(stateURL ?? deviceStateURL),
            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let codex = (object["apps"] as? [String: Any])?["codex"] as? [String: Any],
+           let codex = (object["apps"] as? [String: Any])?[appType] as? [String: Any],
            codex["mode"] as? String == "proxy", !UserDefaults.standard.bool(forKey: proxyHistoryKey) {
             UserDefaults.standard.set(true, forKey: proxyHistoryKey)
         }
@@ -231,10 +233,11 @@ final class CCSwitchRepository {
         }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 100)
-        return quickSwitchSafety(database: database, stateURL: stateURL ?? deviceStateURL, readState: readState)
+        return quickSwitchSafety(database: database, appType: appType, stateURL: stateURL ?? deviceStateURL, readState: readState)
     }
 
-    private func quickSwitchSafety(database: OpaquePointer, stateURL: URL, liveProviderID: String? = nil, readState: (URL) throws -> Data) -> CCSwitchQuickSwitchSafety {
+    private func quickSwitchSafety(database: OpaquePointer, appType: String, stateURL: URL, liveProviderID: String? = nil, readState: (URL) throws -> Data) -> CCSwitchQuickSwitchSafety {
+        let proxyHistoryKey = proxyHistoryKey(appType: appType)
         do {
             func stateData() throws -> Data? {
                 do { return try readState(stateURL) }
@@ -246,22 +249,25 @@ final class CCSwitchRepository {
                 guard let object = try JSONSerialization.jsonObject(with: before) as? [String: Any],
                       object["version"] == nil || ((object["version"] as? NSNumber).map { CFGetTypeID($0) != CFBooleanGetTypeID() && $0.intValue == 1 && $0.doubleValue == 1 } == true),
                       let apps = object["apps"] as? [String: Any] else { return .blockedUntrusted }
-                if let raw = apps["codex"] {
+                if let raw = apps[appType] {
                     guard let codex = raw as? [String: Any],
                           codex["pending"] == nil || codex["pending"] is NSNull else { return .blockedUntrusted }
                     mode = codex["mode"] as? String
                     if mode == "proxy" {
                         if !UserDefaults.standard.bool(forKey: proxyHistoryKey) { UserDefaults.standard.set(true, forKey: proxyHistoryKey) }
-                        return (codex["stack"] as? [String: Any])?["enabled"] as? Bool == true
+                        return appType == "codex" && (codex["stack"] as? [String: Any])?["enabled"] as? Bool == true
                             ? .blockedAggregation : .blockedRouting
                     }
                     guard mode == "direct", codex["attached"] as? Bool != true else { return .blockedUntrusted }
                 }
             }
-            let evidence = proxyTakeoverStatus(appType: "codex", database: database, includeSyncedEnabled: mode != "direct")
+            let evidence = proxyTakeoverStatus(appType: appType, database: database, includeSyncedEnabled: mode != "direct")
             guard evidence == .inactive else { return .blockedUntrusted }
             if mode == nil && UserDefaults.standard.bool(forKey: proxyHistoryKey) { return .blockedUntrusted }
-            guard directCodexConfigurationMatches(database: database, providerID: liveProviderID), before == (try stateData()) else { return .blockedUntrusted }
+            let matches = appType == "codex"
+                ? directCodexConfigurationMatches(database: database, providerID: liveProviderID)
+                : directClaudeConfigurationMatches(database: database, providerID: liveProviderID)
+            guard matches, before == (try stateData()) else { return .blockedUntrusted }
             if mode == "direct" {
                 if UserDefaults.standard.bool(forKey: proxyHistoryKey) { UserDefaults.standard.removeObject(forKey: proxyHistoryKey) }
                 return .allowedDirect
@@ -283,8 +289,14 @@ final class CCSwitchRepository {
         let official = text(from: statement, column: 1) == "official"
         guard sqlite3_step(statement) == SQLITE_DONE else { return false }
         let directory = homeDirectoryURL.appendingPathComponent(".codex")
-        guard let config = try? String(contentsOf: directory.appendingPathComponent("config.toml"), encoding: .utf8),
-              !config.contains("PROXY_MANAGED"), !config.contains("cc-switch-official") else { return false }
+        let config: String
+        do { config = try String(contentsOf: directory.appendingPathComponent("config.toml"), encoding: .utf8) }
+        catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            // Codex defaults to the official route without a user TOML file.
+            guard official else { return false }
+            config = ""
+        } catch { return false }
+        guard !config.contains("PROXY_MANAGED"), !config.contains("cc-switch-official") else { return false }
         let authURL = directory.appendingPathComponent("auth.json")
         let auth: [String: Any]
         do {
@@ -310,6 +322,36 @@ final class CCSwitchRepository {
         let expectedKey = expected["experimental_bearer_token"] ?? expectedAuth["OPENAI_API_KEY"] as? String ?? row["api_key"] as? String
         let actualKey = actual["experimental_bearer_token"] ?? auth["OPENAI_API_KEY"] as? String
         return expectedKey == actualKey && (expectedKey != nil || expected["env_key"] != nil)
+    }
+
+    private func directClaudeConfigurationMatches(database: OpaquePointer, providerID: String?) -> Bool {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        let sql = "SELECT settings_config FROM providers WHERE app_type = 'claude' AND " + (providerID == nil ? "is_current = 1" : "id = ?")
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return false }
+        if let providerID { bind(providerID, to: statement, at: 1) }
+        guard sqlite3_step(statement) == SQLITE_ROW, let stored = text(from: statement, column: 0),
+              let expected = try? JSONSerialization.jsonObject(with: Data(stored.utf8)) as? [String: Any],
+              sqlite3_step(statement) == SQLITE_DONE else { return false }
+        let actual: [String: Any]
+        do {
+            let data = try Data(contentsOf: homeDirectoryURL.appendingPathComponent(".claude/settings.json"))
+            guard !String(decoding: data, as: UTF8.self).contains("PROXY_MANAGED"),
+                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+            actual = object
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile { actual = [:] }
+        catch { return false }
+        func route(_ object: [String: Any]) -> [String: String]? {
+            guard object["apiKeyHelper"] == nil else { return nil }
+            guard object["env"] == nil || object["env"] is [String: String] else { return nil }
+            let env = object["env"] as? [String: String] ?? [:]
+            guard !env.values.contains(where: { $0.contains("PROXY_MANAGED") }) else { return nil }
+            // Claude routing includes Bedrock/Vertex/Foundry selectors as well as Anthropic credentials.
+            return env.filter { $0.key.hasPrefix("ANTHROPIC_") || $0.key.hasPrefix("CLAUDE_CODE_USE_")
+                || $0.key.hasPrefix("AWS_") || $0.key.hasPrefix("GOOGLE_") || $0.key.hasPrefix("CLOUD_ML_") }
+        }
+        guard let expectedRoute = route(expected), let actualRoute = route(actual) else { return false }
+        return expectedRoute == actualRoute
     }
 
     /// Strict single-line routing subset. Unsupported/ambiguous routing syntax fails closed.
@@ -665,7 +707,7 @@ final class CCSwitchRepository {
         let codexDirectory = homeDirectoryURL.appendingPathComponent(".codex", isDirectory: true)
         let inputURLs = appType == "codex"
             ? [appSettingsURL, codexDirectory.appendingPathComponent("config.toml"), codexDirectory.appendingPathComponent("auth.json"), deviceStateURL]
-            : [appSettingsURL, homeDirectoryURL.appendingPathComponent(".claude/settings.json")]
+            : [appSettingsURL, homeDirectoryURL.appendingPathComponent(".claude/settings.json"), deviceStateURL]
         let inputs = try inputURLs.map { (url: $0, data: try readFile($0)) }
         let initialState = inputs.first { $0.url == deviceStateURL }?.data
         var appSettings: [String: Any] = [:]
@@ -694,13 +736,13 @@ final class CCSwitchRepository {
               expectedTargetRevision == nil || expectedTargetRevision == targetRevision else {
             throw switchError(tr(.keyQuickSwitchStateUntrusted))
         }
-        if appType == "codex" {
-            guard !quickSwitchSafety(database: database, stateURL: deviceStateURL, readState: { try Data(contentsOf: $0) }).isBlocked else {
+        do {
+            guard !quickSwitchSafety(database: database, appType: appType, stateURL: deviceStateURL, readState: { try Data(contentsOf: $0) }).isBlocked else {
                 throw switchError(tr(.keyQuickSwitchStateUntrusted))
             }
         }
         var writes: [(url: URL, data: Data)] = []
-        if appType == "codex" || !proxyTakeoverIsActive(appType: appType, database: database) {
+        do {
             if appType == "claude" {
                 guard
                     let object = try? JSONSerialization.jsonObject(
@@ -790,9 +832,9 @@ final class CCSwitchRepository {
                   configurationRevision(appType: appType, providerID: providerID, database: database) == targetRevision else {
                 throw switchError(tr(.keyQuickSwitchStateUntrusted))
             }
-            if appType == "codex" {
+            do {
                 guard (try readFile(deviceStateURL)) == initialState,
-                      !quickSwitchSafety(database: database, stateURL: deviceStateURL, liveProviderID: liveProviderID,
+                      !quickSwitchSafety(database: database, appType: appType, stateURL: deviceStateURL, liveProviderID: liveProviderID,
                           readState: { try Data(contentsOf: $0) }).isBlocked else {
                     throw switchError(tr(.keyQuickSwitchStateUntrusted))
                 }
@@ -804,7 +846,7 @@ final class CCSwitchRepository {
         for (index, file) in writes.enumerated() {
             switchWriteObserver?("beforeFile")
             try validateInputs()
-            if appType == "codex" {
+            do {
                 guard (try readFile(deviceStateURL)) == initialState else {
                     throw switchError(tr(.keyQuickSwitchStateUntrusted))
                 }
@@ -867,17 +909,6 @@ final class CCSwitchRepository {
         guard sqlite3_step(statement) == SQLITE_ROW,
               let settingsText = text(from: statement, column: 0) else { return nil }
         return SwitchTarget(settingsConfig: settingsText, category: text(from: statement, column: 1))
-    }
-
-    private func proxyTakeoverIsActive(appType: String, database: OpaquePointer) -> Bool {
-        let sql = "SELECT EXISTS(SELECT 1 FROM proxy_config WHERE app_type = ? AND (live_takeover_active = 1 OR enabled = 1)) OR EXISTS(SELECT 1 FROM proxy_live_backup WHERE app_type = ?)"
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { return false }
-        defer { sqlite3_finalize(statement) }
-        bind(appType, to: statement, at: 1)
-        bind(appType, to: statement, at: 2)
-        return sqlite3_step(statement) == SQLITE_ROW && sqlite3_column_int(statement, 0) != 0
     }
 
     private func execute(_ database: OpaquePointer, sql: String, bindings: [String] = []) throws {

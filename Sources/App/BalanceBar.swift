@@ -579,7 +579,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var aggregationDisplays: [AggregatedProviderDisplay] = []
     private var snapshotProviderID: String?
     private var aggregationQuickSwitchBlocked = true
-    private var quickSwitchSafety: CCSwitchQuickSwitchSafety = .blockedUntrusted
+    private var quickSwitchSafetyByClient: [AssistantClient: CCSwitchQuickSwitchSafety] = [:]
+    private var quickSwitchSafety: CCSwitchQuickSwitchSafety { quickSwitchSafetyByClient[activeClient] ?? .blockedUntrusted }
     private var currentProviderIsOfficialCache = false
     private var currentAccountProfileCache: CodexAccountProfile?
     private var ccSwitchLifecycleObservers: [NSObjectProtocol] = []
@@ -786,7 +787,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 quickSwitchSafetyChanged: { [weak self] safety in
                     DispatchQueue.main.async { [weak self] in
                         guard let self else { return }
-                        self.quickSwitchSafety = safety
+                        self.quickSwitchSafetyByClient[.codex] = safety
+                        guard self.activeClient == .codex else { return }
                         self.aggregationQuickSwitchBlocked = safety.isBlocked
                         self.refreshStatusItemMenuInput()
                     }
@@ -963,7 +965,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showsAvailableUpdateBadge: showsAvailableUpdateBadge,
             aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
             aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked,
-            quickSwitchSafety: activeClient == .codex ? quickSwitchSafety : .allowedDirect
+            quickSwitchSafety: quickSwitchSafety
         )
     }
 
@@ -2211,6 +2213,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             guard let self else { return }
             if client == .codex, self.providerRefreshCoordinator.refreshAggregation(
                 reader: self.aggregationRepository, force: reason.forcesStandardProviderBalance) { return }
+            if client != .codex {
+                let safety = self.ccSwitchRepository.quickSwitchSafety(appType: client.appType)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activeClient == client else { return }
+                    self.quickSwitchSafetyByClient[client] = safety
+                    self.refreshStatusItemMenuInput()
+                }
+            }
             let current: CCSwitchProvider?
             do { current = try self.ccSwitchRepository.loadCurrentChecked(appType: client.appType) }
             catch {
