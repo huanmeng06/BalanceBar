@@ -1,3 +1,31 @@
+# PR #506: Full CI failures on release head `fd652b49`
+
+Full CI run 38950760832 (Ready, version 1.7.0): 1469 tests / 3 failures /
+13 skipped. Not merged.
+
+1. `testSharedWalletSubtitleKeepsFixedRowWithoutReplacingCard` and
+   `testAllAggregationSubtitlesKeepHeightCardIdentityAndProgressPreference`
+   (added in this PR) looked for `balance.subtitle` only as a direct
+   `NSTextField`. CI has no saved app language and uses English, whose top-up
+   subtitle overflows and is correctly hosted by an `AccountMarqueeView`.
+   Reproduced locally by forcing English. Both tests now resolve the subtitle
+   whether plain or marquee-hosted and run in Chinese and English.
+2. `testRuntimeSettingsCopyMatchesFromEveryStartingSection` timed out waiting
+   2 s for provider metadata on its first AppDelegate. This PR moved that load
+   from a synchronous read to `ProviderMetadataReader`'s background read, so the
+   wait now covers real asynchronous work on a slower runner. The predicate
+   still ends at publication; only the failure bound is widened to 10 s.
+
+No product code changed; the version stays 1.7.0 / 169.
+
+## Actual verification
+
+- Forced-English reproduction of (1) before the fix
+  (`/private/tmp/issue493-en2.log`); StatusItemControllerTests 86/86 after.
+- Complete serial XCTest **1469 total / 1468 passed / 1 skipped / 0 failed**
+  (`/private/tmp/issue493-cifix-full.log`); `ci-policy-test.py` passes.
+- Hosted Full CI on the new head is the acceptance gate.
+
 # PR #506: review Block 1 on `6b250e8a` — title bubble after section replacement
 
 ChatGPT P1: with the menu open, a forecast presentation change makes

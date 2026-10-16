@@ -1253,7 +1253,9 @@ final class DashboardPageSearchTests: XCTestCase {
             let metadata = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
                 appDelegate.providerChoicesForTesting.contains { $0.name == "MyPrivateProviderXYZ" }
             }, object: nil)
-            wait(for: [metadata], timeout: 2)
+            // Provider metadata is published by ProviderMetadataReader's background
+            // read; the wait ends at publication, the timeout only bounds failure.
+            wait(for: [metadata], timeout: 10)
             let composition = appDelegate.dashboardCompositionForTesting
             defer { composition.teardownForTesting() }
             let window = try XCTUnwrap(composition.makeWindowForTesting(showing: section))

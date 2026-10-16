@@ -3500,8 +3500,25 @@ extension StatusItemControllerTests {
         XCTAssertEqual(replacement.subviews.compactMap { $0 as? AggregationNoteTagView }.map { $0.textView.accountLabel.stringValue }.sorted(), ["Grok", "Other"])
     }
 
+    /// Fitting subtitles are a text field; overflowing copy (e.g. English) is a marquee.
+    private func balanceSubtitle(in card: NSView) -> (view: NSView, label: NSTextField)? {
+        guard let view = card.subviews.first(where: { $0.identifier?.rawValue == "balance.subtitle" }) else { return nil }
+        if let marquee = view as? AccountMarqueeView { return (view, marquee.accountLabel) }
+        return (view as? NSTextField).map { (view, $0) }
+    }
+
     @MainActor
     func testSharedWalletSubtitleKeepsFixedRowWithoutReplacingCard() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            AppLanguage.selected = language
+            try assertSharedWalletSubtitleKeepsFixedRow()
+        }
+    }
+
+    @MainActor
+    private func assertSharedWalletSubtitleKeepsFixedRow() throws {
         let controller = makeController()
         defer { controller.teardown() }
         controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: sharedWalletInput(), settings: makeSettings())
@@ -3514,8 +3531,9 @@ extension StatusItemControllerTests {
         controller.updateMenu(input: sharedWalletInput(recharge: recharge))
         XCTAssertTrue(wrapper.subviews.first === card)
         XCTAssertEqual(card.frame.height, height)
-        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.subtitle" })
-        XCTAssertTrue(label.stringValue.contains("$10.00"))
+        let subtitle = try XCTUnwrap(balanceSubtitle(in: card))
+        let label = subtitle.view
+        XCTAssertTrue(subtitle.label.stringValue.contains("$10.00"))
         XCTAssertTrue(label.toolTip?.contains(tr(.keyBalanceRechargeObserved)) == true)
         let layout = try XCTUnwrap(card.overviewLayout)
         XCTAssertEqual(label.frame.maxY + 2, layout.quotaDetail.minY)
@@ -3822,6 +3840,16 @@ extension StatusItemControllerTests {
 extension StatusItemControllerTests {
     @MainActor
     func testAllAggregationSubtitlesKeepHeightCardIdentityAndProgressPreference() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            AppLanguage.selected = language
+            try assertAllAggregationSubtitlesKeepHeightAndIdentity()
+        }
+    }
+
+    @MainActor
+    private func assertAllAggregationSubtitlesKeepHeightAndIdentity() throws {
         let controller = makeController()
         defer { controller.teardown() }
         let start = Date(timeIntervalSince1970: 1_700_000_000)
@@ -3842,7 +3870,7 @@ extension StatusItemControllerTests {
                 controller.updateMenu(input: next)
                 XCTAssertTrue(wrapper.subviews.first === card)
                 XCTAssertEqual(card.overviewLayout, frames)
-                let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.subtitle" })
+                let label = try XCTUnwrap(balanceSubtitle(in: card)).label
                 XCTAssertEqual(label.stringValue, next.aggregatedProviders[0].snapshot.balanceSubtitle(timeZone: makeSettings().displayTimeZone))
             }
         }
