@@ -81,7 +81,7 @@ enum AggregationWalletPresentation {
             let first = members[0]
             guard let scope = walletID(first) else { return first }
             let valid = members.filter { $0.snapshot.kind == .balance }
-            let selected = (valid.isEmpty ? members : valid).max {
+            let selected = valid.first(where: { $0.entry.role == .default }) ?? (valid.isEmpty ? members : valid).max {
                 let left = $0.fetchedAt ?? .distantPast
                 let right = $1.fetchedAt ?? .distantPast
                 return left == right ? $0.status != .fresh && $1.status == .fresh : left < right
@@ -92,7 +92,7 @@ enum AggregationWalletPresentation {
             let wallet = scope + "|" + unit + "|" + memberKey
             let snapshot: Snapshot
             if let amount = selected.snapshot.amount, selected.snapshot.kind == .balance {
-                snapshot = .balance(first.entry.source.name, amount, unit, first.entry.source.websiteURL ?? first.entry.source.query?.websiteURL,
+                snapshot = .balance(selected.entry.source.name, amount, unit, selected.entry.source.websiteURL ?? selected.entry.source.query?.websiteURL,
                     selected.snapshot.date ?? selected.fetchedAt ?? .distantPast,
                     progressPercentage: selected.snapshot.balanceProgressPercentage ?? ProviderBalanceProgressStore.minimumVisibleProgressPercentage,
                     recharge: selected.snapshot.balanceRecharge, progressContext: selected.snapshot.balanceProgressContext)
@@ -111,7 +111,7 @@ enum AggregationWalletPresentation {
             let reason = failed.isEmpty ? selected.reason : failed.map {
                 ($0.entry.source.notes ?? $0.entry.source.name) + ": " + ($0.reason ?? tr(.keyAggregationUnavailable))
             }.joined(separator: "\n")
-            return AggregatedProviderDisplay(entry: AggregatedProviderEntry(source: first.entry.source,
+            return AggregatedProviderDisplay(entry: AggregatedProviderEntry(source: selected.entry.source,
                 role: members.contains { $0.entry.role == .default } ? .default : .member),
                 identity: AggregationDisplayIdentity(providerID: "wallet:" + wallet, accountScope: wallet, configurationRevision: wallet),
                 snapshot: snapshot, account: nil, status: failed.isEmpty ? selected.status : .stale, reason: reason, fetchedAt: selected.fetchedAt,
@@ -127,9 +127,9 @@ enum AggregationWalletPresentation {
 
 }
 
-/// Presentation-only hysteresis. A round requires every member to publish a
-/// new successful sample still within its own refresh window; two such rounds
-/// confirm a partition. Re-rendering the same values never advances evidence.
+/// Reliable mismatches split immediately, including during a partial refresh.
+/// Merging requires every member to publish two new, fresh aligned rounds.
+/// Re-rendering the same values never advances merging evidence.
 struct AggregationWalletGrouping {
     private struct Evidence {
         var partitions: [String: String] = [:]
@@ -172,11 +172,26 @@ struct AggregationWalletGrouping {
                 state.confirmations = 0
                 state.sampleDates = [:]
             }
-            let valid = peers.allSatisfy { peer in
+            let reliable = peers.filter { peer in
                 peer.status == .fresh && peer.snapshot.kind == .balance &&
                 peer.snapshot.amount.flatMap(AggregationWalletPresentation.cents) != nil &&
                 Self.sampleIsFresh(peer, now: now)
             }
+            // Refine existing partitions without requiring an unrelated/failed peer
+            // to refresh. Unknown peers keep their own prior label, never bridging
+            // two wallets with observed different balances.
+            let reliableByPartition = Dictionary(grouping: reliable, by: { state.partitions[$0.entry.providerID]! })
+            for members in reliableByPartition.values {
+                let amounts = Dictionary(grouping: members, by: { AggregationWalletPresentation.cents($0.snapshot.amount!)! })
+                guard amounts.count > 1 else { continue }
+                for group in amounts.values {
+                    let label = String(data: try! JSONEncoder().encode(group.map { $0.entry.providerID }.sorted()), encoding: .utf8)!
+                    for peer in group { state.partitions[peer.entry.providerID] = label }
+                }
+                state.confirmations = 0
+                state.candidate = ""
+            }
+            let valid = reliable.count == peers.count
             let newRound = valid && peers.count == ids.count && peers.allSatisfy {
                 guard let date = $0.fetchedAt else { return false }
                 return state.sampleDates[$0.entry.providerID].map { date > $0 } ?? true

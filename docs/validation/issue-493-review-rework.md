@@ -1,3 +1,103 @@
+# PR #506: three review fixes (baseline 9fd0c684)
+
+This section is the current delivery; later sections are historical, superseded
+validation records. Previous HEAD test PASS counts are not current evidence.
+
+## Code and regression evidence
+
+1. **Claude route/auth environment**: compare the entire parsed string-to-string
+   `env` dictionary against the current Provider, rather than discarding fields
+   through a prefix allowlist. Proxy variables (including lowercase), OAuth,
+   TLS and unknown future variables therefore cannot silently disappear from
+   the comparison. Unparseable environment/helper configurations still fail
+   closed. Unrelated top-level theme settings remain independent. Matching
+   proxy/OAuth settings continue to be accepted for a verified direct Provider;
+   presence of a corporate proxy alone is not equated with CCS takeover.
+   Regression checks mismatches for HTTPS_PROXY, HTTP_PROXY, ALL_PROXY, NO_PROXY,
+   https_proxy, OAuth access/refresh tokens, custom CA and an unknown variable;
+   direct repository calls must throw without pointer/file mutation. A positive
+   matching proxy+OAuth case ensures this is not blanket proxy prohibition.
+2. **Merged card source**: select the default-route member with a balance first,
+   even when appended outside Stack and fetched earlier than another member.
+   Provider metadata/link, amount, progress, recharge, baseline context and
+   observed time all come from that same selected member. If the default has
+   no balance, the fallback's source and complete snapshot move together; the
+   failed member remains visible in the group's stale status/reason. Membership,
+   notes order and group identity remain wallet-scoped and no balance is summed.
+   Regression reads actual reader entries with a third-party default absent
+   from Stack, distinct sites, both timestamp orders and fallback behavior.
+3. **Split immediately, merge cautiously**: fresh, valid cent amounts within
+   each Provider's own refresh window immediately refine a merged partition
+   when they disagree. This does not wait for every peer or two refresh rounds;
+   unknown/failing peers cannot bridge the observed different balances.
+   Restoring a merged card still needs two complete new aligned fresh rounds;
+   re-rendering cannot count as a sample. Existing tests now assert first-sample
+   split, stability through failures, per-cent equivalence, third-member joins,
+   and first-sample split even with a 30-minute member refresh interval.
+
+Official reference checked for the environment boundary:
+[Claude environment variables](https://code.claude.com/docs/en/env-vars) and
+[network configuration](https://code.claude.com/docs/en/network-config).
+No credential values are logged or added to persistence; tests use fixtures.
+
+## Actual verification
+
+- Final complete serial XCTest: **1463 total / 1460 passed / 1 skipped / 2 failed**.
+  Log `/private/tmp/issue493-three-block-full.log`, summary
+  `/private/tmp/issue493-three-block-full-summary.json`, result bundle
+  `Test-BalanceBar-2026.10.16_11-40-14--0400.xcresult` in dedicated DerivedData.
+- Failing tests:
+  `ProviderRefreshCoordinatorTests.testQuickSwitchSummaryIsClearedWhenConfigurationRevisionChangesAndRefreshFails`
+  (`Task created in a session that has been invalidated`, NSGenericException),
+  and `testSharedQueryRejectedLateResponseDoesNotPublishOrNotify` (ABRT crash).
+  This reproduces the outstanding asynchronous session lifecycle failure;
+  this bounded rework neither fixes it nor proves it unrelated. Full acceptance
+  remains blocked; no single-test retry or old Full PASS replaces this run.
+- Within this complete run CCSwitchRepositoryTests 40, StatusItemControllerTests
+  86, DomainModelsTests 59 and AppDelegateCompositionTests 49 all passed;
+  all three new regressions passed. Refresh class still has the failures above.
+- Explicit unsigned Debug PASS: `/private/tmp/issue493-three-block-debug.log`.
+  Issue remains **ai:changes** and PR Draft because of the full-suite blocker.
+
+- Regression-first run on old implementation: 3 tests, all 3 failed, with 35
+  assertion failures. These are expected reproduction evidence, not a delivery
+  test PASS. `/private/tmp/issue493-three-block-red.log`.
+- Focused run after fixes: 301 tests / 1 failure. All changed repository/menu
+  tests passed (40 + 86); the failure was the existing official late-response
+  fixture's SQLite disk-I/O error in ProviderRefreshCoordinatorTests.
+  `/private/tmp/issue493-three-block-focused.log`. This failure is preserved.
+- Localization (525 keys, 12 languages), balance-query, network-error,
+  balance-card and menu-bar geometry probes PASS; diff check PASS.
+  `/private/tmp/issue493-three-block-probes.log`.
+- Dedicated DerivedData reused:
+  `/private/tmp/BalanceBar-issue493-proxy-state-full-DerivedData`.
+- Final command: `xcodebuild test -project BalanceBar.xcodeproj -scheme BalanceBar
+  -configuration Debug -derivedDataPath <above> -destination 'platform=macOS,arch=arm64'
+  CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO`.
+- Dev identity/signature/resources and exact-head Scope/Fast are recorded after
+  committing in the durable PR/Issue handoff. Hosted Full/artifact smoke and
+  actual GUI/white-screen/CPU/scroll acceptance remain pending. No version/merge.
+
+## 如何人工测试
+
+开发版：原工作树 `build/dev/BalanceBar-dev.app`；核对本轮交接的精确内嵌 SHA。
+准备：使用测试供应商与隔离配置，不更改或删除生产凭据来制造故障。
+
+1. Claude 用户配置的代理/OAuth 与 CCS Provider 不一致时，Quick Switch 应置灰；
+   通过 CCS 同步为可靠直连后再恢复。不要点击测试生产供应商来制造竞态。
+2. 第三方默认路由 B 不在 Stack 成员内，另有同名 A，二者余额与币种相同但站点
+   不同：合并标题链接应打开 B 的站点，充值时间/进度来自 B；刷新先后不改变它。
+3. 同名成员第一次拿到可靠不同余额后立即分卡，无需等慢成员下一轮；后续报错
+   不应重新错误合并。恢复一致余额后需两轮新采样才合并，反复开菜单不算采样。
+4. 检查官方优先、备注顺序、菜单置灰及恢复；排序/刷新后顶部无白屏，两层滚动
+   保持。真实 GUI/CPU 和关闭白闪仍需人工 PASS，自动测试不替代它们。
+
+反馈：PASS + SHA + 范围，或 FAIL + 步骤 + 实际/预期 + 日志。
+
+---
+
+## Historical superseded validation records
+
 # PR #506: Codex default-config and Claude proxy compatibility
 
 Review baseline: `910c71808d9bfdf166b11404b5631ecfc0f2d27a`.

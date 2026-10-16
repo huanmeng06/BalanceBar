@@ -346,9 +346,9 @@ final class CCSwitchRepository {
             guard object["env"] == nil || object["env"] is [String: String] else { return nil }
             let env = object["env"] as? [String: String] ?? [:]
             guard !env.values.contains(where: { $0.contains("PROXY_MANAGED") }) else { return nil }
-            // Claude routing includes Bedrock/Vertex/Foundry selectors as well as Anthropic credentials.
-            return env.filter { $0.key.hasPrefix("ANTHROPIC_") || $0.key.hasPrefix("CLAUDE_CODE_USE_")
-                || $0.key.hasPrefix("AWS_") || $0.key.hasPrefix("GOOGLE_") || $0.key.hasPrefix("CLOUD_ML_") }
+            // Compare the complete environment: proxy/OAuth/TLS and future credential
+            // selectors must not disappear through a routing-prefix allowlist.
+            return env
         }
         guard let expectedRoute = route(expected), let actualRoute = route(actual) else { return false }
         return expectedRoute == actualRoute

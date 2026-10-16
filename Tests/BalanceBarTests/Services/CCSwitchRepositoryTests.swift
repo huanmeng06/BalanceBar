@@ -112,6 +112,33 @@ final class CCSwitchRepositoryTests: XCTestCase {
         XCTAssertEqual(try currentValue(for: "claude-target"), 1)
     }
 
+    func testClaudeProxyOAuthAndUnknownEnvironmentDifferencesBlockDirectSwitching() throws {
+        let url = try prepareClaudeDirect()
+        let original = try Data(contentsOf: url)
+        for variable in ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy",
+                         "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "NODE_EXTRA_CA_CERTS",
+                         "NEW_UNRECOGNIZED_AUTH_SETTING"] {
+            var object = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+            var env = try XCTUnwrap(object["env"] as? [String: String])
+            env[variable] = "fixture-override"
+            object["env"] = env
+            try JSONSerialization.data(withJSONObject: object).write(to: url)
+            let changed = try Data(contentsOf: url)
+            XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .blockedUntrusted, variable)
+            XCTAssertThrowsError(try repository.switchCurrent(to: "claude-target", appType: "claude"), variable)
+            XCTAssertEqual(try currentValue(for: "claude-other"), 1)
+            XCTAssertEqual(try Data(contentsOf: url), changed)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+        }
+        try original.write(to: url)
+        XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .allowedDirect)
+        try withDatabase { db in
+            try execute(db, sql: #"UPDATE providers SET settings_config = '{"env":{"ANTHROPIC_BASE_URL":"https://claude.example","ANTHROPIC_AUTH_TOKEN":"fixture","HTTPS_PROXY":"fixture-matched","CLAUDE_CODE_OAUTH_TOKEN":"fixture-oauth"}}' WHERE id = 'claude-other'"#)
+        }
+        try Data(#"{"env":{"ANTHROPIC_BASE_URL":"https://claude.example","ANTHROPIC_AUTH_TOKEN":"fixture","HTTPS_PROXY":"fixture-matched","CLAUDE_CODE_OAUTH_TOKEN":"fixture-oauth"},"theme":"light"}"#.utf8).write(to: url)
+        XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .allowedDirect, "matched environment and unrelated theme are compatible")
+    }
+
     func testClaudeProxyBeforeAndDuringTerminationNeverWrites() throws {
         for phase in ["initial", "beforeTerminate", "duringTerminate"] {
             let url = try prepareClaudeDirect()
@@ -853,6 +880,57 @@ extension CCSwitchRepositoryTests {
 
 
 extension CCSwitchRepositoryTests {
+    func testMergedThirdPartyDefaultOutsideStackOwnsWebsiteAndBalanceMetadata() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET website_url='https://default.example' WHERE id='codex-custom'")
+            try execute(db, sql: """
+                INSERT INTO providers SELECT 'peer', name, settings_config, meta, category, 'https://member.example',
+                    app_type, 0, 3, 3 FROM providers WHERE id='codex-custom'
+                """)
+        }
+        let reader = aggregationReader(try aggregationState(route: "codex-custom", members: ["peer"]))
+        guard case .active(let entries) = reader.load() else { return XCTFail("expected aggregation") }
+        XCTAssertEqual(entries.map(\.providerID), ["peer", "codex-custom"], "default was appended outside stack")
+        for defaultOffset in [-10.0, 10.0] {
+            let base = Date(timeIntervalSince1970: 100)
+            let context = BalanceProgressContext(baselineCents: 500, lastCents: 373, peakCents: 500, baselineObservedAt: base)
+            let recharge = BalanceRecharge(amountCents: 200, observedAt: base)
+            let displays = entries.map { entry in
+                let date = base.addingTimeInterval(entry.role == .default ? defaultOffset : 0)
+                return AggregatedProviderDisplay(entry: entry,
+                    identity: .init(providerID: entry.providerID, accountScope: entry.providerID, configurationRevision: "fixture"),
+                    snapshot: .balance(entry.source.name, 3.73, "USD", entry.source.websiteURL, date,
+                        progressPercentage: entry.role == .default ? 74.6 : 90,
+                        recharge: entry.role == .default ? recharge : nil,
+                        progressContext: entry.role == .default ? context : nil),
+                    account: nil, status: .fresh, reason: nil, fetchedAt: date)
+            }
+            let cards = AggregationWalletPresentation.cards(displays)
+            XCTAssertEqual(cards.count, 1)
+            let card = try XCTUnwrap(cards.first)
+            XCTAssertEqual(card.entry.role, .default)
+            XCTAssertEqual(card.entry.providerID, "codex-custom")
+            XCTAssertEqual(card.entry.source.websiteURL?.absoluteString, "https://default.example")
+            XCTAssertEqual(card.snapshot.websiteURL, card.entry.source.websiteURL)
+            XCTAssertEqual(card.snapshot.amount, 3.73)
+            XCTAssertEqual(card.snapshot.balanceRecharge, recharge)
+            XCTAssertEqual(card.snapshot.balanceProgressContext, context)
+            XCTAssertEqual(card.snapshot.balanceProgressPercentage, 74.6)
+            XCTAssertEqual(card.fetchedAt, base.addingTimeInterval(defaultOffset))
+            XCTAssertEqual(card.groupedProviderIDs, ["peer", "codex-custom"])
+            var unavailableDefault = displays
+            unavailableDefault[1].snapshot = .providerError(card.entry.source.name, reason: "offline", cachedBalance: nil)
+            unavailableDefault[1].status = .error
+            let fallback = try XCTUnwrap(AggregationWalletPresentation.cards(unavailableDefault,
+                partitions: ["peer": "shared", "codex-custom": "shared"]).first)
+            XCTAssertEqual(fallback.entry.providerID, "peer")
+            XCTAssertEqual(fallback.snapshot.websiteURL?.absoluteString, "https://member.example")
+            XCTAssertEqual(fallback.snapshot.websiteURL, fallback.entry.source.websiteURL)
+            XCTAssertEqual(fallback.fetchedAt, base)
+            XCTAssertEqual(fallback.status, .stale)
+        }
+    }
+
     func testAggregationNoteOrderReloadsDatabaseSortWithoutChangingRegisteredMembers() throws {
         try withDatabase { db in
             try execute(db, sql: "ALTER TABLE providers ADD COLUMN notes TEXT")

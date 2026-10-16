@@ -4033,7 +4033,40 @@ extension StatusItemControllerTests {
 
 extension StatusItemControllerTests {
     @MainActor
-    func testBalancePartitionsRequireTwoAlignedFreshRoundsAndKeepFailuresVisible() throws {
+    func testReliableBalanceMismatchSplitsImmediatelyDespiteOtherLoadingOrFailingMembers() {
+        let start = Date()
+        var grouping = AggregationWalletGrouping()
+        var peers = sharedWalletInput().aggregatedProviders
+        func update(_ index: Int, _ amount: Double, _ offset: Double) {
+            let date = start.addingTimeInterval(offset)
+            peers[index].snapshot = .balance("tokenshop", amount, "USD", peers[index].entry.source.query?.websiteURL, date)
+            peers[index].status = .fresh
+            peers[index].fetchedAt = date
+        }
+        for i in peers.indices { update(i, 3, 0) }
+        XCTAssertEqual(grouping.cards(peers, now: start).count, 1)
+        update(1, 9, 1)
+        peers[2].snapshot = .providerError("tokenshop", reason: "loading", cachedBalance: nil)
+        peers[2].status = .loading
+        peers[2].fetchedAt = nil
+        let split = grouping.cards(peers, now: start.addingTimeInterval(1))
+        XCTAssertFalse(split.contains { $0.groupedProviderIDs?.contains("member-0") == true && $0.groupedProviderIDs?.contains("member-1") == true })
+        XCTAssertTrue(split.contains { $0.snapshot.amount == 3 })
+        XCTAssertTrue(split.contains { $0.snapshot.amount == 9 })
+        peers[2].status = .error
+        peers[2].reason = "offline"
+        let failed = grouping.cards(peers, now: start.addingTimeInterval(2))
+        XCTAssertEqual(failed.map(\.identity), split.map(\.identity), "failure cannot undo known separation")
+        XCTAssertTrue(failed.contains { $0.reason?.contains("offline") == true })
+        for i in peers.indices { update(i, 4, 3) }
+        XCTAssertGreaterThan(grouping.cards(peers, now: start.addingTimeInterval(3)).count, 1)
+        XCTAssertGreaterThan(grouping.cards(peers, now: start.addingTimeInterval(3)).count, 1, "repaint cannot confirm merging")
+        for i in peers.indices { update(i, 4, 4) }
+        XCTAssertEqual(grouping.cards(peers, now: start.addingTimeInterval(4)).count, 1)
+    }
+
+    @MainActor
+    func testBalancePartitionsSplitImmediatelyAndRequireTwoFreshRoundsToMerge() throws {
         let start = Date()
         var grouping = AggregationWalletGrouping()
         func sample(_ values: [Double], _ offset: Double) -> [AggregatedProviderDisplay] {
@@ -4047,15 +4080,15 @@ extension StatusItemControllerTests {
         }
         let first = sample([3, 3, 9], 0)
         let initial = grouping.cards(first, now: start)
-        XCTAssertEqual(initial.count, 1)
-        XCTAssertEqual(grouping.cards(first, now: start).count, 1, "repaint is not a second observation")
+        XCTAssertEqual(initial.count, 2)
+        XCTAssertEqual(grouping.cards(first, now: start).count, 2, "repaint preserves immediate separation")
         var partial = sample([3, 3, 9], 1)
         partial[2].status = .loading
-        XCTAssertEqual(grouping.cards(partial, now: start.addingTimeInterval(1)).count, 1)
+        XCTAssertEqual(grouping.cards(partial, now: start.addingTimeInterval(1)).count, 2)
         let split = grouping.cards(sample([3, 3, 9], 2), now: start.addingTimeInterval(2))
         XCTAssertEqual(split.count, 2)
         XCTAssertEqual(split.map { $0.groupedProviderIDs?.count ?? 0 }, [2, 1])
-        XCTAssertFalse(split.contains { $0.identity == initial[0].identity })
+        XCTAssertEqual(split.map(\.identity), initial.map(\.identity), "partition identity remains stable after the first mismatch")
         var failed = sample([3, 3, 9], 3)
         failed[1].status = .stale; failed[1].reason = "offline"
         let retained = grouping.cards(failed, now: start.addingTimeInterval(3))
@@ -4073,7 +4106,7 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testNewSameNameMemberInheritsMergedPartitionUntilDifferentBalancesConfirm() {
+    func testNewSameNameMemberInheritsMergedPartitionUntilReliableMismatch() {
         let start = Date()
         var grouping = AggregationWalletGrouping()
         func peers(_ amounts: [Double], offset: Double, fetched: [TimeInterval]? = nil, intervals: [Int]? = nil,
@@ -4110,7 +4143,7 @@ extension StatusItemControllerTests {
         XCTAssertEqual(grouping.cards(peers([3, 3], offset: 0), now: start).count, 1)
         XCTAssertEqual(grouping.cards(peers([3, 3, 3], offset: 1, loading: [2]), now: start.addingTimeInterval(1)).count, 1)
         XCTAssertEqual(grouping.cards(peers([3, 3, 3], offset: 2), now: start.addingTimeInterval(2)).first?.groupedProviderIDs?.count, 3)
-        XCTAssertEqual(grouping.cards(peers([3, 3, 9], offset: 3), now: start.addingTimeInterval(3)).count, 1)
+        XCTAssertEqual(grouping.cards(peers([3, 3, 9], offset: 3), now: start.addingTimeInterval(3)).count, 2)
         let split = grouping.cards(peers([3, 3, 9], offset: 4), now: start.addingTimeInterval(4))
         XCTAssertEqual(split.count, 2)
         XCTAssertEqual(Set(split.map { $0.groupedProviderIDs?.count ?? 0 }), [2, 1])
@@ -4131,14 +4164,14 @@ extension StatusItemControllerTests {
                 )
             }
         }
-        XCTAssertEqual(grouping.cards(peers([3, 9], offset: 0), now: start).count, 1)
+        XCTAssertEqual(grouping.cards(peers([3, 9], offset: 0), now: start).count, 2)
         XCTAssertEqual(grouping.cards(peers([3, 9], offset: 1), now: start.addingTimeInterval(1)).count, 2)
         XCTAssertEqual(grouping.cards(peers([3, 9, 3], offset: 2), now: start.addingTimeInterval(2)).count, 3)
         XCTAssertEqual(grouping.cards(peers([3, 9, 3], offset: 3), now: start.addingTimeInterval(3)).count, 2)
     }
 
     @MainActor
-    func testDifferentRefreshIntervalsStillConfirmASplitWithoutAThirtySecondWindow() {
+    func testDifferentRefreshIntervalsSplitOnFirstReliableMismatchWithoutWaitingThirtyMinutes() {
         let start = Date()
         var grouping = AggregationWalletGrouping()
         func peers(_ amounts: [Double], fetched: [TimeInterval]) -> [AggregatedProviderDisplay] {
@@ -4162,7 +4195,7 @@ extension StatusItemControllerTests {
                 )
             }
         }
-        XCTAssertEqual(grouping.cards(peers([3, 9], fetched: [0, 0]), now: start).count, 1)
+        XCTAssertEqual(grouping.cards(peers([3, 9], fetched: [0, 0]), now: start).count, 2)
         let now = start.addingTimeInterval(1800)
         XCTAssertEqual(grouping.cards(peers([3, 9], fetched: [1740, 1800]), now: now).count, 2)
     }
