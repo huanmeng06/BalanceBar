@@ -3520,7 +3520,8 @@ extension StatusItemControllerTests {
         XCTAssertEqual(reordered.first?.groupedProviderIDs, ["member-0"])
         XCTAssertEqual(reordered[1].groupedProviderIDs, ["member-1", "member-2"])
         XCTAssertEqual(reordered[1].entry.role, .default)
-        let officialSource = ProviderSummarySource(id: "official", name: "OpenAI Official", isOfficial: true)
+        let officialSource = ProviderSummarySource(id: "official", name: "OpenAI Official", isOfficial: true,
+            query: nil, officialAccessToken: nil)
         let officialDisplay = AggregatedProviderDisplay(
             entry: .init(source: officialSource, role: .default),
             identity: .init(providerID: "official", accountScope: "official", configurationRevision: "fixture"),
