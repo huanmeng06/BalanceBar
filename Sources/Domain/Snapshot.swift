@@ -965,7 +965,8 @@ struct Snapshot: Equatable {
     }
 
     var balanceRechargeConsumedCents: Int? {
-        guard balanceRecharge != nil, let context = balanceProgressContext,
+        guard let recharge = balanceRecharge, let context = balanceProgressContext,
+              context.baselineObservedAt == recharge.observedAt,
               let peak = context.peakCents else { return nil }
         return max(0, peak - context.lastCents)
     }
