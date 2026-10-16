@@ -3799,7 +3799,6 @@ extension StatusItemControllerTests {
         let wrapper = try XCTUnwrap(viewport.documentView?.subviews.first)
         let card = try XCTUnwrap(wrapper.subviews.first as? MenuHoverLinkHostView)
         let frames = try XCTUnwrap(card.overviewLayout)
-        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.subtitle" })
         let placements = controller.aggregationPlacementCountForTesting
         for date in [start, nil] {
             for last in [400, 334] {
@@ -3809,12 +3808,12 @@ extension StatusItemControllerTests {
                 controller.updateMenu(input: next)
                 XCTAssertTrue(wrapper.subviews.first === card)
                 XCTAssertEqual(card.overviewLayout, frames)
-                XCTAssertTrue(card.subviews.contains { $0 === label })
+                let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.subtitle" })
                 XCTAssertEqual(label.stringValue, next.aggregatedProviders[0].snapshot.balanceSubtitle(timeZone: makeSettings().displayTimeZone))
             }
         }
         controller.updateMenu(input: input(nil, recharge: .init(amountCents: 100, observedAt: start)))
-        XCTAssertTrue(card.subviews.contains { $0 === label })
+        XCTAssertTrue(card.subviews.contains { $0.identifier?.rawValue == "balance.subtitle" })
         XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
         let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
             horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showQuotaProgressBar: false)
@@ -3967,43 +3966,46 @@ extension StatusItemControllerTests {
         func fields(_ view: NSView) -> [HoverLinkTextField] {
             (view as? HoverLinkTextField).map { [$0] } ?? view.subviews.flatMap(fields)
         }
-        for language in [AppLanguage.simplifiedChinese, .german] {
-            AppLanguage.selected = language
-            for aggregation in [false, true] {
-                let controller = makeController()
-                defer { controller.teardown() }
-                let source = ProviderSummarySource(id: "fixture", name: "tokenshop", isOfficial: false,
-                    query: nil, officialAccessToken: nil, websiteURL: snapshot.websiteURL, notes: "GPT")
-                let display = AggregatedProviderDisplay(entry: .init(source: source, role: .default),
-                    identity: .init(providerID: "fixture", accountScope: "fixture", configurationRevision: "fixture"),
-                    snapshot: snapshot, account: nil, status: .fresh, reason: nil, fetchedAt: date)
-                let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
-                    openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
-                    showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderNotes: ["GPT"],
-                    aggregatedProviders: aggregation ? [display] : [])
-                controller.start(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
-                let menu = controller.statusMenuForTesting
-                let root = try XCTUnwrap(menu.items.first?.view)
-                let card = try XCTUnwrap(aggregation ? (root as? NSScrollView)?.documentView?.subviews.first?.subviews.first : root)
-                let links = fields(card)
-                let hint = try XCTUnwrap(links.first { $0.textTooltipTitle != nil })
-                XCTAssertEqual(hint.stringValue, snapshot.balanceSubtitle(timeZone: zone))
-                XCTAssertTrue(hint.stringValue.contains("$2.50"))
-                XCTAssertEqual(hint.hoverPhrase, tr(.keyBalanceLastRecharge))
-                XCTAssertEqual(hint.hoverHint, "10/16 13:50")
-                XCTAssertNil(hint.onActivate)
-                XCTAssertNotNil(links.first { $0.identifier?.rawValue == "overview.providerTitle" }?.onActivate)
-                if language == .german {
-                    XCTAssertTrue(hint.superview is AccountMarqueeView)
-                    XCTAssertTrue((hint.superview as? AccountMarqueeView)?.isScrollable == true)
+        for snapshot in [snapshot, Snapshot.balance("tokenshop", 0.68, "USD", snapshot.websiteURL, date,
+            progressPercentage: snapshot.progressPercentage, progressContext: snapshot.balanceProgressContext)] {
+            for language in [AppLanguage.simplifiedChinese, .german] {
+                AppLanguage.selected = language
+                for aggregation in [false, true] {
+                    let controller = makeController()
+                    defer { controller.teardown() }
+                    let source = ProviderSummarySource(id: "fixture", name: "tokenshop", isOfficial: false,
+                        query: nil, officialAccessToken: nil, websiteURL: snapshot.websiteURL, notes: "GPT")
+                    let display = AggregatedProviderDisplay(entry: .init(source: source, role: .default),
+                        identity: .init(providerID: "fixture", accountScope: "fixture", configurationRevision: "fixture"),
+                        snapshot: snapshot, account: nil, status: .fresh, reason: nil, fetchedAt: date)
+                    let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                        openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+                        showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderNotes: ["GPT"],
+                        aggregatedProviders: aggregation ? [display] : [])
+                    controller.start(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
+                    let menu = controller.statusMenuForTesting
+                    let root = try XCTUnwrap(menu.items.first?.view)
+                    let card = try XCTUnwrap(aggregation ? (root as? NSScrollView)?.documentView?.subviews.first?.subviews.first : root)
+                    let links = fields(card)
+                    let hint = try XCTUnwrap(links.first { $0.textTooltipTitle != nil })
+                    XCTAssertEqual(hint.stringValue, snapshot.balanceSubtitle(timeZone: zone))
+                    XCTAssertTrue(hint.stringValue.contains("$2.50"))
+                    XCTAssertEqual(hint.hoverPhrase, tr(.keyBalanceLastRecharge))
+                    XCTAssertEqual(hint.hoverHint, "10/16 13:50")
+                    XCTAssertNil(hint.onActivate)
+                    XCTAssertNotNil(links.first { $0.identifier?.rawValue == "overview.providerTitle" }?.onActivate)
+                    if language == .german {
+                        XCTAssertTrue(hint.superview is AccountMarqueeView)
+                        XCTAssertTrue((hint.superview as? AccountMarqueeView)?.isScrollable == true)
+                    }
+                    controller.menuWillOpen(menu)
+                    let host = try XCTUnwrap(card as? MenuHoverLinkHostView)
+                    host.forwardHover(atHostPoint: host.convert(NSPoint(x: hint.visibleTextHitRect.midX, y: hint.visibleTextHitRect.midY), from: hint))
+                    XCTAssertTrue(hint.isHoverHintScheduled)
+                    controller.menuDidClose(menu)
+                    XCTAssertFalse(hint.isHoverHintScheduled)
+                    XCTAssertFalse(hint.isHoverHintVisible)
                 }
-                controller.menuWillOpen(menu)
-                let host = try XCTUnwrap(card as? MenuHoverLinkHostView)
-                host.forwardHover(atHostPoint: host.convert(NSPoint(x: hint.visibleTextHitRect.midX, y: hint.visibleTextHitRect.midY), from: hint))
-                XCTAssertTrue(hint.isHoverHintScheduled)
-                controller.menuDidClose(menu)
-                XCTAssertFalse(hint.isHoverHintScheduled)
-                XCTAssertFalse(hint.isHoverHintVisible)
             }
         }
     }

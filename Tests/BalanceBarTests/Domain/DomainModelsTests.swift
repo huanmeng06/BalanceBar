@@ -2972,23 +2972,23 @@ extension DomainModelsTests {
             .balance("same", Double(last) / 100, "USD", nil, now, progressPercentage: Double(last) / 4,
                 recharge: recharge, progressContext: .init(baselineCents: 400, lastCents: last, peakCents: 400, baselineObservedAt: date))
         }
-        XCTAssertEqual(snapshot().balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSince, arguments: ["10/12", "$0.66"]))
-        XCTAssertEqual(snapshot(last: 400).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSince, arguments: ["10/12", "$0.00"]))
+        XCTAssertEqual(snapshot().balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
+        XCTAssertEqual(snapshot(last: 400).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.00"]))
         XCTAssertEqual(snapshot(date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsed, arguments: ["$0.66"]))
         XCTAssertEqual(snapshot(last: 400, date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
         XCTAssertEqual(Snapshot.balance("old", 3.34, "USD", nil, now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
         let recharge = BalanceRecharge(amountCents: 100, observedAt: now)
-        XCTAssertEqual(snapshot(recharge: recharge).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRechargeLabel) + " +$1.00 · 10/15")
+        XCTAssertEqual(snapshot(recharge: recharge).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
         let lastYear = try XCTUnwrap(parser.date(from: "2025-12-31T23:30:00Z"))
-        XCTAssertTrue(snapshot(date: lastYear).balanceSubtitle(now: now, timeZone: zone).contains("2025/12/31"))
+        XCTAssertTrue(snapshot(date: lastYear).balanceProgressTooltip(now: now, timeZone: zone).contains("2025/12/31"))
         let east = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
-        XCTAssertTrue(snapshot(date: lastYear).balanceSubtitle(now: now, timeZone: east).contains("01/01"))
+        XCTAssertTrue(snapshot(date: lastYear).balanceProgressTooltip(now: now, timeZone: east).contains("01/01"))
         XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("$4.00"))
         XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("84%"))
         XCTAssertFalse(snapshot(date: nil).balanceProgressTooltip(now: now, timeZone: zone).contains("10/"))
-        XCTAssertEqual(snapshot(date: now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceToday, arguments: ["12:00", "$0.66"]))
+        XCTAssertEqual(snapshot(date: now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
         let yesterday = try XCTUnwrap(parser.date(from: "2026-10-14T12:00:00Z"))
-        XCTAssertEqual(snapshot(date: yesterday).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceYesterday, arguments: ["昨日 12:00", "$0.66"]))
+        XCTAssertEqual(snapshot(date: yesterday).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
     }
 
     func testProgressContextSurvivesSnapshotCacheAndRejectedOlderSamples() throws {
@@ -3038,22 +3038,24 @@ extension DomainModelsTests {
 }
 
 extension DomainModelsTests {
-    func testRechargeConsumptionUsesPostRechargeBalanceAndKeepsBaselineFallback() throws {
+    func testRechargeAndInitialBaselineShareConsumptionPresentation() throws {
         let date = Date(timeIntervalSince1970: 1_792_150_600)
         let zone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         let recharge = BalanceRecharge(amountCents: 1000, observedAt: date)
         let context = BalanceProgressContext(baselineCents: 1300, lastCents: 1200, peakCents: 1300, baselineObservedAt: date)
         let charged = Snapshot.balance("same", 12, "USD", nil, date, recharge: recharge, progressContext: context)
-        XCTAssertEqual(charged.balanceRechargeConsumedCents, 100)
+        XCTAssertEqual(charged.balanceDisplayConsumedCents, 100)
         XCTAssertEqual(charged.balanceSubtitle(now: date, timeZone: zone),
             tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$1.00"]))
         let rebasedContext = BalanceProgressContext(baselineCents: 1200, lastCents: 1200, peakCents: 1200,
             baselineObservedAt: date.addingTimeInterval(60))
         let rebased = Snapshot.balance("same", 12, "USD", nil, date, recharge: recharge, progressContext: rebasedContext)
-        XCTAssertNil(rebased.balanceRechargeConsumedCents, "a later migration baseline cannot represent consumption since the old recharge")
+        XCTAssertEqual(rebased.balanceDisplayConsumedCents, 0)
+        XCTAssertEqual(rebased.balanceConsumptionStartDate, rebasedContext.baselineObservedAt)
         let uncharged = Snapshot.balance("same", 12, "USD", nil, date, progressContext: context)
-        XCTAssertNil(uncharged.balanceRechargeConsumedCents)
+        XCTAssertEqual(uncharged.balanceDisplayConsumedCents, 100)
+        XCTAssertEqual(uncharged.balanceConsumptionStartDate, date)
         XCTAssertEqual(uncharged.balanceSubtitle(now: date, timeZone: zone),
-            tr(.keyBalanceUsedSinceToday, arguments: [BalanceRecharge.clockText(for: date, timeZone: zone), "$1.00"]))
+            tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$1.00"]))
     }
 }

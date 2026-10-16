@@ -6441,7 +6441,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return
         }
         let text = context.snapshot.balanceSubtitle(timeZone: settings.displayTimeZone)
-        let hasRechargeHint = context.snapshot.balanceRechargeConsumedCents != nil
+        let hasRechargeHint = context.snapshot.balanceDisplayConsumedCents != nil
         let subtitleFont = NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize)
         let frame: NSRect
         if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout, row.intersects(layout.amount) {
@@ -6498,15 +6498,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             tooltip = text + "\n" + context.snapshot.balanceProgressTooltip(timeZone: settings.displayTimeZone)
         }
-        if hasRechargeHint, let recharge = context.snapshot.balanceRecharge,
+        if hasRechargeHint, let startDate = context.snapshot.balanceConsumptionStartDate,
            let link = (label as? HoverLinkTextField) ?? (label as? AccountMarqueeView)?.accountLabel as? HoverLinkTextField {
             link.decoratesOnHover = false
             link.restingTextColor = .secondaryLabelColor
             link.hoverPhrase = tr(.keyBalanceLastRecharge)
             link.hoverHintDelay = 0.3
             link.updateTextTooltip(title: tr(.keyBalanceLastRecharge),
-                text: recharge.dateText(timeZone: settings.displayTimeZone) + " "
-                    + BalanceRecharge.clockText(for: recharge.observedAt, timeZone: settings.displayTimeZone))
+                text: BalanceRecharge.dateText(for: startDate, timeZone: settings.displayTimeZone) + " "
+                    + BalanceRecharge.clockText(for: startDate, timeZone: settings.displayTimeZone))
             (card as? MenuHoverLinkHostView)?.track(link)
             label.toolTip = nil
             link.setAccessibilityHelp(tooltip)

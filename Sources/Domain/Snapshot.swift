@@ -964,15 +964,17 @@ struct Snapshot: Equatable {
         return snapshot
     }
 
-    var balanceRechargeConsumedCents: Int? {
-        guard let recharge = balanceRecharge, let context = balanceProgressContext,
-              context.baselineObservedAt == recharge.observedAt,
-              let peak = context.peakCents else { return nil }
-        return max(0, peak - context.lastCents)
+    // The balance baseline is also the display start for “last top-up”.
+    // Keep the actual observed recharge event separate in the ledger.
+    var balanceConsumptionStartDate: Date? { balanceProgressContext?.baselineObservedAt }
+
+    var balanceDisplayConsumedCents: Int? {
+        guard balanceConsumptionStartDate != nil, let context = balanceProgressContext else { return nil }
+        return max(0, context.referenceCents - context.lastCents)
     }
 
     func balanceSubtitle(now: Date = Date(), timeZone: TimeZone) -> String {
-        if let used = balanceRechargeConsumedCents {
+        if let used = balanceDisplayConsumedCents {
             return tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), balanceMoney(cents: used)])
         }
         if let recharge = balanceRecharge {
@@ -981,35 +983,7 @@ struct Snapshot: Equatable {
         }
         guard let context = balanceProgressContext else { return tr(.keyBalanceRecordingStarted) }
         let used = balanceMoney(cents: context.consumedCents)
-        if let date = context.baselineObservedAt {
-            switch relativeBalanceDate(for: date, now: now, timeZone: timeZone) {
-            case .today(let text):
-                return tr(.keyBalanceUsedSinceToday, arguments: [text, used])
-            case .yesterday(let text):
-                return tr(.keyBalanceUsedSinceYesterday, arguments: [text, used])
-            case .absolute(let text):
-                return tr(.keyBalanceUsedSince, arguments: [text, used])
-            }
-        }
         return context.consumedCents > 0 ? tr(.keyBalanceUsed, arguments: [used]) : tr(.keyBalanceRecordingStarted)
-    }
-
-    private enum RelativeBalanceDate {
-        case today(String)
-        case yesterday(String)
-        case absolute(String)
-    }
-
-    private func relativeBalanceDate(for date: Date, now: Date, timeZone: TimeZone) -> RelativeBalanceDate {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = timeZone
-        let clock = BalanceRecharge.clockText(for: date, timeZone: timeZone)
-        if calendar.isDate(date, inSameDayAs: now) { return .today(clock) }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-           calendar.isDate(date, inSameDayAs: yesterday) {
-            return .yesterday(tr(.keyBalanceYesterday) + " " + clock)
-        }
-        return .absolute(BalanceRecharge.dateText(for: date, now: now, timeZone: timeZone))
     }
 
     func balanceProgressTooltip(now: Date = Date(), timeZone: TimeZone) -> String {
