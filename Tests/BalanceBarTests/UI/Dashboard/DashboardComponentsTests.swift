@@ -1757,6 +1757,16 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(link.isHoverHintVisible)
     }
 
+    func testHoverHintOpensAboveOnlyWhenRequested() {
+        // Test windows are parked offscreen, where AppKit may flip a popover to
+        // whichever side has room, so this checks the requested edge itself.
+        let link = HoverLinkTextField(text: "重置概率")
+        XCTAssertTrue(link.isFlipped, "a flipped field opens a .maxY popover below its text")
+        XCTAssertEqual(link.hoverHintPreferredEdge, .maxY, "default placement stays below the anchor")
+        link.opensHoverHintAbove = true
+        XCTAssertEqual(link.hoverHintPreferredEdge, .minY, "requested placement is above the title")
+    }
+
     func testHoverLinkPercentSignFontSurvivesValueChangesAndHover() {
         let digits = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
         let symbol = OverviewNumericTextView.currencySymbolFont(for: digits)

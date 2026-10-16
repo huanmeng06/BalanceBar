@@ -7479,6 +7479,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             label.restingTextColor = .labelColor
             label.textColor = .labelColor
             label.percentSignFont = OverviewNumericTextView.currencySymbolFont(for: amountFont)
+            makeInertBankedResetAmount(label)
             label.alignment = .right
             label.frame = row.amount
             label.identifier = NSUserInterfaceItemIdentifier(
@@ -7494,6 +7495,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             label.restingTextColor = .labelColor
             label.textColor = .labelColor
             label.percentSignFont = OverviewNumericTextView.currencySymbolFont(for: labelFont)
+            makeInertBankedResetAmount(label)
             label.alignment = .right
             label.frame = row.amount
             label.identifier = NSUserInterfaceItemIdentifier(
@@ -7527,10 +7529,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let leadingInkAnchor = AccountMarqueeView.leadingInkInset(of: probabilityTitle.accountLabel)
         if let titleLink {
             titleLink.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.probabilityTitleLink")
-            titleLink.decoratesOnHover = false
-            titleLink.underlinesHoverPhrase = true
             titleLink.restingTextColor = .labelColor
-            titleLink.hoverPhrase = titleText
+            titleLink.opensHoverHintAbove = true
             configureBankedResetSourceLink(titleLink, forecast: forecast)
             eventHost.track(titleLink)
         }
@@ -7686,8 +7686,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         link.identifier = OverviewNumericPresentation.amountIdentifier(for: sample.identity)
         link.textColor = .labelColor
         link.percentSignFont = OverviewNumericTextView.currencySymbolFont(for: font)
+        makeInertBankedResetAmount(link)
         link.configure(plan: plan, sample: sample)
         return link
+    }
+
+    /// The probability title owns the bubble and link; the amount must not
+    /// react to hover even if a card reconcile registers it with the host.
+    private func makeInertBankedResetAmount(_ amount: HoverLinkTextField) {
+        amount.decoratesOnHover = false
+        amount.setInteractionMode(.menuHosted)
     }
 
     private func makeOverviewNumericProgress(
@@ -7862,11 +7870,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
            let section = sections.first(where: { $0.sectionID == .lunaReserve }) {
             section.updateText(title: reserve.menuTitleText, subtitle: reserve.menuSubtitle(timeZone: settings.displayTimeZone))
         }
-        if let section = sections.first(where: { $0.sectionID == .resetProbability }),
-           let title = section.titleView as? AccountMarqueeView {
-            let text = tr(.keyCodexBankedResetProbabilityPrefix)
-            title.updateText(text, preserveScrollPosition: true)
-            (title.accountLabel as? HoverLinkTextField)?.hoverPhrase = text
+        if let section = sections.first(where: { $0.sectionID == .resetProbability }) {
+            (section.titleView as? AccountMarqueeView)?.updateText(tr(.keyCodexBankedResetProbabilityPrefix), preserveScrollPosition: true)
         }
         if let banked = presentation.bankedReset,
            let section = sections.first(where: { $0.sectionID == .bankedReset }) {

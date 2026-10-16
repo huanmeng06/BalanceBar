@@ -567,6 +567,8 @@ class HoverLinkTextField: NSTextField {
     var hoverPhrase: String? { didSet { updateVisibleTextHitRect() } }
     var decoratesOnHover = true
     var underlinesHoverPhrase = false
+    /// Open the bubble above the anchor so card content below it stays visible.
+    var opensHoverHintAbove = false
     /// Draws a trailing "%" in this font, matching the reduced currency symbol.
     var percentSignFont: NSFont? { didSet { applyStyle(text: stringValue, underlined: isHovered) } }
     private(set) var textTooltipTitle: String?
@@ -880,6 +882,12 @@ class HoverLinkTextField: NSTextField {
         isHoverHintScheduled = false
     }
 
+    /// Text fields are flipped: `.maxY` (the default) is below the anchor.
+    var hoverHintPreferredEdge: NSRectEdge {
+        guard opensHoverHintAbove else { return .maxY }
+        return isFlipped ? .minY : .maxY
+    }
+
     var hoverHintPopoverForTesting: NSPopover? { hintPopover }
     var hoverHintAnimatesForTesting: Bool? { hintPopover?.animates }
 
@@ -911,7 +919,7 @@ class HoverLinkTextField: NSTextField {
         toolTip = nil
         let anchor = visibleTextHitRect.isEmpty ? bounds : visibleTextHitRect
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
+        popover.show(relativeTo: anchor, of: self, preferredEdge: hoverHintPreferredEdge)
         guard popover.isShown else {
             hintPopover = nil
             if hoverHintDelay <= 0 {

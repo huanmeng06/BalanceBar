@@ -5578,24 +5578,40 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                     let host = try XCTUnwrap(overview as? MenuHoverLinkHostView, name)
                     controller.menuWillOpen(controller.statusMenuForTesting)
                     defer { controller.menuDidClose(controller.statusMenuForTesting) }
-                    // The amount is no longer a hover target.
+                    // The amount is inert, even when a card reconcile registers it with the host.
+                    XCTAssertEqual(amountLink.interactionMode, .menuHosted, name)
+                    XCTAssertFalse(amountLink.decoratesOnHover, name)
+                    XCTAssertNil(amountLink.onActivate, name)
+                    host.track(amountLink)
+                    host.track(titleLink)
                     let amountHit = amountLink.visibleTextHitRect
                     host.forwardHover(atHostPoint: host.convert(NSPoint(x: amountHit.midX, y: amountHit.midY), from: amountLink))
                     XCTAssertNil(amountLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil), name)
+                    XCTAssertEqual(
+                        amountLink.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor,
+                        NSColor.labelColor,
+                        name
+                    )
                     XCTAssertFalse(titleLink.isHoverHintScheduled, name)
-                    // Hovering the title underlines it in place and schedules the bubble.
+                    // Hovering the title turns it into a blue underlined link and schedules the bubble above it.
+                    XCTAssertTrue(titleLink.opensHoverHintAbove, name)
                     let hit = titleLink.visibleTextHitRect
                     XCTAssertFalse(hit.isEmpty, name)
                     host.forwardHover(atHostPoint: host.convert(NSPoint(x: hit.midX, y: hit.midY), from: titleLink))
                     XCTAssertNotNil(titleLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil), name)
                     XCTAssertEqual(
                         titleLink.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor,
-                        NSColor.labelColor,
+                        NSColor.linkColor,
                         name
                     )
                     XCTAssertTrue(titleLink.isHoverHintScheduled, name)
                     host.forwardHover(atHostPoint: NSPoint(x: host.bounds.maxX - 1, y: host.bounds.midY))
                     XCTAssertNil(titleLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil), name)
+                    XCTAssertEqual(
+                        titleLink.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor,
+                        NSColor.labelColor,
+                        name
+                    )
                     XCTAssertFalse(titleLink.isHoverHintScheduled, name)
                 }
             }

@@ -1,3 +1,29 @@
+# PR #506: reset-probability bubble above the title, inert amount, blue title
+
+User feedback on `fe192dea`:
+1. The bubble opened below "重置概率" (flipped text field, `.maxY`) and covered
+   the subtitle and any progress bar. `HoverLinkTextField.opensHoverHintAbove`
+   now requests the top edge; only the probability title sets it. The
+   last-top-up bubble keeps its default below placement by user decision.
+2. The amount could still show the blue link style: untracked it stayed in
+   `.normal` mode with its own tracking area and cursor rect, and the card
+   reconcile path can register the first `HoverLinkTextField` (the amount) with
+   the host. The amount is now `.menuHosted` with `decoratesOnHover = false`, so
+   neither path styles it.
+3. The title uses the default link style again (blue and underlined on hover).
+
+## Actual verification
+
+- Red on the committed card code: the signal test failed 6 assertions,
+  reproducing the reported blue amount after a host registration
+  (`/private/tmp/issue493-placement-red.log`).
+- Test windows are parked offscreen, where AppKit may flip a popover to any
+  side with room, so screen placement is not asserted; the requested edge and
+  the flipped-coordinate assumption are. On-screen placement is manual.
+- Affected classes 208 tests; complete serial XCTest **1469 total / 1468 passed /
+  1 skipped / 0 failed** (`/private/tmp/issue493-placement-full.log`);
+  `ci-policy-test.py` passes.
+
 # PR #506: forecast bubble triggers from the "重置概率" title
 
 User request after `114335ed`: hovering the four-character "重置概率" title,
