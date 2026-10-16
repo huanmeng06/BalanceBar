@@ -7647,6 +7647,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func configureBankedResetSourceLink(_ link: HoverLinkTextField, forecast: CodexResetForecast) {
+        link.percentSignFont = link.font.map(OverviewNumericTextView.currencySymbolFont(for:))
         link.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
         let content = Self.codexResetForecastTooltip(for: forecast, timeZone: settings.displayTimeZone)
         link.updateForecastTooltipContent(content)

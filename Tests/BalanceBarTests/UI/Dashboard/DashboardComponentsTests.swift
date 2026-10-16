@@ -1757,6 +1757,36 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(link.isHoverHintVisible)
     }
 
+    func testHoverLinkPercentSignFontSurvivesValueChangesAndHover() {
+        let digits = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+        let symbol = OverviewNumericTextView.currencySymbolFont(for: digits)
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 40))
+        let link = HoverLinkTextField(text: "50%")
+        link.font = digits
+        link.percentSignFont = symbol
+        link.frame = NSRect(x: 8, y: 2, width: 200, height: 37)
+        link.hoverHint = "codex-reset.com"
+        host.addSubview(link)
+        link.layout()
+        host.track(link)
+        func fonts() -> (NSFont?, NSFont?) {
+            let text = link.attributedStringValue
+            return (text.attribute(.font, at: 0, effectiveRange: nil) as? NSFont,
+                    text.attribute(.font, at: text.length - 1, effectiveRange: nil) as? NSFont)
+        }
+        XCTAssertEqual(fonts().0?.pointSize, 31)
+        XCTAssertEqual(fonts().1?.pointSize, symbol.pointSize)
+        link.stringValue = "7%"
+        XCTAssertEqual(fonts().0?.pointSize, 31)
+        XCTAssertEqual(fonts().1?.pointSize, symbol.pointSize)
+        host.forwardHover(atHostPoint: host.convert(link.visibleTextHitRect.center, from: link))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertEqual(fonts().1?.pointSize, symbol.pointSize)
+        link.stringValue = "--"
+        XCTAssertEqual(fonts().1?.pointSize, 31, "only a trailing percent sign is reduced")
+        host.forwardHover(atHostPoint: NSPoint(x: 219, y: 39))
+    }
+
     func testHoverLinkAlignmentChangesUpdateDrawingParagraphAndHoverGeometry() throws {
         let link = HoverLinkTextField(text: "--%")
         link.font = .monospacedDigitSystemFont(ofSize: 30, weight: .semibold)

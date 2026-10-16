@@ -4640,6 +4640,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(large24.stringValue, "24%")
         XCTAssertEqual(large24.font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize)
+        let styled24 = large24.attributedStringValue
+        XCTAssertEqual((styled24.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize,
+                       OpenCodexCardLayout.quotaAmountPointSize)
+        XCTAssertEqual((styled24.attribute(.font, at: styled24.length - 1, effectiveRange: nil) as? NSFont)?.pointSize,
+                       OverviewNumericTextView.currencySymbolFont(for: try XCTUnwrap(large24.font)).pointSize)
         XCTAssertEqual(large24.alignment, .right)
         XCTAssertEqual(
             large24.frame.height,

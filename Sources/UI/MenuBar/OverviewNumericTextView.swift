@@ -146,6 +146,8 @@ private struct OverviewNumericTextRoot: View {
             numericValue
             if !model.suffix.isEmpty {
                 Text(model.suffix)
+                    .font(Font(model.suffix == "%"
+                        ? OverviewNumericTextView.currencySymbolFont(for: font) : font))
             }
         }
         .font(Font(font))

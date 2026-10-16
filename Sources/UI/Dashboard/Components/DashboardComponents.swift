@@ -567,6 +567,8 @@ class HoverLinkTextField: NSTextField {
     var hoverPhrase: String? { didSet { updateVisibleTextHitRect() } }
     var decoratesOnHover = true
     var underlinesHoverPhrase = false
+    /// Draws a trailing "%" in this font, matching the reduced currency symbol.
+    var percentSignFont: NSFont? { didSet { applyStyle(text: stringValue, underlined: isHovered) } }
     private(set) var textTooltipTitle: String?
     /// Resolve changing elapsed time only when opening, preserving an open bubble.
     var textTooltipTextProvider: (() -> String)?
@@ -1045,6 +1047,9 @@ class HoverLinkTextField: NSTextField {
         ]
         if underlined && decoratesOnHover { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
         let styledText = NSMutableAttributedString(string: text, attributes: attributes)
+        if let percentSignFont, text.hasSuffix("%") {
+            styledText.addAttribute(.font, value: percentSignFont, range: NSRange(location: (text as NSString).length - 1, length: 1))
+        }
         if underlined, underlinesHoverPhrase, let hoverPhrase {
             let range = (text as NSString).range(of: hoverPhrase)
             if range.location != NSNotFound {

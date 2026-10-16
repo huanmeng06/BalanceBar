@@ -1,3 +1,20 @@
+# PR #506: reduced percent sign (user request after `6f3c8d1d`)
+
+Menu percentages now draw the trailing "%" in the same reduced font as the
+`$`/`¥` currency symbol (`currencySymbolFont`, 0.65× medium), baseline aligned:
+`OverviewNumericTextView` for quota rows, and `HoverLinkTextField.percentSignFont`
+for the banked-reset probability link, which keeps the reduced sign through
+value animation, hover and restyling. Other suffixes (e.g. " EUR") and
+non-percent text are unchanged. Dashboard pages are not changed.
+
+Verification: DashboardComponentsTests, StatusItemControllerTests,
+DashboardWindowControllerTests, OpenCodexCardLayoutTests and
+OverviewNumericTransitionTests, **180 tests / 0 failures**
+(`/private/tmp/issue493-percent-focused.log`). The SwiftUI quota-row suffix has
+no font read-back; it was checked with an offscreen before/after render at
+the menu's 31 pt size (`/tmp/bb493-preview/percent.png`) and needs manual GUI
+confirmation.
+
 # PR #506: unified menu hover bubbles (user request after `c3f606b3`)
 
 Rework baseline: `c3f606b3434c523f3ab960a707e6e2327fa3e2df`.
