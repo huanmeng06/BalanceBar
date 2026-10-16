@@ -7478,7 +7478,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             label.font = amountFont
             label.restingTextColor = .labelColor
             label.textColor = .labelColor
-            configureBankedResetSourceLink(label, forecast: forecast)
+            label.percentSignFont = OverviewNumericTextView.currencySymbolFont(for: amountFont)
             label.alignment = .right
             label.frame = row.amount
             label.identifier = NSUserInterfaceItemIdentifier(
@@ -7493,7 +7493,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             label.font = labelFont
             label.restingTextColor = .labelColor
             label.textColor = .labelColor
-            configureBankedResetSourceLink(label, forecast: forecast)
+            label.percentSignFont = OverviewNumericTextView.currencySymbolFont(for: labelFont)
             label.alignment = .right
             label.frame = row.amount
             label.identifier = NSUserInterfaceItemIdentifier(
@@ -7504,8 +7504,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             reservationFont = labelFont
         }
         }
-        let probabilityTitle = makeMarqueeOverviewLabel(
-            tr(.keyCodexBankedResetProbabilityPrefix),
+        // The title, not the amount, hosts the source bubble and website link.
+        let titleText = tr(.keyCodexBankedResetProbabilityPrefix)
+        let titleLink = contentKey.primary == .confirmed ? nil : HoverLinkTextField(text: titleText)
+        let probabilityTitle = AccountMarqueeView(
+            text: titleText,
             font: .systemFont(
                 ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                 weight: .medium
@@ -7517,12 +7520,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 amountText: marqueeAmountText,
                 amountFont: reservationFont,
                 minimumAmountGap: 12
-            )
+            ),
+            label: titleLink
         )
         (view as? OpenCodexMetricSectionView)?.installMetric(title: probabilityTitle, subtitle: nil, amount: amount)
         let leadingInkAnchor = AccountMarqueeView.leadingInkInset(of: probabilityTitle.accountLabel)
-        if let link = amount as? HoverLinkTextField {
-            eventHost.track(link)
+        if let titleLink {
+            titleLink.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.probabilityTitleLink")
+            titleLink.decoratesOnHover = false
+            titleLink.underlinesHoverPhrase = true
+            titleLink.restingTextColor = .labelColor
+            titleLink.hoverPhrase = titleText
+            configureBankedResetSourceLink(titleLink, forecast: forecast)
+            eventHost.track(titleLink)
         }
         // Reuse the source subtitle slot and stop at the primary amount's
         // visible leading edge. Long localized copy uses the marquee viewport.
@@ -7647,7 +7657,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func configureBankedResetSourceLink(_ link: HoverLinkTextField, forecast: CodexResetForecast) {
-        link.percentSignFont = link.font.map(OverviewNumericTextView.currencySymbolFont(for:))
         link.hoverHintDelay = OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay
         let content = Self.codexResetForecastTooltip(for: forecast, timeZone: settings.displayTimeZone)
         link.updateForecastTooltipContent(content)
@@ -7676,7 +7685,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         link.frame = frame
         link.identifier = OverviewNumericPresentation.amountIdentifier(for: sample.identity)
         link.textColor = .labelColor
-        configureBankedResetSourceLink(link, forecast: forecast)
+        link.percentSignFont = OverviewNumericTextView.currencySymbolFont(for: font)
         link.configure(plan: plan, sample: sample)
         return link
     }
@@ -7853,8 +7862,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
            let section = sections.first(where: { $0.sectionID == .lunaReserve }) {
             section.updateText(title: reserve.menuTitleText, subtitle: reserve.menuSubtitle(timeZone: settings.displayTimeZone))
         }
-        if let section = sections.first(where: { $0.sectionID == .resetProbability }) {
-            (section.titleView as? AccountMarqueeView)?.updateText(tr(.keyCodexBankedResetProbabilityPrefix), preserveScrollPosition: true)
+        if let section = sections.first(where: { $0.sectionID == .resetProbability }),
+           let title = section.titleView as? AccountMarqueeView {
+            let text = tr(.keyCodexBankedResetProbabilityPrefix)
+            title.updateText(text, preserveScrollPosition: true)
+            (title.accountLabel as? HoverLinkTextField)?.hoverPhrase = text
         }
         if let banked = presentation.bankedReset,
            let section = sections.first(where: { $0.sectionID == .bankedReset }) {

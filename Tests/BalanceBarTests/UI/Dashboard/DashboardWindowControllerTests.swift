@@ -5128,8 +5128,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hPrefix"
                     || $0.identifier?.rawValue == "codex.bankedReset.probability24h"
             })
-            XCTAssertTrue(primary.hoverHint.contains("codex-reset.com"))
-            XCTAssertNotNil(primary.onActivate)
+            let titleLink = try XCTUnwrap(bankedResetTitleLink(in: overview))
+            XCTAssertEqual(titleLink.stringValue, tr(.keyCodexBankedResetProbabilityPrefix))
+            XCTAssertTrue(titleLink.hoverHint.contains("codex-reset.com"))
+            XCTAssertNotNil(titleLink.onActivate)
+            XCTAssertEqual(primary.hoverHint, "")
+            XCTAssertNil(primary.onActivate)
         }
     }
 
@@ -5272,21 +5276,22 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }
             XCTAssertEqual(primaryLink != nil, largeAnimates, name)
-            let sourceLink = try XCTUnwrap(allControls(of: overview, as: HoverLinkTextField.self).first {
+            let amountField = try XCTUnwrap(allControls(of: overview, as: HoverLinkTextField.self).first {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24hAmount"
             }, name)
-            XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"), name)
-            XCTAssertNotNil(sourceLink.onActivate, name)
-            XCTAssertNotNil(sourceLink.forecastTooltipContent, name)
-            let drawingStyle = try XCTUnwrap(sourceLink.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle, name)
+            let titleLink = try XCTUnwrap(bankedResetTitleLink(in: overview), name)
+            XCTAssertTrue(titleLink.hoverHint.contains("codex-reset.com"), name)
+            XCTAssertNotNil(titleLink.onActivate, name)
+            XCTAssertNotNil(titleLink.forecastTooltipContent, name)
+            XCTAssertEqual(amountField.hoverHint, "", name)
+            XCTAssertNil(amountField.onActivate, name)
+            XCTAssertNil(amountField.forecastTooltipContent, name)
+            let drawingStyle = try XCTUnwrap(amountField.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle, name)
             XCTAssertEqual(drawingStyle.alignment, .right, name)
             XCTAssertEqual(largeFields[0].font?.pointSize, OpenCodexCardLayout.quotaAmountPointSize, name)
             XCTAssertEqual(largeFields[0].alignment, .right, name)
             if let primaryLink {
                 XCTAssertNil(primaryLink.sample?.progressPercentage, name)
-                XCTAssertTrue(primaryLink.hoverHint.contains("codex-reset.com"), name)
-                XCTAssertNotNil(primaryLink.forecastTooltipContent, name)
-                XCTAssertNotNil(primaryLink.onActivate, name)
             }
             let small24Numeric = allControls(of: overview, as: OverviewNumericTextView.self).filter {
                 $0.identifier?.rawValue == "codex.bankedReset.probability24h"
@@ -5543,73 +5548,55 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.identifier?.rawValue == largeIdentifier
             }
             XCTAssertEqual(sourceLink != nil, !confirmed, name)
-            if let sourceLink {
-                XCTAssertEqual(sourceLink.forecastTooltipContent?.title, "官方重置信号", name)
-                XCTAssertNotNil(sourceLink.onActivate, name)
-                XCTAssertTrue(sourceLink.hoverHint.contains("codex-reset.com"), name)
-            }
-            if let amountLink {
-                XCTAssertEqual(amountLink.stringValue, largeText, name)
-                XCTAssertTrue(amountLink.hoverHint.contains("codex-reset.com"), name)
+            let titleLink = bankedResetTitleLink(in: overview)
+            XCTAssertEqual(titleLink != nil, !confirmed, name)
+            if let titleLink {
+                XCTAssertEqual(titleLink.stringValue, tr(.keyCodexBankedResetProbabilityPrefix), name)
+                XCTAssertEqual(titleLink.forecastTooltipContent?.title, "官方重置信号", name)
+                XCTAssertNotNil(titleLink.onActivate, name)
+                XCTAssertTrue(titleLink.hoverHint.contains("codex-reset.com"), name)
                 XCTAssertEqual(
-                    amountLink.hoverHintDelay,
+                    titleLink.hoverHintDelay,
                     OpenCodexCardLayout.bankedResetProbabilityHoverHintDelay,
                     accuracy: 0.001,
                     name
                 )
+            }
+            if let sourceLink {
+                XCTAssertEqual(sourceLink.hoverHint, "", name)
+                XCTAssertNil(sourceLink.onActivate, name)
+                XCTAssertNil(sourceLink.forecastTooltipContent, name)
+            }
+            if let amountLink {
+                XCTAssertEqual(amountLink.stringValue, largeText, name)
                 XCTAssertEqual(
                     amountLink.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor,
                     NSColor.labelColor,
                     name
                 )
-                if name == "signal-percent" {
+                if name == "signal-percent", let titleLink {
                     let host = try XCTUnwrap(overview as? MenuHoverLinkHostView, name)
-                    let hit = amountLink.visibleTextHitRect
+                    controller.menuWillOpen(controller.statusMenuForTesting)
+                    defer { controller.menuDidClose(controller.statusMenuForTesting) }
+                    // The amount is no longer a hover target.
+                    let amountHit = amountLink.visibleTextHitRect
+                    host.forwardHover(atHostPoint: host.convert(NSPoint(x: amountHit.midX, y: amountHit.midY), from: amountLink))
+                    XCTAssertNil(amountLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil), name)
+                    XCTAssertFalse(titleLink.isHoverHintScheduled, name)
+                    // Hovering the title underlines it in place and schedules the bubble.
+                    let hit = titleLink.visibleTextHitRect
                     XCTAssertFalse(hit.isEmpty, name)
-                    host.forwardHover(
-                        atHostPoint: host.convert(
-                            NSPoint(x: hit.midX, y: hit.midY),
-                            from: amountLink
-                        )
-                    )
-                    XCTAssertNotNil(
-                        amountLink.attributedStringValue.attribute(
-                            .underlineStyle,
-                            at: 0,
-                            effectiveRange: nil
-                        ),
-                        name
-                    )
+                    host.forwardHover(atHostPoint: host.convert(NSPoint(x: hit.midX, y: hit.midY), from: titleLink))
+                    XCTAssertNotNil(titleLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil), name)
                     XCTAssertEqual(
-                        amountLink.attributedStringValue.attribute(
-                            .foregroundColor,
-                            at: 0,
-                            effectiveRange: nil
-                        ) as? NSColor,
-                        NSColor.linkColor,
-                        name
-                    )
-                    host.forwardHover(
-                        atHostPoint: NSPoint(x: host.bounds.maxX - 1, y: host.bounds.midY)
-                    )
-                    XCTAssertNil(
-                        amountLink.attributedStringValue.attribute(
-                            .underlineStyle,
-                            at: 0,
-                            effectiveRange: nil
-                        ),
-                        name
-                    )
-                    XCTAssertEqual(
-                        amountLink.attributedStringValue.attribute(
-                            .foregroundColor,
-                            at: 0,
-                            effectiveRange: nil
-                        ) as? NSColor,
+                        titleLink.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor,
                         NSColor.labelColor,
                         name
                     )
-                    XCTAssertNotNil(amountLink.onActivate, name)
+                    XCTAssertTrue(titleLink.isHoverHintScheduled, name)
+                    host.forwardHover(atHostPoint: NSPoint(x: host.bounds.maxX - 1, y: host.bounds.midY))
+                    XCTAssertNil(titleLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil), name)
+                    XCTAssertFalse(titleLink.isHoverHintScheduled, name)
                 }
             }
             let largeFields = allControls(of: overview, as: NSTextField.self).filter {
@@ -5794,8 +5781,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         XCTAssertEqual(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count, 1)
-        XCTAssertNotNil(countdown.onActivate)
-        XCTAssertEqual(countdown.forecastTooltipContent?.title, "官方重置信号")
+        XCTAssertNil(countdown.onActivate)
+        XCTAssertNil(countdown.forecastTooltipContent)
+        let titleLink = try XCTUnwrap(bankedResetTitleLink(in: overview))
+        XCTAssertNotNil(titleLink.onActivate)
+        XCTAssertEqual(titleLink.forecastTooltipContent?.title, "官方重置信号")
 
         controller.menuWillOpen(controller.statusMenuForTesting)
         XCTAssertNotNil(controller.bankedResetCountdownTimerForTesting)
@@ -5953,8 +5943,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertLessThanOrEqual(bar.frame.maxX, countdown.frame.maxX - amountWidth + 0.001)
         XCTAssertEqual(allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).count, 1)
-        XCTAssertNotNil(countdown.onActivate)
-        XCTAssertEqual(countdown.forecastTooltipContent?.title, "官方重置信号")
+        XCTAssertNil(countdown.onActivate)
+        XCTAssertNil(countdown.forecastTooltipContent)
+        let titleLink = try XCTUnwrap(bankedResetTitleLink(in: overview))
+        XCTAssertNotNil(titleLink.onActivate)
+        XCTAssertEqual(titleLink.forecastTooltipContent?.title, "官方重置信号")
 
         controller.menuWillOpen(controller.statusMenuForTesting)
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(1)
@@ -6518,7 +6511,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNotEqual(content.source, oldContent.source)
         XCTAssertEqual(content, StatusItemController.codexResetForecastTooltip(for: latest, timeZone: settings.displayTimeZone))
         XCTAssertEqual(link.hoverHint, content.plainText)
-        XCTAssertEqual((link as? OverviewNumericHoverLinkTextField)?.currentValue, 85)
+        XCTAssertEqual(link.identifier?.rawValue, "codex.bankedReset.probabilityTitleLink")
+        XCTAssertEqual(allControls(of: root, as: OverviewNumericHoverLinkTextField.self).first?.currentValue, 85)
     }
 
     func testOtherQuotaRenameReplacesNumericIdentityWhileSameNameRefreshRetainsIt() throws {
@@ -7021,6 +7015,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         }
         return nil
+    }
+
+    /// The "重置概率" title hosts the forecast bubble and website link; the amount is plain.
+    private func bankedResetTitleLink(in view: NSView) -> HoverLinkTextField? {
+        allControls(of: view, as: HoverLinkTextField.self).first {
+            $0.identifier?.rawValue == "codex.bankedReset.probabilityTitleLink"
+        }
     }
 
     private func allControls<T: NSView>(of view: NSView, as type: T.Type) -> [T] {

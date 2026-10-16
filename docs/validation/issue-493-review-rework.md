@@ -1,3 +1,38 @@
+# PR #506: forecast bubble triggers from the "重置概率" title
+
+User request after `114335ed`: hovering the four-character "重置概率" title,
+not the percentage, opens the source bubble. The section-blur focus effect
+belongs to PR #505's focus infrastructure and is intentionally not ported here.
+
+The title is now a `HoverLinkTextField` hosted by its `AccountMarqueeView`
+(`codex.bankedReset.probabilityTitleLink`). It owns the forecast bubble,
+0.5 s delay and codex-reset.com activation, and underlines in place on hover
+in label color like the last-top-up phrase. The amount (numeric animation and
+reduced percent sign retained) is no longer a hover target or link. The
+confirmed state keeps no bubble, as before. In-place title text updates also
+update the hover phrase.
+
+Updated tests in DashboardProductionPathRegressionTests now assert the title
+is the bubble/link host and the amount has no hint or activation, including a
+hover check that the amount schedules nothing while the title underlines and
+schedules the bubble.
+
+Correction to the two records below: their focused runs did not include
+DashboardProductionPathRegressionTests (it lives in
+DashboardWindowControllerTests.swift). Run separately on committed `114335ed`
+it passed **72/72** (`/private/tmp/issue493-prodpath-head.log`), including the
+card-level reduced-percent assertion.
+
+## Actual verification
+
+- Before updating tests, this change failed 52 assertions in the
+  production-path classes, all of which asserted the amount was the link
+  (`/private/tmp/issue493-title-prodpath.log` was then overwritten by the
+  passing run).
+- After updating: production-path classes **72/72**; complete serial XCTest
+  **1468 total / 1467 passed / 1 skipped / 0 failed**
+  (`/private/tmp/issue493-title-full.log`).
+
 # PR #506: reduced percent sign (user request after `6f3c8d1d`)
 
 Menu percentages now draw the trailing "%" in the same reduced font as the
