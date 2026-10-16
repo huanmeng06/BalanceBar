@@ -528,3 +528,6 @@
 "balance.reference_on" = "Vom Guthaben am %1$@: %2$@, noch %3$@";
 "balance.reference" = "Vom Ausgangsguthaben %1$@: noch %2$@";
 "balance.reference_unavailable" = "Kein verlässlicher Guthabenbezug";
+
+"balance.recharge.last" = "letzter Aufladung";
+"balance.used_since_recharge" = "Seit %1$@ verbraucht: %2$@";

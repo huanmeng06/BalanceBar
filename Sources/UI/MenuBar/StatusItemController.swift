@@ -352,8 +352,9 @@ final class AccountMarqueeView: NSView {
         startScrollingIfNeeded()
     }
 
-    init(text: String, font: NSFont, textColor: NSColor, frame: NSRect, leadingInkAnchor: CGFloat? = nil) {
-        accountLabel = NSTextField(labelWithString: text)
+    init(text: String, font: NSFont, textColor: NSColor, frame: NSRect, leadingInkAnchor: CGFloat? = nil,
+         label: NSTextField? = nil) {
+        accountLabel = label ?? NSTextField(labelWithString: text)
         self.leadingInkAnchor = leadingInkAnchor
         super.init(frame: frame)
 
@@ -6440,6 +6441,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return
         }
         let text = context.snapshot.balanceSubtitle(timeZone: settings.displayTimeZone)
+        let hasRechargeHint = context.snapshot.balanceRechargeConsumedCents != nil
         let subtitleFont = NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize)
         let frame: NSRect
         if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout, row.intersects(layout.amount) {
@@ -6452,12 +6454,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let label: NSView
         if needsMarquee {
             let marquee: AccountMarqueeView
-            if let existing = existing as? AccountMarqueeView {
+            if let existing = existing as? AccountMarqueeView,
+               (existing.accountLabel is HoverLinkTextField) == hasRechargeHint {
                 marquee = existing
             } else {
                 existing?.removeFromSuperview()
-                marquee = makeMarqueeOverviewLabel(text, font: subtitleFont,
-                    textColor: .secondaryLabelColor, frame: frame)
+                marquee = AccountMarqueeView(text: text, font: subtitleFont,
+                    textColor: .secondaryLabelColor, frame: frame,
+                    label: hasRechargeHint ? HoverLinkTextField(text: text) : nil)
                 card.addSubview(marquee)
             }
             marquee.identifier = id
@@ -6466,13 +6470,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             label = marquee
         } else {
             let textField: NSTextField
-            if let existing = existing as? NSTextField {
+            if let existing = existing as? NSTextField,
+               (existing is HoverLinkTextField) == hasRechargeHint {
                 textField = existing
             } else {
                 existing?.removeFromSuperview()
-                textField = makeOverviewLabel("", font: subtitleFont)
+                textField = hasRechargeHint ? HoverLinkTextField(text: text) : makeOverviewLabel("", font: subtitleFont)
                 card.addSubview(textField)
             }
+            textField.font = subtitleFont
             textField.identifier = id
             textField.frame = frame
             textField.lineBreakMode = .byTruncatingTail
@@ -6492,7 +6498,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             tooltip = text + "\n" + context.snapshot.balanceProgressTooltip(timeZone: settings.displayTimeZone)
         }
-        label.toolTip = tooltip
+        if hasRechargeHint, let recharge = context.snapshot.balanceRecharge,
+           let link = (label as? HoverLinkTextField) ?? (label as? AccountMarqueeView)?.accountLabel as? HoverLinkTextField {
+            link.decoratesOnHover = false
+            link.restingTextColor = .secondaryLabelColor
+            link.hoverPhrase = tr(.keyBalanceLastRecharge)
+            link.hoverHintDelay = 0.3
+            link.updateTextTooltip(title: tr(.keyBalanceLastRecharge),
+                text: recharge.dateText(timeZone: settings.displayTimeZone) + " "
+                    + BalanceRecharge.clockText(for: recharge.observedAt, timeZone: settings.displayTimeZone))
+            (card as? MenuHoverLinkHostView)?.track(link)
+            label.toolTip = nil
+            link.setAccessibilityHelp(tooltip)
+        } else { label.toolTip = tooltip }
         label.setAccessibilityLabel(tooltip)
     }
 

@@ -528,3 +528,6 @@
 "balance.reference_on" = "От баланса на %1$@ в %2$@ осталось %3$@";
 "balance.reference" = "От начального баланса %1$@ осталось %2$@";
 "balance.reference_unavailable" = "Исходный баланс неизвестен";
+
+"balance.recharge.last" = "последнего пополнения";
+"balance.used_since_recharge" = "С %1$@ использовано %2$@";

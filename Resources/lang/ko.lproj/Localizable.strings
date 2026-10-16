@@ -528,3 +528,6 @@
 "balance.reference_on" = "%1$@ 잔액 %2$@ 대비 %3$@ 남음";
 "balance.reference" = "기준 잔액 %1$@ 대비 %2$@ 남음";
 "balance.reference_unavailable" = "기준 잔액을 확인할 수 없음";
+
+"balance.recharge.last" = "마지막 충전";
+"balance.used_since_recharge" = "%1$@ 이후 사용액 %2$@";

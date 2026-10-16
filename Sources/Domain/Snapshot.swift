@@ -964,7 +964,16 @@ struct Snapshot: Equatable {
         return snapshot
     }
 
+    var balanceRechargeConsumedCents: Int? {
+        guard balanceRecharge != nil, let context = balanceProgressContext,
+              let peak = context.peakCents else { return nil }
+        return max(0, peak - context.lastCents)
+    }
+
     func balanceSubtitle(now: Date = Date(), timeZone: TimeZone) -> String {
+        if let used = balanceRechargeConsumedCents {
+            return tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), balanceMoney(cents: used)])
+        }
         if let recharge = balanceRecharge {
             return tr(.keyBalanceRechargeLabel) + " +" + balanceMoney(cents: recharge.amountCents)
                 + " · " + recharge.dateText(now: now, timeZone: timeZone)

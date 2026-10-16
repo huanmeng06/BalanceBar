@@ -528,3 +528,6 @@
 "balance.reference_on" = "Of %1$@ balance %2$@, %3$@ remains";
 "balance.reference" = "Of baseline %1$@, %2$@ remains";
 "balance.reference_unavailable" = "Balance reference unavailable";
+
+"balance.recharge.last" = "last top-up";
+"balance.used_since_recharge" = "Since %1$@: %2$@ used";

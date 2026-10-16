@@ -528,3 +528,6 @@
 "balance.reference_on" = "%1$@の残高 %2$@ に対して残り %3$@";
 "balance.reference" = "基準残高 %1$@ に対して残り %2$@";
 "balance.reference_unavailable" = "残高の基準を確認できません";
+
+"balance.recharge.last" = "前回のチャージ";
+"balance.used_since_recharge" = "%1$@以降の利用額 %2$@";

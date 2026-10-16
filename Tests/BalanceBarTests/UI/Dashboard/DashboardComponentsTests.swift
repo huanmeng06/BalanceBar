@@ -2113,3 +2113,41 @@ private extension NSRect {
         NSPoint(x: midX, y: midY)
     }
 }
+
+extension DashboardComponentsTests {
+    @MainActor
+    func testRechargeTooltipUsesOnlyPhraseAndCoexistsWithProviderLink() throws {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 280, height: 70))
+        let title = HoverLinkTextField(text: "Provider")
+        title.frame = NSRect(x: 10, y: 40, width: 200, height: 20)
+        host.addSubview(title)
+        host.track(title)
+        let subtitle = HoverLinkTextField(text: "Since last top-up: $2.50 used")
+        subtitle.frame = NSRect(x: 10, y: 10, width: 250, height: 20)
+        subtitle.hoverPhrase = "last top-up"
+        subtitle.decoratesOnHover = false
+        subtitle.hoverHintDelay = 0.3
+        subtitle.updateTextTooltip(title: "Last top-up", text: "10/16 13:50")
+        host.addSubview(subtitle)
+        host.track(subtitle)
+        subtitle.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(subtitle.visibleTextHitRect.minX, 0)
+        XCTAssertLessThan(subtitle.visibleTextHitRect.maxX, subtitle.bounds.maxX)
+        host.forwardHover(atHostPoint: host.convert(subtitle.visibleTextHitRect.center, from: subtitle))
+        XCTAssertTrue(subtitle.isHoverHintScheduled)
+        host.forwardHover(atHostPoint: host.convert(NSPoint(x: 1, y: 10), from: subtitle))
+        XCTAssertFalse(subtitle.isHoverHintScheduled)
+        host.forwardHover(atHostPoint: host.convert(subtitle.visibleTextHitRect.center, from: subtitle))
+        host.setMenuContentVisible(false)
+        XCTAssertFalse(subtitle.isHoverHintScheduled)
+        var opens = 0
+        title.onActivate = { opens += 1 }
+        title.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: title.visibleTextHitRect.center))
+        XCTAssertEqual(opens, 1)
+        let bubble = DashboardTextTooltipViewController(text: "10/16 13:50", title: "Last top-up")
+        bubble.loadViewIfNeeded()
+        let rows = bubble.view.subviews.compactMap { $0 as? NSTextField }
+        XCTAssertEqual(rows.map(\.stringValue), ["Last top-up", "10/16 13:50"])
+        XCTAssertGreaterThan(rows[0].font?.pointSize ?? 0, rows[1].font?.pointSize ?? 0)
+    }
+}

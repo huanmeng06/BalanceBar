@@ -10,6 +10,8 @@
     case keyBalanceReferenceOn = "balance.reference_on"
     case keyBalanceReference = "balance.reference"
     case keyBalanceReferenceUnavailable = "balance.reference_unavailable"
+    case keyBalanceLastRecharge = "balance.recharge.last"
+    case keyBalanceUsedSinceRecharge = "balance.used_since_recharge"
     case keyBalanceRechargeLabel = "balance.recharge.label"
     case keyBalanceRechargeObserved = "balance.recharge.observed"
     case keyAggregationDefault = "aggregation.default"

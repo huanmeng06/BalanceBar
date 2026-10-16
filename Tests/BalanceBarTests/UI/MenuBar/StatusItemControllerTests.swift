@@ -3950,3 +3950,61 @@ extension StatusItemControllerTests {
         XCTAssertEqual(card.frame.size, size)
     }
 }
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testRechargeConsumptionHintUsesSameSubtitleInDirectAndAggregation() throws {
+        let oldLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = oldLanguage }
+        let parser = ISO8601DateFormatter()
+        let date = try XCTUnwrap(parser.date(from: "2026-10-16T13:50:00Z"))
+        let zone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true, displayTimeZone: zone)
+        let snapshot = Snapshot.balance("tokenshop", 0.68, "USD", URL(string: "https://fixture.example"), date,
+            progressPercentage: 68.0 / 318 * 100, recharge: .init(amountCents: 100, observedAt: date),
+            progressContext: .init(baselineCents: 318, lastCents: 68, peakCents: 318, baselineObservedAt: date))
+        func fields(_ view: NSView) -> [HoverLinkTextField] {
+            (view as? HoverLinkTextField).map { [$0] } ?? view.subviews.flatMap(fields)
+        }
+        for language in [AppLanguage.simplifiedChinese, .german] {
+            AppLanguage.selected = language
+            for aggregation in [false, true] {
+                let controller = makeController()
+                defer { controller.teardown() }
+                let source = ProviderSummarySource(id: "fixture", name: "tokenshop", isOfficial: false,
+                    query: nil, officialAccessToken: nil, websiteURL: snapshot.websiteURL, notes: "GPT")
+                let display = AggregatedProviderDisplay(entry: .init(source: source, role: .default),
+                    identity: .init(providerID: "fixture", accountScope: "fixture", configurationRevision: "fixture"),
+                    snapshot: snapshot, account: nil, status: .fresh, reason: nil, fetchedAt: date)
+                let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                    openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+                    showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderNotes: ["GPT"],
+                    aggregatedProviders: aggregation ? [display] : [])
+                controller.start(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
+                let menu = controller.statusMenuForTesting
+                let root = try XCTUnwrap(menu.items.first?.view)
+                let card = try XCTUnwrap(aggregation ? (root as? NSScrollView)?.documentView?.subviews.first?.subviews.first : root)
+                let links = fields(card)
+                let hint = try XCTUnwrap(links.first { $0.textTooltipTitle != nil })
+                XCTAssertEqual(hint.stringValue, snapshot.balanceSubtitle(timeZone: zone))
+                XCTAssertTrue(hint.stringValue.contains("$2.50"))
+                XCTAssertEqual(hint.hoverPhrase, tr(.keyBalanceLastRecharge))
+                XCTAssertEqual(hint.hoverHint, "10/16 13:50")
+                XCTAssertNil(hint.onActivate)
+                XCTAssertNotNil(links.first { $0.identifier?.rawValue == "overview.providerTitle" }?.onActivate)
+                if language == .german {
+                    XCTAssertTrue(hint.superview is AccountMarqueeView)
+                    XCTAssertTrue((hint.superview as? AccountMarqueeView)?.isScrollable == true)
+                }
+                controller.menuWillOpen(menu)
+                let host = try XCTUnwrap(card as? MenuHoverLinkHostView)
+                host.forwardHover(atHostPoint: host.convert(NSPoint(x: hint.visibleTextHitRect.midX, y: hint.visibleTextHitRect.midY), from: hint))
+                XCTAssertTrue(hint.isHoverHintScheduled)
+                controller.menuDidClose(menu)
+                XCTAssertFalse(hint.isHoverHintScheduled)
+                XCTAssertFalse(hint.isHoverHintVisible)
+            }
+        }
+    }
+}

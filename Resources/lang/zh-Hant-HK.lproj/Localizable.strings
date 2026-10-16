@@ -528,3 +528,6 @@
 "balance.reference_on" = "相對 %1$@ 的 %2$@，剩餘 %3$@";
 "balance.reference" = "相對基準餘額 %1$@，剩餘 %2$@";
 "balance.reference_unavailable" = "尚無可確認的餘額基準";
+
+"balance.recharge.last" = "上次增值";
+"balance.used_since_recharge" = "自%1$@已用 %2$@";

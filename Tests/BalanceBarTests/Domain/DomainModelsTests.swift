@@ -2978,7 +2978,7 @@ extension DomainModelsTests {
         XCTAssertEqual(snapshot(last: 400, date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
         XCTAssertEqual(Snapshot.balance("old", 3.34, "USD", nil, now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
         let recharge = BalanceRecharge(amountCents: 100, observedAt: now)
-        XCTAssertEqual(snapshot(recharge: recharge).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRechargeLabel) + " +$1.00 · 10/15")
+        XCTAssertEqual(snapshot(recharge: recharge).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
         let lastYear = try XCTUnwrap(parser.date(from: "2025-12-31T23:30:00Z"))
         XCTAssertTrue(snapshot(date: lastYear).balanceSubtitle(now: now, timeZone: zone).contains("2025/12/31"))
         let east = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
@@ -3034,5 +3034,22 @@ extension DomainModelsTests {
                 for argument in arguments { XCTAssertTrue(text.contains(argument), "\(language): \(key): \(text)") }
             }
         }
+    }
+}
+
+extension DomainModelsTests {
+    func testRechargeConsumptionUsesPostRechargeBalanceAndKeepsBaselineFallback() throws {
+        let date = Date(timeIntervalSince1970: 1_792_150_600)
+        let zone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let recharge = BalanceRecharge(amountCents: 1000, observedAt: date)
+        let context = BalanceProgressContext(baselineCents: 1300, lastCents: 1200, peakCents: 1300, baselineObservedAt: date)
+        let charged = Snapshot.balance("same", 12, "USD", nil, date, recharge: recharge, progressContext: context)
+        XCTAssertEqual(charged.balanceRechargeConsumedCents, 100)
+        XCTAssertEqual(charged.balanceSubtitle(now: date, timeZone: zone),
+            tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$1.00"]))
+        let uncharged = Snapshot.balance("same", 12, "USD", nil, date, progressContext: context)
+        XCTAssertNil(uncharged.balanceRechargeConsumedCents)
+        XCTAssertEqual(uncharged.balanceSubtitle(now: date, timeZone: zone),
+            tr(.keyBalanceUsedSinceToday, arguments: [BalanceRecharge.clockText(for: date, timeZone: zone), "$1.00"]))
     }
 }

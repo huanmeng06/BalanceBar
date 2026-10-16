@@ -528,3 +528,6 @@
 "balance.reference_on" = "Del saldo del %1$@ de %2$@, queda %3$@";
 "balance.reference" = "Del saldo inicial de %1$@, queda %2$@";
 "balance.reference_unavailable" = "Referencia de saldo no disponible";
+
+"balance.recharge.last" = "última recarga";
+"balance.used_since_recharge" = "Desde la %1$@: %2$@ usados";

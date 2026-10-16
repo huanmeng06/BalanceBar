@@ -528,3 +528,6 @@
 "balance.reference_on" = "Sur le solde du %1$@ de %2$@, %3$@ restants";
 "balance.reference" = "Sur le solde initial de %1$@, %2$@ restants";
 "balance.reference_unavailable" = "Solde de référence indisponible";
+
+"balance.recharge.last" = "dernière recharge";
+"balance.used_since_recharge" = "Depuis la %1$@ : %2$@ utilisés";
