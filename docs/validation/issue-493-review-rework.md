@@ -1,3 +1,64 @@
+# PR #506: real-menu mount test failure (review of `a7b48311`)
+
+Review baseline: `a7b48311a5d3d087d1db2bdbd3473e6788bee59a`.
+This section supersedes the "Remaining failure" entry below.
+
+## Root cause: unobserved AppKit menu sessions
+
+`testRealMenuRebuildCreatesFreshViewportRemountsCardsAndRestoresScroll` failed
+in the prior Full run, but it passed alone and passed in a run of the whole
+StatusItemControllerTests class (86/86). With
+`-test-iterations -run-tests-until-failure`, it reproduced intermittently on
+unchanged production code. The failing popup moves between runs (the last
+popup in the Full log, the second post-rebuild popup in a stress run), and the
+sibling `testQuickSwitchReorderAddRenameAndRemoveKeepRealMenuHostMounted`
+failed in the same way.
+
+Diagnostics added to the helper recorded, for the failing popup:
+
+```
+began=1; probes=0; popUp=0.036s; item=true; appActive=false; mounts=1->2
+```
+
+AppKit began tracking (`NSMenu.didBeginTrackingNotification`), and the viewport
+was attached to the real menu window (`viewDidMoveToWindow` with a window
+incremented `mountCount`). The menu item still owned the viewport. AppKit then
+ended the unfocused test-runner session on its own after ~36 ms, before the
+20 ms `.eventTracking` probe timer fired once. The three failed assertions
+(no mount, no visible card, distance -1) were the probe's empty defaults, not
+observations. `NSMenuItem.view`, the mount and `restoreViewportAfterMount()`
+behaved correctly in the failing session. This is a harness defect, not a
+production lifecycle defect. No production code changed.
+
+## Fix: distinguish unobserved sessions from failed mounts
+
+`assertAggregationPopupMounts` now records each popup session. A session in
+which the probe ran at least once is final: if it did not observe a mounted
+viewport, the helper fails immediately with no reopen. Only a session that
+ended before any probe ran (zero observations) is reopened, at most three
+sessions in total; if all three are unobserved, the assertions still fail.
+Every assertion (mount, visible card, mount count, restored distance 80 ± 2) is
+unchanged, no wait or interval was added, and all session details are printed
+in failure messages.
+
+## Actual verification
+
+- Original helper, both real-menu tests under `-run-tests-until-failure`:
+  failed after 14 passing executions (`/private/tmp/issue493-menu-stress-red1.log`);
+  with begin/mount diagnostics, failed at iteration 167 after 366 passing
+  executions (`/private/tmp/issue493-menu-stress-red2.log`). Both failures
+  had `probes=0`.
+- Mutation check (viewport detached from the item before a popup, then
+  reverted): fails in session 1 with `began=1; probes=50; item=false;
+  mounts=0->0`, no reopen (`/private/tmp/issue493-menu-mutation.log`).
+- New helper, both tests × 200 iterations: **400/400 passed**
+  (`/private/tmp/issue493-menu-stress-green.log`).
+- Complete serial XCTest: **1466 total / 1465 passed / 1 skipped / 0 failed**
+  (`/private/tmp/issue493-menu-full.log`, DerivedData
+  `/tmp/BalanceBar-Issue493-DerivedData`).
+- Full CI remains skipped while the PR is Draft; GitHub Fast CI is not a
+  substitute for the complete local run above.
+
 # PR #506: preserve Claude user settings and close refresh test lifetimes
 
 Review baseline: `5d598930a7c10cdfc8b57df352d6fb56765d4b7f`.

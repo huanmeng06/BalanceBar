@@ -3609,38 +3609,56 @@ extension StatusItemControllerTests {
 extension StatusItemControllerTests {
     /// Exercises AppKit's real menu window; ordinary NSWindow attachment cannot
     /// detect a custom view stranded on a retired NSMenuItem.
+    ///
+    /// AppKit occasionally ends an unfocused test-runner menu session by itself
+    /// before the first tracking-mode probe tick. Such a session produced no
+    /// evidence either way, so it is reopened (bounded). A session the probe did
+    /// observe is never retried: a missing mount there fails immediately.
     @MainActor
     private func assertAggregationPopupMounts(_ menu: NSMenu, viewport: AggregationOverviewScrollView,
                                               expectedDistance: CGFloat? = nil, onMounted: (() -> Void)? = nil, file: StaticString = #filePath, line: UInt = #line) {
         var attached = false
         var intersects = false
         var distance: CGFloat?
-        var attempts = 0
-        let probe = Timer(timeInterval: 0.02, repeats: true) { timer in
-            attempts += 1
-            if viewport.window != nil, let document = viewport.documentView {
-                onMounted?()
-                viewport.layoutSubtreeIfNeeded()
-                attached = true
-                let visible = viewport.contentView.documentVisibleRect
-                intersects = visible.width > 0 && visible.height > 0 && document.subviews.contains {
-                    !$0.isHidden && !$0.frame.intersection(visible).isEmpty
+        var sessions: [String] = []
+        for _ in 0..<3 {
+            var attempts = 0
+            var began = 0
+            let probe = Timer(timeInterval: 0.02, repeats: true) { timer in
+                attempts += 1
+                if viewport.window != nil, let document = viewport.documentView {
+                    onMounted?()
+                    viewport.layoutSubtreeIfNeeded()
+                    attached = true
+                    let visible = viewport.contentView.documentVisibleRect
+                    intersects = visible.width > 0 && visible.height > 0 && document.subviews.contains {
+                        !$0.isHidden && !$0.frame.intersection(visible).isEmpty
+                    }
+                    distance = max(0, document.frame.height - viewport.contentView.bounds.maxY)
                 }
-                distance = max(0, document.frame.height - viewport.contentView.bounds.maxY)
+                if attached || attempts >= 50 {
+                    timer.invalidate()
+                    menu.cancelTracking()
+                }
             }
-            if attached || attempts >= 50 {
-                timer.invalidate()
-                menu.cancelTracking()
-            }
+            let beginObserver = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification,
+                object: menu, queue: nil) { _ in began += 1 }
+            RunLoop.main.add(probe, forMode: .eventTracking)
+            let mountsBefore = viewport.mountCount
+            let started = Date()
+            menu.popUp(positioning: nil, at: .zero, in: nil)
+            probe.invalidate()
+            NotificationCenter.default.removeObserver(beginObserver)
+            sessions.append("began=\(began); probes=\(attempts); popUp=\(String(format: "%.3f", Date().timeIntervalSince(started)))s; "
+                + "item=\(menu.items.first?.view === viewport); appActive=\(NSApp.isActive); mounts=\(mountsBefore)->\(viewport.mountCount)")
+            if attached || attempts > 0 { break }
         }
-        defer { probe.invalidate() }
-        RunLoop.main.add(probe, forMode: .eventTracking)
-        menu.popUp(positioning: nil, at: .zero, in: nil)
-        XCTAssertTrue(attached, "real NSMenu did not mount its custom viewport", file: file, line: line)
-        XCTAssertTrue(intersects, "mounted viewport has no visible card", file: file, line: line)
+        let state = sessions.enumerated().map { "session \($0.offset + 1): \($0.element)" }.joined(separator: " | ")
+        XCTAssertTrue(attached, "real NSMenu did not mount its custom viewport; \(state)", file: file, line: line)
+        XCTAssertTrue(intersects, "mounted viewport has no visible card; \(state)", file: file, line: line)
         XCTAssertGreaterThan(viewport.mountCount, 0, file: file, line: line)
         if let expectedDistance {
-            XCTAssertEqual(distance ?? -1, expectedDistance, accuracy: 2, file: file, line: line)
+            XCTAssertEqual(distance ?? -1, expectedDistance, accuracy: 2, "\(state)", file: file, line: line)
         }
     }
 
