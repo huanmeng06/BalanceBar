@@ -777,8 +777,53 @@ enum CodexBankedResetFormatting {
     }
 }
 
-struct Snapshot {
-    enum Kind { case placeholder, official, balance, error }
+/// Exact cents from one accepted ledger observation; presentation never infers a baseline.
+struct BalanceProgressContext: Equatable {
+    let baselineCents: Int
+    let lastCents: Int
+    let peakCents: Int?
+    let baselineObservedAt: Date?
+
+    var consumedCents: Int { max(0, baselineCents - lastCents) }
+    var referenceCents: Int { peakCents ?? baselineCents }
+}
+
+/// A locally observed net balance increase, not a provider payment receipt.
+struct BalanceRecharge: Codable, Equatable {
+    let amountCents: Int
+    let observedAt: Date
+
+    func dateText(now: Date = Date(), timeZone: TimeZone, includesTime: Bool = false) -> String {
+        Self.dateText(for: observedAt, now: now, timeZone: timeZone, includesTime: includesTime)
+    }
+
+    static func dateText(for date: Date, now: Date = Date(), timeZone: TimeZone, includesTime: Bool = false) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = calendar
+        formatter.timeZone = timeZone
+        if includesTime { formatter.dateFormat = "yyyy/MM/dd, HH:mm:ss zzz" }
+        else if calendar.component(.year, from: date) == calendar.component(.year, from: now) { formatter.dateFormat = "MM/dd" }
+        else { formatter.dateFormat = "yyyy/MM/dd" }
+        return formatter.string(from: date)
+    }
+
+    static func clockText(for date: Date, timeZone: TimeZone) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = calendar
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+}
+
+struct Snapshot: Equatable {
+    enum Kind: Equatable { case placeholder, official, balance, error }
     let kind: Kind
     let provider: String
     let amount: Double?
@@ -787,6 +832,8 @@ struct Snapshot {
     let message: String?
     let websiteURL: URL?
     let balanceProgressPercentage: Double?
+    var balanceRecharge: BalanceRecharge? = nil
+    var balanceProgressContext: BalanceProgressContext? = nil
     let officialQuotaWindows: [OfficialQuotaWindow]
     let lunaReserve: LunaReserveQuota?
     let bankedReset: CodexBankedReset?
@@ -897,9 +944,11 @@ struct Snapshot {
         _ unit: String,
         _ websiteURL: URL?,
         _ date: Date,
-        progressPercentage: Double? = nil
+        progressPercentage: Double? = nil,
+        recharge: BalanceRecharge? = nil,
+        progressContext: BalanceProgressContext? = nil
     ) -> Snapshot {
-        Snapshot(
+        var snapshot = Snapshot(
             kind: .balance,
             provider: provider,
             amount: amount,
@@ -910,6 +959,48 @@ struct Snapshot {
             balanceProgressPercentage: progressPercentage,
             officialQuotaWindows: []
         )
+        snapshot.balanceRecharge = recharge
+        snapshot.balanceProgressContext = progressContext
+        return snapshot
+    }
+
+    // The balance baseline is also the display start for “last top-up”.
+    // Keep the actual observed recharge event separate in the ledger.
+    var balanceConsumptionStartDate: Date? { balanceProgressContext?.baselineObservedAt }
+
+    var balanceDisplayConsumedCents: Int? {
+        guard balanceConsumptionStartDate != nil, let context = balanceProgressContext else { return nil }
+        return max(0, context.referenceCents - context.lastCents)
+    }
+
+    func balanceSubtitle(now: Date = Date(), timeZone: TimeZone) -> String {
+        if let used = balanceDisplayConsumedCents {
+            return tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), balanceMoney(cents: used)])
+        }
+        if let recharge = balanceRecharge {
+            return tr(.keyBalanceRechargeLabel) + " +" + balanceMoney(cents: recharge.amountCents)
+                + " · " + recharge.dateText(now: now, timeZone: timeZone)
+        }
+        guard let context = balanceProgressContext else { return tr(.keyBalanceRecordingStarted) }
+        let used = balanceMoney(cents: context.consumedCents)
+        return context.consumedCents > 0 ? tr(.keyBalanceUsed, arguments: [used]) : tr(.keyBalanceRecordingStarted)
+    }
+
+    func balanceProgressTooltip(now: Date = Date(), timeZone: TimeZone) -> String {
+        guard let context = balanceProgressContext, context.referenceCents > 0,
+              let percentage = balanceProgressPercentage, percentage.isFinite else {
+            return tr(.keyBalanceReferenceUnavailable)
+        }
+        let amount = balanceMoney(cents: context.referenceCents)
+        let percent = "\(Int(min(100, max(0, percentage)).rounded()))%"
+        if let date = context.baselineObservedAt ?? balanceRecharge?.observedAt {
+            return tr(.keyBalanceReferenceOn, arguments: [BalanceRecharge.dateText(for: date, now: now, timeZone: timeZone), amount, percent])
+        }
+        return tr(.keyBalanceReference, arguments: [amount, percent])
+    }
+
+    private func balanceMoney(cents: Int) -> String {
+        Snapshot.balance("", Double(cents) / 100, unit ?? "", nil, date ?? .distantPast).overviewLargeAmount
     }
 
     static func error(_ message: String) -> Snapshot {
@@ -928,7 +1019,7 @@ struct Snapshot {
 
     static func providerError(_ provider: String, reason: String, cachedBalance: Snapshot?) -> Snapshot {
         let cached = cachedBalance?.kind == .balance ? cachedBalance : nil
-        return Snapshot(
+        var snapshot = Snapshot(
             kind: .error,
             provider: provider,
             amount: cached?.amount,
@@ -939,6 +1030,9 @@ struct Snapshot {
             balanceProgressPercentage: cached?.balanceProgressPercentage,
             officialQuotaWindows: []
         )
+        snapshot.balanceRecharge = cached?.balanceRecharge
+        snapshot.balanceProgressContext = cached?.balanceProgressContext
+        return snapshot
     }
 
     /// Only recognized Codex windows participate in the expanded menu card.

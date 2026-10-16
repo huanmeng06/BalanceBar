@@ -4,6 +4,9 @@ struct DashboardProviderPageInput {
     let choices: [ProviderChoice]
     let selectedProviderID: String?
     let snapshot: Snapshot
+    let snapshotProviderID: String?
+    let aggregatedSnapshots: [String: Snapshot]
+    let isAggregationMode: Bool
     let quickSwitchSummaries: [String: String]
     let refreshDate: Date?
     let revision: UInt64
@@ -22,11 +25,17 @@ struct DashboardProviderPageInput {
         currentProviderIsOfficial: Bool = false,
         quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
         showQuotaProgressBar: Bool = true,
-        displayTimeZone: TimeZone = .autoupdatingCurrent
+        displayTimeZone: TimeZone = .autoupdatingCurrent,
+        snapshotProviderID: String? = nil,
+        aggregatedSnapshots: [String: Snapshot] = [:],
+        isAggregationMode: Bool = false
     ) {
         self.choices = choices
         self.selectedProviderID = selectedProviderID
         self.snapshot = snapshot
+        self.snapshotProviderID = snapshotProviderID
+        self.aggregatedSnapshots = aggregatedSnapshots
+        self.isAggregationMode = isAggregationMode
         self.quickSwitchSummaries = quickSwitchSummaries
         self.refreshDate = refreshDate
         self.revision = revision
@@ -35,6 +44,17 @@ struct DashboardProviderPageInput {
         self.showQuotaProgressBar = showQuotaProgressBar
         self.displayTimeZone = displayTimeZone
     }
+
+    func snapshot(for providerID: String) -> Snapshot? {
+        if isAggregationMode { return aggregatedSnapshots[providerID] }
+        return snapshotProviderID == providerID ? snapshot : nil
+    }
+
+    func refreshDate(for providerID: String) -> Date? {
+        if isAggregationMode { return aggregatedSnapshots[providerID]?.date }
+        return snapshotProviderID == providerID ? refreshDate : nil
+    }
+
 }
 
 enum DashboardProviderListModel {
@@ -235,20 +255,21 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
             return true
         }
         providerLabel.stringValue = choice.name
-        amountLabel.stringValue = choice.isCurrent
-            ? input.snapshot.overviewLargeAmount
-            : (input.quickSwitchSummaries[choice.id] ?? tr(.keyDashboardProviderPagesLoading))
-        resetLabel.stringValue = choice.isCurrent
-            ? input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone))
-            : tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation2)
+        let owned = input.snapshot(for: choice.id)
+        amountLabel.stringValue = owned?.overviewLargeAmount
+            ?? input.quickSwitchSummaries[choice.id] ?? tr(.keyDashboardProviderPagesLoading)
+        resetLabel.stringValue = owned?.overviewReset(refreshDate: input.refreshDate(for: choice.id),
+            formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone))
+            ?? tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation2)
         updateActionState(for: choice)
         return true
     }
 
     func refreshDisplayTimeZone(input: DashboardProviderPageInput) {
-        guard let choice = input.choices.first(where: { $0.id == choiceID }), choice.isCurrent else { return }
-        resetLabel.stringValue = input.snapshot.overviewReset(
-            refreshDate: input.refreshDate,
+        guard let choice = input.choices.first(where: { $0.id == choiceID }),
+              let owned = input.snapshot(for: choice.id) else { return }
+        resetLabel.stringValue = owned.overviewReset(
+            refreshDate: input.refreshDate(for: choice.id),
             formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone)
         )
     }
@@ -296,7 +317,8 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
 
 private extension ProviderChoice {
     func initialResetText(input: DashboardProviderPageInput, formatter: DateFormatter) -> String {
-        input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: formatter)
+        input.snapshot(for: id)?.overviewReset(refreshDate: input.refreshDate(for: id), formatter: formatter)
+            ?? tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation)
     }
 }
 
@@ -418,9 +440,12 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
             return true
         }
         providerLabel.stringValue = current.name
-        amountLabel.stringValue = input.snapshot.overviewLargeAmount
-        resetLabel.stringValue = input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone))
-        refreshLabel.stringValue = input.refreshDate.map(AppDisplayTime.formatter(timeZone: input.displayTimeZone).string(from:)) ?? "--:--:--"
+        let owned = input.snapshot(for: current.id)
+        amountLabel.stringValue = owned?.overviewLargeAmount ?? input.quickSwitchSummaries[current.id] ?? "—"
+        resetLabel.stringValue = owned?.overviewReset(refreshDate: input.refreshDate(for: current.id),
+            formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone))
+            ?? tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation2)
+        refreshLabel.stringValue = input.refreshDate(for: current.id).map(AppDisplayTime.formatter(timeZone: input.displayTimeZone).string(from:)) ?? "--:--:--"
         statusLabel.stringValue = tr(.keyDashboardProviderPagesFollowingCurrentProvider)
         refreshLunaReserve(input: input)
         refreshRows()
@@ -428,12 +453,13 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
     }
 
     func refreshDisplayTimeZone(input: DashboardProviderPageInput) {
-        guard let current = choices.first(where: { $0.isCurrent }) else { return }
-        resetLabel.stringValue = input.snapshot.overviewReset(
-            refreshDate: input.refreshDate,
+        guard let current = choices.first(where: { $0.isCurrent }),
+              let owned = input.snapshot(for: current.id) else { return }
+        resetLabel.stringValue = owned.overviewReset(
+            refreshDate: input.refreshDate(for: current.id),
             formatter: AppDisplayTime.formatter(timeZone: input.displayTimeZone)
         )
-        refreshLabel.stringValue = input.refreshDate.map {
+        refreshLabel.stringValue = input.refreshDate(for: current.id).map {
             AppDisplayTime.formatter(timeZone: input.displayTimeZone).string(from: $0)
         } ?? "--:--:--"
         if current.isCurrent { refreshLunaReserve(input: input) }
@@ -441,17 +467,19 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
 
     private func refreshLunaReserve(input: DashboardProviderPageInput) {
         guard LunaReserveUserFacing.isCurrentlyEnabled,
-              input.currentProviderIsOfficial else {
+              let current = input.choices.first(where: { $0.isCurrent }),
+              let owned = input.snapshot(for: current.id),
+              input.isAggregationMode ? owned.kind == .official : input.currentProviderIsOfficial else {
             lunaReserveCard.isHidden = true
             return
         }
 
         let quota: LunaReserveQuota
-        switch input.snapshot.kind {
+        switch owned.kind {
         case .placeholder:
             quota = LunaReserveQuota(status: .loading, remaining: nil, reset: nil)
         case .official:
-            quota = input.snapshot.lunaReserve
+            quota = owned.lunaReserve
                 ?? LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
         case .error:
             quota = LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)

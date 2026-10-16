@@ -507,3 +507,33 @@
 "dashboard.logs.page.preview_truncated" = "Apenas a pré-visualização recente é mostrada; exporte todos os logs retidos.";
 "dashboard.logs.page.read_warning" = "Não foi possível ler alguns arquivos de diagnóstico";
 "dashboard.logs.page.export_failed" = "Falha ao exportar os logs de diagnóstico";
+
+// CC Switch aggregation overview
+"aggregation.default" = "Predefinido";
+"aggregation.loading" = "A atualizar…";
+"aggregation.stale" = "Últimos dados fiáveis · nova tentativa";
+"aggregation.unavailable" = "Saldo indisponível";
+"aggregation.manage_in_cc_switch" = "Gira o fornecedor predefinido no CC Switch em modo de agregação";
+
+"balance.recharge.label" = "Recarga";
+"balance.recharge.observed" = "Aumento líquido do saldo detetado localmente. A data é a primeira observação desta app, não um comprovativo de pagamento.";
+
+"balance.used_since" = "Desde %1$@: %2$@ usados";
+"balance.used_since_today" = "Desde %1$@: %2$@ usados";
+"balance.used_since_yesterday" = "Desde %1$@: %2$@ usados";
+"balance.yesterday" = "ontem";
+"balance.used" = "%1$@ usados";
+"balance.recording.started_on" = "Registo desde %1$@";
+"balance.recording.started" = "Registo iniciado";
+"balance.reference_on" = "Do saldo de %1$@ de %2$@, resta %3$@";
+"balance.reference" = "Do saldo inicial de %1$@, resta %2$@";
+"balance.reference_unavailable" = "Saldo de referência indisponível";
+
+"balance.recharge.last" = "última recarga";
+"balance.used_since_recharge" = "Desde a %1$@: %2$@ usados";
+
+"balance.elapsed.ago" = "há %1$@";
+
+"quick_switch.routing_protected" = "Modo de roteamento: gerenciar no CC Switch";
+"quick_switch.state_untrusted" = "Modo não confirmado: gerenciar no CC Switch";
+"quick_switch.manage_in_cc_switch" = "Gerenciar no CC Switch";

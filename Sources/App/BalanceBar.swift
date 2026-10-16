@@ -434,7 +434,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             currentProviderName: { [weak self] in self?.currentProviderName() ?? tr(.keyAppNotFound) },
             currentProviderIsOfficial: { [weak self] in
                 guard let self, self.activeClient == .codex else { return false }
-                return self.ccSwitchRepository.loadCurrent(appType: self.activeClient.appType)?.isOfficial == true
+                return self.currentProviderIsOfficialCache
             },
             providerChoices: { [weak self] in self?.providerChoicesCache ?? [] },
             snapshot: { [weak self] in self?.snapshot ?? .placeholder },
@@ -456,7 +456,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     return self.ccSwitchRepository.loadChoices(appType: client.appType)
                 },
                 displayTimeZone: { [weak self] in self?.preferences.effectiveDisplayTimeZone ?? .autoupdatingCurrent }
-            )
+            ),
+            snapshotProviderID: { [weak self] in self?.snapshotProviderID },
+            aggregationSnapshots: { [weak self] in
+                guard let self, self.activeClient == .codex else { return [:] }
+                return Dictionary(uniqueKeysWithValues: self.aggregationDisplays.map { ($0.identity.providerID, $0.snapshot) })
+            },
+            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -569,15 +575,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var updateCheckTimer: Timer?
     private var activityCoordinator: ActivityCoordinator!
     private var databaseWatcher: CCSwitchDatabaseWatcher!
+    private var aggregationRepository: CCSwitchAggregationRepository!
+    private var aggregationDisplays: [AggregatedProviderDisplay] = []
+    private var snapshotProviderID: String?
+    private var aggregationQuickSwitchBlocked = true
+    private var quickSwitchSafetyByClient: [AssistantClient: CCSwitchQuickSwitchSafety] = [:]
+    private var quickSwitchSafety: CCSwitchQuickSwitchSafety { quickSwitchSafetyByClient[activeClient] ?? .blockedUntrusted }
+    private var currentProviderIsOfficialCache = false
+    private var currentAccountProfileCache: CodexAccountProfile?
+    private var ccSwitchLifecycleObservers: [NSObjectProtocol] = []
     private var lastSuccessfulRefresh: Date?
     private var dashboardProviderPageRevision: UInt64 = 0
     private var lastProviderID: String?
     /// In-memory provider list and current name. Search reads these values
     /// and does not open the provider database on each query.
     private var providerChoicesCache: [ProviderChoice] = []
+    private var providerNotesCache: [String: [String: String]] = [:]
+    private lazy var providerMetadataReader = ProviderMetadataReader(repository: ccSwitchRepository)
     private var currentProviderNameCache = ""
     private var clientSnapshots: [
-        AssistantClient: (providerID: String, snapshot: Snapshot)
+        AssistantClient: (providerID: String, configurationRevision: String, snapshot: Snapshot)
     ] = [:]
     private var snapshot = Snapshot.placeholder
     private var activeProviderWebsite: URL?
@@ -719,21 +736,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             if Thread.isMainThread { applyUpdateState() }
             else { DispatchQueue.main.async(execute: applyUpdateState) }
         }
+        aggregationRepository = CCSwitchAggregationRepository(repository: repository)
         databaseWatcher = CCSwitchDatabaseWatcher(
             databaseURL: repository.databaseURL,
+            stateURL: aggregationRepository.stateURL,
             onChange: { [weak self] in
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     let appType = self.activeClient.appType
-                    // Publish the search cache from a background read. The
-                    // status menu still loads its own choices when it rebuilds.
-                    DispatchQueue.global(qos: .utility).async { [weak self] in
-                        self?.reloadCurrentProviderNameCache(appType: appType)
-                    }
+                    // Publish metadata asynchronously; the menu only reads the cache.
+                    self.reloadCurrentProviderNameCache(appType: appType)
                     self.refreshStatusItemMenuInput()
                 }
-                self?.refresh(reason: .configurationChanged)
-                self?.refreshMonitoredQuickSwitchSummaries(force: true)
+                SwitchLog.write("refresh triggered; origin=file-watcher; force=false", level: .debug, category: "refresh")
+                self?.refresh(reason: .databaseChanged)
+                self?.refreshMonitoredQuickSwitchSummaries(force: false, configurationChanged: true)
             }
         )
         providerRefreshCoordinator = ProviderRefreshCoordinator(
@@ -751,7 +768,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 render: { [weak self] snapshot in self?.render(snapshot) },
                 storeClientSnapshot: { [weak self] client, providerID, snapshot in
-                    self?.clientSnapshots[client] = (providerID, snapshot)
+                    self?.clientSnapshots[client] = (providerID, "", snapshot)
+                },
+                storeClientSnapshotWithRevision: { [weak self] client, providerID, revision, snapshot in
+                    self?.clientSnapshots[client] = (providerID, revision, snapshot)
                 },
                 quickSwitchSummaryChanged: { [weak self] providerID in
                     self?.publishQuickSwitchSummary(providerID: providerID)
@@ -763,11 +783,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                         agent: Self.notificationAgent(for: client),
                         providerID: providerID
                     )
-                }
+                },
+                quickSwitchSafetyChanged: { [weak self] safety in
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.quickSwitchSafetyByClient[.codex] = safety
+                        guard self.activeClient == .codex else { return }
+                        self.aggregationQuickSwitchBlocked = safety.isBlocked
+                        self.refreshStatusItemMenuInput()
+                    }
+                },
+                aggregationChanged: { [weak self] displays, blocked in
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.aggregationDisplays != displays || self.aggregationQuickSwitchBlocked != blocked else { return }
+                        let previousDefault = self.aggregationDisplays.first(where: { $0.entry.role == .default })
+                        let dashboardChanged = self.aggregationDisplays.map { ($0.identity, $0.snapshot) }.elementsEqual(
+                            displays.map { ($0.identity, $0.snapshot) }, by: { $0.0 == $1.0 && $0.1 == $1.1 }) == false
+                        self.aggregationDisplays = displays
+                        self.aggregationQuickSwitchBlocked = blocked
+                        if self.activeClient == .codex {
+                            if previousDefault != displays.first(where: { $0.entry.role == .default }) {
+                                self.updateStatusItem(for: self.snapshot, refreshDashboard: false)
+                            } else { self.refreshStatusItemMenuInput() }
+                            if dashboardChanged {
+                                self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
+                            }
+                        }
+                    }
+                },
+                ownedRender: { [weak self] providerID, snapshot in self?.render(snapshot, providerID: providerID) }
             )
         )
         providerSwitchCoordinator = ProviderSwitchCoordinator(
             repository: repository,
+            aggregationRepository: aggregationRepository,
+            isClientCurrent: { [weak self] appType in
+                DispatchQueue.main.sync { self?.activeClient.appType == appType }
+            },
             actions: ProviderSwitchActions(
                 changed: { [weak self] in
                     guard let self else { return }
@@ -880,19 +932,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func makeStatusItemMenuInput() -> StatusItemController.MenuInput {
-        let currentProvider = ccSwitchRepository.loadCurrent(appType: activeClient.appType)
-        let isOfficialOpenAICodex = activeClient == .codex && currentProvider?.isOfficial == true
-        let accountProfile = isOfficialOpenAICodex
-            ? officialQuotaClient.codexAccountProfile()
-            : nil
+        let isOfficialOpenAICodex = activeClient == .codex && currentProviderIsOfficialCache
+        let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache : nil
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
             providerIsOfficial: isOfficialOpenAICodex,
             email: accountProfile?.email,
             subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
         )
+        let directProviderID = providerChoicesCache.first(where: \.isCurrent)?.id ?? lastProviderID
+        let directProviderNotes = aggregationDisplays.isEmpty || activeClient != .codex
+            ? directProviderID.flatMap { providerNotesCache[activeClient.appType]?[$0] }.map { [$0] } ?? [] : []
         return StatusItemController.MenuInput(
-            choices: ccSwitchRepository.loadChoices(appType: activeClient.appType),
+            choices: providerChoicesCache,
             quickSwitchSummaries: quickSwitchSummariesSnapshot(),
             activeClient: activeClient,
             openAIAccount: openAIAccount,
@@ -901,13 +953,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
             showStatusMenu: showStatusMenu,
+            directProviderNotes: directProviderNotes,
+            directProviderID: directProviderID,
+            directProviderIsOfficial: isOfficialOpenAICodex,
             lunaReserveDisplayMode: LunaReserveUserFacing.isCurrentlyEnabled
                 ? preferences.menuLunaReserveDisplayMode
                 : .disabled,
             lunaReserveHideExhaustedQuota: LunaReserveUserFacing.isCurrentlyEnabled
                 && preferences.menuLunaReserveHideExhaustedQuota,
             bankedResetDisplayMode: preferences.menuBankedResetDisplayMode,
-            showsAvailableUpdateBadge: showsAvailableUpdateBadge
+            showsAvailableUpdateBadge: showsAvailableUpdateBadge,
+            aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
+            aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked,
+            quickSwitchSafety: quickSwitchSafety
         )
     }
 
@@ -922,28 +980,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         currentProviderNameCache
     }
 
-    /// Loads provider choices off the caller thread when that caller is already
-    /// in the background, and publishes them on the main thread. Search only
-    /// reads `providerChoicesCache` / `currentProviderNameCache`.
+    /// Always read provider metadata in the background. Menus and search use
+    /// published values; the reader discards obsolete completion generations.
     private func reloadCurrentProviderNameCache(appType: String? = nil) {
-        let resolvedAppType = appType ?? activeClient.appType
-        let choices = ccSwitchRepository.loadChoices(appType: resolvedAppType)
-        let name = choices.first(where: { $0.isCurrent })?.name ?? tr(.keyAppNotFound2)
-        let publish = { [weak self] in
-            guard let self, self.activeClient.appType == resolvedAppType else { return }
-            self.providerChoicesCache = choices
-            self.currentProviderNameCache = name
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.reloadCurrentProviderNameCache(appType: appType) }
+            return
         }
-        if Thread.isMainThread {
-            publish()
-        } else {
-            DispatchQueue.main.async(execute: publish)
+        let resolvedAppType = appType ?? activeClient.appType
+        providerMetadataReader.reload(appType: resolvedAppType,
+            includeSources: aggregationDisplays.isEmpty || activeClient != .codex) { [weak self] value in
+            guard let self, self.activeClient.appType == resolvedAppType else { return }
+            var changed = self.providerChoicesCache != value.choices
+                || self.currentProviderIsOfficialCache != (value.current?.isOfficial == true)
+            self.providerChoicesCache = value.choices
+            if let sources = value.sources {
+                let notes = Dictionary(uniqueKeysWithValues: sources.compactMap { source -> (String, String)? in
+                    guard let note = source.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty else { return nil }
+                    return (source.id, note)
+                })
+                changed = changed || self.providerNotesCache[resolvedAppType] != notes
+                self.providerNotesCache[resolvedAppType] = notes
+            }
+            self.currentProviderNameCache = value.choices.first(where: \.isCurrent)?.name ?? tr(.keyAppNotFound2)
+            self.currentProviderIsOfficialCache = value.current?.isOfficial == true
+            self.currentAccountProfileCache = value.current?.isOfficial == true && resolvedAppType == "codex"
+                ? self.officialQuotaClient.codexAccountProfile() : nil
+            self.refreshStatusItemMenuInput()
+            if changed { self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot)) }
         }
     }
 
     private func quickSwitchSummariesSnapshot() -> [String: String] {
         providerRefreshCoordinator?.quickSwitchSummariesSnapshot(
-            preferredQuotaWindow: menuBarQuotaWindowPreference
+            preferredQuotaWindow: menuBarQuotaWindowPreference, client: activeClient
         ) ?? [:]
     }
 
@@ -1005,9 +1075,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         refreshDashboard: Bool = true,
         deferMenuRebuild: Bool = false
     ) {
+        let display = activeClient == .codex ? aggregationDisplays.first(where: { $0.entry.role == .default }) : nil
         statusItemController.update(
-            snapshot: snapshot,
-            refreshDate: refreshDate(for: snapshot),
+            snapshot: display?.snapshot ?? snapshot,
+            refreshDate: display?.fetchedAt ?? refreshDate(for: snapshot),
             menuInput: makeStatusItemMenuInput(),
             settings: makeStatusItemSettings(),
             deferMenuRebuild: deferMenuRebuild
@@ -1019,6 +1090,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard lifecycle.beginStart() else { return }
+        if AggregationOverviewScrollView.diagnosticsEnabled {
+            let sha = Bundle.main.object(forInfoDictionaryKey: "BalanceBarBuildSHA") as? String ?? "unknown"
+            SwitchLog.write("Dev artifact; path=\(Bundle.main.bundlePath); pid=\(ProcessInfo.processInfo.processIdentifier); build_sha=\(sha)", category: "ui.aggregation")
+        }
         if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -1055,6 +1130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         configureUpdateCheckTimer()
         updateStatusItemActivity()
         databaseWatcher.start()
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            ccSwitchLifecycleObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
+                forName: name, object: nil, queue: nil) { [weak self] notification in
+                    guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                          app.bundleIdentifier == "com.ccswitch.desktop" else { return }
+                    self?.refresh(reason: .configurationChanged)
+                })
+        }
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "unknown"
@@ -1077,6 +1160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "database"
         )
         refresh(reason: .initial)
+        scheduleStartupAggregationReconciliation()
         refreshMonitoredQuickSwitchSummaries(force: true, extraClients: [.claude])
         providerRefreshCoordinator.prefetchCurrentBalance(for: .claude)
         activityCoordinator.start(interval: activityPollInterval)
@@ -1084,6 +1168,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // The file watcher handles normal CC Switch writes. This inexpensive
         // read is a fallback for a missed filesystem notification.
         configureRefreshTimers()
+    }
+
+    /// CC Switch can finish attaching its proxy stack just after BalanceBar's
+    /// first read. Recheck once after launch so a transient default-only read
+    /// cannot leave the menu stuck on one provider until manual refresh.
+    private func scheduleStartupAggregationReconciliation() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self, self.activeClient == .codex else { return }
+            guard case .active = self.aggregationRepository.load() else { return }
+            SwitchLog.write(
+                "startup aggregation reconciliation; source=delayed-launch-read",
+                level: .debug,
+                category: "refresh.aggregation"
+            )
+            self.refresh(reason: .configurationChanged)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -1101,6 +1201,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardComposition.teardown()
         statusItemController.teardown()
         databaseWatcher.stop()
+        ccSwitchLifecycleObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        ccSwitchLifecycleObservers.removeAll()
+        providerRefreshCoordinator.stopAggregation()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -1203,6 +1306,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
         guard applied else { return }
         configureApplicationMenu()
+        // Recreate status-menu labels immediately after changing the selected
+        // language; the existing cards may otherwise retain cached text.
+        refreshStatusItemMenuInput()
         rebuildDashboardForLanguageChange()
         render(snapshot)
         refresh(reason: .configurationChanged)
@@ -1704,6 +1810,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     var dashboardCompositionForTesting: DashboardCompositionController { dashboardComposition }
+    var providerChoicesForTesting: [ProviderChoice] { providerChoicesCache }
     var manualRefreshActionForTesting: (() -> Void)?
 
     var backgroundUpdateTimerForTesting: Timer? { updateCheckTimer }
@@ -1798,18 +1905,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func refreshMonitoredQuickSwitchSummaries(
         force: Bool,
-        extraClients: [AssistantClient] = []
+        extraClients: [AssistantClient] = [],
+        configurationChanged: Bool = false
     ) {
         var seen = Set<AssistantClient>()
         for client in [activeClient] + extraClients where seen.insert(client).inserted {
-            providerRefreshCoordinator.refreshQuickSwitchSummaries(force: force, for: client)
+            providerRefreshCoordinator.refreshQuickSwitchSummaries(force: force, for: client, configurationChanged: configurationChanged)
         }
         for target in notificationCoordinator.monitoredNotificationTargets()
         where seen.insert(target.client).inserted {
             providerRefreshCoordinator.refreshQuickSwitchSummaries(
                 force: force,
                 for: target.client,
-                providerIDs: target.providerIDs
+                providerIDs: target.providerIDs,
+                configurationChanged: configurationChanged
             )
         }
     }
@@ -2030,6 +2139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func setActiveClient(_ client: AssistantClient) {
         guard client != activeClient else { return }
         activeClient = client
+        snapshotProviderID = nil
         SwitchLog.write("active client changed; client=\(client.rawValue)")
         lastProviderID = nil
         providerRefreshCoordinator.resetCadence()
@@ -2045,7 +2155,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let currentProvider = ccSwitchRepository.loadCurrent(appType: client.appType)
         reloadCurrentProviderNameCache()
         let cached = clientSnapshots[client]
-        let hasCachedSnapshot = cached.map { currentProvider?.id == $0.providerID } ?? false
+        let hasCachedSnapshot = cached.map {
+            currentProvider?.id == $0.providerID
+                && currentProvider?.configurationRevision == $0.configurationRevision
+        } ?? false
+        if !hasCachedSnapshot {
+            currentProviderIsOfficialCache = false
+            currentAccountProfileCache = nil
+            lastSuccessfulRefresh = nil
+            activeProviderWebsite = nil
+        }
         // A following cached render layouts icon+digits together. Skip the
         // extra layout inside updateActivity so one client switch pays for
         // layoutStatusItem once. Icon swap still happens.
@@ -2053,7 +2172,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         refreshStatusItemMenuInput(deferRebuild: true)
         if hasCachedSnapshot, let cached {
             lastProviderID = cached.providerID
-            render(cached.snapshot, immediately: true, deferMenuRebuild: true)
+            render(cached.snapshot, providerID: cached.providerID, immediately: true, deferMenuRebuild: true)
+        } else {
+            render(.placeholder, immediately: true, deferMenuRebuild: true)
         }
         if client != .grok || currentProvider != nil {
             refresh(reason: .clientChanged)
@@ -2086,9 +2207,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func refresh(reason: BalanceRefreshReason) {
         let client = activeClient
+        SwitchLog.write("provider refresh triggered; reason=\(reason); client=\(client.rawValue); force=\(reason.forcesStandardProviderBalance)",
+            level: .debug, category: "refresh", throttleKey: "provider-refresh-\(reason)", minimumInterval: 1)
         providerRefreshCoordinator.performAsync { [weak self] in
             guard let self else { return }
-            let current = self.ccSwitchRepository.loadCurrent(appType: client.appType)
+            if client == .codex, self.providerRefreshCoordinator.refreshAggregation(
+                reader: self.aggregationRepository, force: reason.forcesStandardProviderBalance) { return }
+            if client != .codex {
+                let safety = self.ccSwitchRepository.quickSwitchSafety(appType: client.appType)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activeClient == client else { return }
+                    self.quickSwitchSafetyByClient[client] = safety
+                    self.refreshStatusItemMenuInput()
+                }
+            }
+            let current: CCSwitchProvider?
+            do { current = try self.ccSwitchRepository.loadCurrentChecked(appType: client.appType) }
+            catch {
+                SwitchLog.write("provider refresh deferred; reason=database_read_failed; sqlite_code=\((error as? CCSwitchReadError)?.sqliteCode ?? -1); client=\(client.rawValue)",
+                    level: .warning, category: "provider.read")
+                return
+            }
             self.reloadCurrentProviderNameCache(appType: client.appType)
             guard let current else {
                 SwitchLog.write(
@@ -2117,8 +2256,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
-    private func render(_ next: Snapshot, immediately: Bool = false, deferMenuRebuild: Bool = false) {
+    private func render(_ next: Snapshot, providerID: String? = nil, immediately: Bool = false, deferMenuRebuild: Bool = false) {
         let apply = {
+            if let providerID { self.snapshotProviderID = providerID }
+            else if next != self.snapshot { self.snapshotProviderID = nil }
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }

@@ -507,3 +507,33 @@
 "dashboard.logs.page.preview_truncated" = "最近のプレビューのみ表示しています。保存されたすべてのログを書き出してください。";
 "dashboard.logs.page.read_warning" = "一部の診断ファイルを読み取れません";
 "dashboard.logs.page.export_failed" = "診断ログの書き出しに失敗しました";
+
+// CC Switch aggregation overview
+"aggregation.default" = "デフォルト";
+"aggregation.loading" = "更新中…";
+"aggregation.stale" = "前回の信頼できるデータ · 再試行中";
+"aggregation.unavailable" = "残高を取得できません";
+"aggregation.manage_in_cc_switch" = "集約モードのデフォルトプロバイダーは CC Switch で管理してください";
+
+"balance.recharge.label" = "チャージ";
+"balance.recharge.observed" = "アプリが検出した残高の純増額です。時刻は増加を初めて確認した時点で、支払い記録ではありません。";
+
+"balance.used_since" = "%1$@以降 %2$@ 使用";
+"balance.used_since_today" = "%1$@以降 %2$@ 使用";
+"balance.used_since_yesterday" = "%1$@以降 %2$@ 使用";
+"balance.yesterday" = "昨日";
+"balance.used" = "%1$@ 使用";
+"balance.recording.started_on" = "%1$@から記録";
+"balance.recording.started" = "記録開始";
+"balance.reference_on" = "%1$@の残高 %2$@ に対して残り %3$@";
+"balance.reference" = "基準残高 %1$@ に対して残り %2$@";
+"balance.reference_unavailable" = "残高の基準を確認できません";
+
+"balance.recharge.last" = "前回のチャージ";
+"balance.used_since_recharge" = "%1$@以降の利用額 %2$@";
+
+"balance.elapsed.ago" = "%1$@前";
+
+"quick_switch.routing_protected" = "ルーティングモード：CC Switch で管理";
+"quick_switch.state_untrusted" = "モードを確認できません：CC Switch で管理";
+"quick_switch.manage_in_cc_switch" = "CC Switch で管理";

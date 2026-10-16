@@ -507,3 +507,33 @@
 "dashboard.logs.page.preview_truncated" = "目前僅顯示最近預覽；請匯出全部保留日誌。";
 "dashboard.logs.page.read_warning" = "部分診斷檔案無法讀取";
 "dashboard.logs.page.export_failed" = "診斷日誌匯出失敗";
+
+// CC Switch aggregation overview
+"aggregation.default" = "預設";
+"aggregation.loading" = "正在更新…";
+"aggregation.stale" = "上次可信資料 · 正在重試";
+"aggregation.unavailable" = "餘額暫時無法取得";
+"aggregation.manage_in_cc_switch" = "聚合模式請在 CC Switch 中管理預設供應商";
+
+"balance.recharge.label" = "增值";
+"balance.recharge.observed" = "軟件偵測到的餘額淨增量；時間為本軟件首次觀察到上升的時刻，並非付款帳單紀錄。";
+
+"balance.used_since" = "自 %1$@ 起已用 %2$@";
+"balance.used_since_today" = "自 %1$@ 起已用 %2$@";
+"balance.used_since_yesterday" = "自 %1$@ 起已用 %2$@";
+"balance.yesterday" = "昨日";
+"balance.used" = "已用 %1$@";
+"balance.recording.started_on" = "%1$@ 開始記錄";
+"balance.recording.started" = "開始記錄";
+"balance.reference_on" = "相對 %1$@ 的 %2$@，剩餘 %3$@";
+"balance.reference" = "相對基準餘額 %1$@，剩餘 %2$@";
+"balance.reference_unavailable" = "尚無可確認的餘額基準";
+
+"balance.recharge.last" = "上次增值";
+"balance.used_since_recharge" = "自%1$@已用 %2$@";
+
+"balance.elapsed.ago" = "%1$@前";
+
+"quick_switch.routing_protected" = "路由模式，請在 CC Switch 中管理";
+"quick_switch.state_untrusted" = "無法確認模式，請在 CC Switch 中管理";
+"quick_switch.manage_in_cc_switch" = "在 CC Switch 中管理";

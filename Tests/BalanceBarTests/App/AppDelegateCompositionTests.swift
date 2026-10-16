@@ -55,7 +55,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(updatePath.contains("if refreshDashboard"))
 
         let renderStart = try XCTUnwrap(
-            source.range(of: "private func render(_ next: Snapshot, immediately: Bool = false, deferMenuRebuild: Bool = false)")
+            source.range(of: "private func render(_ next: Snapshot, providerID: String? = nil, immediately: Bool = false, deferMenuRebuild: Bool = false)")
         )
         let renderEnd = try XCTUnwrap(
             source.range(
@@ -87,7 +87,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         let path = String(source[start.lowerBound..<end.lowerBound])
         XCTAssertTrue(path.contains("updateStatusItemActivity(layout: !hasCachedSnapshot)"))
         XCTAssertTrue(path.contains("refreshStatusItemMenuInput(deferRebuild: true)"))
-        XCTAssertTrue(path.contains("render(cached.snapshot, immediately: true, deferMenuRebuild: true)"))
+        XCTAssertTrue(path.contains("render(cached.snapshot, providerID: cached.providerID, immediately: true, deferMenuRebuild: true)"))
         XCTAssertTrue(path.contains("refresh(reason: .clientChanged)"))
         XCTAssertTrue(path.contains("refreshDashboardMenuBarPage()"))
         XCTAssertFalse(path.contains("refreshQuickSwitchSummaries(force: true"))
@@ -105,7 +105,8 @@ final class AppDelegateCompositionTests: XCTestCase {
             )
         )
         let path = String(source[start.lowerBound..<end.lowerBound])
-        XCTAssertTrue(path.contains("let hasCachedSnapshot = cached.map { currentProvider?.id == $0.providerID } ?? false"))
+        XCTAssertTrue(path.contains("currentProvider?.configurationRevision == $0.configurationRevision"))
+        XCTAssertTrue(path.contains("render(.placeholder, immediately: true, deferMenuRebuild: true)"))
         XCTAssertTrue(
             path.contains("updateStatusItemActivity(layout: !hasCachedSnapshot)"),
             "a cached snapshot render must skip the extra layout inside updateActivity"

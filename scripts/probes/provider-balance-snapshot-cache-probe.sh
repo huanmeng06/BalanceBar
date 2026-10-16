@@ -12,8 +12,9 @@ trap 'rm -rf "$probe_dir"' EXIT
 
 {
     printf '%s\n' 'import Foundation' 'enum OfficialQuotaWindowPreference { case fiveHour, sevenDay }' 'enum OfficialQuotaResetDisplayMode { case remaining, resetAt, both; static let defaultValue: Self = .both }' 'enum LunaReserveDisplayMode: String, CaseIterable, Equatable { case disabled, whenQuotaExhausted, always; static let defaultValue: Self = .always }' 'enum LunaReserveResetTimeMode: String, CaseIterable, Equatable { case originalQuota, lunaReserve; static let defaultValue: Self = .originalQuota }'
+    printf '%s\n' 'enum LunaReserveUserFacing { static let isCurrentlyEnabled = true }'
     cat "$sources_dir/AppCore/LocalizationKeys.swift"
-    printf '%s\n' 'func tr(_ key: LocalizationKey, arguments: [String] = []) -> String { key.rawValue }'
+    cat "$sources_dir/AppCore/Localization.swift"
     cat "$sources_dir/Domain/Snapshot.swift"
     awk '
         /^struct ProviderBalanceSnapshotCache \{/ { capture = 1 }
@@ -107,6 +108,6 @@ require(replaced.overviewProvider == "Provider One Renamed", "current Provider n
 
 print("provider balance snapshot cache probe: PASS; same-key fallback; Provider/client isolation; empty and official misses; replacement; exact success date; pure error content")
 SWIFT
-} | swiftc -framework Foundation -o "$probe_binary" -
+} | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 
 "$probe_binary"

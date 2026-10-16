@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Errors surfaced by `BalanceAPIClient` for third-party balance requests.
 /// Values never include the request URL, Authorization header, or any other
@@ -31,35 +32,62 @@ final class BalanceAPIClient {
     /// Owns in-flight state independently from the API client so a request can
     /// finish and release its key even after the client itself is gone.
     private final class InFlightRegistry {
+        private struct Entry {
+            let token: UUID
+            var completions: [Completion]
+            var task: URLSessionDataTask?
+        }
         private let lock = NSLock()
-        private var completionsByKey: [String: [Completion]] = [:]
+        private var entries: [String: Entry] = [:]
 
-        /// Returns true when this call owns the transport request. Duplicate
-        /// consumers are retained and will receive the same eventual result.
-        func register(key: String, completion: @escaping Completion) -> Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            if completionsByKey[key] != nil {
-                completionsByKey[key, default: []].append(completion)
-                return false
+        func register(key: String, completion: @escaping Completion) -> UUID? {
+            lock.lock(); defer { lock.unlock() }
+            if entries[key] != nil {
+                entries[key]?.completions.append(completion)
+                return nil
             }
-            completionsByKey[key] = [completion]
-            return true
+            let token = UUID()
+            entries[key] = Entry(token: token, completions: [completion])
+            return token
         }
 
-        func contains(key: String) -> Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            return completionsByKey[key] != nil
+        func attach(_ task: URLSessionDataTask, key: String, token: UUID) {
+            lock.lock(); defer { lock.unlock() }
+            guard entries[key]?.token == token else { task.cancel(); return }
+            entries[key]?.task = task
         }
 
-        /// Remove the key before invoking consumers so a callback can safely
-        /// start a new request for the same provider.
-        func finish(key: String, result: Result<BalanceAPIResult, BalanceAPIClientError>) {
+        func contains(prefix: String) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            return entries.keys.contains { $0.dropLast(65) == prefix }
+        }
+
+        func finish(key: String, token: UUID, result: Result<BalanceAPIResult, BalanceAPIClientError>) {
             lock.lock()
-            let completions = completionsByKey.removeValue(forKey: key) ?? []
+            guard entries[key]?.token == token else { lock.unlock(); return }
+            let completions = entries.removeValue(forKey: key)?.completions ?? []
             lock.unlock()
             completions.forEach { $0(result) }
+        }
+
+        func cancel(key: String) {
+            lock.lock()
+            let entry = entries.removeValue(forKey: key)
+            lock.unlock()
+            finishCancel(entry)
+        }
+
+        func cancel(prefix: String) {
+            lock.lock()
+            let matches = entries.filter { $0.key == prefix || $0.key.hasPrefix(prefix + ":") }
+            for key in matches.keys { entries.removeValue(forKey: key) }
+            lock.unlock()
+            matches.values.forEach { finishCancel($0) }
+        }
+
+        private func finishCancel(_ entry: Entry?) {
+            entry?.task?.cancel()
+            entry?.completions.forEach { $0(.failure(.transport(URLError(.cancelled)))) }
         }
     }
 
@@ -75,11 +103,30 @@ final class BalanceAPIClient {
         "balance:\(client.rawValue):\(providerID)"
     }
 
+    /// Configured query identity prevents consumers of changed credentials from
+    /// joining an old transport. No secret is retained in registry keys.
+    private static func scopedRequestKey(query: BalanceQuery, client: AssistantClient, providerID: String) -> String {
+        let headers = query.additionalHeaders.sorted { $0.key < $1.key }.map { [$0.key, $0.value] }
+        let fields: [Any] = [query.url, query.apiKey, query.timeoutSeconds, query.isRightCode,
+                            query.subscriptionPrefix, String(describing: query.nativeBalanceProvider), query.isNewAPI, headers]
+        let data = (try? JSONSerialization.data(withJSONObject: fields)) ?? Data()
+        let scope = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return requestKey(client: client, providerID: providerID) + ":" + scope
+    }
+
+    func cancelBalance(query: BalanceQuery, client: AssistantClient, providerID: String) {
+        inFlight.cancel(key: Self.scopedRequestKey(query: query, client: client, providerID: providerID))
+    }
+
+    func cancelBalance(client: AssistantClient, providerID: String) {
+        inFlight.cancel(prefix: Self.requestKey(client: client, providerID: providerID))
+    }
+
     /// Whether a third-party balance request for this key is currently
     /// in flight. Exposed for tests that verify cleanup after completion,
     /// transport error, HTTP error, and parse failures.
     func isRequestInFlight(client: AssistantClient, providerID: String) -> Bool {
-        inFlight.contains(key: Self.requestKey(client: client, providerID: providerID))
+        inFlight.contains(prefix: Self.requestKey(client: client, providerID: providerID))
     }
 
     /// Starts a third-party balance request.
@@ -100,11 +147,13 @@ final class BalanceAPIClient {
             return true
         }
 
-        let key = Self.requestKey(client: client, providerID: providerID)
+        let key = Self.scopedRequestKey(query: query, client: client, providerID: providerID)
         let registry = inFlight
-        guard registry.register(key: key, completion: completion) else {
+        guard let token = registry.register(key: key, completion: completion) else {
+            SwitchLog.write("balance transport coalesced; scope_omitted=true", level: .debug, category: "refresh.transport")
             return false
         }
+        SwitchLog.write("balance transport started; scope_omitted=true", level: .debug, category: "refresh.transport")
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -115,7 +164,7 @@ final class BalanceAPIClient {
             request.setValue(value, forHTTPHeaderField: name)
         }
 
-        session.dataTask(with: request) { data, response, error in
+        let task = session.dataTask(with: request) { data, response, error in
             let result: Result<BalanceAPIResult, BalanceAPIClientError>
             if let error {
                 result = .failure(.transport(error))
@@ -143,8 +192,10 @@ final class BalanceAPIClient {
                     (response as? HTTPURLResponse)?.statusCode ?? -1
                 ))
             }
-            registry.finish(key: key, result: result)
-        }.resume()
+            registry.finish(key: key, token: token, result: result)
+        }
+        registry.attach(task, key: key, token: token)
+        task.resume()
         return true
     }
 }

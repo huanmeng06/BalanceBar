@@ -34,12 +34,14 @@ final class OfficialQuotaClientTests: XCTestCase {
         private static var requestHandler: ((URLRequest) -> StubResult)?
         private static var recordedRequests: [URLRequest] = []
         private static var heldResponses: [HeldResponse] = []
+        static var onStop: ((URLRequest) -> Void)?
 
         static func reset() {
             stateLock.lock()
             requestHandler = nil
             recordedRequests = []
             heldResponses = []
+            onStop = nil
             stateLock.unlock()
         }
 
@@ -110,7 +112,7 @@ final class OfficialQuotaClientTests: XCTestCase {
             client?.urlProtocolDidFinishLoading(self)
         }
 
-        override func stopLoading() {}
+        override func stopLoading() { Self.onStop?(request) }
 
         private static func record(_ request: URLRequest) -> URLRequest {
             stateLock.lock()
@@ -662,4 +664,90 @@ final class OfficialQuotaClientTests: XCTestCase {
     private static let codexReserveBody = Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000,"reset_after_seconds":3600},"secondary_window":{"used_percent":55,"limit_window_seconds":604800,"reset_after_seconds":5400}},"additional_rate_limits":[{"limit_name":"gpt-reserve","metered_feature":"base_model_inference","rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"used_percent":38,"limit_window_seconds":604800,"reset_after_seconds":7200}}}]}"#.utf8)
 
     private static let claudeBody = Data(#"{"seven_day":{"utilization":"12.5","resets_at":"2023-11-15T00:13:20Z"}}"#.utf8)
+}
+
+extension OfficialQuotaClientTests {
+    func testCancelledStoredRequestLateCompletionCannotFinishNewRequestWithSameKey() throws {
+        session.invalidateAndCancel()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        let callbacks = OperationQueue()
+        callbacks.maxConcurrentOperationCount = 2
+        session = URLSession(configuration: configuration, delegate: nil, delegateQueue: callbacks)
+        let parser = PausedQuotaReworkParser()
+        defer { parser.firstGate.signal(); parser.secondGate.signal() }
+        StubURLProtocol.setHandler { _ in StubResult(data: Data("{}".utf8)) }
+        let client = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: nil), parser: parser)
+        let context = OfficialQuotaRequestContext(client: .codex, providerID: "same-provider",
+            storedAccessToken: "fixture-stored", credentials: CodexRequestCredentials(accessToken: "fixture-stored", accountKey: nil))
+        let cancelled = expectation(description: "first completion cancelled")
+        client.fetchQuota(context: context) { result in
+            guard case .failure(.transport(.urlError(.cancelled))) = result else { return XCTFail("expected cancellation") }
+            cancelled.fulfill()
+        }
+        XCTAssertEqual(parser.firstStarted.wait(timeout: .now() + 2), .success)
+        client.cancelQuota(context: context)
+        wait(for: [cancelled], timeout: 2)
+        let unexpected = expectation(description: "old completion must not consume new registry entry")
+        unexpected.isInverted = true
+        let finished = expectation(description: "new request finishes on its own response")
+        client.fetchQuota(context: context) { result in
+            if !parser.secondReleased { unexpected.fulfill(); return }
+            guard case .success = result else { return XCTFail("new request lost") }
+            finished.fulfill()
+        }
+        XCTAssertEqual(parser.secondStarted.wait(timeout: .now() + 2), .success)
+        parser.firstGate.signal()
+        wait(for: [unexpected], timeout: 0.2)
+        XCTAssertTrue(client.isRequestInFlight(client: .codex, providerID: context.providerID,
+            credentialSource: context.credentialSource, requestCredentials: context.credentials, storedAccessToken: context.storedAccessToken))
+        parser.releaseSecond()
+        wait(for: [finished], timeout: 2)
+    }
+}
+
+private final class PausedQuotaReworkParser: OfficialQuotaParsing {
+    let firstStarted = DispatchSemaphore(value: 0)
+    let secondStarted = DispatchSemaphore(value: 0)
+    let firstGate = DispatchSemaphore(value: 0)
+    let secondGate = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var count = 0
+    private var released = false
+    var secondReleased: Bool { lock.lock(); defer { lock.unlock() }; return released }
+    func releaseSecond() { lock.lock(); released = true; lock.unlock(); secondGate.signal() }
+    func parse(data: Data, client: AssistantClient) throws -> OfficialQuotaResponseParser.Output {
+        lock.lock(); count += 1; let current = count; lock.unlock()
+        if current == 1 { firstStarted.signal(); firstGate.wait() }
+        else { secondStarted.signal(); secondGate.wait() }
+        return OfficialQuotaResponseParser.Output(windows: [OfficialQuotaWindow(kind: .fiveHour,
+            remaining: 94, label: "Fixture", daysText: "Fixture", reset: nil, durationSeconds: 18000)])
+    }
+}
+
+
+extension OfficialQuotaClientTests {
+    func testOfficialContextCancellationStopsResetCreditTransport() throws {
+        let started = expectation(description: "credit request started")
+        let stopped = expectation(description: "credit transport actually stopped")
+        StubURLProtocol.setHandler { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer stored-credit-fixture")
+            started.fulfill()
+            return StubResult(holdsResponse: true)
+        }
+        StubURLProtocol.onStop = { _ in stopped.fulfill() }
+        let client = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: "other-local", claudeToken: nil))
+        let context = OfficialQuotaRequestContext(client: .codex, providerID: "official",
+            storedAccessToken: "stored-credit-fixture", credentials: .init(accessToken: "stored-credit-fixture", accountKey: nil))
+        let finished = expectation(description: "cancelled completion")
+        client.fetchRateLimitResetCredits(storedAccessToken: context.storedAccessToken, context: context) { result in
+            guard case .failure(.transport(.urlError(.cancelled))) = result else { return XCTFail("expected cancelled transport") }
+            finished.fulfill()
+        }
+        wait(for: [started], timeout: 2)
+        client.cancelQuota(context: context)
+        wait(for: [stopped, finished], timeout: 2)
+    }
 }
