@@ -428,11 +428,77 @@ extension CCSwitchRepositoryTests {
             }
         }
         let before = try displays()
-        XCTAssertEqual(AggregationWalletPresentation.cards(before).first?.groupedNotes, ["Grok", "GPT"])
+        XCTAssertEqual(AggregationWalletPresentation.cards(before).first(where: { !$0.entry.source.isOfficial })?.groupedNotes, ["Grok", "GPT"])
         try withDatabase { db in try execute(db, sql: "UPDATE providers SET sort_index=0 WHERE id='peer'") }
         let after = try displays()
         XCTAssertNotEqual(before, after, "display order must invalidate semantic publication even with unchanged IDs/data")
-        XCTAssertEqual(AggregationWalletPresentation.cards(after).first?.groupedNotes, ["GPT", "Grok"])
+        XCTAssertEqual(AggregationWalletPresentation.cards(after).first(where: { !$0.entry.source.isOfficial })?.groupedNotes, ["GPT", "Grok"])
         XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+    }
+}
+
+extension CCSwitchRepositoryTests {
+    func testMetadataReaderDropsOldCompletionAndDoesNotBlockCaller() throws {
+        let olderStarted = DispatchSemaphore(value: 0)
+        let releaseOlder = DispatchSemaphore(value: 0)
+        let callbacks = DispatchQueue(label: "test.metadata.callbacks")
+        let newer = expectation(description: "newest metadata published")
+        let old = expectation(description: "old metadata must not replace newest")
+        old.isInverted = true
+        let reader = ProviderMetadataReader(queue: DispatchQueue(label: "test.metadata.reads", attributes: .concurrent),
+            callbackQueue: callbacks) { app in
+            XCTAssertFalse(Thread.isMainThread)
+            if app == "old" { olderStarted.signal(); releaseOlder.wait() }
+            return .init(choices: [.init(id: app, name: app, isCurrent: true)], current: nil, sources: [])
+        }
+        reader.reload(appType: "old") { _ in old.fulfill() }
+        XCTAssertEqual(olderStarted.wait(timeout: .now() + 2), .success)
+        reader.reload(appType: "new") { value in XCTAssertEqual(value.choices.first?.id, "new"); newer.fulfill() }
+        wait(for: [newer], timeout: 2)
+        releaseOlder.signal()
+        wait(for: [old], timeout: 0.2)
+    }
+
+    func testMissingStateAfterKnownAggregationStillBlocksSwitch() throws {
+        let state = try aggregationState()
+        var missing = false
+        var replacement: Data?
+        let reader = CCSwitchAggregationRepository(repository: repository, isRunning: { true }, read: { _ in
+            if missing { throw CocoaError(.fileReadNoSuchFile) }
+            return replacement ?? state
+        })
+        guard case .active = reader.load() else { return XCTFail("fixture active") }
+        missing = true
+        XCTAssertTrue(reader.blocksQuickSwitch())
+        guard case .untrusted = reader.load() else { return XCTFail("temporary missing state") }
+        missing = false
+        replacement = Data(#"{"apps":{}}"#.utf8)
+        XCTAssertTrue(reader.blocksQuickSwitch(), "partial valid JSON must not remove known aggregation protection")
+        guard case .untrusted = reader.load() else { return XCTFail("partial JSON is not confirmed exit") }
+    }
+}
+
+extension CCSwitchRepositoryTests {
+    func testMetadataBusyReadPreservesLastPublishedChoices() throws {
+        let failed = expectation(description: "SQLite busy reached background read")
+        let ready = expectation(description: "initial choices cached")
+        let unexpected = expectation(description: "failed read must not publish empty choices")
+        unexpected.isInverted = true
+        let reader = ProviderMetadataReader(queue: DispatchQueue(label: "test.metadata.sqlite"), callbackQueue: .main) { [repository] app in
+            XCTAssertFalse(Thread.isMainThread)
+            do { return .init(choices: try repository!.loadChoicesChecked(appType: app), current: nil, sources: nil) }
+            catch { failed.fulfill(); throw error }
+        }
+        var cached: [ProviderChoice] = []
+        reader.reload(appType: "codex") { cached = $0.choices; ready.fulfill() }
+        wait(for: [ready], timeout: 2)
+        let trusted = cached
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) }
+            reader.reload(appType: "codex") { _ in unexpected.fulfill() }
+            wait(for: [failed, unexpected], timeout: 0.5)
+            XCTAssertEqual(cached, trusted)
+        }
     }
 }

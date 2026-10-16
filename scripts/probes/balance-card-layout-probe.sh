@@ -30,7 +30,7 @@ frames = declaration(source, 'struct OpenCodexCardFrames:')
 names = ['cardWidth', 'metrics', 'horizontalInset', 'contentWidth', 'amountWidth',
          'amountX', 'refreshTimeX', 'quotaRowHeight', 'quotaProgressRowHeight',
          'quotaProgressHeight', 'lunaReserveNoProgressRowHeight', 'quotaAmountHeight',
-         'quotaDetailHeight', 'quotaResetHeight']
+         'quotaDetailHeight', 'quotaResetHeight', 'balanceHeaderGap']
 constants = '\n'.join(re.search(r'^    static let ' + name + r'\b[^\n]*', layout, re.M).group() for name in names)
 compression = declaration(layout, 'static var quotaProgressGapCompression:')
 start = layout.index('        case .balance:\n            let linkWidth:') + len('        case .balance:')
@@ -70,7 +70,12 @@ for progress in [false, true] {
         for rect in [frames.title, frames.refreshTime, frames.quotaDetail, frames.amount] {
             require(bounds.contains(rect), "all essential fields remain inside the card")
         }
-        require(frames.refreshTime.minY >= frames.amount.maxY, "timestamp does not overlap amount")
+        // Both production balance modes use a subtitle. Keep the legacy
+        // one-line helper's bounds/slot checks above; its baseline fallback
+        // has separate controller XCTest coverage.
+        if frames.link != nil || frames.balanceRecharge != nil {
+            require(frames.refreshTime.minY >= frames.amount.maxY, "timestamp does not overlap amount")
+        }
         require(abs(frames.refreshTime.maxX - (frames.cardSize.width - OpenCodexCardLayout.horizontalInset)) < 0.5,
                 "timestamp aligns with the shared right inset")
         if let prefix = frames.linkPrefix, let link = frames.link {

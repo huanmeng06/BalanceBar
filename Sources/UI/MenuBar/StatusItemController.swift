@@ -2348,6 +2348,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showOpenCCSwitchMenu: Bool
         let showStatusMenu: Bool
         let directProviderNotes: [String]
+        let directProviderID: String?
         let directProviderIsOfficial: Bool
         let lunaReserveDisplayMode: LunaReserveDisplayMode
         let lunaReserveHideExhaustedQuota: Bool
@@ -2365,6 +2366,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showOpenCCSwitchMenu: Bool,
             showStatusMenu: Bool,
             directProviderNotes: [String] = [],
+            directProviderID: String? = nil,
             directProviderIsOfficial: Bool = false,
             lunaReserveDisplayMode: LunaReserveDisplayMode = .defaultValue,
             lunaReserveHideExhaustedQuota: Bool = false,
@@ -2386,6 +2388,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showOpenCCSwitchMenu = showOpenCCSwitchMenu
             self.showStatusMenu = showStatusMenu
             self.directProviderNotes = directProviderNotes
+            self.directProviderID = directProviderID
             self.directProviderIsOfficial = directProviderIsOfficial
             self.lunaReserveDisplayMode = lunaReserveDisplayMode
             self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
@@ -2410,6 +2413,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showOpenCCSwitchMenu == rhs.showOpenCCSwitchMenu
                 && lhs.showStatusMenu == rhs.showStatusMenu
                 && lhs.directProviderNotes == rhs.directProviderNotes
+                && lhs.directProviderID == rhs.directProviderID
                 && lhs.directProviderIsOfficial == rhs.directProviderIsOfficial
                 && lhs.lunaReserveDisplayMode == rhs.lunaReserveDisplayMode
                 && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
@@ -2442,6 +2446,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var closedMenuRebuildScheduled = false
     private var menuRebuildReason = "initial"
     private var aggregationViewport: NSScrollView?
+    private var aggregationGrouping = AggregationWalletGrouping()
     private var aggregationOrder: [AggregationDisplayIdentity] = []
     private var aggregationOverviewDisplays: [AggregatedProviderDisplay] = []
     private(set) var aggregationPlacementCountForTesting = 0
@@ -3045,7 +3050,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
-        aggregationOverviewDisplays = AggregationWalletPresentation.cards(menuInput.aggregatedProviders)
+        aggregationOverviewDisplays = aggregationGrouping.cards(menuInput.aggregatedProviders)
         self.settings = settings
         if iconSizeChanged {
             loadMenuBarIconAssets(size: settings.iconSize)
@@ -3168,13 +3173,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let nativeItemsChanged = !menuInput.hasSameNativeItems(as: input)
         let overviewUnchanged = menuInput.aggregatedProviders == input.aggregatedProviders
             && menuInput.directProviderNotes == input.directProviderNotes
+            && menuInput.directProviderID == input.directProviderID
             && menuInput.directProviderIsOfficial == input.directProviderIsOfficial
             && menuInput.openAIAccount == input.openAIAccount
             && menuInput.lunaReserveDisplayMode == input.lunaReserveDisplayMode
             && menuInput.lunaReserveHideExhaustedQuota == input.lunaReserveHideExhaustedQuota
             && menuInput.bankedResetDisplayMode == input.bankedResetDisplayMode
         menuInput = input
-        aggregationOverviewDisplays = AggregationWalletPresentation.cards(input.aggregatedProviders)
+        aggregationOverviewDisplays = aggregationGrouping.cards(input.aggregatedProviders)
         if !nativeItemsChanged && overviewUnchanged {
             updateQuickSwitchContent()
             updateQuickSwitchProtection()
@@ -6050,7 +6056,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func directCardContext(for snapshot: Snapshot) -> OverviewCardContext {
-        OverviewCardContext(snapshot: snapshot, identity: snapshot.provider,
+        OverviewCardContext(snapshot: snapshot,
+            identity: menuInput.directProviderID.map { menuInput.activeClient.rawValue + "|" + $0 } ?? snapshot.provider,
             account: menuInput.openAIAccount, date: refreshDate, noteTags: menuInput.directProviderNotes)
     }
 

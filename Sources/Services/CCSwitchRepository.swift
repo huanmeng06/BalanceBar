@@ -557,3 +557,48 @@ final class CCSwitchRepository {
         NSError(domain: "BalanceBar.ProviderSwitch", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 }
+
+/// Latest-request-wins metadata delivery. Every SQLite read runs on `queue`;
+/// failures retain the caller's last published value instead of clearing it.
+final class ProviderMetadataReader {
+    struct Value {
+        let choices: [ProviderChoice]
+        let current: CCSwitchProvider?
+        let sources: [ProviderSummarySource]?
+    }
+    private let read: (String, Bool) throws -> Value
+    private let queue: DispatchQueue
+    private let callbackQueue: DispatchQueue
+    private let lock = NSLock()
+    private var generation: UInt64 = 0
+
+    init(repository: CCSwitchRepository,
+         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-metadata", qos: .utility, attributes: .concurrent),
+         callbackQueue: DispatchQueue = .main) {
+        self.read = { appType, includeSources in
+            Value(choices: try repository.loadChoicesChecked(appType: appType),
+                  current: try repository.loadCurrentChecked(appType: appType),
+                  sources: includeSources ? try repository.loadSummarySourcesChecked(appType: appType) : nil)
+        }
+        self.queue = queue
+        self.callbackQueue = callbackQueue
+    }
+
+    init(queue: DispatchQueue, callbackQueue: DispatchQueue, read: @escaping (String) throws -> Value) {
+        self.queue = queue; self.callbackQueue = callbackQueue
+        self.read = { appType, _ in try read(appType) }
+    }
+
+    func reload(appType: String, includeSources: Bool = true, publish: @escaping (Value) -> Void) {
+        lock.lock(); generation &+= 1; let token = generation; lock.unlock()
+        queue.async { [weak self] in
+            guard let self, let value = try? self.read(appType, includeSources) else { return }
+            self.callbackQueue.async { [weak self] in
+                guard let self else { return }
+                self.lock.lock(); let current = self.generation == token; self.lock.unlock()
+                guard current else { return }
+                publish(value)
+            }
+        }
+    }
+}

@@ -2261,7 +2261,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 database,
                 sql: """
                 CREATE TABLE providers (
-                    id TEXT PRIMARY KEY,
+                    id TEXT NOT NULL,
                     name TEXT NOT NULL,
                     settings_config TEXT NOT NULL,
                     meta TEXT NOT NULL,
@@ -2270,7 +2270,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                     app_type TEXT NOT NULL,
                     is_current INTEGER NOT NULL,
                     sort_index INTEGER,
-                    created_at INTEGER NOT NULL
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY (id, app_type)
                 );
                 INSERT INTO providers VALUES (
                     'codex-custom', 'Codex Custom',
@@ -2895,15 +2896,15 @@ extension ProviderRefreshCoordinatorTests {
         let coordinator = aggregationCoordinator(official: official) { displays, _ in
             guard displays.count == 2, displays.allSatisfy({ $0.status == .fresh }), !done else { return }
             done = true
-            XCTAssertEqual(displays[0].entry.role, .default)
-            XCTAssertEqual(displays[0].snapshot.kind, .official)
-            XCTAssertEqual(displays[0].snapshot.officialQuotaWindows.map(\.remaining), [80, 45])
-            XCTAssertEqual(displays[0].snapshot.bankedReset?.cards.first?.id, "fixture-card")
-            XCTAssertEqual(displays[0].snapshot.resetForecast.probability24h, .percent(24))
-            XCTAssertEqual(displays[1].snapshot.kind, .balance)
-            XCTAssertEqual(displays[1].snapshot.unit, "CNY")
-            XCTAssertEqual(displays[1].snapshot.amount, 2.67)
-            XCTAssertNil(displays[1].account)
+            XCTAssertEqual(displays.first(where: { $0.entry.role == .default })!.entry.role, .default)
+            XCTAssertEqual(displays.first(where: { $0.entry.role == .default })!.snapshot.kind, .official)
+            XCTAssertEqual(displays.first(where: { $0.entry.role == .default })!.snapshot.officialQuotaWindows.map(\.remaining), [80, 45])
+            XCTAssertEqual(displays.first(where: { $0.entry.role == .default })!.snapshot.bankedReset?.cards.first?.id, "fixture-card")
+            XCTAssertEqual(displays.first(where: { $0.entry.role == .default })!.snapshot.resetForecast.probability24h, .percent(24))
+            XCTAssertEqual(displays.first(where: { $0.entry.role == .member })!.snapshot.kind, .balance)
+            XCTAssertEqual(displays.first(where: { $0.entry.role == .member })!.snapshot.unit, "CNY")
+            XCTAssertEqual(displays.first(where: { $0.entry.role == .member })!.snapshot.amount, 2.67)
+            XCTAssertNil(displays.first(where: { $0.entry.role == .member })!.account)
             ready.fulfill()
         }
         coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
@@ -2984,7 +2985,7 @@ extension ProviderRefreshCoordinatorTests {
         let newDefaultReady = expectation(description: "replacement default publishes its own fresh data")
         actions.aggregationChanged = { displays, _ in
             if displays.contains(where: { $0.identity.providerID == "codex-replacement" && $0.status == .fresh }) { sawOldOfficialData = true }
-            if displays.first?.identity.providerID == "codex-custom", displays.first?.status == .fresh, !newDefaultPublished {
+            if let current = displays.first(where: { $0.entry.role == .default }), current.identity.providerID == "codex-custom", current.status == .fresh, !newDefaultPublished {
                 newDefaultPublished = true
                 newDefaultReady.fulfill()
             }
@@ -3095,7 +3096,7 @@ extension ProviderRefreshCoordinatorTests {
 
 
 extension ProviderRefreshCoordinatorTests {
-    func testSharedWalletLateTransportPublishesAuthoritativeBalanceAndOneRecharge() throws {
+    func testSharedQueryRejectedLateResponseDoesNotPublishOrNotify() throws {
         try withDatabase { db in
             try execute(db, sql: """
                 INSERT INTO providers SELECT 'claude-wallet-peer', 'Peer', settings_config, meta,
@@ -3138,23 +3139,22 @@ extension ProviderRefreshCoordinatorTests {
         coordinator.refreshQuickSwitchSummaries(force: true, for: .claude, providerIDs: ["claude-wallet-peer"])
         waitForEvent(published)
         releaseOld.signal()
-        waitForEvent(published)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(published.wait(timeout: .now() + 0.2), .timedOut)
         lock.lock(); let snapshots = values; lock.unlock()
-        XCTAssertEqual(snapshots.map { $0.0 }, ["claude-custom", "claude-wallet-peer", "claude-custom"])
-        XCTAssertEqual(snapshots.map { $0.1.amount }, [3, 13, 13])
+        XCTAssertEqual(snapshots.map { $0.0 }, ["claude-custom", "claude-wallet-peer"])
+        XCTAssertEqual(snapshots.map { $0.1.amount }, [3, 13])
         XCTAssertNil(snapshots[0].1.balanceRecharge)
         XCTAssertNotNil(snapshots[0].1.balanceProgressContext)
         XCTAssertNotNil(snapshots[0].1.progressPercentage)
         XCTAssertEqual(snapshots[1].1.balanceRecharge?.amountCents, 1000)
-        XCTAssertEqual(snapshots[2].1.balanceRecharge, snapshots[1].1.balanceRecharge)
-        XCTAssertEqual(snapshots[2].1.date, snapshots[1].1.date)
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 }
 
 
 extension ProviderRefreshCoordinatorTests {
-    func testCodexSameNameDifferentKeysUsesOneOrderedRechargeLedger() throws {
+    func testCodexSameNameDifferentKeysHaveIndependentHistoryAndNotifications() throws {
         try withDatabase { db in
             try execute(db, sql: """
                 INSERT INTO providers SELECT 'codex-wallet-peer', 'Codex Custom', settings_config, replace(meta, 'fixture-key', 'peer-key'),
@@ -3202,13 +3202,13 @@ extension ProviderRefreshCoordinatorTests {
         waitForEvent(published)
         lock.lock(); let snapshots = values; lock.unlock()
         XCTAssertEqual(snapshots.map { $0.0 }, ["codex-custom", "codex-wallet-peer", "codex-custom"])
-        XCTAssertEqual(snapshots.map { $0.1.amount }, [3, 13, 13])
+        XCTAssertEqual(snapshots.map { $0.1.amount }, [3, 13, 20])
         XCTAssertNil(snapshots[0].1.balanceRecharge)
         XCTAssertNotNil(snapshots[0].1.balanceProgressContext)
         XCTAssertNotNil(snapshots[0].1.progressPercentage)
-        XCTAssertEqual(snapshots[1].1.balanceRecharge?.amountCents, 1000)
-        XCTAssertEqual(snapshots[2].1.balanceRecharge, snapshots[1].1.balanceRecharge)
-        XCTAssertEqual(snapshots[2].1.date, snapshots[1].1.date)
+        XCTAssertNil(snapshots[1].1.balanceRecharge)
+        XCTAssertEqual(snapshots[2].1.balanceRecharge?.amountCents, 1700)
+        XCTAssertEqual(snapshots[2].1.date, clock.now)
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 }
@@ -3244,5 +3244,130 @@ extension ProviderRefreshCoordinatorTests {
         coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
         wait(for: [reordered], timeout: 3)
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, requests)
+    }
+}
+
+extension ProviderRefreshCoordinatorTests {
+    func testTransientAggregationReadFailuresRetainTrustedMembershipAndBlockSwitch() throws {
+        try addAggregationMembers(1)
+        let reader = try aggregationFixture(members: ["member-0"])
+        let validState = try Data(contentsOf: reader.stateURL)
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "3") }
+        let ready = expectation(description: "trusted members")
+        var latest: [AggregatedProviderDisplay] = []
+        var blocked = false
+        var announced = false
+        let coordinator = aggregationCoordinator { displays, protection in
+            latest = displays; blocked = protection
+            if displays.count == 2 && displays.allSatisfy({ $0.status == .fresh }) && !announced {
+                announced = true; ready.fulfill()
+            }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [ready], timeout: 3)
+        func verifyUntrusted() {
+            let checked = expectation(description: "trusted cache retained")
+            coordinator.performAsync {
+                XCTAssertTrue(coordinator.refreshAggregation(reader: reader, force: false))
+                XCTAssertEqual(latest.count, 2)
+                XCTAssertTrue(latest.allSatisfy { $0.snapshot.kind == .balance && $0.snapshot.amount == 3 })
+                XCTAssertTrue(blocked)
+                checked.fulfill()
+            }
+            wait(for: [checked], timeout: 3)
+        }
+        try Data("broken".utf8).write(to: reader.stateURL, options: .atomic)
+        verifyUntrusted()
+        try validState.write(to: reader.stateURL, options: .atomic)
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) }
+            verifyUntrusted()
+        }
+        try FileManager.default.removeItem(at: reader.stateURL)
+        verifyUntrusted()
+        try validState.write(to: reader.stateURL, options: .atomic)
+        let inactive = try JSONSerialization.data(withJSONObject: ["apps": ["codex": ["mode": "direct"]]])
+        try inactive.write(to: reader.stateURL, options: .atomic)
+        let exited = expectation(description: "confirmed direct clears aggregation")
+        coordinator.performAsync {
+            XCTAssertFalse(coordinator.refreshAggregation(reader: reader, force: false))
+            XCTAssertTrue(latest.isEmpty)
+            XCTAssertFalse(blocked)
+            exited.fulfill()
+        }
+        wait(for: [exited], timeout: 3)
+        coordinator.stopAggregation()
+    }
+
+    func testQuickSwitchSummarySameProviderIDIsIsolatedByClient() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET id='codex-custom' WHERE id='claude-custom' AND app_type='claude'")
+        }
+        DelayedBalanceURLProtocol.setHandler { request in
+            DelayedBalanceURLProtocol.success(amount: request.url?.host == "claude.provider.test" ? "3" : "13")
+        }
+        let changed = expectation(description: "both independent summaries")
+        changed.expectedFulfillmentCount = 2
+        let actions = makeActions { _ in changed.fulfill() }
+        let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: actions)
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-custom"])
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude, providerIDs: ["codex-custom"])
+        wait(for: [changed], timeout: 3)
+        XCTAssertEqual(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .defaultValue, client: .codex)["codex-custom"], "$13.00")
+        XCTAssertEqual(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .defaultValue, client: .claude)["codex-custom"], "$3.00")
+    }
+}
+
+extension ProviderRefreshCoordinatorTests {
+    func testLegacyMissingStateDoesNotDisableDirectQuickSwitch() throws {
+        let reader = CCSwitchAggregationRepository(repository: repository,
+            read: { _ in throw CocoaError(.fileReadNoSuchFile) })
+        let checked = expectation(description: "legacy direct fallback")
+        var blocked = true
+        let coordinator = aggregationCoordinator { displays, protection in
+            XCTAssertTrue(displays.isEmpty)
+            blocked = protection
+        }
+        coordinator.performAsync {
+            XCTAssertFalse(coordinator.refreshAggregation(reader: reader, force: false))
+            XCTAssertFalse(blocked)
+            checked.fulfill()
+        }
+        wait(for: [checked], timeout: 2)
+        coordinator.stopAggregation()
+    }
+}
+
+extension ProviderRefreshCoordinatorTests {
+    func testUntrustedAggregationRetriesAndRecoversAfterAtomicReplacement() throws {
+        try addAggregationMembers(1)
+        let reader = try aggregationFixture(members: ["member-0"])
+        let valid = try Data(contentsOf: reader.stateURL)
+        let initial = expectation(description: "initial trusted aggregation")
+        let recovered = expectation(description: "retry recovered without manual refresh")
+        var phase = 0
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "3") }
+        let coordinator = aggregationCoordinator { displays, blocked in
+            XCTAssertEqual(displays.count, 2)
+            XCTAssertTrue(blocked)
+            if displays.allSatisfy({ $0.status == .fresh }) {
+                if phase == 0 { phase = 1; initial.fulfill() }
+                else if phase == 2 { phase = 3; recovered.fulfill() }
+            }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [initial], timeout: 3)
+        coordinator.performAsync {
+            do {
+                try Data("incomplete".utf8).write(to: reader.stateURL, options: .atomic)
+                XCTAssertTrue(coordinator.refreshAggregation(reader: reader, force: false))
+                phase = 2
+                try valid.write(to: reader.stateURL, options: .atomic)
+            } catch { XCTFail("fixture replacement failed") }
+        }
+        wait(for: [recovered], timeout: 4)
+        coordinator.stopAggregation()
     }
 }

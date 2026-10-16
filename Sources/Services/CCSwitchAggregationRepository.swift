@@ -45,7 +45,7 @@ struct AggregatedProviderDisplay: Equatable {
 /// Menu-only projection. Original Provider records remain available to every
 /// identity-sensitive consumer; amounts are selected, never summed.
 enum AggregationWalletPresentation {
-    static func cards(_ displays: [AggregatedProviderDisplay]) -> [AggregatedProviderDisplay] {
+    static func cards(_ displays: [AggregatedProviderDisplay], partitions: [String: String]? = nil) -> [AggregatedProviderDisplay] {
         var groups: [[AggregatedProviderDisplay]] = []
         var indices: [String: Int] = [:]
         func walletID(_ display: AggregatedProviderDisplay) -> String? {
@@ -66,7 +66,9 @@ enum AggregationWalletPresentation {
             // but must not bridge two different currency accounts.
             let known = currencies[wallet] ?? []
             let currency = unit(display) ?? (known.count == 1 ? known.first! : "unknown")
-            let key = wallet + "|" + currency
+            let amount = display.snapshot.amount.flatMap { Self.cents($0) }.map(String.init) ?? "unknown"
+            let partition = partitions?[display.entry.providerID] ?? amount
+            let key = wallet + "|" + currency + "|" + partition
             if let index = indices[key] { groups[index].append(display) }
             else { indices[key] = groups.count; groups.append([display]) }
         }
@@ -85,7 +87,9 @@ enum AggregationWalletPresentation {
                 return left == right ? $0.status != .fresh && $1.status == .fresh : left < right
             } ?? first
             let unit = unit(selected) ?? "unknown"
-            let wallet = scope + "|" + unit
+            let membership = members.map { $0.identity.numericScope }.sorted()
+            let memberKey = String(data: (try? JSONEncoder().encode(membership)) ?? Data(), encoding: .utf8) ?? ""
+            let wallet = scope + "|" + unit + "|" + memberKey
             let snapshot: Snapshot
             if let amount = selected.snapshot.amount, selected.snapshot.kind == .balance {
                 snapshot = .balance(first.entry.source.name, amount, unit, first.entry.source.websiteURL ?? first.entry.source.query?.websiteURL,
@@ -103,12 +107,92 @@ enum AggregationWalletPresentation {
                 if let note = member.entry.source.notes?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !note.isEmpty, !notes.contains(note) { notes.append(note) }
             }
+            let failed = members.filter { $0.status == .stale || $0.status == .error || $0.status == .unavailable }
+            let reason = failed.isEmpty ? selected.reason : failed.map {
+                ($0.entry.source.notes ?? $0.entry.source.name) + ": " + ($0.reason ?? tr(.keyAggregationUnavailable))
+            }.joined(separator: "\n")
             return AggregatedProviderDisplay(entry: AggregatedProviderEntry(source: first.entry.source,
                 role: members.contains { $0.entry.role == .default } ? .default : .member),
                 identity: AggregationDisplayIdentity(providerID: "wallet:" + wallet, accountScope: wallet, configurationRevision: wallet),
-                snapshot: snapshot, account: nil, status: selected.status, reason: selected.reason, fetchedAt: selected.fetchedAt,
+                snapshot: snapshot, account: nil, status: failed.isEmpty ? selected.status : .stale, reason: reason, fetchedAt: selected.fetchedAt,
                 groupedNotes: notes, groupedProviderIDs: members.map { $0.entry.providerID })
         }
+    }
+    static func cents(_ amount: Double) -> Int? {
+        guard amount.isFinite, amount >= 0, amount < Double(Int.max) / 100 else { return nil }
+        return NSDecimalNumber(value: amount).multiplying(by: 100).rounding(accordingToBehavior:
+            NSDecimalNumberHandler(roundingMode: .plain, scale: 0, raiseOnExactness: false,
+                raiseOnOverflow: false, raiseOnUnderflow: false, raiseOnDivideByZero: false)).intValue
+    }
+
+}
+
+/// Presentation-only hysteresis. A round requires every member to publish a
+/// new, successful sample within 30s; two such rounds confirm a partition.
+/// Re-rendering the same values never advances evidence. Nothing is persisted.
+struct AggregationWalletGrouping {
+    private struct Evidence {
+        var partitions: [String: String] = [:]
+        var sampleDates: [String: Date] = [:]
+        var candidate = ""
+        var confirmations = 0
+    }
+    private var evidence: [String: Evidence] = [:]
+
+    mutating func cards(_ displays: [AggregatedProviderDisplay], now: Date = Date()) -> [AggregatedProviderDisplay] {
+        let named = displays.filter { !$0.entry.source.isOfficial &&
+            ProviderBalanceProgressIdentity.nameScope(client: .codex, name: $0.entry.source.name) != nil }
+        let names = Dictionary(grouping: named, by: { $0.entry.source.name })
+        var buckets: [String: [AggregatedProviderDisplay]] = [:]
+        for (name, peers) in names {
+            let units = Set(peers.compactMap { $0.snapshot.unit?.uppercased() })
+            for peer in peers {
+                let unit = peer.snapshot.unit?.uppercased() ?? (units.count == 1 ? units.first! : "unknown")
+                let key = String(data: (try? JSONEncoder().encode([name, unit])) ?? Data(), encoding: .utf8)!
+                buckets[key, default: []].append(peer)
+            }
+        }
+        evidence = evidence.filter { buckets[$0.key] != nil }
+        var partitions: [String: String] = [:]
+        for (key, peers) in buckets {
+            var state = evidence[key] ?? Evidence()
+            let ids = Set(peers.map { $0.entry.providerID })
+            if Set(state.partitions.keys) != ids {
+                let initial = state.partitions.isEmpty
+                state.partitions = state.partitions.filter { ids.contains($0.key) }
+                for id in ids where state.partitions[id] == nil { state.partitions[id] = initial ? "initial" : "new:" + id }
+                state.confirmations = 0
+                state.sampleDates = [:]
+            }
+            let dates = peers.compactMap(\.fetchedAt)
+            let valid = peers.allSatisfy { peer in
+                peer.status == .fresh && peer.snapshot.kind == .balance &&
+                peer.snapshot.amount.flatMap(AggregationWalletPresentation.cents) != nil &&
+                peer.fetchedAt.map { now.timeIntervalSince($0) >= 0 && now.timeIntervalSince($0) <= 120 } == true
+            }
+            let newRound = valid && dates.count == peers.count &&
+                (dates.max()!.timeIntervalSince(dates.min()!) <= 30) && peers.allSatisfy {
+                    guard let date = $0.fetchedAt else { return false }
+                    return state.sampleDates[$0.entry.providerID].map { date > $0 } ?? true
+                }
+            if newRound {
+                let groups = Dictionary(grouping: peers, by: { AggregationWalletPresentation.cents($0.snapshot.amount!)! })
+                    .values.map { $0.map { $0.entry.providerID }.sorted() }.sorted { $0.lexicographicallyPrecedes($1) }
+                let candidate = String(data: try! JSONEncoder().encode(groups), encoding: .utf8)!
+                state.confirmations = state.candidate == candidate ? state.confirmations + 1 : 1
+                state.candidate = candidate
+                state.sampleDates = Dictionary(uniqueKeysWithValues: peers.map { ($0.entry.providerID, $0.fetchedAt!) })
+                if state.confirmations >= 2 {
+                    for group in groups {
+                        let label = String(data: try! JSONEncoder().encode(group), encoding: .utf8)!
+                        for id in group { state.partitions[id] = label }
+                    }
+                }
+            }
+            evidence[key] = state
+            partitions.merge(state.partitions) { _, new in new }
+        }
+        return AggregationWalletPresentation.cards(displays, partitions: partitions)
     }
 }
 
@@ -156,6 +240,14 @@ final class CCSwitchAggregationRepository {
     private let sources: ([String]) throws -> [ProviderSummarySource]
     private let read: (URL) throws -> Data
     private let isRunning: () -> Bool
+    private let stateLock = NSLock()
+    private var wasAggregating = false
+    private func rememberAggregation(_ active: Bool) {
+        stateLock.lock(); wasAggregating = active; stateLock.unlock()
+    }
+    private var lastKnownAggregation: Bool {
+        stateLock.lock(); defer { stateLock.unlock() }; return wasAggregating
+    }
 
     init(repository: CCSwitchRepository,
          stateURL: URL = CCSwitchAggregationRepository.defaultStateURL,
@@ -176,10 +268,10 @@ final class CCSwitchAggregationRepository {
             do {
                 let before = try deviceState()
                 guard before.version == nil || before.version == 1 else { return .untrusted }
-                guard let codex = before.apps.codex else { return .inactive }
+                guard let codex = before.apps.codex else { return lastKnownAggregation ? .untrusted : .inactive }
                 guard !codex.pending, codex.mode == "direct" || codex.mode == "proxy" else { return .untrusted }
                 guard codex.mode == "proxy", codex.attached == true,
-                      codex.stack?.enabled == true else { return .inactive }
+                      codex.stack?.enabled == true else { rememberAggregation(false); return .inactive }
                 guard isRunning(), let route = codex.proxy_route, !route.isEmpty else { return .untrusted }
                 var seen: Set<String> = []
                 var ids = (codex.stack?.members ?? []).filter { !$0.isEmpty && seen.insert($0).inserted }
@@ -198,6 +290,7 @@ final class CCSwitchAggregationRepository {
                     guard !source.isOfficial else { return nil }
                     return AggregatedProviderEntry(source: source, role: .member, displayOrder: displayOrders[id])
                 }
+                rememberAggregation(true)
                 return .active(entries)
             } catch { return .untrusted }
         }
@@ -211,11 +304,13 @@ final class CCSwitchAggregationRepository {
         do {
             let state = try deviceState()
             guard state.version == nil || state.version == 1 else { return true }
-            guard let codex = state.apps.codex else { return false }
-            return codex.pending || (codex.mode != "direct" && codex.mode != "proxy")
+            guard let codex = state.apps.codex else { return lastKnownAggregation }
+            let blocked = codex.pending || (codex.mode != "direct" && codex.mode != "proxy")
                 || (codex.mode == "proxy" && codex.stack?.enabled == true)
+            if !codex.pending { rememberAggregation(codex.mode == "proxy" && codex.stack?.enabled == true) }
+            return blocked
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return false
+            return lastKnownAggregation
         } catch { return true }
     }
 }

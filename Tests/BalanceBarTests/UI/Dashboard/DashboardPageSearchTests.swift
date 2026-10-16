@@ -1250,6 +1250,10 @@ final class DashboardPageSearchTests: XCTestCase {
 
         func rows(startingAt section: DashboardSection, query: String) throws -> [String] {
             let appDelegate = AppDelegate(repository: repository)
+            let metadata = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                appDelegate.providerChoicesForTesting.contains { $0.name == "MyPrivateProviderXYZ" }
+            }, object: nil)
+            wait(for: [metadata], timeout: 2)
             let composition = appDelegate.dashboardCompositionForTesting
             defer { composition.teardownForTesting() }
             let window = try XCTUnwrap(composition.makeWindowForTesting(showing: section))

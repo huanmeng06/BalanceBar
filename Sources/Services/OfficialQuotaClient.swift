@@ -176,6 +176,8 @@ final class OfficialQuotaClient {
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
     private let inFlight = InFlightRegistry()
+    private let creditLock = NSLock()
+    private var creditRequests: [String: (UUID, URLSessionDataTask)] = [:]
 
     init(
         session: URLSession = .shared,
@@ -313,6 +315,7 @@ final class OfficialQuotaClient {
     /// Never POSTs consume and never changes the usage request.
     func fetchRateLimitResetCredits(
         storedAccessToken: String? = nil,
+        context: OfficialQuotaRequestContext? = nil,
         now: Date = Date(),
         completion: @escaping (Result<CodexBankedReset?, OfficialQuotaClientError>) -> Void
     ) {
@@ -323,7 +326,16 @@ final class OfficialQuotaClient {
             return
         }
 
-        let task = session.dataTask(with: request) { data, response, error in
+        let key = context.map { Self.requestKey(client: $0.client, providerID: $0.providerID,
+            credentialSource: $0.credentialSource, requestCredentials: $0.credentials,
+            storedAccessToken: $0.storedAccessToken) } ?? UUID().uuidString
+        let generation = UUID()
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            if let self {
+                self.creditLock.lock()
+                if self.creditRequests[key]?.0 == generation { self.creditRequests.removeValue(forKey: key) }
+                self.creditLock.unlock()
+            }
             if let error {
                 completion(.failure(.transport(Self.transportError(from: error))))
                 return
@@ -351,6 +363,10 @@ final class OfficialQuotaClient {
                 OfficialQuotaResponseParser.parseBankedResetCredits(data: data, now: now)
             ))
         }
+        creditLock.lock()
+        let previous = creditRequests.updateValue((generation, task), forKey: key)?.1
+        creditLock.unlock()
+        previous?.cancel()
         task.resume()
     }
 
@@ -431,6 +447,10 @@ final class OfficialQuotaClient {
             requestCredentials: requestCredentials,
             storedAccessToken: storedAccessToken
         )
+        creditLock.lock()
+        let creditTask = creditRequests.removeValue(forKey: key)?.1
+        creditLock.unlock()
+        creditTask?.cancel()
         let completions = inFlight.cancel(key: key)
         let result: Result<OfficialQuotaResult, OfficialQuotaClientError> =
             .failure(.transport(.urlError(.cancelled)))

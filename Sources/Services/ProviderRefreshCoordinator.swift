@@ -305,7 +305,9 @@ final class ProviderRefreshCoordinator {
     private var quickSwitchSourceRevisions: [AssistantClient: [String: String]] = [:]
     private var lastStandardSourceKey: String?
     private var quickSwitchSummaryLock = NSLock()
-    private var quickSwitchSummaryPayloads: [String: QuickSwitchSummaryPayload] = [:]
+    private struct SummaryIdentity: Hashable { let client: AssistantClient; let providerID: String }
+    private var quickSwitchSummaryPayloads: [SummaryIdentity: QuickSwitchSummaryPayload] = [:]
+    private var aggregationRetry: DispatchWorkItem?
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
     private var aggregationEntries: [AggregatedProviderEntry] = []
     private var aggregationDisplays: [AggregationDisplayIdentity: AggregatedProviderDisplay] = [:]
@@ -314,6 +316,7 @@ final class ProviderRefreshCoordinator {
     private var aggregationPending: [AggregationDisplayIdentity] = []
     private var aggregationReader: CCSwitchAggregationRepository?
     private var aggregationBlocked = false
+    private var standardOfficialRequests: [AssistantClient: OfficialQuotaRequestContext] = [:]
     private var aggregationOfficialRequests: [AggregationDisplayIdentity: OfficialQuotaRequestContext] = [:]
     private var lastAggregationPublication: (displays: [AggregatedProviderDisplay], blocked: Bool)?
     private var standardPublicationEpoch = OfficialResponseGeneration()
@@ -363,14 +366,16 @@ final class ProviderRefreshCoordinator {
     }
 
     func quickSwitchSummariesSnapshot(
-        preferredQuotaWindow: OfficialQuotaWindowPreference
+        preferredQuotaWindow: OfficialQuotaWindowPreference,
+        client: AssistantClient = .codex
     ) -> [String: String] {
         quickSwitchSummaryLock.lock()
         let payloads = quickSwitchSummaryPayloads
         quickSwitchSummaryLock.unlock()
 
         var summaries: [String: String] = [:]
-        for (providerID, payload) in payloads {
+        for (identity, payload) in payloads where identity.client == client {
+            let providerID = identity.providerID
             switch payload {
             case .formatted(let text):
                 summaries[providerID] = text
@@ -396,9 +401,29 @@ final class ProviderRefreshCoordinator {
             category: "refresh.aggregation", throttleKey: "aggregation-trigger-\(force)", minimumInterval: 1)
         aggregationReader = reader
         let state = reader.load()
-        aggregationBlocked = reader.blocksQuickSwitch()
         let entries: [AggregatedProviderEntry]
-        if case .active(let active) = state { entries = active } else { entries = [] }
+        switch state {
+        case .untrusted:
+            aggregationBlocked = aggregationBlocked || reader.blocksQuickSwitch()
+            // A never-observed missing state file remains compatible with
+            // legacy direct mode; only known/indicated aggregation retries.
+            guard aggregationBlocked || !aggregationEntries.isEmpty else {
+                publishAggregation()
+                return false
+            }
+            for identity in aggregationDisplays.keys {
+                aggregationDisplays[identity]?.reason = tr(.keyAggregationStale)
+                if aggregationDisplays[identity]?.fetchedAt != nil { aggregationDisplays[identity]?.status = .stale }
+            }
+            publishAggregation()
+            scheduleAggregationRetry(reader)
+            return !aggregationEntries.isEmpty
+        case .inactive: entries = []
+        case .active(let active): entries = active
+        }
+        aggregationRetry?.cancel()
+        aggregationRetry = nil
+        aggregationBlocked = reader.blocksQuickSwitch()
         let progressIdentities = entries.compactMap { entry in
             entry.source.query.map { ProviderBalanceProgressIdentity(client: .codex, providerID: entry.providerID,
                 query: $0, providerName: entry.source.name) }
@@ -412,6 +437,7 @@ final class ProviderRefreshCoordinator {
         }
         let identities = Set(entries.map(aggregationIdentity))
         if !entries.isEmpty {
+            if let context = standardOfficialRequests.removeValue(forKey: .codex) { officialQuotaClient.cancelQuota(context: context) }
             standardPublicationEpoch.invalidate()
             standardPublicationEpoch = OfficialResponseGeneration()
         }
@@ -466,6 +492,8 @@ final class ProviderRefreshCoordinator {
             self.aggregationAttempts.removeAll()
             displays.forEach(self.cancelAggregationTransport)
             self.aggregationReader = nil
+            self.aggregationRetry?.cancel()
+            self.aggregationRetry = nil
         }
     }
 
@@ -499,15 +527,34 @@ final class ProviderRefreshCoordinator {
         actions.aggregationChanged?(displays, aggregationBlocked)
     }
 
+    private func scheduleAggregationRetry(_ reader: CCSwitchAggregationRepository) {
+        guard aggregationRetry == nil else { return }
+        let retry = DispatchWorkItem { [weak self, weak reader] in
+            guard let self, let reader, self.aggregationReader === reader else { return }
+            self.aggregationRetry = nil
+            _ = self.refreshAggregation(reader: reader, force: true)
+        }
+        aggregationRetry = retry
+        queue.asyncAfter(deadline: .now() + 1, execute: retry)
+    }
+
     private func aggregationRequestIsCurrent(_ identity: AggregationDisplayIdentity, request: UUID) -> Bool {
-        guard aggregationRequests[identity] == request else { return false }
-        guard let reader = aggregationReader, case .active(let entries) = reader.load(),
-              entries.contains(where: { aggregationIdentity($0) == identity }) else {
+        guard aggregationRequests[identity] == request, let reader = aggregationReader else { return false }
+        switch reader.load() {
+        case .active(let entries) where entries.contains(where: { aggregationIdentity($0) == identity }): return true
+        case .untrusted:
+            // Keep trusted membership; release this attempt and retry after a
+            // consistent read instead of publishing an unverified response.
             aggregationRequests.removeValue(forKey: identity)
-            if let reader = aggregationReader { _ = refreshAggregation(reader: reader, force: false) }
+            aggregationAttempts.removeValue(forKey: identity)
+            if let display = aggregationDisplays[identity] { cancelAggregationTransport(display) }
+            _ = refreshAggregation(reader: reader, force: false)
+            return false
+        default:
+            aggregationRequests.removeValue(forKey: identity)
+            _ = refreshAggregation(reader: reader, force: false)
             return false
         }
-        return true
     }
 
     private func drainAggregationRequests() {
@@ -558,7 +605,11 @@ final class ProviderRefreshCoordinator {
                     source: source, requestContext: aggregationOfficialRequests[identity], isValid: isValid, completion: finish)
             } else if let query = source.query {
                 fetchBalance(providerID: source.id, providerName: source.name, query: query, client: .codex,
-                    isValid: isValid, completion: finish)
+                    isValid: isValid, onDiscard: { [weak self] in
+                        guard let self, self.aggregationRequests[identity] == request else { return }
+                        self.aggregationRequests.removeValue(forKey: identity)
+                        self.drainAggregationRequests()
+                    }, completion: finish)
             } else {
                 aggregationRequests.removeValue(forKey: identity)
                 display.snapshot = .providerError(source.name, reason: tr(.keyAggregationUnavailable), cachedBalance: nil)
@@ -710,6 +761,7 @@ final class ProviderRefreshCoordinator {
                             }
                             self.updateQuickSwitchSummary(
                                 providerID: source.id,
+                                client: client,
                                 payload: .officialWindows(response.output.windows)
                             )
                             self.actions.notificationSnapshot?(
@@ -747,7 +799,7 @@ final class ProviderRefreshCoordinator {
                         guard case .success(let observation) = self.balanceProgressStore.observe(
                             amount: response.output.amount, unit: response.output.unit,
                             identity: identity, sampleSequence: sampleSequence, observedAt: self.now()
-                        ) else { return }
+                        ), observation.accepted else { return }
                         self.actions.notificationSnapshot?(
                             client,
                             source.id,
@@ -763,6 +815,7 @@ final class ProviderRefreshCoordinator {
                         )
                         self.updateQuickSwitchSummary(
                             providerID: source.id,
+                            client: client,
                             payload: .formatted(Self.formatBalanceSummary(observation.amount, unit: observation.unit))
                         )
                     }
@@ -784,15 +837,17 @@ final class ProviderRefreshCoordinator {
 
     private func updateQuickSwitchSummary(
         providerID: String,
+        client: AssistantClient,
         payload: QuickSwitchSummaryPayload
     ) {
+        let identity = SummaryIdentity(client: client, providerID: providerID)
         quickSwitchSummaryLock.lock()
-        let previous = quickSwitchSummaryPayloads[providerID]
+        let previous = quickSwitchSummaryPayloads[identity]
         guard previous != payload else {
             quickSwitchSummaryLock.unlock()
             return
         }
-        quickSwitchSummaryPayloads[providerID] = payload
+        quickSwitchSummaryPayloads[identity] = payload
         quickSwitchSummaryLock.unlock()
         actions.quickSwitchSummaryChanged(providerID)
     }
@@ -803,6 +858,7 @@ final class ProviderRefreshCoordinator {
         query: BalanceQuery,
         client: AssistantClient,
         isValid: @escaping () -> Bool = { true },
+        onDiscard: (() -> Void)? = nil,
         completion: ((Snapshot) -> Void)? = nil
     ) {
         func fail(providerID: String, providerName: String, reason: String, client: AssistantClient) {
@@ -841,8 +897,10 @@ final class ProviderRefreshCoordinator {
                         }
                         return
                     }
+                    guard observation.accepted else { onDiscard?(); return }
                     self.updateQuickSwitchSummary(
                         providerID: providerID,
+                        client: client,
                         payload: .formatted(Self.formatBalanceSummary(observation.amount, unit: observation.unit))
                     )
                     let balanceSnapshot = Snapshot.balance(
@@ -911,6 +969,13 @@ final class ProviderRefreshCoordinator {
             return client != .codex || source?.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials
         }
         let accountKey = credentials?.accountKey
+        if source == nil {
+            if let previous = standardOfficialRequests[client],
+               previous.providerID != context.providerID || previous.credentials != context.credentials {
+                officialQuotaClient.cancelQuota(context: previous)
+            }
+            standardOfficialRequests[client] = context
+        }
         officialQuotaClient.fetchQuota(context: context) { [weak self] result in
             guard let self else { return }
             self.performOnQueue {
@@ -930,6 +995,7 @@ final class ProviderRefreshCoordinator {
                     }
                     self.updateQuickSwitchSummary(
                         providerID: providerID,
+                        client: client,
                         payload: .officialWindows(response.output.windows)
                     )
                     let renderOfficial: (CodexBankedReset?, CodexResetForecast) -> Void = { bankedReset, forecast in
@@ -982,7 +1048,7 @@ final class ProviderRefreshCoordinator {
                         }
                     }
                     if client == .codex && response.output.bankedResetNeedsCreditList {
-                        self.officialQuotaClient.fetchRateLimitResetCredits(storedAccessToken: credentials?.accessToken, now: self.now()) { creditsResult in
+                        self.officialQuotaClient.fetchRateLimitResetCredits(storedAccessToken: credentials?.accessToken, context: context, now: self.now()) { creditsResult in
                             switch creditsResult {
                             case .success(let bankedReset):
                                 finishOfficial(bankedReset)

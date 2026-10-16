@@ -18,9 +18,12 @@ struct ProviderBalanceProgressIdentity: Hashable {
             String(describing: query.nativeBalanceProvider)]
         let data = (try? JSONSerialization.data(withJSONObject: fields)) ?? Data()
         self.walletID = Self.sha256(data.base64EncodedString())
-        self.usesNameScope = client == .codex && providerName != nil
-        self.accountingID = Self.nameScope(client: client, name: providerName)
-            ?? (usesNameScope ? "unnamed:" + Self.sha256(providerID) : walletID)
+        self.usesNameScope = false
+        // Visual name grouping never proves account ownership. Codex histories
+        // include Provider ID and the complete authenticated query identity.
+        self.accountingID = client == .codex
+            ? "provider-v2:" + Self.sha256(providerID + "|" + walletID)
+            : walletID
         self.clientID = client.rawValue
         self.providerID = providerID
         self.endpoint = query.url
@@ -196,6 +199,7 @@ final class ProviderBalanceProgressStore {
                     }
                 }
             } else {
+                guard identity.clientID != AssistantClient.codex.rawValue else { continue }
                 guard preparedWallets.insert(scope).inserted else { continue }
                 let old = peers.compactMap { states[$0.storageKey] }
                 guard let first = old.first,
@@ -264,7 +268,8 @@ final class ProviderBalanceProgressStore {
     private static func cents(from amount: Double) -> Int? {
         guard amount.isFinite,
               amount <= Double(Int.max) / 100 else { return nil }
-        if amount <= 0 { return 0 }
+        guard amount >= 0 else { return nil }
+        if amount == 0 { return 0 }
 
         let rounded = NSDecimalNumber(value: amount).rounding(
             accordingToBehavior: NSDecimalNumberHandler(

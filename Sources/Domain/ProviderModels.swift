@@ -28,7 +28,7 @@ struct ProviderBalanceSnapshotCache {
     }
 }
 
-struct ProviderChoice {
+struct ProviderChoice: Equatable {
     let id: String
     let name: String
     let isCurrent: Bool

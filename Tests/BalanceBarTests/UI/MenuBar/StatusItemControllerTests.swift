@@ -3060,7 +3060,7 @@ extension StatusItemControllerTests {
         func fields(_ view: NSView) -> [NSTextField] { (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap(fields) }
         let time = try XCTUnwrap(fields(wrapper).first { $0.identifier?.rawValue == "overview.refreshTime" })
         XCTAssertTrue(time.stringValue.hasPrefix("⚠︎"))
-        XCTAssertEqual(time.toolTip, "Fixture network failure")
+        XCTAssertTrue(time.toolTip?.contains("Fixture network failure") == true)
         XCTAssertTrue(time.accessibilityLabel()?.contains("Fixture network failure") == true)
         XCTAssertEqual(wrapper.frame.height, wrapper.subviews.first { $0 is MenuHoverLinkHostView }?.frame.height)
     }
@@ -3477,9 +3477,10 @@ extension StatusItemControllerTests {
             showOpenCCSwitchMenu: false, showStatusMenu: false,
             aggregatedProviders: Array(input.aggregatedProviders.dropFirst()), aggregationQuickSwitchBlocked: true)
         controller.updateMenu(input: removed)
-        XCTAssertTrue(document.subviews.first?.subviews.first === card)
-        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
-        XCTAssertEqual(card.subviews.compactMap { $0 as? AggregationNoteTagView }.map { $0.textView.accountLabel.stringValue }.sorted(), ["Grok", "Other"])
+        let replacement = try XCTUnwrap(document.subviews.first?.subviews.first)
+        XCTAssertFalse(replacement === card, "changed member set must not inherit the previous wallet's interaction state")
+        XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements + 1)
+        XCTAssertEqual(replacement.subviews.compactMap { $0 as? AggregationNoteTagView }.map { $0.textView.accountLabel.stringValue }.sorted(), ["Grok", "Other"])
     }
 
     @MainActor
@@ -3541,15 +3542,17 @@ extension StatusItemControllerTests {
         mixed[0].snapshot = .providerError("tokenshop", reason: "Fixture failure", cachedBalance: nil)
         mixed[0].status = .error
         mixed[0].fetchedAt = nil
-        let partial = AggregationWalletPresentation.cards(mixed)
+        var grouping = AggregationWalletGrouping()
+        _ = grouping.cards(sharedWalletInput().aggregatedProviders)
+        let partial = grouping.cards(mixed)
         XCTAssertEqual(partial.count, 1)
-        XCTAssertEqual(partial[0].status, .fresh)
+        XCTAssertEqual(partial[0].status, .stale)
         XCTAssertEqual(partial[0].snapshot.amount, 3.73)
         mixed[1].snapshot = .balance("tokenshop", 8, "CNY", nil, Date())
         XCTAssertEqual(AggregationWalletPresentation.cards(mixed).count, 3, "unknown currency cannot bridge USD and CNY")
     }
     @MainActor
-    func testExactNameGroupingIgnoresHostsPathsParsersAndAmountsButNotSpelling() throws {
+    func testExactNameGroupingUsesCurrencyAndCentsWithoutRelyingOnHostOrKey() throws {
         func displays(_ names: [String]) -> [AggregatedProviderDisplay] {
             sharedWalletInput(keys: ["one", "two", "three"], names: names).aggregatedProviders
         }
@@ -3573,18 +3576,14 @@ extension StatusItemControllerTests {
             snapshot: .balance("same", 42, "USD", query.websiteURL, Date(timeIntervalSince1970: 1_700_000_010)),
             account: nil, status: .fresh, reason: nil, fetchedAt: Date(timeIntervalSince1970: 1_700_000_010))
         let result = AggregationWalletPresentation.cards(mixed)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result[0].snapshot.amount, 42, "latest amount is selected, never summed")
-        XCTAssertEqual(result[0].snapshot.websiteURL, firstSource.query?.websiteURL)
-        mixed[0].fetchedAt = mixed[1].fetchedAt
-        mixed[0].status = .stale
-        XCTAssertEqual(AggregationWalletPresentation.cards(mixed)[0].snapshot.amount, 42, "fresh wins a timestamp tie")
-        mixed[0].fetchedAt = mixed[1].fetchedAt?.addingTimeInterval(-1)
+        XCTAssertEqual(result.count, 2)
+        let separate = try XCTUnwrap(result.first { $0.snapshot.amount == 42 })
+        XCTAssertEqual(separate.snapshot.websiteURL, query.websiteURL)
+        XCTAssertEqual(result.first?.snapshot.websiteURL, firstSource.query?.websiteURL)
         mixed.indices.forEach { mixed[$0].status = .stale; mixed[$0].reason = "offline" }
         let offline = AggregationWalletPresentation.cards(mixed)
-        XCTAssertEqual(offline[0].snapshot.amount, 42)
-        XCTAssertEqual(offline[0].status, .stale)
-        XCTAssertEqual(offline[0].reason, "offline")
+        XCTAssertTrue(offline.allSatisfy { $0.status == .stale && $0.reason?.contains("offline") == true })
+
     }
 
 }
@@ -4012,5 +4011,63 @@ extension StatusItemControllerTests {
                 }
             }
         }
+    }
+}
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testBalancePartitionsRequireTwoAlignedFreshRoundsAndKeepFailuresVisible() throws {
+        let start = Date()
+        var grouping = AggregationWalletGrouping()
+        func sample(_ values: [Double], _ offset: Double) -> [AggregatedProviderDisplay] {
+            var peers = sharedWalletInput().aggregatedProviders
+            for i in peers.indices {
+                let date = start.addingTimeInterval(offset)
+                peers[i].snapshot = .balance("tokenshop", values[i], "USD", peers[i].entry.source.query?.websiteURL, date)
+                peers[i].fetchedAt = date
+            }
+            return peers
+        }
+        let first = sample([3, 3, 9], 0)
+        let initial = grouping.cards(first, now: start)
+        XCTAssertEqual(initial.count, 1)
+        XCTAssertEqual(grouping.cards(first, now: start).count, 1, "repaint is not a second observation")
+        var partial = sample([3, 3, 9], 1)
+        partial[2].status = .loading
+        XCTAssertEqual(grouping.cards(partial, now: start.addingTimeInterval(1)).count, 1)
+        let split = grouping.cards(sample([3, 3, 9], 2), now: start.addingTimeInterval(2))
+        XCTAssertEqual(split.count, 2)
+        XCTAssertEqual(split.map { $0.groupedProviderIDs?.count ?? 0 }, [2, 1])
+        XCTAssertFalse(split.contains { $0.identity == initial[0].identity })
+        var failed = sample([3, 3, 9], 3)
+        failed[1].status = .stale; failed[1].reason = "offline"
+        let retained = grouping.cards(failed, now: start.addingTimeInterval(3))
+        XCTAssertEqual(retained.map(\.identity), split.map(\.identity))
+        XCTAssertEqual(retained[0].status, .stale)
+        XCTAssertTrue(retained[0].reason?.contains("Grok") == true)
+        XCTAssertEqual(grouping.cards(sample([4, 4, 4], 4), now: start.addingTimeInterval(4)).count, 2)
+        let merged = grouping.cards(sample([4, 4, 4], 5), now: start.addingTimeInterval(5))
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].snapshot.amount, 4, "never add duplicate balances")
+        XCTAssertEqual(merged[0].groupedNotes, ["GPT", "Grok", "Other"])
+        var cents = AggregationWalletGrouping()
+        _ = cents.cards(sample([0.1 + 0.2, 0.3, 0.3], 0), now: start)
+        XCTAssertEqual(cents.cards(sample([0.3, 0.3, 0.3], 1), now: start.addingTimeInterval(1)).count, 1)
+    }
+
+    @MainActor
+    func testDirectSameNameProviderIDsHaveDifferentNumericIdentity() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        func input(_ id: String) -> StatusItemController.MenuInput {
+            .init(choices: [], quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [],
+                showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false,
+                showStatusMenu: false, directProviderID: id)
+        }
+        controller.start(snapshot: .balance("same", 3, "USD", nil, Date()), refreshDate: nil, menuInput: input("a"), settings: makeSettings())
+        let first = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView).providerIdentity
+        controller.update(snapshot: .balance("same", 13, "USD", nil, Date()), refreshDate: nil, menuInput: input("b"), settings: makeSettings())
+        let second = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView).providerIdentity
+        XCTAssertNotEqual(first, second)
     }
 }
