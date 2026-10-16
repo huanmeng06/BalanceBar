@@ -6544,8 +6544,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func makeOverviewMenuItem(for snapshot: Snapshot, context supplied: OverviewCardContext? = nil) -> NSMenuItem {
+        let directTag = menuInput.aggregatedProviders.isEmpty
+            ? menuInput.choices.first(where: \.isCurrent).map { [$0.name] }
+            : nil
         let context = supplied ?? OverviewCardContext(snapshot: snapshot, identity: snapshot.provider,
-            account: menuInput.openAIAccount, date: refreshDate)
+            account: menuInput.openAIAccount, date: refreshDate, noteTags: directTag)
         if snapshot.kind == .error {
             presentedOverviewNumerics = currentOverviewNumericSamples()
             return makeOverviewErrorMenuItem(for: snapshot, context: context)
@@ -7036,7 +7039,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             [quotaDetail, amount].forEach(attachBody)
         }
         item.view = view
-        if supplied != nil { updateAggregationNotes(in: view, context: context) }
+        if supplied != nil || context.noteTags != nil { updateAggregationNotes(in: view, context: context) }
         updateBalanceSubtitle(in: view, context: context)
         alignSingleLineBalance(in: view, snapshot: context.snapshot)
         return item
