@@ -315,9 +315,10 @@ extension CCSwitchRepositoryTests {
         XCTAssertTrue(reader.blocksQuickSwitch())
         now.addTimeInterval(CCSwitchAggregationRepository.confirmedAbsenceInterval)
         guard case .inactive = reader.load() else { return XCTFail("confirmed absence becomes inactive") }
-        XCTAssertFalse(reader.blocksQuickSwitch())
+        XCTAssertTrue(reader.blocksQuickSwitch(), "absence timeout may hide stale cards but cannot authorize writes")
         payload = try aggregationState(mode: "direct")
         guard case .inactive = reader.load() else { return XCTFail("direct remains inactive") }
+        XCTAssertFalse(reader.blocksQuickSwitch(), "a verified direct state is required to release protection")
     }
 
     func testAggregationQuickSwitchGuardAllowsLegacyAndOrdinaryModes() throws {

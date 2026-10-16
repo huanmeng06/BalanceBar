@@ -3059,6 +3059,7 @@ extension ProviderRefreshCoordinatorTests {
         }
         coordinator.refreshQuickSwitchSummaries(force: false, for: .codex, configurationChanged: true)
         waitForEvent(changed)
+        waitForEvent(changed)
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
         coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
         waitForEvent(changed)
@@ -3153,10 +3154,16 @@ extension ProviderRefreshCoordinatorTests {
     func testQuickSwitchSummaryIsClearedWhenConfigurationRevisionChangesAndRefreshFails() throws {
         DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "3") }
         let changed = DispatchSemaphore(value: 0)
+        let summaryCleared = expectation(description: "summary cleared after revision change")
+        var summaryNotifications = 0
         let coordinator = ProviderRefreshCoordinator(
             repository: repository, officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
-            actions: makeActions { _ in changed.signal() }
+            actions: makeActions { _ in
+                changed.signal()
+                summaryNotifications += 1
+                if summaryNotifications == 2 { summaryCleared.fulfill() }
+            }
         )
         coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-custom"])
         waitForEvent(changed)
@@ -3172,7 +3179,7 @@ extension ProviderRefreshCoordinatorTests {
             .init(data: Data(), statusCode: 401)
         }
         coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-custom"], configurationChanged: true)
-        waitForCoordinator(coordinator)
+        wait(for: [summaryCleared], timeout: 2)
         XCTAssertNil(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .defaultValue, client: .codex)["codex-custom"])
     }
 }
@@ -3417,7 +3424,7 @@ extension ProviderRefreshCoordinatorTests {
         coordinator.performAsync {
             XCTAssertFalse(coordinator.refreshAggregation(reader: reader, force: false))
             XCTAssertTrue(latest.isEmpty)
-            XCTAssertFalse(blocked)
+            XCTAssertTrue(blocked)
             exited.fulfill()
         }
         wait(for: [exited], timeout: 3)

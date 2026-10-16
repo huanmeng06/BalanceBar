@@ -592,7 +592,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private lazy var providerMetadataReader = ProviderMetadataReader(repository: ccSwitchRepository)
     private var currentProviderNameCache = ""
     private var clientSnapshots: [
-        AssistantClient: (providerID: String, snapshot: Snapshot)
+        AssistantClient: (providerID: String, configurationRevision: String, snapshot: Snapshot)
     ] = [:]
     private var snapshot = Snapshot.placeholder
     private var activeProviderWebsite: URL?
@@ -766,7 +766,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 render: { [weak self] snapshot in self?.render(snapshot) },
                 storeClientSnapshot: { [weak self] client, providerID, snapshot in
-                    self?.clientSnapshots[client] = (providerID, snapshot)
+                    self?.clientSnapshots[client] = (providerID, "", snapshot)
+                },
+                storeClientSnapshotWithRevision: { [weak self] client, providerID, revision, snapshot in
+                    self?.clientSnapshots[client] = (providerID, revision, snapshot)
                 },
                 quickSwitchSummaryChanged: { [weak self] providerID in
                     self?.publishQuickSwitchSummary(providerID: providerID)
@@ -2137,7 +2140,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let currentProvider = ccSwitchRepository.loadCurrent(appType: client.appType)
         reloadCurrentProviderNameCache()
         let cached = clientSnapshots[client]
-        let hasCachedSnapshot = cached.map { currentProvider?.id == $0.providerID } ?? false
+        let hasCachedSnapshot = cached.map {
+            currentProvider?.id == $0.providerID
+                && currentProvider?.configurationRevision == $0.configurationRevision
+        } ?? false
         // A following cached render layouts icon+digits together. Skip the
         // extra layout inside updateActivity so one client switch pays for
         // layoutStatusItem once. Icon swap still happens.

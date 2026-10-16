@@ -257,9 +257,14 @@ final class CCSwitchAggregationRepository {
     private let now: () -> Date
     private let stateLock = NSLock()
     private var wasAggregating = false
+    private var quickSwitchProtectionActive = false
     private var absenceBegan: Date?
     private func rememberAggregation(_ active: Bool) {
-        stateLock.lock(); wasAggregating = active; absenceBegan = nil; stateLock.unlock()
+        stateLock.lock()
+        wasAggregating = active
+        quickSwitchProtectionActive = active
+        absenceBegan = nil
+        stateLock.unlock()
     }
     private var lastKnownAggregation: Bool {
         stateLock.lock(); defer { stateLock.unlock() }; return wasAggregating
@@ -324,7 +329,6 @@ final class CCSwitchAggregationRepository {
         let current = now()
         if absenceBegan == nil { absenceBegan = current }
         if let started = absenceBegan, current.timeIntervalSince(started) >= Self.confirmedAbsenceInterval {
-            wasAggregating = false
             absenceBegan = nil
             return .inactive
         }
@@ -332,8 +336,8 @@ final class CCSwitchAggregationRepository {
     }
 
     private func isProtectingAbsence() -> Bool {
-        if case .untrusted = confirmedAbsenceOrUntrusted() { return true }
-        return false
+        stateLock.lock(); defer { stateLock.unlock() }
+        return quickSwitchProtectionActive
     }
 
     /// Recheck at the write boundary, even if the menu was built in another mode.

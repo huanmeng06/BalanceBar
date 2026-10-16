@@ -78,6 +78,29 @@ final class CCSwitchRepository {
         try? loadCurrentChecked(appType: appType)
     }
 
+    func configurationRevision(appType: String, providerID: String) -> String? {
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let database else { return nil }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 100)
+        let sql = "SELECT id, name, settings_config, meta, category, website_url FROM providers WHERE app_type = ? AND id = ? LIMIT 1"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return nil }
+        defer { sqlite3_finalize(statement) }
+        bind(appType, to: statement, at: 1)
+        bind(providerID, to: statement, at: 2)
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let id = text(from: statement, column: 0),
+              let name = text(from: statement, column: 1),
+              let settings = text(from: statement, column: 2),
+              let meta = text(from: statement, column: 3) else { return nil }
+        let category = text(from: statement, column: 4)
+        let website = text(from: statement, column: 5)
+        return SHA256.hash(data: Data([id, name, settings, meta, category ?? "", website ?? ""].joined(separator: "\u{0}").utf8))
+            .map { String(format: "%02x", $0) }.joined()
+    }
+
     func loadCurrentChecked(appType: String) throws -> CCSwitchProvider? {
         var database: OpaquePointer?
         let openCode = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)

@@ -218,6 +218,7 @@ struct ProviderRefreshActions {
     let isActiveClient: (AssistantClient) -> Bool
     let render: (Snapshot) -> Void
     let storeClientSnapshot: (AssistantClient, String, Snapshot) -> Void
+    var storeClientSnapshotWithRevision: ((AssistantClient, String, String, Snapshot) -> Void)? = nil
     let quickSwitchSummaryChanged: (String) -> Void
     var notificationSnapshot: ((AssistantClient, String, Snapshot) -> Void)? = nil
     var aggregationChanged: (([AggregatedProviderDisplay], Bool) -> Void)? = nil
@@ -885,7 +886,7 @@ final class ProviderRefreshCoordinator {
         quickSwitchSummaryLock.unlock()
         deleted.union(missing).forEach { removeQuickSwitchSummary(providerID: $0, client: client) }
         for source in sources where previousRevisions[source.id].map({ $0 != source.configurationRevision }) == true {
-            removeQuickSwitchSummary(providerID: source.id, client: client, notify: false)
+            removeQuickSwitchSummary(providerID: source.id, client: client)
         }
     }
 
@@ -900,6 +901,10 @@ final class ProviderRefreshCoordinator {
     private func standardRequestIsCurrent(client: AssistantClient, providerID: String, revision: String) -> Bool {
         guard let current = repository.loadCurrent(appType: client.appType) else { return false }
         return current.id == providerID && current.configurationRevision == revision
+    }
+
+    private func configurationIsCurrent(client: AssistantClient, providerID: String, revision: String) -> Bool {
+        repository.configurationRevision(appType: client.appType, providerID: providerID) == revision
     }
 
     /// Returns the previous Provider ID when client/id/revision actually changed.
@@ -982,8 +987,17 @@ final class ProviderRefreshCoordinator {
             guard let self else { return }
             self.performOnQueue {
                 let requestIsCurrent = isValid()
-                let selectedMovedAway = !configurationRevision.isEmpty
-                    && self.repository.loadCurrent(appType: client.appType)?.id != providerID
+                let configurationIsCurrent = requestIsCurrent || self.configurationIsCurrent(
+                    client: client, providerID: providerID, revision: configurationRevision
+                )
+                let selectedMovedAway: Bool
+                if !configurationRevision.isEmpty,
+                   configurationIsCurrent,
+                   let selected = self.repository.loadCurrent(appType: client.appType) {
+                    selectedMovedAway = selected.id != providerID
+                } else {
+                    selectedMovedAway = false
+                }
                 guard requestIsCurrent || selectedMovedAway else { return }
                 switch result {
                 case .success(let response):
@@ -998,6 +1012,7 @@ final class ProviderRefreshCoordinator {
                         return
                     }
                     guard observation.accepted else { onDiscard?(); return }
+                    guard configurationIsCurrent else { return }
                     self.updateQuickSwitchSummary(
                         providerID: providerID,
                         client: client,
@@ -1408,7 +1423,11 @@ final class ProviderRefreshCoordinator {
                       current.id == providerID,
                       current.configurationRevision == configurationRevision else { return }
                 if next.kind == .official || next.kind == .balance {
-                    self.actions.storeClientSnapshot(client, providerID, next)
+                    if let storeWithRevision = self.actions.storeClientSnapshotWithRevision {
+                        storeWithRevision(client, providerID, configurationRevision, next)
+                    } else {
+                        self.actions.storeClientSnapshot(client, providerID, next)
+                    }
                 }
                 guard self.actions.isActiveClient(client) else { return }
                 if let ownedRender = self.actions.ownedRender { ownedRender(providerID, next) }

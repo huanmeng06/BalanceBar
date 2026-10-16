@@ -132,3 +132,23 @@ pending. Local XCTest and Fast CI are not substitutes for those gates.
 6. 复测此前白屏路径，记录对应日志、内嵌 SHA、截图/视频及 CPU/滚动实际表现。
 
 人工状态 PENDING；反馈 PASS 或 FAIL + 步骤和实际/预期结果。
+# Issue #493 / PR #506: final identity and write-protection follow-up
+
+Review baseline: `ed5db9bb7472fbad4136932ff47dee5b8728e6b2`.
+This round keeps the original worktree, branch and Draft PR. No version change,
+merge, new Issue/task, independent review or interactive GUI test is included.
+
+## Final Block disposition
+
+| Item | Implementation / evidence |
+| --- | --- |
+| Block 1 | Missing-state timeout can hide stale aggregation cards after 3 seconds, but it no longer clears the independent Quick Switch write-protection flag. Only a verified direct/ordinary state releases protection. |
+| Block 2 | `clientSnapshots` now stores `configurationRevision`; client switching reuses a cached snapshot only when client, Provider ID, and revision all match. |
+| Block 3 | A non-current response must still match the Provider's current database configuration revision before it may update Quick Switch summaries. Database read failure is treated as invalid, not as a provider switch. |
+| Block 4 | Configuration-revision invalidation now publishes `quickSwitchSummaryChanged` when an existing summary is removed, so an open menu clears stale text immediately. |
+
+Focused verification:
+
+- Affected repository/refresh classes: **86 / 0 failures** (`/private/tmp/issue493-blocks4-focused-final3.log`).
+- Direct Block regression cases: **3 / 0 failures** (`/private/tmp/issue493-blocks4-focused2.log`).
+- Targeted Debug compilation: PASS (`/private/tmp/issue493-blocks4-build2.log`).
