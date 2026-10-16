@@ -581,12 +581,18 @@ class HoverLinkTextField: NSTextField {
 
     /// Structured forecast presentation; plain hints keep their compact layout.
     var forecastTooltipContent: DashboardForecastTooltipContent?
-    /// Invalidate an open bubble only when its displayed content changes.
-    /// The next hover presents the latest content without replacing the link.
+    /// Invalidate an open bubble only when its meaning changes. The source
+    /// line carries the forecast update time; like the recharge bubble's
+    /// elapsed time it refreshes on the next open instead of closing a bubble
+    /// the pointer is still over. A pending hint presents the latest content.
     func updateForecastTooltipContent(_ content: DashboardForecastTooltipContent) {
         guard forecastTooltipContent != content else { return }
+        let sourceOnly = forecastTooltipContent.map {
+            $0.title == content.title && $0.body == content.body && $0.disclaimer == content.disclaimer
+        } ?? false
         forecastTooltipContent = content
         hoverHint = content.plainText
+        guard !sourceOnly else { return }
         cancelPendingHoverHint()
         dismissHoverHint()
     }
@@ -842,7 +848,7 @@ class HoverLinkTextField: NSTextField {
     }
 
     private func refreshNativeTooltip() {
-        if hoverHintDelay > 0 || hoverHint.isEmpty {
+        if hoverHintDelay > 0 || hoverHint.isEmpty || isHoverHintVisible {
             toolTip = nil
         } else {
             toolTip = hoverHint
@@ -872,6 +878,9 @@ class HoverLinkTextField: NSTextField {
         isHoverHintScheduled = false
     }
 
+    var hoverHintPopoverForTesting: NSPopover? { hintPopover }
+    var hoverHintAnimatesForTesting: Bool? { hintPopover?.animates }
+
     func firePendingHoverHintForTesting() {
         hoverHintTimer?.fire()
         cancelPendingHoverHint()
@@ -899,7 +908,7 @@ class HoverLinkTextField: NSTextField {
         hintPopover = popover
         toolTip = nil
         let anchor = visibleTextHitRect.isEmpty ? bounds : visibleTextHitRect
-        if textTooltipTitle != nil { popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
         guard popover.isShown else {
             hintPopover = nil
@@ -913,7 +922,7 @@ class HoverLinkTextField: NSTextField {
     }
 
     private func dismissHoverHint() {
-        if textTooltipTitle != nil { hintPopover?.animates = false }
+        hintPopover?.animates = false
         hintPopover?.close()
         hintPopover = nil
         isHoverHintVisible = false

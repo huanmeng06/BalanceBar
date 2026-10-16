@@ -1,3 +1,38 @@
+# PR #506: unified menu hover bubbles (user request after `c3f606b3`)
+
+Rework baseline: `c3f606b3434c523f3ab960a707e6e2327fa3e2df`.
+
+The banked-reset forecast bubble ("24 小时内重置概率") differed from the
+last-top-up bubble in two ways. It never animated: `HoverLinkTextField`
+enabled popover animation only for titled text tooltips. It also flashed:
+the source line contains the forecast's `updated_at`, and
+`updateForecastTooltipContent` closed any pending or open bubble on every
+content change, so a time-only refresh closed the bubble under the pointer
+and the hover delay reopened it.
+
+All menu-hosted `HoverLinkTextField` bubbles now animate on presentation
+(respecting Reduce Motion) and close without animation, matching the
+recharge and account-email bubbles. A forecast update that changes only the
+source/update-time line keeps a pending or open bubble; the next presentation
+uses the latest content, as the recharge bubble resolves elapsed time on open.
+A change of title, body or disclaimer (for example probability vs. official
+signal) still invalidates the bubble. A visible bubble no longer re-installs
+the native tooltip underneath itself. The Dashboard threshold slider's value
+bubble follows the thumb during drags and stays unanimated intentionally.
+
+## Actual verification
+
+- New tests on the old source (test hooks only): 4 assertion failures, i.e.
+  no animation, pending hint cancelled, open bubble closed by a time-only
+  refresh (`/private/tmp/issue493-bubble-red.log`).
+- New source: DashboardComponentsTests, StatusItemControllerTests,
+  DashboardWindowControllerTests and OpenCodexCardLayoutTests,
+  **165 tests / 0 failures**; the real-window bubble test executed rather than
+  skipped (`/private/tmp/issue493-bubble-focused.log`).
+- `git diff --check` and `.github/scripts/ci-policy-test.py` (20/20) pass.
+- Full XCTest was not rerun locally for this UI-only change; Full CI on Ready
+  remains the final gate.
+
 # PR #506: real-menu mount test failure (review of `a7b48311`)
 
 Review baseline: `a7b48311a5d3d087d1db2bdbd3473e6788bee59a`.

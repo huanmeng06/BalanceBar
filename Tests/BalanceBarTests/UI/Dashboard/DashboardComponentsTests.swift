@@ -1694,7 +1694,7 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(link.isHoverHintVisible)
     }
 
-    func testForecastContentRefreshCancelsStaleHintButPreservesUnchangedHint() {
+    func testForecastSourceTimeRefreshPreservesHintButMeaningChangeCancelsIt() {
         let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
         let link = HoverLinkTextField(text: "83%")
         link.frame = NSRect(x: 8, y: 2, width: 200, height: 20)
@@ -1709,16 +1709,52 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(link.isHoverHintScheduled)
         link.updateForecastTooltipContent(first)
         XCTAssertTrue(link.isHoverHintScheduled)
+        // Only the update time moved: keep the pending hint; it presents the latest content.
         let latest = DashboardForecastTooltipContent(title: "Source", body: "Forecast", source: "11:05", disclaimer: "Hint")
         link.updateForecastTooltipContent(latest)
-        XCTAssertFalse(link.isHoverHintScheduled)
-        XCTAssertFalse(link.isHoverHintVisible)
+        XCTAssertTrue(link.isHoverHintScheduled)
         XCTAssertEqual(link.forecastTooltipContent, latest)
         XCTAssertEqual(link.hoverHint, latest.plainText)
+        XCTAssertNil(link.toolTip)
+        // A different forecast kind is a new meaning and invalidates the hint.
+        let signal = DashboardForecastTooltipContent(title: "Signal", body: "Official", source: "11:05", disclaimer: "Hint")
+        link.updateForecastTooltipContent(signal)
+        XCTAssertFalse(link.isHoverHintScheduled)
+        XCTAssertFalse(link.isHoverHintVisible)
+        XCTAssertEqual(link.forecastTooltipContent, signal)
         host.forwardHover(atHostPoint: NSPoint(x: 219, y: 23))
         host.forwardHover(atHostPoint: point)
         XCTAssertTrue(link.isHoverHintScheduled)
         host.forwardHover(atHostPoint: NSPoint(x: 219, y: 23))
+    }
+
+    func testOpenForecastBubbleSurvivesSourceTimeRefreshAndAnimates() throws {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        let link = HoverLinkTextField(text: "50%")
+        link.frame = NSRect(x: 8, y: 2, width: 200, height: 20)
+        link.hoverHintDelay = 0.5
+        link.updateForecastTooltipContent(DashboardForecastTooltipContent(
+            title: "Source", body: "Forecast", source: "13:31", disclaimer: "Hint"))
+        host.addSubview(link)
+        link.layout()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 80),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView?.addSubview(host)
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        host.track(link)
+        host.forwardHover(atHostPoint: host.convert(link.visibleTextHitRect.center, from: link))
+        link.firePendingHoverHintForTesting()
+        try XCTSkipUnless(link.isHoverHintVisible, "AppKit did not show a popover for a background test window")
+        XCTAssertEqual(link.hoverHintAnimatesForTesting, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        let popover = link.hoverHintPopoverForTesting
+        link.updateForecastTooltipContent(DashboardForecastTooltipContent(
+            title: "Source", body: "Forecast", source: "13:36", disclaimer: "Hint"))
+        XCTAssertTrue(link.isHoverHintVisible)
+        XCTAssertTrue(link.hoverHintPopoverForTesting === popover, "a time-only refresh must not close and reopen the bubble")
+        XCTAssertNil(link.toolTip)
+        host.removeFromSuperview()
+        XCTAssertFalse(link.isHoverHintVisible)
     }
 
     func testHoverLinkAlignmentChangesUpdateDrawingParagraphAndHoverGeometry() throws {
