@@ -221,6 +221,7 @@ struct ProviderRefreshActions {
     var storeClientSnapshotWithRevision: ((AssistantClient, String, String, Snapshot) -> Void)? = nil
     let quickSwitchSummaryChanged: (String) -> Void
     var notificationSnapshot: ((AssistantClient, String, Snapshot) -> Void)? = nil
+    var quickSwitchSafetyChanged: ((CCSwitchQuickSwitchSafety) -> Void)? = nil
     var aggregationChanged: (([AggregatedProviderDisplay], Bool) -> Void)? = nil
     var ownedRender: ((String, Snapshot) -> Void)? = nil
 }
@@ -316,7 +317,9 @@ final class ProviderRefreshCoordinator {
     private var aggregationRequests: [AggregationDisplayIdentity: UUID] = [:]
     private var aggregationPending: [AggregationDisplayIdentity] = []
     private var aggregationReader: CCSwitchAggregationRepository?
-    private var aggregationBlocked = false
+    private var aggregationBlocked = true
+    private var quickSwitchSafety: CCSwitchQuickSwitchSafety = .blockedUntrusted
+    private var lastQuickSwitchSafety: CCSwitchQuickSwitchSafety?
     private var standardOfficialRequests: [AssistantClient: OfficialQuotaRequestContext] = [:]
     private var aggregationOfficialRequests: [AggregationDisplayIdentity: OfficialQuotaRequestContext] = [:]
     private var lastAggregationPublication: (displays: [AggregatedProviderDisplay], blocked: Bool)?
@@ -402,10 +405,12 @@ final class ProviderRefreshCoordinator {
             category: "refresh.aggregation", throttleKey: "aggregation-trigger-\(force)", minimumInterval: 1)
         aggregationReader = reader
         let state = reader.load()
+        quickSwitchSafety = reader.quickSwitchSafety()
+        aggregationBlocked = quickSwitchSafety.isBlocked
         let entries: [AggregatedProviderEntry]
         switch state {
         case .untrusted:
-            aggregationBlocked = aggregationBlocked || reader.blocksQuickSwitch()
+            aggregationBlocked = quickSwitchSafety.isBlocked
             // A never-observed missing state file remains compatible with
             // legacy direct mode; only known/indicated aggregation retries.
             guard aggregationBlocked || !aggregationEntries.isEmpty else {
@@ -424,7 +429,7 @@ final class ProviderRefreshCoordinator {
         }
         aggregationRetry?.cancel()
         aggregationRetry = nil
-        aggregationBlocked = reader.blocksQuickSwitch()
+        aggregationBlocked = quickSwitchSafety.isBlocked
         let progressIdentities = entries.compactMap { entry in
             entry.source.query.map { ProviderBalanceProgressIdentity(client: .codex, providerID: entry.providerID,
                 query: $0, providerName: entry.source.name) }
@@ -519,6 +524,10 @@ final class ProviderRefreshCoordinator {
     }
 
     private func publishAggregation() {
+        if lastQuickSwitchSafety != quickSwitchSafety {
+            lastQuickSwitchSafety = quickSwitchSafety
+            actions.quickSwitchSafetyChanged?(quickSwitchSafety)
+        }
         let displays = aggregationEntries.compactMap { aggregationDisplays[aggregationIdentity($0)] }
         guard lastAggregationPublication?.displays != displays
             || lastAggregationPublication?.blocked != aggregationBlocked else { return }

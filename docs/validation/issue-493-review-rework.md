@@ -1,3 +1,88 @@
+# PR #506: device-local Quick Switch safety (review baseline 8fb97e76)
+
+This section supersedes the older database-zero unlock rules recorded below.
+`proxy_config.enabled` is a synchronized setting, not device-mode authority.
+Neither enabled=0, empty backups, absent schema nor the UI absence timeout
+independently authorizes a write or clears an observed-proxy protection marker.
+
+## Block disposition
+
+| Review item | Current implementation |
+| --- | --- |
+| Block 1 / P0 | Shared typed decision: verified direct, verified legacy direct, protected aggregation, protected routing, untrusted. Reads local mode plus effective Codex route/auth strategy; database signals are auxiliary. Proxy observations persist under a path/client-scoped hashed key. Only consistent local direct evidence releases historical protection. |
+| Block 2 / P1 | Rechecks at request start, immediately before termination, after exit, and inside the repository write transaction. Captures current/target revisions, rejects stale client/target, stages file contents, verifies fingerprints before publishing/pointer changes, and conditionally restores only files still matching this transaction's bytes. |
+| Native menu | Quick Switch submenu disables AppKit auto-enabling; all protected Provider actions/targets are removed and native disabled styling covers the name plus summary. Parent remains expandable, disabled status hint remains, separate enabled management action opens CCS. Updates reconcile only the submenu. |
+
+Valid local proxy is protected whether stack is on/off or attached is true/false.
+Missing files and missing Codex nodes share the same fallback. A legacy direct
+allowance requires readable database, no positive proxy evidence/history, and
+live routing/credential evidence matching the current direct Provider. Synced
+enabled=1 cannot permanently lock a consistent explicit direct state.
+
+The route reader intentionally accepts an unambiguous single-line TOML routing
+subset. Profiles, inline/dotted route declarations, multiline strings, or other
+unsupported routing syntax cannot be assumed direct: Quick Switch remains
+protected and offers the CCS management action. Ordinary MCP/project sections
+and normal official token refresh do not determine routing. Keys/configuration
+contents are neither logged nor persisted in safety state. Only a Boolean proxy
+observation and hashed local-scope key persist.
+
+Process-control tests inject a fake runtime. A denied termination never counts
+as a stopped instance, and an already replaced/running instance is not blindly
+reopened. There is no shared cross-process lock with CCS: repeated guards and
+fingerprint recovery address the reviewed windows, not a mathematical guarantee
+against every external write between a check and publication. No private Tauri
+invocation, route-database edit or process freezing was introduced.
+
+## Final local verification
+
+- Final affected classes: **355 tests / 0 failures**. Classes:
+  CCSwitchRepositoryTests, ProviderRefreshCoordinatorTests, StatusItemControllerTests,
+  AppDelegateCompositionTests, DomainModelsTests, LocalizationTests.
+  Log `/private/tmp/issue493-safety-focused-delivery.log`.
+- Final complete serial XCTest: **1456 total / 1455 passed / 1 skipped / 0 failed**.
+  Log `/private/tmp/issue493-safety-full-delivery.log`; result bundle
+  `Test-BalanceBar-2026.10.16_10-29-05--0400.xcresult` in the dedicated DerivedData.
+  The previous UpdateTests exception did not recur in this final run. This does
+  not establish that its unrelated intermittent behavior has been fixed.
+- Final explicit unsigned Debug build PASS:
+  `/private/tmp/issue493-safety-debug-delivery.log`.
+- Localization (525 keys / 12 languages), balance-query, network-error localization,
+  balance-card layout and menu-bar geometry probes all PASS. Diff check PASS.
+- Dedicated DerivedData: `/private/tmp/BalanceBar-issue493-proxy-state-full-DerivedData`.
+  Command: `xcodebuild test -project BalanceBar.xcodeproj -scheme BalanceBar
+  -configuration Debug -derivedDataPath <above> -destination 'platform=macOS,arch=arm64'
+  CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO`.
+- Initial focused runs exposed obsolete direct fixtures (direct+attached), the
+  old route-mode allowance, and a transient fixture SQLite disk-I/O error. The
+  direct fixture/expectations were corrected to the agreed contract; mutation,
+  fingerprint and process side-effect assertions remain. Intermediate all-suite
+  passes (1453 then 1455 tests) preceded additional boundary regressions and are
+  not substituted for the final 1456-test result above.
+- Draft Scope/Fast and exact Dev artifact identities are recorded in the GitHub
+  handoff after committing. Hosted Ready Full, GUI, CPU and white-screen P0 remain
+  pending; local Full and native menu tests do not replace manual acceptance.
+
+## 如何人工测试（本轮）
+
+开发包：原工作树 `build/dev/BalanceBar-dev.app`，交接记录最终内嵌 SHA。
+由用户退出旧 Dev，再打开新包；不要手动改生产数据库、凭据或制造进程故障。
+
+1. CCS Codex 聚合：展开 Quick Switch，顶部提示不可点，全部供应商与右侧摘要
+   均为原生灰色，鼠标/键盘不能选择；“在 CC Switch 中管理”可以打开 CCS。
+2. 普通路由模式同样保护并引导 CCS，状态文案明确为路由，不误标聚合。
+3. 经 CCS 正常退出代理回到直连，配置一致后恢复原供应商动作和当前勾选。
+4. 反复开关菜单、刷新摘要、在 CCS 调整排序；保护不能被重建或自动验证覆盖。
+   聚合顶部宿主、卡片与两层滚动保持，不因置灰重建聚合视图。
+5. 自动化临时 fixture 覆盖缺状态、读忙、代理/直连冲突与时序变化；真实 GUI
+   不需要手工破坏状态文件。实际白屏、动画、CPU 和 Ready Full 仍单独待验收。
+
+反馈 PASS + SHA + 范围，或 FAIL + 步骤 + 实际/预期 + 日志。
+
+---
+
+## Historical validation records (superseded safety semantics)
+
 # Issue #493 / PR #506: identity and grouping follow-up
 
 Review baseline: `6e7b3578fb60e79406156c7f861d397cdaabd1f0`.

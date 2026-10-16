@@ -2341,6 +2341,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         private let language: AppLanguage
         let aggregatedProviders: [AggregatedProviderDisplay]
         let aggregationQuickSwitchBlocked: Bool
+        let quickSwitchSafety: CCSwitchQuickSwitchSafety
         let choices: [ProviderChoice]
         let quickSwitchSummaries: [String: String]
         let activeClient: AssistantClient
@@ -2376,11 +2377,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
             showsAvailableUpdateBadge: Bool = false,
             aggregatedProviders: [AggregatedProviderDisplay] = [],
-            aggregationQuickSwitchBlocked: Bool = false
+            aggregationQuickSwitchBlocked: Bool = false,
+            quickSwitchSafety: CCSwitchQuickSwitchSafety? = nil
         ) {
             self.language = AppLanguage.resolved
             self.aggregatedProviders = aggregatedProviders
-            self.aggregationQuickSwitchBlocked = aggregationQuickSwitchBlocked
+            self.quickSwitchSafety = quickSwitchSafety ?? (aggregationQuickSwitchBlocked ? .blockedAggregation : .allowedDirect)
+            self.aggregationQuickSwitchBlocked = self.quickSwitchSafety.isBlocked
             self.choices = choices
             self.quickSwitchSummaries = quickSwitchSummaries
             self.activeClient = activeClient
@@ -2401,7 +2404,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         static func == (lhs: Self, rhs: Self) -> Bool {
             lhs.aggregatedProviders == rhs.aggregatedProviders && lhs.language == rhs.language
-                && lhs.aggregationQuickSwitchBlocked == rhs.aggregationQuickSwitchBlocked
+                && lhs.quickSwitchSafety == rhs.quickSwitchSafety
                 && lhs.choices.elementsEqual(rhs.choices) { left, right in
                     left.id == right.id
                         && left.name == right.name
@@ -5836,7 +5839,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func switchProvider(_ sender: NSMenuItem) {
         guard let providerID = sender.representedObject as? String else { return }
-        guard !menuInput.aggregationQuickSwitchBlocked else { return }
+        guard !menuInput.aggregationQuickSwitchBlocked, sender.isEnabled, sender.action != nil else { return }
         actions.switchProvider(providerID)
     }
 
@@ -5968,7 +5971,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func makeQuickSwitchMenuItem() -> NSMenuItem {
         let parent = NSMenuItem(title: tr(.keyStatusItemControllerQuickSwitch), action: nil, keyEquivalent: "")
+        parent.identifier = NSUserInterfaceItemIdentifier("quickSwitch.parent")
         let submenu = NSMenu(title: tr(.keyStatusItemControllerQuickSwitch2))
+        submenu.autoenablesItems = false
         let menuChoices = QuickSwitchMenuModel.entries(from: menuInput.choices)
         if menuChoices.isEmpty {
             submenu.minimumWidth = QuickSwitchTitleLayout.minimumTabLocation
@@ -6015,13 +6020,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             throttleKey: "quick-switch-menu-\(menuInput.activeClient.appType)",
             minimumInterval: 1
         )
-        if menuInput.aggregationQuickSwitchBlocked {
-            let hint = NSMenuItem(title: tr(.keyAggregationManageInCCSwitch), action: nil, keyEquivalent: "")
-            hint.identifier = NSUserInterfaceItemIdentifier("aggregation.quickSwitch.hint")
-            hint.isEnabled = false
-            submenu.insertItem(hint, at: 0)
-            submenu.items.filter { $0.representedObject is String }.forEach { $0.isEnabled = false; $0.state = .off }
-        }
+        applyQuickSwitchProtection(to: submenu)
         parent.submenu = submenu
         return parent
     }
@@ -6076,21 +6075,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func updateQuickSwitchContent() {
-        guard let submenu = statusMenu.items.first(where: { $0.title == tr(.keyStatusItemControllerQuickSwitch) })?.submenu else { return }
+        guard let submenu = statusMenu.items.first(where: { $0.identifier?.rawValue == "quickSwitch.parent" })?.submenu else { return }
         let choices = QuickSwitchMenuModel.entries(from: menuInput.choices)
         let font = NSFont.menuFont(ofSize: 0)
         let summaries = choices.map { menuInput.quickSwitchSummaries[$0.id] ?? "…" }
         let layout = QuickSwitchTitleLayout.make(names: choices.map(\.name), summaries: summaries, font: font)
         submenu.minimumWidth = layout.minimumMenuWidth
         var desired: [NSMenuItem] = []
-        if menuInput.aggregationQuickSwitchBlocked {
-            let id = NSUserInterfaceItemIdentifier("aggregation.quickSwitch.hint")
-            let hint = submenu.items.first { $0.identifier == id }
-                ?? NSMenuItem(title: tr(.keyAggregationManageInCCSwitch), action: nil, keyEquivalent: "")
-            hint.identifier = id
-            hint.isEnabled = false
-            desired.append(hint)
-        }
         for (index, choice) in choices.enumerated() {
             let item = submenu.items.first { $0.representedObject as? String == choice.id }
                 ?? NSMenuItem(title: "", action: #selector(switchProvider(_:)), keyEquivalent: "")
@@ -6117,25 +6108,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if item.menu === submenu { submenu.removeItem(item) }
             submenu.insertItem(item, at: index)
         }
+        applyQuickSwitchProtection(to: submenu)
     }
 
     private func updateQuickSwitchProtection() {
-        guard let submenu = statusMenu.items.compactMap(\.submenu).first(where: {
-            $0.items.contains { $0.representedObject is String }
-        }) else { return }
-        submenu.items.filter { $0.representedObject is String }.forEach {
-            $0.isEnabled = !menuInput.aggregationQuickSwitchBlocked
-            if menuInput.aggregationQuickSwitchBlocked { $0.state = .off }
+        guard let submenu = statusMenu.items.first(where: { $0.identifier?.rawValue == "quickSwitch.parent" })?.submenu else { return }
+        applyQuickSwitchProtection(to: submenu)
+    }
+
+    private func applyQuickSwitchProtection(to submenu: NSMenu) {
+        submenu.autoenablesItems = false
+        let blocked = menuInput.quickSwitchSafety.isBlocked
+        for item in submenu.items where item.representedObject is String {
+            item.isEnabled = !blocked
+            item.action = blocked ? nil : #selector(switchProvider(_:))
+            item.target = blocked ? nil : self
+            item.state = !blocked && menuInput.choices.contains(where: { $0.id == item.representedObject as? String && $0.isCurrent }) ? .on : .off
         }
-        let id = NSUserInterfaceItemIdentifier("aggregation.quickSwitch.hint")
-        if menuInput.aggregationQuickSwitchBlocked, !submenu.items.contains(where: { $0.identifier == id }) {
-            let hint = NSMenuItem(title: tr(.keyAggregationManageInCCSwitch), action: nil, keyEquivalent: "")
-            hint.identifier = id
+        let owned = ["aggregation.quickSwitch.hint", "quickSwitch.manage", "quickSwitch.separator"]
+        for item in submenu.items where owned.contains(item.identifier?.rawValue ?? "") { submenu.removeItem(item) }
+        if blocked {
+            let hint = NSMenuItem(title: menuInput.quickSwitchSafety.hint, action: nil, keyEquivalent: "")
             hint.identifier = NSUserInterfaceItemIdentifier("aggregation.quickSwitch.hint")
             hint.isEnabled = false
             submenu.insertItem(hint, at: 0)
-        } else if !menuInput.aggregationQuickSwitchBlocked, let hint = submenu.items.first(where: { $0.identifier == id }) {
-            submenu.removeItem(hint)
+            let separator = NSMenuItem.separator()
+            separator.identifier = NSUserInterfaceItemIdentifier("quickSwitch.separator")
+            submenu.addItem(separator)
+            let manage = NSMenuItem(title: tr(.keyQuickSwitchManageInCCSwitch), action: #selector(openCCSwitch), keyEquivalent: "")
+            manage.identifier = NSUserInterfaceItemIdentifier("quickSwitch.manage")
+            manage.target = self
+            manage.isEnabled = true
+            submenu.addItem(manage)
         }
     }
 

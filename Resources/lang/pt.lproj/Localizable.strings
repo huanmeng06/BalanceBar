@@ -533,3 +533,7 @@
 "balance.used_since_recharge" = "Desde a %1$@: %2$@ usados";
 
 "balance.elapsed.ago" = "há %1$@";
+
+"quick_switch.routing_protected" = "Modo de roteamento: gerenciar no CC Switch";
+"quick_switch.state_untrusted" = "Modo não confirmado: gerenciar no CC Switch";
+"quick_switch.manage_in_cc_switch" = "Gerenciar no CC Switch";

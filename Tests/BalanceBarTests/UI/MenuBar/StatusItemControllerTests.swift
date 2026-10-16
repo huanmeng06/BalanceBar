@@ -4183,3 +4183,53 @@ extension StatusItemControllerTests {
         XCTAssertNotEqual(first, second)
     }
 }
+
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testQuickSwitchProtectionSurvivesNativeValidationRefreshAndSorting() throws {
+        var switches = 0
+        var opens = 0
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: { opens += 1 }, quit: {}, switchProvider: { _ in switches += 1 },
+            openProviderWebsite: {}, openStatusLink: { _ in }, iconChanged: { _ in }))
+        defer { controller.teardown() }
+        let base = aggregationInput(count: 4)
+        func input(_ safety: CCSwitchQuickSwitchSafety, reversed: Bool = false) -> StatusItemController.MenuInput {
+            .init(choices: reversed ? Array(base.choices.reversed()) : base.choices,
+                quickSwitchSummaries: base.quickSwitchSummaries, activeClient: .codex, openAIAccount: nil,
+                statusLinks: [], showQuickSwitchMenu: true, showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false, showStatusMenu: false,
+                aggregatedProviders: base.aggregatedProviders, quickSwitchSafety: safety)
+        }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input(.blockedAggregation), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let root = try XCTUnwrap(menu.items.first?.view)
+        for (index, safety) in [CCSwitchQuickSwitchSafety.blockedAggregation, .blockedRouting, .blockedUntrusted, .allowedDirect, .blockedAggregation].enumerated() {
+            controller.menuWillOpen(menu)
+            controller.updateMenu(input: input(safety, reversed: index.isMultiple(of: 2)))
+            let quick = try XCTUnwrap(menu.items.first { $0.identifier?.rawValue == "quickSwitch.parent" }?.submenu)
+            quick.update() // AppKit used to override manually disabled items here.
+            XCTAssertFalse(quick.autoenablesItems)
+            let providers = quick.items.filter { $0.representedObject is String }
+            XCTAssertFalse(providers.isEmpty)
+            XCTAssertTrue(providers.allSatisfy { $0.isEnabled == !safety.isBlocked })
+            XCTAssertTrue(providers.allSatisfy { ($0.action == nil) == safety.isBlocked })
+            if safety.isBlocked {
+                XCTAssertEqual(quick.items.first?.title, safety.hint)
+                XCTAssertFalse(quick.items.first!.isEnabled)
+                for provider in providers {
+                    _ = NSApp.sendAction(NSSelectorFromString("switchProvider:"), to: controller, from: provider)
+                }
+                let manage = try XCTUnwrap(quick.items.firstIndex { $0.identifier?.rawValue == "quickSwitch.manage" })
+                quick.performActionForItem(at: manage)
+                XCTAssertGreaterThan(opens, 0)
+            } else {
+                XCTAssertFalse(quick.items.contains { $0.identifier?.rawValue == "quickSwitch.manage" })
+            }
+            XCTAssertEqual(switches, 0)
+            XCTAssertTrue(menu.items.first?.view === root)
+            controller.menuDidClose(menu)
+        }
+    }
+}

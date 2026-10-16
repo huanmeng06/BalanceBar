@@ -578,7 +578,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var aggregationRepository: CCSwitchAggregationRepository!
     private var aggregationDisplays: [AggregatedProviderDisplay] = []
     private var snapshotProviderID: String?
-    private var aggregationQuickSwitchBlocked = false
+    private var aggregationQuickSwitchBlocked = true
+    private var quickSwitchSafety: CCSwitchQuickSwitchSafety = .blockedUntrusted
     private var currentProviderIsOfficialCache = false
     private var currentAccountProfileCache: CodexAccountProfile?
     private var ccSwitchLifecycleObservers: [NSObjectProtocol] = []
@@ -782,6 +783,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                         providerID: providerID
                     )
                 },
+                quickSwitchSafetyChanged: { [weak self] safety in
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.quickSwitchSafety = safety
+                        self.aggregationQuickSwitchBlocked = safety.isBlocked
+                        self.refreshStatusItemMenuInput()
+                    }
+                },
                 aggregationChanged: { [weak self] displays, blocked in
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.aggregationDisplays != displays || self.aggregationQuickSwitchBlocked != blocked else { return }
@@ -806,6 +815,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         providerSwitchCoordinator = ProviderSwitchCoordinator(
             repository: repository,
             aggregationRepository: aggregationRepository,
+            isClientCurrent: { [weak self] appType in
+                DispatchQueue.main.sync { self?.activeClient.appType == appType }
+            },
             actions: ProviderSwitchActions(
                 changed: { [weak self] in
                     guard let self else { return }
@@ -950,7 +962,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             bankedResetDisplayMode: preferences.menuBankedResetDisplayMode,
             showsAvailableUpdateBadge: showsAvailableUpdateBadge,
             aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
-            aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked
+            aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked,
+            quickSwitchSafety: activeClient == .codex ? quickSwitchSafety : .allowedDirect
         )
     }
 

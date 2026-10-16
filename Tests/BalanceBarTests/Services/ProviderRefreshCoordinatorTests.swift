@@ -24,6 +24,12 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             appSettingsURL: temporaryDirectoryURL.appendingPathComponent("settings.json"),
             homeDirectoryURL: temporaryDirectoryURL
         )
+        let codex = temporaryDirectoryURL.appendingPathComponent(".codex")
+        try FileManager.default.createDirectory(at: codex, withIntermediateDirectories: true)
+        try Data("model_provider = \"custom\"\n[model_providers.custom]\nbase_url = \"https://codex.provider.test\"\n".utf8).write(to: codex.appendingPathComponent("config.toml"))
+        try Data(#"{"OPENAI_API_KEY":"fixture-key"}"#.utf8).write(to: codex.appendingPathComponent("auth.json"))
+        try FileManager.default.createDirectory(at: repository.deviceStateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"apps":{"codex":{"mode":"direct"}}}"#.utf8).write(to: repository.deviceStateURL)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [DelayedBalanceURLProtocol.self]
         session = URLSession(configuration: configuration)

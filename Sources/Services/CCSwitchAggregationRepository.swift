@@ -252,7 +252,7 @@ final class CCSwitchAggregationRepository {
 
     let stateURL: URL
     private let sources: ([String]) throws -> [ProviderSummarySource]
-    private let proxyTakeoverStatus: () -> CCSwitchProxyTakeoverStatus
+    private let safety: () -> CCSwitchQuickSwitchSafety
     private let read: (URL) throws -> Data
     private let isRunning: () -> Bool
     private let now: () -> Date
@@ -274,15 +274,16 @@ final class CCSwitchAggregationRepository {
     }
 
     init(repository: CCSwitchRepository,
-         stateURL: URL = CCSwitchAggregationRepository.defaultStateURL,
+         stateURL: URL? = nil,
          isRunning: @escaping () -> Bool = {
              !NSRunningApplication.runningApplications(withBundleIdentifier: "com.ccswitch.desktop").isEmpty
          },
          read: @escaping (URL) throws -> Data = { try Data(contentsOf: $0) },
          now: @escaping () -> Date = Date.init) {
+        let stateURL = stateURL ?? repository.deviceStateURL
         self.stateURL = stateURL
         self.sources = { try repository.loadSummarySourcesChecked(appType: "codex", providerIDs: $0) }
-        self.proxyTakeoverStatus = { repository.proxyTakeoverStatus(appType: "codex") }
+        self.safety = { repository.quickSwitchSafety(stateURL: stateURL, readState: read) }
         self.read = read
         self.isRunning = isRunning
         self.now = now
@@ -327,22 +328,17 @@ final class CCSwitchAggregationRepository {
     }
 
     private func confirmedAbsenceOrUntrusted() -> State {
-        let proxyStatus = proxyTakeoverStatus()
+        let decision = safety()
         stateLock.lock()
         defer { stateLock.unlock() }
-        switch proxyStatus {
-        case .active:
-            wasAggregating = true
-            quickSwitchProtectionActive = true
-        case .inactive:
+        if !decision.isBlocked {
             wasAggregating = false
             quickSwitchProtectionActive = false
             absenceBegan = nil
             absenceConfirmed = false
             return .inactive
-        case .unavailable:
-            quickSwitchProtectionActive = true
         }
+        quickSwitchProtectionActive = true
         if absenceConfirmed { return .inactive }
         let current = now()
         if absenceBegan == nil { absenceBegan = current }
@@ -354,44 +350,8 @@ final class CCSwitchAggregationRepository {
         return .untrusted
     }
 
-    /// Recheck at the write boundary, even if the menu was built in another mode.
-    /// A missing file is compatible with legacy CC Switch; unreadable/corrupt
-    /// existing state must never authorize the old stop/write/restart transaction.
-    func blocksQuickSwitch() -> Bool {
-        do {
-            let state = try deviceState()
-            guard state.version == nil || state.version == 1 else { return true }
-            guard let codex = state.apps.codex else { return missingStateProtection() }
-            let blocked = codex.pending || (codex.mode != "direct" && codex.mode != "proxy")
-                || (codex.mode == "proxy" && codex.stack?.enabled == true)
-            if !codex.pending { rememberAggregation(codex.mode == "proxy" && codex.stack?.enabled == true) }
-            return blocked
-        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return missingStateProtection()
-        } catch { return true }
-    }
+    func quickSwitchSafety() -> CCSwitchQuickSwitchSafety { safety() }
 
-    private func missingStateProtection() -> Bool {
-        switch proxyTakeoverStatus() {
-        case .active:
-            stateLock.lock()
-            wasAggregating = true
-            quickSwitchProtectionActive = true
-            stateLock.unlock()
-            return true
-        case .inactive:
-            stateLock.lock()
-            wasAggregating = false
-            quickSwitchProtectionActive = false
-            absenceBegan = nil
-            absenceConfirmed = false
-            stateLock.unlock()
-            return false
-        case .unavailable:
-            stateLock.lock()
-            quickSwitchProtectionActive = true
-            stateLock.unlock()
-            return true
-        }
-    }
+    /// Independently re-read local evidence at every destructive boundary.
+    func blocksQuickSwitch() -> Bool { safety().isBlocked }
 }

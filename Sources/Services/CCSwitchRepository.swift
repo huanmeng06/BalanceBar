@@ -17,6 +17,20 @@ enum CCSwitchProxyTakeoverStatus: Equatable {
     case unavailable
 }
 
+enum CCSwitchQuickSwitchSafety: Equatable {
+    case allowedDirect, allowedLegacyDirect
+    case blockedAggregation, blockedRouting, blockedUntrusted
+
+    var isBlocked: Bool { self != .allowedDirect && self != .allowedLegacyDirect }
+    var hint: String {
+        switch self {
+        case .blockedAggregation: return tr(.keyAggregationManageInCCSwitch)
+        case .blockedRouting: return tr(.keyQuickSwitchRoutingProtected)
+        default: return tr(.keyQuickSwitchStateUntrusted)
+        }
+    }
+}
+
 enum CCSwitchReadError: Error {
     case sqlite(Int32)
     var sqliteCode: Int32 { switch self { case .sqlite(let code): return code } }
@@ -93,6 +107,10 @@ final class CCSwitchRepository {
         }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 100)
+        return configurationRevision(appType: appType, providerID: providerID, database: database)
+    }
+
+    private func configurationRevision(appType: String, providerID: String, database: OpaquePointer) -> String? {
         let sql = "SELECT id, name, settings_config, meta, category, website_url FROM providers WHERE app_type = ? AND id = ? LIMIT 1"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return nil }
@@ -120,6 +138,10 @@ final class CCSwitchRepository {
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 100)
 
+        return proxyTakeoverStatus(appType: appType, database: database)
+    }
+
+    private func proxyTakeoverStatus(appType: String, database: OpaquePointer, includeSyncedEnabled: Bool = true) -> CCSwitchProxyTakeoverStatus {
         let tableExists: (String) -> Bool? = { table in
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
@@ -151,8 +173,9 @@ final class CCSwitchRepository {
         }
 
         var active = false
-        if hasProxyConfig, proxyColumns.contains("enabled") {
-            let sql = "SELECT EXISTS(SELECT 1 FROM proxy_config WHERE app_type = ? AND enabled = 1)"
+        if hasProxyConfig, includeSyncedEnabled, proxyColumns.contains("enabled") {
+            let predicate = proxyColumns.contains("live_takeover_active") ? "(enabled = 1 OR live_takeover_active = 1)" : "enabled = 1"
+            let sql = "SELECT EXISTS(SELECT 1 FROM proxy_config WHERE app_type = ? AND \(predicate))"
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
             guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
@@ -169,7 +192,7 @@ final class CCSwitchRepository {
             bind(appType, to: statement, at: 1)
             guard sqlite3_step(statement) == SQLITE_ROW else { return .unavailable }
             active = sqlite3_column_int(statement, 0) != 0
-        } else if hasProxyConfig {
+        } else if hasProxyConfig && !proxyColumns.contains("enabled") {
             return .unavailable
         }
 
@@ -184,6 +207,170 @@ final class CCSwitchRepository {
             active = active || sqlite3_column_int(statement, 0) != 0
         }
         return active ? .active : .inactive
+    }
+
+    var deviceStateURL: URL { homeDirectoryURL.appendingPathComponent(".cc-switch/live-state.json") }
+    private var proxyHistoryKey: String {
+        let scope = homeDirectoryURL.standardizedFileURL.path + "|" + databaseURL.standardizedFileURL.path + "|codex"
+        return "quickSwitch.proxyObserved." + SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    func quickSwitchSafety(stateURL: URL? = nil, readState: (URL) throws -> Data = { try Data(contentsOf: $0) }) -> CCSwitchQuickSwitchSafety {
+        // Remember a local proxy observation even when the database is temporarily unavailable.
+        if let data = try? readState(stateURL ?? deviceStateURL),
+           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let codex = (object["apps"] as? [String: Any])?["codex"] as? [String: Any],
+           codex["mode"] as? String == "proxy", !UserDefaults.standard.bool(forKey: proxyHistoryKey) {
+            UserDefaults.standard.set(true, forKey: proxyHistoryKey)
+        }
+        var database: OpaquePointer?
+        let code = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
+        guard code == SQLITE_OK, let database else {
+            if let database { sqlite3_close(database) }
+            return .blockedUntrusted
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 100)
+        return quickSwitchSafety(database: database, stateURL: stateURL ?? deviceStateURL, readState: readState)
+    }
+
+    private func quickSwitchSafety(database: OpaquePointer, stateURL: URL, liveProviderID: String? = nil, readState: (URL) throws -> Data) -> CCSwitchQuickSwitchSafety {
+        do {
+            func stateData() throws -> Data? {
+                do { return try readState(stateURL) }
+                catch let error as CocoaError where error.code == .fileReadNoSuchFile { return nil }
+            }
+            let before = try stateData()
+            var mode: String?
+            if let before {
+                guard let object = try JSONSerialization.jsonObject(with: before) as? [String: Any],
+                      object["version"] == nil || ((object["version"] as? NSNumber).map { CFGetTypeID($0) != CFBooleanGetTypeID() && $0.intValue == 1 && $0.doubleValue == 1 } == true),
+                      let apps = object["apps"] as? [String: Any] else { return .blockedUntrusted }
+                if let raw = apps["codex"] {
+                    guard let codex = raw as? [String: Any],
+                          codex["pending"] == nil || codex["pending"] is NSNull else { return .blockedUntrusted }
+                    mode = codex["mode"] as? String
+                    if mode == "proxy" {
+                        if !UserDefaults.standard.bool(forKey: proxyHistoryKey) { UserDefaults.standard.set(true, forKey: proxyHistoryKey) }
+                        return (codex["stack"] as? [String: Any])?["enabled"] as? Bool == true
+                            ? .blockedAggregation : .blockedRouting
+                    }
+                    guard mode == "direct", codex["attached"] as? Bool != true else { return .blockedUntrusted }
+                }
+            }
+            let evidence = proxyTakeoverStatus(appType: "codex", database: database, includeSyncedEnabled: mode != "direct")
+            guard evidence == .inactive else { return .blockedUntrusted }
+            if mode == nil && UserDefaults.standard.bool(forKey: proxyHistoryKey) { return .blockedUntrusted }
+            guard directCodexConfigurationMatches(database: database, providerID: liveProviderID), before == (try stateData()) else { return .blockedUntrusted }
+            if mode == "direct" {
+                if UserDefaults.standard.bool(forKey: proxyHistoryKey) { UserDefaults.standard.removeObject(forKey: proxyHistoryKey) }
+                return .allowedDirect
+            }
+            return .allowedLegacyDirect
+        } catch { return .blockedUntrusted }
+    }
+
+    /// Compare only the effective route and credential strategy, never unrelated MCP/project content.
+    private func directCodexConfigurationMatches(database: OpaquePointer, providerID: String? = nil) -> Bool {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, "SELECT settings_config, category FROM providers WHERE app_type = 'codex' AND " + (providerID == nil ? "is_current = 1" : "id = ?"), -1, &statement, nil) == SQLITE_OK,
+              let statement else { return false }
+        if let providerID { bind(providerID, to: statement, at: 1) }
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let stored = text(from: statement, column: 0),
+              let row = try? JSONSerialization.jsonObject(with: Data(stored.utf8)) as? [String: Any] else { return false }
+        let official = text(from: statement, column: 1) == "official"
+        guard sqlite3_step(statement) == SQLITE_DONE else { return false }
+        let directory = homeDirectoryURL.appendingPathComponent(".codex")
+        guard let config = try? String(contentsOf: directory.appendingPathComponent("config.toml"), encoding: .utf8),
+              !config.contains("PROXY_MANAGED"), !config.contains("cc-switch-official") else { return false }
+        let authURL = directory.appendingPathComponent("auth.json")
+        let auth: [String: Any]
+        do {
+            let data = try Data(contentsOf: authURL)
+            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  !String(decoding: data, as: UTF8.self).contains("PROXY_MANAGED") else { return false }
+            auth = object
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile { auth = [:] }
+        catch { return false }
+        guard let actual = Self.codexRoute(config) else { return false }
+        let expected: [String: String]
+        if let text = row["config"] as? String {
+            guard let route = Self.codexRoute(text) else { return false }
+            expected = route
+        } else if let url = row["base_url"] as? String {
+            expected = ["base_url": url]
+        } else if official { expected = [:] }
+        else { return false }
+        // Empty route means Codex's built-in official route, including the existing unified-history mirror.
+        guard actual.filter({ $0.key != "experimental_bearer_token" }) == expected.filter({ $0.key != "experimental_bearer_token" }) else { return false }
+        if official { return actual["experimental_bearer_token"] == nil }
+        let expectedAuth = row["auth"] as? [String: Any] ?? [:]
+        let expectedKey = expected["experimental_bearer_token"] ?? expectedAuth["OPENAI_API_KEY"] as? String ?? row["api_key"] as? String
+        let actualKey = actual["experimental_bearer_token"] ?? auth["OPENAI_API_KEY"] as? String
+        return expectedKey == actualKey && (expectedKey != nil || expected["env_key"] != nil)
+    }
+
+    /// Strict single-line routing subset. Unsupported/ambiguous routing syntax fails closed.
+    private static func codexRoute(_ config: String) -> [String: String]? {
+        var section = ""
+        var values: [String: [String: String]] = [:]
+        let relevant: Set<String> = ["model_provider", "base_url", "openai_base_url", "env_key", "experimental_bearer_token", "wire_api"]
+        for raw in config.components(separatedBy: .newlines) {
+            // Multiline strings require a full TOML parser; never infer a route from their contents.
+            guard !raw.contains("\"\"\""), !raw.contains("'" + "''") else { return nil }
+            var quoted: Character?
+            var escaped = false
+            var line = ""
+            for char in raw {
+                if char == "#" && quoted == nil { break }
+                line.append(char)
+                if escaped { escaped = false; continue }
+                if char == "\\" && quoted == "\"" { escaped = true; continue }
+                if let quote = quoted { if char == quote { quoted = nil } }
+                else if char == "\"" || char == "'" { quoted = char }
+            }
+            line = line.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+            if line.hasPrefix("[") {
+                guard line.hasSuffix("]") else { return nil }
+                if line.hasPrefix("[[") {
+                    guard !line.contains("model_providers") else { return nil }
+                    section = "ignored-array"
+                    continue
+                }
+                section = String(line.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+                continue
+            }
+            guard section.isEmpty || section.hasPrefix("model_providers.") else { continue }
+            guard let equal = line.firstIndex(of: "=") else { return nil }
+            let rawKey = line[..<equal].trimmingCharacters(in: .whitespaces)
+            let key: String
+            if rawKey.hasPrefix("\"") {
+                guard let parsed = try? JSONSerialization.jsonObject(with: Data(rawKey.utf8), options: .fragmentsAllowed) as? String else { return nil }
+                key = parsed
+            } else if rawKey.hasPrefix("'") && rawKey.hasSuffix("'") { key = String(rawKey.dropFirst().dropLast()) }
+            else { key = rawKey }
+            if section.isEmpty && (key == "profile" || key == "model_providers" || key.hasPrefix("model_providers.")) { return nil }
+            guard relevant.contains(key) else { continue }
+            let literal = line[line.index(after: equal)...].trimmingCharacters(in: .whitespaces)
+            let value: String
+            if literal.hasPrefix("\""), let parsed = try? JSONSerialization.jsonObject(with: Data(literal.utf8), options: .fragmentsAllowed) as? String { value = parsed }
+            else if literal.hasPrefix("'"), literal.hasSuffix("'"), literal.count >= 2 { value = String(literal.dropFirst().dropLast()) }
+            else { return nil }
+            guard values[section]?[key] == nil else { return nil }
+            values[section, default: [:]][key] = value
+        }
+        let top = values[""] ?? [:]
+        let selector = top["model_provider"] ?? "openai"
+        guard selector.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else { return nil }
+        var route = values["model_providers." + selector] ?? [:]
+        if route.isEmpty && selector != "openai" { return nil }
+        if let url = top["openai_base_url"] ?? top["base_url"], route["base_url"] == nil { route["base_url"] = url }
+        route.removeValue(forKey: "model_provider")
+        if route["wire_api"] == "responses" { route.removeValue(forKey: "wire_api") }
+        return route
     }
 
     func loadCurrentChecked(appType: String) throws -> CCSwitchProvider? {
@@ -445,14 +632,20 @@ final class CCSwitchRepository {
         return url
     }
 
-    func switchCurrent(to providerID: String, appType: String) throws {
+    /// Tests can change evidence at exact transaction boundaries; production leaves this nil.
+    var switchWriteObserver: ((String) -> Void)?
+
+    func switchCurrent(to providerID: String, appType: String,
+                       expectedCurrentRevision: String? = nil, expectedTargetRevision: String? = nil) throws {
         var database: OpaquePointer?
-        guard sqlite3_open_v2(
+        let openCode = sqlite3_open_v2(
             databaseURL.path,
             &database,
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX,
             nil
-        ) == SQLITE_OK, let database else {
+        )
+        guard openCode == SQLITE_OK, let database else {
+            if let database { sqlite3_close(database) }
             throw switchError(tr(.keyCCSwitchRepositoryUnableToOpenTheCcSwitchDatabase))
         }
         defer { sqlite3_close(database) }
@@ -462,16 +655,52 @@ final class CCSwitchRepository {
             throw switchError(tr(.keyCCSwitchRepositoryProviderDoesNotExist))
         }
 
-        var appSettings = (try? Data(contentsOf: appSettingsURL))
-            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
-        let preserveOfficialAuth = appSettings["preserveCodexOfficialAuthOnSwitch"] as? Bool ?? false
-        let unifyHistory = appSettings["unifyCodexSessionHistory"] as? Bool ?? true
-
         if appType != "codex", appType != "claude" {
             throw switchError(tr(.keyCCSwitchRepositoryProviderDoesNotExist))
         }
+        let readFile: (URL) throws -> Data? = { url in
+            do { return try Data(contentsOf: url) }
+            catch let error as CocoaError where error.code == .fileReadNoSuchFile { return nil }
+        }
+        let codexDirectory = homeDirectoryURL.appendingPathComponent(".codex", isDirectory: true)
+        let inputURLs = appType == "codex"
+            ? [appSettingsURL, codexDirectory.appendingPathComponent("config.toml"), codexDirectory.appendingPathComponent("auth.json"), deviceStateURL]
+            : [appSettingsURL, homeDirectoryURL.appendingPathComponent(".claude/settings.json")]
+        let inputs = try inputURLs.map { (url: $0, data: try readFile($0)) }
+        let initialState = inputs.first { $0.url == deviceStateURL }?.data
+        var appSettings: [String: Any] = [:]
+        if let data = inputs.first?.data {
+            guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw switchError(tr(.keyQuickSwitchStateUntrusted))
+            }
+            appSettings = parsed
+        }
+        let preserveOfficialAuth = appSettings["preserveCodexOfficialAuthOnSwitch"] as? Bool ?? false
+        let unifyHistory = appSettings["unifyCodexSessionHistory"] as? Bool ?? true
 
-        if !proxyTakeoverIsActive(appType: appType, database: database) {
+        let currentID: String? = {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            guard sqlite3_prepare_v2(database, "SELECT id FROM providers WHERE app_type = ? AND is_current = 1", -1, &statement, nil) == SQLITE_OK,
+                  let statement else { return nil }
+            bind(appType, to: statement, at: 1)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            return text(from: statement, column: 0)
+        }()
+        let currentRevision = currentID.flatMap { configurationRevision(appType: appType, providerID: $0, database: database) }
+        let targetRevision = configurationRevision(appType: appType, providerID: providerID, database: database)
+        guard let currentRevision, let targetRevision,
+              expectedCurrentRevision == nil || expectedCurrentRevision == currentRevision,
+              expectedTargetRevision == nil || expectedTargetRevision == targetRevision else {
+            throw switchError(tr(.keyQuickSwitchStateUntrusted))
+        }
+        if appType == "codex" {
+            guard !quickSwitchSafety(database: database, stateURL: deviceStateURL, readState: { try Data(contentsOf: $0) }).isBlocked else {
+                throw switchError(tr(.keyQuickSwitchStateUntrusted))
+            }
+        }
+        var writes: [(url: URL, data: Data)] = []
+        if appType == "codex" || !proxyTakeoverIsActive(appType: appType, database: database) {
             if appType == "claude" {
                 guard
                     let object = try? JSONSerialization.jsonObject(
@@ -483,15 +712,11 @@ final class CCSwitchRepository {
                 let settingsURL = homeDirectoryURL
                     .appendingPathComponent(".claude", isDirectory: true)
                     .appendingPathComponent("settings.json")
-                try FileManager.default.createDirectory(
-                    at: settingsURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
                 let settingsData = try JSONSerialization.data(
                     withJSONObject: object,
                     options: [.prettyPrinted, .sortedKeys]
                 )
-                try settingsData.write(to: settingsURL, options: .atomic)
+                writes.append((settingsURL, settingsData))
             } else {
                 guard let stored = try? JSONSerialization.jsonObject(with: Data(target.settingsConfig.utf8)) as? [String: Any],
                       let auth = stored["auth"],
@@ -502,11 +727,10 @@ final class CCSwitchRepository {
                 let codexDirectory = homeDirectoryURL.appendingPathComponent(".codex", isDirectory: true)
                 let authURL = codexDirectory.appendingPathComponent("auth.json")
                 let configURL = codexDirectory.appendingPathComponent("config.toml")
-                try FileManager.default.createDirectory(at: codexDirectory, withIntermediateDirectories: true)
 
                 // CC Switch syncs MCP entries separately after a provider switch.
                 // Preserve the currently enabled live MCP sections here as well.
-                let liveConfig = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+                let liveConfig = inputs.first(where: { $0.url == configURL })?.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
                 config = replacingMCPSections(in: config, with: mcpSections(from: liveConfig))
 
                 if target.category == "official", unifyHistory {
@@ -520,17 +744,79 @@ final class CCSwitchRepository {
                     }
                 } else {
                     let authData = try JSONSerialization.data(withJSONObject: auth, options: [.prettyPrinted, .sortedKeys])
-                    try authData.write(to: authURL, options: .atomic)
+                    writes.append((authURL, authData))
                 }
-                try Data(config.utf8).write(to: configURL, options: .atomic)
+                writes.append((configURL, Data(config.utf8)))
             }
         }
 
+        if appType == "claude" {
+            appSettings["currentProviderClaude"] = providerID
+        } else if appType == "codex" {
+            appSettings["currentProviderCodex"] = providerID
+        }
+        let settingsData = try JSONSerialization.data(withJSONObject: appSettings, options: [.prettyPrinted, .sortedKeys])
+        writes.append((appSettingsURL, settingsData))
+
+        switchWriteObserver?("afterPrepare")
         guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
             throw switchError(tr(.keyCCSwitchRepositoryTheCcSwitchDatabaseIsBusy))
         }
         var committed = false
-        defer { if !committed { sqlite3_exec(database, "ROLLBACK", nil, nil, nil) } }
+        var published: [(url: URL, before: Data?, after: Data)] = []
+        let originals = writes.map { file in inputs.first(where: { $0.url == file.url })!.data }
+        defer {
+            if !committed {
+                sqlite3_exec(database, "ROLLBACK", nil, nil, nil)
+                for file in published.reversed() {
+                    // Never overwrite a subsequent writer's changes during recovery.
+                    if (try? readFile(file.url)) == file.after {
+                        if let before = file.before { try? before.write(to: file.url, options: .atomic) }
+                        else { try? FileManager.default.removeItem(at: file.url) }
+                    }
+                }
+            }
+        }
+        func validateInputs() throws {
+            for input in inputs {
+                let expected = published.first(where: { $0.url == input.url })?.after ?? input.data
+                guard (try readFile(input.url)) == expected else { throw switchError(tr(.keyQuickSwitchStateUntrusted)) }
+            }
+        }
+        func validate(liveProviderID: String? = nil) throws {
+            guard let currentID, isCurrent(providerID: currentID, appType: appType, database: database),
+                  loadSwitchTarget(providerID, appType: appType, database: database) == target,
+                  configurationRevision(appType: appType, providerID: currentID, database: database) == currentRevision,
+                  configurationRevision(appType: appType, providerID: providerID, database: database) == targetRevision else {
+                throw switchError(tr(.keyQuickSwitchStateUntrusted))
+            }
+            if appType == "codex" {
+                guard (try readFile(deviceStateURL)) == initialState,
+                      !quickSwitchSafety(database: database, stateURL: deviceStateURL, liveProviderID: liveProviderID,
+                          readState: { try Data(contentsOf: $0) }).isBlocked else {
+                    throw switchError(tr(.keyQuickSwitchStateUntrusted))
+                }
+            }
+        }
+        switchWriteObserver?("beforePublish")
+        try validateInputs()
+        try validate()
+        for (index, file) in writes.enumerated() {
+            switchWriteObserver?("beforeFile")
+            try validateInputs()
+            if appType == "codex" {
+                guard (try readFile(deviceStateURL)) == initialState else {
+                    throw switchError(tr(.keyQuickSwitchStateUntrusted))
+                }
+            }
+            try FileManager.default.createDirectory(at: file.url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try file.data.write(to: file.url, options: .atomic)
+            published.append((file.url, originals[index], file.data))
+        }
+        switchWriteObserver?("beforePointer")
+        try validateInputs()
+        try validate(liveProviderID: providerID)
+        try validateInputs()
         try execute(
             database,
             sql: "UPDATE providers SET is_current = 0 WHERE app_type = ?",
@@ -549,16 +835,19 @@ final class CCSwitchRepository {
         }
         committed = true
 
-        if appType == "claude" {
-            appSettings["currentProviderClaude"] = providerID
-        } else if appType == "codex" {
-            appSettings["currentProviderCodex"] = providerID
-        }
-        let settingsData = try JSONSerialization.data(withJSONObject: appSettings, options: [.prettyPrinted, .sortedKeys])
-        try settingsData.write(to: appSettingsURL, options: .atomic)
     }
 
-    private struct SwitchTarget {
+    private func isCurrent(providerID: String, appType: String, database: OpaquePointer) -> Bool {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, "SELECT 1 FROM providers WHERE id = ? AND app_type = ? AND is_current = 1", -1, &statement, nil) == SQLITE_OK,
+              let statement else { return false }
+        bind(providerID, to: statement, at: 1)
+        bind(appType, to: statement, at: 2)
+        return sqlite3_step(statement) == SQLITE_ROW
+    }
+
+    private struct SwitchTarget: Equatable {
         let settingsConfig: String
         let category: String?
     }

@@ -20,11 +20,19 @@ final class CCSwitchRepositoryTests: XCTestCase {
         databaseURL = temporaryDirectoryURL.appendingPathComponent("cc-switch.db")
         appSettingsURL = temporaryDirectoryURL.appendingPathComponent("settings.json")
         try createFixtureDatabase()
+        let codex = temporaryDirectoryURL.appendingPathComponent(".codex")
+        try FileManager.default.createDirectory(at: codex, withIntermediateDirectories: true)
+        try Data("model_provider = \"custom\"\n[model_providers.custom]\nbase_url = \"https://provider.example\"\n".utf8).write(to: codex.appendingPathComponent("config.toml"))
+        try Data(#"{"OPENAI_API_KEY":"fixture-key"}"#.utf8).write(to: codex.appendingPathComponent("auth.json"))
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET settings_config = '{\"auth\":{},\"config\":\"\"}' WHERE id = 'codex-official'")
+        }
         repository = CCSwitchRepository(
             databaseURL: databaseURL,
             appSettingsURL: appSettingsURL,
             homeDirectoryURL: temporaryDirectoryURL
         )
+        try writeDeviceMode("direct")
     }
 
     override func tearDownWithError() throws {
@@ -65,9 +73,10 @@ final class CCSwitchRepositoryTests: XCTestCase {
 
         XCTAssertEqual(try currentValue(for: "codex-custom"), 0)
         XCTAssertEqual(try currentValue(for: "codex-official"), 1)
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: temporaryDirectoryURL.appendingPathComponent(".codex").path
-        ))
+        let config = try String(contentsOf: temporaryDirectoryURL.appendingPathComponent(".codex/config.toml"), encoding: .utf8)
+        XCTAssertTrue(config.contains("model_provider = \"custom\""))
+        XCTAssertFalse(config.contains("https://provider.example"))
+        XCTAssertEqual(repository.quickSwitchSafety(), .allowedDirect)
 
         let settingsData = try XCTUnwrap(Data(contentsOf: appSettingsURL))
         let settings = try XCTUnwrap(
@@ -219,9 +228,190 @@ final class CCSwitchRepositoryTests: XCTestCase {
 }
 
 extension CCSwitchRepositoryTests {
+    private func writeDeviceMode(_ mode: String, stack: Bool = false) throws {
+        let url = repository.deviceStateURL
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let object: [String: Any] = ["version": 1, "apps": ["codex": ["mode": mode, "attached": mode == "proxy", "stack": ["enabled": stack]]]]
+        try JSONSerialization.data(withJSONObject: object).write(to: url, options: .atomic)
+    }
+
+    func testLocalModeOverridesSyncedEnabledAndRequiresMatchingConfiguration() throws {
+        XCTAssertEqual(repository.quickSwitchSafety(), .allowedDirect, "synced enabled=1 cannot permanently lock verified direct")
+        try withDatabase { db in try execute(db, sql: "UPDATE proxy_config SET enabled = 0, live_takeover_active = 0") }
+        XCTAssertEqual(repository.quickSwitchSafety(readState: { _ in throw CocoaError(.fileReadNoSuchFile) }), .allowedLegacyDirect)
+        try writeDeviceMode("proxy")
+        XCTAssertEqual(repository.quickSwitchSafety(), .blockedRouting)
+        try writeDeviceMode("proxy", stack: true)
+        XCTAssertEqual(repository.quickSwitchSafety(), .blockedAggregation)
+        try writeDeviceMode("direct")
+        XCTAssertEqual(repository.quickSwitchSafety(), .allowedDirect)
+        try Data("model_provider = \"other\"\n[model_providers.other]\nbase_url = \"https://other.example\"".utf8)
+            .write(to: temporaryDirectoryURL.appendingPathComponent(".codex/config.toml"))
+        XCTAssertEqual(repository.quickSwitchSafety(), .blockedUntrusted)
+    }
+
+    func testChangedTargetRevisionBeforeTerminateAbortsAndLocalMarkerIsNotNegated() throws {
+        var terminated = false
+        let failed = expectation(description: "revision changed before termination")
+        let instance = ProviderSwitchRuntime.Instance(applicationURL: nil, terminate: { terminated = true; return true }, isTerminated: { terminated })
+        let runtime = ProviderSwitchRuntime(running: {
+            try! self.withDatabase { db in try self.execute(db, sql: "UPDATE providers SET name = 'edited' WHERE id = 'codex-official'") }
+            return instance
+        }, reopen: { _ in XCTFail("must not reopen an application we did not stop") })
+        let queue = DispatchQueue(label: "fixture.switch.revision")
+        let coordinator = ProviderSwitchCoordinator(repository: repository, queue: queue, runtime: runtime,
+            actions: .init(changed: { XCTFail("must not switch stale target") }, failed: { _ in failed.fulfill() }))
+        coordinator.switchProvider(providerID: "codex-official", appType: "codex", providerName: "fixture")
+        wait(for: [failed], timeout: 3)
+        queue.sync {}
+        XCTAssertFalse(terminated)
+        XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+        try withDatabase { db in try execute(db, sql: "UPDATE proxy_config SET enabled = 0, live_takeover_active = 1") }
+        XCTAssertEqual(repository.proxyTakeoverStatus(appType: "codex"), .active)
+        XCTAssertEqual(repository.quickSwitchSafety(), .blockedUntrusted)
+    }
+
+    func testIndirectOrQuotedRoutingCannotBeMistakenForDirectEvidence() throws {
+        let configURL = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
+        for config in [
+            "profile = \"other\"\nmodel_provider = \"custom\"\n[model_providers.custom]\nbase_url = \"https://provider.example\"",
+            "model_provider = \"custom\"\nmodel_providers.custom.base_url = \"https://provider.example\"",
+            "model_provider = \"custom\"\nmodel_providers = { custom = { base_url = \"https://provider.example\" } }",
+            "\"model_provider\" = \"other\"\n[model_providers.other]\nbase_url = \"https://other.example\""
+        ] {
+            try Data(config.utf8).write(to: configURL)
+            XCTAssertEqual(repository.quickSwitchSafety(), .blockedUntrusted)
+        }
+        let valid = "\"model_provider\" = \"custom\"\n[model_providers.custom]\nbase_url = \"https://provider.example\"\n[mcp_servers.fixture]\ncommand = \"fixture\"\n[[projects.fixture.entries]]\nname = \"unrelated\""
+        try Data(valid.utf8).write(to: configURL)
+        XCTAssertEqual(repository.quickSwitchSafety(), .allowedDirect, "unrelated MCP/project fields do not decide routing")
+    }
+
+    func testRefusedTerminationAndChangedClientNeverWriteOrReopen() throws {
+        for clientChanged in [false, true] {
+            let failed = expectation(description: "cannot stop this instance")
+            var attempts = 0
+            let runtime = ProviderSwitchRuntime(running: {
+                .init(applicationURL: URL(fileURLWithPath: "/fixture/CCSwitch.app"),
+                    terminate: { attempts += 1; return false }, isTerminated: { false })
+            }, reopen: { _ in XCTFail("must not reopen an instance we did not stop") })
+            let queue = DispatchQueue(label: "fixture.switch.refused")
+            let coordinator = ProviderSwitchCoordinator(repository: repository, queue: queue, runtime: runtime,
+                isClientCurrent: { _ in !clientChanged },
+                actions: .init(changed: { XCTFail("must not write") }, failed: { _ in failed.fulfill() }))
+            coordinator.switchProvider(providerID: "codex-official", appType: "codex", providerName: "fixture")
+            wait(for: [failed], timeout: 3)
+            queue.sync {}
+            XCTAssertEqual(attempts, clientChanged ? 0 : 1)
+            XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+        }
+    }
+
+    func testPreparedWriteCannotOverwriteChangedInputsOrTarget() throws {
+        let configURL = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
+        let original = try Data(contentsOf: configURL)
+        for changedTarget in [false, true] {
+            try original.write(to: configURL)
+            repository.switchWriteObserver = { stage in
+                guard stage == "afterPrepare" else { return }
+                if changedTarget {
+                    try! self.withDatabase { db in
+                        try self.execute(db, sql: "UPDATE providers SET settings_config = '{\"auth\":{},\"config\":\"model = \\\"changed\\\"\"}' WHERE id = 'codex-official'")
+                    }
+                } else {
+                    var external = original
+                    external.append(Data("\n[mcp_servers.new]\ncommand = \"new-tool\"\n".utf8))
+                    try! external.write(to: configURL)
+                }
+            }
+            XCTAssertThrowsError(try repository.switchCurrent(to: "codex-official", appType: "codex"))
+            XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+            let result = try Data(contentsOf: configURL)
+            XCTAssertEqual(result == original, changedTarget)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+        }
+        repository.switchWriteObserver = nil
+    }
+
+    func testUnparseableOrPendingStateNeverAuthorizesDirectWrite() throws {
+        for state in ["broken", #"{"version":99,"apps":{}}"#, #"{"version":true,"apps":{"codex":{"mode":"direct"}}}"#, #"{"apps":{"codex":{"mode":"direct","pending":{}}}}"#] {
+            XCTAssertEqual(repository.quickSwitchSafety(readState: { _ in Data(state.utf8) }), .blockedUntrusted)
+        }
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) }
+            XCTAssertEqual(repository.quickSwitchSafety(), .blockedUntrusted)
+        }
+    }
+
+    func testProxyBeforeTerminateOrAfterTerminateAbortsWithoutWrites() throws {
+        for enterBeforeTerminate in [true, false] {
+            try writeDeviceMode("direct")
+            let original = try Data(contentsOf: temporaryDirectoryURL.appendingPathComponent(".codex/config.toml"))
+            var terminateCount = 0
+            var reopenCount = 0
+            var terminated = false
+            var firstLookup = true
+            let finished = expectation(description: "unsafe transition rejected")
+            let instance = ProviderSwitchRuntime.Instance(applicationURL: URL(fileURLWithPath: "/fixture/CCSwitch.app"),
+                terminate: {
+                    terminateCount += 1
+                    terminated = true
+                    try! self.writeDeviceMode("proxy", stack: true)
+                    return true
+                }, isTerminated: { terminated })
+            let runtime = ProviderSwitchRuntime(running: {
+                if terminated { return nil }
+                if firstLookup {
+                    firstLookup = false
+                    if enterBeforeTerminate { try! self.writeDeviceMode("proxy", stack: true) }
+                }
+                return instance
+            }, reopen: { _ in reopenCount += 1 })
+            let queue = DispatchQueue(label: "fixture.switch.boundary")
+            let coordinator = ProviderSwitchCoordinator(repository: repository, queue: queue, runtime: runtime,
+                actions: .init(changed: { XCTFail("must not switch") }, failed: { _ in finished.fulfill() }))
+            coordinator.switchProvider(providerID: "codex-official", appType: "codex", providerName: "fixture")
+            wait(for: [finished], timeout: 3)
+            queue.sync {} // Observe completion of restoration after the failure callback.
+            XCTAssertEqual(terminateCount, enterBeforeTerminate ? 0 : 1)
+            XCTAssertEqual(reopenCount, enterBeforeTerminate ? 0 : 1)
+            XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+            XCTAssertEqual(try Data(contentsOf: temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")), original)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+        }
+    }
+
+    func testRepositoryGuardRejectsProxyAndRollsBackPublishedFilesWithoutClobberingOthers() throws {
+        let configURL = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
+        let authURL = temporaryDirectoryURL.appendingPathComponent(".codex/auth.json")
+        let config = try Data(contentsOf: configURL)
+        let auth = try Data(contentsOf: authURL)
+        for stage in ["beforePublish", "beforePointer", "externalWriter"] {
+            try writeDeviceMode("direct")
+            try config.write(to: configURL)
+            try auth.write(to: authURL)
+            repository.switchWriteObserver = { point in
+                if point == stage || (stage == "externalWriter" && point == "beforePointer") {
+                    if stage == "externalWriter" { try! Data("external writer".utf8).write(to: configURL) }
+                    try! self.writeDeviceMode("proxy", stack: true)
+                }
+            }
+            XCTAssertThrowsError(try repository.switchCurrent(to: "codex-official", appType: "codex"))
+            XCTAssertEqual(try currentValue(for: "codex-custom"), 1)
+            XCTAssertEqual(try Data(contentsOf: configURL), stage == "externalWriter" ? Data("external writer".utf8) : config)
+            XCTAssertEqual(try Data(contentsOf: authURL), auth)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+        }
+        repository.switchWriteObserver = nil
+    }
+}
+
+extension CCSwitchRepositoryTests {
     private func aggregationState(mode: String = "proxy", attached: Bool = true, enabled: Bool = true,
                                   route: String = "codex-official", members: [String] = [], pending: Bool = false) throws -> Data {
-        var codex: [String: Any] = ["mode": mode, "attached": attached, "proxy_route": route,
+        var codex: [String: Any] = ["mode": mode, "attached": attached && mode == "proxy", "proxy_route": route,
                                    "stack": ["enabled": enabled, "members": members, "keys": ["ccs-old": "deleted"]]]
         if pending { codex["pending"] = ["op": "stack"] }
         return try JSONSerialization.data(withJSONObject: ["version": 1, "apps": ["codex": codex], "ignored": ["fixture_secret": "not_logged"]])
@@ -329,7 +519,7 @@ extension CCSwitchRepositoryTests {
         let missing = CCSwitchAggregationRepository(repository: repository, read: { _ in throw CocoaError(.fileReadNoSuchFile) })
         XCTAssertFalse(missing.blocksQuickSwitch())
         XCTAssertFalse(aggregationReader(try aggregationState(mode: "direct")).blocksQuickSwitch())
-        XCTAssertFalse(aggregationReader(try aggregationState(enabled: false)).blocksQuickSwitch())
+        XCTAssertTrue(aggregationReader(try aggregationState(enabled: false)).blocksQuickSwitch(), "routing is also managed by CCS")
         XCTAssertTrue(aggregationReader(try aggregationState()).blocksQuickSwitch())
         XCTAssertTrue(aggregationReader(Data("broken".utf8)).blocksQuickSwitch())
     }
@@ -356,23 +546,25 @@ extension CCSwitchRepositoryTests {
         XCTAssertTrue(reader.blocksQuickSwitch())
     }
 
-    func testInactiveProxyClearsKnownAggregationProtection() throws {
-        for missingCodexOnly in [false, true] {
-            var payload: Data? = try aggregationState()
-            let reader = CCSwitchAggregationRepository(repository: repository, isRunning: { true }, read: { _ in
-                guard let payload else { throw CocoaError(.fileReadNoSuchFile) }
-                return payload
-            })
-            guard case .active = reader.load() else { return XCTFail("fixture aggregation must be active") }
+    func testDatabaseZeroCannotClearKnownProxyProtection() throws {
+        var payload: Data? = try aggregationState()
+        let reader = CCSwitchAggregationRepository(repository: repository, isRunning: { true }, read: { _ in
+            guard let payload else { throw CocoaError(.fileReadNoSuchFile) }
+            return payload
+        })
+        guard case .active = reader.load() else { return XCTFail("fixture active") }
+        XCTAssertTrue(reader.blocksQuickSwitch())
+        try withDatabase { db in try execute(db, sql: "UPDATE proxy_config SET enabled = 0, live_takeover_active = 0") }
+        for absent in [nil, Data(#"{"apps":{}}"#.utf8)] as [Data?] {
+            payload = absent
             XCTAssertTrue(reader.blocksQuickSwitch())
-            payload = missingCodexOnly ? Data(#"{"apps":{}}"#.utf8) : nil
-            try withDatabase { db in
-                try execute(db, sql: "UPDATE proxy_config SET enabled = 0, live_takeover_active = 0 WHERE app_type = 'codex'")
-            }
-            XCTAssertFalse(reader.blocksQuickSwitch(), "inactive evidence must release the SAME reader's historical protection")
-            guard case .inactive = reader.load() else { return XCTFail("explicit inactive must clear historical UI state") }
-            XCTAssertFalse(reader.blocksQuickSwitch())
         }
+        let restarted = CCSwitchRepository(databaseURL: databaseURL, homeDirectoryURL: temporaryDirectoryURL)
+        XCTAssertEqual(restarted.quickSwitchSafety(readState: { _ in throw CocoaError(.fileReadNoSuchFile) }), .blockedUntrusted)
+        payload = try aggregationState(mode: "direct")
+        XCTAssertFalse(reader.blocksQuickSwitch(), "verified local direct and matching live configuration release protection")
+        payload = nil
+        XCTAssertFalse(reader.blocksQuickSwitch(), "legacy direct evidence is usable after verified exit")
     }
 
     func testProxyTakeoverSchemaAndBackupCompatibility() throws {
@@ -510,7 +702,7 @@ extension CCSwitchRepositoryTests {
         let failed = expectation(description: "busy switch fails before process or config side effects")
         let coordinator = ProviderSwitchCoordinator(repository: repository, aggregationRepository: reader,
             actions: ProviderSwitchActions(changed: { XCTFail("busy read must not switch") }, failed: { message in
-                XCTAssertEqual(message, tr(.keyCCSwitchRepositoryUnableToOpenTheCcSwitchDatabase))
+                XCTAssertEqual(message, tr(.keyQuickSwitchStateUntrusted))
                 failed.fulfill()
             }))
         try withDatabase { db in
