@@ -235,3 +235,24 @@ Review baseline: `4b3208796839856acd4f2a25ae585f28a52406cb`.
   CCSwitchRepositoryTests、ProviderRefreshCoordinatorTests、AppDelegateCompositionTests、
   DomainModelsTests、StatusItemControllerTests。
 - Draft / ai:user-test 保持。人工与白屏 P0 未验收；Ready Full CI 未运行。
+
+
+## Email tooltip refresh continuity follow-up
+
+The email bubble keeps its existing compact content and appearance. Refreshes
+that repeat the same email no longer reset native tooltip/popover state. A changed
+account still invalidates the old bubble. Email popovers animate on presentation
+unless Reduce Motion is enabled; dismissal stays immediate, matching the last
+recharge bubble's lifecycle. The recharge subtitle and its two-line bubble are
+unchanged. Direct and aggregation official cards use the same account field.
+
+Verification: three focused account-email XCTest methods PASS, including unchanged
+refresh/fallback preservation and changed-email/resize regressions. Log:
+`/private/tmp/issue493-email-tooltip-tests.log`. The targeted `xcodebuild test`
+performed unsigned Debug compilation; `git diff --check` PASS. No new full local
+XCTest run is claimed for this three-line production change.
+
+如何人工测试：使用本轮重建的 Dev，在直连官方卡与聚合官方卡分别悬浮邮箱，
+等候数次时间更新，气泡不应消失或反复弹出；首次出现有动画，鼠标移出立即关闭。
+启用减少动态效果后不应播放弹出动画；账号变化不能继续显示旧邮箱。
+充值气泡原样保留。实际 GUI/动画、白屏 P0 仍待用户验收。

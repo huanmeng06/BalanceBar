@@ -1137,6 +1137,7 @@ final class AccountEmailTextField: NSTextField {
     /// while the short-delay popover is used when the label is in a visible
     /// menu window.
     func setTooltipText(_ text: String) {
+        guard tooltipText != text else { return }
         tooltipText = text
         toolTip = text
         guard tooltipPopover != nil else { return }
@@ -1187,6 +1188,7 @@ final class AccountEmailTextField: NSTextField {
         }
 
         let popover = DashboardTextTooltip.makePopover()
+        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let tooltipViewController = AccountEmailTooltipViewController(email: tooltipText)
         tooltipViewController.loadViewIfNeeded()
         popover.contentViewController = tooltipViewController
@@ -1210,6 +1212,7 @@ final class AccountEmailTextField: NSTextField {
     }
 
     private func closeTooltipPresentation() {
+        tooltipPopover?.animates = false
         tooltipPopover?.close()
         tooltipPopover = nil
         isTooltipVisible = false

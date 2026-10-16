@@ -3267,6 +3267,23 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
     }
 
+    func testAccountEmailUnchangedRefreshPreservesActiveTooltipFallbackState() {
+        let email = "account@example.com"
+        let view = AccountEmailView(email: email, font: .systemFont(ofSize: 13),
+            textColor: .secondaryLabelColor, frame: NSRect(x: 0, y: 0, width: 240, height: 18))
+        // The active native popover suppresses the system tooltip fallback.
+        view.emailLabel.toolTip = nil
+        view.emailLabel.setHoveringForTesting(true)
+        for _ in 0..<3 {
+            view.updateText(email)
+            view.layoutSubtreeIfNeeded()
+            XCTAssertNil(view.emailLabel.toolTip, "unchanged refresh must not reset an active tooltip")
+            XCTAssertTrue(view.emailLabel.isUnderlined)
+        }
+        view.updateText("other@example.com")
+        XCTAssertEqual(view.emailLabel.toolTip, "other@example.com")
+    }
+
     func testAccountEmailViewRecomputesStaticDisplayForDynamicTextAndResize() throws {
         let email = "resize-sensitive-account@example.com"
         let view = AccountEmailView(
