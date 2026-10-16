@@ -6530,7 +6530,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lunaReserve?.remaining != nil,
             lunaReserveInsertionIndex: presentation.lunaReserveInsertionIndex,
             includesQuotaProgress: settings.showQuotaProgressBar
-                && (!isBalance || (snapshot.progressPercentage != nil && (aggregation || snapshot.balanceRecharge != nil || snapshot.balanceProgressContext == nil))),
+                && (!isBalance || snapshot.progressPercentage != nil),
             includesBankedReset: settings.showBankedReset
                 && snapshot.kind == .official
                 && bankedReset != nil,

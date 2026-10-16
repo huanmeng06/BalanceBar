@@ -3844,7 +3844,7 @@ extension StatusItemControllerTests {
 
 extension StatusItemControllerTests {
     @MainActor
-    func testOrdinaryBalanceKeepsLinkAndOriginalProgressVisibility() throws {
+    func testOrdinaryBalanceKeepsLinkAndShowsProgressFromLedger() throws {
         let controller = makeController()
         defer { controller.teardown() }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
@@ -3855,7 +3855,7 @@ extension StatusItemControllerTests {
         let card = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
         XCTAssertNotNil(card.overviewLayout?.link)
         XCTAssertNil(card.overviewLayout?.balanceRecharge)
-        XCTAssertNil(card.overviewLayout?.progress)
+        XCTAssertNotNil(card.overviewLayout?.progress)
         XCTAssertFalse(card.subviews.contains { $0.identifier?.rawValue == "balance.subtitle" })
         let recharge = BalanceRecharge(amountCents: 100, observedAt: date)
         let charged = Snapshot.balance("single", 3.34, "USD", URL(string: "https://fixture.example"), date,

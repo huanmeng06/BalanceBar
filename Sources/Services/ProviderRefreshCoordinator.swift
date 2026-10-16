@@ -757,7 +757,7 @@ final class ProviderRefreshCoordinator {
                                 observation.unit,
                                 query.websiteURL,
                                 observation.observedAt,
-                                progressPercentage: observation.recharge == nil ? nil : observation.displayProgress, recharge: observation.recharge,
+                                progressPercentage: observation.displayProgress, recharge: observation.recharge,
                                 progressContext: observation.progressContext
                             )
                         )
@@ -851,7 +851,7 @@ final class ProviderRefreshCoordinator {
                         observation.unit,
                         query.websiteURL,
                         observation.observedAt,
-                        progressPercentage: completion != nil || observation.recharge != nil ? observation.displayProgress : nil,
+                        progressPercentage: observation.displayProgress,
                         recharge: observation.recharge,
                         progressContext: observation.progressContext
                     )
