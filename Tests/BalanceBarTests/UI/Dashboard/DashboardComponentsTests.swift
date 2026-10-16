@@ -2126,6 +2126,7 @@ extension DashboardComponentsTests {
         subtitle.frame = NSRect(x: 10, y: 10, width: 250, height: 20)
         subtitle.hoverPhrase = "last top-up"
         subtitle.decoratesOnHover = false
+        subtitle.underlinesHoverPhrase = true
         subtitle.hoverHintDelay = 0.3
         subtitle.updateTextTooltip(title: "Last top-up", text: "10/16 13:50")
         host.addSubview(subtitle)
@@ -2135,8 +2136,14 @@ extension DashboardComponentsTests {
         XCTAssertLessThan(subtitle.visibleTextHitRect.maxX, subtitle.bounds.maxX)
         host.forwardHover(atHostPoint: host.convert(subtitle.visibleTextHitRect.center, from: subtitle))
         XCTAssertTrue(subtitle.isHoverHintScheduled)
+        let phrase = (subtitle.stringValue as NSString).range(of: "last top-up")
+        XCTAssertEqual(subtitle.attributedStringValue.attribute(.underlineStyle, at: phrase.location, effectiveRange: nil) as? Int,
+                       NSUnderlineStyle.single.rawValue)
+        XCTAssertNil(subtitle.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertNil(subtitle.attributedStringValue.attribute(.underlineStyle, at: phrase.location + phrase.length, effectiveRange: nil))
         host.forwardHover(atHostPoint: host.convert(NSPoint(x: 1, y: 10), from: subtitle))
         XCTAssertFalse(subtitle.isHoverHintScheduled)
+        XCTAssertNil(subtitle.attributedStringValue.attribute(.underlineStyle, at: phrase.location, effectiveRange: nil))
         host.forwardHover(atHostPoint: host.convert(subtitle.visibleTextHitRect.center, from: subtitle))
         host.setMenuContentVisible(false)
         XCTAssertFalse(subtitle.isHoverHintScheduled)

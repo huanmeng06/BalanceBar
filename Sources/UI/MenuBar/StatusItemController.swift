@@ -6501,6 +6501,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if hasRechargeHint, let startDate = context.snapshot.balanceConsumptionStartDate,
            let link = (label as? HoverLinkTextField) ?? (label as? AccountMarqueeView)?.accountLabel as? HoverLinkTextField {
             link.decoratesOnHover = false
+            link.underlinesHoverPhrase = true
             link.restingTextColor = .secondaryLabelColor
             link.hoverPhrase = tr(.keyBalanceLastRecharge)
             link.hoverHintDelay = 0.3

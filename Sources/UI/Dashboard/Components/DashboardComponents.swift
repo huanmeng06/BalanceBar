@@ -566,6 +566,7 @@ class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     var hoverPhrase: String? { didSet { updateVisibleTextHitRect() } }
     var decoratesOnHover = true
+    var underlinesHoverPhrase = false
     private(set) var textTooltipTitle: String?
 
     func updateTextTooltip(title: String, text: String) {
@@ -1032,8 +1033,15 @@ class HoverLinkTextField: NSTextField {
             .paragraphStyle: paragraphStyle
         ]
         if underlined && decoratesOnHover { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        let styledText = NSMutableAttributedString(string: text, attributes: attributes)
+        if underlined, underlinesHoverPhrase, let hoverPhrase {
+            let range = (text as NSString).range(of: hoverPhrase)
+            if range.location != NSNotFound {
+                styledText.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            }
+        }
         isApplyingStyle = true
-        attributedStringValue = NSAttributedString(string: text, attributes: attributes)
+        attributedStringValue = styledText
         isApplyingStyle = false
         updateVisibleTextHitRect()
     }

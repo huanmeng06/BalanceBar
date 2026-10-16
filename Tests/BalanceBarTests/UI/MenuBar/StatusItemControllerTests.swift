@@ -4002,7 +4002,11 @@ extension StatusItemControllerTests {
                     let host = try XCTUnwrap(card as? MenuHoverLinkHostView)
                     host.forwardHover(atHostPoint: host.convert(NSPoint(x: hint.visibleTextHitRect.midX, y: hint.visibleTextHitRect.midY), from: hint))
                     XCTAssertTrue(hint.isHoverHintScheduled)
+                    let phrase = (hint.stringValue as NSString).range(of: tr(.keyBalanceLastRecharge))
+                    XCTAssertEqual(hint.attributedStringValue.attribute(.underlineStyle, at: phrase.location, effectiveRange: nil) as? Int,
+                                   NSUnderlineStyle.single.rawValue)
                     controller.menuDidClose(menu)
+                    XCTAssertNil(hint.attributedStringValue.attribute(.underlineStyle, at: phrase.location, effectiveRange: nil))
                     XCTAssertFalse(hint.isHoverHintScheduled)
                     XCTAssertFalse(hint.isHoverHintVisible)
                 }
