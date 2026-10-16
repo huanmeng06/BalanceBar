@@ -1482,6 +1482,46 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
     }
 
+    func testQuickSwitchOfficialLateResponseIsDroppedAfterSameTokenConfigurationChange() throws {
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        DelayedBalanceURLProtocol.setHandler { request in
+            if request.url?.path.contains("wham/usage") == true {
+                started.signal()
+                return .init(data: Data(), statusCode: 200, delayUntil: release)
+            }
+            return DelayedBalanceURLProtocol.success(amount: "28.00")
+        }
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour, remaining: 80, label: "5-hour quota", daysText: "5 hours",
+            reset: "5h", durationSeconds: 5 * 3_600
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay, remaining: 45, label: "7-day quota", daysText: "7 days",
+            reset: "7d", durationSeconds: 7 * 86_400
+        )
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: FixedOfficialQuotaParser(windows: [fiveHour, sevenDay])
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            actions: makeActions()
+        )
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
+        XCTAssertEqual(started.wait(timeout: .now() + 2), .success)
+        waitForCoordinator(coordinator)
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET name='Renamed Official' WHERE id='codex-replacement'")
+        }
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, configurationChanged: true)
+        release.signal()
+        waitForCoordinator(coordinator)
+        XCTAssertNil(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .codex)["codex-replacement"])
+    }
+
     func testOfficialQuickSwitchSummaryUsesSafeFallbacksAndDoesNotKeepStaleMissingWindow() throws {
         try setCurrentProvider("codex-replacement")
         DelayedBalanceURLProtocol.setHandler { _ in
@@ -2273,6 +2313,13 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                     created_at INTEGER NOT NULL,
                     PRIMARY KEY (id, app_type)
                 );
+                CREATE TABLE proxy_config (
+                    app_type TEXT,
+                    live_takeover_active INTEGER,
+                    enabled INTEGER
+                );
+                CREATE TABLE proxy_live_backup (app_type TEXT);
+                INSERT INTO proxy_config VALUES ('codex', 0, 1);
                 INSERT INTO providers VALUES (
                     'codex-custom', 'Codex Custom',
                     '{"api_key":"fixture-key","base_url":"https://codex.provider.test"}',
@@ -2321,6 +2368,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             if let database { sqlite3_close(database) }
             throw fixtureError("failed to open fixture database; sqlite code=\(code)")
         }
+        sqlite3_busy_timeout(database, 1_000)
         defer { sqlite3_close(database) }
         return try body(database)
     }

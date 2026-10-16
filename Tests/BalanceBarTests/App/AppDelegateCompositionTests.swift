@@ -105,7 +105,8 @@ final class AppDelegateCompositionTests: XCTestCase {
             )
         )
         let path = String(source[start.lowerBound..<end.lowerBound])
-        XCTAssertTrue(path.contains("let hasCachedSnapshot = cached.map { currentProvider?.id == $0.providerID } ?? false"))
+        XCTAssertTrue(path.contains("currentProvider?.configurationRevision == $0.configurationRevision"))
+        XCTAssertTrue(path.contains("render(.placeholder, immediately: true, deferMenuRebuild: true)"))
         XCTAssertTrue(
             path.contains("updateStatusItemActivity(layout: !hasCachedSnapshot)"),
             "a cached snapshot render must skip the extra layout inside updateActivity"

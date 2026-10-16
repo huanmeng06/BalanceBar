@@ -315,6 +315,7 @@ extension CCSwitchRepositoryTests {
         XCTAssertTrue(reader.blocksQuickSwitch())
         now.addTimeInterval(CCSwitchAggregationRepository.confirmedAbsenceInterval)
         guard case .inactive = reader.load() else { return XCTFail("confirmed absence becomes inactive") }
+        guard case .inactive = reader.load() else { return XCTFail("confirmed absence must remain inactive") }
         XCTAssertTrue(reader.blocksQuickSwitch(), "absence timeout may hide stale cards but cannot authorize writes")
         payload = try aggregationState(mode: "direct")
         guard case .inactive = reader.load() else { return XCTFail("direct remains inactive") }
@@ -500,6 +501,22 @@ extension CCSwitchRepositoryTests {
         replacement = Data(#"{"apps":{}}"#.utf8)
         XCTAssertTrue(reader.blocksQuickSwitch(), "partial valid JSON must not remove known aggregation protection")
         guard case .untrusted = reader.load() else { return XCTFail("partial JSON is not confirmed exit") }
+    }
+
+    func testColdStartMissingStateUsesDatabaseProxyEvidence() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE proxy_config SET live_takeover_active = 1 WHERE app_type = 'codex'")
+        }
+        defer {
+            try? withDatabase { db in
+                try execute(db, sql: "UPDATE proxy_config SET live_takeover_active = 0 WHERE app_type = 'codex'")
+            }
+        }
+        let reader = CCSwitchAggregationRepository(repository: repository, read: { _ in
+            throw CocoaError(.fileReadNoSuchFile)
+        })
+        XCTAssertTrue(reader.blocksQuickSwitch())
+        guard case .untrusted = reader.load() else { return XCTFail("active database takeover must remain untrusted") }
     }
 }
 

@@ -11,6 +11,12 @@ struct CCSwitchProvider {
     var configurationRevision: String = ""
 }
 
+enum CCSwitchProxyTakeoverStatus {
+    case active
+    case inactive
+    case unavailable
+}
+
 enum CCSwitchReadError: Error {
     case sqlite(Int32)
     var sqliteCode: Int32 { switch self { case .sqlite(let code): return code } }
@@ -80,8 +86,11 @@ final class CCSwitchRepository {
 
     func configurationRevision(appType: String, providerID: String) -> String? {
         var database: OpaquePointer?
-        guard sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
-              let database else { return nil }
+        let openCode = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
+        guard openCode == SQLITE_OK, let database else {
+            if let database { sqlite3_close(database) }
+            return nil
+        }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 100)
         let sql = "SELECT id, name, settings_config, meta, category, website_url FROM providers WHERE app_type = ? AND id = ? LIMIT 1"
@@ -99,6 +108,26 @@ final class CCSwitchRepository {
         let website = text(from: statement, column: 5)
         return SHA256.hash(data: Data([id, name, settings, meta, category ?? "", website ?? ""].joined(separator: "\u{0}").utf8))
             .map { String(format: "%02x", $0) }.joined()
+    }
+
+    func proxyTakeoverStatus(appType: String) -> CCSwitchProxyTakeoverStatus {
+        var database: OpaquePointer?
+        let openCode = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
+        guard openCode == SQLITE_OK, let database else {
+            if let database { sqlite3_close(database) }
+            return .unavailable
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 100)
+        let sql = "SELECT EXISTS(SELECT 1 FROM proxy_config WHERE app_type = ? AND live_takeover_active = 1) OR EXISTS(SELECT 1 FROM proxy_live_backup WHERE app_type = ?)"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { return .unavailable }
+        defer { sqlite3_finalize(statement) }
+        bind(appType, to: statement, at: 1)
+        bind(appType, to: statement, at: 2)
+        guard sqlite3_step(statement) == SQLITE_ROW else { return .unavailable }
+        return sqlite3_column_int(statement, 0) != 0 ? .active : .inactive
     }
 
     func loadCurrentChecked(appType: String) throws -> CCSwitchProvider? {

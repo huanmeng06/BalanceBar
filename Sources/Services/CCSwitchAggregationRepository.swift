@@ -252,6 +252,7 @@ final class CCSwitchAggregationRepository {
 
     let stateURL: URL
     private let sources: ([String]) throws -> [ProviderSummarySource]
+    private let proxyTakeoverStatus: () -> CCSwitchProxyTakeoverStatus
     private let read: (URL) throws -> Data
     private let isRunning: () -> Bool
     private let now: () -> Date
@@ -259,11 +260,13 @@ final class CCSwitchAggregationRepository {
     private var wasAggregating = false
     private var quickSwitchProtectionActive = false
     private var absenceBegan: Date?
+    private var absenceConfirmed = false
     private func rememberAggregation(_ active: Bool) {
         stateLock.lock()
         wasAggregating = active
         quickSwitchProtectionActive = active
         absenceBegan = nil
+        absenceConfirmed = false
         stateLock.unlock()
     }
     private var lastKnownAggregation: Bool {
@@ -279,6 +282,7 @@ final class CCSwitchAggregationRepository {
          now: @escaping () -> Date = Date.init) {
         self.stateURL = stateURL
         self.sources = { try repository.loadSummarySourcesChecked(appType: "codex", providerIDs: $0) }
+        self.proxyTakeoverStatus = { repository.proxyTakeoverStatus(appType: "codex") }
         self.read = read
         self.isRunning = isRunning
         self.now = now
@@ -323,12 +327,32 @@ final class CCSwitchAggregationRepository {
     }
 
     private func confirmedAbsenceOrUntrusted() -> State {
+        let proxyStatus = proxyTakeoverStatus()
         stateLock.lock()
         defer { stateLock.unlock() }
+        switch proxyStatus {
+        case .active:
+            wasAggregating = true
+            quickSwitchProtectionActive = true
+        case .inactive:
+            if !wasAggregating {
+                quickSwitchProtectionActive = false
+                absenceBegan = nil
+                absenceConfirmed = true
+                return .inactive
+            }
+        case .unavailable:
+            guard wasAggregating else {
+                quickSwitchProtectionActive = true
+                return .untrusted
+            }
+        }
         guard wasAggregating else { return .inactive }
+        if absenceConfirmed { return .inactive }
         let current = now()
         if absenceBegan == nil { absenceBegan = current }
         if let started = absenceBegan, current.timeIntervalSince(started) >= Self.confirmedAbsenceInterval {
+            absenceConfirmed = true
             absenceBegan = nil
             return .inactive
         }
@@ -353,7 +377,22 @@ final class CCSwitchAggregationRepository {
             if !codex.pending { rememberAggregation(codex.mode == "proxy" && codex.stack?.enabled == true) }
             return blocked
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return isProtectingAbsence()
+            switch proxyTakeoverStatus() {
+            case .active:
+                stateLock.lock(); quickSwitchProtectionActive = true; wasAggregating = true; stateLock.unlock()
+                return true
+            case .inactive:
+                stateLock.lock()
+                let knownAggregation = wasAggregating
+                if !knownAggregation {
+                    quickSwitchProtectionActive = false
+                }
+                stateLock.unlock()
+                return knownAggregation
+            case .unavailable:
+                stateLock.lock(); quickSwitchProtectionActive = true; stateLock.unlock()
+                return true
+            }
         } catch { return true }
     }
 }

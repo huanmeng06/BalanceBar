@@ -2144,6 +2144,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             currentProvider?.id == $0.providerID
                 && currentProvider?.configurationRevision == $0.configurationRevision
         } ?? false
+        if !hasCachedSnapshot {
+            currentProviderIsOfficialCache = false
+            currentAccountProfileCache = nil
+            lastSuccessfulRefresh = nil
+            activeProviderWebsite = nil
+        }
         // A following cached render layouts icon+digits together. Skip the
         // extra layout inside updateActivity so one client switch pays for
         // layoutStatusItem once. Icon swap still happens.
@@ -2152,6 +2158,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         if hasCachedSnapshot, let cached {
             lastProviderID = cached.providerID
             render(cached.snapshot, providerID: cached.providerID, immediately: true, deferMenuRebuild: true)
+        } else {
+            render(.placeholder, immediately: true, deferMenuRebuild: true)
         }
         if client != .grok || currentProvider != nil {
             refresh(reason: .clientChanged)

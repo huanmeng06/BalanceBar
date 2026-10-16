@@ -14,7 +14,7 @@ merge, new Issue/task, independent review or interactive GUI test is included.
 | B4 | Deleted sources notify and drop their Quick Switch summaries. A changed configuration revision drops the old payload silently, then a failed replacement fetch keeps it cleared. Cadence reset and name-only events do not wake waiters before the new result. |
 | B5 | Direct-card identity/notes use the current CC Switch choice, not the last successful snapshot. |
 | B6 | Split confirmation uses each member's own refresh window instead of a shared 30-second span. |
-| B7 | After known aggregation, a missing state file or missing `apps.codex` stays untrusted for 3 seconds, then becomes inactive and releases Quick Switch protection. Transient unreadable/corrupt state remains untrusted. |
+| B7 | After known aggregation, a missing state file or missing `apps.codex` can downgrade the UI to stable inactive after the confirmation window, but Quick Switch write protection remains until direct/ordinary mode or explicit inactive proxy evidence is verified. |
 
 Local verification for this follow-up used `/private/tmp/BalanceBar-Issue493-DerivedData`.
 
@@ -152,3 +152,23 @@ Focused verification:
 - Affected repository/refresh classes: **86 / 0 failures** (`/private/tmp/issue493-blocks4-focused-final3.log`).
 - Direct Block regression cases: **3 / 0 failures** (`/private/tmp/issue493-blocks4-focused2.log`).
 - Targeted Debug compilation: PASS (`/private/tmp/issue493-blocks4-build2.log`).
+
+# Issue #493 / PR #506: latest boundary follow-up
+
+Review baseline: `0b805178e164638ec96604e7e81935035573e0a3`.
+
+| Block | Implementation / evidence |
+| --- | --- |
+| 1 | Client switching clears mismatched provider/account/website state and renders `Snapshot.placeholder` immediately. |
+| 2 | Confirmed state-file absence is sticky; repeated reads remain `.inactive` until valid aggregation state returns. |
+| 3 | Official and third-party Quick Switch callbacks validate tracked and database configuration revisions before changing summaries or notifications. |
+| 4 | Cold-start missing-state protection consults proxy takeover evidence; active or unavailable evidence blocks writes, explicit inactive evidence preserves direct-mode compatibility. |
+| 5 | Configuration-revision SQLite reads close non-null handles on open failure. |
+
+Verification:
+
+- Affected classes: **137 / 0 failures** (`/private/tmp/issue493-boundaries-focused-final.log`).
+- Broader domain/menu classes: **191 / 0 failures** (`/private/tmp/issue493-boundaries-broader.log`).
+- New official stale-response and cold-start regressions: **2 / 0 failures** (`/private/tmp/issue493-boundaries-officialtest3.log`, `/private/tmp/issue493-boundaries-newtests.log`).
+- Full serial XCTest: one unrelated transient `UpdateTests` failure; the exact test rerun passed (`/private/tmp/issue493-boundaries-full.log`, `/private/tmp/issue493-update-rerun.log`).
+- Localization, balance query, network-error, balance-card layout and menu-bar geometry probes all PASS.
