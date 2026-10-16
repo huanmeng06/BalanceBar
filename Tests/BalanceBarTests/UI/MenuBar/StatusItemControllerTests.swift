@@ -3844,7 +3844,7 @@ extension StatusItemControllerTests {
 
 extension StatusItemControllerTests {
     @MainActor
-    func testOrdinaryBalanceKeepsLinkAndShowsProgressFromLedger() throws {
+    func testDirectThirdPartyBalanceMatchesAggregationCard() throws {
         let controller = makeController()
         defer { controller.teardown() }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
@@ -3853,16 +3853,16 @@ extension StatusItemControllerTests {
             progressPercentage: 83.5, progressContext: context)
         controller.start(snapshot: snapshot, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
         let card = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
-        XCTAssertNotNil(card.overviewLayout?.link)
-        XCTAssertNil(card.overviewLayout?.balanceRecharge)
+        XCTAssertNil(card.overviewLayout?.link)
+        XCTAssertNotNil(card.overviewLayout?.balanceRecharge)
         XCTAssertNotNil(card.overviewLayout?.progress)
-        XCTAssertFalse(card.subviews.contains { $0.identifier?.rawValue == "balance.subtitle" })
+        XCTAssertTrue(card.subviews.contains { $0.identifier?.rawValue == "balance.subtitle" })
         let recharge = BalanceRecharge(amountCents: 100, observedAt: date)
         let charged = Snapshot.balance("single", 3.34, "USD", URL(string: "https://fixture.example"), date,
             progressPercentage: 83.5, recharge: recharge, progressContext: context)
         controller.update(snapshot: charged, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
         let updated = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
-        XCTAssertNotNil(updated.overviewLayout?.link)
+        XCTAssertNil(updated.overviewLayout?.link)
         XCTAssertNotNil(updated.overviewLayout?.balanceRecharge)
         XCTAssertNotNil(updated.overviewLayout?.progress)
     }

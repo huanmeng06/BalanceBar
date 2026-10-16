@@ -924,6 +924,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             email: accountProfile?.email,
             subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
         )
+        let directProviderNotes: [String]
+        if let providerID = lastProviderID,
+           let source = try? ccSwitchRepository.loadSummarySourcesChecked(appType: activeClient.appType)
+            .first(where: { $0.id == providerID }),
+           let note = source.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
+            directProviderNotes = [note]
+        } else {
+            directProviderNotes = []
+        }
         return StatusItemController.MenuInput(
             choices: providerChoicesCache,
             quickSwitchSummaries: quickSwitchSummariesSnapshot(),
@@ -934,6 +943,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
             showStatusMenu: showStatusMenu,
+            directProviderNotes: directProviderNotes,
+            directProviderIsOfficial: isOfficialOpenAICodex,
             lunaReserveDisplayMode: LunaReserveUserFacing.isCurrentlyEnabled
                 ? preferences.menuLunaReserveDisplayMode
                 : .disabled,

@@ -2346,6 +2346,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showOpenChatGPTMenu: Bool
         let showOpenCCSwitchMenu: Bool
         let showStatusMenu: Bool
+        let directProviderNotes: [String]
+        let directProviderIsOfficial: Bool
         let lunaReserveDisplayMode: LunaReserveDisplayMode
         let lunaReserveHideExhaustedQuota: Bool
         let bankedResetDisplayMode: CodexBankedResetDisplayMode
@@ -2361,6 +2363,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showOpenChatGPTMenu: Bool,
             showOpenCCSwitchMenu: Bool,
             showStatusMenu: Bool,
+            directProviderNotes: [String] = [],
+            directProviderIsOfficial: Bool = false,
             lunaReserveDisplayMode: LunaReserveDisplayMode = .defaultValue,
             lunaReserveHideExhaustedQuota: Bool = false,
             bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
@@ -2380,6 +2384,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showOpenChatGPTMenu = showOpenChatGPTMenu
             self.showOpenCCSwitchMenu = showOpenCCSwitchMenu
             self.showStatusMenu = showStatusMenu
+            self.directProviderNotes = directProviderNotes
+            self.directProviderIsOfficial = directProviderIsOfficial
             self.lunaReserveDisplayMode = lunaReserveDisplayMode
             self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
             self.bankedResetDisplayMode = bankedResetDisplayMode
@@ -2402,6 +2408,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showOpenChatGPTMenu == rhs.showOpenChatGPTMenu
                 && lhs.showOpenCCSwitchMenu == rhs.showOpenCCSwitchMenu
                 && lhs.showStatusMenu == rhs.showStatusMenu
+                && lhs.directProviderNotes == rhs.directProviderNotes
+                && lhs.directProviderIsOfficial == rhs.directProviderIsOfficial
                 && lhs.lunaReserveDisplayMode == rhs.lunaReserveDisplayMode
                 && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
                 && lhs.bankedResetDisplayMode == rhs.bankedResetDisplayMode
@@ -6410,6 +6418,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func updateBalanceSubtitle(in card: NSView, context: OverviewCardContext) {
         let id = NSUserInterfaceItemIdentifier("balance.subtitle")
         let aggregation = !menuInput.aggregatedProviders.isEmpty
+            || (context.snapshot.kind == .balance && !menuInput.directProviderIsOfficial)
         if aggregation && context.snapshot.kind == .balance {
             let tooltip = context.snapshot.balanceProgressTooltip(timeZone: settings.displayTimeZone)
             descendantViews(of: card, as: QuotaProgressView.self).forEach {
@@ -6497,6 +6506,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                                         account: OpenAIAccountPresentation? = nil,
                                         aggregation: Bool = false) -> OpenCodexCardFrames {
         let isBalance = snapshot.kind == .balance
+        let unifiedBalance = isBalance && (!menuInput.directProviderIsOfficial || aggregation)
         let officialQuotaWindows = presentation.windows
         let lunaReserve = presentation.lunaReserve
         let bankedReset = presentation.bankedReset
@@ -6518,8 +6528,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
-            includesBalanceSubtitle: !aggregation,
-            includesBalanceRecharge: isBalance && (aggregation || snapshot.balanceRecharge != nil),
+            includesBalanceSubtitle: !unifiedBalance,
+            includesBalanceRecharge: isBalance && (unifiedBalance || snapshot.balanceRecharge != nil),
             includesAccount: snapshot.kind == .official && account != nil,
             includesSubscription: snapshot.kind == .official && subscription != nil,
             subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
@@ -6545,7 +6555,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func makeOverviewMenuItem(for snapshot: Snapshot, context supplied: OverviewCardContext? = nil) -> NSMenuItem {
         let directTag = menuInput.aggregatedProviders.isEmpty
-            ? menuInput.choices.first(where: \.isCurrent).map { [$0.name] }
+            ? menuInput.directProviderNotes
             : nil
         let context = supplied ?? OverviewCardContext(snapshot: snapshot, identity: snapshot.provider,
             account: menuInput.openAIAccount, date: refreshDate, noteTags: directTag)
@@ -6567,7 +6577,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards, timeZone: settings.displayTimeZone)
         }
         let subscription = context.account?.subscription
-        let layout = makeOverviewCardLayout(for: snapshot, presentation: quotaPresentation, account: context.account, aggregation: supplied != nil)
+        let layout = makeOverviewCardLayout(for: snapshot, presentation: quotaPresentation, account: context.account,
+            aggregation: supplied != nil || (snapshot.kind == .balance && !menuInput.directProviderIsOfficial))
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.overviewLayout = layout
         view.providerIdentity = context.identity
@@ -7005,7 +7016,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
             quotaDetail.identifier = NSUserInterfaceItemIdentifier("overview.quotaDetail")
             if isBalance {
-                if supplied == nil {
+                if menuInput.directProviderIsOfficial && supplied == nil {
                     let linkPrefix = makeOverviewLabel(tr(.keyStatusItemControllerOfficialLink), font: .systemFont(ofSize: 12))
                     linkPrefix.textColor = .secondaryLabelColor
                     linkPrefix.frame = layout.linkPrefix ?? .zero
