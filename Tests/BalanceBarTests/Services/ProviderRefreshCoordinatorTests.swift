@@ -8,6 +8,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
     private var databaseURL: URL!
     private var repository: CCSwitchRepository!
     private var session: URLSession!
+    private var sessionLifetime: FixtureSessionLifetime!
+    private var coordinators: [ProviderRefreshCoordinator] = []
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -32,13 +34,22 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         try Data(#"{"apps":{"codex":{"mode":"direct"}}}"#.utf8).write(to: repository.deviceStateURL)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [DelayedBalanceURLProtocol.self]
-        session = URLSession(configuration: configuration)
+        sessionLifetime = FixtureSessionLifetime()
+        session = URLSession(configuration: configuration, delegate: sessionLifetime, delegateQueue: nil)
         DelayedBalanceURLProtocol.reset()
     }
 
     override func tearDown() {
+        // Prevent queued refresh work from creating tasks against an invalid
+        // session, then wait for cancellation before deleting database fixtures.
+        coordinators.forEach { $0.stop() }
         session?.invalidateAndCancel()
+        XCTAssertTrue(sessionLifetime.waitUntilInvalidated(), "fixture session did not finish cancellation")
+        XCTAssertTrue(DelayedBalanceURLProtocol.waitUntilIdle(), "fixture protocol workers did not finish")
+        coordinators.forEach { $0.stop() } // Drain late callbacks, which are now rejected.
+        coordinators.removeAll()
         session = nil
+        sessionLifetime = nil
         DelayedBalanceURLProtocol.reset()
         repository = nil
         if let temporaryDirectoryURL {
@@ -46,6 +57,73 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             try? FileManager.default.removeItem(at: temporaryDirectoryURL)
         }
         super.tearDown()
+    }
+
+    func testStoppedCoordinatorRejectsLateCallbacksAndRefreshesAgainstInvalidatedSession() throws {
+        let started = expectation(description: "delayed transport started")
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        DelayedBalanceURLProtocol.setHandler { _ in
+            started.fulfill()
+            return .init(data: Data(#"{"balance":9,"quota":{"unit":"USD"}}"#.utf8), statusCode: 200, delayUntil: release)
+        }
+        var publications = 0
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            actions: .init(currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
+                isActiveClient: { _ in true }, render: { _ in publications += 1 },
+                storeClientSnapshot: { _, _, _ in publications += 1 },
+                quickSwitchSummaryChanged: { _ in publications += 1 },
+                notificationSnapshot: { _, _, _ in publications += 1 }))
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-custom"])
+        wait(for: [started], timeout: 2)
+        coordinator.stop()
+        session.invalidateAndCancel()
+        XCTAssertTrue(sessionLifetime.waitUntilInvalidated())
+        // These used to create a task in an invalidated session (fatal NSException).
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
+        coordinator.prefetchCurrentBalance(for: .claude)
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        coordinator.resetCadence()
+        coordinator.performAsync { XCTFail("stopped queued work must not run") }
+        release.signal()
+        XCTAssertTrue(DelayedBalanceURLProtocol.waitUntilIdle())
+        coordinator.stop() // Idempotent owner-queue barrier drains rejected callbacks.
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        XCTAssertEqual(publications, 0)
+        XCTAssertTrue(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .defaultValue).isEmpty)
+    }
+
+    func testStopWaitsForOwnerWorkBeforeCallerInvalidatesTransport() throws {
+        let entered = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let stopped = expectation(description: "stop finishes after queued owner work")
+        let stopStarted = DispatchSemaphore(value: 0)
+        let stopReturned = DispatchSemaphore(value: 0)
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: makeActions())
+        coordinator.performAsync {
+            entered.signal()
+            release.wait()
+        }
+        waitForEvent(entered)
+        DispatchQueue.global().async {
+            stopStarted.signal()
+            coordinator.stop()
+            stopReturned.signal()
+            stopped.fulfill()
+        }
+        waitForEvent(stopStarted)
+        XCTAssertEqual(stopReturned.wait(timeout: .now() + 0.05), .timedOut, "stop cannot return while owner work is still running")
+        release.signal()
+        wait(for: [stopped], timeout: 3)
+        session.invalidateAndCancel()
+        XCTAssertTrue(sessionLifetime.waitUntilInvalidated())
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
+        coordinator.stop()
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 0)
     }
 
     func testDelayedInactiveClientPrefetchIsCachedWithoutReplacingActiveSnapshot() throws {
@@ -85,7 +163,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             },
             quickSwitchSummaryChanged: { _ in },
         )
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -138,7 +216,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             },
             quickSwitchSummaryChanged: { _ in callbackCompleted.fulfill() },
         )
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -167,7 +245,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             DelayedBalanceURLProtocol.success(amount: "12.00")
         }
         let dateSource = ConcurrentDateSource(date: Date(timeIntervalSince1970: 1_700_000_000))
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -205,7 +283,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             let amount = responseCounter.next()
             return DelayedBalanceURLProtocol.success(amount: "\(amount).00")
         }
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -278,7 +356,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
             parser: IncrementingOfficialQuotaParser(counter: responseCounter)
         )
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: officialClient,
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -389,7 +467,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let rendered = expectation(description: "official snapshot with usage credits")
         rendered.expectedFulfillmentCount = 2
         var captured: Snapshot?
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -480,7 +558,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         }
         let rendered = expectation(description: "official snapshot after list failure")
         var captured: Snapshot?
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -571,7 +649,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let rendered = expectation(description: "official snapshot after list success")
         rendered.expectedFulfillmentCount = 2
         var captured: Snapshot?
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -649,7 +727,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let rendered = expectation(description: "official snapshot after forecast failure")
         rendered.expectedFulfillmentCount = 2
         var captured: Snapshot?
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -737,7 +815,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let snapshotLock = NSLock()
         var snapshots: [Snapshot] = []
         var phase = 0
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -894,7 +972,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let phaseLock = NSLock()
         var waitingForFallback = false
         var captured: Snapshot?
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -967,7 +1045,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             let amount = responseCounter.next()
             return DelayedBalanceURLProtocol.success(amount: "\(amount).00")
         }
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -1026,7 +1104,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 snapshotLock.unlock()
             }
         )
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -1100,7 +1178,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 snapshotLock.unlock()
             }
         )
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -1208,7 +1286,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 processed.signal()
             }
         )
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -1329,7 +1407,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 processed.signal()
             }
         )
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
@@ -1391,7 +1469,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             durationSeconds: 7 * 86_400
         )
         let summaryUpdated = DispatchSemaphore(value: 0)
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -1453,7 +1531,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         )
         let officialUpdated = DispatchSemaphore(value: 0)
         let balanceUpdated = DispatchSemaphore(value: 0)
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -1491,6 +1569,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
     func testQuickSwitchOfficialLateResponseIsDroppedAfterSameTokenConfigurationChange() throws {
         let started = DispatchSemaphore(value: 0)
         let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
         DelayedBalanceURLProtocol.setHandler { request in
             if request.url?.path.contains("wham/usage") == true {
                 started.signal()
@@ -1506,7 +1585,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             kind: .sevenDay, remaining: 45, label: "7-day quota", daysText: "7 days",
             reset: "7d", durationSeconds: 7 * 86_400
         )
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -1519,9 +1598,20 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
         XCTAssertEqual(started.wait(timeout: .now() + 2), .success)
         waitForCoordinator(coordinator)
-        try withDatabase { db in
-            try execute(db, sql: "UPDATE providers SET name='Renamed Official' WHERE id='codex-replacement'")
+        // This test owns response ordering, not concurrent SQLite writers.
+        // Mutate on the owner queue while the old transport is still gated.
+        let changedConfiguration = expectation(description: "official revision changed while request pending")
+        var mutationError: Error?
+        coordinator.performAsync {
+            do {
+                try self.withDatabase { db in
+                    try self.execute(db, sql: "UPDATE providers SET name='Renamed Official' WHERE id='codex-replacement'")
+                }
+            } catch { mutationError = error }
+            changedConfiguration.fulfill()
         }
+        wait(for: [changedConfiguration], timeout: 2)
+        if let mutationError { throw mutationError }
         coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, configurationChanged: true)
         release.signal()
         waitForCoordinator(coordinator)
@@ -1551,7 +1641,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         )
         let windows = MutableOfficialQuotaWindows([fiveHour, sevenDay])
         let summaryUpdated = DispatchSemaphore(value: 0)
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
@@ -2250,7 +2340,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
     ) throws -> ProviderRefreshCoordinator {
         try setCurrentProvider("codex-replacement")
         DelayedBalanceURLProtocol.setHandler { fixture.reply($0) }
-        return ProviderRefreshCoordinator(
+        return makeCoordinator(
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(session: session, credentialReader: fixture, parser: fixture),
             codexResetObservationStore: store,
@@ -2275,6 +2365,23 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         wait(for: [rendered], timeout: 3)
         waitForCoordinator(coordinator)
         return try XCTUnwrap(snapshots.last)
+    }
+
+    private func makeCoordinator(
+        repository: CCSwitchRepository,
+        officialQuotaClient: OfficialQuotaClient,
+        balanceAPIClient: BalanceAPIClient = BalanceAPIClient(),
+        balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
+        codexResetObservationStore: CodexResetObservationStore = CodexResetObservationStore(),
+        queue: DispatchQueue = DispatchQueue(label: "test.provider-refresh.owner"),
+        actions: ProviderRefreshActions,
+        now: @escaping () -> Date = Date.init
+    ) -> ProviderRefreshCoordinator {
+        let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: officialQuotaClient,
+            balanceAPIClient: balanceAPIClient, balanceProgressStore: balanceProgressStore,
+            codexResetObservationStore: codexResetObservationStore, queue: queue, actions: actions, now: now)
+        coordinators.append(coordinator)
+        return coordinator
     }
 
     private func makeActions(
@@ -2387,7 +2494,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         }
         guard code == SQLITE_OK else {
             let message = errorMessage.map { String(cString: $0) } ?? "unknown sqlite error"
-            throw fixtureError("fixture SQL failed; sqlite code=\(code); error=\(message)")
+            throw fixtureError("fixture SQL failed; sqlite code=\(code); extended=\(sqlite3_extended_errcode(database)); system_errno=\(sqlite3_system_errno(database)); error=\(message)")
         }
     }
 
@@ -2626,6 +2733,20 @@ private final class ConcurrentDateSource {
     }
 }
 
+private final class FixtureSessionLifetime: NSObject, URLSessionDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var invalidated = false
+    private let finished = DispatchSemaphore(value: 0)
+    func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
+        lock.lock(); invalidated = true; lock.unlock()
+        finished.signal()
+    }
+    func waitUntilInvalidated() -> Bool {
+        lock.lock(); let done = invalidated; lock.unlock()
+        return done || finished.wait(timeout: .now() + 3) == .success
+    }
+}
+
 private final class DelayedBalanceURLProtocol: URLProtocol {
     struct Reply {
         let data: Data
@@ -2642,6 +2763,11 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
     private static let lock = NSLock()
     private static var handler: ((URLRequest) -> Reply)?
     private static var recordedRequestCount = 0
+    private static let workers = DispatchGroup()
+    private let deliveryLock = NSRecursiveLock()
+    private var stopped = false
+
+    static func waitUntilIdle() -> Bool { workers.wait(timeout: .now() + 3) == .success }
 
     static func reset() {
         lock.lock()
@@ -2674,6 +2800,7 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        Self.workers.enter()
         Self.lock.lock()
         Self.recordedRequestCount += 1
         let handler = Self.handler
@@ -2683,15 +2810,25 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
 
         if let gate = reply.delayUntil {
             DispatchQueue.global().async {
-                gate.wait()
+                defer { Self.workers.leave() }
+                // A cancelled request must not leave a worker blocked on a
+                // test gate that intentionally has no further successful reply.
+                while gate.wait(timeout: .now() + 0.01) == .timedOut {
+                    self.deliveryLock.lock(); let cancelled = self.stopped; self.deliveryLock.unlock()
+                    if cancelled { return }
+                }
                 self.deliver(reply)
             }
         } else {
+            defer { Self.workers.leave() }
             deliver(reply)
         }
     }
 
     private func deliver(_ reply: Reply) {
+        deliveryLock.lock()
+        defer { deliveryLock.unlock() }
+        guard !stopped else { return }
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: reply.statusCode,
@@ -2703,7 +2840,9 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        deliveryLock.lock(); stopped = true; deliveryLock.unlock()
+    }
 }
 
 
@@ -2801,7 +2940,7 @@ extension ProviderRefreshCoordinatorTests {
         var actions = makeActions()
         actions.aggregationChanged = changed
         let defaults = UserDefaults(suiteName: temporaryDirectoryURL.lastPathComponent + ".Aggregation")!
-        return ProviderRefreshCoordinator(repository: repository,
+        return makeCoordinator(repository: repository,
             officialQuotaClient: official ?? OfficialQuotaClient(session: session, credentialReader: FixtureCredentialReader(codexToken: "fixture-token")),
             balanceAPIClient: BalanceAPIClient(session: session),
             balanceProgressStore: ProviderBalanceProgressStore(defaults: defaults),
@@ -3044,9 +3183,10 @@ extension ProviderRefreshCoordinatorTests {
                 newDefaultReady.fulfill()
             }
         }
-        let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: official,
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
             balanceAPIClient: BalanceAPIClient(session: stoppedSession), balanceProgressStore: ProviderBalanceProgressStore(defaults: defaults),
             codexResetObservationStore: CodexResetObservationStore(defaults: defaults), actions: actions)
+        defer { coordinator.stop() }
         coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
         wait(for: [started], timeout: 3)
         _ = try aggregationFixture(members: (0..<4).map { "member-\($0)" }, route: "codex-custom")
@@ -3101,7 +3241,7 @@ extension ProviderRefreshCoordinatorTests {
         let changed = DispatchSemaphore(value: 0)
         let counter = IncrementingCounter()
         DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "\(counter.next()).00") }
-        let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session), actions: makeActions { _ in changed.signal() }, now: { clock.now })
         coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
         waitForEvent(changed)
@@ -3132,7 +3272,7 @@ extension ProviderRefreshCoordinatorTests {
                 renderCount += 1
                 if renderCount == 1 { initial.fulfill() } else { replaced.fulfill() }
             }, storeClientSnapshot: actions.storeClientSnapshot, quickSwitchSummaryChanged: actions.quickSwitchSummaryChanged)
-        let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session), actions: actions, now: { clock.now })
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
         coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: false, switched: false)
@@ -3181,7 +3321,7 @@ extension ProviderRefreshCoordinatorTests {
                 lock.lock(); notifications.append(snapshot); lock.unlock()
             }
         )
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository, officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session), actions: actions
         )
@@ -3210,7 +3350,7 @@ extension ProviderRefreshCoordinatorTests {
         let changed = DispatchSemaphore(value: 0)
         let summaryCleared = expectation(description: "summary cleared after revision change")
         var summaryNotifications = 0
-        let coordinator = ProviderRefreshCoordinator(
+        let coordinator = makeCoordinator(
             repository: repository, officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
             actions: makeActions { _ in
@@ -3266,7 +3406,7 @@ extension ProviderRefreshCoordinatorTests {
         let lock = NSLock()
         var values: [(String, Snapshot)] = []
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
-        let coordinator = ProviderRefreshCoordinator(repository: repository,
+        let coordinator = makeCoordinator(repository: repository,
             officialQuotaClient: OfficialQuotaClient(), balanceAPIClient: BalanceAPIClient(session: session),
             balanceProgressStore: ProviderBalanceProgressStore(defaults: defaults),
             queue: DispatchQueue(label: "test.shared-wallet-observations"),
@@ -3324,7 +3464,7 @@ extension ProviderRefreshCoordinatorTests {
         let lock = NSLock()
         var values: [(String, Snapshot)] = []
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
-        let coordinator = ProviderRefreshCoordinator(repository: repository,
+        let coordinator = makeCoordinator(repository: repository,
             officialQuotaClient: OfficialQuotaClient(), balanceAPIClient: BalanceAPIClient(session: session),
             balanceProgressStore: ProviderBalanceProgressStore(defaults: defaults),
             queue: DispatchQueue(label: "test.shared-wallet-observations"),
@@ -3495,7 +3635,7 @@ extension ProviderRefreshCoordinatorTests {
         let changed = expectation(description: "both independent summaries")
         changed.expectedFulfillmentCount = 2
         let actions = makeActions { _ in changed.fulfill() }
-        let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session), actions: actions)
         coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-custom"])
         coordinator.refreshQuickSwitchSummaries(force: true, for: .claude, providerIDs: ["codex-custom"])

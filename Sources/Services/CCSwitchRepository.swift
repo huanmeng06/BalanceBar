@@ -754,8 +754,21 @@ final class CCSwitchRepository {
                 let settingsURL = homeDirectoryURL
                     .appendingPathComponent(".claude", isDirectory: true)
                     .appendingPathComponent("settings.json")
+                // Quick Switch owns only the Provider environment. Preserve all
+                // independent user settings, including unknown future fields.
+                let liveData = inputs.first(where: { $0.url == settingsURL })?.data
+                var settings = try liveData.map { data -> [String: Any] in
+                    guard let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                        throw switchError(tr(.keyQuickSwitchStateUntrusted))
+                    }
+                    return value
+                } ?? [:]
+                guard object["env"] == nil || object["env"] is [String: String] else {
+                    throw switchError(tr(.keyCCSwitchRepositoryTheProviderSClaudeConfigurationIsIncomplete))
+                }
+                settings["env"] = object["env"] // Absent target env removes stale Provider credentials.
                 let settingsData = try JSONSerialization.data(
-                    withJSONObject: object,
+                    withJSONObject: settings,
                     options: [.prettyPrinted, .sortedKeys]
                 )
                 writes.append((settingsURL, settingsData))

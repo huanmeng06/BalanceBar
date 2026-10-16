@@ -1,3 +1,132 @@
+# PR #506: preserve Claude user settings and close refresh test lifetimes
+
+Review baseline: `5d598930a7c10cdfc8b57df352d6fb56765d4b7f`.
+This section supersedes the later historical records. Prior failing Full runs
+are retained below and are not substituted for the current run.
+
+## Block 1: field ownership and lossless switch
+
+Quick Switch owns the complete Claude Provider `env` block, not the whole user
+settings document. It prepares a copy of the captured live JSON, replaces only
+`env`, and removes the old block when the target Provider has no environment.
+All other live keys (theme, permissions, hooks, MCP definitions, future keys)
+remain semantically intact. A target template's independent settings do not
+replace user settings. Route/auth matching still compares the whole environment;
+malformed data and unsupported auth helpers still fail closed.
+
+Existing transaction, revision and file-fingerprint checks remain in place.
+Rollback restores the original complete bytes only if the file still belongs
+to this transaction. The new regression covers nested independent fields,
+conflicting template settings, custom-to-custom and return-to-official switches,
+removal of stale auth variables, and complete-document rollback. On the review
+baseline this regression failed two preservation assertions; it now passes.
+
+## Block 2: ordered owner/transport/fixture shutdown
+
+The prior teardown immediately invalidated URLSession and deleted SQLite files.
+A summary-invalidated callback can fire before the same refresh queue finishes
+launching replacement requests. Returning from a test after that callback did
+not establish queue or network quiescence. A one-off queue barrier also cannot
+prevent later completion callbacks and scheduled aggregation retries.
+
+The coordinator now has a terminal `stop()` boundary: on its owner queue it
+revokes a synchronized lifetime token, cancels aggregation retry/pending work
+and invalidates pending publication generations. Off-queue callers wait for
+already-running owner work to finish. All async entry points, late callbacks
+and main-queue publications reject work from the stopped lifetime. Session
+ownership remains with the caller; stop does not invalidate shared/injected
+transports on its own.
+
+All coordinator instances in ProviderRefreshCoordinatorTests are registered
+through one factory and held until cleanup. Teardown now:
+
+1. stops all owners;
+2. invalidates/cancels the owned fixture session and awaits delegate confirmation;
+3. awaits cancellation-aware URLProtocol workers, drains rejected late callbacks;
+4. releases owners, resets the handler and deletes database/defaults fixtures.
+
+The method-local special session stops its owner before its own defer invalidates
+that session. The delayed URLProtocol respects stopLoading, suppresses delivery
+after cancellation and exits a delayed gate wait on cancellation instead of
+leaving a blocked worker. It is a test fixture change, not a production retry.
+
+New regressions hold real asynchronous fixture requests, stop the owner, invalidate
+the session, call refresh/prefetch/standard entry points and release late replies:
+no further task, summary, render or notification is allowed. A separate controlled
+queue gate verifies stop cannot return while owner work is still running. No
+original late-response assertions or failing tests were removed, weakened or skipped.
+
+The official same-token configuration-change test now performs its fixture UPDATE
+on the coordinator owner queue while the old HTTP reply remains gated. This
+serializes setup with its own background reads without changing the revision,
+transport ordering or summary assertions. The old request is still in flight
+when the configuration changes; this is fixture isolation, not a SQL retry.
+
+## Actual verification
+
+- Final complete serial XCTest: **1466 total / 1464 passed / 1 skipped / 1 failed**.
+  `/private/tmp/issue493-lifecycle-full-delivery.log` and
+  `/private/tmp/issue493-lifecycle-full-delivery-summary.json`;
+  result `Test-BalanceBar-2026.10.16_12-16-38--0400.xcresult` under dedicated DerivedData.
+- Remaining failure: StatusItemControllerTests.
+  `testRealMenuRebuildCreatesFreshViewportRemountsCardsAndRestoresScroll`.
+  One test failed three assertions: real popup did not mount its custom viewport,
+  no visible card was observed, and missing distance (-1) did not equal 80.
+  This is not a Full PASS. No UI assertion was relaxed, no test excluded and no
+  identical-code retry was used to erase it. Its cause is not established by this
+  bounded service patch; real-menu/white-screen acceptance remains blocked.
+- ProviderRefreshCoordinatorTests **69/69** passed in that full run; the session
+  invalidated exception and test-process crash did not recur. The reviewed
+  session-lifetime path is fixed and tested, while the broader Full gate is still
+  open because of the menu failure. Issue stays **ai:changes**, PR Draft.
+- Unsigned Debug PASS: `/private/tmp/issue493-lifecycle-debug.log`.
+
+- Final focused run: **188 tests / 0 failures** across CCSwitchRepositoryTests,
+  ProviderRefreshCoordinatorTests, BalanceAPIClientTests, OfficialQuotaClientTests,
+  AppDelegateCompositionTests. Log `/private/tmp/issue493-lifecycle-focused-delivery.log`.
+- First complete run after the session fix: **1466 total / 1464 passed / 1 skipped / 1 failed**,
+  `/private/tmp/issue493-lifecycle-full.log`. No session-invalidated exception or
+  crash occurred. The remaining error was SQLite disk-I/O in the official
+  same-token fixture UPDATE. Its setup was then serialized as described above;
+  the complete suite was rerun on that changed test code, not by retrying a
+  single test or borrowing a prior commit result.
+- Regression-first config run on old code: 1 test / 2 expected assertion failures,
+  `/private/tmp/issue493-lifecycle-config-red.log`.
+- Intermediate focused run: 188 total / 175 passed / 13 failed. Added cleanup
+  assertions exposed cancelled delayed workers that still waited on test gates;
+  the initial stop guard also missed prefetch. Both paths were fixed before the
+  final focused and complete runs. `/private/tmp/issue493-lifecycle-focused.log`.
+  These intermediate failures are preserved, not reported as PASS.
+- Localization (525 keys / 12 languages), balance query, network-error localization,
+  balance-card layout, menu-bar geometry and diff check PASS.
+  `/private/tmp/issue493-lifecycle-probes.log`.
+- Dedicated DerivedData reused:
+  `/private/tmp/BalanceBar-issue493-proxy-state-full-DerivedData`.
+- Test command: `xcodebuild test -project BalanceBar.xcodeproj -scheme BalanceBar
+  -configuration Debug -derivedDataPath <above> -destination 'platform=macOS,arch=arm64'
+  CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO`.
+- Dev precise SHA, signature, language resources, executable digest and exact-head
+  Scope/Fast are recorded after commit in the PR/Issue handoff. Hosted Ready Full,
+  artifact smoke and GUI/white-screen/CPU/scroll acceptance remain separate gates.
+
+## 如何人工测试
+
+开发版：原工作树 `build/dev/BalanceBar-dev.app`，精确 SHA 见本轮交接。
+准备：使用测试 macOS 用户/配置；保留 Claude 设置副本，不破坏生产凭据。
+
+1. 在 Claude 设置中保留 theme、permissions、hooks 等字段，两个直连供应商切换后，
+   仅 env 变化；再切回无 env 的官方配置，旧 API 凭据移除，其他字段仍保留。
+2. Claude 代理模式仍全部置灰；通过 CCS 正常退出代理后再切换，不能借本轮修复绕过保护。
+3. 连续刷新、切换客户端、开关菜单，检查无异常退出；官方优先、同名即时拆分、
+   TAG 顺序、两层滚动和白屏/关闭白闪仍需人工验收，自动测试不替代这些检查。
+
+反馈 PASS + SHA + 范围，或 FAIL + 步骤 + 实际/预期 + 日志。
+No version bump, merge, new task, interactive GUI or Ready Full is performed.
+
+---
+
+## Historical superseded validation records
+
 # PR #506: three review fixes (baseline 9fd0c684)
 
 This section is the current delivery; later sections are historical, superseded

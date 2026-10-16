@@ -323,6 +323,7 @@ final class ProviderRefreshCoordinator {
     private var standardOfficialRequests: [AssistantClient: OfficialQuotaRequestContext] = [:]
     private var aggregationOfficialRequests: [AggregationDisplayIdentity: OfficialQuotaRequestContext] = [:]
     private var lastAggregationPublication: (displays: [AggregatedProviderDisplay], blocked: Bool)?
+    private let lifetime = OfficialResponseGeneration()
     private var standardPublicationEpoch = OfficialResponseGeneration()
     private struct CachedCodexResetForecast {
         let forecast: CodexResetForecast
@@ -401,6 +402,7 @@ final class ProviderRefreshCoordinator {
     /// Called on the refresh owner queue before the ordinary single-provider path.
     @discardableResult
     func refreshAggregation(reader: CCSwitchAggregationRepository, force: Bool) -> Bool {
+        guard lifetime.isCurrent() else { return false }
         SwitchLog.write("aggregation refresh triggered; force=\(force)", level: .debug,
             category: "refresh.aggregation", throttleKey: "aggregation-trigger-\(force)", minimumInterval: 1)
         aggregationReader = reader
@@ -540,7 +542,7 @@ final class ProviderRefreshCoordinator {
     private func scheduleAggregationRetry(_ reader: CCSwitchAggregationRepository) {
         guard aggregationRetry == nil else { return }
         let retry = DispatchWorkItem { [weak self, weak reader] in
-            guard let self, let reader, self.aggregationReader === reader else { return }
+            guard let self, self.lifetime.isCurrent(), let reader, self.aggregationReader === reader else { return }
             self.aggregationRetry = nil
             _ = self.refreshAggregation(reader: reader, force: true)
         }
@@ -642,8 +644,28 @@ final class ProviderRefreshCoordinator {
         }
     }
 
+    /// Ends this owner's lifetime before an injected transport or repository is
+    /// destroyed. Work already running finishes; queued/late work cannot launch
+    /// requests or publish after this synchronous serial boundary returns.
+    /// The transport owner remains responsible for cancelling/invalidation.
+    func stop() {
+        let finish = {
+            self.lifetime.invalidate()
+            self.aggregationRetry?.cancel()
+            self.aggregationRetry = nil
+            self.aggregationPending = []
+            self.standardPublicationEpoch.invalidate()
+            self.officialResponseGenerations.values.forEach { $0.invalidate() }
+        }
+        if DispatchQueue.getSpecific(key: queueKey) != nil { finish() }
+        else { queue.sync(execute: finish) }
+    }
+
     func performAsync(_ work: @escaping () -> Void) {
-        queue.async { work() }
+        queue.async { [weak self] in
+            guard let self, self.lifetime.isCurrent() else { return }
+            work()
+        }
     }
 
     func refreshStandardProvider(
@@ -730,7 +752,7 @@ final class ProviderRefreshCoordinator {
 
     func prefetchCurrentBalance(for client: AssistantClient) {
         queue.async { [weak self] in
-            guard let self, let current = self.repository.loadCurrent(appType: client.appType) else { return }
+            guard let self, self.lifetime.isCurrent(), let current = self.repository.loadCurrent(appType: client.appType) else { return }
             let revision = current.configurationRevision
             let isValid = { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
             if let query = current.query {
@@ -751,7 +773,7 @@ final class ProviderRefreshCoordinator {
     ) {
         let client = requestedClient ?? .codex
         queue.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.lifetime.isCurrent() else { return }
             let currentDate = self.now()
             let due = self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
             SwitchLog.write("quick-switch refresh triggered; force=\(force); ttl_due=\(due); configuration_event=\(configurationChanged)", level: .debug,
@@ -880,9 +902,12 @@ final class ProviderRefreshCoordinator {
         // second hop when already on the owner queue so FIFO behavior stays
         // identical for the existing composition-root refresh path.
         if DispatchQueue.getSpecific(key: queueKey) != nil {
-            work()
+            if lifetime.isCurrent() { work() }
         } else {
-            queue.async { work() }
+            queue.async { [weak self] in
+                guard let self, self.lifetime.isCurrent() else { return }
+                work()
+            }
         }
     }
 
@@ -1423,7 +1448,7 @@ final class ProviderRefreshCoordinator {
         isCurrentRequest: @escaping () -> Bool = { true }
     ) {
         queue.async { [weak self] in
-            guard let self, isCurrentRequest(),
+            guard let self, self.lifetime.isCurrent(), isCurrentRequest(),
                   self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
                   client != .codex || self.aggregationEntries.isEmpty else { return }
             let epoch = self.standardPublicationEpoch
@@ -1439,7 +1464,7 @@ final class ProviderRefreshCoordinator {
                 self.actions.notificationSnapshot?(client, providerID, next)
             }
             DispatchQueue.main.async {
-                guard isCurrentRequest(), client != .codex || epoch.isCurrent() else { return }
+                guard self.lifetime.isCurrent(), isCurrentRequest(), client != .codex || epoch.isCurrent() else { return }
                 guard let current = self.actions.currentProvider(client),
                       current.id == providerID,
                       current.configurationRevision == configurationRevision else { return }
@@ -1465,7 +1490,7 @@ final class ProviderRefreshCoordinator {
         configurationRevision: String = ""
     ) {
         queue.async { [weak self] in
-            guard let self,
+            guard let self, self.lifetime.isCurrent(),
                   self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
                   client != .codex || self.aggregationEntries.isEmpty else { return }
             let epoch = self.standardPublicationEpoch
@@ -1477,7 +1502,7 @@ final class ProviderRefreshCoordinator {
                 configurationRevision: configurationRevision
             )
             DispatchQueue.main.async {
-                guard (client != .codex || epoch.isCurrent()),
+                guard self.lifetime.isCurrent(), (client != .codex || epoch.isCurrent()),
                       self.actions.isActiveClient(client),
                       let current = self.actions.currentProvider(client),
                       current.id == providerID,

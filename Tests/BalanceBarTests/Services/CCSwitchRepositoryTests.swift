@@ -112,6 +112,42 @@ final class CCSwitchRepositoryTests: XCTestCase {
         XCTAssertEqual(try currentValue(for: "claude-target"), 1)
     }
 
+    func testClaudeSwitchReplacesOnlyProviderEnvironmentAndPreservesIndependentSettings() throws {
+        let url = try prepareClaudeDirect()
+        var original = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        original["permissions"] = ["allow": ["Read"], "deny": ["Bash(rm:*)"]]
+        original["hooks"] = ["SessionStart": [["hooks": [["type": "command", "command": "echo fixture"]]]]]
+        original["mcpServers"] = ["fixture": ["command": "fixture-cli", "args": ["--local"]]]
+        original["futureUserSetting"] = ["enabled": true, "values": [1, 2, 3]]
+        try JSONSerialization.data(withJSONObject: original).write(to: url)
+        let originalIndependent = original.filter { $0.key != "env" } as NSDictionary
+        let nextEnv = ["ANTHROPIC_BASE_URL": "https://next.example", "CLAUDE_CODE_OAUTH_TOKEN": "fixture-next"]
+        let target: [String: Any] = ["env": nextEnv, "theme": "light", "permissions": ["allow": ["Bash(*)"]]]
+        let targetText = String(decoding: try JSONSerialization.data(withJSONObject: target), as: UTF8.self)
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET settings_config='\(targetText)' WHERE id='claude-target'")
+        }
+        let originalBytes = try Data(contentsOf: url)
+        repository.switchWriteObserver = { stage in
+            if stage == "beforePointer" { try! self.writeClaudeMode("proxy") }
+        }
+        XCTAssertThrowsError(try repository.switchCurrent(to: "claude-target", appType: "claude"))
+        XCTAssertEqual(try Data(contentsOf: url), originalBytes, "rollback preserves the whole original document")
+        repository.switchWriteObserver = nil
+        try writeClaudeMode("direct")
+        try repository.switchCurrent(to: "claude-target", appType: "claude")
+        let actual = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        XCTAssertEqual(actual["env"] as? [String: String], nextEnv, "no stale auth or proxy environment survives")
+        XCTAssertEqual(actual.filter { $0.key != "env" } as NSDictionary, originalIndependent)
+        XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .allowedDirect)
+        // Return to an official/default Provider without env; independent settings remain intact.
+        try withDatabase { db in try execute(db, sql: "UPDATE providers SET settings_config='{}' WHERE id='claude-other'") }
+        try repository.switchCurrent(to: "claude-other", appType: "claude")
+        let official = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        XCTAssertNil(official["env"])
+        XCTAssertEqual(official as NSDictionary, originalIndependent)
+    }
+
     func testClaudeProxyOAuthAndUnknownEnvironmentDifferencesBlockDirectSwitching() throws {
         let url = try prepareClaudeDirect()
         let original = try Data(contentsOf: url)
