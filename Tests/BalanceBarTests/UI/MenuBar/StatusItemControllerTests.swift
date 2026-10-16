@@ -3520,6 +3520,14 @@ extension StatusItemControllerTests {
         XCTAssertEqual(reordered.first?.groupedProviderIDs, ["member-0"])
         XCTAssertEqual(reordered[1].groupedProviderIDs, ["member-1", "member-2"])
         XCTAssertEqual(reordered[1].entry.role, .default)
+        let officialSource = ProviderSummarySource(id: "official", name: "OpenAI Official", isOfficial: true)
+        let officialDisplay = AggregatedProviderDisplay(
+            entry: .init(source: officialSource, role: .default),
+            identity: .init(providerID: "official", accountScope: "official", configurationRevision: "fixture"),
+            snapshot: .official("OpenAI Official", 98, "quota", nil, Date()), account: nil,
+            status: .fresh, reason: nil, fetchedAt: Date())
+        let officialFirst = AggregationWalletPresentation.cards(sharedWalletInput(defaultIndex: 2).aggregatedProviders + [officialDisplay])
+        XCTAssertTrue(officialFirst.first?.entry.source.isOfficial == true)
         let deduplicated = AggregationWalletPresentation.cards(sharedWalletInput(notes: ["GPT", "GPT", " "]).aggregatedProviders)
         XCTAssertEqual(deduplicated.first?.groupedNotes, ["GPT"])
         var mixed = sharedWalletInput().aggregatedProviders

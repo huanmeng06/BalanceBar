@@ -70,7 +70,12 @@ enum AggregationWalletPresentation {
             if let index = indices[key] { groups[index].append(display) }
             else { indices[key] = groups.count; groups.append([display]) }
         }
-        return groups.map { members in
+        let orderedGroups = groups.enumerated().sorted { lhs, rhs in
+            let leftOfficial = lhs.element.first?.entry.source.isOfficial == true
+            let rightOfficial = rhs.element.first?.entry.source.isOfficial == true
+            return leftOfficial == rightOfficial ? lhs.offset < rhs.offset : leftOfficial
+        }.map(\.element)
+        return orderedGroups.map { members in
             let first = members[0]
             guard let scope = walletID(first) else { return first }
             let valid = members.filter { $0.snapshot.kind == .balance }
