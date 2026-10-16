@@ -3166,6 +3166,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard menuInput != input else { return }
         let nativeItemsChanged = !menuInput.hasSameNativeItems(as: input)
         let overviewUnchanged = menuInput.aggregatedProviders == input.aggregatedProviders
+            && menuInput.directProviderNotes == input.directProviderNotes
+            && menuInput.directProviderIsOfficial == input.directProviderIsOfficial
             && menuInput.openAIAccount == input.openAIAccount
             && menuInput.lunaReserveDisplayMode == input.lunaReserveDisplayMode
             && menuInput.lunaReserveHideExhaustedQuota == input.lunaReserveHideExhaustedQuota
@@ -6046,6 +6048,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         aggregationBoundsObserver = nil
     }
 
+    private func directCardContext(for snapshot: Snapshot) -> OverviewCardContext {
+        OverviewCardContext(snapshot: snapshot, identity: snapshot.provider,
+            account: menuInput.openAIAccount, date: refreshDate, noteTags: menuInput.directProviderNotes)
+    }
+
     private func cardContext(_ display: AggregatedProviderDisplay) -> OverviewCardContext {
         OverviewCardContext(snapshot: display.snapshot, identity: display.identity.numericScope,
             account: display.account, date: display.fetchedAt, notes: display.entry.source.notes, noteTags: display.groupedNotes)
@@ -6222,7 +6229,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 document.addSubview(record.wrapper)
                 needsPlacement = true
             }
-            updateAggregationNotes(in: record.card, context: context)
+            updateOverviewHeaderNotes(in: record.card, context: context)
             updateOverviewQuotaDetail(in: record.card, context: context)
             updateBalanceSubtitle(in: record.card, context: context)
             alignSingleLineBalance(in: record.card, snapshot: context.snapshot)
@@ -6291,7 +6298,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func updateAggregationNotes(in card: NSView, context: OverviewCardContext) {
+    private func updateOverviewHeaderNotes(in card: NSView, context: OverviewCardContext) {
         guard let title = descendantViews(of: card, as: NSTextField.self).first(where: {
             $0.identifier?.rawValue == "overview.providerTitle"
         }), let header = title.superview,
@@ -6554,11 +6561,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func makeOverviewMenuItem(for snapshot: Snapshot, context supplied: OverviewCardContext? = nil) -> NSMenuItem {
-        let directTag = menuInput.aggregatedProviders.isEmpty
-            ? menuInput.directProviderNotes
-            : nil
-        let context = supplied ?? OverviewCardContext(snapshot: snapshot, identity: snapshot.provider,
-            account: menuInput.openAIAccount, date: refreshDate, noteTags: directTag)
+        let context = supplied ?? directCardContext(for: snapshot)
         if snapshot.kind == .error {
             presentedOverviewNumerics = currentOverviewNumericSamples()
             return makeOverviewErrorMenuItem(for: snapshot, context: context)
@@ -6648,7 +6651,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 account,
                 frame: headerFrame(accountFrame)
             )
-            if supplied != nil { accountLabel.identifier = NSUserInterfaceItemIdentifier("aggregation.accountSubtitle") }
+            accountLabel.identifier = NSUserInterfaceItemIdentifier("overview.accountSubtitle")
             headerHost.addSubview(accountLabel)
         }
         if let subscription,
@@ -7049,7 +7052,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             [quotaDetail, amount].forEach(attachBody)
         }
         item.view = view
-        if supplied != nil || context.noteTags != nil { updateAggregationNotes(in: view, context: context) }
+        updateOverviewHeaderNotes(in: view, context: context)
         updateBalanceSubtitle(in: view, context: context)
         alignSingleLineBalance(in: view, snapshot: context.snapshot)
         return item
@@ -7104,7 +7107,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         detail.frame = frames.detail
         view.addSubview(detail)
-        if !menuInput.aggregatedProviders.isEmpty { updateAggregationNotes(in: view, context: context) }
+        updateOverviewHeaderNotes(in: view, context: context)
         item.view = view
         return item
     }
@@ -7216,8 +7219,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if !menuInput.aggregatedProviders.isEmpty {
             return aggregationOverviewDisplays.flatMap { numericSamples(for: cardContext($0)) }
         }
-        return numericSamples(for: OverviewCardContext(snapshot: snapshot, identity: snapshot.provider,
-            account: menuInput.openAIAccount, date: refreshDate))
+        return numericSamples(for: directCardContext(for: snapshot))
     }
 
     private func numericSamples(for context: OverviewCardContext) -> [OverviewNumericSample] {
@@ -7711,8 +7713,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard isStatusMenuTracking else { return }
         if !menuInput.aggregatedProviders.isEmpty { return }
         guard let host = statusMenu.items.first?.view as? MenuHoverLinkHostView else { return }
-        reconcileOverviewSections(in: host, context: OverviewCardContext(snapshot: snapshot,
-            identity: snapshot.provider, account: menuInput.openAIAccount, date: refreshDate))
+        reconcileOverviewSections(in: host, context: directCardContext(for: snapshot))
     }
 
     private func reconcileOverviewSections(in host: MenuHoverLinkHostView, context: OverviewCardContext) {
@@ -7784,6 +7785,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 labels.first { $0.font == Self.subscriptionFont }?.stringValue = subscription.text
             }
         }
+        updateOverviewHeaderNotes(in: host, context: context)
         let sections = host.subviews.compactMap { $0 as? OpenCodexMetricSectionView }
         for (index, window) in presentation.windows.enumerated() {
             let id = OpenCodexOverviewSectionID.quota(window, index: index)
@@ -7845,8 +7847,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard isStatusMenuTracking, let overview = statusMenu.items.first?.view else { return }
         presentedOverviewNumerics = currentOverviewNumericSamples()
         if menuInput.aggregatedProviders.isEmpty {
-            applyInPlaceOverviewNumericUpdates(in: overview, context: OverviewCardContext(snapshot: snapshot,
-                identity: snapshot.provider, account: menuInput.openAIAccount, date: refreshDate))
+            applyInPlaceOverviewNumericUpdates(in: overview, context: directCardContext(for: snapshot))
         } else {
             for display in aggregationOverviewDisplays {
                 guard let card = aggregationCards[display.identity] else { continue }

@@ -3873,3 +3873,80 @@ extension StatusItemControllerTests {
         XCTAssertNotNil(updated.overviewLayout?.progress)
     }
 }
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testOfficialDirectAndAggregationUseIdenticalCardPresentation() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = Snapshot.official("Official", 94, "5h", "1h", date, windows: [
+            .init(kind: .fiveHour, remaining: 94, label: "5h", daysText: "5h", reset: "1h", durationSeconds: 18_000),
+            .init(kind: .sevenDay, remaining: 68, label: "7d", daysText: "7d", reset: "2d", durationSeconds: 604_800)
+        ], lunaReserve: .init(status: .available, remaining: 80, reset: "1h"),
+        bankedReset: .init(cards: [.init(id: "ticket", resetType: "codex_rate_limits", titleText: "Full reset",
+            expiresAt: date.addingTimeInterval(86_400), expiresText: "later")]), resetForecast: .demo(updatedAt: date))
+        func fingerprint(_ view: NSView) -> [String] {
+            let label = view as? NSTextField
+            // AppKit may lazily add private backing views after layout. Compare
+            // our controls, not those implementation details inside leaf controls.
+            let children = view is NSTextField || view is NSImageView ? [] : view.subviews.flatMap(fingerprint)
+            return ["\(type(of: view))|\(view.frame)|\(label?.stringValue ?? "")|\(label?.font?.fontName ?? "")|\(label?.font?.pointSize ?? 0)"] + children
+        }
+        for snapshot in [snapshot, Snapshot.providerError("Official", reason: "Fixture failure", cachedBalance: nil)] {
+            for account in [OpenAIAccountPresentation(email: "fixture@example.test", subscription: .plus),
+                            OpenAIAccountPresentation(email: nil)] {
+                for note in ["Fixture alias", ""] {
+                    let direct = makeController()
+                    let aggregated = makeController()
+                    defer { direct.teardown(); aggregated.teardown() }
+                    let source = ProviderSummarySource(id: "official", name: "Official", isOfficial: true,
+                        query: nil, officialAccessToken: nil, notes: note)
+                    let display = AggregatedProviderDisplay(entry: .init(source: source, role: .default),
+                        identity: .init(providerID: "official", accountScope: "fixture", configurationRevision: "fixture"),
+                        snapshot: snapshot, account: account, status: .fresh, reason: nil, fetchedAt: date)
+                    func input(aggregation: Bool) -> StatusItemController.MenuInput {
+                        .init(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                            openAIAccount: aggregation ? nil : account, statusLinks: [], showQuickSwitchMenu: false,
+                            showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
+                            directProviderNotes: [note], directProviderIsOfficial: true,
+                            aggregatedProviders: aggregation ? [display] : [])
+                    }
+                    direct.start(snapshot: snapshot, refreshDate: date, menuInput: input(aggregation: false), settings: makeSettings())
+                    aggregated.start(snapshot: .placeholder, refreshDate: nil, menuInput: input(aggregation: true), settings: makeSettings())
+                    let directCard = try XCTUnwrap(direct.statusMenuForTesting.items.first?.view)
+                    let aggregateCard = try XCTUnwrap((aggregated.statusMenuForTesting.items.first?.view as? NSScrollView)?.documentView?.subviews.first?.subviews.first)
+                    XCTAssertEqual(fingerprint(directCard), fingerprint(aggregateCard))
+                    XCTAssertEqual((directCard as? MenuHoverLinkHostView)?.overviewLayout,
+                                   (aggregateCard as? MenuHoverLinkHostView)?.overviewLayout)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testDirectOfficialNoteUpdatesInPlaceWhileTracking() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = Snapshot.official("Official", 94, "5h", nil, date)
+        func input(_ note: String) -> StatusItemController.MenuInput {
+            .init(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                openAIAccount: .init(email: "fixture@example.test", subscription: .plus), statusLinks: [],
+                showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false,
+                showStatusMenu: false, directProviderNotes: note.isEmpty ? [] : [note], directProviderIsOfficial: true)
+        }
+        controller.start(snapshot: snapshot, refreshDate: date, menuInput: input("Old alias"), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let card = try XCTUnwrap(menu.items.first?.view)
+        let header = try XCTUnwrap(card.subviews.first { $0 is OpenCodexAccountSectionView })
+        let size = card.frame.size
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        controller.updateMenu(input: input("New alias"))
+        XCTAssertTrue(menu.items.first?.view === card)
+        XCTAssertEqual(header.subviews.compactMap { $0 as? AggregationNoteTagView }.first?.textView.accountLabel.stringValue, "New alias")
+        XCTAssertTrue(header.subviews.contains { $0 is AccountEmailView })
+        controller.updateMenu(input: input(""))
+        XCTAssertFalse(header.subviews.contains { $0 is AggregationNoteTagView })
+        XCTAssertEqual(card.frame.size, size)
+    }
+}
