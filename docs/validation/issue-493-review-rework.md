@@ -248,7 +248,10 @@ unchanged. Direct and aggregation official cards use the same account field.
 
 Verification: three focused account-email XCTest methods PASS, including unchanged
 refresh/fallback preservation and changed-email/resize regressions. Log:
-`/private/tmp/issue493-email-tooltip-tests.log`. The targeted `xcodebuild test`
+`/private/tmp/issue493-email-tooltip-tests-corrected.log`. The first invocation
+selected the wrong XCTest class and ran zero tests; the corrected invocation
+selected `DashboardProductionPathRegressionTests` and executed all three, with
+zero failures. The targeted `xcodebuild test`
 performed unsigned Debug compilation; `git diff --check` PASS. No new full local
 XCTest run is claimed for this three-line production change.
 
