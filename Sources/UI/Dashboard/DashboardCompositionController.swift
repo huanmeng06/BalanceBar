@@ -10,6 +10,9 @@ struct DashboardCompositionState {
     let currentProviderIsOfficial: () -> Bool
     let providerChoices: () -> [ProviderChoice]
     let snapshot: () -> Snapshot
+    let snapshotProviderID: () -> String?
+    let aggregationSnapshots: () -> [String: Snapshot]
+    let isAggregationMode: () -> Bool
     let quickSwitchSummaries: () -> [String: String]
     let refreshDate: () -> Date?
     let menuBarSnapshot: (Snapshot) -> Snapshot
@@ -38,7 +41,10 @@ struct DashboardCompositionState {
         statusLinks: @escaping () -> [StatusLink],
         defaultStatusLinks: @escaping () -> [StatusLink],
         setStatusLinks: @escaping ([StatusLink]) -> Void,
-        notificationConfiguration: DashboardNotificationPageConfiguration? = nil
+        notificationConfiguration: DashboardNotificationPageConfiguration? = nil,
+        snapshotProviderID: @escaping () -> String? = { nil },
+        aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
+        isAggregationMode: @escaping () -> Bool = { false }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
@@ -47,6 +53,9 @@ struct DashboardCompositionState {
         self.currentProviderIsOfficial = currentProviderIsOfficial
         self.providerChoices = providerChoices
         self.snapshot = snapshot
+        self.snapshotProviderID = snapshotProviderID
+        self.aggregationSnapshots = aggregationSnapshots
+        self.isAggregationMode = isAggregationMode
         self.quickSwitchSummaries = quickSwitchSummaries
         self.refreshDate = refreshDate
         self.menuBarSnapshot = menuBarSnapshot
@@ -1358,7 +1367,10 @@ final class DashboardCompositionController {
             currentProviderIsOfficial: state.currentProviderIsOfficial(),
             quotaProgressColorConfiguration: state.preferences.quotaProgressColorConfiguration,
             showQuotaProgressBar: state.preferences.showQuotaProgressBar,
-            displayTimeZone: state.preferences.effectiveDisplayTimeZone
+            displayTimeZone: state.preferences.effectiveDisplayTimeZone,
+            snapshotProviderID: state.snapshotProviderID(),
+            aggregatedSnapshots: state.aggregationSnapshots(),
+            isAggregationMode: state.isAggregationMode()
         )
     }
 

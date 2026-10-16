@@ -3121,7 +3121,7 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(link.isHoverHintVisible)
     }
 
-    func testForecastContentRefreshCancelsStaleHintButPreservesUnchangedHint() {
+    func testForecastSourceTimeRefreshPreservesHintButMeaningChangeCancelsIt() {
         let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
         let link = HoverLinkTextField(text: "83%")
         link.frame = NSRect(x: 8, y: 2, width: 200, height: 20)
@@ -3136,16 +3136,92 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(link.isHoverHintScheduled)
         link.updateForecastTooltipContent(first)
         XCTAssertTrue(link.isHoverHintScheduled)
+        // Only the update time moved: keep the pending hint; it presents the latest content.
         let latest = DashboardForecastTooltipContent(title: "Source", body: "Forecast", source: "11:05", disclaimer: "Hint")
         link.updateForecastTooltipContent(latest)
-        XCTAssertFalse(link.isHoverHintScheduled)
-        XCTAssertFalse(link.isHoverHintVisible)
+        XCTAssertTrue(link.isHoverHintScheduled)
         XCTAssertEqual(link.forecastTooltipContent, latest)
         XCTAssertEqual(link.hoverHint, latest.plainText)
+        XCTAssertNil(link.toolTip)
+        // A different forecast kind is a new meaning and invalidates the hint.
+        let signal = DashboardForecastTooltipContent(title: "Signal", body: "Official", source: "11:05", disclaimer: "Hint")
+        link.updateForecastTooltipContent(signal)
+        XCTAssertFalse(link.isHoverHintScheduled)
+        XCTAssertFalse(link.isHoverHintVisible)
+        XCTAssertEqual(link.forecastTooltipContent, signal)
         host.forwardHover(atHostPoint: NSPoint(x: 219, y: 23))
         host.forwardHover(atHostPoint: point)
         XCTAssertTrue(link.isHoverHintScheduled)
         host.forwardHover(atHostPoint: NSPoint(x: 219, y: 23))
+    }
+
+    func testOpenForecastBubbleSurvivesSourceTimeRefreshAndAnimates() throws {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        let link = HoverLinkTextField(text: "50%")
+        link.frame = NSRect(x: 8, y: 2, width: 200, height: 20)
+        link.hoverHintDelay = 0.5
+        link.updateForecastTooltipContent(DashboardForecastTooltipContent(
+            title: "Source", body: "Forecast", source: "13:31", disclaimer: "Hint"))
+        host.addSubview(link)
+        link.layout()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 80),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView?.addSubview(host)
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        host.track(link)
+        host.forwardHover(atHostPoint: host.convert(link.visibleTextHitRect.center, from: link))
+        link.firePendingHoverHintForTesting()
+        try XCTSkipUnless(link.isHoverHintVisible, "AppKit did not show a popover for a background test window")
+        XCTAssertEqual(link.hoverHintAnimatesForTesting, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        let popover = link.hoverHintPopoverForTesting
+        link.updateForecastTooltipContent(DashboardForecastTooltipContent(
+            title: "Source", body: "Forecast", source: "13:36", disclaimer: "Hint"))
+        XCTAssertTrue(link.isHoverHintVisible)
+        XCTAssertTrue(link.hoverHintPopoverForTesting === popover, "a time-only refresh must not close and reopen the bubble")
+        XCTAssertNil(link.toolTip)
+        host.removeFromSuperview()
+        XCTAssertFalse(link.isHoverHintVisible)
+    }
+
+    func testHoverHintOpensAboveOnlyWhenRequested() {
+        // Test windows are parked offscreen, where AppKit may flip a popover to
+        // whichever side has room, so this checks the requested edge itself.
+        let link = HoverLinkTextField(text: "重置概率")
+        XCTAssertTrue(link.isFlipped, "a flipped field opens a .maxY popover below its text")
+        XCTAssertEqual(link.hoverHintPreferredEdge, .maxY, "default placement stays below the anchor")
+        link.opensHoverHintAbove = true
+        XCTAssertEqual(link.hoverHintPreferredEdge, .minY, "requested placement is above the title")
+    }
+
+    func testHoverLinkPercentSignFontSurvivesValueChangesAndHover() {
+        let digits = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+        let symbol = OverviewNumericTextView.currencySymbolFont(for: digits)
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 40))
+        let link = HoverLinkTextField(text: "50%")
+        link.font = digits
+        link.percentSignFont = symbol
+        link.frame = NSRect(x: 8, y: 2, width: 200, height: 37)
+        link.hoverHint = "codex-reset.com"
+        host.addSubview(link)
+        link.layout()
+        host.track(link)
+        func fonts() -> (NSFont?, NSFont?) {
+            let text = link.attributedStringValue
+            return (text.attribute(.font, at: 0, effectiveRange: nil) as? NSFont,
+                    text.attribute(.font, at: text.length - 1, effectiveRange: nil) as? NSFont)
+        }
+        XCTAssertEqual(fonts().0?.pointSize, 31)
+        XCTAssertEqual(fonts().1?.pointSize, symbol.pointSize)
+        link.stringValue = "7%"
+        XCTAssertEqual(fonts().0?.pointSize, 31)
+        XCTAssertEqual(fonts().1?.pointSize, symbol.pointSize)
+        host.forwardHover(atHostPoint: host.convert(link.visibleTextHitRect.center, from: link))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertEqual(fonts().1?.pointSize, symbol.pointSize)
+        link.stringValue = "--"
+        XCTAssertEqual(fonts().1?.pointSize, 31, "only a trailing percent sign is reduced")
+        host.forwardHover(atHostPoint: NSPoint(x: 219, y: 39))
     }
 
     func testHoverLinkAlignmentChangesUpdateDrawingParagraphAndHoverGeometry() throws {
@@ -3538,5 +3614,50 @@ final class DashboardComponentsTests: XCTestCase {
 private extension NSRect {
     var center: NSPoint {
         NSPoint(x: midX, y: midY)
+    }
+}
+
+extension DashboardComponentsTests {
+    @MainActor
+    func testRechargeTooltipUsesOnlyPhraseAndCoexistsWithProviderLink() throws {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 280, height: 70))
+        let title = HoverLinkTextField(text: "Provider")
+        title.frame = NSRect(x: 10, y: 40, width: 200, height: 20)
+        host.addSubview(title)
+        host.track(title)
+        let subtitle = HoverLinkTextField(text: "Since last top-up: $2.50 used")
+        subtitle.frame = NSRect(x: 10, y: 10, width: 250, height: 20)
+        subtitle.hoverPhrase = "last top-up"
+        subtitle.decoratesOnHover = false
+        subtitle.underlinesHoverPhrase = true
+        subtitle.hoverHintDelay = 0.3
+        subtitle.updateTextTooltip(title: "Last top-up", text: "10/16 13:50")
+        host.addSubview(subtitle)
+        host.track(subtitle)
+        subtitle.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(subtitle.visibleTextHitRect.minX, 0)
+        XCTAssertLessThan(subtitle.visibleTextHitRect.maxX, subtitle.bounds.maxX)
+        host.forwardHover(atHostPoint: host.convert(subtitle.visibleTextHitRect.center, from: subtitle))
+        XCTAssertTrue(subtitle.isHoverHintScheduled)
+        let phrase = (subtitle.stringValue as NSString).range(of: "last top-up")
+        XCTAssertEqual(subtitle.attributedStringValue.attribute(.underlineStyle, at: phrase.location, effectiveRange: nil) as? Int,
+                       NSUnderlineStyle.single.rawValue)
+        XCTAssertNil(subtitle.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertNil(subtitle.attributedStringValue.attribute(.underlineStyle, at: phrase.location + phrase.length, effectiveRange: nil))
+        host.forwardHover(atHostPoint: host.convert(NSPoint(x: 1, y: 10), from: subtitle))
+        XCTAssertFalse(subtitle.isHoverHintScheduled)
+        XCTAssertNil(subtitle.attributedStringValue.attribute(.underlineStyle, at: phrase.location, effectiveRange: nil))
+        host.forwardHover(atHostPoint: host.convert(subtitle.visibleTextHitRect.center, from: subtitle))
+        host.setMenuContentVisible(false)
+        XCTAssertFalse(subtitle.isHoverHintScheduled)
+        var opens = 0
+        title.onActivate = { opens += 1 }
+        title.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: title.visibleTextHitRect.center))
+        XCTAssertEqual(opens, 1)
+        let bubble = DashboardTextTooltipViewController(text: "10/16 13:50", title: "Last top-up")
+        bubble.loadViewIfNeeded()
+        let rows = bubble.view.subviews.compactMap { $0 as? NSTextField }
+        XCTAssertEqual(rows.map(\.stringValue), ["Last top-up", "10/16 13:50"])
+        XCTAssertGreaterThan(rows[0].font?.pointSize ?? 0, rows[1].font?.pointSize ?? 0)
     }
 }

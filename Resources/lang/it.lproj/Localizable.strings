@@ -528,3 +528,33 @@
 "quota.pace.time.tomorrow" = "Domani %1$@";
 
 "quota.pace.body.reset_unavailable" = "L’ora del ripristino non è disponibile.";
+
+// CC Switch aggregation overview
+"aggregation.default" = "Predefinito";
+"aggregation.loading" = "Aggiornamento…";
+"aggregation.stale" = "Ultimi dati attendibili · nuovo tentativo";
+"aggregation.unavailable" = "Saldo non disponibile";
+"aggregation.manage_in_cc_switch" = "Gestisci il fornitore predefinito in CC Switch in modalità aggregazione";
+
+"balance.recharge.label" = "Ricarica";
+"balance.recharge.observed" = "Aumento netto del saldo rilevato localmente. La data indica la prima osservazione dell’app, non una ricevuta di pagamento.";
+
+"balance.used_since" = "Dal %1$@: %2$@ utilizzati";
+"balance.used_since_today" = "Dal %1$@: %2$@ utilizzati";
+"balance.used_since_yesterday" = "Dal %1$@: %2$@ utilizzati";
+"balance.yesterday" = "ieri";
+"balance.used" = "%1$@ utilizzati";
+"balance.recording.started_on" = "Registrazione dal %1$@";
+"balance.recording.started" = "Registrazione iniziata";
+"balance.reference_on" = "Del saldo del %1$@ di %2$@, resta %3$@";
+"balance.reference" = "Del saldo iniziale di %1$@, resta %2$@";
+"balance.reference_unavailable" = "Saldo di riferimento non disponibile";
+
+"balance.recharge.last" = "ultima ricarica";
+"balance.used_since_recharge" = "Dall’%1$@: %2$@ utilizzati";
+
+"balance.elapsed.ago" = "%1$@ fa";
+
+"quick_switch.routing_protected" = "Modalità routing: gestisci in CC Switch";
+"quick_switch.state_untrusted" = "Modalità non verificata: gestisci in CC Switch";
+"quick_switch.manage_in_cc_switch" = "Gestisci in CC Switch";

@@ -528,3 +528,33 @@
 "quota.pace.time.tomorrow" = "Morgen %1$@";
 
 "quota.pace.body.reset_unavailable" = "Die Zeit des Zurücksetzens ist derzeit nicht verfügbar.";
+
+// CC Switch aggregation overview
+"aggregation.default" = "Standard";
+"aggregation.loading" = "Wird aktualisiert…";
+"aggregation.stale" = "Letzte verlässliche Daten · neuer Versuch";
+"aggregation.unavailable" = "Guthaben nicht verfügbar";
+"aggregation.manage_in_cc_switch" = "Standardanbieter im Aggregationsmodus in CC Switch verwalten";
+
+"balance.recharge.label" = "Aufladung";
+"balance.recharge.observed" = "Lokal erkannter Nettoanstieg des Guthabens. Der Zeitpunkt ist die erste Beobachtung durch diese App, kein Zahlungsbeleg.";
+
+"balance.used_since" = "Seit %1$@: %2$@ verbraucht";
+"balance.used_since_today" = "Seit %1$@: %2$@ verbraucht";
+"balance.used_since_yesterday" = "Seit %1$@: %2$@ verbraucht";
+"balance.yesterday" = "gestern";
+"balance.used" = "%1$@ verbraucht";
+"balance.recording.started_on" = "Erfasst seit %1$@";
+"balance.recording.started" = "Erfassung begonnen";
+"balance.reference_on" = "Vom Guthaben am %1$@: %2$@, noch %3$@";
+"balance.reference" = "Vom Ausgangsguthaben %1$@: noch %2$@";
+"balance.reference_unavailable" = "Kein verlässlicher Guthabenbezug";
+
+"balance.recharge.last" = "letzter Aufladung";
+"balance.used_since_recharge" = "Seit %1$@ verbraucht: %2$@";
+
+"balance.elapsed.ago" = "vor %1$@";
+
+"quick_switch.routing_protected" = "Routing-Modus – in CC Switch verwalten";
+"quick_switch.state_untrusted" = "Modus nicht bestätigt – in CC Switch verwalten";
+"quick_switch.manage_in_cc_switch" = "In CC Switch verwalten";

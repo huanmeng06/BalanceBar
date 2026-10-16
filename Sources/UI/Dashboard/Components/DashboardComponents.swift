@@ -167,9 +167,11 @@ final class DashboardForecastTooltipViewController: NSViewController {
 
 final class DashboardTextTooltipViewController: NSViewController {
     private let text: String
+    private let headingText: String?
 
-    init(text: String) {
+    init(text: String, title: String? = nil) {
         self.text = text
+        self.headingText = title
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -178,6 +180,23 @@ final class DashboardTextTooltipViewController: NSViewController {
     }
 
     override func loadView() {
+        if let headingText {
+            let heading = NSTextField(labelWithString: headingText)
+            let body = NSTextField(labelWithString: text)
+            DashboardTextTooltip.configure(heading)
+            DashboardTextTooltip.configure(body)
+            heading.font = .systemFont(ofSize: 13, weight: .semibold)
+            body.font = .systemFont(ofSize: 12)
+            body.textColor = .secondaryLabelColor
+            let width = ceil(max(heading.fittingSize.width, body.fittingSize.width))
+            let root = NSView(frame: NSRect(x: 0, y: 0, width: width + 26, height: 65))
+            heading.frame = NSRect(x: 13, y: 34, width: width, height: 18)
+            body.frame = NSRect(x: 13, y: 13, width: width, height: 17)
+            root.addSubview(heading)
+            root.addSubview(body)
+            view = root
+            return
+        }
         let font = DashboardTextTooltip.font
         let layout = DashboardTextTooltipLayout.make(for: text, font: font)
         let root = NSView(
@@ -282,7 +301,7 @@ final class QuotaProgressView: NSView {
         }
     }
     var fillRatio: Double { percentage / 100 }
-    let colorConfiguration: QuotaProgressColorConfiguration
+    private(set) var colorConfiguration: QuotaProgressColorConfiguration
     let fillOrigin: QuotaProgressFillOrigin
     private var interpolator: OverviewNumericInterpolator?
     private var pendingAnimatedPercentage: Double?
@@ -305,6 +324,23 @@ final class QuotaProgressView: NSView {
 
     deinit {
         interpolator?.cancel()
+    }
+
+    func setColorConfiguration(_ configuration: QuotaProgressColorConfiguration) {
+        let normalized = configuration.normalized()
+        guard colorConfiguration != normalized else { return }
+        colorConfiguration = normalized
+        needsDisplay = true
+    }
+
+    /// Prepare a closed menu without starting a timer in its retained window.
+    func preparePercentage(from start: Double, to target: Double, duration: TimeInterval) {
+        interpolator?.cancel()
+        interpolator = nil
+        percentage = min(100, max(0, start))
+        let target = min(100, max(0, target))
+        pendingAnimatedPercentage = abs(target - percentage) > 0.0001 ? target : nil
+        pendingAnimatedDuration = duration
     }
 
     func setPercentage(
@@ -1203,14 +1239,39 @@ class HoverLinkTextField: NSTextField {
     }
 
     var onActivate: (() -> Void)?
+    var hoverPhrase: String? { didSet { updateVisibleTextHitRect() } }
+    var decoratesOnHover = true
+    var underlinesHoverPhrase = false
+    /// Open the bubble above the anchor so card content below it stays visible.
+    var opensHoverHintAbove = false
+    /// Draws a trailing "%" in this font, matching the reduced currency symbol.
+    var percentSignFont: NSFont? { didSet { applyStyle(text: stringValue, underlined: isHovered) } }
+    private(set) var textTooltipTitle: String?
+    /// Resolve changing elapsed time only when opening, preserving an open bubble.
+    var textTooltipTextProvider: (() -> String)?
+
+    func updateTextTooltip(title: String, text: String) {
+        guard textTooltipTitle != title || hoverHint != text else { return }
+        textTooltipTitle = title
+        hoverHint = text
+        cancelPendingHoverHint()
+        dismissHoverHint()
+    }
+
     /// Structured forecast presentation; plain hints keep their compact layout.
     var forecastTooltipContent: DashboardForecastTooltipContent?
-    /// Invalidate an open bubble only when its displayed content changes.
-    /// The next hover presents the latest content without replacing the link.
+    /// Invalidate an open bubble only when its meaning changes. The source
+    /// line carries the forecast update time; like the recharge bubble's
+    /// elapsed time it refreshes on the next open instead of closing a bubble
+    /// the pointer is still over. A pending hint presents the latest content.
     func updateForecastTooltipContent(_ content: DashboardForecastTooltipContent) {
         guard forecastTooltipContent != content else { return }
+        let sourceOnly = forecastTooltipContent.map {
+            $0.title == content.title && $0.body == content.body && $0.disclaimer == content.disclaimer
+        } ?? false
         forecastTooltipContent = content
         hoverHint = content.plainText
+        guard !sourceOnly else { return }
         cancelPendingHoverHint()
         dismissHoverHint()
     }
@@ -1378,8 +1439,12 @@ class HoverLinkTextField: NSTextField {
     /// glyph hit test used by the normal Dashboard tracking path.
     func updateHover(atHostPoint point: NSPoint, in host: NSView) {
         guard interactionMode == .menuHosted else { return }
-        let pointInLink = convert(point, from: host)
-        setHovering(visibleTextHitRect.contains(pointInLink))
+        var pointInLink = convert(point, from: host)
+        if let model = layer, let presentation = model.presentation() {
+            pointInLink.x -= presentation.frame.minX - model.frame.minX
+        }
+        setHovering(!isHiddenOrHasHiddenAncestor && visibleTextHitRect.contains(pointInLink)
+            && host.visibleRect.contains(point))
     }
 
     func setInteractionMode(_ mode: InteractionMode) {
@@ -1462,7 +1527,7 @@ class HoverLinkTextField: NSTextField {
     }
 
     private func refreshNativeTooltip() {
-        if hoverHintDelay > 0 || hoverHint.isEmpty {
+        if hoverHintDelay > 0 || hoverHint.isEmpty || isHoverHintVisible {
             toolTip = nil
         } else {
             toolTip = hoverHint
@@ -1492,6 +1557,15 @@ class HoverLinkTextField: NSTextField {
         isHoverHintScheduled = false
     }
 
+    /// Text fields are flipped: `.maxY` (the default) is below the anchor.
+    var hoverHintPreferredEdge: NSRectEdge {
+        guard opensHoverHintAbove else { return .maxY }
+        return isFlipped ? .minY : .maxY
+    }
+
+    var hoverHintPopoverForTesting: NSPopover? { hintPopover }
+    var hoverHintAnimatesForTesting: Bool? { hintPopover?.animates }
+
     func firePendingHoverHintForTesting() {
         hoverHintTimer?.fire()
         cancelPendingHoverHint()
@@ -1511,7 +1585,7 @@ class HoverLinkTextField: NSTextField {
         if let content = forecastTooltipContent {
             controller = DashboardForecastTooltipViewController(content: content)
         } else {
-            controller = DashboardTextTooltipViewController(text: hoverHint)
+            controller = DashboardTextTooltipViewController(text: textTooltipTextProvider?() ?? hoverHint, title: textTooltipTitle)
         }
         controller.loadViewIfNeeded()
         popover.contentViewController = controller
@@ -1519,7 +1593,8 @@ class HoverLinkTextField: NSTextField {
         hintPopover = popover
         toolTip = nil
         let anchor = visibleTextHitRect.isEmpty ? bounds : visibleTextHitRect
-        popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
+        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        popover.show(relativeTo: anchor, of: self, preferredEdge: hoverHintPreferredEdge)
         guard popover.isShown else {
             hintPopover = nil
             if hoverHintDelay <= 0 {
@@ -1532,6 +1607,7 @@ class HoverLinkTextField: NSTextField {
     }
 
     private func dismissHoverHint() {
+        hintPopover?.animates = false
         hintPopover?.close()
         hintPopover = nil
         isHoverHintVisible = false
@@ -1603,7 +1679,15 @@ class HoverLinkTextField: NSTextField {
             )
         }
 
-        let glyphRect = layoutManager.boundingRect(forGlyphRange: visibleGlyphRange, in: textContainer)
+        let hitRange: NSRange
+        if let hoverPhrase {
+            let characters = (textStorage.string as NSString).range(of: hoverPhrase)
+            guard characters.location != NSNotFound else { return .zero }
+            hitRange = NSIntersectionRange(visibleGlyphRange,
+                layoutManager.glyphRange(forCharacterRange: characters, actualCharacterRange: nil))
+        } else { hitRange = visibleGlyphRange }
+        guard hitRange.length > 0 else { return .zero }
+        let glyphRect = layoutManager.boundingRect(forGlyphRange: hitRange, in: textContainer)
         guard !glyphRect.isEmpty else { return .zero }
 
         let glyphHitRect = NSRect(
@@ -1641,12 +1725,22 @@ class HoverLinkTextField: NSTextField {
         paragraphStyle.lineBreakMode = cell?.lineBreakMode ?? lineBreakMode
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font ?? NSFont.systemFont(ofSize: 12),
-            .foregroundColor: underlined ? NSColor.linkColor : restingTextColor,
+            .foregroundColor: underlined && decoratesOnHover ? NSColor.linkColor : restingTextColor,
             .paragraphStyle: paragraphStyle
         ]
-        if underlined { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        if underlined && decoratesOnHover { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        let styledText = NSMutableAttributedString(string: text, attributes: attributes)
+        if let percentSignFont, text.hasSuffix("%") {
+            styledText.addAttribute(.font, value: percentSignFont, range: NSRange(location: (text as NSString).length - 1, length: 1))
+        }
+        if underlined, underlinesHoverPhrase, let hoverPhrase {
+            let range = (text as NSString).range(of: hoverPhrase)
+            if range.location != NSNotFound {
+                styledText.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            }
+        }
         isApplyingStyle = true
-        attributedStringValue = NSAttributedString(string: text, attributes: attributes)
+        attributedStringValue = styledText
         isApplyingStyle = false
         updateVisibleTextHitRect()
     }
@@ -1693,6 +1787,7 @@ final class MenuHoverLinkHostView: NSView {
         } else if wasActive || isMenuDismissing {
             beginMenuDismissal()
         } else {
+            activeLinks.forEach { $0.clearHoverState() }
             setPaceMenuTracking(false)
         }
         refreshMarqueeVisibility()
@@ -1718,6 +1813,7 @@ final class MenuHoverLinkHostView: NSView {
         guard !isMenuDismissing else { return }
         dismissalTrace?.record("dismissal.begin", view: self)
         guard let departingWindow = window, departingWindow.isVisible else {
+            activeLinks.forEach { $0.clearHoverState() }
             setPaceMenuTracking(false)
             return
         }
@@ -1733,7 +1829,7 @@ final class MenuHoverLinkHostView: NSView {
         dismissalPaceViews.forEach { $0.stopMenuInteractionPreservingVisuals() }
         removeTrackingAreaReference()
         removeTicketScrollMonitor()
-        link?.clearHoverState()
+        activeLinks.forEach { $0.clearHoverState() }
         // Occlusion is only an auxiliary cleanup signal, not animation completion.
         // Detach and next-open cleanup also work without this notification.
         menuDismissalObserver = NotificationCenter.default.addObserver(
@@ -1778,6 +1874,8 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func refreshMarqueeVisibility() {
+        activeLinks.filter { $0.isHiddenOrHasHiddenAncestor || $0.visibleRect.isEmpty }
+            .forEach { $0.clearHoverState() }
         func visit(_ node: NSView) {
             (node as? AccountMarqueeView)?.refreshScrollVisibility()
             node.subviews.forEach(visit)
@@ -1786,6 +1884,8 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     private weak var link: HoverLinkTextField?
+    private let links = NSHashTable<HoverLinkTextField>.weakObjects()
+    private var activeLinks: [HoverLinkTextField] { links.allObjects.filter { $0.isDescendant(of: self) } }
     private weak var ticketScrollView: BankedResetTicketScrollView?
     private var trackingAreaReference: NSTrackingArea?
     private var ticketScrollMonitor: Any?
@@ -1894,7 +1994,7 @@ final class MenuHoverLinkHostView: NSView {
         if affected { sectionFocus.reset() }
     }
 
-    var trackedLink: HoverLinkTextField? { link }
+    var trackedLink: HoverLinkTextField? { link ?? activeLinks.first }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1906,6 +2006,7 @@ final class MenuHoverLinkHostView: NSView {
 
     func track(_ link: HoverLinkTextField) {
         self.link = link
+        links.add(link)
         link.setInteractionMode(.menuHosted)
         refreshTrackingArea()
         synchronizeHoverState()
@@ -1969,7 +2070,7 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
-        link?.clearHoverState()
+        activeLinks.forEach { $0.clearHoverState() }
         paceViews.forEach { $0.updateHover(at: NSPoint(x: -100, y: -100)) }
     }
 
@@ -1983,7 +2084,7 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func forwardHover(atHostPoint point: NSPoint) {
-        link?.updateHover(atHostPoint: point, in: self)
+        activeLinks.forEach { $0.updateHover(atHostPoint: point, in: self) }
         let next = paceViews.first { $0.isMenuTracking && $0.markerHitRect.contains($0.convert(point, from: self)) }
         // Deliver the new target first so a late leave cannot cancel its timeline.
         if let next { next.updateHover(at: next.convert(point, from: self)) }
@@ -1994,7 +2095,7 @@ final class MenuHoverLinkHostView: NSView {
 
     private func installTrackingArea() {
         guard !isMenuDismissing else { return }
-        guard (link != nil || !paceViews.isEmpty), !bounds.isEmpty else { return }
+        guard (!activeLinks.isEmpty || !paceViews.isEmpty), !bounds.isEmpty else { return }
         let area = NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
@@ -2025,7 +2126,7 @@ final class MenuHoverLinkHostView: NSView {
 
     private func synchronizeHoverState() {
         guard let window else {
-            link?.clearHoverState()
+            activeLinks.forEach { $0.clearHoverState() }
             clearPaceHover()
             return
         }
@@ -2037,7 +2138,7 @@ final class MenuHoverLinkHostView: NSView {
         removeTrackingAreaReference()
         removeTicketScrollMonitor()
         clearPaceHover()
-        link?.clearHoverState()
+        activeLinks.forEach { $0.clearHoverState() }
     }
 
     func containsTicketScrollPoint(_ pointInWindow: NSPoint) -> Bool {

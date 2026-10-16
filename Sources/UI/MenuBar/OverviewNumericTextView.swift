@@ -137,13 +137,17 @@ private struct OverviewNumericTextRoot: View {
     var contentAlignment: OverviewNumericContentAlignment = .trailing
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
             if !model.prefix.isEmpty {
                 Text(model.prefix)
+                    .font(Font(model.prefix == "$" || model.prefix == "¥"
+                        ? OverviewNumericTextView.currencySymbolFont(for: font) : font))
             }
             numericValue
             if !model.suffix.isEmpty {
                 Text(model.suffix)
+                    .font(Font(model.suffix == "%"
+                        ? OverviewNumericTextView.currencySymbolFont(for: font) : font))
             }
         }
         .font(Font(font))
@@ -221,6 +225,10 @@ final class OverviewNumericTextView: NSView {
     var contentAlignmentForTesting: OverviewNumericContentAlignment { contentAlignment }
     var hostsFullBoundsForTesting: Bool {
         hostingView.frame == bounds && textField.frame == bounds
+    }
+
+    static func currencySymbolFont(for font: NSFont) -> NSFont {
+        .systemFont(ofSize: font.pointSize * 0.65, weight: .medium)
     }
 
     static func contentAlignment(

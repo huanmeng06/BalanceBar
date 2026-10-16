@@ -57,6 +57,19 @@ struct CodexRequestCredentials: Equatable {
     }
 }
 
+/// Frozen once by the request owner and reused verbatim for cancellation.
+/// Never passed to presentation code or diagnostics.
+struct OfficialQuotaRequestContext {
+    let client: AssistantClient
+    let providerID: String
+    let storedAccessToken: String?
+    let credentials: CodexRequestCredentials?
+
+    var credentialSource: OfficialQuotaCredentialSource {
+        OfficialQuotaClient.credentialSource(client: client, storedAccessToken: storedAccessToken)
+    }
+}
+
 extension OfficialQuotaCredentialReading {
     func codexRequestCredentials() -> CodexRequestCredentials {
         CodexRequestCredentials(
@@ -100,6 +113,7 @@ final class OfficialQuotaClient {
     /// finish after its client has been released without retaining UI state.
     private final class InFlightRegistry {
         private struct Entry {
+            let generation: UUID
             var completions: [Completion]
             var task: URLSessionDataTask?
         }
@@ -107,20 +121,21 @@ final class OfficialQuotaClient {
         private let lock = NSLock()
         private var entries: [String: Entry] = [:]
 
-        func register(key: String, completion: @escaping Completion) -> Bool {
+        func register(key: String, completion: @escaping Completion) -> UUID? {
             lock.lock()
             defer { lock.unlock() }
             if entries[key] != nil {
-                entries[key, default: Entry(completions: [], task: nil)].completions.append(completion)
-                return false
+                entries[key]?.completions.append(completion)
+                return nil
             }
-            entries[key] = Entry(completions: [completion], task: nil)
-            return true
+            let generation = UUID()
+            entries[key] = Entry(generation: generation, completions: [completion], task: nil)
+            return generation
         }
 
-        func attach(task: URLSessionDataTask, to key: String) {
+        func attach(task: URLSessionDataTask, to key: String, generation: UUID) {
             lock.lock()
-            guard var entry = entries[key] else {
+            guard var entry = entries[key], entry.generation == generation else {
                 lock.unlock()
                 task.cancel()
                 return
@@ -138,9 +153,11 @@ final class OfficialQuotaClient {
 
         func finish(
             key: String,
+            generation: UUID,
             result: Result<OfficialQuotaResult, OfficialQuotaClientError>
         ) {
             lock.lock()
+            guard entries[key]?.generation == generation else { lock.unlock(); return }
             let completions = entries.removeValue(forKey: key)?.completions ?? []
             lock.unlock()
             completions.forEach { $0(result) }
@@ -159,6 +176,8 @@ final class OfficialQuotaClient {
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
     private let inFlight = InFlightRegistry()
+    private let creditLock = NSLock()
+    private var creditRequests: [String: (UUID, URLSessionDataTask)] = [:]
 
     init(
         session: URLSession = .shared,
@@ -219,6 +238,19 @@ final class OfficialQuotaClient {
         )
     }
 
+    @discardableResult
+    func fetchQuota(context: OfficialQuotaRequestContext,
+                    completion: @escaping (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void) -> Bool {
+        fetchQuota(client: context.client, providerID: context.providerID,
+            storedAccessToken: context.storedAccessToken, requestCredentials: context.credentials, completion: completion)
+    }
+
+    func cancelQuota(context: OfficialQuotaRequestContext) {
+        cancelQuota(client: context.client, providerID: context.providerID,
+            credentialSource: context.credentialSource, requestCredentials: context.credentials,
+            storedAccessToken: context.storedAccessToken)
+    }
+
     /// Duplicate consumers share transport only within the same request scope.
     /// Frozen Codex credentials isolate overlapping account-switch requests.
     @discardableResult
@@ -250,9 +282,11 @@ final class OfficialQuotaClient {
             storedAccessToken: storedAccessToken
         )
         let registry = inFlight
-        guard registry.register(key: key, completion: completion) else {
+        guard let generation = registry.register(key: key, completion: completion) else {
+            SwitchLog.write("official-quota transport coalesced; scope_omitted=true", level: .debug, category: "refresh.transport")
             return false
         }
+        SwitchLog.write("official-quota transport started; scope_omitted=true", level: .debug, category: "refresh.transport")
 
         let parser = self.parser
         let task = session.dataTask(with: request) { data, response, error in
@@ -269,9 +303,9 @@ final class OfficialQuotaClient {
                     dataSize: data?.count ?? 0
                 ))
             }
-            registry.finish(key: key, result: result)
+            registry.finish(key: key, generation: generation, result: result)
         }
-        registry.attach(task: task, to: key)
+        registry.attach(task: task, to: key, generation: generation)
         task.resume()
         return true
     }
@@ -281,6 +315,7 @@ final class OfficialQuotaClient {
     /// Never POSTs consume and never changes the usage request.
     func fetchRateLimitResetCredits(
         storedAccessToken: String? = nil,
+        context: OfficialQuotaRequestContext? = nil,
         now: Date = Date(),
         completion: @escaping (Result<CodexBankedReset?, OfficialQuotaClientError>) -> Void
     ) {
@@ -291,7 +326,16 @@ final class OfficialQuotaClient {
             return
         }
 
-        let task = session.dataTask(with: request) { data, response, error in
+        let key = context.map { Self.requestKey(client: $0.client, providerID: $0.providerID,
+            credentialSource: $0.credentialSource, requestCredentials: $0.credentials,
+            storedAccessToken: $0.storedAccessToken) } ?? UUID().uuidString
+        let generation = UUID()
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            if let self {
+                self.creditLock.lock()
+                if self.creditRequests[key]?.0 == generation { self.creditRequests.removeValue(forKey: key) }
+                self.creditLock.unlock()
+            }
             if let error {
                 completion(.failure(.transport(Self.transportError(from: error))))
                 return
@@ -319,6 +363,10 @@ final class OfficialQuotaClient {
                 OfficialQuotaResponseParser.parseBankedResetCredits(data: data, now: now)
             ))
         }
+        creditLock.lock()
+        let previous = creditRequests.updateValue((generation, task), forKey: key)?.1
+        creditLock.unlock()
+        previous?.cancel()
         task.resume()
     }
 
@@ -399,6 +447,10 @@ final class OfficialQuotaClient {
             requestCredentials: requestCredentials,
             storedAccessToken: storedAccessToken
         )
+        creditLock.lock()
+        let creditTask = creditRequests.removeValue(forKey: key)?.1
+        creditLock.unlock()
+        creditTask?.cancel()
         let completions = inFlight.cancel(key: key)
         let result: Result<OfficialQuotaResult, OfficialQuotaClientError> =
             .failure(.transport(.urlError(.cancelled)))

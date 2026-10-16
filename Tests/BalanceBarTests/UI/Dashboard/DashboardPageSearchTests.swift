@@ -1250,6 +1250,12 @@ final class DashboardPageSearchTests: XCTestCase {
 
         func rows(startingAt section: DashboardSection, query: String) throws -> [String] {
             let appDelegate = AppDelegate(repository: repository)
+            let metadata = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                appDelegate.providerChoicesForTesting.contains { $0.name == "MyPrivateProviderXYZ" }
+            }, object: nil)
+            // Provider metadata is published by ProviderMetadataReader's background
+            // read; the wait ends at publication, the timeout only bounds failure.
+            wait(for: [metadata], timeout: 10)
             let composition = appDelegate.dashboardCompositionForTesting
             defer { composition.teardownForTesting() }
             let window = try XCTUnwrap(composition.makeWindowForTesting(showing: section))
@@ -3641,6 +3647,10 @@ private func createProviderFixture(at databaseURL: URL, name: String, appType: S
     CREATE TABLE providers (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        settings_config TEXT NOT NULL DEFAULT '{}',
+        meta TEXT NOT NULL DEFAULT '{}',
+        category TEXT,
+        website_url TEXT,
         app_type TEXT NOT NULL,
         is_current INTEGER NOT NULL,
         sort_index INTEGER,

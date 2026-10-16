@@ -528,3 +528,33 @@
 "quota.pace.time.tomorrow" = "Demain %1$@";
 
 "quota.pace.body.reset_unavailable" = "L’heure de réinitialisation est indisponible.";
+
+// CC Switch aggregation overview
+"aggregation.default" = "Par défaut";
+"aggregation.loading" = "Actualisation…";
+"aggregation.stale" = "Dernières données fiables · nouvelle tentative";
+"aggregation.unavailable" = "Solde indisponible";
+"aggregation.manage_in_cc_switch" = "Gérez le fournisseur par défaut dans CC Switch en mode agrégation";
+
+"balance.recharge.label" = "Recharge";
+"balance.recharge.observed" = "Hausse nette du solde détectée localement. La date correspond à sa première observation par cette app, pas à un reçu de paiement.";
+
+"balance.used_since" = "Depuis le %1$@ : %2$@ utilisés";
+"balance.used_since_today" = "Depuis le %1$@ : %2$@ utilisés";
+"balance.used_since_yesterday" = "Depuis le %1$@ : %2$@ utilisés";
+"balance.yesterday" = "hier";
+"balance.used" = "%1$@ utilisés";
+"balance.recording.started_on" = "Suivi depuis le %1$@";
+"balance.recording.started" = "Suivi commencé";
+"balance.reference_on" = "Sur le solde du %1$@ de %2$@, %3$@ restants";
+"balance.reference" = "Sur le solde initial de %1$@, %2$@ restants";
+"balance.reference_unavailable" = "Solde de référence indisponible";
+
+"balance.recharge.last" = "dernière recharge";
+"balance.used_since_recharge" = "Depuis la %1$@ : %2$@ utilisés";
+
+"balance.elapsed.ago" = "il y a %1$@";
+
+"quick_switch.routing_protected" = "Mode routage : gérer dans CC Switch";
+"quick_switch.state_untrusted" = "Mode non confirmé : gérer dans CC Switch";
+"quick_switch.manage_in_cc_switch" = "Gérer dans CC Switch";

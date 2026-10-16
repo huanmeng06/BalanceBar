@@ -174,11 +174,13 @@ enum OverviewNumericTransition {
 enum OverviewNumericPresentation {
     static func samples(
         snapshot: Snapshot,
+        providerIdentity: String? = nil,
         lunaReserveDisplayMode: LunaReserveDisplayMode,
         hideExhaustedQuota: Bool,
         showBankedReset: Bool,
         now: Date = Date()
     ) -> [OverviewNumericSample] {
+        let provider = providerIdentity ?? snapshot.provider
         switch snapshot.kind {
         case .placeholder, .error:
             return []
@@ -186,7 +188,7 @@ enum OverviewNumericPresentation {
             guard let amount = snapshot.amount, let unit = snapshot.unit else { return [] }
             return [
                 OverviewNumericSample(
-                    identity: .thirdPartyBalance(provider: snapshot.provider, unit: unit),
+                    identity: .thirdPartyBalance(provider: provider, unit: unit),
                     format: .currency(unit: unit),
                     value: amount,
                     progressPercentage: snapshot.progressPercentage
@@ -199,7 +201,7 @@ enum OverviewNumericPresentation {
             )
             var samples: [OverviewNumericSample] = presentation.windows.map { window in
                 OverviewNumericSample(
-                    identity: identity(for: window, provider: snapshot.provider),
+                    identity: identity(for: window, provider: provider),
                     format: .integerPercent,
                     value: window.remaining,
                     progressPercentage: window.remaining
@@ -208,7 +210,7 @@ enum OverviewNumericPresentation {
             if let remaining = presentation.lunaReserve?.remaining {
                 samples.append(
                     OverviewNumericSample(
-                        identity: .lunaReserve(provider: snapshot.provider),
+                        identity: .lunaReserve(provider: provider),
                         format: .integerPercent,
                         value: remaining,
                         progressPercentage: remaining
@@ -218,7 +220,7 @@ enum OverviewNumericPresentation {
             if showBankedReset, let bankedReset = presentation.bankedReset {
                 samples.append(
                     OverviewNumericSample(
-                        identity: .bankedResetCount(provider: snapshot.provider),
+                        identity: .bankedResetCount(provider: provider),
                         format: .integerCount,
                         value: Double(bankedReset.availableCount),
                         progressPercentage: nil
@@ -234,7 +236,7 @@ enum OverviewNumericPresentation {
                     if case .percent(let percent) = presentation.resetForecast.probability24h {
                         samples.append(
                             OverviewNumericSample(
-                                identity: .bankedResetProbability24h(provider: snapshot.provider),
+                                identity: .bankedResetProbability24h(provider: provider),
                                 format: .integerPercent,
                                 value: Double(percent),
                                 progressPercentage: nil
@@ -244,7 +246,7 @@ enum OverviewNumericPresentation {
                     if case .percent(let percent) = presentation.resetForecast.probability48h {
                         samples.append(
                             OverviewNumericSample(
-                                identity: .bankedResetProbability48h(provider: snapshot.provider),
+                                identity: .bankedResetProbability48h(provider: provider),
                                 format: .integerPercent,
                                 value: Double(percent),
                                 progressPercentage: nil
@@ -255,7 +257,7 @@ enum OverviewNumericPresentation {
                     if let minutes = presentation.resetForecast.remainingCountdownMinutes(now: now) {
                         samples.append(
                             OverviewNumericSample(
-                                identity: .bankedResetProbabilityCountdown(provider: snapshot.provider),
+                                identity: .bankedResetProbabilityCountdown(provider: provider),
                                 format: .remainingMinutes,
                                 value: Double(minutes),
                                 progressPercentage: nil
@@ -264,7 +266,7 @@ enum OverviewNumericPresentation {
                     } else if case .percent(let percent) = presentation.resetForecast.officialSignal?.probability {
                         samples.append(
                             OverviewNumericSample(
-                                identity: .bankedResetProbabilitySignal(provider: snapshot.provider),
+                                identity: .bankedResetProbabilitySignal(provider: provider),
                                 format: .integerPercent,
                                 value: Double(percent),
                                 progressPercentage: nil

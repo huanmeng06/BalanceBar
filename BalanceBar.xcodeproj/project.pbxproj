@@ -174,6 +174,7 @@
 		A10000000000000200000044 /* ChatGPTLaunchAgentRuntime.swift in Launch Agent Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */; };
 		A10000000000000200000045 /* AppKit.framework in Launch Agent Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* AppKit.framework */; };
 		A10000000000000200000046 /* Foundation.framework in Launch Agent Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* Foundation.framework */; };
+		A49300000000000000000002 /* CCSwitchAggregationRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49300000000000000000001 /* CCSwitchAggregationRepository.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -371,6 +372,7 @@
 		A10000000000000200000015 /* ChatGPTLaunchAgentMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchAgentMain.swift; sourceTree = "<group>"; };
 		A10000000000000200000016 /* balancebar-chatgpt-launch-agent.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = balancebar-chatgpt-launch-agent.plist; sourceTree = "<group>"; };
 		A10000000000000200000017 /* BalanceBarChatGPTLaunchAgent */ = {isa = PBXFileReference; explicitFileType = compiled.mach-o.executable; includeInIndex = 0; path = BalanceBarChatGPTLaunchAgent; sourceTree = BUILT_PRODUCTS_DIR; };
+		A49300000000000000000001 /* CCSwitchAggregationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchAggregationRepository.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -676,6 +678,7 @@
 			isa = PBXGroup;
 			children = (
 				A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */,
+				A49300000000000000000001 /* CCSwitchAggregationRepository.swift */,
 				A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */,
 				A47000000000000000000003 /* BalanceNotificationCoordinator.swift */,
 				A100000000000000000000EC /* ProviderBalanceProgressStore.swift */,
@@ -1167,6 +1170,7 @@
 				A100000000000000000000C3 /* DashboardProviderPages.swift in Sources */,
 				A100000000000000000000D2 /* ActivityCoordinator.swift in Sources */,
 				A100000000000000000000D4 /* CCSwitchDatabaseWatcher.swift in Sources */,
+				A49300000000000000000002 /* CCSwitchAggregationRepository.swift in Sources */,
 				A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */,
 				A47000000000000000000004 /* BalanceNotificationCoordinator.swift in Sources */,
 				A100000000000000000000EB /* ProviderBalanceProgressStore.swift in Sources */,

@@ -233,6 +233,55 @@ struct AccountMarqueeScrollState: Equatable {
     }
 }
 
+/// A fixed header badge whose text uses the existing visibility-aware marquee.
+final class AggregationNoteTagView: NSView {
+    let textView: AccountMarqueeView
+    var originalTitleFrame: NSRect = .zero
+
+    init(text: String, frame: NSRect) {
+        textView = AccountMarqueeView(text: text, font: .systemFont(ofSize: 11),
+            textColor: .secondaryLabelColor, frame: NSRect(x: 6, y: 0, width: max(0, frame.width - 12), height: 15))
+        super.init(frame: frame)
+        textView.respectsReduceMotion = true
+        textView.centersTextWhenFits = true
+        wantsLayer = true
+        layer?.cornerRadius = 4
+        addSubview(textView)
+        updateText(text)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func updateText(_ text: String) {
+        // The outer tag frame is assigned before this method during reuse.
+        // Sync the inner viewport first so centering is measured against the
+        // current width, and reset the marquee when the label identity changes.
+        textView.frame = NSRect(x: 6, y: 0, width: max(0, bounds.width - 12), height: 15)
+        textView.updateText(text, preserveScrollPosition: false)
+        toolTip = text
+        setAccessibilityLabel(text)
+    }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let color = NSColor.quaternaryLabelColor.usingColorSpace(.deviceRGB) ?? .quaternaryLabelColor
+            layer?.backgroundColor = color.withAlphaComponent(color.alphaComponent * 0.65).cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    override func layout() {
+        super.layout()
+        textView.frame = NSRect(x: 6, y: 0, width: max(0, bounds.width - 12), height: 15)
+    }
+}
+
 final class AccountMarqueeView: NSView {
     static let animationKey = "BalanceBar.accountMarquee"
     static let defaultEdgeFadeWidth = AccountMarqueeLayout.defaultFadeWidth
@@ -268,6 +317,10 @@ final class AccountMarqueeView: NSView {
     private var scrollActivityTimer: Timer?
     private var scrollIsSuspended = false
     var hasActiveScrollTimer: Bool { scrollActivityTimer != nil }
+    var respectsReduceMotion = false
+    var centersTextWhenFits = false {
+        didSet { configureContentIfNeeded(force: true) }
+    }
 
     private var isActuallyVisible: Bool {
         guard window != nil, !isHiddenOrHasHiddenAncestor, !visibleRect.isEmpty else { return false }
@@ -281,6 +334,10 @@ final class AccountMarqueeView: NSView {
 
     /// Offscreen rows retain their animation phase, but do no periodic work.
     func refreshScrollVisibility() {
+        if respectsReduceMotion && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            stopScrolling()
+            return
+        }
         guard isActuallyVisible else {
             scrollActivityTimer?.invalidate()
             scrollActivityTimer = nil
@@ -295,8 +352,9 @@ final class AccountMarqueeView: NSView {
         startScrollingIfNeeded()
     }
 
-    init(text: String, font: NSFont, textColor: NSColor, frame: NSRect, leadingInkAnchor: CGFloat? = nil) {
-        accountLabel = NSTextField(labelWithString: text)
+    init(text: String, font: NSFont, textColor: NSColor, frame: NSRect, leadingInkAnchor: CGFloat? = nil,
+         label: NSTextField? = nil) {
+        accountLabel = label ?? NSTextField(labelWithString: text)
         self.leadingInkAnchor = leadingInkAnchor
         super.init(frame: frame)
 
@@ -374,10 +432,9 @@ final class AccountMarqueeView: NSView {
         // NSString reports glyph advances, whereas the NSTextField cell also
         // reserves drawing insets. A narrow label clips its own trailing glyphs
         // even after the outer viewport has scrolled all the way to the end.
-        let labelWidth = max(
-            Self.textWidth(of: text, font: font),
-            ceil(accountLabel.cell?.cellSize.width ?? 0)
-        )
+        let labelWidth = centersTextWhenFits
+            ? ceil(Self.textWidth(of: text, font: font))
+            : max(Self.textWidth(of: text, font: font), ceil(accountLabel.cell?.cellSize.width ?? 0))
         if let clip = opticalClipHost, let anchor = leadingInkAnchor {
             let inset = min(max(0, anchor), bounds.width)
             clip.frame = NSRect(x: bounds.minX + inset, y: bounds.minY,
@@ -389,6 +446,7 @@ final class AccountMarqueeView: NSView {
             fadeWidth: Self.defaultEdgeFadeWidth,
             contentLeadingInset: leadingInkAnchor == nil ? 0 : Self.leadingInkInset(of: accountLabel)
         )
+        accountLabel.alignment = centersTextWhenFits && !nextLayout.isScrollable ? .center : .left
         guard force
             || contentLayout != nextLayout
             || configuredText != text
@@ -454,6 +512,7 @@ final class AccountMarqueeView: NSView {
 
     private func startScrollingIfNeeded() {
         guard isScrollable,
+              !(respectsReduceMotion && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion),
               isActuallyVisible,
               let labelLayer = accountLabel.layer else {
             return
@@ -1078,6 +1137,7 @@ final class AccountEmailTextField: NSTextField {
     /// while the short-delay popover is used when the label is in a visible
     /// menu window.
     func setTooltipText(_ text: String) {
+        guard tooltipText != text else { return }
         tooltipText = text
         toolTip = text
         guard tooltipPopover != nil else { return }
@@ -1128,6 +1188,7 @@ final class AccountEmailTextField: NSTextField {
         }
 
         let popover = DashboardTextTooltip.makePopover()
+        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let tooltipViewController = AccountEmailTooltipViewController(email: tooltipText)
         tooltipViewController.loadViewIfNeeded()
         popover.contentViewController = tooltipViewController
@@ -1151,6 +1212,7 @@ final class AccountEmailTextField: NSTextField {
     }
 
     private func closeTooltipPresentation() {
+        tooltipPopover?.animates = false
         tooltipPopover?.close()
         tooltipPopover = nil
         isTooltipVisible = false
@@ -2187,7 +2249,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    struct MenuBarSettings {
+    struct MenuBarSettings: Equatable {
         let showIcon: Bool
         let showAmount: Bool
         let showReset: Bool
@@ -2279,6 +2341,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     struct MenuInput: Equatable {
+        private let language: AppLanguage
+        let aggregatedProviders: [AggregatedProviderDisplay]
+        let aggregationQuickSwitchBlocked: Bool
+        let quickSwitchSafety: CCSwitchQuickSwitchSafety
         let choices: [ProviderChoice]
         let quickSwitchSummaries: [String: String]
         let activeClient: AssistantClient
@@ -2288,6 +2354,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showOpenChatGPTMenu: Bool
         let showOpenCCSwitchMenu: Bool
         let showStatusMenu: Bool
+        let directProviderNotes: [String]
+        let directProviderID: String?
+        let directProviderIsOfficial: Bool
         let lunaReserveDisplayMode: LunaReserveDisplayMode
         let lunaReserveHideExhaustedQuota: Bool
         let bankedResetDisplayMode: CodexBankedResetDisplayMode
@@ -2303,11 +2372,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showOpenChatGPTMenu: Bool,
             showOpenCCSwitchMenu: Bool,
             showStatusMenu: Bool,
+            directProviderNotes: [String] = [],
+            directProviderID: String? = nil,
+            directProviderIsOfficial: Bool = false,
             lunaReserveDisplayMode: LunaReserveDisplayMode = .defaultValue,
             lunaReserveHideExhaustedQuota: Bool = false,
             bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
-            showsAvailableUpdateBadge: Bool = false
+            showsAvailableUpdateBadge: Bool = false,
+            aggregatedProviders: [AggregatedProviderDisplay] = [],
+            aggregationQuickSwitchBlocked: Bool = false,
+            quickSwitchSafety: CCSwitchQuickSwitchSafety? = nil
         ) {
+            self.language = AppLanguage.resolved
+            self.aggregatedProviders = aggregatedProviders
+            self.quickSwitchSafety = quickSwitchSafety ?? (aggregationQuickSwitchBlocked ? .blockedAggregation : .allowedDirect)
+            self.aggregationQuickSwitchBlocked = self.quickSwitchSafety.isBlocked
             self.choices = choices
             self.quickSwitchSummaries = quickSwitchSummaries
             self.activeClient = activeClient
@@ -2317,6 +2396,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showOpenChatGPTMenu = showOpenChatGPTMenu
             self.showOpenCCSwitchMenu = showOpenCCSwitchMenu
             self.showStatusMenu = showStatusMenu
+            self.directProviderNotes = directProviderNotes
+            self.directProviderID = directProviderID
+            self.directProviderIsOfficial = directProviderIsOfficial
             self.lunaReserveDisplayMode = lunaReserveDisplayMode
             self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
             self.bankedResetDisplayMode = bankedResetDisplayMode
@@ -2324,7 +2406,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.choices.elementsEqual(rhs.choices) { left, right in
+            lhs.aggregatedProviders == rhs.aggregatedProviders && lhs.language == rhs.language
+                && lhs.quickSwitchSafety == rhs.quickSwitchSafety
+                && lhs.choices.elementsEqual(rhs.choices) { left, right in
                     left.id == right.id
                         && left.name == right.name
                         && left.isCurrent == right.isCurrent
@@ -2337,12 +2421,46 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showOpenChatGPTMenu == rhs.showOpenChatGPTMenu
                 && lhs.showOpenCCSwitchMenu == rhs.showOpenCCSwitchMenu
                 && lhs.showStatusMenu == rhs.showStatusMenu
+                && lhs.directProviderNotes == rhs.directProviderNotes
+                && lhs.directProviderID == rhs.directProviderID
+                && lhs.directProviderIsOfficial == rhs.directProviderIsOfficial
                 && lhs.lunaReserveDisplayMode == rhs.lunaReserveDisplayMode
                 && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
                 && lhs.bankedResetDisplayMode == rhs.bankedResetDisplayMode
                 && lhs.showsAvailableUpdateBadge == rhs.showsAvailableUpdateBadge
         }
+        func hasSameNativeItems(as other: Self) -> Bool {
+            activeClient == other.activeClient
+                && statusLinks == other.statusLinks && showQuickSwitchMenu == other.showQuickSwitchMenu
+                && showOpenChatGPTMenu == other.showOpenChatGPTMenu && showOpenCCSwitchMenu == other.showOpenCCSwitchMenu
+                && showStatusMenu == other.showStatusMenu && showsAvailableUpdateBadge == other.showsAvailableUpdateBadge
+                && language == other.language
+        }
     }
+
+    private struct OverviewCardContext {
+        let snapshot: Snapshot
+        let identity: String
+        let account: OpenAIAccountPresentation?
+        let date: Date?
+        var notes: String? = nil
+        var noteTags: [String]? = nil
+    }
+    private struct AggregationCard {
+        let wrapper: NSView
+        var card: NSView
+        var snapshot: Snapshot
+    }
+    private var aggregationViewportShowsSingleCard = false
+    private var closedMenuRebuildScheduled = false
+    private var menuRebuildReason = "initial"
+    private var aggregationViewport: NSScrollView?
+    private var aggregationGrouping = AggregationWalletGrouping()
+    private var aggregationOrder: [AggregationDisplayIdentity] = []
+    private var aggregationOverviewDisplays: [AggregatedProviderDisplay] = []
+    private(set) var aggregationPlacementCountForTesting = 0
+    private var aggregationCards: [AggregationDisplayIdentity: AggregationCard] = [:]
+    private var aggregationBoundsObserver: NSObjectProtocol?
 
     private var statusItem: NSStatusItem?
     private let statusMenu = NSMenu()
@@ -2356,6 +2474,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var overviewMenuWasSeen = false
     private var overviewNumericOpenWorkItem: DispatchWorkItem?
     private var quotaPaceTimer: Timer?
+    /// The account and client the current snapshot was fetched for. A menu-only
+    /// update may reconcile cards with a stale snapshot; pace must not follow it.
+    private var quotaPaceSnapshotAccount: OpenAIAccountPresentation?
+    private var quotaPaceSnapshotClient: AssistantClient?
     var quotaPaceNowForTesting: Date?
     var quotaPaceTimerForTesting: Timer? { quotaPaceTimer }
     var overviewNumericReduceMotionForTesting: Bool?
@@ -2836,6 +2958,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     deinit {
         quotaPaceTimer?.invalidate()
+        if let aggregationBoundsObserver { NotificationCenter.default.removeObserver(aggregationBoundsObserver) }
         removeRightClickMonitor()
         removeStatusItemWindowObservation()
         if let screenParametersObserver {
@@ -2893,6 +3016,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     func teardown() {
+        clearAggregationOverview()
         lifecycleGeneration += 1
         removeStatusItemWindowObservation()
         deactivateNativeCodexAnimation()
@@ -2943,10 +3067,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         let taskIconVisibilityChanged = self.settings.showIcon != settings.showIcon
+        let menuBarChanged = statusMenu.items.isEmpty || self.snapshot != snapshot || self.settings != settings
+            || self.menuInput.activeClient != menuInput.activeClient
+        let overviewChanged = statusMenu.items.isEmpty || self.snapshot != snapshot
+            || self.menuInput != menuInput || self.settings != settings
+        let nativeItemsChanged = !self.menuInput.hasSameNativeItems(as: menuInput)
         let iconSizeChanged = self.settings.iconSize != settings.iconSize
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
+        quotaPaceSnapshotAccount = menuInput.openAIAccount
+        quotaPaceSnapshotClient = menuInput.activeClient
+        aggregationOverviewDisplays = aggregationGrouping.cards(menuInput.aggregatedProviders)
         self.settings = settings
         if iconSizeChanged {
             loadMenuBarIconAssets(size: settings.iconSize)
@@ -2965,7 +3097,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
         }
         applyMenuBarIconDisplayPolicy()
-        layoutStatusItem(for: snapshot)
+        if menuBarChanged { layoutStatusItem(for: snapshot) }
         if taskIconVisibilityChanged || iconSizeChanged {
             // Reconcile the animation after the new content geometry is
             // established so turning off the parent task-icon switch stops
@@ -2973,10 +3105,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // idle marks and task sprites at the selected point size.
             updateActivityIcon()
         }
-        rebuildOrDeferMenu(forceDefer: deferMenuRebuild)
-        reconcileOverviewSectionsIfTracking()
-        applyInPlaceOverviewNumericUpdatesIfTracking()
-        syncBankedResetCountdownTimer()
+        if overviewChanged {
+            rebuildOrDeferMenu(forceDefer: deferMenuRebuild, nativeItemsChanged: nativeItemsChanged)
+            reconcileOverviewSectionsIfTracking()
+            applyInPlaceOverviewNumericUpdatesIfTracking()
+            syncBankedResetCountdownTimer()
+        }
         refreshQuotaPaceViews()
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
     }
@@ -3065,8 +3199,27 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // database-watcher fallback remains intact. Reuse the current menu
         // hierarchy when that read produces the same semantic input.
         guard menuInput != input else { return }
+        let nativeItemsChanged = !menuInput.hasSameNativeItems(as: input)
+        let overviewUnchanged = menuInput.aggregatedProviders == input.aggregatedProviders
+            && menuInput.directProviderNotes == input.directProviderNotes
+            && menuInput.directProviderID == input.directProviderID
+            && menuInput.directProviderIsOfficial == input.directProviderIsOfficial
+            && menuInput.openAIAccount == input.openAIAccount
+            && menuInput.lunaReserveDisplayMode == input.lunaReserveDisplayMode
+            && menuInput.lunaReserveHideExhaustedQuota == input.lunaReserveHideExhaustedQuota
+            && menuInput.bankedResetDisplayMode == input.bankedResetDisplayMode
         menuInput = input
-        rebuildOrDeferMenu(forceDefer: deferRebuild)
+        aggregationOverviewDisplays = aggregationGrouping.cards(input.aggregatedProviders)
+        if !nativeItemsChanged && overviewUnchanged {
+            updateQuickSwitchContent()
+            updateQuickSwitchProtection()
+            refreshQuotaPaceViews()
+            return
+        }
+        rebuildOrDeferMenu(forceDefer: deferRebuild, nativeItemsChanged: nativeItemsChanged)
+        reconcileOverviewSectionsIfTracking()
+        applyInPlaceOverviewNumericUpdatesIfTracking()
+        syncBankedResetCountdownTimer()
         refreshQuotaPaceViews()
     }
 
@@ -3169,14 +3322,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuDismissalTrace = MenuDismissalTrace.beginRound(menu: statusMenu)
         menuDismissalTrace?.host = statusMenu.items.first?.view as? MenuHoverLinkHostView
         menuDismissalTrace?.record("menu.willOpen", view: statusMenu.items.first?.view)
-        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.finishMenuDismissal(beforeOpening: true)
-        if statusMenuNeedsRebuild {
-            statusMenuNeedsRebuild = false
+        if let view = statusMenu.items.first?.view {
+            descendantViews(of: view, as: MenuHoverLinkHostView.self).forEach { $0.finishMenuDismissal(beforeOpening: true) }
+        }
+        // A direct card applies a pending rebuild before it is shown again; a
+        // mounted aggregation viewport waits for the closed rebuild instead.
+        if statusMenuNeedsRebuild, menuInput.aggregatedProviders.isEmpty {
             rebuildStatusMenu(reason: "nextOpen")
         }
         (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
         isStatusMenuTracking = true
-        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setMenuContentVisible(true)
+        updateQuickSwitchContent()
+        statusMenu.items.first { $0.action == #selector(openChatGPT) }?.title = openCurrentAgentMenuTitle()
+        logAggregationLifecycle(reason: "will-open")
+        if let view = statusMenu.items.first?.view {
+            descendantViews(of: view, as: MenuHoverLinkHostView.self).forEach { $0.setMenuContentVisible(true) }
+            (view as? AggregationOverviewScrollView)?.setMenuContentVisible(true)
+            view.layoutSubtreeIfNeeded()
+            (view as? AggregationOverviewScrollView)?.logGeometry(reason: "will-open")
+        }
         refreshQuotaPaceViews()
         overviewMenuWasSeen = true
         playPendingOverviewNumericTransitions()
@@ -3196,14 +3360,37 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             overviewMenuWasSeen = false
         }
         isStatusMenuTracking = false
-        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setMenuContentVisible(false)
+        if let view = statusMenu.items.first?.view {
+            descendantViews(of: view, as: MenuHoverLinkHostView.self).forEach { $0.setMenuContentVisible(false) }
+            (view as? AggregationOverviewScrollView)?.setMenuContentVisible(false)
+        }
         stopBankedResetCountdownTimer()
         stopQuotaPaceTracking()
         cancelPendingOverviewNumericTransitions()
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
-        // Keep the outgoing menu intact for AppKit's dismissal. A main-queue
-        // hop is not a window-hidden boundary; rebuild on the next open instead.
+        logAggregationLifecycle(reason: "did-close")
+        scheduleClosedMenuRebuild()
+    }
+
+    /// Keep the outgoing menu intact for AppKit's dismissal. A main-queue hop
+    /// is not a window-hidden boundary, so the closed rebuild waits until the
+    /// outgoing window has actually hidden; a reopen first takes over instead.
+    private func scheduleClosedMenuRebuild(attempt: Int = 0) {
+        guard statusMenuNeedsRebuild, !isStatusMenuTracking, !closedMenuRebuildScheduled else { return }
+        closedMenuRebuildScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0 : 0.1)) { [weak self] in
+            guard let self else { return }
+            self.closedMenuRebuildScheduled = false
+            guard self.statusItem != nil, !self.isStatusMenuTracking, self.statusMenuNeedsRebuild else { return }
+            guard self.statusMenu.items.first?.view?.window?.isVisible != true else {
+                self.menuDismissalTrace?.record("menu.rebuild.closed.waiting", view: self.statusMenu.items.first?.view,
+                    details: "attempt=\(attempt)")
+                if attempt < 20 { self.scheduleClosedMenuRebuild(attempt: attempt + 1) }
+                return
+            }
+            self.rebuildStatusMenu(reason: "closed")
+        }
     }
 
     /// Applies the user's Codex animation-mode choice immediately. The
@@ -3255,15 +3442,56 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var animationFrameRateForTesting: Int { animationFrameRate }
 
-    private func rebuildOrDeferMenu(forceDefer: Bool = false) {
+    private func rebuildOrDeferMenu(forceDefer: Bool = false, nativeItemsChanged: Bool = true) {
         guard statusItem != nil else { return }
-        let host = statusMenu.items.first?.view as? MenuHoverLinkHostView
-        if isStatusMenuTracking || host?.isMenuDismissing == true || host?.window?.isVisible == true || forceDefer {
+        let firstView = statusMenu.items.first?.view
+        let host = firstView as? MenuHoverLinkHostView
+        if !isStatusMenuTracking, host?.isMenuDismissing == true || firstView?.window?.isVisible == true {
+            // The outgoing native menu is still on screen; never mutate it.
+            statusMenuNeedsRebuild = true
+            menuDismissalTrace?.record("menu.rebuild.deferred", view: host,
+                details: "controller_tracking=false; force=\(forceDefer)")
+            scheduleClosedMenuRebuild()
+            return
+        }
+        menuRebuildReason = nativeItemsChanged ? "native-structure" : "overview-content"
+        updateQuickSwitchContent()
+        if !menuInput.aggregatedProviders.isEmpty, !statusMenu.items.isEmpty,
+           isStatusMenuTracking || (!nativeItemsChanged && aggregationViewport != nil) {
+            let view = makeAggregationOverview()
+            if statusMenu.items.first?.view !== view {
+                if isStatusMenuTracking { statusMenuNeedsRebuild = true; return }
+                statusMenu.items.first?.view = view
+            }
+            updateQuickSwitchProtection()
+            if nativeItemsChanged { statusMenuNeedsRebuild = true }
+            return
+        }
+        if isStatusMenuTracking, aggregationViewport != nil {
+            // Retain the mounted top-level viewport until tracking ends.
+            let viewport = aggregationViewport!
+            aggregationCards.values.forEach { ($0.card as? MenuHoverLinkHostView)?.setMenuContentVisible(false) }
+            aggregationCards.removeAll()
+            aggregationOrder = []
+            let card = makeOverviewMenuItem(for: snapshot).view!
+            viewport.documentView = card
+            aggregationViewportShowsSingleCard = true
+            viewport.frame.size = card.frame.size
+            (viewport as? AggregationOverviewScrollView)?.restoreViewport(distanceFromTop: 0)
+            (card as? MenuHoverLinkHostView)?.setMenuContentVisible(true)
+            updateQuickSwitchProtection()
+            statusMenuNeedsRebuild = true
+            return
+        }
+        if isStatusMenuTracking || forceDefer {
             statusMenuNeedsRebuild = true
             menuDismissalTrace?.record("menu.rebuild.deferred", view: host,
                 details: "controller_tracking=\(isStatusMenuTracking); force=\(forceDefer)")
-        } else {
+            scheduleClosedMenuRebuild()
+        } else if nativeItemsChanged || statusMenu.items.isEmpty || aggregationViewport != nil {
             rebuildStatusMenu(reason: "idleUpdate")
+        } else if let first = statusMenu.items.first {
+            first.view = makeOverviewMenuItem(for: snapshot).view
         }
     }
 
@@ -5688,6 +5916,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func switchProvider(_ sender: NSMenuItem) {
         guard let providerID = sender.representedObject as? String else { return }
+        guard !menuInput.aggregationQuickSwitchBlocked, sender.isEnabled, sender.action != nil else { return }
         actions.switchProvider(providerID)
     }
 
@@ -5711,12 +5940,39 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return item
     }
 
-    private func rebuildStatusMenu(reason: String) {
+    private func rebuildStatusMenu(reason: String? = nil) {
+        guard !isStatusMenuTracking else { statusMenuNeedsRebuild = true; return }
+        statusMenuNeedsRebuild = false
         menuDismissalTrace?.record("menu.rebuild.removeAllItems", view: statusMenu.items.first?.view,
-            details: "reason=\(reason)")
+            details: "reason=\(reason ?? menuRebuildReason)")
+        logAggregationLifecycle(reason: "rebuild-" + menuRebuildReason)
         statusMenuRebuildCountForTesting += 1
+        // A custom view must not move from a retired menu item to a new one.
+        // Keep card subtrees, but give each rebuilt item a fresh AppKit host.
+        let previousDistanceFromTop = aggregationViewport.flatMap { scroll in
+            scroll.documentView.map { max(0, $0.frame.height - scroll.contentView.bounds.maxY) }
+        }
+        if aggregationViewport != nil {
+            statusMenu.items.first?.view = nil
+            (aggregationViewport as? AggregationOverviewScrollView)?.setMenuContentVisible(false)
+            aggregationViewport = nil
+            aggregationViewportShowsSingleCard = false
+            if let aggregationBoundsObserver { NotificationCenter.default.removeObserver(aggregationBoundsObserver) }
+            aggregationBoundsObserver = nil
+        }
         statusMenu.removeAllItems()
-        statusMenu.addItem(makeOverviewMenuItem(for: snapshot))
+        if menuInput.aggregatedProviders.isEmpty {
+            clearAggregationOverview()
+            statusMenu.addItem(makeOverviewMenuItem(for: snapshot))
+        } else {
+            let item = NSMenuItem()
+            let viewport = makeAggregationOverview()
+            if let previousDistanceFromTop {
+                (viewport as? AggregationOverviewScrollView)?.restoreViewportAfterMount(distanceFromTop: previousDistanceFromTop)
+            }
+            item.view = viewport
+            statusMenu.addItem(item)
+        }
         statusMenu.addItem(.separator())
         if menuInput.showQuickSwitchMenu {
             statusMenu.addItem(makeQuickSwitchMenuItem())
@@ -5797,12 +6053,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func makeQuickSwitchMenuItem() -> NSMenuItem {
         let parent = NSMenuItem(title: tr(.keyStatusItemControllerQuickSwitch), action: nil, keyEquivalent: "")
+        parent.identifier = NSUserInterfaceItemIdentifier("quickSwitch.parent")
         let submenu = NSMenu(title: tr(.keyStatusItemControllerQuickSwitch2))
+        submenu.autoenablesItems = false
         let menuChoices = QuickSwitchMenuModel.entries(from: menuInput.choices)
         if menuChoices.isEmpty {
             submenu.minimumWidth = QuickSwitchTitleLayout.minimumTabLocation
                 + QuickSwitchTitleLayout.menuChromeWidth
             let empty = NSMenuItem(title: tr(.keyStatusItemControllerNoCodexProviderFound), action: nil, keyEquivalent: "")
+            empty.identifier = NSUserInterfaceItemIdentifier("quickSwitch.empty")
             empty.isEnabled = false
             submenu.addItem(empty)
         } else {
@@ -5843,6 +6102,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             throttleKey: "quick-switch-menu-\(menuInput.activeClient.appType)",
             minimumInterval: 1
         )
+        applyQuickSwitchProtection(to: submenu)
         parent.submenu = submenu
         return parent
     }
@@ -5868,9 +6128,527 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
     }
 
+    private func clearAggregationOverview() {
+        aggregationViewportShowsSingleCard = false
+        aggregationOrder = []
+        aggregationCards.values.forEach { ($0.card as? MenuHoverLinkHostView)?.setMenuContentVisible(false) }
+        aggregationCards.removeAll()
+        (aggregationViewport as? AggregationOverviewScrollView)?.setMenuContentVisible(false)
+        aggregationViewport = nil
+        if let aggregationBoundsObserver { NotificationCenter.default.removeObserver(aggregationBoundsObserver) }
+        aggregationBoundsObserver = nil
+    }
+
+    private func directCardContext(for snapshot: Snapshot) -> OverviewCardContext {
+        OverviewCardContext(snapshot: snapshot,
+            identity: menuInput.directProviderID.map { menuInput.activeClient.rawValue + "|" + $0 } ?? snapshot.provider,
+            account: menuInput.openAIAccount, date: refreshDate, noteTags: menuInput.directProviderNotes)
+    }
+
+    private func cardContext(_ display: AggregatedProviderDisplay) -> OverviewCardContext {
+        OverviewCardContext(snapshot: display.snapshot, identity: display.identity.numericScope,
+            account: display.account, date: display.fetchedAt, notes: display.entry.source.notes, noteTags: display.groupedNotes)
+    }
+
+    private func logAggregationLifecycle(reason: String) {
+        guard AggregationOverviewScrollView.diagnosticsEnabled else { return }
+        SwitchLog.write("aggregation lifecycle; reason=\(reason); tracking=\(isStatusMenuTracking); providers=\(menuInput.aggregatedProviders.count); rebuilds=\(statusMenuRebuildCountForTesting); placements=\(aggregationPlacementCountForTesting); pending=\(statusMenuNeedsRebuild)",
+            level: .debug, category: "ui.aggregation", throttleKey: "aggregation-lifecycle-\(reason)", minimumInterval: 0.25)
+    }
+
+    private func updateQuickSwitchContent() {
+        guard let submenu = statusMenu.items.first(where: { $0.identifier?.rawValue == "quickSwitch.parent" })?.submenu else { return }
+        let choices = QuickSwitchMenuModel.entries(from: menuInput.choices)
+        let font = NSFont.menuFont(ofSize: 0)
+        let summaries = choices.map { menuInput.quickSwitchSummaries[$0.id] ?? "…" }
+        let layout = QuickSwitchTitleLayout.make(names: choices.map(\.name), summaries: summaries, font: font)
+        submenu.minimumWidth = layout.minimumMenuWidth
+        var desired: [NSMenuItem] = []
+        for (index, choice) in choices.enumerated() {
+            let item = submenu.items.first { $0.representedObject as? String == choice.id }
+                ?? NSMenuItem(title: "", action: #selector(switchProvider(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = choice.id
+            applyQuickSwitchTitle(to: item, displayedName: QuickSwitchTitleLayout.truncatedName(choice.name,
+                fitting: layout.nameColumnWidth, font: font), summary: summaries[index], tabLocation: layout.tabLocation)
+            item.state = !menuInput.aggregationQuickSwitchBlocked && choice.isCurrent ? .on : .off
+            item.isEnabled = !menuInput.aggregationQuickSwitchBlocked
+            desired.append(item)
+        }
+        if choices.isEmpty {
+            let id = NSUserInterfaceItemIdentifier("quickSwitch.empty")
+            let empty = submenu.items.first { $0.identifier == id }
+                ?? NSMenuItem(title: tr(.keyStatusItemControllerNoCodexProviderFound), action: nil, keyEquivalent: "")
+            empty.identifier = id
+            empty.isEnabled = false
+            desired.append(empty)
+        }
+        // Reconcile only this submenu. Sorting or editing Providers must never
+        // retire the menu item that owns the mounted aggregation viewport.
+        for item in submenu.items where !desired.contains(where: { $0 === item }) { submenu.removeItem(item) }
+        for (index, item) in desired.enumerated() where index >= submenu.numberOfItems || submenu.item(at: index) !== item {
+            if item.menu === submenu { submenu.removeItem(item) }
+            submenu.insertItem(item, at: index)
+        }
+        applyQuickSwitchProtection(to: submenu)
+    }
+
+    private func updateQuickSwitchProtection() {
+        guard let submenu = statusMenu.items.first(where: { $0.identifier?.rawValue == "quickSwitch.parent" })?.submenu else { return }
+        applyQuickSwitchProtection(to: submenu)
+    }
+
+    private func applyQuickSwitchProtection(to submenu: NSMenu) {
+        submenu.autoenablesItems = false
+        let blocked = menuInput.quickSwitchSafety.isBlocked
+        for item in submenu.items where item.representedObject is String {
+            item.isEnabled = !blocked
+            item.action = blocked ? nil : #selector(switchProvider(_:))
+            item.target = blocked ? nil : self
+            item.state = !blocked && menuInput.choices.contains(where: { $0.id == item.representedObject as? String && $0.isCurrent }) ? .on : .off
+        }
+        let owned = ["aggregation.quickSwitch.hint", "quickSwitch.manage", "quickSwitch.separator"]
+        for item in submenu.items where owned.contains(item.identifier?.rawValue ?? "") { submenu.removeItem(item) }
+        if blocked {
+            let hint = NSMenuItem(title: menuInput.quickSwitchSafety.hint, action: nil, keyEquivalent: "")
+            hint.identifier = NSUserInterfaceItemIdentifier("aggregation.quickSwitch.hint")
+            hint.isEnabled = false
+            submenu.insertItem(hint, at: 0)
+            let separator = NSMenuItem.separator()
+            separator.identifier = NSUserInterfaceItemIdentifier("quickSwitch.separator")
+            submenu.addItem(separator)
+            let manage = NSMenuItem(title: tr(.keyQuickSwitchManageInCCSwitch), action: #selector(openCCSwitch), keyEquivalent: "")
+            manage.identifier = NSUserInterfaceItemIdentifier("quickSwitch.manage")
+            manage.target = self
+            manage.isEnabled = true
+            submenu.addItem(manage)
+        }
+    }
+
+    /// Places existing cards only; all metric/ticket geometry stays with #492.
+    /// One native menu view contains the document and its bounded viewport.
+    private func makeAggregationOverview() -> NSScrollView {
+        let scroll: NSScrollView
+        let document: NSView
+        if let existing = aggregationViewport, let existingDocument = existing.documentView {
+            scroll = existing
+            if aggregationViewportShowsSingleCard {
+                document = NSView(frame: .zero)
+                scroll.documentView = document
+                aggregationViewportShowsSingleCard = false
+            } else { document = existingDocument }
+        } else {
+            scroll = AggregationOverviewScrollView(frame: .zero)
+            scroll.drawsBackground = false
+            scroll.hasVerticalScroller = true
+            scroll.hasHorizontalScroller = false
+            scroll.autohidesScrollers = true
+            scroll.scrollerStyle = .overlay
+            scroll.borderType = .noBorder
+            scroll.identifier = NSUserInterfaceItemIdentifier("aggregation.overview")
+            document = NSView(frame: .zero)
+            scroll.documentView = document
+            aggregationViewport = scroll
+            (scroll as? AggregationOverviewScrollView)?.diagnosticContext = { [weak self] in
+                guard let self else { return "" }
+                return "tracking=\(self.isStatusMenuTracking); rebuilds=\(self.statusMenuRebuildCountForTesting); placements=\(self.aggregationPlacementCountForTesting)"
+            }
+            scroll.contentView.postsBoundsChangedNotifications = true
+            aggregationBoundsObserver = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
+            ) { [weak self] _ in
+                self?.aggregationCards.values.forEach { ($0.card as? MenuHoverLinkHostView)?.refreshMarqueeVisibility() }
+                (self?.aggregationViewport as? AggregationOverviewScrollView)?.logGeometry(reason: "clip-bounds")
+            }
+        }
+        let oldHeight = document.frame.height
+        let distanceFromTop = max(0, oldHeight - scroll.contentView.bounds.maxY)
+        let order = aggregationOverviewDisplays.map(\.identity)
+        var needsPlacement = aggregationOrder != order
+        let identities = Set(order)
+        for identity in aggregationCards.keys.filter({ !identities.contains($0) }) {
+            let old = aggregationCards.removeValue(forKey: identity)
+            (old?.card as? MenuHoverLinkHostView)?.setMenuContentVisible(false)
+            old?.wrapper.removeFromSuperview()
+        }
+        var total: CGFloat = 0
+        let gap: CGFloat = 8
+        for display in aggregationOverviewDisplays {
+            let context = cardContext(display)
+            var record: AggregationCard
+            if var existing = aggregationCards[display.identity], existing.snapshot.kind == display.snapshot.kind {
+                if let host = existing.card as? MenuHoverLinkHostView {
+                    reconcileOverviewSections(in: host, context: context)
+                    // Third-party cards have no section topology. Their source
+                    // link is unchanged because configuration is part of identity.
+                    if display.snapshot.kind == .balance {
+                        let presentation = display.snapshot.officialQuotaMenuPresentation(
+                            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+                            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+                        let layout = makeOverviewCardLayout(for: display.snapshot, presentation: presentation, account: context.account, aggregation: true)
+                        reconcileBalanceLayout(in: host, next: layout)
+                        if layout.progress == nil {
+                            host.subviews.compactMap { $0 as? QuotaProgressView }.forEach { $0.removeFromSuperview() }
+                        } else if !host.subviews.contains(where: { $0 is QuotaProgressView }),
+                                  let frame = layout.progress,
+                                  let sample = OverviewNumericPresentation.samples(snapshot: display.snapshot, providerIdentity: context.identity,
+                                      lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+                                      hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+                                      showBankedReset: settings.showBankedReset).first {
+                            host.addSubview(makeOverviewNumericProgress(plan: overviewNumericPlan(for: sample), frame: frame))
+                        }
+                        let labels = existing.card.subviews.compactMap { $0 as? NSTextField }
+                        labels.first { $0.font?.pointSize == 15 }?.stringValue = display.snapshot.overviewProvider
+                        labels.first { $0.identifier?.rawValue == "overview.refreshTime" }?.stringValue = display.fetchedAt.map {
+                            AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0)
+                        } ?? "--:--:--"
+                    }
+                } else if existing.snapshot != display.snapshot {
+                    existing.card.removeFromSuperview()
+                    existing.card = makeOverviewMenuItem(for: display.snapshot, context: context).view!
+                    existing.wrapper.addSubview(existing.card)
+                }
+                existing.snapshot = display.snapshot
+                record = existing
+            } else {
+                if let old = aggregationCards[display.identity] {
+                    (old.card as? MenuHoverLinkHostView)?.setMenuContentVisible(false)
+                    old.wrapper.removeFromSuperview()
+                }
+                let wrapper = NSView(frame: .zero)
+                let card = makeOverviewMenuItem(for: display.snapshot, context: context).view!
+                wrapper.addSubview(card)
+                document.addSubview(wrapper)
+                record = AggregationCard(wrapper: wrapper, card: card, snapshot: display.snapshot)
+                needsPlacement = true
+            }
+            if record.wrapper.superview !== document {
+                document.addSubview(record.wrapper)
+                needsPlacement = true
+            }
+            updateOverviewHeaderNotes(in: record.card, context: context)
+            updateOverviewQuotaDetail(in: record.card, context: context)
+            updateBalanceSubtitle(in: record.card, context: context)
+            alignSingleLineBalance(in: record.card, snapshot: context.snapshot)
+            record.card.frame.origin = .zero
+            let size = record.card.frame.size
+            if record.wrapper.frame.size != size { needsPlacement = true; record.wrapper.frame.size = size }
+            updateAggregationTimestamp(in: record.card, display: display)
+            if !isStatusMenuTracking { prepareClosedAggregationNumerics(in: record.card, context: context) }
+            record.wrapper.identifier = NSUserInterfaceItemIdentifier("aggregation.provider.\(display.entry.providerID)")
+            record.wrapper.setAccessibilityElement(true)
+            record.wrapper.setAccessibilityRole(.group)
+            record.wrapper.setAccessibilityLabel(display.entry.source.name + (display.entry.role == .default ? " · " + tr(.keyAggregationDefault) : ""))
+            aggregationCards[display.identity] = record
+            total += record.wrapper.frame.height + gap
+        }
+        total = max(0, total - gap)
+        let screen = statusItem?.button?.window?.screen ?? NSScreen.main
+        let footer = CGFloat(max(10, statusMenu.numberOfItems)) * 24 + 60
+        let maximum = max(80, (screen?.visibleFrame.height ?? 800) - footer)
+        let viewportSize = NSSize(width: OpenCodexCardLayout.cardWidth, height: min(total, maximum))
+        if scroll.frame.size != viewportSize { needsPlacement = true }
+        if needsPlacement {
+            aggregationPlacementCountForTesting += 1
+            document.frame.size = NSSize(width: OpenCodexCardLayout.cardWidth, height: total)
+            var y = total
+            for display in aggregationOverviewDisplays {
+                guard let record = aggregationCards[display.identity] else { continue }
+                y -= record.wrapper.frame.height
+                record.wrapper.frame.origin = NSPoint(x: 0, y: y)
+                y -= gap
+            }
+            scroll.frame.size = viewportSize
+            (scroll as? AggregationOverviewScrollView)?.restoreViewport(distanceFromTop: distanceFromTop)
+            logAggregationLifecycle(reason: "place-cards")
+        }
+        aggregationOrder = order
+        for record in aggregationCards.values {
+            let host = record.card as? MenuHoverLinkHostView
+            if host?.isMenuContentVisible != isStatusMenuTracking { host?.setMenuContentVisible(isStatusMenuTracking) }
+        }
+        (scroll as? AggregationOverviewScrollView)?.setMenuContentVisible(isStatusMenuTracking)
+        presentedOverviewNumerics = currentOverviewNumericSamples()
+        (scroll as? AggregationOverviewScrollView)?.logGeometry(reason: "overview-updated")
+        return scroll
+    }
+
+    private func prepareClosedAggregationNumerics(in card: NSView, context: OverviewCardContext) {
+        let amounts = overviewNumericTextViews(in: card)
+        let links = overviewNumericLinkFields(in: card)
+        let progressViews = overviewNumericProgressViews(in: card)
+        progressViews.forEach { $0.setColorConfiguration(settings.quotaProgressColorConfiguration) }
+        for sample in numericSamples(for: context) {
+            let matchingAmounts = amounts.filter { $0.sample?.identity == sample.identity }
+            let matchingLinks = links.filter { $0.sample?.identity == sample.identity }
+            guard matchingAmounts.contains(where: { $0.sample != sample })
+                || matchingLinks.contains(where: { $0.sample != sample }) else { continue }
+            let plan = overviewNumericPlan(for: sample)
+            matchingAmounts.forEach { $0.configure(plan: plan, sample: sample) }
+            matchingLinks.forEach { $0.configure(plan: plan, sample: sample) }
+            if let target = sample.progressPercentage, let progress = progressViews.first(where: {
+                $0.identifier == OverviewNumericPresentation.progressIdentifier(for: sample.identity)
+            }) {
+                progress.preparePercentage(from: plan.startProgress ?? target, to: target,
+                    duration: OverviewNumericTransition.duration(for: sample.format))
+            }
+        }
+    }
+
+    private func updateOverviewHeaderNotes(in card: NSView, context: OverviewCardContext) {
+        guard let title = descendantViews(of: card, as: NSTextField.self).first(where: {
+            $0.identifier?.rawValue == "overview.providerTitle"
+        }), let header = title.superview,
+        let time = descendantViews(of: card, as: NSTextField.self).first(where: {
+            $0.identifier?.rawValue == "overview.refreshTime"
+        }) else { return }
+        let prefix = "aggregation.notes." + context.identity
+        let existing = header.subviews.compactMap { $0 as? AggregationNoteTagView }
+        let titleFrame: NSRect
+        if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout {
+            titleFrame = layout.title.offsetBy(dx: header === card ? 0 : -header.frame.minX,
+                                              dy: header === card ? 0 : -header.frame.minY)
+        } else { titleFrame = existing.first?.originalTitleFrame ?? title.frame }
+        let raw = context.noteTags ?? context.notes.map { [$0] } ?? []
+        let notes = raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        var labels = Array(notes.prefix(2))
+        if notes.count > 2 { labels.append("+\(notes.count - 2)") }
+        title.toolTip = context.snapshot.overviewProvider
+        title.setAccessibilityLabel(context.snapshot.overviewProvider)
+        title.lineBreakMode = .byTruncatingTail
+        if let link = title as? HoverLinkTextField {
+            let url = context.snapshot.websiteURL.flatMap { url -> URL? in
+                guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.user == nil, url.password == nil else { return nil }
+                return url
+            }
+            link.onActivate = url.map { url in { [weak self] in self?.actions.openStatusLink(url) } }
+        }
+        for tag in existing where !labels.indices.contains(where: { tag.identifier?.rawValue == prefix + ".\($0)" }) {
+            tag.removeFromSuperview()
+        }
+        guard !labels.isEmpty else { title.frame = titleFrame; return }
+        let available = max(0, header.convert(time.frame, from: time.superview).minX - 6 - titleFrame.minX)
+        let font = NSFont.systemFont(ofSize: 11)
+        let desired = labels.enumerated().map { index, text -> CGFloat in
+            let measure = NSTextField(labelWithString: text)
+            measure.font = font
+            measure.usesSingleLineMode = true
+            return min(available / 2, max(index == 2 ? 24 : 36,
+                ceil(max(AccountMarqueeView.textWidth(of: text, font: font), measure.cell?.cellSize.width ?? 0)) + 14))
+        }
+        let gaps = CGFloat(labels.count - 1) * 4
+        let budget = max(0, available - min(labels.count > 2 ? 48 : 64, titleFrame.width) - 8 - gaps)
+        let minimum = labels.indices.map { index in
+            labels[index].count <= 6 ? desired[index] : CGFloat(index == 2 ? 24 : 36)
+        }
+        let extra = max(0, min(desired.reduce(0, +) - minimum.reduce(0, +), budget - minimum.reduce(0, +)))
+        let wantedExtra = max(1, desired.reduce(0, +) - minimum.reduce(0, +))
+        let minimumScale = min(1, budget / max(1, minimum.reduce(0, +)))
+        let widths = labels.indices.map { minimum[$0] * minimumScale + extra * max(0, desired[$0] - minimum[$0]) / wantedExtra }
+        let titleWidth = min(ceil(title.cell?.cellSize.width ?? titleFrame.width), max(0, available - widths.reduce(0, +) - gaps - 8))
+        title.frame = NSRect(x: titleFrame.minX, y: titleFrame.minY, width: titleWidth, height: titleFrame.height)
+        var x = title.frame.maxX + 8
+        let capCenter = title.frame.maxY - title.firstBaselineOffsetFromTop + (title.font?.capHeight ?? 0) / 2
+        for index in labels.indices {
+            let id = NSUserInterfaceItemIdentifier(prefix + ".\(index)")
+            let frame = NSRect(x: x, y: capCenter - 7.5, width: widths[index], height: 15)
+            let tag = existing.first { $0.identifier == id } ?? AggregationNoteTagView(text: labels[index], frame: frame)
+            tag.identifier = id
+            tag.originalTitleFrame = titleFrame
+            tag.frame = frame
+            tag.updateText(labels[index])
+            if index == 2 { tag.toolTip = notes.joined(separator: "\n"); tag.setAccessibilityLabel(notes.joined(separator: ", ")) }
+            if tag.superview == nil { header.addSubview(tag) }
+            tag.layoutSubtreeIfNeeded()
+            x += widths[index] + 4
+        }
+    }
+
+    private func updateOverviewQuotaDetail(in card: NSView, context: OverviewCardContext) {
+        guard let host = card as? MenuHoverLinkHostView,
+              let layout = host.overviewLayout,
+              let detail = descendantViews(of: card, as: AccountMarqueeView.self).first(where: {
+                  $0.identifier?.rawValue == "overview.quotaDetail"
+              }) else { return }
+        let amountText = numericSamples(for: context).first.map { overviewNumericPlan(for: $0).layoutReservationText }
+            ?? context.snapshot.overviewLargeAmount
+        let amountFont = NSFont.monospacedDigitSystemFont(
+            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+            weight: .semibold
+        )
+        detail.frame = overviewMarqueeFrame(
+            layout.quotaDetail,
+            avoidingAmountFrame: layout.amount,
+            amountText: amountText,
+            amountFont: amountFont,
+            minimumAmountGap: context.snapshot.kind == .balance ? 12 : 0
+        )
+        detail.updateText(context.snapshot.overviewQuotaDetail, preserveScrollPosition: false)
+    }
+
+    private func reconcileBalanceLayout(in host: MenuHoverLinkHostView, next: OpenCodexCardFrames) {
+        guard let previous = host.overviewLayout, previous != next else { return }
+        let shift = next.cardSize.height - previous.cardSize.height
+        for child in host.subviews where !(child is QuotaProgressView) {
+            if child is OverviewNumericTextView || (child as? NSTextField)?.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize {
+                child.frame = next.amount
+            } else if child.identifier?.rawValue == "overview.quotaDetail" {
+                child.frame.origin.y = next.quotaDetail.minY
+            } else { child.frame.origin.y += shift }
+        }
+        host.frame.size = next.cardSize
+        host.overviewLayout = next
+    }
+
+    private func alignSingleLineBalance(in card: NSView, snapshot: Snapshot) {
+        guard snapshot.kind == .balance, snapshot.balanceRecharge == nil,
+              (card as? MenuHoverLinkHostView)?.overviewLayout?.balanceRecharge == nil,
+              let host = card as? MenuHoverLinkHostView, host.overviewLayout?.link == nil,
+              let amount = descendantViews(of: card, as: OverviewNumericTextView.self).first,
+              let detail = descendantViews(of: card, as: AccountMarqueeView.self).first(where: {
+                  $0.identifier?.rawValue == "overview.quotaDetail"
+              }) else { return }
+        guard let parent = detail.superview else { return }
+        detail.frame.origin.y += Self.overviewBaselineY(for: amount.textField, in: parent)
+            - Self.overviewBaselineY(for: detail.accountLabel, in: parent)
+    }
+
+    static func overviewBaselineY(for label: NSTextField, in parent: NSView) -> CGFloat {
+        let y = label.isFlipped ? label.bounds.minY + label.firstBaselineOffsetFromTop
+            : label.bounds.maxY - label.firstBaselineOffsetFromTop
+        return label.convert(NSPoint(x: label.bounds.minX, y: y), to: parent).y
+    }
+
+    private func updateBalanceSubtitle(in card: NSView, context: OverviewCardContext) {
+        let id = NSUserInterfaceItemIdentifier("balance.subtitle")
+        let aggregation = !menuInput.aggregatedProviders.isEmpty
+            || (context.snapshot.kind == .balance && !menuInput.directProviderIsOfficial)
+        if aggregation && context.snapshot.kind == .balance {
+            let tooltip = context.snapshot.balanceProgressTooltip(timeZone: settings.displayTimeZone)
+            descendantViews(of: card, as: QuotaProgressView.self).forEach {
+                $0.toolTip = tooltip
+                $0.setAccessibilityHelp(tooltip)
+            }
+        }
+        guard (aggregation || context.snapshot.balanceRecharge != nil),
+              let row = (card as? MenuHoverLinkHostView)?.overviewLayout?.balanceRecharge,
+              context.snapshot.unit != nil else {
+            card.subviews.first { $0.identifier == id }?.removeFromSuperview()
+            return
+        }
+        let text = context.snapshot.balanceSubtitle(timeZone: settings.displayTimeZone)
+        let hasRechargeHint = context.snapshot.balanceDisplayConsumedCents != nil
+        let subtitleFont = NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize)
+        let frame: NSRect
+        if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout, row.intersects(layout.amount) {
+            frame = overviewMarqueeFrame(row, avoidingAmountFrame: layout.amount,
+                amountText: numericSamples(for: context).first.map { overviewNumericPlan(for: $0).layoutReservationText }
+                    ?? context.snapshot.overviewLargeAmount, amountFont: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaAmountPointSize, weight: .semibold), minimumAmountGap: 12)
+        } else { frame = row }
+        let needsMarquee = textWidth(text, font: subtitleFont) > frame.width + 0.5
+        let existing = card.subviews.first { $0.identifier == id }
+        let label: NSView
+        if needsMarquee {
+            let marquee: AccountMarqueeView
+            if let existing = existing as? AccountMarqueeView,
+               (existing.accountLabel is HoverLinkTextField) == hasRechargeHint {
+                marquee = existing
+            } else {
+                existing?.removeFromSuperview()
+                marquee = AccountMarqueeView(text: text, font: subtitleFont,
+                    textColor: .secondaryLabelColor, frame: frame,
+                    label: hasRechargeHint ? HoverLinkTextField(text: text) : nil)
+                card.addSubview(marquee)
+            }
+            marquee.identifier = id
+            marquee.frame = frame
+            marquee.updateText(text, preserveScrollPosition: false)
+            label = marquee
+        } else {
+            let textField: NSTextField
+            if let existing = existing as? NSTextField,
+               (existing is HoverLinkTextField) == hasRechargeHint {
+                textField = existing
+            } else {
+                existing?.removeFromSuperview()
+                textField = hasRechargeHint ? HoverLinkTextField(text: text) : makeOverviewLabel("", font: subtitleFont)
+                card.addSubview(textField)
+            }
+            textField.font = subtitleFont
+            textField.identifier = id
+            textField.frame = frame
+            textField.lineBreakMode = .byTruncatingTail
+            textField.usesSingleLineMode = true
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineBreakMode = .byTruncatingTail
+            textField.attributedStringValue = NSAttributedString(string: text, attributes: [
+                .font: subtitleFont,
+                .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph])
+            label = textField
+        }
+        let tooltip: String
+        if let recharge = context.snapshot.balanceRecharge {
+            tooltip = context.snapshot.balanceSubtitle(timeZone: settings.displayTimeZone)
+                + " · " + recharge.dateText(timeZone: settings.displayTimeZone, includesTime: true)
+                + "\n" + tr(.keyBalanceRechargeObserved)
+        } else {
+            tooltip = text + "\n" + context.snapshot.balanceProgressTooltip(timeZone: settings.displayTimeZone)
+        }
+        if hasRechargeHint, let startDate = context.snapshot.balanceConsumptionStartDate,
+           let link = (label as? HoverLinkTextField) ?? (label as? AccountMarqueeView)?.accountLabel as? HoverLinkTextField {
+            link.decoratesOnHover = false
+            link.underlinesHoverPhrase = true
+            link.restingTextColor = .secondaryLabelColor
+            link.hoverPhrase = tr(.keyBalanceLastRecharge)
+            link.hoverHintDelay = 0.3
+            link.updateTextTooltip(title: tr(.keyBalanceLastRecharge),
+                text: BalanceRecharge.dateText(for: startDate, timeZone: settings.displayTimeZone) + " "
+                    + BalanceRecharge.clockText(for: startDate, timeZone: settings.displayTimeZone))
+            let timeZone = settings.displayTimeZone
+            link.textTooltipTextProvider = {
+                Self.balanceRechargeTooltipText(startDate: startDate, timeZone: timeZone)
+            }
+            (card as? MenuHoverLinkHostView)?.track(link)
+            label.toolTip = nil
+            link.setAccessibilityHelp(tooltip)
+        } else { label.toolTip = tooltip }
+        label.setAccessibilityLabel(tooltip)
+    }
+
+    static func balanceRechargeTooltipText(startDate: Date, now: Date = Date(), timeZone: TimeZone, locale: Locale = TimeZoneCityCatalog.locale) -> String {
+        let formatter = DateComponentsFormatter()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        calendar.timeZone = timeZone
+        formatter.calendar = calendar
+        formatter.allowedUnits = [.hour, .minute]
+        formatter.unitsStyle = .full
+        formatter.zeroFormattingBehavior = .dropLeading
+        let minutes = max(0, floor(now.timeIntervalSince(startDate) / 60))
+        let duration = formatter.string(from: minutes * 60) ?? "0"
+        return BalanceRecharge.dateText(for: startDate, now: now, timeZone: timeZone) + " "
+            + BalanceRecharge.clockText(for: startDate, timeZone: timeZone) + " · "
+            + tr(.keyBalanceElapsedAgo, arguments: [duration])
+    }
+
+    private func updateAggregationTimestamp(in card: NSView, display: AggregatedProviderDisplay) {
+        guard let time = descendantViews(of: card, as: NSTextField.self).first(where: {
+            $0.identifier?.rawValue == "overview.refreshTime"
+        }) else { return }
+        let text = display.fetchedAt.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
+        let isStale = display.status == .stale || (display.status == .loading && display.reason != nil && display.fetchedAt != nil)
+        time.stringValue = isStale ? "⚠︎ " + text : text
+        time.textColor = isStale ? .systemOrange : .secondaryLabelColor
+        time.toolTip = isStale ? display.reason ?? tr(.keyAggregationStale) : nil
+        time.setAccessibilityLabel(isStale ? tr(.keyAggregationStale) + " · " + text + " · " + (display.reason ?? "") : text)
+    }
+
     private func makeOverviewCardLayout(for snapshot: Snapshot,
-                                        presentation: OfficialQuotaMenuPresentation) -> OpenCodexCardFrames {
+                                        presentation: OfficialQuotaMenuPresentation,
+                                        account: OpenAIAccountPresentation? = nil,
+                                        aggregation: Bool = false) -> OpenCodexCardFrames {
         let isBalance = snapshot.kind == .balance
+        let unifiedBalance = isBalance && (!menuInput.directProviderIsOfficial || aggregation)
         let officialQuotaWindows = presentation.windows
         let lunaReserve = presentation.lunaReserve
         let bankedReset = presentation.bankedReset
@@ -5885,14 +6663,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let nearestExpiryText = bankedReset.flatMap {
             CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards, timeZone: settings.displayTimeZone)
         }
-        let subscription = menuInput.openAIAccount?.subscription
+        let subscription = account?.subscription
         let subscriptionTextWidth = subscription.map {
             AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
         }
         return OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
-            includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil,
+            includesBalanceSubtitle: !unifiedBalance,
+            includesBalanceRecharge: isBalance && (unifiedBalance || snapshot.balanceRecharge != nil),
+            includesAccount: snapshot.kind == .official && account != nil,
             includesSubscription: snapshot.kind == .official && subscription != nil,
             subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
             officialQuotaWindows: officialQuotaWindows,
@@ -5901,7 +6681,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && snapshot.kind == .official
                 && lunaReserve?.remaining != nil,
             lunaReserveInsertionIndex: presentation.lunaReserveInsertionIndex,
-            includesQuotaProgress: settings.showQuotaProgressBar,
+            includesQuotaProgress: settings.showQuotaProgressBar
+                && (!isBalance || snapshot.progressPercentage != nil),
             includesBankedReset: settings.showBankedReset
                 && snapshot.kind == .official
                 && bankedReset != nil,
@@ -5914,10 +6695,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
     }
 
-    private func makeOverviewMenuItem(for snapshot: Snapshot) -> NSMenuItem {
+    private func makeOverviewMenuItem(for snapshot: Snapshot, context supplied: OverviewCardContext? = nil) -> NSMenuItem {
+        let context = supplied ?? directCardContext(for: snapshot)
         if snapshot.kind == .error {
-            presentedOverviewNumerics = []
-            return makeOverviewErrorMenuItem(for: snapshot)
+            presentedOverviewNumerics = currentOverviewNumericSamples()
+            return makeOverviewErrorMenuItem(for: snapshot, context: context)
         }
         let quotaPaceNow = quotaPaceNowForTesting ?? Date()
         let item = NSMenuItem()
@@ -5933,13 +6715,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let nearestExpiryText = bankedReset.flatMap {
             CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards, timeZone: settings.displayTimeZone)
         }
-        let subscription = menuInput.openAIAccount?.subscription
-        let layout = makeOverviewCardLayout(for: snapshot, presentation: quotaPresentation)
+        let subscription = context.account?.subscription
+        let layout = makeOverviewCardLayout(for: snapshot, presentation: quotaPresentation, account: context.account,
+            aggregation: supplied != nil || (snapshot.kind == .balance && !menuInput.directProviderIsOfficial))
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.quotaPaceAccount = menuInput.openAIAccount
         view.quotaPaceClient = menuInput.activeClient
         view.overviewLayout = layout
-        view.providerIdentity = snapshot.provider
+        view.providerIdentity = context.identity
         view.forecastContentKey = forecastContentKey(quotaPresentation.resetForecast)
         view.bankedResetCardIDs = bankedReset?.cards.map(\.id) ?? []
         view.wantsLayer = true
@@ -5973,22 +6756,40 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         func headerFrame(_ frame: NSRect) -> NSRect {
             frame.offsetBy(dx: -headerHost.frame.minX, dy: headerHost === view ? 0 : -headerHost.frame.minY)
         }
-        let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
+        let websiteURL = snapshot.websiteURL.flatMap { url -> URL? in
+            guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+                  url.user == nil, url.password == nil else { return nil }
+            return url
+        }
+        let provider: NSTextField
+        if isBalance, let websiteURL {
+            let link = HoverLinkTextField(text: snapshot.overviewProvider)
+            link.font = .systemFont(ofSize: 15, weight: .semibold)
+            link.restingTextColor = .labelColor
+            link.onActivate = { [weak self] in self?.actions.openStatusLink(websiteURL) }
+            view.track(link)
+            provider = link
+        } else {
+            provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
+        }
+        provider.identifier = NSUserInterfaceItemIdentifier("overview.providerTitle")
         provider.frame = headerFrame(layout.title)
 
         if snapshot.kind == .official || snapshot.kind == .balance {
-            let timeText = refreshDate.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
+            let timeText = context.date.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
             let refreshTime = makeOverviewLabel(timeText, font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
             refreshTime.textColor = .secondaryLabelColor
             refreshTime.alignment = .right
+            refreshTime.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
             refreshTime.frame = headerFrame(layout.refreshTime)
             headerHost.addSubview(refreshTime)
         }
-        if let account = menuInput.openAIAccount, let accountFrame = layout.account {
+        if let account = context.account, let accountFrame = layout.account {
             let accountLabel = makeAccountLabel(
                 account,
                 frame: headerFrame(accountFrame)
             )
+            accountLabel.identifier = NSUserInterfaceItemIdentifier("overview.accountSubtitle")
             headerHost.addSubview(accountLabel)
         }
         if let subscription,
@@ -5996,6 +6797,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             headerHost.addSubview(makeSubscriptionLabel(subscription.text, frame: headerFrame(subscriptionFrame)))
         }
 
+        let cardNumerics = numericSamples(for: context)
         presentedOverviewNumerics = currentOverviewNumericSamples()
         if (!officialQuotaWindows.isEmpty && !layout.quotaRows.isEmpty)
             || layout.lunaReserveRow != nil
@@ -6007,7 +6809,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 let sample = OverviewNumericSample(
                     identity: OverviewNumericPresentation.identity(
                         for: window,
-                        provider: snapshot.provider
+                        provider: context.identity
                     ),
                     format: .integerPercent,
                     value: window.remaining,
@@ -6064,7 +6866,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 let marqueeAmountText: String
                 if let remaining = lunaReserve.remaining {
                     let sample = OverviewNumericSample(
-                        identity: .lunaReserve(provider: snapshot.provider),
+                        identity: .lunaReserve(provider: context.identity),
                         format: .integerPercent,
                         value: remaining,
                         progressPercentage: remaining
@@ -6123,7 +6925,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                let row = layout.sectionLayouts.first(where: { $0.id == .resetProbability })?.row {
                 addBankedResetProbabilityBlock(
                     to: sectionView, eventHost: view, row: row,
-                    forecast: quotaPresentation.resetForecast, provider: snapshot.provider
+                    forecast: quotaPresentation.resetForecast, provider: context.identity
                 )
             }
             if let bankedReset,
@@ -6132,7 +6934,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 let isCompactBankedReset = menuInput.bankedResetDisplayMode == .compact
                 if summaryRow.amount.width > 0 {
                     let sample = OverviewNumericSample(
-                        identity: .bankedResetCount(provider: snapshot.provider),
+                        identity: .bankedResetCount(provider: context.identity),
                         format: .integerCount,
                         value: Double(bankedReset.availableCount),
                         progressPercentage: nil
@@ -6299,7 +7101,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
             let amount: NSView
             let marqueeAmountText: String
-            if snapshot.kind == .balance, let sample = presentedOverviewNumerics.first {
+            if snapshot.kind == .balance, let sample = cardNumerics.first {
                 let plan = overviewNumericPlan(for: sample)
                 if settings.showQuotaProgressBar,
                    sample.progressPercentage != nil,
@@ -6344,27 +7146,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     layout.quotaDetail,
                     avoidingAmountFrame: amount.frame,
                     amountText: marqueeAmountText,
-                    amountFont: amountFont
+                    amountFont: amountFont,
+                    minimumAmountGap: isBalance ? 12 : 0
                 )
             )
+            quotaDetail.identifier = NSUserInterfaceItemIdentifier("overview.quotaDetail")
             if isBalance {
-                let linkPrefix = makeOverviewLabel(
-                    tr(.keyStatusItemControllerOfficialLink),
-                    font: .systemFont(ofSize: 12, weight: .regular)
-                )
-                linkPrefix.textColor = .secondaryLabelColor
-                linkPrefix.frame = layout.linkPrefix ?? .zero
-                view.addSubview(linkPrefix)
-                if snapshot.websiteURL != nil, let linkFrame = layout.link {
-                    let link = HoverLinkTextField(text: snapshot.provider)
-                    link.frame = linkFrame
-                    link.onActivate = { [weak self] in self?.actions.openProviderWebsite() }
-                    view.addSubview(link)
-                    view.track(link)
+                if menuInput.directProviderIsOfficial && supplied == nil {
+                    let linkPrefix = makeOverviewLabel(tr(.keyStatusItemControllerOfficialLink), font: .systemFont(ofSize: 12))
+                    linkPrefix.textColor = .secondaryLabelColor
+                    linkPrefix.frame = layout.linkPrefix ?? .zero
+                    view.addSubview(linkPrefix)
+                    if let websiteURL, let linkFrame = layout.link {
+                        let link = HoverLinkTextField(text: snapshot.provider)
+                        link.frame = linkFrame
+                        link.onActivate = { [weak self] in self?.actions.openProviderWebsite() }
+                        view.addSubview(link)
+                        view.track(link)
+                    }
                 }
             } else {
                 let reset = makeMarqueeOverviewLabel(
-                    snapshot.overviewReset(refreshDate: refreshDate, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone)),
+                    snapshot.overviewReset(refreshDate: context.date, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone)),
                     font: .systemFont(
                         ofSize: OpenCodexCardLayout.quotaResetPointSize,
                         weight: .regular
@@ -6383,41 +7186,46 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             [quotaDetail, amount].forEach(attachBody)
         }
         item.view = view
+        updateOverviewHeaderNotes(in: view, context: context)
+        updateBalanceSubtitle(in: view, context: context)
+        alignSingleLineBalance(in: view, snapshot: context.snapshot)
         return item
     }
 
-    private func makeOverviewErrorMenuItem(for snapshot: Snapshot) -> NSMenuItem {
+    private func makeOverviewErrorMenuItem(for snapshot: Snapshot, context: OverviewCardContext) -> NSMenuItem {
         let item = NSMenuItem()
         item.isEnabled = false
         let message = snapshot.overviewReset(refreshDate: nil, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone))
         let frames = ErrorCardLayout.errorFrames(
             for: message,
-            includesAccount: menuInput.openAIAccount != nil,
-            includesSubscription: menuInput.openAIAccount?.subscription != nil,
-            subscriptionTextWidth: menuInput.openAIAccount?.subscription.map {
+            includesAccount: context.account != nil,
+            includesSubscription: context.account?.subscription != nil,
+            subscriptionTextWidth: context.account?.subscription.map {
                 AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
             }
         )
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
         provider.frame = frames.title
+        provider.identifier = NSUserInterfaceItemIdentifier("overview.providerTitle")
         view.addSubview(provider)
-        if let account = menuInput.openAIAccount, let accountFrame = frames.account {
+        if let account = context.account, let accountFrame = frames.account {
             let accountLabel = makeAccountLabel(
                 account,
                 frame: accountFrame
             )
             view.addSubview(accountLabel)
         }
-        if let subscription = menuInput.openAIAccount?.subscription,
+        if let subscription = context.account?.subscription,
            let subscriptionFrame = frames.subscription {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
-        let timeText = refreshDate.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
+        let timeText = context.date.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
         let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
             timeText,
             showsCachedBalance: snapshot.hasCachedBalance
         )
+        refreshTime.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
         refreshTime.frame = frames.refreshTime
         view.addSubview(refreshTime)
         let quotaDetail = makeOverviewLabel(snapshot.overviewQuotaDetail, font: ErrorCardLayout.quotaFont)
@@ -6433,6 +7241,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         detail.frame = frames.detail
         view.addSubview(detail)
+        updateOverviewHeaderNotes(in: view, context: context)
         item.view = view
         return item
     }
@@ -6541,8 +7350,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func currentOverviewNumericSamples() -> [OverviewNumericSample] {
+        if !menuInput.aggregatedProviders.isEmpty {
+            return aggregationOverviewDisplays.flatMap { numericSamples(for: cardContext($0)) }
+        }
+        return numericSamples(for: directCardContext(for: snapshot))
+    }
+
+    private func numericSamples(for context: OverviewCardContext) -> [OverviewNumericSample] {
         OverviewNumericPresentation.samples(
-            snapshot: snapshot,
+            snapshot: context.snapshot,
+            providerIdentity: context.identity,
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
             showBankedReset: settings.showBankedReset,
@@ -6572,6 +7389,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         ).windows
         let identityMatches = snapshot.kind == .official
             && host.quotaPaceAccount == menuInput.openAIAccount && host.quotaPaceClient == menuInput.activeClient
+            && quotaPaceSnapshotAccount == menuInput.openAIAccount && quotaPaceSnapshotClient == menuInput.activeClient
             && settings.showQuotaProgressBar && settings.showQuotaPaceIndicator
         for view in host.paceViews {
             if identityMatches, let window = windows.first(where: {
@@ -6789,7 +7607,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             label.font = amountFont
             label.restingTextColor = .labelColor
             label.textColor = .labelColor
-            configureBankedResetSourceLink(label, forecast: forecast)
+            label.percentSignFont = OverviewNumericTextView.currencySymbolFont(for: amountFont)
+            makeInertBankedResetAmount(label)
             label.alignment = .right
             label.frame = row.amount
             label.identifier = NSUserInterfaceItemIdentifier(
@@ -6804,7 +7623,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             label.font = labelFont
             label.restingTextColor = .labelColor
             label.textColor = .labelColor
-            configureBankedResetSourceLink(label, forecast: forecast)
+            label.percentSignFont = OverviewNumericTextView.currencySymbolFont(for: labelFont)
+            makeInertBankedResetAmount(label)
             label.alignment = .right
             label.frame = row.amount
             label.identifier = NSUserInterfaceItemIdentifier(
@@ -6815,8 +7635,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             reservationFont = labelFont
         }
         }
-        let probabilityTitle = makeMarqueeOverviewLabel(
-            tr(.keyCodexBankedResetProbabilityPrefix),
+        // The title, not the amount, hosts the source bubble and website link.
+        let titleText = tr(.keyCodexBankedResetProbabilityPrefix)
+        let titleLink = contentKey.primary == .confirmed ? nil : HoverLinkTextField(text: titleText)
+        let probabilityTitle = AccountMarqueeView(
+            text: titleText,
             font: .systemFont(
                 ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                 weight: .medium
@@ -6828,12 +7651,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 amountText: marqueeAmountText,
                 amountFont: reservationFont,
                 minimumAmountGap: 12
-            )
+            ),
+            label: titleLink
         )
         (view as? OpenCodexMetricSectionView)?.installMetric(title: probabilityTitle, subtitle: nil, amount: amount)
         let leadingInkAnchor = AccountMarqueeView.leadingInkInset(of: probabilityTitle.accountLabel)
-        if let link = amount as? HoverLinkTextField {
-            eventHost.track(link)
+        if let titleLink {
+            titleLink.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.probabilityTitleLink")
+            titleLink.restingTextColor = .labelColor
+            titleLink.opensHoverHintAbove = true
+            configureBankedResetSourceLink(titleLink, forecast: forecast)
+            eventHost.track(titleLink)
         }
         // Reuse the source subtitle slot and stop at the primary amount's
         // visible leading edge. Long localized copy uses the marquee viewport.
@@ -6922,7 +7750,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         tr(.keyCodexBankedResetProbability48hFormat, arguments: [forecast.probability48h.displayText])
     }
 
-    private func updateBankedResetForecastSubtitleIfNeeded(in overview: NSView) {
+    private func updateBankedResetForecastSubtitleIfNeeded(in overview: NSView, snapshot: Snapshot) {
         guard let subtitle = descendantViews(of: overview, as: AccountMarqueeView.self).first(where: {
             $0.identifier?.rawValue == "codex.bankedReset.forecastSubtitle"
         }) else { return }
@@ -6986,7 +7814,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         link.frame = frame
         link.identifier = OverviewNumericPresentation.amountIdentifier(for: sample.identity)
         link.textColor = .labelColor
-        configureBankedResetSourceLink(link, forecast: forecast)
+        link.percentSignFont = OverviewNumericTextView.currencySymbolFont(for: font)
+        makeInertBankedResetAmount(link)
         link.configure(plan: plan, sample: sample)
         return link
     }
@@ -7016,6 +7845,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             host.setPercentage(target, animated: true, duration: OverviewNumericTransition.duration(for: plan.format))
         }
         return host
+    }
+
+    /// The probability title owns the bubble and link; the amount must not
+    /// react to hover even if a card reconcile registers it with the host.
+    private func makeInertBankedResetAmount(_ amount: HoverLinkTextField) {
+        amount.decoratesOnHover = false
+        amount.setInteractionMode(.menuHosted)
     }
 
     private func makeOverviewNumericProgress(
@@ -7101,15 +7937,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func reconcileOverviewSectionsIfTracking() {
-        guard let host = menuContentHostForUpdate("sections"), snapshot.kind == .official,
-              let previous = host.overviewLayout else { return }
+        guard menuInput.aggregatedProviders.isEmpty, let host = menuContentHostForUpdate("sections") else { return }
+        reconcileOverviewSections(in: host, context: directCardContext(for: snapshot))
+    }
+
+    private func reconcileOverviewSections(in host: MenuHoverLinkHostView, context: OverviewCardContext) {
+        let snapshot = context.snapshot
+        guard snapshot.kind == .official, let previous = host.overviewLayout else { return }
         let presentation = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
-        let next = makeOverviewCardLayout(for: snapshot, presentation: presentation)
+        let next = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account,
+            aggregation: !menuInput.aggregatedProviders.isEmpty)
         let nextForecastKey = forecastContentKey(presentation.resetForecast)
         let nextCardIDs = presentation.bankedReset?.cards.map(\.id) ?? []
-        let providerChanged = host.providerIdentity != snapshot.provider
+        let providerChanged = host.providerIdentity != context.identity
         let quotaIdentityChanged = host.quotaPaceAccount != menuInput.openAIAccount
             || host.quotaPaceClient != menuInput.activeClient
         if providerChanged || quotaIdentityChanged {
@@ -7119,7 +7961,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if previous != next || providerChanged || quotaIdentityChanged || host.forecastContentKey != nextForecastKey || host.bankedResetCardIDs != nextCardIDs {
             // Topology or local geometry changes may replace affected sections;
             // unchanged sections keep their controls and animation state.
-            guard let proposed = makeOverviewMenuItem(for: snapshot).view as? MenuHoverLinkHostView else { return }
+            guard let proposed = makeOverviewMenuItem(for: snapshot, context: context).view as? MenuHoverLinkHostView else { return }
             host.beginFocusSectionReplacement()
             defer { host.finishFocusSectionReplacement() }
             let oldSections = Dictionary(uniqueKeysWithValues: host.subviews.compactMap {
@@ -7149,14 +7991,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             host.frame.size = next.cardSize
             host.overviewLayout = next
-            host.providerIdentity = snapshot.provider
+            host.providerIdentity = context.identity
             host.quotaPaceAccount = menuInput.openAIAccount
             host.quotaPaceClient = menuInput.activeClient
             host.forecastContentKey = nextForecastKey
             host.bankedResetCardIDs = nextCardIDs
-            if let link = descendantViews(of: host, as: HoverLinkTextField.self).first {
-                host.track(link)
-            }
+            // Moved sections were tracked by the proposal host; re-register every link here.
+            descendantViews(of: host, as: HoverLinkTextField.self).forEach { host.track($0) }
             if let scroll = descendantViews(of: host, as: BankedResetTicketScrollView.self).first {
                 host.trackTicketScroll(scroll)
                 if let scrollOrigin {
@@ -7168,16 +8009,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let header = host.subviews.compactMap({ $0 as? OpenCodexAccountSectionView }).first {
             let labels = header.subviews.compactMap { $0 as? NSTextField }
             labels.first { $0.font?.pointSize == 15 }?.stringValue = snapshot.overviewProvider
-            labels.first { $0.font?.pointSize == 12 }?.stringValue = refreshDate.map {
+            labels.first { $0.font?.pointSize == 12 }?.stringValue = context.date.map {
                 AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0)
             } ?? "--:--:--"
-            if let account = menuInput.openAIAccount, case .available(let email) = account.state {
+            if let account = context.account, case .available(let email) = account.state {
                 descendantViews(of: header, as: AccountEmailView.self).first?.updateText(email)
             }
-            if let subscription = menuInput.openAIAccount?.subscription {
+            if let subscription = context.account?.subscription {
                 labels.first { $0.font == Self.subscriptionFont }?.stringValue = subscription.text
             }
         }
+        updateOverviewHeaderNotes(in: host, context: context)
         let sections = host.subviews.compactMap { $0 as? OpenCodexMetricSectionView }
         for (index, window) in presentation.windows.enumerated() {
             let id = OpenCodexOverviewSectionID.quota(window, index: index)
@@ -7236,13 +8078,40 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func applyInPlaceOverviewNumericUpdatesIfTracking() {
-        guard let overview = menuContentHostForUpdate("numerics") else { return }
-        let samples = currentOverviewNumericSamples()
-        presentedOverviewNumerics = samples
+        guard let overview = statusMenu.items.first?.view else { return }
+        if menuInput.aggregatedProviders.isEmpty {
+            guard menuContentHostForUpdate("numerics") != nil else { return }
+        } else {
+            guard isStatusMenuTracking else { return }
+        }
+        presentedOverviewNumerics = currentOverviewNumericSamples()
+        if menuInput.aggregatedProviders.isEmpty {
+            applyInPlaceOverviewNumericUpdates(in: overview, context: directCardContext(for: snapshot))
+        } else {
+            for display in aggregationOverviewDisplays {
+                guard let card = aggregationCards[display.identity] else { continue }
+                applyInPlaceOverviewNumericUpdates(in: card.card, context: cardContext(display))
+                updateAggregationTimestamp(in: card.card, display: display)
+            }
+        }
+    }
+
+    private func applyInPlaceOverviewNumericUpdates(in overview: NSView, context: OverviewCardContext) {
+        let snapshot = context.snapshot
+        if snapshot.kind == .balance, let host = overview as? MenuHoverLinkHostView {
+            let presentation = snapshot.officialQuotaMenuPresentation(lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+            reconcileBalanceLayout(in: host, next: makeOverviewCardLayout(for: snapshot, presentation: presentation,
+                account: context.account, aggregation: !menuInput.aggregatedProviders.isEmpty))
+            updateBalanceSubtitle(in: host, context: context)
+            alignSingleLineBalance(in: host, snapshot: context.snapshot)
+        }
+        let samples = numericSamples(for: context)
         let reduceMotion = shouldReduceOverviewNumericMotion()
         let amountViews = overviewNumericTextViews(in: overview)
         let linkViews = overviewNumericLinkFields(in: overview)
         let progressViews = overviewNumericProgressViews(in: overview)
+        progressViews.forEach { $0.setColorConfiguration(settings.quotaProgressColorConfiguration) }
         for sample in samples {
             let displayed: OverviewNumericSample?
             let matchingAmounts = amountViews.filter { $0.sample?.identity == sample.identity }
@@ -7288,7 +8157,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
-        updateBankedResetForecastSubtitleIfNeeded(in: overview)
+        updateBankedResetForecastSubtitleIfNeeded(in: overview, snapshot: snapshot)
         let forecast = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota).resetForecast
@@ -7300,10 +8169,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let hint = forecast.officialHintText(), let label = descendantViews(of: overview, as: AccountMarqueeView.self).first(where: {
             $0.identifier?.rawValue == "codex.bankedReset.officialHint"
         }) { label.updateText(hint, preserveScrollPosition: true) }
-        applyOfficialCountdownProgressIfNeeded(in: overview)
+        applyOfficialCountdownProgressIfNeeded(in: overview, snapshot: snapshot)
     }
 
-    private func applyOfficialCountdownProgressIfNeeded(in overview: NSView) {
+    private func applyOfficialCountdownProgressIfNeeded(in overview: NSView, snapshot: Snapshot) {
         guard let progress = overviewNumericProgressViews(in: overview).first(where: {
             $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress"
         }) else { return }

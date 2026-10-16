@@ -2320,6 +2320,26 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertNil(otherClient.amount)
         XCTAssertNil(otherClient.date)
+
+        cache.store(balance, clientID: "codex", providerID: "provider-one", configurationRevision: "rev-a")
+        let otherRevision = cache.errorSnapshot(
+            clientID: "codex",
+            providerID: "provider-one",
+            providerName: "Provider One",
+            reason: "Changed key",
+            configurationRevision: "rev-b"
+        )
+        XCTAssertNil(otherRevision.amount)
+        XCTAssertFalse(otherRevision.hasCachedBalance)
+        let sameRevision = cache.errorSnapshot(
+            clientID: "codex",
+            providerID: "provider-one",
+            providerName: "Provider One",
+            reason: "Retry",
+            configurationRevision: "rev-a"
+        )
+        XCTAssertEqual(sameRevision.amount, 12)
+        XCTAssertTrue(sameRevision.hasCachedBalance)
     }
 
     func testProviderBalanceProgressUsesDynamicRechargeBaseline() throws {
@@ -2367,7 +2387,7 @@ final class DomainModelsTests: XCTestCase {
         let restored = ProviderBalanceProgressStore(defaults: defaults)
         XCTAssertEqual(
             try progress(restored, amount: 1, unit: "USD", identity: identity),
-            1 / 4.01 * 100,
+            100 / 4.01,
             accuracy: 0.000001
         )
 
@@ -2406,7 +2426,7 @@ final class DomainModelsTests: XCTestCase {
         let store = ProviderBalanceProgressStore(defaults: defaults)
 
         XCTAssertEqual(try progress(store, amount: 10, unit: "USD", identity: identity), 100)
-        XCTAssertEqual(try progress(store, amount: -1.02, unit: "USD", identity: identity), 1)
+        XCTAssertThrowsError(try progress(store, amount: -1.02, unit: "USD", identity: identity))
 
         let invalidIdentity = ProviderBalanceProgressIdentity(
             client: .codex,
@@ -2428,12 +2448,12 @@ final class DomainModelsTests: XCTestCase {
         ) else {
             return XCTFail("empty units must not update the baseline")
         }
-        guard case .failure(.inconsistentUnit(expected: "USD", actual: "CNY")) = store.update(
+        guard case .success = store.update(
             amount: 9,
             unit: "CNY",
             identity: invalidIdentity
         ) else {
-            return XCTFail("unit changes must not update the baseline")
+            return XCTFail("different currencies need independent wallet records")
         }
         XCTAssertEqual(try progress(store, amount: 5, unit: "USD", identity: invalidIdentity), 50)
 
@@ -2965,5 +2985,427 @@ extension DomainModelsTests {
         XCTAssertNil(OfficialQuotaResetFormatter.bankedResetString(for: expired, relativeTo: now))
         XCTAssertNil(CodexBankedResetFormatting.remaining(until: expired, now: now))
         XCTAssertNil(CodexBankedResetFormatting.expiryText(for: nil, relativeTo: now))
+    }
+}
+
+
+extension DomainModelsTests {
+    func testWalletRechargeIsSharedPersistentAndRejectsOutOfOrderSamples() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let a = ProviderBalanceProgressIdentity(client: .claude, providerID: "gpt", query: query)
+        let b = ProviderBalanceProgressIdentity(client: .claude, providerID: "grok", query: query)
+        XCTAssertEqual(a.walletID, b.walletID)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        func sample(_ amount: Double, _ identity: ProviderBalanceProgressIdentity, order: UInt64? = nil, date: Date? = nil) throws -> ProviderBalanceProgressStore.Observation {
+            try store.observe(amount: amount, unit: "USD", identity: identity,
+                sampleSequence: order ?? store.beginSample(), observedAt: date ?? start).get()
+        }
+        XCTAssertNil(try sample(3, a).recharge)
+        let older = store.beginSample()
+        let latest = store.beginSample()
+        XCTAssertEqual(try sample(2, b, order: latest).amount, 2)
+        let stale = try sample(13, a, order: older)
+        XCTAssertFalse(stale.accepted)
+        XCTAssertEqual(stale.amount, 2)
+        XCTAssertNil(stale.recharge)
+        let charged = try sample(12, a)
+        XCTAssertEqual(charged.recharge?.amountCents, 1000)
+        XCTAssertEqual(charged.recharge?.observedAt, start)
+        XCTAssertEqual(charged.progress, 100)
+        let later = start.addingTimeInterval(60)
+        XCTAssertEqual(try sample(12, b, date: later).recharge?.observedAt, start)
+        XCTAssertEqual(try sample(3.73, b).progress, 3.73 / 12 * 100, accuracy: 0.00001)
+        XCTAssertEqual(try sample(3.73, a).recharge?.amountCents, 1000)
+        let restored = ProviderBalanceProgressStore(defaults: defaults)
+        let value = try restored.observe(amount: 3, unit: "USD", identity: a,
+            sampleSequence: restored.beginSample(), observedAt: later).get()
+        XCTAssertEqual(value.recharge, charged.recharge)
+        XCTAssertEqual(value.progress, 25)
+        let next = try sample(4.73, a)
+        XCTAssertEqual(next.recharge?.amountCents, 100)
+        XCTAssertEqual(next.progress, 100)
+        let otherCurrency = try store.observe(amount: 7, unit: "CNY", identity: a,
+            sampleSequence: store.beginSample(), observedAt: start).get()
+        XCTAssertNil(otherCurrency.recharge)
+    }
+
+    func testWalletMigrationOnlyAdoptsAgreeingLegacyRecordsAndRebasesMissingDate() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let a = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query)
+        let b = ProviderBalanceProgressIdentity(client: .codex, providerID: "b", query: query)
+        func seed(_ second: Int) throws {
+            let state: [String: Any] = ["baselineCents": 1000, "lastCents": 300, "unit": "USD"]
+            var other = state; other["lastCents"] = second
+            defaults.set(try JSONSerialization.data(withJSONObject: [a.storageKey: state, b.storageKey: other]),
+                forKey: ProviderBalanceProgressStore.storageKey)
+        }
+        try seed(300)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        store.prepareMigration(identities: [a, b])
+        let value = try store.observe(amount: 3, unit: "USD", identity: a,
+            sampleSequence: store.beginSample(), observedAt: Date()).get()
+        XCTAssertEqual(value.progress, 100)
+        XCTAssertNil(value.recharge)
+        try seed(400)
+        let conflict = ProviderBalanceProgressStore(defaults: defaults)
+        conflict.prepareMigration(identities: [a, b])
+        let initial = try conflict.observe(amount: 5, unit: "USD", identity: a,
+            sampleSequence: conflict.beginSample(), observedAt: Date()).get()
+        XCTAssertEqual(initial.progress, 100)
+        XCTAssertNil(initial.recharge)
+    }
+
+    func testWalletIdentityIncludesAuthenticationAndParsingButNotPresentation() {
+        let base = makeBalanceProgressQuery()
+        func changed(key: String? = nil, headers: [String: String]? = nil, prefix: String? = nil, endpoint: String? = nil) -> BalanceQuery {
+            BalanceQuery(url: endpoint ?? base.url, websiteURL: URL(string: "https://renamed.example"),
+                apiKey: key ?? base.apiKey, intervalMinutes: 99, timeoutSeconds: 99,
+                isRightCode: base.isRightCode, subscriptionPrefix: prefix ?? base.subscriptionPrefix,
+                nativeBalanceProvider: base.nativeBalanceProvider, isNewAPI: base.isNewAPI,
+                additionalHeaders: headers ?? base.additionalHeaders)
+        }
+        let a = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: base).walletID
+        XCTAssertEqual(a, ProviderBalanceProgressIdentity(client: .codex, providerID: "b", query: changed()).walletID)
+        for query in [changed(key: "other"), changed(headers: ["Account": "other"]), changed(prefix: "/other"), changed(endpoint: "https://other.example")] {
+            XCTAssertNotEqual(a, ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query).walletID)
+        }
+    }
+
+    func testRechargeDateUsesDisplayTimeZoneAndYearWithoutInventingPaymentTime() throws {
+        let parse = ISO8601DateFormatter()
+        let now = try XCTUnwrap(parse.date(from: "2026-10-14T04:00:00Z"))
+        func text(_ iso: String, _ zone: String = "UTC") throws -> String {
+            BalanceRecharge(amountCents: 1000, observedAt: try XCTUnwrap(parse.date(from: iso)))
+                .dateText(now: now, timeZone: try XCTUnwrap(TimeZone(identifier: zone)))
+        }
+        XCTAssertEqual(try text("2026-10-14T00:30:00Z"), "10/14")
+        XCTAssertEqual(try text("2026-10-02T14:30:00Z"), "10/02")
+        XCTAssertEqual(try text("2025-12-28T14:30:00Z"), "2025/12/28")
+        XCTAssertEqual(try text("2026-10-14T00:30:00Z", "America/Los_Angeles"), "10/13")
+    }
+}
+
+
+extension DomainModelsTests {
+    func testCodexAccountsStayIndependentAcrossSameNamesKeysAndRename() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let a = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query, providerName: "same")
+        let b = ProviderBalanceProgressIdentity(client: .codex, providerID: "b", query: query, providerName: "same")
+        let renamed = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query, providerName: "renamed")
+        let rekeyed = ProviderBalanceProgressIdentity(client: .codex, providerID: "a",
+            query: makeBalanceProgressQuery(apiKey: "new-account"), providerName: "same")
+        XCTAssertNotEqual(a.accountingID, b.accountingID)
+        XCTAssertNotEqual(a.accountingID, rekeyed.accountingID)
+        XCTAssertEqual(a.accountingID, renamed.accountingID)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        func sample(_ amount: Double, _ id: ProviderBalanceProgressIdentity, _ order: UInt64? = nil) throws -> ProviderBalanceProgressStore.Observation {
+            try store.observe(amount: amount, unit: "USD", identity: id,
+                sampleSequence: order ?? store.beginSample(), observedAt: Date(timeIntervalSince1970: 100)).get()
+        }
+        XCTAssertNil(try sample(3, a).recharge)
+        let old = store.beginSample()
+        XCTAssertNil(try sample(13, b).recharge)
+        XCTAssertEqual(try sample(13, a).recharge?.amountCents, 1000)
+        let rejected = try sample(20, a, old)
+        XCTAssertFalse(rejected.accepted)
+        XCTAssertEqual(rejected.amount, 13)
+        XCTAssertEqual(try sample(12, renamed).recharge?.amountCents, 1000)
+        XCTAssertNil(try sample(100, rekeyed).recharge)
+        let restart = ProviderBalanceProgressStore(defaults: defaults)
+        XCTAssertNil(try restart.observe(amount: 12, unit: "USD", identity: b,
+            sampleSequence: restart.beginSample(), observedAt: Date()).get().recharge)
+    }
+
+    func testProviderOwnedHistorySurvivesRenameAndNeverCombinesPeers() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let other = makeBalanceProgressQuery(url: "https://other.example/usage", apiKey: "other")
+        let oldA = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query)
+        let oldB = ProviderBalanceProgressIdentity(client: .codex, providerID: "b", query: other)
+        let a = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query, providerName: "same")
+        let b = ProviderBalanceProgressIdentity(client: .codex, providerID: "b", query: other, providerName: "same")
+        func seed(second: Double) {
+            defaults.removePersistentDomain(forName: suiteName)
+            let old = ProviderBalanceProgressStore(defaults: defaults)
+            _ = old.update(amount: 10, unit: "USD", identity: oldA)
+            _ = old.update(amount: 10, unit: "USD", identity: oldB)
+            _ = old.update(amount: 3, unit: "USD", identity: oldA)
+            _ = old.update(amount: second, unit: "USD", identity: oldB)
+        }
+        func sample(_ store: ProviderBalanceProgressStore, _ id: ProviderBalanceProgressIdentity, _ amount: Double) throws -> ProviderBalanceProgressStore.Observation {
+            try store.observe(amount: amount, unit: "USD", identity: id,
+                sampleSequence: store.beginSample(), observedAt: Date()).get()
+        }
+        seed(second: 3)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        store.prepareMigration(identities: [a, b])
+        let migrated = try sample(store, a, 3)
+        XCTAssertEqual(migrated.progress, 30)
+        XCTAssertNil(migrated.recharge)
+        let renamed = ProviderBalanceProgressIdentity(client: .codex, providerID: "a", query: query, providerName: "renamed")
+        let restart = ProviderBalanceProgressStore(defaults: defaults)
+        restart.prepareMigration(identities: [renamed, b])
+        XCTAssertEqual(try sample(restart, renamed, 13).recharge?.amountCents, 1000, "renaming does not change account ownership")
+        seed(second: 4)
+        let conflict = ProviderBalanceProgressStore(defaults: defaults)
+        conflict.prepareMigration(identities: [a, b])
+        let initial = try sample(conflict, b, 13)
+        XCTAssertEqual(initial.recharge?.amountCents, 900)
+        XCTAssertEqual(initial.progress, 100)
+    }
+}
+
+
+extension DomainModelsTests {
+    func testNameMigrationPreservesAgreeingRechargeAndCurrencyWithoutFabricatingEvents() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let other = makeBalanceProgressQuery(url: "https://peer.example/usage", apiKey: "peer")
+        let queries = [query, other]
+        let old = ProviderBalanceProgressStore(defaults: defaults)
+        let date = Date(timeIntervalSince1970: 100)
+        for (index, query) in queries.enumerated() {
+            let id = ProviderBalanceProgressIdentity(client: .codex, providerID: "p\(index)", query: query)
+            for amount in [3.0, 13.0] {
+                _ = try old.observe(amount: amount, unit: "USD", identity: id,
+                    sampleSequence: old.beginSample(), observedAt: date).get()
+            }
+        }
+        let peers = queries.enumerated().map { ProviderBalanceProgressIdentity(client: .codex,
+            providerID: "p\($0.offset)", query: $0.element, providerName: "same") }
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        store.prepareMigration(identities: peers)
+        let value = try store.observe(amount: 3.73, unit: "USD", identity: peers[0],
+            sampleSequence: store.beginSample(), observedAt: date.addingTimeInterval(60)).get()
+        XCTAssertEqual(value.recharge, BalanceRecharge(amountCents: 1000, observedAt: date))
+        XCTAssertEqual(value.progress, 3.73 / 13 * 100, accuracy: 0.00001)
+        let cny = try store.observe(amount: 100, unit: "CNY", identity: peers[1],
+            sampleSequence: store.beginSample(), observedAt: date).get()
+        XCTAssertNil(cny.recharge)
+        XCTAssertEqual(cny.progress, 100)
+        let restarted = ProviderBalanceProgressStore(defaults: defaults)
+        restarted.prepareMigration(identities: peers)
+        let persistent = try restarted.observe(amount: 3, unit: "USD", identity: peers[1],
+            sampleSequence: restarted.beginSample(), observedAt: date).get()
+        XCTAssertEqual(persistent.recharge, value.recharge)
+    }
+}
+
+
+extension DomainModelsTests {
+    func testRechargeProgressUsesPostIncreasePeakAndPersistsOptionalBaselineTime() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let id = ProviderBalanceProgressIdentity(client: .codex, providerID: "peak", query: makeBalanceProgressQuery())
+        let firstDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let rechargeDate = firstDate.addingTimeInterval(60)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        func observe(_ amount: Double, _ date: Date) throws -> ProviderBalanceProgressStore.Observation {
+            try store.observe(amount: amount, unit: "USD", identity: id,
+                sampleSequence: store.beginSample(), observedAt: date).get()
+        }
+        XCTAssertEqual(try observe(3, firstDate).displayProgress, 100)
+        let increased = try observe(13, rechargeDate)
+        XCTAssertEqual(increased.recharge?.amountCents, 1000)
+        XCTAssertEqual(increased.displayProgress, 100)
+        let spent = try observe(12, rechargeDate.addingTimeInterval(60))
+        XCTAssertEqual(try XCTUnwrap(spent.displayProgress), 12 / 13 * 100, accuracy: 0.000001)
+        XCTAssertEqual(spent.recharge, increased.recharge)
+        let data = try XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))
+        let records = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: [String: Any]])
+        let state = try XCTUnwrap(records.values.first)
+        XCTAssertEqual(state["peakCents"] as? Int, 1300)
+        XCTAssertNotNil(state["baselineObservedAt"])
+        let restarted = ProviderBalanceProgressStore(defaults: defaults)
+        let afterRestart = try restarted.observe(amount: 11, unit: "USD", identity: id,
+            sampleSequence: restarted.beginSample(), observedAt: rechargeDate.addingTimeInterval(120)).get()
+        XCTAssertEqual(afterRestart.progress, 11 / 13 * 100, accuracy: 0.000001)
+        XCTAssertEqual(afterRestart.recharge?.observedAt, rechargeDate)
+    }
+
+    func testLegacyPeakMigrationRebasesMissingBaselineDateAndPreservesRecharge() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let id = ProviderBalanceProgressIdentity(client: .codex, providerID: "legacy-peak", query: makeBalanceProgressQuery())
+        let key = "wallet:" + id.accountingID + ":USD"
+        let old: [String: Any] = ["baselineCents": 1300, "lastCents": 1200, "unit": "USD",
+            "recharge": ["amountCents": 1000, "observedAt": 10.0], "sampleSequence": 7]
+        defaults.set(try JSONSerialization.data(withJSONObject: [key: old]), forKey: ProviderBalanceProgressStore.storageKey)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        let observation = try store.observe(amount: 11, unit: "USD", identity: id,
+            sampleSequence: store.beginSample(), observedAt: Date()).get()
+        XCTAssertEqual(observation.progress, 100, accuracy: 0.000001)
+        XCTAssertEqual(observation.recharge?.observedAt, Date(timeIntervalSinceReferenceDate: 10))
+        XCTAssertEqual(observation.progressContext.baselineObservedAt, observation.observedAt)
+        let records = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))) as? [String: [String: Any]])
+        XCTAssertEqual(records[key]?["peakCents"] as? Int, 1100)
+        XCTAssertNotNil(records[key]?["baselineObservedAt"])
+    }
+}
+
+extension DomainModelsTests {
+    func testRechargeSurvivesOldSchemaRoundTripAndCodexNameMigration() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let query = makeBalanceProgressQuery()
+        let legacy = ProviderBalanceProgressIdentity(client: .codex, providerID: "deepseek-fixture", query: query)
+        let original = ProviderBalanceProgressStore(defaults: defaults)
+        let time = Date(timeIntervalSince1970: 1_700_000_000)
+        for amount in [3.0, 3.22] {
+            _ = try original.observe(amount: amount, unit: "CNY", identity: legacy,
+                sampleSequence: original.beginSample(), observedAt: time).get()
+        }
+        let data = try XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))
+        var records = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: [String: Any]])
+        for key in records.keys {
+            records[key]?.removeValue(forKey: "peakCents")
+            records[key]?.removeValue(forKey: "baselineObservedAt")
+        }
+        defaults.set(try JSONSerialization.data(withJSONObject: records), forKey: ProviderBalanceProgressStore.storageKey)
+        let named = ProviderBalanceProgressIdentity(client: .codex, providerID: "deepseek-fixture", query: query, providerName: "DeepSeek fixture")
+        let upgraded = ProviderBalanceProgressStore(defaults: defaults)
+        upgraded.prepareMigration(identities: [named])
+        let observed = try upgraded.observe(amount: 3.20, unit: "CNY", identity: named,
+            sampleSequence: upgraded.beginSample(), observedAt: time.addingTimeInterval(120)).get()
+        XCTAssertEqual(observed.recharge, BalanceRecharge(amountCents: 22, observedAt: time))
+        XCTAssertEqual(observed.progress, 100, accuracy: 0.000001)
+        let restarted = ProviderBalanceProgressStore(defaults: defaults)
+        restarted.prepareMigration(identities: [named])
+        let afterRestart = try restarted.observe(amount: 3.19, unit: "CNY", identity: named,
+            sampleSequence: restarted.beginSample(), observedAt: time.addingTimeInterval(180)).get()
+        XCTAssertEqual(afterRestart.recharge, observed.recharge)
+    }
+}
+
+
+extension DomainModelsTests {
+    func testBalanceSubtitlePriorityCentsAndReferenceDates() throws {
+        let zone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let parser = ISO8601DateFormatter()
+        let start = try XCTUnwrap(parser.date(from: "2026-10-12T12:00:00Z"))
+        let now = try XCTUnwrap(parser.date(from: "2026-10-15T12:00:00Z"))
+        func snapshot(last: Int = 334, date: Date? = start, recharge: BalanceRecharge? = nil) -> Snapshot {
+            .balance("same", Double(last) / 100, "USD", nil, now, progressPercentage: Double(last) / 4,
+                recharge: recharge, progressContext: .init(baselineCents: 400, lastCents: last, peakCents: 400, baselineObservedAt: date))
+        }
+        XCTAssertEqual(snapshot().balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
+        XCTAssertEqual(snapshot(last: 400).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.00"]))
+        XCTAssertEqual(snapshot(date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsed, arguments: ["$0.66"]))
+        XCTAssertEqual(snapshot(last: 400, date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
+        XCTAssertEqual(Snapshot.balance("old", 3.34, "USD", nil, now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
+        let recharge = BalanceRecharge(amountCents: 100, observedAt: now)
+        XCTAssertEqual(snapshot(recharge: recharge).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
+        let lastYear = try XCTUnwrap(parser.date(from: "2025-12-31T23:30:00Z"))
+        XCTAssertTrue(snapshot(date: lastYear).balanceProgressTooltip(now: now, timeZone: zone).contains("2025/12/31"))
+        let east = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
+        XCTAssertTrue(snapshot(date: lastYear).balanceProgressTooltip(now: now, timeZone: east).contains("01/01"))
+        XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("$4.00"))
+        XCTAssertTrue(snapshot().balanceProgressTooltip(now: now, timeZone: zone).contains("84%"))
+        XCTAssertFalse(snapshot(date: nil).balanceProgressTooltip(now: now, timeZone: zone).contains("10/"))
+        XCTAssertEqual(snapshot(date: now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
+        let yesterday = try XCTUnwrap(parser.date(from: "2026-10-14T12:00:00Z"))
+        XCTAssertEqual(snapshot(date: yesterday).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
+    }
+
+    func testProgressContextSurvivesSnapshotCacheAndRejectedOlderSamples() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        let id = ProviderBalanceProgressIdentity(client: .codex, providerID: "context", query: makeBalanceProgressQuery())
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let first = try store.observe(amount: 4, unit: "USD", identity: id, sampleSequence: store.beginSample(), observedAt: start).get()
+        XCTAssertEqual(first.progressContext.baselineObservedAt, start)
+        let older = store.beginSample()
+        let latest = try store.observe(amount: 3.34, unit: "USD", identity: id, sampleSequence: store.beginSample(), observedAt: start.addingTimeInterval(60)).get()
+        let late = try store.observe(amount: 10, unit: "USD", identity: id, sampleSequence: older, observedAt: start.addingTimeInterval(120)).get()
+        XCTAssertFalse(late.accepted)
+        XCTAssertEqual(late.progressContext, latest.progressContext)
+        XCTAssertEqual(latest.progressContext.consumedCents, 66)
+        let snapshot = Snapshot.balance("Provider", late.amount, late.unit, nil, late.observedAt,
+            progressPercentage: late.displayProgress, recharge: late.recharge, progressContext: late.progressContext)
+        var cache = ProviderBalanceSnapshotCache()
+        cache.store(snapshot, clientID: "codex", providerID: "context")
+        let failed = cache.errorSnapshot(clientID: "codex", providerID: "context", providerName: "Provider", reason: "fixture")
+        XCTAssertEqual(failed.balanceProgressContext, latest.progressContext)
+        XCTAssertEqual(failed.balanceRecharge, snapshot.balanceRecharge)
+    }
+}
+
+extension DomainModelsTests {
+    func testBalanceSubtitleArgumentsRenderInEveryLanguage() {
+        let examples: [(LocalizationKey, [String])] = [
+            (.keyBalanceUsedSince, ["10/12", "$0.66"]),
+            (.keyBalanceUsedSinceToday, ["12:00", "$0.00"]),
+            (.keyBalanceUsedSinceYesterday, ["14:20", "$0.66"]),
+            (.keyBalanceUsed, ["$0.66"]),
+            (.keyBalanceRecordingStartedOn, ["10/12"]),
+            (.keyBalanceRecordingStarted, []),
+            (.keyBalanceReferenceOn, ["10/12", "$4.00", "84%"]),
+            (.keyBalanceReference, ["$4.00", "84%"]),
+            (.keyBalanceReferenceUnavailable, [])]
+        for language in AppLanguage.allCases where language != .system {
+            for (key, arguments) in examples {
+                let text = tr(key, arguments: arguments, language: language)
+                XCTAssertFalse(text.contains("⟦"), "\(language): \(key)")
+                for argument in arguments { XCTAssertTrue(text.contains(argument), "\(language): \(key): \(text)") }
+            }
+        }
+    }
+}
+
+extension DomainModelsTests {
+    func testRechargeAndInitialBaselineShareConsumptionPresentation() throws {
+        let date = Date(timeIntervalSince1970: 1_792_150_600)
+        let zone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let recharge = BalanceRecharge(amountCents: 1000, observedAt: date)
+        let context = BalanceProgressContext(baselineCents: 1300, lastCents: 1200, peakCents: 1300, baselineObservedAt: date)
+        let charged = Snapshot.balance("same", 12, "USD", nil, date, recharge: recharge, progressContext: context)
+        XCTAssertEqual(charged.balanceDisplayConsumedCents, 100)
+        XCTAssertEqual(charged.balanceSubtitle(now: date, timeZone: zone),
+            tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$1.00"]))
+        let rebasedContext = BalanceProgressContext(baselineCents: 1200, lastCents: 1200, peakCents: 1200,
+            baselineObservedAt: date.addingTimeInterval(60))
+        let rebased = Snapshot.balance("same", 12, "USD", nil, date, recharge: recharge, progressContext: rebasedContext)
+        XCTAssertEqual(rebased.balanceDisplayConsumedCents, 0)
+        XCTAssertEqual(rebased.balanceConsumptionStartDate, rebasedContext.baselineObservedAt)
+        let uncharged = Snapshot.balance("same", 12, "USD", nil, date, progressContext: context)
+        XCTAssertEqual(uncharged.balanceDisplayConsumedCents, 100)
+        XCTAssertEqual(uncharged.balanceConsumptionStartDate, date)
+        XCTAssertEqual(uncharged.balanceSubtitle(now: date, timeZone: zone),
+            tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$1.00"]))
+    }
+}
+
+extension DomainModelsTests {
+    func testUnownedNameLedgerNeverMigratesIntoProviderAccounts() throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let scope = try XCTUnwrap(ProviderBalanceProgressIdentity.nameScope(client: .codex, name: "same"))
+        let legacy = try JSONSerialization.data(withJSONObject: ["wallet:\(scope):CNY": [
+            "baselineCents": 1000, "lastCents": 375, "unit": "CNY", "peakCents": 1000,
+            "baselineObservedAt": 100, "recharge": ["amountCents": 800, "observedAt": 100]]])
+        defaults.set(legacy, forKey: ProviderBalanceProgressStore.storageKey)
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+        let peers = ["a", "b"].map { ProviderBalanceProgressIdentity(client: .codex, providerID: $0,
+            query: makeBalanceProgressQuery(), providerName: "same") }
+        store.prepareMigration(identities: peers)
+        for peer in peers {
+            let value = try store.observe(amount: 3.75, unit: "CNY", identity: peer,
+                sampleSequence: store.beginSample(), observedAt: Date()).get()
+            XCTAssertNil(value.recharge)
+            XCTAssertEqual(value.progressContext.baselineCents, 375)
+        }
+        let saved = try XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))
+        let dictionary = try XCTUnwrap(JSONSerialization.jsonObject(with: saved) as? [String: Any])
+        XCTAssertNotNil(dictionary["wallet:\(scope):CNY"], "retain unverifiable history without assigning it to another account")
     }
 }
