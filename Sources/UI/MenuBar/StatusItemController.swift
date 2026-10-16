@@ -7832,9 +7832,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             host.providerIdentity = context.identity
             host.forecastContentKey = nextForecastKey
             host.bankedResetCardIDs = nextCardIDs
-            if let link = descendantViews(of: host, as: HoverLinkTextField.self).first {
-                host.track(link)
-            }
+            // Moved sections were tracked by the proposal host; re-register every link here.
+            descendantViews(of: host, as: HoverLinkTextField.self).forEach { host.track($0) }
             if let scroll = descendantViews(of: host, as: BankedResetTicketScrollView.self).first {
                 host.trackTicketScroll(scroll)
                 if let scrollOrigin {

@@ -6483,6 +6483,29 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
             XCTAssertTrue(scroll.documentView === document)
             XCTAssertEqual(scroll.contentView.bounds.origin, origin)
+            // The replacement title must still host the bubble on the visible card.
+            let title = try XCTUnwrap(bankedResetTitleLink(in: probability))
+            func style(_ link: HoverLinkTextField) -> (underlined: Bool, color: NSColor?) {
+                let text = link.attributedStringValue
+                return (text.attribute(.underlineStyle, at: 0, effectiveRange: nil) != nil,
+                        text.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
+            }
+            let away = NSPoint(x: root.bounds.maxX - 1, y: root.bounds.midY)
+            let titleHit = title.visibleTextHitRect
+            root.forwardHover(atHostPoint: root.convert(NSPoint(x: titleHit.midX, y: titleHit.midY), from: title))
+            XCTAssertTrue(style(title).underlined)
+            XCTAssertEqual(style(title).color, NSColor.linkColor)
+            XCTAssertTrue(title.isHoverHintScheduled)
+            root.forwardHover(atHostPoint: away)
+            XCTAssertFalse(style(title).underlined)
+            XCTAssertFalse(title.isHoverHintScheduled)
+            let amount = try XCTUnwrap(allControls(of: probability, as: HoverLinkTextField.self).first { $0 !== title })
+            let amountHit = amount.visibleTextHitRect
+            root.forwardHover(atHostPoint: root.convert(NSPoint(x: amountHit.midX, y: amountHit.midY), from: amount))
+            XCTAssertFalse(style(amount).underlined)
+            XCTAssertEqual(style(amount).color, NSColor.labelColor)
+            XCTAssertFalse(title.isHoverHintScheduled)
+            root.forwardHover(atHostPoint: away)
         }
         let bar = try XCTUnwrap(allControls(of: root, as: QuotaProgressView.self).first { $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress" })
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(600)

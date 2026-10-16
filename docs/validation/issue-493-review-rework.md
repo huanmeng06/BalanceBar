@@ -1,3 +1,29 @@
+# PR #506: review Block 1 on `6b250e8a` — title bubble after section replacement
+
+ChatGPT P1: with the menu open, a forecast presentation change makes
+`reconcileOverviewSections` move a new `resetProbability` section from the
+proposal host into the visible host. Its title link was tracked on the
+proposal host, and the visible host then re-tracked only the first
+`HoverLinkTextField` in the card. `installMetric` adds amount before title, so
+that was never the new title (and the amount is intentionally inert):
+hovering "重置概率" did nothing after the replacement. Confirmed in code.
+
+Fix: after replacement, re-register every `HoverLinkTextField` still in the
+card with the visible host, matching the initial build where each link is
+tracked. Re-tracking is idempotent; the inert amount stays inert.
+
+## Actual verification
+
+- `testOfficialSignalSubtitleChangesReplaceOnlyProbabilitySection` now hovers
+  the replacement title (underline, link color, bubble scheduled), leaves, and
+  hovers the amount (no style, nothing scheduled) after each of its three
+  presentation changes with the menu open.
+- Red on committed `6b250e8a` source: 9 assertion failures, i.e. the title did
+  not react in all three replacements (`/private/tmp/issue493-retrack-red.log`).
+- Green: affected classes 194 tests / 0 failures; complete serial XCTest
+  **1469 total / 1468 passed / 1 skipped / 0 failed**
+  (`/private/tmp/issue493-retrack-full.log`); `ci-policy-test.py` passes.
+
 # PR #506: reset-probability bubble above the title, inert amount, blue title
 
 User feedback on `fe192dea`:
