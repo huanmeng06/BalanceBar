@@ -11,7 +11,7 @@ struct CCSwitchProvider {
     var configurationRevision: String = ""
 }
 
-enum CCSwitchProxyTakeoverStatus {
+enum CCSwitchProxyTakeoverStatus: Equatable {
     case active
     case inactive
     case unavailable
@@ -119,15 +119,71 @@ final class CCSwitchRepository {
         }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 100)
-        let sql = "SELECT EXISTS(SELECT 1 FROM proxy_config WHERE app_type = ? AND live_takeover_active = 1) OR EXISTS(SELECT 1 FROM proxy_live_backup WHERE app_type = ?)"
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { return .unavailable }
-        defer { sqlite3_finalize(statement) }
-        bind(appType, to: statement, at: 1)
-        bind(appType, to: statement, at: 2)
-        guard sqlite3_step(statement) == SQLITE_ROW else { return .unavailable }
-        return sqlite3_column_int(statement, 0) != 0 ? .active : .inactive
+
+        let tableExists: (String) -> Bool? = { table in
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            let sql = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1"
+            guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+                  let statement else { return nil }
+            self.bind(table, to: statement, at: 1)
+            let step = sqlite3_step(statement)
+            guard step == SQLITE_ROW || step == SQLITE_DONE else { return nil }
+            return step == SQLITE_ROW
+        }
+
+        guard let hasProxyConfig = tableExists("proxy_config") else { return .unavailable }
+        guard let hasBackup = tableExists("proxy_live_backup") else { return .unavailable }
+        guard hasProxyConfig || hasBackup else { return .inactive }
+
+        var proxyColumns: Set<String> = []
+        if hasProxyConfig {
+            var columns: OpaquePointer?
+            defer { sqlite3_finalize(columns) }
+            guard sqlite3_prepare_v2(database, "PRAGMA table_info(proxy_config)", -1, &columns, nil) == SQLITE_OK,
+                  let columns else { return .unavailable }
+            var step = sqlite3_step(columns)
+            while step == SQLITE_ROW {
+                if let name = text(from: columns, column: 1) { proxyColumns.insert(name) }
+                step = sqlite3_step(columns)
+            }
+            guard step == SQLITE_DONE else { return .unavailable }
+        }
+
+        var active = false
+        if hasProxyConfig, proxyColumns.contains("enabled") {
+            let sql = "SELECT EXISTS(SELECT 1 FROM proxy_config WHERE app_type = ? AND enabled = 1)"
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+                  let statement else { return .unavailable }
+            bind(appType, to: statement, at: 1)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return .unavailable }
+            active = sqlite3_column_int(statement, 0) != 0
+        } else if hasProxyConfig, proxyColumns.contains("live_takeover_active") {
+            let sql = "SELECT EXISTS(SELECT 1 FROM proxy_config WHERE app_type = ? AND live_takeover_active = 1)"
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+                  let statement else { return .unavailable }
+            bind(appType, to: statement, at: 1)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return .unavailable }
+            active = sqlite3_column_int(statement, 0) != 0
+        } else if hasProxyConfig {
+            return .unavailable
+        }
+
+        if hasBackup {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            let sql = "SELECT EXISTS(SELECT 1 FROM proxy_live_backup WHERE app_type = ?)"
+            guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+                  let statement else { return .unavailable }
+            bind(appType, to: statement, at: 1)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return .unavailable }
+            active = active || sqlite3_column_int(statement, 0) != 0
+        }
+        return active ? .active : .inactive
     }
 
     func loadCurrentChecked(appType: String) throws -> CCSwitchProvider? {

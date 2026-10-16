@@ -323,12 +323,107 @@ extension CCSwitchRepositoryTests {
     }
 
     func testAggregationQuickSwitchGuardAllowsLegacyAndOrdinaryModes() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE proxy_config SET enabled = 0, live_takeover_active = 0 WHERE app_type = 'codex'")
+        }
         let missing = CCSwitchAggregationRepository(repository: repository, read: { _ in throw CocoaError(.fileReadNoSuchFile) })
         XCTAssertFalse(missing.blocksQuickSwitch())
         XCTAssertFalse(aggregationReader(try aggregationState(mode: "direct")).blocksQuickSwitch())
         XCTAssertFalse(aggregationReader(try aggregationState(enabled: false)).blocksQuickSwitch())
         XCTAssertTrue(aggregationReader(try aggregationState()).blocksQuickSwitch())
         XCTAssertTrue(aggregationReader(Data("broken".utf8)).blocksQuickSwitch())
+    }
+
+    func testProxyTakeoverEnabledColumnOverridesRetiredField() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE proxy_config SET enabled = 1, live_takeover_active = 0 WHERE app_type = 'codex'")
+        }
+        XCTAssertEqual(repository.proxyTakeoverStatus(appType: "codex"), .active)
+        let reader = CCSwitchAggregationRepository(repository: repository, read: { _ in
+            throw CocoaError(.fileReadNoSuchFile)
+        })
+        XCTAssertTrue(reader.blocksQuickSwitch())
+    }
+
+    func testMissingCodexStateUsesProxyTakeoverProtection() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE proxy_config SET enabled = 1, live_takeover_active = 0 WHERE app_type = 'codex'")
+        }
+        let reader = CCSwitchAggregationRepository(repository: repository, read: { _ in
+            Data(#"{"apps":{}}"#.utf8)
+        })
+        guard case .untrusted = reader.load() else { return XCTFail("missing apps.codex must remain untrusted") }
+        XCTAssertTrue(reader.blocksQuickSwitch())
+    }
+
+    func testInactiveProxyClearsKnownAggregationProtection() throws {
+        for missingCodexOnly in [false, true] {
+            var payload: Data? = try aggregationState()
+            let reader = CCSwitchAggregationRepository(repository: repository, isRunning: { true }, read: { _ in
+                guard let payload else { throw CocoaError(.fileReadNoSuchFile) }
+                return payload
+            })
+            guard case .active = reader.load() else { return XCTFail("fixture aggregation must be active") }
+            XCTAssertTrue(reader.blocksQuickSwitch())
+            payload = missingCodexOnly ? Data(#"{"apps":{}}"#.utf8) : nil
+            try withDatabase { db in
+                try execute(db, sql: "UPDATE proxy_config SET enabled = 0, live_takeover_active = 0 WHERE app_type = 'codex'")
+            }
+            XCTAssertFalse(reader.blocksQuickSwitch(), "inactive evidence must release the SAME reader's historical protection")
+            guard case .inactive = reader.load() else { return XCTFail("explicit inactive must clear historical UI state") }
+            XCTAssertFalse(reader.blocksQuickSwitch())
+        }
+    }
+
+    func testProxyTakeoverSchemaAndBackupCompatibility() throws {
+        try withDatabase { db in
+            try execute(db, sql: "DROP TABLE proxy_config; DROP TABLE proxy_live_backup")
+        }
+        XCTAssertEqual(repository.proxyTakeoverStatus(appType: "codex"), .inactive)
+        let missing = CCSwitchAggregationRepository(repository: repository, read: { _ in
+            throw CocoaError(.fileReadNoSuchFile)
+        })
+        XCTAssertFalse(missing.blocksQuickSwitch())
+        try withDatabase { db in
+            try execute(db, sql: "CREATE TABLE proxy_live_backup (app_type TEXT); INSERT INTO proxy_live_backup VALUES ('claude')")
+        }
+        XCTAssertEqual(repository.proxyTakeoverStatus(appType: "codex"), .inactive)
+        try withDatabase { db in
+            try execute(db, sql: "INSERT INTO proxy_live_backup VALUES ('codex')")
+        }
+        XCTAssertEqual(repository.proxyTakeoverStatus(appType: "codex"), .active)
+        XCTAssertTrue(missing.blocksQuickSwitch())
+        try withDatabase { db in
+            try execute(db, sql: "DROP TABLE proxy_live_backup; CREATE TABLE proxy_config (app_type TEXT, live_takeover_active INTEGER); INSERT INTO proxy_config VALUES ('codex', 1)")
+        }
+        XCTAssertEqual(repository.proxyTakeoverStatus(appType: "codex"), .active)
+        try withDatabase { db in
+            try execute(db, sql: "DROP TABLE proxy_config; CREATE TABLE proxy_config (app_type TEXT)")
+        }
+        XCTAssertEqual(repository.proxyTakeoverStatus(appType: "codex"), .unavailable)
+        XCTAssertTrue(missing.blocksQuickSwitch())
+    }
+
+    func testUnavailableProxyEvidenceBlocksAndUIAbsenceStaysConfirmed() throws {
+        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) }
+            XCTAssertEqual(repository.proxyTakeoverStatus(appType: "codex"), .unavailable)
+            for missingCodexOnly in [false, true] {
+                let reader = CCSwitchAggregationRepository(repository: repository, read: { _ in
+                    if missingCodexOnly { return Data(#"{"apps":{}}"#.utf8) }
+                    throw CocoaError(.fileReadNoSuchFile)
+                }, now: { now })
+                XCTAssertTrue(reader.blocksQuickSwitch())
+                guard case .untrusted = reader.load() else { return XCTFail("unavailable starts untrusted") }
+                now.addTimeInterval(CCSwitchAggregationRepository.confirmedAbsenceInterval)
+                for _ in 0..<3 {
+                    guard case .inactive = reader.load() else { return XCTFail("confirmed absence must stay inactive") }
+                    XCTAssertTrue(reader.blocksQuickSwitch(), "UI timeout must not release protection")
+                }
+            }
+        }
     }
 
     func testAggregationQuickSwitchBlockedBeforeAnyDatabaseMutation() throws {

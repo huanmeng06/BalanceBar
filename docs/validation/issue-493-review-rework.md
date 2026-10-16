@@ -142,7 +142,7 @@ merge, new Issue/task, independent review or interactive GUI test is included.
 
 | Item | Implementation / evidence |
 | --- | --- |
-| Block 1 | Missing-state timeout can hide stale aggregation cards after 3 seconds, but it no longer clears the independent Quick Switch write-protection flag. Only a verified direct/ordinary state releases protection. |
+| Block 1 | Missing-state timeout can hide stale aggregation cards after 3 seconds, but it no longer clears the independent Quick Switch write-protection flag. Only a verified direct/ordinary state or explicitly inactive database proxy evidence releases protection. |
 | Block 2 | `clientSnapshots` now stores `configurationRevision`; client switching reuses a cached snapshot only when client, Provider ID, and revision all match. |
 | Block 3 | A non-current response must still match the Provider's current database configuration revision before it may update Quick Switch summaries. Database read failure is treated as invalid, not as a provider switch. |
 | Block 4 | Configuration-revision invalidation now publishes `quickSwitchSummaryChanged` when an existing summary is removed, so an open menu clears stale text immediately. |
@@ -172,3 +172,66 @@ Verification:
 - New official stale-response and cold-start regressions: **2 / 0 failures** (`/private/tmp/issue493-boundaries-officialtest3.log`, `/private/tmp/issue493-boundaries-newtests.log`).
 - Full serial XCTest: one unrelated transient `UpdateTests` failure; the exact test rerun passed (`/private/tmp/issue493-boundaries-full.log`, `/private/tmp/issue493-update-rerun.log`).
 - Localization, balance query, network-error, balance-card layout and menu-bar geometry probes all PASS.
+
+
+# PR #506: unified proxy evidence and cold-start protection
+
+Review baseline: `4b3208796839856acd4f2a25ae585f28a52406cb`.
+
+- `proxy_config.enabled` takes precedence over the retired takeover field;
+  `enabled = 1, live_takeover_active = 0` is active. The retired field is read
+  only when the enabled column is absent. A matching `proxy_live_backup` also
+  establishes active evidence.
+- A readable database without either proxy table is legacy inactive. Existing
+  but incomplete schema, failed reads and exclusive locks are unavailable.
+  SQLite handles and statements are released on failure as well as success.
+- Missing files and missing `apps.codex` share the database evidence path, both
+  when loading UI state and immediately before a Quick Switch write.
+- Active/unavailable evidence blocks writes even at cold start. After the
+  confirmation window the UI may remain inactive; that timeout never releases
+  write protection. Explicit inactive database evidence clears historical
+  protection and absence tracking on the same repository instance.
+- The existing valid direct/ordinary-state path remains authoritative. No
+  balance, layout, grouping, menu-host or version logic changed.
+
+## 如何人工测试（本轮增量）
+
+开发版：原工作树 `build/dev/BalanceBar-dev.app`。交接记录精确内嵌 SHA。
+先退出旧 Dev，再由用户启动新包；不要改动真实凭据或手工编辑生产数据库。
+
+1. CC Switch 保持代理接管、聚合开启；若状态文件暂时不可用或未提供 Codex
+   节点，BalanceBar 可在确认窗口后降级 UI，但 Quick Switch 必须继续拒绝
+   写入，不能修改供应商指针、停止 CC Switch 或改写路由。
+2. 在 CC Switch 正常退出代理接管后，若数据库已明确 inactive，即使状态文件
+   仍缺失，后续 Quick Switch 应恢复。旧版没有代理 schema 的直连库也可使用。
+3. 数据库暂时锁定/不可读时仍拒绝 Quick Switch；恢复可读且明确 inactive 后
+   解除保护。再次开启聚合并恢复有效状态后，聚合卡片应正常返回。
+4. 聚合正常时检查直连切换保护；明确切回普通/直连模式后检查原切换流程。
+
+人工 PENDING；反馈 PASS + SHA + 范围，或 FAIL + 步骤 + 实际/预期。
+真实 GUI、CPU 对比、白屏 P0 和 Ready Full CI 均仍待单独验收。
+
+
+## 本轮实际自动验证
+
+- 五个要求的相关 XCTest 类：284 项，0 failures，日志
+  `/private/tmp/issue493-proxy-final-focused.log`。
+- 完整串行 XCTest：**1445 项，1443 passed，1 skipped，1 failed**。
+  失败为 `UpdateTests.testUpdateServiceReportsLatestForOlderReleaseAndIgnoresDraftOrPrerelease`，
+  更新服务创建 URLSession task 时抛出 `Task created in a session that has been invalidated`，
+  导致宿主 abort。精确单测独立重跑 **1/1 PASS**。完整运行仍记为 FAILED，
+  不将重跑视为全量通过。本轮未修改更新服务/URLSession 代码。
+  日志 `/private/tmp/issue493-proxy-final-full.log`、
+  `/private/tmp/issue493-proxy-final-update-rerun.log`；统计来自该轮 xcresult。
+- 延续前次运行的另一 UpdateTests 失败也独立重跑 1/1 PASS：
+  `/private/tmp/issue493-proxy-update-rerun.log`。该结果不替代最终完整运行。
+- 显式 unsigned Debug build PASS：`/private/tmp/issue493-proxy-final-debug.log`。
+- localization（521 keys / 12 languages）、balance query、network-error、
+  balance-card 和 menu-bar geometry probes 均 PASS；`git diff --check` PASS。
+- 命令配置：`xcodebuild test -project BalanceBar.xcodeproj -scheme BalanceBar
+  -configuration Debug -derivedDataPath /private/tmp/BalanceBar-issue493-proxy-state-full-DerivedData
+  -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO ARCHS=arm64
+  ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO`。聚焦运行额外指定
+  CCSwitchRepositoryTests、ProviderRefreshCoordinatorTests、AppDelegateCompositionTests、
+  DomainModelsTests、StatusItemControllerTests。
+- Draft / ai:user-test 保持。人工与白屏 P0 未验收；Ready Full CI 未运行。

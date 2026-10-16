@@ -335,19 +335,14 @@ final class CCSwitchAggregationRepository {
             wasAggregating = true
             quickSwitchProtectionActive = true
         case .inactive:
-            if !wasAggregating {
-                quickSwitchProtectionActive = false
-                absenceBegan = nil
-                absenceConfirmed = true
-                return .inactive
-            }
+            wasAggregating = false
+            quickSwitchProtectionActive = false
+            absenceBegan = nil
+            absenceConfirmed = false
+            return .inactive
         case .unavailable:
-            guard wasAggregating else {
-                quickSwitchProtectionActive = true
-                return .untrusted
-            }
+            quickSwitchProtectionActive = true
         }
-        guard wasAggregating else { return .inactive }
         if absenceConfirmed { return .inactive }
         let current = now()
         if absenceBegan == nil { absenceBegan = current }
@@ -359,11 +354,6 @@ final class CCSwitchAggregationRepository {
         return .untrusted
     }
 
-    private func isProtectingAbsence() -> Bool {
-        stateLock.lock(); defer { stateLock.unlock() }
-        return quickSwitchProtectionActive
-    }
-
     /// Recheck at the write boundary, even if the menu was built in another mode.
     /// A missing file is compatible with legacy CC Switch; unreadable/corrupt
     /// existing state must never authorize the old stop/write/restart transaction.
@@ -371,28 +361,37 @@ final class CCSwitchAggregationRepository {
         do {
             let state = try deviceState()
             guard state.version == nil || state.version == 1 else { return true }
-            guard let codex = state.apps.codex else { return isProtectingAbsence() }
+            guard let codex = state.apps.codex else { return missingStateProtection() }
             let blocked = codex.pending || (codex.mode != "direct" && codex.mode != "proxy")
                 || (codex.mode == "proxy" && codex.stack?.enabled == true)
             if !codex.pending { rememberAggregation(codex.mode == "proxy" && codex.stack?.enabled == true) }
             return blocked
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            switch proxyTakeoverStatus() {
-            case .active:
-                stateLock.lock(); quickSwitchProtectionActive = true; wasAggregating = true; stateLock.unlock()
-                return true
-            case .inactive:
-                stateLock.lock()
-                let knownAggregation = wasAggregating
-                if !knownAggregation {
-                    quickSwitchProtectionActive = false
-                }
-                stateLock.unlock()
-                return knownAggregation
-            case .unavailable:
-                stateLock.lock(); quickSwitchProtectionActive = true; stateLock.unlock()
-                return true
-            }
+            return missingStateProtection()
         } catch { return true }
+    }
+
+    private func missingStateProtection() -> Bool {
+        switch proxyTakeoverStatus() {
+        case .active:
+            stateLock.lock()
+            wasAggregating = true
+            quickSwitchProtectionActive = true
+            stateLock.unlock()
+            return true
+        case .inactive:
+            stateLock.lock()
+            wasAggregating = false
+            quickSwitchProtectionActive = false
+            absenceBegan = nil
+            absenceConfirmed = false
+            stateLock.unlock()
+            return false
+        case .unavailable:
+            stateLock.lock()
+            quickSwitchProtectionActive = true
+            stateLock.unlock()
+            return true
+        }
     }
 }

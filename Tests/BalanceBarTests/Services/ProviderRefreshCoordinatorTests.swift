@@ -3501,6 +3501,9 @@ extension ProviderRefreshCoordinatorTests {
 
 extension ProviderRefreshCoordinatorTests {
     func testLegacyMissingStateDoesNotDisableDirectQuickSwitch() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE proxy_config SET enabled = 0, live_takeover_active = 0 WHERE app_type = 'codex'")
+        }
         let reader = CCSwitchAggregationRepository(repository: repository,
             read: { _ in throw CocoaError(.fileReadNoSuchFile) })
         let checked = expectation(description: "legacy direct fallback")
