@@ -3066,7 +3066,7 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testAggregationLinksOpenEachCardsOwnWebsiteAndSingleCardKeepsOriginalAction() throws {
+    func testAggregationAndDirectBalanceTitlesOpenTheirOwnSafeWebsite() throws {
         var opened: [URL] = []
         var currentWebsiteOpens = 0
         let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
@@ -3100,7 +3100,13 @@ extension StatusItemControllerTests {
         controller.update(snapshot: displays[0].snapshot, refreshDate: displays[0].fetchedAt,
             menuInput: makeMenuInput(), settings: makeSettings())
         try XCTUnwrap(links(controller.statusMenuForTesting.items.first!.view!).first).onActivate?()
-        XCTAssertEqual(currentWebsiteOpens, 1)
+        XCTAssertEqual(opened, Array(urls.prefix(2)) + [urls[0]])
+        XCTAssertEqual(currentWebsiteOpens, 0)
+        for url in urls.suffix(2) {
+            let unsafe = Snapshot.balance("single", 4.73, "USD", url, Date(), progressPercentage: nil)
+            controller.update(snapshot: unsafe, refreshDate: Date(), menuInput: makeMenuInput(), settings: makeSettings())
+            XCTAssertTrue(links(try XCTUnwrap(controller.statusMenuForTesting.items.first?.view)).isEmpty)
+        }
     }
 }
 

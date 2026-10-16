@@ -6616,13 +6616,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             frame.offsetBy(dx: -headerHost.frame.minX, dy: headerHost === view ? 0 : -headerHost.frame.minY)
         }
         let websiteURL = snapshot.websiteURL.flatMap { url -> URL? in
-            guard supplied != nil else { return url }
             guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
                   url.user == nil, url.password == nil else { return nil }
             return url
         }
         let provider: NSTextField
-        if supplied != nil, isBalance, let websiteURL {
+        if isBalance, let websiteURL {
             let link = HoverLinkTextField(text: snapshot.overviewProvider)
             link.font = .systemFont(ofSize: 15, weight: .semibold)
             link.restingTextColor = .labelColor
