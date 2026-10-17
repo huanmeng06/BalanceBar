@@ -10,6 +10,322 @@ func withLunaReserveUserFacingEnabled(_ body: () throws -> Void) rethrows {
 }
 
 final class DomainModelsTests: XCTestCase {
+    private func predictionWindow(_ kind: OfficialQuotaWindow.Kind, _ remaining: Double, reset: Date) -> OfficialQuotaWindow {
+        OfficialQuotaWindow(kind: kind, remaining: remaining, label: "quota", daysText: "quota", reset: nil,
+            durationSeconds: kind == .fiveHour ? 18_000 : 604_800, resetAt: reset)
+    }
+
+    private func predictionDefaults() throws -> UserDefaults {
+        let name = "BalanceBarTests.prediction-cycles.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        return defaults
+    }
+
+    func testWeeklyPredictionAverageThresholdAndInvalidWindows() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let start = now.addingTimeInterval(-172_800)
+        let window = predictionWindow(.sevenDay, 40.4, reset: start.addingTimeInterval(604_800))
+        XCTAssertEqual(OfficialQuotaUsagePrediction.inferredCycleStart(for: window), start)
+        guard case .runsOut(let seconds) = OfficialQuotaUsagePrediction.make(for: window, cycleStart: start, now: now) else {
+            return XCTFail("Expected raw weekly average prediction")
+        }
+        XCTAssertEqual(seconds, 40.4 / (59.6 / 172_800), accuracy: 0.000001)
+        let threshold = 604_800.0 * 0.03
+        XCTAssertEqual(threshold, 5 * 3600 + 2 * 60 + 24)
+        for (elapsed, remaining, eligible) in [(threshold, 99.0, true), (threshold - 0.01, 99.0, false), (threshold, 99.0001, false)] {
+            let quota = predictionWindow(.sevenDay, remaining, reset: now.addingTimeInterval(604_800 - elapsed))
+            XCTAssertEqual(OfficialQuotaUsagePrediction.make(for: quota,
+                cycleStart: now.addingTimeInterval(-elapsed), now: now) != nil, eligible)
+        }
+        for remaining in [Double.nan, .infinity, -1, 101] {
+            XCTAssertNil(OfficialQuotaUsagePrediction.make(for: predictionWindow(.sevenDay, remaining, reset: window.resetAt!), cycleStart: start, now: now))
+        }
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: window, cycleStart: start, now: Date(timeIntervalSince1970: .nan)))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: window, cycleStart: start, now: window.resetAt!))
+        let nonstandard = OfficialQuotaWindow(kind: .sevenDay, remaining: 40, label: "7d", daysText: "7d", reset: nil,
+            durationSeconds: 604_799, resetAt: start.addingTimeInterval(604_799))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: nonstandard, cycleStart: start, now: now))
+    }
+
+    func testPredictionCycleStorePersistsRefillAndSeparatesKindsAccountsAndProviders() throws {
+        let defaults = try predictionDefaults()
+        let store = CodexResetObservationStore(defaults: defaults)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = now.addingTimeInterval(9000) // Identical deadlines must not conflate window kinds.
+        func windows(_ five: Double, _ seven: Double) -> [OfficialQuotaWindow] {
+            [predictionWindow(.fiveHour, five, reset: reset), predictionWindow(.sevenDay, seven, reset: reset)]
+        }
+        func update(_ store: CodexResetObservationStore, _ values: [OfficialQuotaWindow], at: Date = now,
+                    account: String = "a", provider: String = "official") -> [QuotaPredictionContext] {
+            store.updatePredictionContexts(providerID: provider, accountKey: account, windows: values, now: at)
+        }
+        XCTAssertEqual(update(store, windows(40, 40)).compactMap(\.inferredCycleStart).count, 2)
+        XCTAssertTrue(update(store, windows(40, 40), account: "").isEmpty)
+        XCTAssertTrue(update(store, windows(40, 40), at: Date(timeIntervalSince1970: .nan)).isEmpty)
+        _ = update(store, windows(40, 40), account: "tiny-refill")
+        XCTAssertNil(update(store, windows(40.00001, 40), account: "tiny-refill").first { $0.cycle.kind == .fiveHour }?.inferredCycleStart)
+        let refilled = update(store, windows(60, 35))
+        XCTAssertNil(refilled.first { $0.cycle.kind == .fiveHour }?.inferredCycleStart)
+        XCTAssertNotNil(refilled.first { $0.cycle.kind == .sevenDay }?.inferredCycleStart)
+        let restarted = CodexResetObservationStore(defaults: defaults)
+        XCTAssertTrue(update(restarted, []).isEmpty)
+        XCTAssertTrue(update(restarted, [predictionWindow(.sevenDay, .nan, reset: reset)]).isEmpty)
+        XCTAssertNotNil(update(restarted, [predictionWindow(.sevenDay, 30, reset: reset)]).first?.inferredCycleStart)
+        XCTAssertNil(update(restarted, [predictionWindow(.fiveHour, 55, reset: reset)]).first?.inferredCycleStart)
+        XCTAssertEqual(update(restarted, windows(55, 30), account: "b").compactMap(\.inferredCycleStart).count, 2)
+        XCTAssertEqual(update(restarted, windows(55, 30), provider: "other").compactMap(\.inferredCycleStart).count, 2)
+        let next = predictionWindow(.fiveHour, 50, reset: reset.addingTimeInterval(1000))
+        XCTAssertNotNil(update(restarted, [next]).first?.inferredCycleStart)
+        XCTAssertTrue(update(restarted, [predictionWindow(.fiveHour, 40, reset: reset)]).isEmpty, "Old deadline cannot replace a newer cycle")
+        XCTAssertTrue(update(restarted, [next], at: now.addingTimeInterval(-1)).isEmpty)
+        XCTAssertTrue(update(restarted, [next, next]).isEmpty, "Ambiguous duplicate windows cannot qualify")
+    }
+
+    func testPredictionStoreConsumesQuotaResetEventOnceWithoutChangingEventPayload() throws {
+        let defaults = try predictionDefaults()
+        let store = CodexResetObservationStore(defaults: defaults)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let fiveReset = now.addingTimeInterval(9000)
+        let oldWeekReset = now.addingTimeInterval(300_000)
+        let newWeekReset = now.addingTimeInterval(604_800)
+        var observation = CodexResetObservation()
+        observation.observe(CodexResetQuotaSample(fiveHourRemaining: 100, sevenDayRemaining: 40, sevenDayResetAt: oldWeekReset), now: now)
+        store.saveQuotaEvidence(providerID: "official", accountKey: "a", evidence: observation)
+        let watching = store.updatePredictionContexts(providerID: "official", accountKey: "a", windows: [
+            predictionWindow(.fiveHour, 100, reset: fiveReset), predictionWindow(.sevenDay, 40, reset: oldWeekReset)], now: now)
+        XCTAssertEqual(watching.compactMap(\.inferredCycleStart).count, 2, "Watching is not a confirmed reset")
+        observation.observeLatestQuotaEvent(CodexResetQuotaSample(fiveHourRemaining: 100, sevenDayRemaining: 100,
+            sevenDayResetAt: newWeekReset), now: now.addingTimeInterval(1))
+        XCTAssertEqual(observation.state, .observed)
+        store.saveQuotaEvidence(providerID: "official", accountKey: "a", evidence: observation)
+        store.save(providerID: "official", accountKey: "a", episodeKey: "episode", observation: observation)
+        let resetPayloads = defaults.dictionaryRepresentation().filter { $0.key.hasPrefix("BalanceBar.codexResetObservation.") }
+        let first = store.updatePredictionContexts(providerID: "official", accountKey: "a", windows: [
+            predictionWindow(.sevenDay, 100, reset: newWeekReset)], now: now.addingTimeInterval(1))
+        let sameFive = store.updatePredictionContexts(providerID: "official", accountKey: "a", windows: [
+            predictionWindow(.fiveHour, 100, reset: fiveReset)], now: now.addingTimeInterval(2))
+        XCTAssertNil(sameFive.first?.inferredCycleStart, "The event invalidates old five-hour basis even when that window was missing")
+        XCTAssertEqual(first.first { $0.cycle.kind == .sevenDay }?.inferredCycleStart, now, "Start comes from metadata, not detectedAt")
+        let restarted = CodexResetObservationStore(defaults: defaults)
+        let next = restarted.updatePredictionContexts(providerID: "official", accountKey: "a", windows: [
+            predictionWindow(.sevenDay, 90, reset: newWeekReset)], now: now.addingTimeInterval(18_144))
+        let context = try XCTUnwrap(next.first)
+        XCTAssertEqual(context.inferredCycleStart, now, "Repeated observed event must not clear the new cycle")
+        XCTAssertNotNil(OfficialQuotaUsagePrediction.make(for: predictionWindow(.sevenDay, 90, reset: newWeekReset),
+            cycleStart: context.inferredCycleStart, now: now.addingTimeInterval(18_144)))
+        let refilledWeek = restarted.updatePredictionContexts(providerID: "official", accountKey: "a", windows: [
+            predictionWindow(.sevenDay, 95, reset: newWeekReset)], now: now.addingTimeInterval(19_000))
+        XCTAssertNil(refilledWeek.first?.inferredCycleStart)
+        XCTAssertNil(restarted.updatePredictionContexts(providerID: "official", accountKey: "a", windows: [
+            predictionWindow(.sevenDay, 94, reset: newWeekReset)], now: now.addingTimeInterval(19_001)).first?.inferredCycleStart,
+            "An already processed reset event cannot release a later same-cycle refill suppression")
+        for (key, value) in resetPayloads where !key.hasSuffix(".predictionCycles") {
+            XCTAssertEqual(defaults.data(forKey: key), value as? Data, "Existing event encoding must remain untouched")
+        }
+        XCTAssertEqual(store.load(providerID: "official", accountKey: "a")?.episodeKey, "episode")
+        // A genuinely newer five-hour deadline replaces the invalid old basis.
+        let recoveredFive = predictionWindow(.fiveHour, 40, reset: now.addingTimeInterval(27_144))
+        XCTAssertNotNil(restarted.updatePredictionContexts(providerID: "official", accountKey: "a",
+            windows: [recoveredFive], now: now.addingTimeInterval(19_001)).first?.inferredCycleStart)
+    }
+
+    func testPredictionContextSurvivesCompactAndReserveSnapshotDerivation() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let quota = predictionWindow(.fiveHour, 0, reset: now.addingTimeInterval(9000))
+        let context = QuotaPredictionContext(cycle: try XCTUnwrap(QuotaPredictionCycle(window: quota)), inferredCycleStart: now.addingTimeInterval(-9000))
+        let snapshot = Snapshot.official("Official", 0, "5h", nil, now, windows: [quota],
+            lunaReserve: LunaReserveQuota(status: .available, remaining: 30, reset: nil),
+            quotaPredictionContexts: [context], quotaPredictionAccountKey: "a")
+        for reserve in [false, true] {
+            withLunaReserveUserFacingEnabled {
+                let derived = snapshot.menuBarSnapshot(preferredQuotaWindow: .fiveHour, automaticallyUseLunaReserve: reserve)
+                XCTAssertEqual(derived.quotaPredictionContexts, [context])
+                XCTAssertEqual(derived.quotaPredictionAccountKey, "a")
+            }
+        }
+    }
+
+    func testQuotaPredictionUsesWholeCycleAverageAndUnroundedValues() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let start = now.addingTimeInterval(-6_840)
+        func window(_ remaining: Double) -> OfficialQuotaWindow {
+            OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(11_160))
+        }
+        for (remaining, seconds) in [(50.0, 6_840.0), (60.0, 10_260.0)] {
+            let quota = window(remaining)
+            guard case .runsOut(let actual) = OfficialQuotaUsagePrediction.make(for: quota, cycleStart: start, now: now) else {
+                return XCTFail("Expected exhaustion before reset")
+            }
+            XCTAssertEqual(actual, seconds, accuracy: 0.000001)
+        }
+        XCTAssertEqual(OfficialQuotaUsagePace.make(for: window(60), now: now)?.status, .normal)
+        XCTAssertEqual(OfficialQuotaUsagePrediction.make(for: window(62), cycleStart: start, now: now), .lastsUntilReset)
+        XCTAssertEqual(OfficialQuotaUsagePrediction.make(for: window(80), cycleStart: start, now: now), .lastsUntilReset)
+        guard case .runsOut(let fractional) = OfficialQuotaUsagePrediction.make(for: window(54.4), cycleStart: start, now: now) else {
+            return XCTFail("Expected a raw-value estimate")
+        }
+        XCTAssertEqual(fractional, 54.4 / (45.6 / 6_840), accuracy: 0.000001)
+    }
+
+    func testQuotaPredictionRequiresEligibleInferredStartAndObservationThresholds() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func quota(remaining: Double = 99, elapsed: Double = 540, kind: OfficialQuotaWindow.Kind = .fiveHour,
+                   duration: Double? = 18_000) -> OfficialQuotaWindow {
+            OfficialQuotaWindow(kind: kind, remaining: remaining, label: "quota", daysText: "quota", reset: nil,
+                durationSeconds: duration, resetAt: now.addingTimeInterval((duration ?? 18_000) - elapsed))
+        }
+        let start = now.addingTimeInterval(-540)
+        XCTAssertNotNil(OfficialQuotaUsagePrediction.make(for: quota(), cycleStart: start, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(elapsed: 539.99),
+            cycleStart: now.addingTimeInterval(-539.99), now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(remaining: 99.0001), cycleStart: start, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(remaining: 100), cycleStart: start, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(), cycleStart: nil, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(), cycleStart: now, now: now))
+        XCTAssertNil(OfficialQuotaUsagePrediction.make(for: quota(), cycleStart: Date(timeIntervalSince1970: .nan), now: now))
+        XCTAssertNotNil(OfficialQuotaUsagePrediction.inferredCycleStart(for: quota(kind: .sevenDay, duration: 604_800)))
+        XCTAssertNil(OfficialQuotaUsagePrediction.inferredCycleStart(for: quota(kind: .other)))
+        XCTAssertNil(OfficialQuotaUsagePrediction.inferredCycleStart(for: quota(duration: 17_999.5)))
+        XCTAssertEqual(OfficialQuotaUsagePrediction.inferredCycleStart(for: quota()), start)
+        for window in [quota(remaining: .nan), quota(remaining: .infinity), quota(remaining: -1),
+                       quota(remaining: 101), quota(kind: .other), quota(duration: nil),
+                       quota(duration: 0), quota(elapsed: 18_000)] {
+            XCTAssertNil(OfficialQuotaUsagePrediction.make(for: window, cycleStart: start, now: now))
+        }
+        XCTAssertEqual(OfficialQuotaUsagePrediction.make(for: quota(remaining: 0), cycleStart: start, now: now), .runsOut(after: 0))
+    }
+
+    func testQuotaPredictionComparesRawSecondsAtResetBoundary() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let start = now.addingTimeInterval(-9_000)
+        for remaining in [50.0, 50.00000001] {
+            let window = OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000))
+            XCTAssertEqual(OfficialQuotaUsagePrediction.make(for: window, cycleStart: start, now: now), .lastsUntilReset)
+        }
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 49.99999999, label: "5h", daysText: "5h",
+            reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000))
+        guard case .runsOut(let seconds) = OfficialQuotaUsagePrediction.make(for: window, cycleStart: start, now: now) else {
+            return XCTFail("Even a normally titled estimate strictly before reset should show a time")
+        }
+        XCTAssertLessThan(seconds, 9_000)
+        XCTAssertEqual(OfficialQuotaUsagePace.make(for: window, now: now)?.status, .normal)
+    }
+
+    func testPaceClassificationUsesIndividuallyRoundedDisplayValues() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for (actual, expected, difference, status) in [
+            (54.4, 59.6, -6, OfficialQuotaUsagePace.Status.fast),
+            (59.6, 54.4, 6, .slow),
+            (54.5, 59.6, -5, .normal),
+            (59.6, 54.5, 5, .normal),
+            (44.5, 50, -5, .normal),
+            (0, 0.1, 0, .normal),
+            (99, 50, 49, .slow),
+            (99.99995, 50, 50, .unused)
+        ] {
+            let window = OfficialQuotaWindow(kind: .fiveHour, remaining: actual,
+                label: "5h", daysText: "5h", reset: nil, durationSeconds: 18_000,
+                resetAt: now.addingTimeInterval(expected / 100 * 18_000))
+            let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window, now: now))
+            XCTAssertEqual(pace.roundedDifference, difference)
+            XCTAssertEqual(pace.roundedActual - pace.roundedExpected, difference)
+            XCTAssertEqual(pace.status, status)
+            XCTAssertEqual(pace.expectedRemaining, expected, accuracy: 0.0001)
+        }
+    }
+
+    func testOfficialQuotaUsagePaceUsesWindowSpecificDurationAndReset() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 50,
+            label: "5h",
+            daysText: "5h",
+            reset: "3h06m",
+            durationSeconds: 18_000,
+            resetAt: now.addingTimeInterval(11_160)
+        )
+        let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: fiveHour, now: now))
+        XCTAssertEqual(pace.expectedRemaining, 62, accuracy: 0.0001)
+        XCTAssertEqual(pace.difference, -12, accuracy: 0.0001)
+        XCTAssertEqual(pace.status, .fast)
+
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 80,
+            label: "7d",
+            daysText: "7d",
+            reset: "5d",
+            durationSeconds: 7 * 86_400,
+            resetAt: now.addingTimeInterval(5 * 86_400)
+        )
+        let weeklyPace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: sevenDay, now: now))
+        XCTAssertEqual(weeklyPace.expectedRemaining, 100 * 5.0 / 7.0, accuracy: 0.0001)
+        XCTAssertEqual(weeklyPace.status, .slow)
+    }
+
+    func testOfficialQuotaUsagePaceClassifiesUnusedAndRoundedBoundaries() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func window(remaining: Double) -> OfficialQuotaWindow {
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: remaining,
+                label: "5h",
+                daysText: "5h",
+                reset: "",
+                durationSeconds: 18_000,
+                resetAt: now.addingTimeInterval(9_000)
+            )
+        }
+        let unused = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window(remaining: 100), now: now))
+        XCTAssertEqual(unused.status, .unused)
+
+        let exactFive = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window(remaining: 45), now: now))
+        XCTAssertEqual(exactFive.difference, -5, accuracy: 0.0001)
+        XCTAssertEqual(exactFive.status, .normal)
+
+        let roundedSix = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window(remaining: 44.4), now: now))
+        XCTAssertEqual(roundedSix.roundedDifference, -6)
+        XCTAssertEqual(roundedSix.status, .fast)
+    }
+
+    func testOfficialQuotaUsagePaceHidesIncompleteOrExpiredWindows() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let base = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 60,
+            label: "5h",
+            daysText: "5h",
+            reset: "",
+            durationSeconds: 18_000,
+            resetAt: now.addingTimeInterval(9_000)
+        )
+        XCTAssertNotNil(OfficialQuotaUsagePace.make(for: base, now: now))
+        XCTAssertNil(OfficialQuotaUsagePace.make(for: base, now: now.addingTimeInterval(9_000)))
+        XCTAssertNil(OfficialQuotaUsagePace.make(for: base, now: now.addingTimeInterval(-18_001)))
+        XCTAssertNil(OfficialQuotaUsagePace.make(for: OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 60,
+            label: "5h",
+            daysText: "5h",
+            reset: "",
+            durationSeconds: nil,
+            resetAt: base.resetAt
+        ), now: now))
+        XCTAssertNil(OfficialQuotaUsagePace.make(for: OfficialQuotaWindow(
+            kind: .other,
+            remaining: 60,
+            label: "other",
+            daysText: "other",
+            reset: "",
+            durationSeconds: 18_000,
+            resetAt: base.resetAt
+        ), now: now))
+    }
+
     func testAssistantClientAndStatusLinkValueModels() throws {
         XCTAssertEqual(AssistantClient.codex.appType, "codex")
         XCTAssertEqual(AssistantClient.codex.displayName, "Codex")

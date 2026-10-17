@@ -31,6 +31,201 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testPaceAccountSwitchAndTeardownStopTimerAndInvalidateOldMarker() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.quotaPaceNowForTesting = now
+        let quota = OfficialQuotaWindow(kind: .fiveHour, remaining: 50, label: "5h", daysText: "5h",
+            reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000))
+        let snapshot = Snapshot.official("OpenAI Official", 50, "5h", nil, now, windows: [quota])
+        func input(_ email: String) -> StatusItemController.MenuInput {
+            StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                openAIAccount: OpenAIAccountPresentation(email: email), statusLinks: [],
+                showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false,
+                showStatusMenu: false)
+        }
+        controller.start(snapshot: snapshot, refreshDate: now, menuInput: input("first@example.invalid"), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let pace = try XCTUnwrap(host.paceViews.first)
+        let timer = try XCTUnwrap(controller.quotaPaceTimerForTesting)
+        controller.updateMenu(input: input("second@example.invalid"))
+        XCTAssertNil(pace.pace)
+        XCTAssertFalse(pace.isTooltipVisible)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        XCTAssertFalse(timer.isValid)
+        controller.teardown()
+        XCTAssertFalse(pace.isMenuTracking)
+    }
+
+    @MainActor
+    func testClosedRebuildPreparesNewMenuWhileOutgoingWindowRemainsVisible() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        controller.update(snapshot: .official("OpenAI Official", 50, "5h", nil, Date()), refreshDate: nil,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        let outgoingItems = outgoingMenu.items.map(ObjectIdentifier.init)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        controller.menuDidClose(outgoingMenu)
+        let preparedMenu = controller.statusMenuForTesting
+        XCTAssertFalse(preparedMenu === outgoingMenu)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertEqual(outgoingMenu.items.map(ObjectIdentifier.init), outgoingItems,
+            "preparing the next presentation leaves the outgoing menu structure untouched")
+        func run(_ seconds: TimeInterval) {
+            let deadline = Date().addingTimeInterval(seconds)
+            while Date() < deadline { RunLoop.main.run(mode: .default, before: deadline) }
+        }
+        // The outgoing window remains visible, but the next menu is already
+        // independently prepared and usable.
+        run(2.5)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertTrue(host.isMenuDismissing)
+        window.orderOut(nil)
+        controller.menuWillOpen(preparedMenu)
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        controller.menuDidClose(preparedMenu)
+    }
+
+    @MainActor
+    func testClosingMenuKeepsAllItemsUntilNextOpenAndDefersLateUpdates() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        // Identical updates are skipped, so use a real snapshot change.
+        controller.update(snapshot: .official("OpenAI Official", 50, "5h", nil, Date()), refreshDate: nil,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        let items = controller.menuItemsForTesting.map(ObjectIdentifier.init)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuDidClose(outgoingMenu)
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === outgoingMenu)
+        let deadline = Date().addingTimeInterval(0.05)
+        while Date() < deadline { RunLoop.main.run(mode: .default, before: deadline) }
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertEqual(outgoingMenu.items.map(ObjectIdentifier.init), items,
+            "preparing the next menu must not remove outgoing native menu items")
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertTrue(host.isMenuDismissing)
+        controller.updateMenu(input: makeMenuInput())
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertEqual(outgoingMenu.items.map(ObjectIdentifier.init), items)
+        controller.menuWillOpen(nextMenu)
+        let nextHost = try XCTUnwrap(nextMenu.items.first?.view as? MenuHoverLinkHostView)
+        XCTAssertFalse(nextHost.isMenuDismissing)
+        XCTAssertTrue(host.isMenuDismissing, "the old tree remains frozen during its visual dismissal")
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        controller.menuDidClose(nextMenu)
+    }
+
+    @MainActor
+    func testWindowDetachesBeforeDelegateCloseSuspendsEveryCleanupPath() throws {
+        var lines: [String] = []
+        MenuDismissalTrace.sinkForTesting = { lines.append($0) }
+        defer { MenuDismissalTrace.sinkForTesting = nil }
+        let controller = makeController()
+        defer { controller.teardown() }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.quotaPaceNowForTesting = now
+        let windows = [OfficialQuotaWindow(kind: .fiveHour, remaining: 40, label: "5h", daysText: "5h",
+                reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000)),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 40, label: "7d", daysText: "7d",
+                reset: nil, durationSeconds: 604_800, resetAt: now.addingTimeInterval(302_400))]
+        controller.start(snapshot: .official("OpenAI Official", 40, "quota", nil, now, windows: windows),
+            refreshDate: now, menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        host.layoutSubtreeIfNeeded()
+        let pace = try XCTUnwrap(host.paceViews.first)
+        pace.updateHover(at: NSPoint(x: pace.markerCenterX, y: 9))
+        host.sectionFocus.pendingTimerForTesting?.fire() // Focus only; no real Popover is presented.
+        let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+        other.focusReduceMotionForTesting = false
+        other.focusReduceTransparencyForTesting = false
+        other.setFocusState(.receded, animated: false)
+        other.setFocusState(.normal, animated: true)
+        let completion = try XCTUnwrap(other.focusRestoreCompletionForTesting)
+        let items = controller.menuItemsForTesting.map(ObjectIdentifier.init)
+        let start = lines.count
+        window.contentView = nil // Actual AppKit parent/child callbacks, before menuDidClose.
+        XCTAssertNil(host.window)
+        XCTAssertTrue(window.isVisible)
+        XCTAssertTrue(host.isMenuDismissing)
+        XCTAssertTrue(host.outgoingMenuWindow === window)
+        XCTAssertTrue(other.isFocusSuspended)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        let frozenAlpha = other.alphaValue
+        XCTAssertNil(host.sectionFocus.pendingTimerForTesting)
+        XCTAssertFalse(pace.isMenuTracking)
+        completion()
+        host.sectionFocus.reset()
+        host.sectionFocus.refreshAccessibility()
+        host.clearPaceHover()
+        host.setPaceMenuTracking(false)
+        host.setPaceMenuTracking(true)
+        pace.clearInteraction()
+        pace.setMenuTracking(false)
+        pace.invalidatePresentation()
+        pace.removeFromSuperview()
+        other.removeFromSuperview()
+        other.setFocusState(.normal, animated: false)
+        XCTAssertEqual(other.alphaValue, frozenAlpha)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        controller.update(snapshot: .official("OpenAI Official", 40, "quota", nil, now, windows: windows),
+            refreshDate: now, menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuDidClose(controller.statusMenuForTesting)
+        host.finishMenuDismissal()
+        XCTAssertTrue(host.isMenuDismissing, "Host.window=nil must not imply the outgoing menu window is hidden")
+        XCTAssertEqual(controller.menuItemsForTesting.map(ObjectIdentifier.init), items)
+        let exitLines = Array(lines[start...])
+        let beginRemoval = try XCTUnwrap(exitLines.firstIndex {
+            $0.contains("event=view.removeFromSuperview;") || $0.contains("event=view.willMoveToWindow;")
+        })
+        let detached = try XCTUnwrap(exitLines.firstIndex { $0.contains("event=view.didMoveToWindow;") })
+        let suspend = try XCTUnwrap(exitLines.firstIndex { $0.contains("event=focus.suspend;") })
+        let closed = try XCTUnwrap(exitLines.firstIndex { $0.contains("event=menu.didClose;") })
+        XCTAssertLessThan(beginRemoval, suspend)
+        XCTAssertLessThan(suspend, detached)
+        XCTAssertLessThan(detached, closed)
+        XCTAssertFalse(exitLines.contains { $0.contains("event=focus.reset;") || $0.contains("event=filter.remove;") })
+        window.orderOut(nil)
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        host.finishMenuDismissal()
+        XCTAssertFalse(host.isMenuDismissing)
+        XCTAssertFalse(other.isFocusSuspended)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.alphaValue, 1)
+        XCTAssertEqual(pace.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let reopened = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertEqual(reopened.paceViews.count, 2)
+        XCTAssertTrue(reopened.paceViews.allSatisfy { $0.isMenuTracking })
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    @MainActor
     func testRightClickOpenAgentOpensCurrentAgentWithoutOpeningCCSwitch() {
         var agentOpens = 0
         var ccSwitchOpens = 0
@@ -2786,13 +2981,14 @@ final class StatusItemControllerTests: XCTestCase {
     private func makeMenuInput(
         activeClient: AssistantClient = .codex,
         showQuickSwitchMenu: Bool = false,
-        showOpenChatGPTMenu: Bool = false
+        showOpenChatGPTMenu: Bool = false,
+        quickSwitchSummaries: [String: String]? = nil
     ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
             choices: showQuickSwitchMenu
                 ? [ProviderChoice(id: "provider", name: "Provider", isCurrent: true)]
                 : [],
-            quickSwitchSummaries: showQuickSwitchMenu ? ["provider": "$1.00"] : [:],
+            quickSwitchSummaries: quickSwitchSummaries ?? (showQuickSwitchMenu ? ["provider": "$1.00"] : [:]),
             activeClient: activeClient,
             openAIAccount: nil,
             statusLinks: [],
@@ -3253,14 +3449,201 @@ extension StatusItemControllerTests {
         controller.updateMenu(input: aggregationInput(count: 4, choices: choices, showStatusMenu: true))
         controller.menuDidClose(menu)
         controller.menuWillOpen(menu)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
-        XCTAssertTrue(menu.items.first?.view === root)
-        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, before)
-        controller.menuDidClose(menu)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertFalse(menu.items.first?.view === root,
+            "the first new presentation receives the updated menu structure")
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, before + 1)
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
         let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
         XCTAssertTrue(quick.items.contains { $0.representedObject as? String == "new" })
+        controller.menuDidClose(menu)
+    }
+
+    @MainActor
+    func testDirectToAggregationTransitionAppliesOnFirstReopen() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        let originalView = try XCTUnwrap(menu.items.first?.view)
+
+        controller.updateMenu(input: aggregationInput(count: 2))
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertTrue(menu.items.first?.view === originalView,
+            "the currently tracked menu remains intact")
+        controller.menuDidClose(menu)
+
+        controller.menuWillOpen(menu)
+        let viewport = try XCTUnwrap(menu.items.first?.view as? AggregationOverviewScrollView)
+        XCTAssertEqual(viewport.cardHosts().count, 2)
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        controller.menuDidClose(menu)
+    }
+
+    @MainActor
+    func testUpdateAfterCloseBuildsFreshMenuWithoutChangingOutgoingAggregationTree() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 12), settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
+        let (outgoingWindow, outgoingViewport) = try mountAggregation(controller)
+        defer { outgoingWindow.orderOut(nil) }
+        outgoingViewport.restoreViewport(distanceFromTop: 80)
+        let outgoingCards = outgoingViewport.cardHosts()
+        let outgoingItem = try XCTUnwrap(outgoingMenu.items.first)
+
+        // Nothing is pending at close time. A provider update arrives later,
+        // while the old native menu window is still visible.
+        controller.menuDidClose(outgoingMenu)
+        XCTAssertEqual(controller.retiringStatusMenuCountForTesting, 0)
+        controller.updateMenu(input: aggregationInput(count: 13))
+
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === outgoingMenu)
+        XCTAssertTrue(outgoingMenu.items.first === outgoingItem)
+        XCTAssertTrue(outgoingItem.view === outgoingViewport)
+        XCTAssertEqual(outgoingViewport.cardHosts().count, 12,
+            "late updates must not mutate the visible outgoing card tree")
+        XCTAssertTrue(outgoingCards.allSatisfy(\.isMenuDismissing))
+
+        let nextViewport = try XCTUnwrap(nextMenu.items.first?.view as? AggregationOverviewScrollView)
+        XCTAssertEqual(nextViewport.cardHosts().count, 13,
+            "the newly prepared menu uses the latest provider set")
+        XCTAssertEqual(controller.retiringStatusMenuCountForTesting, 1)
+        outgoingWindow.orderOut(nil)
+        let releaseDeadline = Date().addingTimeInterval(0.25)
+        while Date() < releaseDeadline { RunLoop.main.run(mode: .default, before: releaseDeadline) }
+        XCTAssertEqual(controller.retiringStatusMenuCountForTesting, 0,
+            "hidden retiring menus release without another menu interaction")
+    }
+
+    @MainActor
+    func testDismissalFlagIsRecheckedAfterOpenCleanup() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
+        controller.update(snapshot: .official("OpenAI Official", 50, "5h", nil, Date()),
+            refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        controller.menuDidClose(outgoingMenu)
+
+        controller.menuWillOpen(outgoingMenu)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1,
+            "the old dismissal state was cleared before deciding whether the new menu can rebuild")
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    @MainActor
+    func testQuickSwitchUpdateDuringDismissalUsesFreshMenu() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let initialChoices = [ProviderChoice(id: "provider-0", name: "old", isCurrent: true)]
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 2, summaries: ["provider-0": "old summary"], choices: initialChoices),
+            settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
+        let host = try XCTUnwrap(outgoingMenu.items.first?.view as? NSView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        let oldQuick = try XCTUnwrap(outgoingMenu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        let oldSummary = oldQuick.items.first { $0.representedObject as? String == "provider-0" }?.title
+        controller.menuDidClose(outgoingMenu)
+
+        controller.updateMenu(input: aggregationInput(count: 2, summaries: ["provider-0": "new summary"], choices: initialChoices))
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === outgoingMenu)
+        XCTAssertEqual(oldQuick.items.first { $0.representedObject as? String == "provider-0" }?.title, oldSummary,
+            "the outgoing Quick Switch submenu remains unchanged")
+        let nextQuick = try XCTUnwrap(nextMenu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        XCTAssertNotEqual(nextQuick.items.first { $0.representedObject as? String == "provider-0" }?.title, oldSummary)
+    }
+
+    @MainActor
+    func testQuickSwitchUpdateBeforeMenuDidCloseDoesNotMutateOutgoingSubmenu() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 2, date: date, summaries: ["provider-0": "old summary"]),
+            settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        let (window, viewport) = try mountAggregation(controller)
+        defer { window.orderOut(nil) }
+        let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        let oldSummary = try XCTUnwrap(quick.items.first { $0.representedObject as? String == "provider-0" }).title
+        viewport.cardHosts()[0].setMenuContentVisible(false)
+        XCTAssertTrue(viewport.cardHosts()[0].isMenuDismissing)
+        XCTAssertTrue(window.isVisible)
+
+        controller.updateMenu(input: aggregationInput(count: 2, date: date, summaries: ["provider-0": "new summary"]))
+        XCTAssertEqual(quick.items.first { $0.representedObject as? String == "provider-0" }?.title, oldSummary,
+            "tracking-time dismissal must not mutate the outgoing Quick Switch submenu")
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+    }
+
+    @MainActor
+    func testHiddenQuickSwitchSummaryUpdateKeepsDirectCardIdentity() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: makeMenuInput(showQuickSwitchMenu: true), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let original = try XCTUnwrap(menu.items.first?.view)
+        let quick = try XCTUnwrap(menu.items.first { $0.identifier?.rawValue == "quickSwitch.parent" }?.submenu)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        for index in 1...5 {
+            let summary = "$\(index).00"
+            controller.updateMenu(input: makeMenuInput(showQuickSwitchMenu: true,
+                quickSwitchSummaries: ["provider": summary]))
+            XCTAssertTrue(controller.statusMenuForTesting === menu)
+            XCTAssertTrue(menu.items.first?.view === original)
+            XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+            XCTAssertTrue(try XCTUnwrap(quick.items.first { $0.representedObject as? String == "provider" }).title.contains(summary))
+        }
+    }
+
+    @MainActor
+    func testReplacingMenuRespectsTemporaryCustomClickDetachment() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
+        let host = try XCTUnwrap(outgoingMenu.items.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        controller.menuDidClose(outgoingMenu)
+
+        controller.detachStatusMenuForCustomClickForTesting()
+        XCTAssertTrue(controller.isStatusMenuDetachedForCustomClickForTesting)
+        XCTAssertFalse(controller.statusItemMenuIsBoundForTesting)
+
+        controller.update(snapshot: .official("OpenAI Official", 50, "5h", nil, Date()),
+            refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(controller.isStatusMenuDetachedForCustomClickForTesting)
+        XCTAssertFalse(controller.statusItemMenuIsBoundForTesting,
+            "menu replacement must not undo custom-click detachment")
+
+        controller.restoreStatusMenuAfterCustomClickForTesting()
+        XCTAssertFalse(controller.isStatusMenuDetachedForCustomClickForTesting)
+        XCTAssertTrue(controller.statusItemMenuIsBoundForTesting)
     }
 
     @MainActor
@@ -3975,6 +4358,9 @@ extension StatusItemControllerTests {
                     aggregated.start(snapshot: .placeholder, refreshDate: nil, menuInput: input(aggregation: true), settings: makeSettings())
                     let directCard = try XCTUnwrap(direct.statusMenuForTesting.items.first?.view)
                     let aggregateCard = try XCTUnwrap((aggregated.statusMenuForTesting.items.first?.view as? NSScrollView)?.documentView?.subviews.first?.subviews.first)
+                    // Pace bars lay out their track lazily; compare settled geometry.
+                    directCard.layoutSubtreeIfNeeded()
+                    aggregateCard.layoutSubtreeIfNeeded()
                     XCTAssertEqual(fingerprint(directCard), fingerprint(aggregateCard))
                     XCTAssertEqual((directCard as? MenuHoverLinkHostView)?.overviewLayout,
                                    (aggregateCard as? MenuHoverLinkHostView)?.overviewLayout)
@@ -4310,5 +4696,239 @@ extension StatusItemControllerTests {
             XCTAssertTrue(menu.items.first?.view === root)
             controller.menuDidClose(menu)
         }
+    }
+}
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testFocusInOneAggregatedCardRecedesEveryOtherCard() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 3), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)
+        func hosts(_ view: NSView) -> [MenuHoverLinkHostView] {
+            (view as? MenuHoverLinkHostView).map { [$0] } ?? view.subviews.flatMap(hosts)
+        }
+        let cards = hosts(viewport)
+        XCTAssertGreaterThanOrEqual(cards.count, 2)
+        let source = try XCTUnwrap(cards.first)
+        let peers = cards.dropFirst()
+
+        source.sectionFocus.onFocusActiveChanged?(true)
+
+        for peer in peers {
+            XCTAssertTrue(peer.isPeerReceded)
+            XCTAssertEqual(peer.alphaValue, 0.5, accuracy: 0.001)
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+                XCTAssertTrue(peer.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" })
+            }
+        }
+        XCTAssertFalse(source.isPeerReceded)
+        XCTAssertEqual(source.alphaValue, 1)
+
+        source.sectionFocus.onFocusActiveChanged?(false)
+
+        for peer in peers {
+            XCTAssertFalse(peer.isPeerReceded)
+            XCTAssertEqual(peer.alphaValue, 1, accuracy: 0.001)
+        }
+
+        source.sectionFocus.onFocusActiveChanged?(true)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        for peer in peers {
+            XCTAssertFalse(peer.isPeerReceded, "a reopened menu starts clear")
+            XCTAssertFalse(peer.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" })
+        }
+    }
+
+    @MainActor
+    func testOverlappingFocusHandoffKeepsTheNewOwnersPeersReceded() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 3), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)
+        let cards = viewport.cardHosts()
+        XCTAssertEqual(cards.count, 3)
+        let (a, b, c) = (cards[0], cards[1], cards[2])
+
+        a.sectionFocus.onFocusActiveChanged?(true)
+        b.sectionFocus.onFocusActiveChanged?(true)
+        // A's exit lands after B already took focus.
+        a.sectionFocus.onFocusActiveChanged?(false)
+
+        XCTAssertTrue(viewport.focusOwner === b)
+        XCTAssertFalse(b.isPeerReceded)
+        XCTAssertTrue(a.isPeerReceded)
+        XCTAssertTrue(c.isPeerReceded)
+
+        b.sectionFocus.onFocusActiveChanged?(false)
+        XCTAssertNil(viewport.focusOwner)
+        XCTAssertTrue(cards.allSatisfy { !$0.isPeerReceded })
+    }
+
+    @MainActor
+    func testRestoreInterruptedByDismissalLeavesNoBlurFilterAfterReopen() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 2), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        let viewport = try XCTUnwrap(menu.items.first?.view as? AggregationOverviewScrollView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 304, height: 400), styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = viewport
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        let cards = viewport.cardHosts()
+        let (source, peer) = (cards[0], cards[1])
+        source.sectionFocus.onFocusActiveChanged?(true)
+        let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        if !reduceTransparency {
+            XCTAssertTrue(peer.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" })
+        }
+
+        // The restore animation starts, then the menu closes before it ends.
+        source.sectionFocus.onFocusActiveChanged?(false)
+        controller.menuDidClose(menu)
+        XCTAssertTrue(peer.isMenuDismissing)
+        // The departing window hides; dismissal cleanup runs on the next open.
+        window.orderOut(nil)
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+
+        XCTAssertFalse(peer.isMenuDismissing)
+        XCTAssertFalse(peer.isPeerReceded)
+        XCTAssertFalse(peer.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" })
+        XCTAssertNil(peer.layer?.animation(forKey: "peerFocus.radius"))
+        XCTAssertEqual(peer.alphaValue, 1, accuracy: 0.001)
+    }
+}
+
+extension StatusItemControllerTests {
+    /// Mounts the aggregated viewport in a visible window so closing the menu
+    /// puts its cards into the real dismissal state.
+    @MainActor
+    private func mountAggregation(_ controller: StatusItemController) throws -> (NSWindow, AggregationOverviewScrollView) {
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 304, height: 600), styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = viewport
+        ApplicationWindowPresentation.presentInBackground(window)
+        return (window, viewport)
+    }
+
+    @MainActor
+    func testAggregatedReopenBeforeClosedRebuildShowsProvidersChangedDuringDismissal() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 2), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        let (window, viewport) = try mountAggregation(controller)
+        defer { window.orderOut(nil) }
+        XCTAssertEqual(viewport.cardHosts().count, 2)
+        controller.menuDidClose(menu)
+        XCTAssertTrue(viewport.cardHosts().allSatisfy(\.isMenuDismissing))
+        // A provider is added while the outgoing menu is still on screen.
+        controller.updateMenu(input: aggregationInput(count: 3))
+        XCTAssertEqual(viewport.cardHosts().count, 2, "the dismissing menu is left intact")
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        // Reopen the independently prepared menu before the old window hides.
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === menu)
+        controller.menuWillOpen(nextMenu)
+        defer { controller.menuDidClose(nextMenu) }
+        let shown = (controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)?.cardHosts() ?? []
+        XCTAssertEqual(shown.count, 3, "the reopened menu shows the current providers")
+        XCTAssertTrue(shown.allSatisfy { $0.isMenuContentVisible && !$0.isMenuDismissing })
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting,
+            "a content-only aggregation sync consumes the pending rebuild")
+    }
+
+    @MainActor
+    func testAggregationToDirectModeWaitsForDismissingMenu() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 2), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let (window, viewport) = try mountAggregation(controller)
+        defer { window.orderOut(nil) }
+        let cards = viewport.cardHosts()
+        XCTAssertEqual(cards.count, 2)
+
+        cards[0].setMenuContentVisible(false)
+        XCTAssertTrue(cards[0].isMenuDismissing)
+
+        // Switching out of aggregation while the native menu is still
+        // tracking must leave the outgoing viewport mounted until it is safe
+        // to rebuild.
+        controller.updateMenu(input: makeMenuInput())
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertTrue(controller.statusMenuForTesting.items.first?.view === viewport)
+        XCTAssertEqual(viewport.cardHosts().count, 2)
+        XCTAssertNotNil(cards[0].superview,
+            "the dismissing aggregation card remains mounted")
+    }
+
+    @MainActor
+    func testRemovingADismissingCardWaitsForTheClosedRebuild() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 3), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let (window, viewport) = try mountAggregation(controller)
+        defer { window.orderOut(nil) }
+        let cards = viewport.cardHosts()
+        XCTAssertEqual(cards.count, 3)
+        // Only the last card is leaving; the new provider list drops it.
+        cards[2].setMenuContentVisible(false)
+        XCTAssertTrue(cards[2].isMenuDismissing)
+        controller.updateMenu(input: aggregationInput(count: 2))
+        XCTAssertNotNil(cards[2].window, "a dismissing card stays mounted until the menu is safe to rebuild")
+        XCTAssertEqual(viewport.cardHosts().count, 3)
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        cards[2].finishMenuDismissal(beforeOpening: true)
+    }
+
+    @MainActor
+    func testProviderSetChangesRecomputeAggregatedFocusRecession() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 3), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let viewport = try XCTUnwrap(menu.items.first?.view as? AggregationOverviewScrollView)
+        let cards = viewport.cardHosts()
+
+        // The focused card disappears: nobody stays receded behind it.
+        cards[2].sectionFocus.onFocusActiveChanged?(true)
+        XCTAssertTrue(cards[0].isPeerReceded)
+        controller.updateMenu(input: aggregationInput(count: 2))
+        XCTAssertEqual(viewport.cardHosts().count, 2)
+        XCTAssertNil(viewport.focusOwner)
+        XCTAssertTrue(viewport.cardHosts().allSatisfy { !$0.isPeerReceded })
+
+        // A card that arrives while another holds focus recedes with the rest.
+        cards[0].sectionFocus.onFocusActiveChanged?(true)
+        controller.updateMenu(input: aggregationInput(count: 3))
+        let grown = viewport.cardHosts()
+        XCTAssertEqual(grown.count, 3)
+        XCTAssertFalse(grown[0].isPeerReceded)
+        XCTAssertTrue(grown[1].isPeerReceded)
+        XCTAssertTrue(grown[2].isPeerReceded, "a newly added card follows the current focus owner")
     }
 }

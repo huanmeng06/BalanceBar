@@ -402,6 +402,8 @@ final class AppPreferences {
     static let quotaProgressYellowUpperBoundKey = "quotaProgressYellowUpperBound"
     static let showQuotaProgressBarKey = "showQuotaProgressBar"
     static let showQuotaProgressBarDefault = true
+    static let showQuotaPaceIndicatorKey = "showQuotaPaceIndicator"
+    static let showQuotaPaceIndicatorDefault = true
     static let updateChannelKey = "updateChannel"
     static let defaultUpdateChannel: UpdateChannel = .stable
     static let silentLaunchKey = "silentLaunch"
@@ -469,6 +471,10 @@ final class AppPreferences {
     var showQuotaProgressBar: Bool {
         get { bool(Self.showQuotaProgressBarKey, default: Self.showQuotaProgressBarDefault) }
         set { defaults.set(newValue, forKey: Self.showQuotaProgressBarKey) }
+    }
+    var showQuotaPaceIndicator: Bool {
+        get { bool(Self.showQuotaPaceIndicatorKey, default: Self.showQuotaPaceIndicatorDefault) }
+        set { defaults.set(newValue, forKey: Self.showQuotaPaceIndicatorKey) }
     }
     var animateCodexActivity: Bool { get { bool("animateCodexActivity", default: true) } set { defaults.set(newValue, forKey: "animateCodexActivity") } }
     var activityPollInterval: TimeInterval { get { positiveDouble("activityPollInterval", default: 0.25) } set { defaults.set(newValue, forKey: "activityPollInterval") } }

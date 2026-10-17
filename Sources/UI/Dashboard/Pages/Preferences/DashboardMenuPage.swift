@@ -420,6 +420,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private var quotaColorButtons: [QuotaProgressColor: NSButton] = [:]
     private var quotaColorConfiguration: QuotaProgressColorConfiguration = .default
     private weak var showQuotaProgressBarSwitch: NSSwitch?
+    private weak var showQuotaPaceIndicatorSwitch: NSSwitch?
     private var progressBarDetailRows: [NSView] = []
     private weak var showBankedResetSwitch: NSSwitch?
     private var bankedResetDetailRows: [NSView] = []
@@ -436,6 +437,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         lunaReserveHideExhaustedQuotaSwitch = nil
         bankedResetDisplayModeControl = nil
         showQuotaProgressBarSwitch = nil
+        showQuotaPaceIndicatorSwitch = nil
         progressBarDetailRows = []
         showBankedResetSwitch = nil
         bankedResetDetailRows = []
@@ -591,6 +593,18 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             subtitle: tr(.keyDashboardMenuPageShowQuotaProgressBarDescription),
             control: showQuotaProgressBarSwitch
         )
+        let showQuotaPaceIndicatorSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.showQuotaPaceIndicatorKey,
+            isOn: input.preferences.showQuotaPaceIndicator,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        self.showQuotaPaceIndicatorSwitch = showQuotaPaceIndicatorSwitch
+        let showQuotaPaceIndicatorRow = makeRow(
+            tr(.keyDashboardMenuPageShowQuotaPaceIndicator),
+            subtitle: tr(.keyDashboardMenuPageShowQuotaPaceIndicatorDescription),
+            control: showQuotaPaceIndicatorSwitch
+        )
         let colorRangesRow = MenuDedicatedControlRow(
             title: tr(.keyDashboardMenuPageProgressColorRanges),
             detail: tr(.keyDashboardMenuPageProgressColorRangesDescription),
@@ -608,11 +622,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
             control: balanceDisplayThreshold
         )
-        progressBarDetailRows = [colorRangesRow, displayedColorsRow, thresholdRow]
+        progressBarDetailRows = [showQuotaPaceIndicatorRow, colorRangesRow, displayedColorsRow, thresholdRow]
         let progressBar = SettingsSectionView(
             title: tr(.keyDashboardMenuPageProgressBar),
             contentViews: [
                 showQuotaProgressBarRow,
+                showQuotaPaceIndicatorRow,
                 colorRangesRow,
                 displayedColorsRow,
                 thresholdRow
@@ -753,6 +768,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         quotaColorSlider?.configuration = quotaColorConfiguration
         updateQuotaColorButtons()
         showQuotaProgressBarSwitch?.state = preferences.showQuotaProgressBar ? .on : .off
+        showQuotaPaceIndicatorSwitch?.state = preferences.showQuotaPaceIndicator ? .on : .off
         updateProgressBarSettingsVisibility(preferences.showQuotaProgressBar)
         showBankedResetSwitch?.state = preferences.showBankedReset ? .on : .off
         updateBankedResetSettingsVisibility(preferences.showBankedReset)

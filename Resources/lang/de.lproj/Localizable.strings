@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Fortschrittsbalken";
 "dashboard.menu.page.show_quota_progress_bar" = "Fortschrittsbalken anzeigen";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Wenn ausgeschaltet, zeigen Menüs und Kontingentkarten keinen Restkontingent-Balken mehr";
+"dashboard.menu.page.show_quota_pace_indicator" = "Nutzungstempo anzeigen";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Referenzmarkierung für gleichmäßige Nutzung bei offiziellen 5-Stunden- und 7-Tage-Kontingenten anzeigen";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@-Anzeige";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Zeitpunkt für die Anzeige von %1$@ im Menü auswählen";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Nicht anzeigen";
@@ -507,6 +509,25 @@
 "dashboard.logs.page.preview_truncated" = "Nur die aktuelle Vorschau wird angezeigt; exportieren Sie alle gespeicherten Protokolle.";
 "dashboard.logs.page.read_warning" = "Einige Diagnosedateien konnten nicht gelesen werden";
 "dashboard.logs.page.export_failed" = "Export der Diagnoseprotokolle fehlgeschlagen";
+"quota.pace.status.unused" = "Noch nicht genutzt";
+"quota.pace.status.fast" = "Etwas schneller Verbrauch";
+"quota.pace.status.normal" = "Du nutzt es im richtigen Tempo";
+"quota.pace.status.slow" = "Noch reichlich verfügbar";
+"quota.pace.body.unused" = "Das Kontingent dieses Zeitraums ist noch vollständig verfügbar.";
+"quota.pace.body.fast" = "Beim durchschnittlichen Tempo dieses Zeitraums ist das Kontingent etwa um %1$@ aufgebraucht, noch vor dem Zurücksetzen.";
+"quota.pace.body.normal" = "Deine Nutzung entspricht ungefähr dem Zeitverlauf.";
+"quota.pace.body.slow" = "Du hast im Verhältnis zum Zeitverlauf mehr Kontingent übrig. Nutze es entspannt.";
+"quota.pace.body.exhausted" = "Wird um %1$@ zurückgesetzt.";
+
+"quota.pace.status.exhausted" = "Kontingent aufgebraucht";
+
+"quota.pace.body.qualitative.fast" = "Du verbrauchst etwas schneller als der Zeitverlauf. Du kannst etwas langsamer machen.";
+
+
+
+"quota.pace.time.tomorrow" = "Morgen %1$@";
+
+"quota.pace.body.reset_unavailable" = "Die Zeit des Zurücksetzens ist derzeit nicht verfügbar.";
 
 // CC Switch aggregation overview
 "aggregation.default" = "Standard";

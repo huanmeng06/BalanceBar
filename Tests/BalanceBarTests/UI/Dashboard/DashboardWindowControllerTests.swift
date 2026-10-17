@@ -3979,10 +3979,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(overview.bounds.size, frames.cardSize)
 
+        overview.layoutSubtreeIfNeeded()
         let progressViews = allControls(of: overview, as: QuotaProgressView.self)
         XCTAssertEqual(progressViews.map(\.percentage), [80, 45])
         XCTAssertEqual(
-            progressViews.map { overview.convert($0.bounds, from: $0) },
+            progressViews.map { $0.convert($0.bounds, to: overview) },
             frames.quotaRows.map(\.progress)
         )
         let percentageLabels = allControls(of: overview, as: NSTextField.self)

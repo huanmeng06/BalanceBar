@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "진행률 막대";
 "dashboard.menu.page.show_quota_progress_bar" = "진행률 막대 표시";
 "dashboard.menu.page.show_quota_progress_bar_description" = "끄면 메뉴와 할당량 카드에 진행률 막대가 표시되지 않습니다";
+"dashboard.menu.page.show_quota_pace_indicator" = "사용 속도 표시";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "공식 5시간 및 7일 할당량 막대에 균등 사용 기준을 표시합니다";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ 표시 방식";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "메뉴에서 %1$@를 표시할 시점을 선택";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "표시 안 함";
@@ -507,6 +509,25 @@
 "dashboard.logs.page.preview_truncated" = "최근 미리보기만 표시됩니다. 보관된 모든 로그를 내보내세요.";
 "dashboard.logs.page.read_warning" = "일부 진단 파일을 읽을 수 없습니다";
 "dashboard.logs.page.export_failed" = "진단 로그 내보내기에 실패했습니다";
+"quota.pace.status.unused" = "아직 사용하지 않았어요";
+"quota.pace.status.fast" = "사용 속도가 조금 빨라요";
+"quota.pace.status.normal" = "알맞은 속도로 사용 중이에요";
+"quota.pace.status.slow" = "아직 여유가 있어요";
+"quota.pace.body.unused" = "이번 주기의 한도가 아직 가득해요.";
+"quota.pace.body.fast" = "이번 주기의 평균 속도라면 초기화 전에 %1$@쯤 한도가 소진될 것으로 보여요.";
+"quota.pace.body.normal" = "경과 시간과 대체로 비슷한 속도로 사용 중이에요.";
+"quota.pace.body.slow" = "경과 시간에 비해 한도가 더 넉넉해요. 편하게 사용하세요.";
+"quota.pace.body.exhausted" = "%1$@에 초기화돼요.";
+
+"quota.pace.status.exhausted" = "한도를 모두 사용했어요";
+
+"quota.pace.body.qualitative.fast" = "경과 시간보다 조금 빠르게 사용 중이에요. 조금 천천히 사용해도 좋아요.";
+
+
+
+"quota.pace.time.tomorrow" = "내일 %1$@";
+
+"quota.pace.body.reset_unavailable" = "초기화 시간을 현재 확인할 수 없어요.";
 
 // CC Switch aggregation overview
 "aggregation.default" = "기본";

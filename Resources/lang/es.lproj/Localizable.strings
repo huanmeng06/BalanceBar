@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Barra de progreso";
 "dashboard.menu.page.show_quota_progress_bar" = "Mostrar barra de progreso";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Al desactivarla, los menús y las tarjetas de cuota ya no muestran la barra de cuota restante";
+"dashboard.menu.page.show_quota_pace_indicator" = "Mostrar ritmo de uso";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Mostrar la referencia de uso uniforme en las cuotas oficiales de 5 horas y 7 días";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 Mostrar %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Elige cuándo mostrar %1$@ en el menú";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "No mostrar";
@@ -507,6 +509,25 @@
 "dashboard.logs.page.preview_truncated" = "Solo se muestra la vista previa reciente; exporta todos los registros conservados.";
 "dashboard.logs.page.read_warning" = "No se pudieron leer algunos archivos de diagnóstico";
 "dashboard.logs.page.export_failed" = "Error al exportar los registros de diagnóstico";
+"quota.pace.status.unused" = "Aún no has empezado";
+"quota.pace.status.fast" = "Uso un poco rápido";
+"quota.pace.status.normal" = "Lo usas al ritmo adecuado";
+"quota.pace.status.slow" = "Queda bastante cuota";
+"quota.pace.body.unused" = "La cuota de este ciclo sigue completa.";
+"quota.pace.body.fast" = "Al ritmo medio de este ciclo, se agotaría hacia las %1$@, antes del restablecimiento.";
+"quota.pace.body.normal" = "El uso sigue aproximadamente el tiempo transcurrido.";
+"quota.pace.body.slow" = "Queda más cuota de la que corresponde al tiempo transcurrido. Úsala con tranquilidad.";
+"quota.pace.body.exhausted" = "Se restablece a las %1$@.";
+
+"quota.pace.status.exhausted" = "Cuota agotada";
+
+"quota.pace.body.qualitative.fast" = "El uso va algo por delante del tiempo. Puedes reducir un poco el ritmo.";
+
+
+
+"quota.pace.time.tomorrow" = "Mañana %1$@";
+
+"quota.pace.body.reset_unavailable" = "La hora de restablecimiento no está disponible.";
 
 // CC Switch aggregation overview
 "aggregation.default" = "Predeterminado";

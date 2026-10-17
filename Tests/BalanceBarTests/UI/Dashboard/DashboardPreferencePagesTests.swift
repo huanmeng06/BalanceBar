@@ -3509,7 +3509,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let progressSection = try XCTUnwrap(SettingsSectionView.enclosing(progressToggle))
         let progressCard = progressSection.cardView
-        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 4)
+        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 5)
         assertCardFollowsVisibleContent(progressCard)
         let progressExpanded = progressCard.frame.height
 
@@ -3522,7 +3522,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         preferences.showQuotaProgressBar = true
         controller.refresh(preferences: preferences)
         assertCardFollowsVisibleContent(progressCard)
-        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 4)
+        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 5)
         XCTAssertGreaterThan(progressCard.frame.height, SettingsRowView.minimumHeight + 8)
 
         let bankedToggle = try XCTUnwrap(
@@ -3637,7 +3637,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
         )
         let progressBarRows = settingsRows(in: progressBarSection)
-        XCTAssertEqual(progressBarRows.count, 4)
+        XCTAssertEqual(progressBarRows.count, 5)
         let sectionTitles = labels.map(\.stringValue)
         let progressBarIndex = try XCTUnwrap(
             sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageProgressBar))
@@ -3661,7 +3661,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let quickSwitchRow = nativeSettingsRow(enclosing: quickSwitch) else {
             return XCTFail("Expected both balance display and dropdown-menu rows")
         }
-        XCTAssertTrue(progressBarRows[3] === thresholdRow)
+        XCTAssertTrue(progressBarRows[4] === thresholdRow)
         XCTAssertEqual(thresholdRow.contentHuggingPriority(for: .vertical), .required)
         XCTAssertEqual(quickSwitchRow.contentHuggingPriority(for: .vertical), .required)
         XCTAssertEqual(
@@ -4022,12 +4022,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar, language: language), in: page)
             )
             let progressBarRows = settingsRows(in: progressBarSection)
-            XCTAssertEqual(progressBarRows.count, 4, "Progress Bar row count for \(language)")
+            XCTAssertEqual(progressBarRows.count, 5, "Progress Bar row count for \(language)")
 
             let expectedRows = [
                 (
                     tr(.keyDashboardMenuPageShowQuotaProgressBar, language: language),
                     tr(.keyDashboardMenuPageShowQuotaProgressBarDescription, language: language)
+                ),
+                (
+                    tr(.keyDashboardMenuPageShowQuotaPaceIndicator, language: language),
+                    tr(.keyDashboardMenuPageShowQuotaPaceIndicatorDescription, language: language)
                 ),
                 (
                     tr(.keyDashboardMenuPageProgressColorRanges, language: language),
@@ -4084,11 +4088,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let colorRow = try XCTUnwrap(
                 progressBarRows.first { row in colorButtons.contains { isDescendant($0, of: row) } }
             )
+            let paceSwitch = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSSwitch }
+                    .first { $0.identifier?.rawValue == AppPreferences.showQuotaPaceIndicatorKey }
+            )
+            let paceRow = try XCTUnwrap(
+                progressBarRows.first { isDescendant(paceSwitch, of: $0) }
+            )
             XCTAssertEqual(
                 progressBarRows.map(ObjectIdentifier.init),
-                [progressBarRows[0], sliderRow, colorRow, thresholdRow].map(ObjectIdentifier.init)
+                [progressBarRows[0], paceRow, sliderRow, colorRow, thresholdRow].map(ObjectIdentifier.init)
             )
-            XCTAssertTrue(progressBarRows[1] === sliderRow)
+            XCTAssertTrue(progressBarRows[2] === sliderRow)
             XCTAssertEqual(thresholdField.stringValue, "0.10")
             XCTAssertEqual(slider.configuration, preferences.quotaProgressColorConfiguration)
 
@@ -4179,7 +4191,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
         )
         let progressBarRows = settingsRows(in: progressBarSection)
-        XCTAssertEqual(progressBarRows.count, 4)
+        XCTAssertEqual(progressBarRows.count, 5)
         let rowsStack = try XCTUnwrap(progressBarRows[0].superview as? NSStackView)
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
         let toggle = try XCTUnwrap(
@@ -4516,7 +4528,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
         XCTAssertEqual(
             progressBarRows.count,
-            4
+            5
         )
         XCTAssertFalse(hideRow.isHidden)
         XCTAssertTrue(hideSwitch.isEnabled)
