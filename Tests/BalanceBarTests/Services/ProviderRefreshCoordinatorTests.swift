@@ -4006,3 +4006,176 @@ extension ProviderRefreshCoordinatorTests {
         coordinator.stopAggregation()
     }
 }
+
+// MARK: - PR #508 review regressions
+
+/// Lets a test switch the signed-in Claude account while a request is in flight.
+private final class SwitchableClaudeReader: OfficialQuotaCredentialReading {
+    private let lock = NSLock()
+    private var token: String
+    init(token: String) { self.token = token }
+    func set(_ value: String) { lock.lock(); token = value; lock.unlock() }
+    func codexAccessToken() -> String? { nil }
+    func codexAccountProfile() -> CodexAccountProfile? { nil }
+    func claudeAccessToken() -> String? { lock.lock(); defer { lock.unlock() }; return token }
+}
+
+extension ProviderRefreshCoordinatorTests {
+    private static let claudeUsageB = Data(#"{"five_hour":{"utilization":90,"resets_at":"2099-01-01T05:00:00Z"},"seven_day":{"utilization":95,"resets_at":"2099-01-07T00:00:00Z"}}"#.utf8)
+
+    private func preferences(interval: TimeInterval) -> AppPreferences {
+        let suite = "PR508.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.officialUsageRefreshInterval = interval
+        return preferences
+    }
+
+    /// Waits until transport has reached `count` and no Claude request remains
+    /// registered, so its cache entry is committed before the next step.
+    private func waitForClaudeTransport(_ client: OfficialQuotaClient, token: String, count: Int,
+                                        coordinator: ProviderRefreshCoordinator,
+                                        file: StaticString = #filePath, line: UInt = #line) {
+        let credentials = CodexRequestCredentials(accessToken: token, accountKey: nil)
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, DelayedBalanceURLProtocol.requestCount < count
+                || client.isRequestInFlight(client: .claude, providerID: "", requestCredentials: credentials) {
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, count, file: file, line: line)
+        XCTAssertFalse(client.isRequestInFlight(client: .claude, providerID: "", requestCredentials: credentials),
+            file: file, line: line)
+        waitForCoordinator(coordinator)
+    }
+
+    func testClaudeAccountSwitchWhileRequestIsInFlightDropsPreviousAccountResult() throws {
+        let current = try useClaudeOfficialProvider()
+        let releaseA = DispatchSemaphore(value: 0)
+        DelayedBalanceURLProtocol.setHandler { request in
+            request.value(forHTTPHeaderField: "Authorization") == "Bearer account-a"
+                ? .init(data: Self.claudeUsage, statusCode: 200, delayUntil: releaseA)
+                : .init(data: Self.claudeUsageB, statusCode: 200)
+        }
+        let reader = SwitchableClaudeReader(token: "account-a")
+        // Rendering hops to the main queue, so expectations keep its run loop alive.
+        let staleRender = expectation(description: "account A must never render")
+        staleRender.isInverted = true
+        let accountBRender = expectation(description: "account B renders")
+        var expectingB = false
+        var renderedWindows: [Double?] = []
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { $0 == .claude }, render: { snapshot in
+                if expectingB {
+                    renderedWindows = snapshot.officialQuotaWindows.map(\.remaining)
+                    accountBRender.fulfill()
+                } else { staleRender.fulfill() }
+            }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        let official = OfficialQuotaClient(session: session, credentialReader: reader)
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official, actions: actions)
+
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: true)
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+        waitForCoordinator(coordinator)
+        let accountA = CodexRequestCredentials(accessToken: "account-a", accountKey: nil)
+        XCTAssertTrue(official.isRequestInFlight(client: .claude, providerID: current.id, requestCredentials: accountA))
+
+        reader.set("account-b")
+        releaseA.signal()
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, official.isRequestInFlight(client: .claude, providerID: current.id, requestCredentials: accountA) {
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        waitForCoordinator(coordinator)
+        waitForCoordinator(coordinator)
+        wait(for: [staleRender], timeout: 0.5)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1, "standard and summary share account A's request")
+        XCTAssertTrue(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .claude).isEmpty)
+
+        expectingB = true
+        coordinator.resetCadence()
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [accountBRender], timeout: 3)
+        XCTAssertEqual(renderedWindows, [10, 5])
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+    }
+
+    func testClaudeCadenceUsesRealRequestTimeWithLatencyAndAfterCacheHits() throws {
+        let current = try useClaudeOfficialProvider()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        DelayedBalanceURLProtocol.setHandler { _ in
+            clock.advance(by: 2) // non-zero network latency
+            return .init(data: Self.claudeUsage, statusCode: 200)
+        }
+        let official = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "cadence"), now: { clock.now })
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+            actions: makeActions(), refreshPreferences: preferences(interval: 60), now: { clock.now })
+        let refresh = { coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false) }
+
+        refresh()                                   // t = 0: request 1, response at t = 2
+        waitForClaudeTransport(official, token: "cadence", count: 1, coordinator: coordinator)
+        clock.advance(by: 58)                       // t = 60
+        refresh()
+        waitForClaudeTransport(official, token: "cadence", count: 2, coordinator: coordinator)
+        clock.advance(by: 88)                       // t = 150: the summary performs request 3
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+        waitForCoordinator(coordinator)
+        waitForClaudeTransport(official, token: "cadence", count: 3, coordinator: coordinator)
+        clock.advance(by: 28)                       // t = 180: standard is due but reuses request 3
+        refresh()
+        waitForClaudeTransport(official, token: "cadence", count: 3, coordinator: coordinator)
+        clock.advance(by: 29)                       // t = 209
+        refresh()
+        waitForClaudeTransport(official, token: "cadence", count: 3, coordinator: coordinator)
+        clock.advance(by: 1)                        // t = 210: one interval after request 3, not after the cache hit
+        refresh()
+        waitForClaudeTransport(official, token: "cadence", count: 4, coordinator: coordinator)
+    }
+
+    func testManualQuickSwitchRefreshHonorsCodexOfficialIntervalButStillRefreshesAPIBalances() throws {
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let lock = NSLock()
+        var officialRequests = 0
+        var balanceRequests = 0
+        DelayedBalanceURLProtocol.setHandler { request in
+            lock.lock(); defer { lock.unlock() }
+            if request.url?.host == "chatgpt.com" {
+                officialRequests += 1
+                return .init(data: Data("{}".utf8), statusCode: 200)
+            }
+            balanceRequests += 1
+            return DelayedBalanceURLProtocol.success(amount: "\(balanceRequests)")
+        }
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture"),
+                parser: IncrementingOfficialQuotaParser(counter: IncrementingCounter())),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            actions: makeActions(), refreshPreferences: preferences(interval: 180), now: { clock.now })
+        func manualRefresh(expectedTransport: Int) {
+            coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
+            waitForCoordinator(coordinator)
+            let deadline = Date().addingTimeInterval(3)
+            while Date() < deadline, DelayedBalanceURLProtocol.requestCount < expectedTransport {
+                Thread.sleep(forTimeInterval: 0.005)
+            }
+            XCTAssertTrue(DelayedBalanceURLProtocol.waitUntilIdle())
+            waitForCoordinator(coordinator)
+        }
+
+        manualRefresh(expectedTransport: 2)
+        clock.advance(by: 10)
+        manualRefresh(expectedTransport: 3)
+        clock.advance(by: 169)                      // t = 179
+        manualRefresh(expectedTransport: 4)
+        lock.lock()
+        XCTAssertEqual(officialRequests, 1, "repeated manual refresh must not bypass the official interval")
+        XCTAssertEqual(balanceRequests, 3, "manual refresh still refreshes API balances immediately")
+        lock.unlock()
+        clock.advance(by: 1)                        // t = 180
+        manualRefresh(expectedTransport: 6)
+        lock.lock(); XCTAssertEqual(officialRequests, 2); lock.unlock()
+    }
+}

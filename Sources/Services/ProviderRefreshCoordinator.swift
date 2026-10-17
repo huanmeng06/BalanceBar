@@ -728,15 +728,15 @@ final class ProviderRefreshCoordinator {
                 officialQuotaClient.cancelQuota(context: previous)
             }
             lastStandardSourceKey = sourceKey
-            lastOfficialFetch = currentDate
             let revision = current.configurationRevision
-            fetchOfficialQuota(
+            let context = fetchOfficialQuota(
                 providerID: current.id,
                 providerName: current.name,
                 client: client,
                 configurationRevision: revision,
                 isValid: { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
             )
+            lastOfficialFetch = officialCadenceAnchor(context: context, now: currentDate)
             return
         }
 
@@ -809,20 +809,18 @@ final class ProviderRefreshCoordinator {
                 if source.isOfficial {
                     guard client == .codex || client == .claude else { continue }
                     let identity = SummaryIdentity(client: client, providerID: source.id)
-                    if self.refreshPreferences != nil, !force,
+                    // Manual refresh rereads configuration and API balances, but
+                    // official quota requests always honor the selected interval.
+                    if self.refreshPreferences != nil,
                        previousRevisions[source.id] == source.configurationRevision,
                        let previous = self.lastOfficialSummaryFetch[identity],
                        currentDate.timeIntervalSince(previous) < self.officialRefreshInterval { continue }
-                    self.lastOfficialSummaryFetch[identity] = currentDate
                     let credentials: CodexRequestCredentials? = client == .codex ? source.officialAccessToken.map {
                         CodexRequestCredentials(accessToken: $0, accountKey: nil)
-                    } ?? self.officialQuotaClient.codexRequestCredentials() : nil
-                    self.officialQuotaClient.fetchQuota(
-                        client: client,
-                        providerID: source.id,
-                        storedAccessToken: client == .codex ? source.officialAccessToken : nil,
-                        requestCredentials: credentials
-                    ) { [weak self] result in
+                    } ?? self.officialQuotaClient.codexRequestCredentials() : self.officialQuotaClient.claudeRequestCredentials()
+                    let context = OfficialQuotaRequestContext(client: client, providerID: source.id,
+                        storedAccessToken: client == .codex ? source.officialAccessToken : nil, credentials: credentials)
+                    self.officialQuotaClient.fetchQuota(context: context) { [weak self] result in
                         guard let self else { return }
                         self.performOnQueue {
                             guard self.quickSwitchSourceIsCurrent(
@@ -830,7 +828,8 @@ final class ProviderRefreshCoordinator {
                             ) else { return }
                             guard let currentSource = self.repository.loadSummarySources(appType: client.appType).first(where: { $0.id == source.id && $0.isOfficial }),
                                   currentSource.officialAccessToken == source.officialAccessToken,
-                                  client != .codex || source.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
+                                  self.officialCredentialsAreCurrent(client: client, storedAccessToken: context.storedAccessToken,
+                                      credentials: credentials) else { return }
                             guard case .success(let response) = result else {
                                 if previousRevisions[source.id] != source.configurationRevision {
                                     self.removeQuickSwitchSummary(providerID: source.id, client: client)
@@ -860,6 +859,7 @@ final class ProviderRefreshCoordinator {
                             )
                         }
                     }
+                    self.lastOfficialSummaryFetch[identity] = self.officialCadenceAnchor(context: context, now: currentDate)
                     continue
                 }
                 guard let query = source.query else { continue }
@@ -1128,12 +1128,30 @@ final class ProviderRefreshCoordinator {
         }
     }
 
+    /// A Claude cache hit or coalesced request keeps the time of the real
+    /// request that produced it, so cadence never stacks two full intervals.
+    private func officialCadenceAnchor(context: OfficialQuotaRequestContext?, now currentDate: Date) -> Date {
+        context.flatMap(officialQuotaClient.claudeCalibrationAge(context:))
+            .map { now().addingTimeInterval(-max(0, $0)) } ?? currentDate
+    }
+
+    /// Requests made before this check must belong to the account still signed in.
+    private func officialCredentialsAreCurrent(client: AssistantClient, storedAccessToken: String?,
+                                               credentials: CodexRequestCredentials?) -> Bool {
+        switch client {
+        case .codex: return storedAccessToken != nil || officialQuotaClient.codexRequestCredentials() == credentials
+        case .claude: return officialQuotaClient.claudeRequestCredentials() == credentials
+        case .grok: return true
+        }
+    }
+
+    @discardableResult
     private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient,
                                     source: ProviderSummarySource? = nil,
                                     requestContext: OfficialQuotaRequestContext? = nil,
                                     configurationRevision: String = "",
                                     isValid: @escaping () -> Bool = { true },
-                                    completion: ((Snapshot) -> Void)? = nil) {
+                                    completion: ((Snapshot) -> Void)? = nil) -> OfficialQuotaRequestContext? {
         func publish(_ snapshot: Snapshot, providerID: String, client: AssistantClient,
                      isCurrentRequest: @escaping () -> Bool = { true }) {
             guard isValid(), isCurrentRequest() else { return }
@@ -1159,18 +1177,25 @@ final class ProviderRefreshCoordinator {
                 providerID: providerID,
                 client: client
             )
-            return
+            return nil
         }
         // Freeze the account before transport starts. Never assign a late
         // response to the auth profile that happens to be current on arrival.
-        let credentials = requestContext?.credentials ?? (client == .codex ? source?.officialAccessToken.map {
+        let credentials: CodexRequestCredentials?
+        switch client {
+        case _ where requestContext != nil: credentials = requestContext?.credentials
+        case .codex: credentials = source?.officialAccessToken.map {
             CodexRequestCredentials(accessToken: $0, accountKey: source?.officialAccount?.email?.lowercased())
-        } ?? officialQuotaClient.codexRequestCredentials() : nil)
+        } ?? officialQuotaClient.codexRequestCredentials()
+        case .claude: credentials = officialQuotaClient.claudeRequestCredentials()
+        case .grok: credentials = nil
+        }
         let context = requestContext ?? OfficialQuotaRequestContext(client: client, providerID: providerID,
             storedAccessToken: source?.officialAccessToken, credentials: credentials)
         let credentialsMatch = { [weak self] in
             guard let self, isValid() else { return false }
-            return client != .codex || source?.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials
+            return self.officialCredentialsAreCurrent(client: client, storedAccessToken: source?.officialAccessToken,
+                credentials: credentials)
         }
         let accountKey = credentials?.accountKey
         if source == nil {
@@ -1296,6 +1321,7 @@ final class ProviderRefreshCoordinator {
                 }
             }
         }
+        return context
     }
 
     /// Official quota evidence is captured before any forecast/credit transport.

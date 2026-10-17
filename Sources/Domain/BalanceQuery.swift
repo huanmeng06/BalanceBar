@@ -136,13 +136,7 @@ struct BalanceQuery {
             onFailure?(.usageScriptMissing)
             return nil
         }
-        let script: [String: Any]
-        if let dictionary = scriptValue as? [String: Any] {
-            script = dictionary
-        } else if let scriptText = scriptValue as? String,
-                  let dictionary = jsonObject(scriptText) {
-            script = dictionary
-        } else {
+        guard let script = usageScript(scriptValue) else {
             onFailure?(.usageScriptInvalid)
             return nil
         }
@@ -151,23 +145,7 @@ struct BalanceQuery {
             return nil
         }
 
-        let apiKey = findString(
-            in: script,
-            names: ["accessToken", "access_token", "apiKey", "api_key", "key", "token"]
-        ) ??
-            findString(
-                in: settings,
-                names: [
-                    "OPENAI_API_KEY",
-                    "ANTHROPIC_AUTH_TOKEN",
-                    "ANTHROPIC_API_KEY",
-                    "apiKey",
-                    "api_key",
-                    "key",
-                    "token"
-                ]
-            ) ??
-            tomlBearerToken(in: settings["config"] as? String)
+        let apiKey = apiCredential(settings: settings, script: script)
         let baseURL = findString(in: script, names: ["baseUrl", "base_url", "url"]) ??
             findString(
                 in: settings,
@@ -255,6 +233,40 @@ struct BalanceQuery {
             isNewAPI: templateType == "newapi",
             additionalHeaders: additionalHeaders
         )
+    }
+
+    /// True when a CC Switch card carries an API credential in any location a
+    /// balance query would read, whether or not its usage script is enabled.
+    static func containsAPICredential(settingsText: String, metaText: String) -> Bool {
+        let settings = jsonObject(settingsText) ?? [:]
+        let script = jsonObject(metaText)?["usage_script"].flatMap(usageScript) ?? [:]
+        let credential = apiCredential(settings: settings, script: script)
+        return credential?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private static func usageScript(_ value: Any) -> [String: Any]? {
+        if let dictionary = value as? [String: Any] { return dictionary }
+        return (value as? String).flatMap(jsonObject)
+    }
+
+    private static func apiCredential(settings: [String: Any], script: [String: Any]) -> String? {
+        findString(
+            in: script,
+            names: ["accessToken", "access_token", "apiKey", "api_key", "key", "token"]
+        ) ??
+            findString(
+                in: settings,
+                names: [
+                    "OPENAI_API_KEY",
+                    "ANTHROPIC_AUTH_TOKEN",
+                    "ANTHROPIC_API_KEY",
+                    "apiKey",
+                    "api_key",
+                    "key",
+                    "token"
+                ]
+            ) ??
+            tomlBearerToken(in: settings["config"] as? String)
     }
 
     private static func jsonObject(_ text: String) -> [String: Any]? {

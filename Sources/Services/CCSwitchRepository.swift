@@ -477,30 +477,19 @@ final class CCSwitchRepository {
         category: String?, settingsText: String, metaText: String, appType: String
     ) -> Bool {
         guard category == "official" else { return false }
-        let settings = settingsText.data(using: .utf8)
-            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-        func nonEmpty(_ value: Any?) -> Bool {
-            guard let value = value as? String else { return false }
-            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
         if appType == "codex" {
             let meta = metaText.data(using: .utf8)
                 .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
             let binding = meta?["authBinding"] as? [String: Any]
+            let accountID = (binding?["accountId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             if binding?["source"] as? String == "managed_account",
                binding?["authProvider"] as? String == "codex_oauth",
-               nonEmpty(binding?["accountId"]) {
+               accountID?.isEmpty == false {
                 return true
             }
-            let auth = settings?["auth"] as? [String: Any]
-            return !nonEmpty(auth?["OPENAI_API_KEY"])
         }
-        if appType == "claude" {
-            let env = settings?["env"] as? [String: Any]
-            return !nonEmpty(env?["ANTHROPIC_API_KEY"])
-                && !nonEmpty(env?["ANTHROPIC_AUTH_TOKEN"])
-        }
-        return true
+        // Use the same credential locations as balance queries.
+        return !BalanceQuery.containsAPICredential(settingsText: settingsText, metaText: metaText)
     }
 
     func loadChoices(appType: String) -> [ProviderChoice] {
