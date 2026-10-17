@@ -330,6 +330,19 @@ final class CCSwitchRepositoryTests: XCTestCase {
         XCTAssertNil(summary.query)
     }
 
+    func testCorruptOfficialConfigurationFailsClosedInsteadOfUsingSubscriptionQuota() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET settings_config = '{broken', meta = '{}' WHERE id = 'claude-other'")
+        }
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "claude"))
+        XCTAssertFalse(current.isOfficial)
+        XCTAssertNil(current.query)
+        XCTAssertEqual(current.queryFailure, .settingsJSONInvalid)
+        let summary = try XCTUnwrap(repository.loadSummarySources(appType: "claude").first)
+        XCTAssertFalse(summary.isOfficial)
+        XCTAssertNil(summary.officialAccessToken)
+    }
+
     func testOfficialCredentialDetectionCoversEveryBalanceQueryLocation() throws {
         let disabledScript = #"{"usage_script":{"enabled":false,"apiKey":"fixture-script-key"}}"#
         let cases: [(app: String, settings: String, meta: String)] = [

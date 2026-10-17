@@ -793,30 +793,32 @@ final class ProviderRefreshCoordinator {
             guard let self, self.lifetime.isCurrent() else { return }
             if client == .claude { self.detectClaudeAccountChange() }
             let currentDate = self.now()
-            let due = self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
-            SwitchLog.write("quick-switch refresh triggered; force=\(force); ttl_due=\(due); configuration_event=\(configurationChanged)", level: .debug,
+            let apiDue = self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
+            SwitchLog.write("quick-switch refresh triggered; force=\(force); api_ttl_due=\(apiDue); configuration_event=\(configurationChanged)", level: .debug,
                 category: "refresh.summary", throttleKey: "summary-trigger-\(force)", minimumInterval: 1)
-            guard force || due || configurationChanged else { return }
             guard let sources = try? self.repository.loadSummarySourcesChecked(appType: client.appType) else { return }
             let previousRevisions = self.quickSwitchSourceRevisions[client] ?? [:]
             self.quickSwitchSourceRevisions[client] = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.configurationRevision) })
             self.invalidateStaleQuickSwitchSummaries(client: client, sources: sources, previousRevisions: previousRevisions)
-            if force || due { self.lastQuickSwitchFetch[client] = currentDate }
+            var refreshedAPI = false
             let aggregationIDs: Set<String>
             if client == .codex, let reader = self.aggregationReader, case .active(let entries) = reader.load() {
-                _ = self.refreshAggregation(reader: reader, force: force)
+                _ = self.refreshAggregation(reader: reader, force: force && self.refreshPreferences == nil)
                 aggregationIDs = Set(entries.map(\.providerID))
             } else { aggregationIDs = [] }
             self.balanceProgressStore.prepareMigration(identities: sources.compactMap { source in
                 source.query.map { ProviderBalanceProgressIdentity(client: client, providerID: source.id, query: $0, providerName: source.name) }
             })
             for source in sources {
-                guard force || due || previousRevisions[source.id] != source.configurationRevision else { continue }
                 if aggregationIDs.contains(source.id) { continue }
                 if let providerIDs, !providerIDs.contains(source.id) { continue }
                 if source.isOfficial {
                     guard client == .codex || client == .claude else { continue }
                     let identity = SummaryIdentity(client: client, providerID: source.id)
+                    let officialDue = self.lastOfficialSummaryFetch[identity].map {
+                        currentDate.timeIntervalSince($0) >= self.officialRefreshInterval
+                    } ?? true
+                    guard force || officialDue || configurationChanged || previousRevisions[source.id] != source.configurationRevision else { continue }
                     // Manual refresh rereads configuration and API balances, but
                     // official quota requests always honor the selected interval.
                     if self.refreshPreferences != nil,
@@ -873,6 +875,8 @@ final class ProviderRefreshCoordinator {
                     self.lastOfficialSummaryFetch[identity] = self.officialCadenceAnchor(context: context, now: currentDate)
                     continue
                 }
+                guard force || apiDue || previousRevisions[source.id] != source.configurationRevision else { continue }
+                refreshedAPI = true
                 guard let query = source.query else { continue }
                 let sampleSequence = self.balanceProgressStore.beginSample()
                 self.balanceAPIClient.fetchBalance(
@@ -921,6 +925,7 @@ final class ProviderRefreshCoordinator {
                     }
                 }
             }
+            if refreshedAPI { self.lastQuickSwitchFetch[client] = currentDate }
         }
     }
 
@@ -1211,7 +1216,14 @@ final class ProviderRefreshCoordinator {
                                                credentials: CodexRequestCredentials?) -> Bool {
         switch client {
         case .codex: return storedAccessToken != nil || officialQuotaClient.codexRequestCredentials() == credentials
-        case .claude: return officialQuotaClient.claudeRequestCredentials() == credentials
+        case .claude:
+            let currentFingerprint: String?
+            if DispatchQueue.getSpecific(key: queueKey) != nil {
+                currentFingerprint = OfficialQuotaClient.claudeAccountFingerprint(officialQuotaClient.claudeRequestCredentials())
+            } else {
+                currentFingerprint = officialQuotaClient.cachedClaudeAccountFingerprint()
+            }
+            return OfficialQuotaClient.claudeAccountFingerprint(credentials) == currentFingerprint
         case .grok: return true
         }
     }

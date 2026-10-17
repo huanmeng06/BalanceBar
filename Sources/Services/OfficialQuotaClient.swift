@@ -267,6 +267,14 @@ final class OfficialQuotaClient {
         return Self.claudeAccountFingerprint(claudeRequestCredentials())
     }
 
+    /// Returns only the last background probe. This is safe for UI callbacks:
+    /// it never starts `/usr/bin/security` or touches the credential store.
+    func cachedClaudeAccountFingerprint() -> String? {
+        claudeProbeLock.lock()
+        defer { claudeProbeLock.unlock() }
+        return claudeAccountProbe?.fingerprint
+    }
+
     private func recordClaudeAccountProbe(_ fingerprint: String?) {
         claudeProbeLock.lock()
         claudeAccountProbe = (fingerprint, now())

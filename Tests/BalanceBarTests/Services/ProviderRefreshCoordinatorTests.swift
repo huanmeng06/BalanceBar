@@ -4134,6 +4134,34 @@ extension ProviderRefreshCoordinatorTests {
         waitForClaudeTransport(official, token: "cadence", count: 4, coordinator: coordinator)
     }
 
+    func testQuickSwitchOfficialSummaryUsesNinetyAndOneHundredFiftySecondIntervals() throws {
+        let current = try useClaudeOfficialProvider()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Self.claudeUsage, statusCode: 200) }
+        for interval: TimeInterval in [90, 150] {
+            let official = OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "summary-cadence-\(Int(interval))"), now: { clock.now })
+            let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+                actions: makeActions(), refreshPreferences: preferences(interval: interval), now: { clock.now })
+            let before = DelayedBalanceURLProtocol.requestCount
+            coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+            let token = "summary-cadence-\(Int(interval))"
+            waitForClaudeTransport(official, token: token, count: before + 1, coordinator: coordinator)
+
+            clock.advance(by: interval - 1)
+            coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+            waitForCoordinator(coordinator)
+            XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, before + 1)
+
+            clock.advance(by: 1)
+            coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+            waitForClaudeTransport(official, token: token, count: before + 2, coordinator: coordinator)
+            coordinator.stop()
+            coordinators.removeAll { $0 === coordinator }
+        }
+        XCTAssertNotNil(current)
+    }
+
     func testManualQuickSwitchRefreshHonorsCodexOfficialIntervalButStillRefreshesAPIBalances() throws {
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
         let lock = NSLock()

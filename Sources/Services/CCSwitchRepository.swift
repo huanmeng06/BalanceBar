@@ -442,6 +442,18 @@ final class CCSwitchRepository {
         let websiteText = text(from: statement, column: 5)
         let revision = SHA256.hash(data: Data([id, name, configText, metaText, category ?? "", websiteText ?? ""].joined(separator: "\u{0}").utf8))
             .map { String(format: "%02x", $0) }.joined()
+        if let configurationFailure = Self.officialConfigurationFailure(
+            category: category, settingsText: configText, metaText: metaText
+        ) {
+            return CCSwitchProvider(
+                id: id,
+                name: name,
+                isOfficial: false,
+                query: nil,
+                queryFailure: configurationFailure,
+                configurationRevision: revision
+            )
+        }
         guard !Self.usesOfficialQuota(category: category, settingsText: configText, metaText: metaText, appType: appType) else {
             return CCSwitchProvider(
                 id: id,
@@ -490,6 +502,19 @@ final class CCSwitchRepository {
         }
         // Use the same credential locations as balance queries.
         return !BalanceQuery.containsAPICredential(settingsText: settingsText, metaText: metaText)
+    }
+
+    private static func officialConfigurationFailure(
+        category: String?, settingsText: String, metaText: String
+    ) -> BalanceQueryFailure? {
+        guard category == "official" else { return nil }
+        guard let settingsData = settingsText.data(using: .utf8),
+              (try? JSONSerialization.jsonObject(with: settingsData)) is [String: Any]
+        else { return .settingsJSONInvalid }
+        guard let metaData = metaText.data(using: .utf8),
+              (try? JSONSerialization.jsonObject(with: metaData)) is [String: Any]
+        else { return .metaJSONInvalid }
+        return nil
     }
 
     func loadChoices(appType: String) -> [ProviderChoice] {
@@ -643,7 +668,18 @@ final class CCSwitchRepository {
 
             let revisionData = Data([id, name, settingsText, metaText, category ?? "", websiteText ?? "", String(sqlite3_column_int64(statement, 6))].joined(separator: "\u{0}").utf8)
             let revision = SHA256.hash(data: revisionData).map { String(format: "%02x", $0) }.joined()
-            if Self.usesOfficialQuota(category: category, settingsText: settingsText, metaText: metaText, appType: appType) {
+            if Self.officialConfigurationFailure(category: category, settingsText: settingsText, metaText: metaText) != nil {
+                result.append(ProviderSummarySource(
+                    id: id,
+                    name: name,
+                    isOfficial: false,
+                    query: nil,
+                    officialAccessToken: nil,
+                    websiteURL: websiteURL,
+                    configurationRevision: revision,
+                    notes: notes
+                ))
+            } else if Self.usesOfficialQuota(category: category, settingsText: settingsText, metaText: metaText, appType: appType) {
                 let stored = settingsText.data(using: .utf8)
                     .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
                 let auth = stored?["auth"] as? [String: Any]
