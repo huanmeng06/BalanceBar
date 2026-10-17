@@ -949,12 +949,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func makeStatusItemMenuInput() -> StatusItemController.MenuInput {
         let isOfficialOpenAICodex = activeClient == .codex && currentProviderIsOfficialCache
-        let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache : nil
+        let isOfficialClaude = activeClient == .claude && currentProviderIsOfficialCache
+        // Claude's profile comes from the last background credential probe;
+        // reading it here never launches the Keychain tool.
+        let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache
+            : isOfficialClaude ? officialQuotaClient.cachedClaudeAccountProfile() : nil
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
-            providerIsOfficial: isOfficialOpenAICodex,
+            providerIsOfficial: isOfficialOpenAICodex || isOfficialClaude,
             email: accountProfile?.email,
-            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
+            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType, client: activeClient)
         )
         let directProviderID = providerChoicesCache.first(where: \.isCurrent)?.id ?? lastProviderID
         let directProviderNotes = aggregationDisplays.isEmpty || activeClient != .codex

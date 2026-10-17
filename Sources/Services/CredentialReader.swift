@@ -95,16 +95,33 @@ struct CredentialReader {
     }
 
     func claudeAccessToken() -> String? {
+        claudeCredentials().accessToken
+    }
+
+    func claudeCredentials() -> ClaudeStoredCredentials {
         if let result = try? processRunner.run(arguments: [
             "find-generic-password", "-s", "Claude Code-credentials", "-w"
         ]), result.terminationStatus == 0,
            let token = Self.claudeAccessToken(from: result.standardOutput) {
-            return token
+            return ClaudeStoredCredentials(accessToken: token, planType: Self.claudePlanType(from: result.standardOutput))
         }
 
         let credentialsURL = homeDirectoryURL.appendingPathComponent(".claude/.credentials.json")
-        guard let data = try? fileReader.readData(from: credentialsURL) else { return nil }
-        return Self.claudeAccessToken(from: data)
+        guard let data = try? fileReader.readData(from: credentialsURL) else {
+            return ClaudeStoredCredentials(accessToken: nil, planType: nil)
+        }
+        return ClaudeStoredCredentials(accessToken: Self.claudeAccessToken(from: data), planType: Self.claudePlanType(from: data))
+    }
+
+    /// Claude Code records the signed-in account in `~/.claude.json`.
+    func claudeAccountEmail() -> String? {
+        let url = homeDirectoryURL.appendingPathComponent(".claude.json")
+        guard let data = try? fileReader.readData(from: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let account = object["oauthAccount"] as? [String: Any],
+              let email = (account["emailAddress"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty else { return nil }
+        return email
     }
 
     static func codexAccessToken(from data: Data) -> String? {
@@ -168,6 +185,21 @@ struct CredentialReader {
               normalized.contains("@"),
               !normalized.contains(where: { $0.isWhitespace }) else { return nil }
         return normalized
+    }
+
+    /// `subscriptionType` plus the Max multiplier from `rateLimitTier`
+    /// (for example `max_5x`); token material is never returned.
+    static func claudePlanType(from data: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let oauth = (object["claudeAiOauth"] as? [String: Any])
+            ?? (object["claude.ai_oauth"] as? [String: Any])
+        guard let subscription = (oauth?["subscriptionType"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !subscription.isEmpty else { return nil }
+        let tier = (oauth?["rateLimitTier"] as? String)?.lowercased() ?? ""
+        guard subscription == "max" else { return subscription }
+        if tier.contains("20x") { return "max_20x" }
+        if tier.contains("5x") { return "max_5x" }
+        return subscription
     }
 
     static func claudeAccessToken(from data: Data) -> String? {

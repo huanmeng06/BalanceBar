@@ -128,6 +128,29 @@ final class CredentialReaderTests: XCTestCase {
         )
     }
 
+    func testClaudeCredentialsReadPlanFromTheSameKeychainReadAndEmailFromClaudeJSON() {
+        let home = URL(fileURLWithPath: "/fixture-home")
+        let fileReader = FixtureFileReader(dataByPath: [
+            home.appendingPathComponent(".claude.json").path:
+                Data(#"{"oauthAccount":{"emailAddress":" person@example.com ","organizationName":"Org"},"projects":{}}"#.utf8)
+        ])
+        let processRunner = FixtureProcessRunner(result: CredentialProcessResult(terminationStatus: 0, standardOutput: Data(
+            #"{"claudeAiOauth":{"accessToken":"keychain-value","subscriptionType":"max","rateLimitTier":"default_claude_max_20x"}}"#.utf8)))
+        let reader = CredentialReader(homeDirectoryURL: home, fileReader: fileReader, processRunner: processRunner)
+
+        XCTAssertEqual(reader.claudeCredentials(), ClaudeStoredCredentials(accessToken: "keychain-value", planType: "max_20x"))
+        XCTAssertTrue(fileReader.readPaths.isEmpty, "token and plan come from one Keychain read")
+        XCTAssertEqual(reader.claudeAccountEmail(), "person@example.com")
+
+        func plan(_ json: String) -> String? { CredentialReader.claudePlanType(from: Data(json.utf8)) }
+        XCTAssertEqual(plan(#"{"claudeAiOauth":{"subscriptionType":"pro","rateLimitTier":"default_claude_ai"}}"#), "pro")
+        XCTAssertEqual(plan(#"{"claudeAiOauth":{"subscriptionType":"max","rateLimitTier":"default_claude_max_5x"}}"#), "max_5x")
+        XCTAssertEqual(plan(#"{"claudeAiOauth":{"subscriptionType":"max"}}"#), "max")
+        XCTAssertNil(plan(#"{"claudeAiOauth":{"accessToken":"x"}}"#))
+        XCTAssertNil(CredentialReader(homeDirectoryURL: home, fileReader: FixtureFileReader(dataByPath: [:]),
+            processRunner: processRunner).claudeAccountEmail())
+    }
+
     func testClaudeReaderFallsBackToFileAfterKeychainFailure() {
         let home = URL(fileURLWithPath: "/fixture-home")
         let credentialsURL = home.appendingPathComponent(".claude/.credentials.json")

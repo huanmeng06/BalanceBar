@@ -44,7 +44,23 @@ protocol OfficialQuotaCredentialReading {
     func codexAccessToken() -> String?
     func codexAccountProfile() -> CodexAccountProfile?
     func claudeAccessToken() -> String?
+    /// Token and plan from one credential-store read.
+    func claudeCredentials() -> ClaudeStoredCredentials
+    /// Display-only account email; never token material.
+    func claudeAccountEmail() -> String?
     func codexRequestCredentials() -> CodexRequestCredentials
+}
+
+struct ClaudeStoredCredentials: Equatable {
+    let accessToken: String?
+    let planType: String?
+}
+
+extension OfficialQuotaCredentialReading {
+    func claudeCredentials() -> ClaudeStoredCredentials {
+        ClaudeStoredCredentials(accessToken: claudeAccessToken(), planType: nil)
+    }
+    func claudeAccountEmail() -> String? { nil }
 }
 
 struct CodexRequestCredentials: Equatable {
@@ -205,7 +221,7 @@ final class OfficialQuotaClient {
     private let claudeCacheLock = NSLock()
     private var claudeResponses: [String: (result: Result<OfficialQuotaResult, OfficialQuotaClientError>, recordedAt: Date, retryUntil: Date?)] = [:]
     private var claudeCalibrationInterval: () -> TimeInterval = { 60 }
-    private var claudeAccountProbe: (credentials: CodexRequestCredentials, readAt: Date)?
+    private var claudeAccountProbe: (credentials: CodexRequestCredentials, profile: CodexAccountProfile?, readAt: Date)?
     private var claudeProbeInFlight = false
     private let claudeProbeCondition = NSCondition()
 
@@ -260,10 +276,22 @@ final class OfficialQuotaClient {
             return credentials
         }
         claudeProbeInFlight = true
+        let previous = claudeAccountProbe
         claudeProbeCondition.unlock()
-        let credentials = CodexRequestCredentials(accessToken: credentialReader.claudeAccessToken(), accountKey: nil)
+        let stored = credentialReader.claudeCredentials()
+        let credentials = CodexRequestCredentials(accessToken: stored.accessToken, accountKey: nil)
+        // The email lives in a separate local file; reread it only when the
+        // signed-in account changes or it was not available yet.
+        let profile: CodexAccountProfile?
+        if credentials.accessToken == nil {
+            profile = nil
+        } else if let previous, previous.credentials == credentials, let email = previous.profile?.email {
+            profile = CodexAccountProfile(email: email, planType: stored.planType)
+        } else {
+            profile = CodexAccountProfile(email: credentialReader.claudeAccountEmail(), planType: stored.planType)
+        }
         claudeProbeCondition.lock()
-        claudeAccountProbe = (credentials, now())
+        claudeAccountProbe = (credentials, profile, now())
         claudeProbeInFlight = false
         claudeProbeCondition.broadcast()
         claudeProbeCondition.unlock()
@@ -288,6 +316,13 @@ final class OfficialQuotaClient {
         }
         claudeProbeCondition.unlock()
         return Self.claudeAccountFingerprint(claudeRequestCredentials(cacheFor: maxAge))
+    }
+
+    /// Display-only email/plan from the last probe; never starts `security`.
+    func cachedClaudeAccountProfile() -> CodexAccountProfile? {
+        claudeProbeCondition.lock()
+        defer { claudeProbeCondition.unlock() }
+        return claudeAccountProbe?.profile
     }
 
     /// Returns only the last background probe. This is safe for UI callbacks:

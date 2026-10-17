@@ -1023,6 +1023,39 @@ extension OfficialQuotaClientTests {
         XCTAssertTrue(credentials.allSatisfy { $0.accessToken == "shared-account" })
     }
 
+    func testClaudeProbeCachesProfileAndRereadsEmailOnlyWhenAccountChanges() {
+        final class Reader: OfficialQuotaCredentialReading {
+            var token: String? = "account-a"
+            var plan = "pro"
+            var emailReads = 0
+            func claudeAccessToken() -> String? { token }
+            func claudeCredentials() -> ClaudeStoredCredentials { ClaudeStoredCredentials(accessToken: token, planType: plan) }
+            func claudeAccountEmail() -> String? { emailReads += 1; return token.map { $0 + "@example.com" } }
+            func codexAccessToken() -> String? { nil }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+        }
+        let reader = Reader()
+        let client = OfficialQuotaClient(session: session, credentialReader: reader)
+        XCTAssertNil(client.cachedClaudeAccountProfile(), "no probe has run yet")
+
+        _ = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertEqual(client.cachedClaudeAccountProfile(), CodexAccountProfile(email: "account-a@example.com", planType: "pro"))
+        reader.plan = "max_5x"
+        _ = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertEqual(client.cachedClaudeAccountProfile(), CodexAccountProfile(email: "account-a@example.com", planType: "max_5x"))
+        XCTAssertEqual(reader.emailReads, 1, "same account reuses the email")
+
+        reader.token = "account-b"
+        _ = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertEqual(client.cachedClaudeAccountProfile()?.email, "account-b@example.com")
+        XCTAssertEqual(reader.emailReads, 2)
+
+        reader.token = nil
+        _ = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertNil(client.cachedClaudeAccountProfile(), "signed out clears the account row data")
+        XCTAssertEqual(reader.emailReads, 2)
+    }
+
     func testTimedOutConcurrentClaudeProbeDoesNotReturnStaleCredentials() {
         final class Reader: OfficialQuotaCredentialReading {
             let started = DispatchSemaphore(value: 0)
