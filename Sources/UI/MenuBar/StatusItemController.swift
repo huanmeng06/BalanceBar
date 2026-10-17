@@ -3402,6 +3402,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
             overviewMenuWasSeen = false
         }
+        retiringStatusMenus.removeAll { $0.items.first?.view?.window?.isVisible != true }
         isStatusMenuTracking = false
         if let view = statusMenu.items.first?.view {
             descendantViews(of: view, as: MenuHoverLinkHostView.self).forEach { $0.setMenuContentVisible(false) }
@@ -6071,6 +6072,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         statusMenuNeedsRebuild = false
         statusMenuNeedsNativeStructureRebuild = false
+        retiringStatusMenus.removeAll()
         menuDismissalTrace?.record("menu.rebuild.removeAllItems", view: oldMenu.items.first?.view,
             details: "reason=\(reason ?? menuRebuildReason)")
         logAggregationLifecycle(reason: "rebuild-" + menuRebuildReason)
