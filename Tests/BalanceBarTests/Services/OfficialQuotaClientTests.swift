@@ -907,7 +907,8 @@ extension OfficialQuotaClientTests {
         let second = expectation(description: "second provider receives shared result")
         var firstResult: Result<OfficialQuotaResult, OfficialQuotaClientError>?
         var secondResult: Result<OfficialQuotaResult, OfficialQuotaClientError>?
-        XCTAssertTrue(client.fetchQuota(context: claudeContext("provider-a", token: "shared-account")) {
+        let firstContext = claudeContext("provider-a", token: "shared-account")
+        XCTAssertTrue(client.fetchQuota(context: firstContext) {
             firstResult = $0; first.fulfill()
         })
         XCTAssertFalse(client.fetchQuota(context: claudeContext("provider-b", token: "shared-account")) {
@@ -915,7 +916,7 @@ extension OfficialQuotaClientTests {
         }, "a second Provider on the same account must join the in-flight request")
         wait(for: [started], timeout: 2)
 
-        client.cancelQuota(context: claudeContext("provider-a", token: "shared-account"))
+        client.cancelQuota(context: firstContext)
         wait(for: [first], timeout: 2)
         guard case .failure(.transport(.urlError(.cancelled))) = firstResult else { return XCTFail("expected cancellation") }
         XCTAssertNil(secondResult, "cancelling one Provider must not release the other")
@@ -926,6 +927,63 @@ extension OfficialQuotaClientTests {
         wait(for: [second], timeout: 2)
         guard case .success = secondResult else { return XCTFail("expected shared success") }
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
+    }
+
+    func testSameProviderCallersShareOneRequestButCancelIndependently() throws {
+        let started = expectation(description: "shared request reached transport")
+        StubURLProtocol.setHandler { _ in
+            started.fulfill()
+            return StubResult(data: Self.claudeBody, holdsResponse: true)
+        }
+        let client = makeClient(claudeToken: "shared-account")
+        // e.g. the standard refresh and the quick-switch summary of one Provider.
+        let standard = claudeContext("official", token: "shared-account")
+        let summary = claudeContext("official", token: "shared-account")
+        let cancelled = expectation(description: "standard caller released")
+        let delivered = expectation(description: "summary caller receives the shared result")
+        var summaryResult: Result<OfficialQuotaResult, OfficialQuotaClientError>?
+        XCTAssertTrue(client.fetchQuota(context: standard) {
+            guard case .failure(.transport(.urlError(.cancelled))) = $0 else { return XCTFail("expected cancellation") }
+            cancelled.fulfill()
+        })
+        XCTAssertFalse(client.fetchQuota(context: summary) { summaryResult = $0; delivered.fulfill() })
+        wait(for: [started], timeout: 2)
+
+        client.cancelQuota(context: standard)
+        wait(for: [cancelled], timeout: 2)
+        XCTAssertNil(summaryResult, "cancelling one caller must not release another caller of the same Provider")
+        XCTAssertTrue(client.isRequestInFlight(client: .claude, providerID: "official",
+            requestCredentials: CodexRequestCredentials(accessToken: "shared-account", accountKey: nil)))
+
+        StubURLProtocol.releaseHeldResponses()
+        wait(for: [delivered], timeout: 2)
+        guard case .success = summaryResult else { return XCTFail("expected shared success") }
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+    }
+
+    func testClaudeAccountFingerprintProbeIsShortLivedAndNeverExposesTheToken() throws {
+        final class Reader: OfficialQuotaCredentialReading {
+            var token: String? = "account-a"
+            var reads = 0
+            func claudeAccessToken() -> String? { reads += 1; return token }
+            func codexAccessToken() -> String? { nil }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+        }
+        let clock = LockedTestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let reader = Reader()
+        let client = OfficialQuotaClient(session: session, credentialReader: reader, now: { clock.now })
+        let a = try XCTUnwrap(client.currentClaudeAccountFingerprint())
+        XCTAssertFalse(a.contains("account-a"))
+        reader.token = "account-b"
+        XCTAssertEqual(client.currentClaudeAccountFingerprint(), a, "one poll shares a single Keychain read")
+        XCTAssertEqual(reader.reads, 1)
+        clock.advance(by: 2)
+        let b = try XCTUnwrap(client.currentClaudeAccountFingerprint())
+        XCTAssertNotEqual(a, b)
+        reader.token = nil
+        clock.advance(by: 2)
+        XCTAssertNil(client.currentClaudeAccountFingerprint())
+        XCTAssertEqual(reader.reads, 3)
     }
 
     func testClaudeAccountSwitchDuringInFlightRequestUsesSeparateFrozenTokens() throws {
