@@ -2981,13 +2981,14 @@ final class StatusItemControllerTests: XCTestCase {
     private func makeMenuInput(
         activeClient: AssistantClient = .codex,
         showQuickSwitchMenu: Bool = false,
-        showOpenChatGPTMenu: Bool = false
+        showOpenChatGPTMenu: Bool = false,
+        quickSwitchSummaries: [String: String]? = nil
     ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
             choices: showQuickSwitchMenu
                 ? [ProviderChoice(id: "provider", name: "Provider", isCurrent: true)]
                 : [],
-            quickSwitchSummaries: showQuickSwitchMenu ? ["provider": "$1.00"] : [:],
+            quickSwitchSummaries: quickSwitchSummaries ?? (showQuickSwitchMenu ? ["provider": "$1.00"] : [:]),
             activeClient: activeClient,
             openAIAccount: nil,
             statusLinks: [],
@@ -3567,6 +3568,51 @@ extension StatusItemControllerTests {
             "the outgoing Quick Switch submenu remains unchanged")
         let nextQuick = try XCTUnwrap(nextMenu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
         XCTAssertNotEqual(nextQuick.items.first { $0.representedObject as? String == "provider-0" }?.title, oldSummary)
+    }
+
+    @MainActor
+    func testQuickSwitchUpdateBeforeMenuDidCloseDoesNotMutateOutgoingSubmenu() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 2, date: date, summaries: ["provider-0": "old summary"]),
+            settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        let (window, viewport) = try mountAggregation(controller)
+        defer { window.orderOut(nil) }
+        let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        let oldSummary = try XCTUnwrap(quick.items.first { $0.representedObject as? String == "provider-0" }).title
+        viewport.cardHosts()[0].setMenuContentVisible(false)
+        XCTAssertTrue(viewport.cardHosts()[0].isMenuDismissing)
+        XCTAssertTrue(window.isVisible)
+
+        controller.updateMenu(input: aggregationInput(count: 2, date: date, summaries: ["provider-0": "new summary"]))
+        XCTAssertEqual(quick.items.first { $0.representedObject as? String == "provider-0" }?.title, oldSummary,
+            "tracking-time dismissal must not mutate the outgoing Quick Switch submenu")
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+    }
+
+    @MainActor
+    func testHiddenQuickSwitchSummaryUpdateKeepsDirectCardIdentity() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: makeMenuInput(showQuickSwitchMenu: true), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let original = try XCTUnwrap(menu.items.first?.view)
+        let quick = try XCTUnwrap(menu.items.first { $0.identifier?.rawValue == "quickSwitch.parent" }?.submenu)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        for index in 1...5 {
+            let summary = "$\(index).00"
+            controller.updateMenu(input: makeMenuInput(showQuickSwitchMenu: true,
+                quickSwitchSummaries: ["provider": summary]))
+            XCTAssertTrue(controller.statusMenuForTesting === menu)
+            XCTAssertTrue(menu.items.first?.view === original)
+            XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+            XCTAssertTrue(try XCTUnwrap(quick.items.first { $0.representedObject as? String == "provider" }).title.contains(summary))
+        }
     }
 
     @MainActor

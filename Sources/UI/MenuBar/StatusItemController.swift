@@ -3227,7 +3227,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuInput = input
         aggregationOverviewDisplays = aggregationGrouping.cards(input.aggregatedProviders)
         if !nativeItemsChanged && overviewUnchanged {
-            guard menuContentCanMutate else {
+            guard menuQuickSwitchCanMutate else {
                 rebuildOrDeferMenu(forceDefer: deferRebuild, nativeItemsChanged: false)
                 refreshQuotaPaceViews()
                 return
@@ -3403,7 +3403,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
         isStatusMenuTracking = true
-        updateQuickSwitchContent()
         statusMenu.items.first { $0.action == #selector(openChatGPT) }?.title = openCurrentAgentMenuTitle()
         logAggregationLifecycle(reason: "will-open")
         if let view = statusMenu.items.first?.view {
@@ -3412,6 +3411,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.layoutSubtreeIfNeeded()
             (view as? AggregationOverviewScrollView)?.logGeometry(reason: "will-open")
         }
+        updateQuickSwitchContent()
         refreshQuotaPaceViews()
         overviewMenuWasSeen = true
         playPendingOverviewNumericTransitions()
@@ -3527,6 +3527,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuRebuildReason = nativeItemsChanged ? "native-structure" : "overview-content"
         let firstView = statusMenu.items.first?.view
         let host = firstView as? MenuHoverLinkHostView
+        guard menuQuickSwitchCanMutate else {
+            statusMenuNeedsRebuild = true
+            menuDismissalTrace?.record("quick-switch.update.deferred", view: firstView,
+                details: "tracking=\(isStatusMenuTracking); window_visible=\(firstView?.window?.isVisible ?? false); dismissing=\(outgoingMenuIsDismissing)")
+            if firstView?.window?.isVisible == true, !isStatusMenuTracking {
+                rebuildStatusMenu(reason: "quick-switch-next-session", replacingMenu: true)
+            } else if firstView?.window?.isVisible != true {
+                scheduleClosedMenuRebuild()
+            }
+            return
+        }
         if !isStatusMenuTracking, outgoingMenuIsDismissing || firstView?.window?.isVisible == true {
             // Keep the outgoing menu immutable and prepare a separate next
             // presentation as soon as new data arrives during its dismissal.
@@ -3611,6 +3622,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return isStatusMenuTracking && hosts.allSatisfy { $0.isMenuContentVisible && !$0.isMenuDismissing }
         }
         return !isStatusMenuTracking && view.window?.isVisible != true
+    }
+
+    /// Native Quick Switch writes have a narrower gate than card content. A
+    /// fully hidden idle menu is safe to update; a dismissing menu must remain
+    /// unchanged until the next presentation, even before menuDidClose arrives.
+    private var menuQuickSwitchCanMutate: Bool {
+        if !isStatusMenuTracking, statusMenu.items.first?.view?.window?.isVisible != true,
+           !overviewCardHosts().contains(where: { $0.outgoingMenuWindow?.isVisible == true }) {
+            return true
+        }
+        return menuContentCanMutate
     }
 
     /// All tracking-time mutations share the same gate, including the gap
@@ -6380,6 +6402,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func updateQuickSwitchContent() {
+        guard menuQuickSwitchCanMutate else {
+            menuDismissalTrace?.record("quick-switch.update.ignored", view: statusMenu.items.first?.view,
+                details: "tracking=\(isStatusMenuTracking); window_visible=\(statusMenu.items.first?.view?.window?.isVisible ?? false)")
+            return
+        }
         guard let submenu = statusMenu.items.first(where: { $0.identifier?.rawValue == "quickSwitch.parent" })?.submenu else { return }
         let choices = QuickSwitchMenuModel.entries(from: menuInput.choices)
         let font = NSFont.menuFont(ofSize: 0)
@@ -6417,6 +6444,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func updateQuickSwitchProtection() {
+        guard menuQuickSwitchCanMutate else { return }
         guard let submenu = statusMenu.items.first(where: { $0.identifier?.rawValue == "quickSwitch.parent" })?.submenu else { return }
         applyQuickSwitchProtection(to: submenu)
     }
