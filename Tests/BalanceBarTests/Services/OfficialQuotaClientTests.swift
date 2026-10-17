@@ -8,17 +8,20 @@ final class OfficialQuotaClientTests: XCTestCase {
         let data: Data?
         let error: Error?
         let holdsResponse: Bool
+        let headers: [String: String]
 
         init(
             statusCode: Int = 200,
             data: Data? = nil,
             error: Error? = nil,
-            holdsResponse: Bool = false
+            holdsResponse: Bool = false,
+            headers: [String: String] = [:]
         ) {
             self.statusCode = statusCode
             self.data = data
             self.error = error
             self.holdsResponse = holdsResponse
+            self.headers = headers
         }
     }
 
@@ -103,7 +106,7 @@ final class OfficialQuotaClientTests: XCTestCase {
                 url: request.url!,
                 statusCode: result.statusCode,
                 httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": "application/json"]
+                headerFields: ["Content-Type": "application/json"].merging(result.headers) { _, new in new }
             )!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             if let data = result.data {
@@ -320,6 +323,128 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-claude-value")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
         XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-beta"), "oauth-2025-04-20")
+    }
+
+    func testClaudeSuccessCacheSharesSequentialConsumersAndManualRefreshHonorsTTL() throws {
+        var time = Date(timeIntervalSince1970: 1_700_000_000)
+        let client = makeClient(claudeToken: "fixture", now: { time })
+        StubURLProtocol.setHandler { _ in StubResult(data: Self.claudeBody) }
+        let first = try waitForResult(client, clientName: .claude, providerID: "standard")
+        let cached = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        guard case .success(let original) = first, case .success(let reused) = cached else { return XCTFail("expected cached success") }
+        XCTAssertEqual(original.fetchedAt, reused.fetchedAt, "cached data must keep its actual fetch time")
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard", expectsTransport: false)
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+        time.addTimeInterval(59)
+        _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        time.addTimeInterval(1)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+    }
+
+    func testClaudeRateLimitBackoffHonorsRetryAfterEvenForManualRefresh() throws {
+        var time = Date(timeIntervalSince1970: 1_700_000_000)
+        let client = makeClient(claudeToken: "fixture", now: { time })
+        StubURLProtocol.setHandler { _ in StubResult(statusCode: 429, data: Data(), headers: ["Retry-After": "170"]) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(169)
+        let throttled = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        guard case .failure(.httpStatus(let status, _)) = throttled else { return XCTFail("expected rate-limit error") }
+        XCTAssertEqual(status, 429)
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+        time.addTimeInterval(1)
+        StubURLProtocol.setHandler { _ in StubResult(data: Self.claudeBody) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+    }
+
+    func testClaudeRateLimitAcceptsHTTPDateAndUsesSafeFallback() throws {
+        for header in ["Tue, 14 Nov 2023 22:16:10 GMT", "invalid", "-5"] {
+            var time = Date(timeIntervalSince1970: 1_700_000_000)
+            let client = makeClient(claudeToken: "fixture", now: { time })
+            StubURLProtocol.setHandler { _ in StubResult(statusCode: 429, data: Data(), headers: ["Retry-After": header]) }
+            _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+            time.addTimeInterval(header.hasSuffix("GMT") ? 169 : 59)
+            _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+            time.addTimeInterval(1)
+            _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        }
+        XCTAssertEqual(StubURLProtocol.requestCount, 6)
+    }
+
+    func testClaudeCalibrationUsesSelectedIntervalAndAppliesChangesToCachedResults() throws {
+        var time = Date(timeIntervalSince1970: 1_700_000_000)
+        var interval: TimeInterval = 180
+        let client = makeClient(claudeToken: "fixture", now: { time })
+        client.configureClaudeCalibrationInterval { interval }
+        StubURLProtocol.setHandler { _ in StubResult(data: Self.claudeBody) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        interval = 90
+        time.addTimeInterval(30)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+    }
+
+    func testClaudeFailuresAlsoWaitOneMinuteBeforeRetrying() throws {
+        for reply in [StubResult(statusCode: 503, data: Data()), StubResult(error: URLError(.timedOut)),
+                      StubResult(data: Data("bad-json".utf8))] {
+            var time = Date(timeIntervalSince1970: 1_700_000_000)
+            let client = makeClient(claudeToken: "fixture", now: { time })
+            StubURLProtocol.setHandler { _ in reply }
+            _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+            time.addTimeInterval(59)
+            _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+            time.addTimeInterval(1)
+            _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        }
+        XCTAssertEqual(StubURLProtocol.requestCount, 6)
+    }
+
+    func testClaudeRepeatedRateLimitsWithoutRetryAfterBackOffAndResetAfterSuccess() throws {
+        var time = Date(timeIntervalSince1970: 1_700_000_000)
+        let client = makeClient(claudeToken: "fixture", now: { time })
+        StubURLProtocol.setHandler { _ in StubResult(statusCode: 429, data: Data()) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(239)
+        _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        time.addTimeInterval(1)
+        StubURLProtocol.setHandler { _ in StubResult(data: Self.claudeBody) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        StubURLProtocol.setHandler { _ in StubResult(statusCode: 429, data: Data()) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        XCTAssertEqual(StubURLProtocol.requestCount, 6, "successful calibration resets the failure backoff")
+    }
+
+    func testClaudeCacheDoesNotReusePreviousAccountTokenOrApplyToCodex() throws {
+        final class Reader: OfficialQuotaCredentialReading {
+            var token = "account-a"
+            func claudeAccessToken() -> String? { token }
+            func codexAccessToken() -> String? { "codex" }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+        }
+        let reader = Reader()
+        let client = OfficialQuotaClient(session: session, credentialReader: reader)
+        StubURLProtocol.setHandler { request in
+            StubResult(data: request.url?.host == "api.anthropic.com" ? Self.claudeBody : Self.codexBody)
+        }
+        _ = try waitForResult(client, clientName: .claude, providerID: "official")
+        reader.token = "account-b"
+        _ = try waitForResult(client, clientName: .claude, providerID: "official")
+        _ = try waitForResult(client, clientName: .codex, providerID: "official")
+        _ = try waitForResult(client, clientName: .codex, providerID: "official")
+        XCTAssertEqual(StubURLProtocol.requestCount, 4)
     }
 
     func testCodexStoredAccessTokenOverridesInjectedReader() throws {
@@ -619,7 +744,8 @@ final class OfficialQuotaClientTests: XCTestCase {
     private func makeClient(
         codexToken: String? = nil,
         claudeToken: String? = nil,
-        codexAccountProfile: CodexAccountProfile? = nil
+        codexAccountProfile: CodexAccountProfile? = nil,
+        now: @escaping () -> Date = Date.init
     ) -> OfficialQuotaClient {
         OfficialQuotaClient(
             session: session,
@@ -630,7 +756,8 @@ final class OfficialQuotaClientTests: XCTestCase {
             ),
             parser: DefaultOfficialQuotaParser {
                 Date(timeIntervalSince1970: 1_700_000_000)
-            }
+            },
+            now: now
         )
     }
 
@@ -638,7 +765,8 @@ final class OfficialQuotaClientTests: XCTestCase {
         _ client: OfficialQuotaClient,
         clientName: AssistantClient,
         providerID: String,
-        storedAccessToken: String? = nil
+        storedAccessToken: String? = nil,
+        expectsTransport: Bool = true
     ) throws -> Result<OfficialQuotaResult, OfficialQuotaClientError> {
         let expectation = expectation(description: "official quota request completed")
         var captured: Result<OfficialQuotaResult, OfficialQuotaClientError>?
@@ -650,7 +778,7 @@ final class OfficialQuotaClientTests: XCTestCase {
             captured = result
             expectation.fulfill()
         }
-        XCTAssertTrue(started)
+        XCTAssertEqual(started, expectsTransport)
         wait(for: [expectation], timeout: 2)
         return try XCTUnwrap(captured)
     }
@@ -749,5 +877,297 @@ extension OfficialQuotaClientTests {
         wait(for: [started], timeout: 2)
         client.cancelQuota(context: context)
         wait(for: [stopped, finished], timeout: 2)
+    }
+}
+
+// MARK: - Claude account-scoped transport (PR #508 review)
+
+private final class LockedTestClock {
+    private let lock = NSLock()
+    private var value: Date
+    init(_ date: Date) { value = date }
+    var now: Date { lock.lock(); defer { lock.unlock() }; return value }
+    func advance(by interval: TimeInterval) { lock.lock(); value.addTimeInterval(interval); lock.unlock() }
+}
+
+extension OfficialQuotaClientTests {
+    private func claudeContext(_ providerID: String, token: String?) -> OfficialQuotaRequestContext {
+        OfficialQuotaRequestContext(client: .claude, providerID: providerID, storedAccessToken: nil,
+            credentials: CodexRequestCredentials(accessToken: token, accountKey: nil))
+    }
+
+    func testClaudeProvidersSharingAnAccountShareOneRequestAndCancelReleasesOnlyOneConsumer() throws {
+        let started = expectation(description: "shared Claude request reached transport")
+        StubURLProtocol.setHandler { _ in
+            started.fulfill()
+            return StubResult(data: Self.claudeBody, holdsResponse: true)
+        }
+        let client = makeClient(claudeToken: "shared-account")
+        let first = expectation(description: "first provider released by cancellation")
+        let second = expectation(description: "second provider receives shared result")
+        var firstResult: Result<OfficialQuotaResult, OfficialQuotaClientError>?
+        var secondResult: Result<OfficialQuotaResult, OfficialQuotaClientError>?
+        let firstContext = claudeContext("provider-a", token: "shared-account")
+        XCTAssertTrue(client.fetchQuota(context: firstContext) {
+            firstResult = $0; first.fulfill()
+        })
+        XCTAssertFalse(client.fetchQuota(context: claudeContext("provider-b", token: "shared-account")) {
+            secondResult = $0; second.fulfill()
+        }, "a second Provider on the same account must join the in-flight request")
+        wait(for: [started], timeout: 2)
+
+        client.cancelQuota(context: firstContext)
+        wait(for: [first], timeout: 2)
+        guard case .failure(.transport(.urlError(.cancelled))) = firstResult else { return XCTFail("expected cancellation") }
+        XCTAssertNil(secondResult, "cancelling one Provider must not release the other")
+        XCTAssertTrue(client.isRequestInFlight(client: .claude, providerID: "provider-b",
+            requestCredentials: CodexRequestCredentials(accessToken: "shared-account", accountKey: nil)))
+
+        StubURLProtocol.releaseHeldResponses()
+        wait(for: [second], timeout: 2)
+        guard case .success = secondResult else { return XCTFail("expected shared success") }
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+    }
+
+    func testSameProviderCallersShareOneRequestButCancelIndependently() throws {
+        let started = expectation(description: "shared request reached transport")
+        StubURLProtocol.setHandler { _ in
+            started.fulfill()
+            return StubResult(data: Self.claudeBody, holdsResponse: true)
+        }
+        let client = makeClient(claudeToken: "shared-account")
+        // e.g. the standard refresh and the quick-switch summary of one Provider.
+        let standard = claudeContext("official", token: "shared-account")
+        let summary = claudeContext("official", token: "shared-account")
+        let cancelled = expectation(description: "standard caller released")
+        let delivered = expectation(description: "summary caller receives the shared result")
+        var summaryResult: Result<OfficialQuotaResult, OfficialQuotaClientError>?
+        XCTAssertTrue(client.fetchQuota(context: standard) {
+            guard case .failure(.transport(.urlError(.cancelled))) = $0 else { return XCTFail("expected cancellation") }
+            cancelled.fulfill()
+        })
+        XCTAssertFalse(client.fetchQuota(context: summary) { summaryResult = $0; delivered.fulfill() })
+        wait(for: [started], timeout: 2)
+
+        client.cancelQuota(context: standard)
+        wait(for: [cancelled], timeout: 2)
+        XCTAssertNil(summaryResult, "cancelling one caller must not release another caller of the same Provider")
+        XCTAssertTrue(client.isRequestInFlight(client: .claude, providerID: "official",
+            requestCredentials: CodexRequestCredentials(accessToken: "shared-account", accountKey: nil)))
+
+        StubURLProtocol.releaseHeldResponses()
+        wait(for: [delivered], timeout: 2)
+        guard case .success = summaryResult else { return XCTFail("expected shared success") }
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+    }
+
+    func testClaudeAccountFingerprintProbeIsShortLivedAndNeverExposesTheToken() throws {
+        final class Reader: OfficialQuotaCredentialReading {
+            var token: String? = "account-a"
+            var reads = 0
+            func claudeAccessToken() -> String? { reads += 1; return token }
+            func codexAccessToken() -> String? { nil }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+        }
+        let clock = LockedTestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let reader = Reader()
+        let client = OfficialQuotaClient(session: session, credentialReader: reader, now: { clock.now })
+        let a = try XCTUnwrap(client.currentClaudeAccountFingerprint())
+        XCTAssertFalse(a.contains("account-a"))
+        reader.token = "account-b"
+        XCTAssertEqual(client.currentClaudeAccountFingerprint(), a, "one poll shares a single Keychain read")
+        XCTAssertEqual(reader.reads, 1)
+        clock.advance(by: 2)
+        let b = try XCTUnwrap(client.currentClaudeAccountFingerprint())
+        XCTAssertNotEqual(a, b)
+        reader.token = nil
+        clock.advance(by: 2)
+        XCTAssertNil(client.currentClaudeAccountFingerprint())
+        XCTAssertEqual(reader.reads, 3)
+    }
+
+    func testConcurrentClaudeCredentialProbesAreCoalesced() {
+        final class Reader: OfficialQuotaCredentialReading {
+            private let lock = NSLock()
+            private(set) var reads = 0
+            let started = DispatchSemaphore(value: 0)
+            let release = DispatchSemaphore(value: 0)
+            func claudeAccessToken() -> String? {
+                lock.lock(); reads += 1; lock.unlock()
+                started.signal()
+                release.wait()
+                return "shared-account"
+            }
+            func codexAccessToken() -> String? { nil }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+            func readCount() -> Int { lock.lock(); defer { lock.unlock() }; return reads }
+        }
+        let reader = Reader()
+        let client = OfficialQuotaClient(session: session, credentialReader: reader)
+        let group = DispatchGroup()
+        let resultsLock = NSLock()
+        var credentials: [CodexRequestCredentials] = []
+        for _ in 0..<8 {
+            group.enter()
+            DispatchQueue.global().async {
+                let value = client.claudeRequestCredentials()
+                resultsLock.lock(); credentials.append(value); resultsLock.unlock()
+                group.leave()
+            }
+        }
+        XCTAssertEqual(reader.started.wait(timeout: .now() + 2), .success)
+        reader.release.signal()
+        XCTAssertEqual(group.wait(timeout: .now() + 3), .success)
+        XCTAssertEqual(reader.readCount(), 1)
+        XCTAssertEqual(credentials.count, 8)
+        XCTAssertTrue(credentials.allSatisfy { $0.accessToken == "shared-account" })
+    }
+
+    func testClaudeProbeCachesProfileAndRereadsEmailOnlyWhenAccountChanges() {
+        final class Reader: OfficialQuotaCredentialReading {
+            var token: String? = "account-a"
+            var plan = "pro"
+            var emailReads = 0
+            func claudeAccessToken() -> String? { token }
+            func claudeCredentials() -> ClaudeStoredCredentials { ClaudeStoredCredentials(accessToken: token, planType: plan) }
+            func claudeAccountEmail() -> String? { emailReads += 1; return token.map { $0 + "@example.com" } }
+            func codexAccessToken() -> String? { nil }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+        }
+        let reader = Reader()
+        let client = OfficialQuotaClient(session: session, credentialReader: reader)
+        XCTAssertNil(client.cachedClaudeAccountProfile(), "no probe has run yet")
+
+        _ = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertEqual(client.cachedClaudeAccountProfile(), CodexAccountProfile(email: "account-a@example.com", planType: "pro"))
+        reader.plan = "max_5x"
+        _ = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertEqual(client.cachedClaudeAccountProfile(), CodexAccountProfile(email: "account-a@example.com", planType: "max_5x"))
+        XCTAssertEqual(reader.emailReads, 1, "same account reuses the email")
+
+        reader.token = "account-b"
+        _ = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertEqual(client.cachedClaudeAccountProfile()?.email, "account-b@example.com")
+        XCTAssertEqual(reader.emailReads, 2)
+
+        reader.token = nil
+        _ = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertNil(client.cachedClaudeAccountProfile(), "signed out clears the account row data")
+        XCTAssertEqual(reader.emailReads, 2)
+    }
+
+    func testTimedOutConcurrentClaudeProbeDoesNotReturnStaleCredentials() {
+        final class Reader: OfficialQuotaCredentialReading {
+            let started = DispatchSemaphore(value: 0)
+            let release = DispatchSemaphore(value: 0)
+            private var tokens = ["old-account", "new-account"]
+            func claudeAccessToken() -> String? {
+                let token = tokens.removeFirst()
+                started.signal()
+                release.wait()
+                return token
+            }
+            func codexAccessToken() -> String? { nil }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+        }
+        let reader = Reader()
+        let client = OfficialQuotaClient(session: session, credentialReader: reader)
+        reader.release.signal()
+        XCTAssertEqual(client.claudeRequestCredentials(cacheFor: 0).accessToken, "old-account")
+        XCTAssertEqual(reader.started.wait(timeout: .now()), .success)
+
+        let blockedFinished = expectation(description: "blocked probe finishes")
+        DispatchQueue.global().async {
+            XCTAssertEqual(client.claudeRequestCredentials(cacheFor: 0).accessToken, "new-account")
+            blockedFinished.fulfill()
+        }
+        XCTAssertEqual(reader.started.wait(timeout: .now() + 2), .success)
+        let waiter = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertNil(waiter.accessToken, "a timed-out waiter must not reuse the previous account's token")
+        reader.release.signal()
+        wait(for: [blockedFinished], timeout: 3)
+    }
+
+    func testClaudeAccountSwitchDuringInFlightRequestUsesSeparateFrozenTokens() throws {
+        let bothStarted = expectation(description: "both account requests reached transport")
+        bothStarted.expectedFulfillmentCount = 2
+        let bodyB = Data(#"{"seven_day":{"utilization":"80","resets_at":"2023-11-15T00:13:20Z"}}"#.utf8)
+        StubURLProtocol.setHandler { request in
+            defer { bothStarted.fulfill() }
+            let isB = request.value(forHTTPHeaderField: "Authorization") == "Bearer account-b"
+            return StubResult(data: isB ? bodyB : Self.claudeBody, holdsResponse: true)
+        }
+        // The reader already points at B; A's request must keep its frozen token.
+        let client = makeClient(claudeToken: "account-b")
+        var results: [String: Result<OfficialQuotaResult, OfficialQuotaClientError>] = [:]
+        let done = expectation(description: "both accounts completed")
+        done.expectedFulfillmentCount = 2
+        XCTAssertTrue(client.fetchQuota(context: claudeContext("official", token: "account-a")) {
+            results["a"] = $0; done.fulfill()
+        })
+        XCTAssertTrue(client.fetchQuota(context: claudeContext("official", token: "account-b")) {
+            results["b"] = $0; done.fulfill()
+        }, "account B must not coalesce into account A's in-flight request")
+        wait(for: [bothStarted], timeout: 2)
+        StubURLProtocol.releaseHeldResponses()
+        wait(for: [done], timeout: 2)
+
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+        guard case .success(let a) = results["a"], case .success(let b) = results["b"] else { return XCTFail("expected two successes") }
+        XCTAssertNotEqual(a.output.windows.map(\.remaining), b.output.windows.map(\.remaining))
+        let remainingB = try XCTUnwrap(b.output.windows.first?.remaining)
+        XCTAssertEqual(Double(remainingB), 20, accuracy: 0.5, "account B's result must come from B's token")
+    }
+
+    func testClaudeMissingFrozenTokenFailsWithoutTransport() throws {
+        let client = makeClient(claudeToken: "reader-token")
+        let done = expectation(description: "missing credentials")
+        XCTAssertTrue(client.fetchQuota(context: claudeContext("official", token: nil)) {
+            guard case .failure(.missingCredentials) = $0 else { return XCTFail("expected missing credentials") }
+            done.fulfill()
+        })
+        wait(for: [done], timeout: 2)
+        XCTAssertEqual(StubURLProtocol.requestCount, 0)
+    }
+
+    func testClaudeBurstAroundCompletionNeverStartsADuplicateRequest() throws {
+        let started = expectation(description: "first request reached transport")
+        StubURLProtocol.setHandler { _ in
+            started.fulfill()
+            return StubResult(data: Self.claudeBody, holdsResponse: true)
+        }
+        let clock = LockedTestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let client = makeClient(claudeToken: "burst", now: { clock.now })
+        let completions = DispatchGroup()
+        completions.enter()
+        client.fetchQuota(context: claudeContext("provider-0", token: "burst")) { _ in completions.leave() }
+        wait(for: [started], timeout: 2)
+        let iterations = 200
+        for _ in 0..<iterations { completions.enter() }
+        DispatchQueue.global().async { StubURLProtocol.releaseHeldResponses() }
+        DispatchQueue.concurrentPerform(iterations: iterations) { index in
+            client.fetchQuota(context: claudeContext("provider-\(index % 4)", token: "burst")) { _ in completions.leave() }
+        }
+        XCTAssertEqual(completions.wait(timeout: .now() + 3), .success)
+        XCTAssertEqual(StubURLProtocol.requestCount, 1, "every consumer must join the request or reuse its cache")
+    }
+
+    func testClaudeCalibrationIsAnchoredToRequestStartDespiteNetworkLatency() throws {
+        let clock = LockedTestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        StubURLProtocol.setHandler { _ in
+            clock.advance(by: 2) // the response arrives two seconds after the request starts
+            return StubResult(data: Self.claudeBody)
+        }
+        let client = makeClient(claudeToken: "latency", now: { clock.now })
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        let context = claudeContext("standard", token: "latency")
+        XCTAssertEqual(try XCTUnwrap(client.claudeCalibrationAge(context: context)), 2, accuracy: 0.001)
+        clock.advance(by: 57) // t = 59 after request start
+        _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        XCTAssertEqual(try XCTUnwrap(client.claudeCalibrationAge(context: context)), 59, accuracy: 0.001)
+        clock.advance(by: 1) // t = 60: the real request must happen now, not at t = 62
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+        XCTAssertNil(client.claudeCalibrationAge(context: claudeContext("standard", token: "other-account")))
     }
 }

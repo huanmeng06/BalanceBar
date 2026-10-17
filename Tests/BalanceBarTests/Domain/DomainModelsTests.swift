@@ -343,7 +343,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(StatusLink.self, from: encoded), link)
     }
 
-    func testOpenAIAccountPresentationUsesOnlyTheCurrentOfficialCodexProvider() {
+    func testOfficialAccountPresentationUsesOnlyCurrentOfficialCodexOrClaudeProvider() {
         let available = OpenAIAccountPresentation.current(
             activeClient: .codex,
             providerIsOfficial: true,
@@ -368,10 +368,25 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(unavailable?.text(language: .japanese), "アカウントを利用できません")
         XCTAssertEqual(unavailable?.text(language: .english), "Account unavailable")
 
+        let claude = OpenAIAccountPresentation.current(
+            activeClient: .claude,
+            providerIsOfficial: true,
+            email: "claude@example.com",
+            subscription: OpenAISubscriptionTier(planType: "max_5x", client: .claude)
+        )
+        XCTAssertEqual(claude?.state, .available("claude@example.com"))
+        XCTAssertEqual(claude?.subscription?.text, "Max · 5x")
+        XCTAssertNil(
+            OpenAIAccountPresentation.current(
+                activeClient: .grok,
+                providerIsOfficial: true,
+                email: "should-not-leak@example.com"
+            )
+        )
         XCTAssertNil(
             OpenAIAccountPresentation.current(
                 activeClient: .claude,
-                providerIsOfficial: true,
+                providerIsOfficial: false,
                 email: "should-not-leak@example.com"
             )
         )
@@ -395,6 +410,20 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(OpenAISubscriptionTier.plus.text, "PLUS")
         XCTAssertEqual(OpenAISubscriptionTier.proFiveX.text, "Pro · 5x")
         XCTAssertEqual(OpenAISubscriptionTier.proTwentyX.text, "Pro · 20x")
+    }
+
+    func testClaudeSubscriptionTierDoesNotReuseCodexProMapping() {
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "pro", client: .claude)?.text, "Pro")
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "pro", client: .codex)?.text, "Pro · 20x")
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "max", client: .claude)?.text, "Max")
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "max_5x", client: .claude)?.text, "Max · 5x")
+        XCTAssertEqual(OpenAISubscriptionTier(planType: " MAX_20X ", client: .claude)?.text, "Max · 20x")
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "team", client: .claude)?.text, "Team")
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "enterprise", client: .claude)?.text, "Enterprise")
+        XCTAssertNil(OpenAISubscriptionTier(planType: "free", client: .claude))
+        XCTAssertNil(OpenAISubscriptionTier(planType: nil, client: .claude))
+        XCTAssertNil(OpenAISubscriptionTier(planType: "plus", client: .claude))
+        XCTAssertNil(OpenAISubscriptionTier(planType: "pro", client: .grok))
     }
 
     func testPlaceholderAndOfficialSnapshotFormatting() {

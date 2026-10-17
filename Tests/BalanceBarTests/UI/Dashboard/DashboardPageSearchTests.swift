@@ -2687,11 +2687,11 @@ final class DashboardPageSearchTests: XCTestCase {
         page.layoutSubtreeIfNeeded()
 
         let refreshHeading = tr(.keyDashboardGeneralAndRefreshPagesRefresh, language: .english)
-        let firstTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: .english)
-        let secondTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceData, language: .english)
+        let firstTitle = tr(.keyDashboardOfficialQuotaRefreshFrequency, language: .english)
+        let secondTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: .english)
         let section = try XCTUnwrap(firstSection(titled: refreshHeading, in: page) as? SettingsSectionView)
-        XCTAssertEqual(section.contentViews.count, 2)
-        XCTAssertEqual(section.separators.count, 1)
+        XCTAssertEqual(section.contentViews.count, 3)
+        XCTAssertEqual(section.separators.count, 2)
         let separator = try XCTUnwrap(section.separators.first)
         XCTAssertFalse(separator.isHidden)
 

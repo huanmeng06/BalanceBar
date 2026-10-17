@@ -121,6 +121,29 @@ final class ResponseParsersTests: XCTestCase {
         }
     }
 
+    func testClaudeQuotaPreservesBothWindowsAndModelSpecificTiers() throws {
+        let output = try OfficialQuotaResponseParser.parse(data: fixture(#"""
+        {"five_hour":{"utilization":23,"resets_at":"2023-11-15T00:13:20Z"},
+         "seven_day":{"utilization":"41","resets_at":"2023-11-21T00:13:20Z"},
+         "seven_day_sonnet":{"utilization":110},"seven_day_opus":{"utilization":-5}}
+        """#), client: .claude, now: now)
+        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour, .sevenDay, .other, .other])
+        XCTAssertEqual(output.windows.map(\.remaining), [77, 59, 0, 100])
+        XCTAssertEqual(output.windows.map(\.durationSeconds), [18_000, 604_800, 604_800, 604_800])
+        XCTAssertEqual(output.windows[0].resetAt, Date(timeIntervalSince1970: 1_700_007_200))
+        XCTAssertNotNil(output.windows[1].resetAt)
+        XCTAssertNil(output.windows[2].resetAt)
+        XCTAssertEqual(output.remaining, 59, "legacy scalar accessors still prefer weekly quota")
+    }
+
+    func testClaudeQuotaSkipsMissingOrMalformedWindowsWithoutInventingValues() throws {
+        let output = try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":{"utilization":"25"},"seven_day":null,"seven_day_sonnet":{"utilization":"invalid"}}"#), client: .claude, now: now)
+        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour])
+        XCTAssertEqual(output.remaining, 75)
+        XCTAssertNil(output.windows.first?.resetAt)
+        XCTAssertThrowsError(try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":null,"seven_day":{}}"#), client: .claude, now: now))
+    }
+
     func testOfficialQuotaFixturesCoverClaudeAndCodexWindows() throws {
         let claude = try OfficialQuotaResponseParser.parse(
             data: fixture(#"{"seven_day":{"utilization":"12.5","resets_at":"2023-11-15T00:13:20Z"}}"#),
@@ -381,6 +404,44 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(legacyWithoutDuration.windows.map(\.kind), [.other])
         XCTAssertEqual(legacyWithoutDuration.remaining, 80, accuracy: 0.000001)
         XCTAssertEqual(legacyWithoutDuration.reset, "later")
+    }
+
+    func testClaudeUnusedWindowShowsFullDurationCountdownLikeCodex() throws {
+        let output = try OfficialQuotaResponseParser.parse(
+            data: fixture(#"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":0}}"#),
+            client: .claude, now: now)
+        XCTAssertEqual(output.windows.map(\.reset), ["5h0m", ResponseParsingSupport.resetDescription(604_800.0, now: now)])
+        XCTAssertEqual(output.windows.map(\.resetAt), [nil, nil], "no wall-clock reset is invented before first use")
+        let codex = try OfficialQuotaResponseParser.parse(
+            data: fixture(#"{"rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":18000,"reset_after_seconds":18000}}}"#),
+            client: .codex, now: now)
+        XCTAssertEqual(output.windows[0].reset, codex.windows[0].reset)
+    }
+
+    func testClaudeUsedWindowWithoutResetTimeStaysUnknown() throws {
+        for utilization in [16, 100] {
+            let output = try OfficialQuotaResponseParser.parse(
+                data: fixture(#"{"five_hour":{"utilization":\#(utilization)},"seven_day":{"utilization":\#(utilization),"resets_at":null}}"#),
+                client: .claude, now: now)
+            XCTAssertEqual(output.windows.map(\.reset), [nil, nil], "\(utilization)% used has an unknown window start")
+            XCTAssertEqual(output.windows.map(\.resetAt), [nil, nil])
+        }
+        let valid = try OfficialQuotaResponseParser.parse(
+            data: fixture(#"{"five_hour":{"utilization":16,"resets_at":"2023-11-15T00:13:20Z"}}"#),
+            client: .claude, now: now)
+        XCTAssertEqual(valid.windows.first?.reset, "2h0m")
+        XCTAssertEqual(valid.windows.first?.resetAt, Date(timeIntervalSince1970: 1_700_007_200))
+    }
+
+    func testClaudeMicrosecondResetTimestampFormatsAsCountdown() throws {
+        let reference = ISO8601DateFormatter().date(from: "2026-10-17T02:30:00Z")!
+        let reset = "2026-10-17T06:59:59.997388+00:00"
+        XCTAssertEqual(ResponseParsingSupport.resetDescription(reset, now: reference), "4h29m")
+        let output = try OfficialQuotaResponseParser.parse(
+            data: fixture(#"{"five_hour":{"utilization":10,"resets_at":"2026-10-17T06:59:59.997388+00:00"}}"#),
+            client: .claude, now: reference)
+        XCTAssertEqual(output.windows.first?.reset, "4h29m")
+        XCTAssertNotNil(output.windows.first?.resetAt)
     }
 
     func testResetDescriptionsSupportNumericAndTextValues() {

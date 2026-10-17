@@ -401,7 +401,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
+    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "officialUsageRefreshInterval", "officialPostTaskRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -640,6 +640,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
     private var activityPollInterval: TimeInterval { get { preferences.activityPollInterval } set { preferences.activityPollInterval = newValue } }
     private var codexUsageRefreshInterval: TimeInterval { get { preferences.codexUsageRefreshInterval } set { preferences.codexUsageRefreshInterval = newValue } }
+    private var activeUsageRefreshInterval: TimeInterval {
+        if activeClient == .codex, aggregationDisplays.contains(where: { !$0.entry.source.isOfficial }) {
+            return min(preferences.officialUsageRefreshInterval, codexUsageRefreshInterval)
+        }
+        return currentProviderIsOfficialCache ? preferences.officialUsageRefreshInterval : codexUsageRefreshInterval
+    }
+    private var activePostTaskRefreshDuration: TimeInterval {
+        if activeClient == .codex, aggregationDisplays.contains(where: { !$0.entry.source.isOfficial }) {
+            return aggregationDisplays.contains(where: { $0.entry.source.isOfficial })
+                ? max(preferences.officialPostTaskRefreshDuration, postCodexRefreshDuration) : postCodexRefreshDuration
+        }
+        return currentProviderIsOfficialCache ? preferences.officialPostTaskRefreshDuration : postCodexRefreshDuration
+    }
     private var postCodexRefreshDuration: TimeInterval { get { preferences.postCodexRefreshDuration } set { preferences.postCodexRefreshDuration = newValue } }
     private var showQuickSwitchMenu: Bool { get { preferences.showQuickSwitchMenu } set { preferences.showQuickSwitchMenu = newValue } }
     private var showOpenCCSwitchMenu: Bool { get { preferences.showOpenCCSwitchMenu } set { preferences.showOpenCCSwitchMenu = newValue } }
@@ -708,6 +721,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore()
         )
         super.init()
+        let refreshPreferences = preferences
+        officialQuotaClient.configureClaudeCalibrationInterval { refreshPreferences.officialUsageRefreshInterval }
         notificationCoordinator.onPermissionStateChanged = { [weak self] state in
             guard let self else { return }
             let previous = self.lastNotificationPermissionState
@@ -812,7 +827,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     }
                 },
                 ownedRender: { [weak self] providerID, snapshot in self?.render(snapshot, providerID: providerID) }
-            )
+            ),
+            refreshPreferences: preferences
         )
         providerSwitchCoordinator = ProviderSwitchCoordinator(
             repository: repository,
@@ -922,6 +938,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 visibilityChanged: { [weak self] _ in
                     guard let self else { return }
                     self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)
+                },
+                manualRefreshBlockedUntil: { [weak self] in
+                    // Claude official refreshes only its quota; during a 429
+                    // wait a manual refresh cannot reach the endpoint.
+                    guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
+                    return self.officialQuotaClient.claudeRateLimitedUntil()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
@@ -933,12 +955,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func makeStatusItemMenuInput() -> StatusItemController.MenuInput {
         let isOfficialOpenAICodex = activeClient == .codex && currentProviderIsOfficialCache
-        let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache : nil
+        let isOfficialClaude = activeClient == .claude && currentProviderIsOfficialCache
+        // Claude's profile comes from the last background credential probe;
+        // reading it here never launches the Keychain tool.
+        let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache
+            : isOfficialClaude ? officialQuotaClient.cachedClaudeAccountProfile() : nil
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
-            providerIsOfficial: isOfficialOpenAICodex,
+            providerIsOfficial: isOfficialOpenAICodex || isOfficialClaude,
             email: accountProfile?.email,
-            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
+            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType, client: activeClient)
         )
         let directProviderID = providerChoicesCache.first(where: \.isCurrent)?.id ?? lastProviderID
         let directProviderNotes = aggregationDisplays.isEmpty || activeClient != .codex
@@ -991,8 +1017,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         providerMetadataReader.reload(appType: resolvedAppType,
             includeSources: aggregationDisplays.isEmpty || activeClient != .codex) { [weak self] value in
             guard let self, self.activeClient.appType == resolvedAppType else { return }
-            var changed = self.providerChoicesCache != value.choices
-                || self.currentProviderIsOfficialCache != (value.current?.isOfficial == true)
+            let officialChanged = self.currentProviderIsOfficialCache != (value.current?.isOfficial == true)
+            var changed = self.providerChoicesCache != value.choices || officialChanged
             self.providerChoicesCache = value.choices
             if let sources = value.sources {
                 let notes = Dictionary(uniqueKeysWithValues: sources.compactMap { source -> (String, String)? in
@@ -1004,6 +1030,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
             self.currentProviderNameCache = value.choices.first(where: \.isCurrent)?.name ?? tr(.keyAppNotFound2)
             self.currentProviderIsOfficialCache = value.current?.isOfficial == true
+            if officialChanged, let anchor = self.activityRefreshLifecycle(for: self.activeClient).trailingRefreshAnchor {
+                let duration = self.activePostTaskRefreshDuration
+                self.postCodexRefreshDeadline = duration > 0 ? anchor.addingTimeInterval(duration) : nil
+            }
             self.currentAccountProfileCache = value.current?.isOfficial == true && resolvedAppType == "codex"
                 ? self.officialQuotaClient.codexAccountProfile() : nil
             self.refreshStatusItemMenuInput()
@@ -1656,18 +1686,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case "activityPollInterval":
             activityPollInterval = value
             refreshTimers = true
+        case "officialUsageRefreshInterval":
+            preferences.officialUsageRefreshInterval = value
+        case "officialPostTaskRefreshDuration":
+            preferences.officialPostTaskRefreshDuration = value
+            if let anchor = activityRefreshLifecycle(for: activeClient).trailingRefreshAnchor {
+                postCodexRefreshDeadline = activePostTaskRefreshDuration > 0
+                    ? anchor.addingTimeInterval(activePostTaskRefreshDuration) : nil
+            }
         case "codexUsageRefreshInterval":
             codexUsageRefreshInterval = value
         case "postCodexRefreshDuration":
             postCodexRefreshDuration = value
             let lifecycle = activityRefreshLifecycle(for: activeClient)
             if let anchor = lifecycle.trailingRefreshAnchor {
-                postCodexRefreshDeadline = value > 0
-                    ? anchor.addingTimeInterval(value)
+                postCodexRefreshDeadline = activePostTaskRefreshDuration > 0
+                    ? anchor.addingTimeInterval(activePostTaskRefreshDuration)
                     : nil
             } else if !isCodexTaskRunning, postCodexRefreshDeadline != nil {
-                postCodexRefreshDeadline = value > 0
-                    ? Date().addingTimeInterval(value)
+                postCodexRefreshDeadline = activePostTaskRefreshDuration > 0
+                    ? Date().addingTimeInterval(activePostTaskRefreshDuration)
                     : nil
             }
         default: return
@@ -2013,11 +2051,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func establishPostCodexRefreshWindow(from anchor: Date) {
-        guard postCodexRefreshDuration > 0 else {
+        guard activePostTaskRefreshDuration > 0 else {
             postCodexRefreshDeadline = nil
             return
         }
-        let candidate = anchor.addingTimeInterval(postCodexRefreshDuration)
+        let candidate = anchor.addingTimeInterval(activePostTaskRefreshDuration)
         if let current = postCodexRefreshDeadline {
             postCodexRefreshDeadline = min(current, candidate)
         } else {
@@ -2115,7 +2153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             inTrailingWindow: inTrailingWindow,
             now: now,
             lastRefresh: lastCodexUsageRefresh,
-            refreshInterval: codexUsageRefreshInterval,
+            refreshInterval: activeUsageRefreshInterval,
             resumed: resumed
         )
         if shouldIssueRefresh {
@@ -2208,12 +2246,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func refresh(reason: BalanceRefreshReason) {
         let client = activeClient
+        let apiTrailing = activityRefreshLifecycle(for: client).trailingRefreshAnchor.map {
+            Date().timeIntervalSince($0) < postCodexRefreshDuration
+        } ?? false
+        let forceAPIBalance = reason == .activityUsage
+            ? (isCodexTaskRunning || apiTrailing) : reason.forcesStandardProviderBalance
         SwitchLog.write("provider refresh triggered; reason=\(reason); client=\(client.rawValue); force=\(reason.forcesStandardProviderBalance)",
             level: .debug, category: "refresh", throttleKey: "provider-refresh-\(reason)", minimumInterval: 1)
         providerRefreshCoordinator.performAsync { [weak self] in
             guard let self else { return }
             if client == .codex, self.providerRefreshCoordinator.refreshAggregation(
-                reader: self.aggregationRepository, force: reason.forcesStandardProviderBalance) { return }
+                reader: self.aggregationRepository, force: reason.forcesStandardProviderBalance,
+                forceAPIBalance: forceAPIBalance) { return }
             if client != .codex {
                 let safety = self.ccSwitchRepository.quickSwitchSafety(appType: client.appType)
                 DispatchQueue.main.async { [weak self] in

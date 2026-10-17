@@ -952,6 +952,10 @@ struct Snapshot: Equatable {
     let balanceProgressPercentage: Double?
     var balanceRecharge: BalanceRecharge? = nil
     var balanceProgressContext: BalanceProgressContext? = nil
+    /// Set when the last successful official data is kept on screen because
+    /// the latest request failed (for example HTTP 429); the reason is shown
+    /// on the refresh time instead of replacing the card with an error.
+    var staleReason: String? = nil
     let officialQuotaWindows: [OfficialQuotaWindow]
     let quotaPredictionContexts: [QuotaPredictionContext]
     let quotaPredictionAccountKey: String?

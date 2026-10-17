@@ -30,6 +30,7 @@ extension OfficialQuotaTransportError: LocalizedError {
 struct OfficialQuotaResult {
     let output: OfficialQuotaResponseParser.Output
     let dataSize: Int
+    let fetchedAt = Date()
 }
 
 /// Identifies the credential path used by a request without retaining the
@@ -43,7 +44,23 @@ protocol OfficialQuotaCredentialReading {
     func codexAccessToken() -> String?
     func codexAccountProfile() -> CodexAccountProfile?
     func claudeAccessToken() -> String?
+    /// Token and plan from one credential-store read.
+    func claudeCredentials() -> ClaudeStoredCredentials
+    /// Display-only account email; never token material.
+    func claudeAccountEmail() -> String?
     func codexRequestCredentials() -> CodexRequestCredentials
+}
+
+struct ClaudeStoredCredentials: Equatable {
+    let accessToken: String?
+    let planType: String?
+}
+
+extension OfficialQuotaCredentialReading {
+    func claudeCredentials() -> ClaudeStoredCredentials {
+        ClaudeStoredCredentials(accessToken: claudeAccessToken(), planType: nil)
+    }
+    func claudeAccountEmail() -> String? { nil }
 }
 
 struct CodexRequestCredentials: Equatable {
@@ -64,6 +81,9 @@ struct OfficialQuotaRequestContext {
     let providerID: String
     let storedAccessToken: String?
     let credentials: CodexRequestCredentials?
+    /// Identifies this caller among consumers sharing one transport. Two
+    /// callers for the same Provider and account still cancel independently.
+    let consumerID = UUID()
 
     var credentialSource: OfficialQuotaCredentialSource {
         OfficialQuotaClient.credentialSource(client: client, storedAccessToken: storedAccessToken)
@@ -112,25 +132,38 @@ final class OfficialQuotaClient {
     /// Keeps request cleanup independent from the client instance. A task can
     /// finish after its client has been released without retaining UI state.
     private final class InFlightRegistry {
+        struct Consumer {
+            let providerID: String
+            let id: UUID
+        }
+
         private struct Entry {
             let generation: UUID
-            var completions: [Completion]
+            let startedAt: Date
+            var completions: [(consumer: Consumer, completion: Completion)]
             var task: URLSessionDataTask?
         }
 
         private let lock = NSLock()
         private var entries: [String: Entry] = [:]
 
-        func register(key: String, completion: @escaping Completion) -> UUID? {
+        func register(key: String, consumer: Consumer, startedAt: Date, completion: @escaping Completion) -> UUID? {
             lock.lock()
             defer { lock.unlock() }
             if entries[key] != nil {
-                entries[key]?.completions.append(completion)
+                entries[key]?.completions.append((consumer, completion))
                 return nil
             }
             let generation = UUID()
-            entries[key] = Entry(generation: generation, completions: [completion], task: nil)
+            entries[key] = Entry(generation: generation, startedAt: startedAt,
+                completions: [(consumer, completion)], task: nil)
             return generation
+        }
+
+        func startedAt(key: String) -> Date? {
+            lock.lock()
+            defer { lock.unlock() }
+            return entries[key]?.startedAt
         }
 
         func attach(task: URLSessionDataTask, to key: String, generation: UUID) {
@@ -151,30 +184,53 @@ final class OfficialQuotaClient {
             return entries[key] != nil
         }
 
-        func finish(
-            key: String,
-            generation: UUID,
-            result: Result<OfficialQuotaResult, OfficialQuotaClientError>
-        ) {
+        /// Removes a finished request. Returns nil when it was cancelled or
+        /// replaced, so a late response cannot reach consumers or caches.
+        func take(key: String, generation: UUID) -> [Completion]? {
             lock.lock()
-            guard entries[key]?.generation == generation else { lock.unlock(); return }
-            let completions = entries.removeValue(forKey: key)?.completions ?? []
-            lock.unlock()
-            completions.forEach { $0(result) }
+            defer { lock.unlock() }
+            guard entries[key]?.generation == generation else { return nil }
+            return entries.removeValue(forKey: key)?.completions.map(\.completion)
         }
 
-        func cancel(key: String) -> [Completion] {
+        /// Releases only matching consumers. Transport is cancelled once no
+        /// other consumer still waits on the shared request.
+        func cancel(key: String, where matches: (Consumer) -> Bool) -> [Completion] {
             lock.lock()
-            let entry = entries.removeValue(forKey: key)
+            guard var entry = entries[key] else { lock.unlock(); return [] }
+            let released = entry.completions.filter { matches($0.consumer) }.map(\.completion)
+            entry.completions.removeAll { matches($0.consumer) }
+            let task: URLSessionDataTask?
+            if entry.completions.isEmpty {
+                entries.removeValue(forKey: key)
+                task = entry.task
+            } else {
+                entries[key] = entry
+                task = nil
+            }
             lock.unlock()
-            entry?.task?.cancel()
-            return entry?.completions ?? []
+            task?.cancel()
+            return released
         }
     }
 
     private let session: URLSession
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
+    private let now: () -> Date
+    private let claudeCacheLock = NSLock()
+    private var claudeResponses: [String: (result: Result<OfficialQuotaResult, OfficialQuotaClientError>, recordedAt: Date, retryUntil: Date?)] = [:]
+    private var claudeCalibrationInterval: () -> TimeInterval = { 60 }
+    private var claudeAccountProbe: (credentials: CodexRequestCredentials, profile: CodexAccountProfile?, readAt: Date)?
+    private var claudeProbeInFlight = false
+    private let claudeProbeCondition = NSCondition()
+
+    func configureClaudeCalibrationInterval(_ interval: @escaping () -> TimeInterval) {
+        claudeCacheLock.lock()
+        claudeCalibrationInterval = interval
+        claudeCacheLock.unlock()
+    }
+    private var claudeRateLimitFailures: [String: Int] = [:]
     private let inFlight = InFlightRegistry()
     private let creditLock = NSLock()
     private var creditRequests: [String: (UUID, URLSessionDataTask)] = [:]
@@ -182,11 +238,13 @@ final class OfficialQuotaClient {
     init(
         session: URLSession = .shared,
         credentialReader: OfficialQuotaCredentialReading = CredentialReader(),
-        parser: OfficialQuotaParsing = DefaultOfficialQuotaParser()
+        parser: OfficialQuotaParsing = DefaultOfficialQuotaParser(),
+        now: @escaping () -> Date = Date.init
     ) {
         self.session = session
         self.credentialReader = credentialReader
         self.parser = parser
+        self.now = now
     }
 
     /// Reads the same Codex auth source used by official quota requests. The
@@ -197,6 +255,127 @@ final class OfficialQuotaClient {
 
     func codexRequestCredentials() -> CodexRequestCredentials {
         credentialReader.codexRequestCredentials()
+    }
+
+    /// Claude's usage endpoint is account-wide; the token is the account scope.
+    func claudeRequestCredentials(cacheFor maxAge: TimeInterval = 0.1) -> CodexRequestCredentials {
+        claudeProbeCondition.lock()
+        if maxAge > 0, let probe = claudeAccountProbe, now().timeIntervalSince(probe.readAt) < maxAge {
+            claudeProbeCondition.unlock()
+            return probe.credentials
+        }
+        if claudeProbeInFlight {
+            let deadline = Date().addingTimeInterval(2.5)
+            while claudeProbeInFlight, claudeProbeCondition.wait(until: deadline) {}
+            guard !claudeProbeInFlight else {
+                claudeProbeCondition.unlock()
+                return CodexRequestCredentials(accessToken: nil, accountKey: nil)
+            }
+            let credentials = claudeAccountProbe?.credentials ?? CodexRequestCredentials(accessToken: nil, accountKey: nil)
+            claudeProbeCondition.unlock()
+            return credentials
+        }
+        claudeProbeInFlight = true
+        let previous = claudeAccountProbe
+        claudeProbeCondition.unlock()
+        let stored = credentialReader.claudeCredentials()
+        let credentials = CodexRequestCredentials(accessToken: stored.accessToken, accountKey: nil)
+        // The email lives in a separate local file; reread it only when the
+        // signed-in account changes or it was not available yet.
+        let profile: CodexAccountProfile?
+        if credentials.accessToken == nil {
+            profile = nil
+        } else if let previous, previous.credentials == credentials, let email = previous.profile?.email {
+            profile = CodexAccountProfile(email: email, planType: stored.planType)
+        } else {
+            profile = CodexAccountProfile(email: credentialReader.claudeAccountEmail(), planType: stored.planType)
+        }
+        claudeProbeCondition.lock()
+        claudeAccountProbe = (credentials, profile, now())
+        claudeProbeInFlight = false
+        claudeProbeCondition.broadcast()
+        claudeProbeCondition.unlock()
+        return credentials
+    }
+
+    /// Irreversible fingerprint of the signed-in Claude token, or nil when no
+    /// token is available. Never contains credential material.
+    static func claudeAccountFingerprint(_ credentials: CodexRequestCredentials?) -> String? {
+        guard let token = credentials?.accessToken, !token.isEmpty else { return nil }
+        return claudeScope(token: token)
+    }
+
+    /// Reading the Claude token launches the Keychain tool, so cadence checks
+    /// that run on every provider poll share one reading for a short window.
+    /// Requests themselves always freeze a fresh token.
+    func currentClaudeAccountFingerprint(maxAge: TimeInterval = 2) -> String? {
+        claudeProbeCondition.lock()
+        if let probe = claudeAccountProbe, abs(now().timeIntervalSince(probe.readAt)) < maxAge {
+            claudeProbeCondition.unlock()
+            return Self.claudeAccountFingerprint(probe.credentials)
+        }
+        claudeProbeCondition.unlock()
+        return Self.claudeAccountFingerprint(claudeRequestCredentials(cacheFor: maxAge))
+    }
+
+    /// Server-requested wait (Retry-After or 429 backoff) for the account in
+    /// the last probe; nil when not rate-limited. Never starts `security`.
+    func claudeRateLimitedUntil() -> Date? {
+        guard let token = cachedClaudeAccessToken(), !token.isEmpty else { return nil }
+        let scope = Self.claudeScope(token: token)
+        claudeCacheLock.lock()
+        defer { claudeCacheLock.unlock() }
+        guard let retryUntil = claudeResponses[scope]?.retryUntil, retryUntil > now() else { return nil }
+        return retryUntil
+    }
+
+    private func cachedClaudeAccessToken() -> String? {
+        claudeProbeCondition.lock()
+        defer { claudeProbeCondition.unlock() }
+        return claudeAccountProbe?.credentials.accessToken
+    }
+
+    /// Display-only email/plan from the last probe; never starts `security`.
+    func cachedClaudeAccountProfile() -> CodexAccountProfile? {
+        claudeProbeCondition.lock()
+        defer { claudeProbeCondition.unlock() }
+        return claudeAccountProbe?.profile
+    }
+
+    /// Returns only the last background probe. This is safe for UI callbacks:
+    /// it never starts `/usr/bin/security` or touches the credential store.
+    func cachedClaudeAccountFingerprint() -> String? {
+        claudeProbeCondition.lock()
+        defer { claudeProbeCondition.unlock() }
+        return claudeAccountProbe.flatMap { Self.claudeAccountFingerprint($0.credentials) }
+    }
+
+    private static func claudeScope(token: String) -> String {
+        CodexRequestCredentials(accessToken: token, accountKey: nil).requestScope
+    }
+
+    private func claudeNextRequestDate(
+        _ entry: (result: Result<OfficialQuotaResult, OfficialQuotaClientError>, recordedAt: Date, retryUntil: Date?),
+        interval: TimeInterval
+    ) -> Date {
+        max(entry.recordedAt.addingTimeInterval(interval), entry.retryUntil ?? .distantPast)
+    }
+
+    /// Seconds since the real request that currently governs Claude's cadence,
+    /// adjusted for server backoff. A coordinator anchors its own timer here
+    /// so a cache hit never counts as a fresh network calibration.
+    func claudeCalibrationAge(context: OfficialQuotaRequestContext) -> TimeInterval? {
+        guard context.client == .claude, let token = context.credentials?.accessToken, !token.isEmpty else { return nil }
+        let scope = Self.claudeScope(token: token)
+        claudeCacheLock.lock()
+        defer { claudeCacheLock.unlock() }
+        let current = now()
+        let interval = max(60, claudeCalibrationInterval())
+        if let cached = claudeResponses[scope] {
+            let next = claudeNextRequestDate(cached, interval: interval)
+            if next > current { return current.timeIntervalSince(next.addingTimeInterval(-interval)) }
+        }
+        return inFlight.startedAt(key: Self.claudeRequestKey(scope: scope)).map { current.timeIntervalSince($0) }
     }
 
     static func credentialSource(
@@ -215,9 +394,17 @@ final class OfficialQuotaClient {
         requestCredentials: CodexRequestCredentials? = nil,
         storedAccessToken: String? = nil
     ) -> String {
+        // Claude requests are shared per account, never per Provider ID.
+        if client == .claude, let token = requestCredentials?.accessToken ?? storedAccessToken, !token.isEmpty {
+            return claudeRequestKey(scope: claudeScope(token: token))
+        }
         let base = "official:\(client.rawValue):\(providerID):\(credentialSource.rawValue)"
         let scope = requestCredentials ?? storedAccessToken.map { CodexRequestCredentials(accessToken: $0, accountKey: nil) }
         return scope.map { base + ":" + $0.requestScope } ?? base
+    }
+
+    private static func claudeRequestKey(scope: String) -> String {
+        "official:claude:account:" + scope
     }
 
     func isRequestInFlight(
@@ -242,39 +429,58 @@ final class OfficialQuotaClient {
     func fetchQuota(context: OfficialQuotaRequestContext,
                     completion: @escaping (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void) -> Bool {
         fetchQuota(client: context.client, providerID: context.providerID,
-            storedAccessToken: context.storedAccessToken, requestCredentials: context.credentials, completion: completion)
+            storedAccessToken: context.storedAccessToken, requestCredentials: context.credentials,
+            consumerID: context.consumerID, completion: completion)
     }
 
+    /// Releases only this context's caller; other callers on the same
+    /// Provider and account keep waiting for the shared response.
     func cancelQuota(context: OfficialQuotaRequestContext) {
-        cancelQuota(client: context.client, providerID: context.providerID,
+        cancelQuota(key: Self.requestKey(client: context.client, providerID: context.providerID,
             credentialSource: context.credentialSource, requestCredentials: context.credentials,
-            storedAccessToken: context.storedAccessToken)
+            storedAccessToken: context.storedAccessToken)) { $0.id == context.consumerID }
     }
 
     /// Duplicate consumers share transport only within the same request scope.
-    /// Frozen Codex credentials isolate overlapping account-switch requests.
+    /// Frozen Codex credentials isolate overlapping account-switch requests;
+    /// Claude shares one request per frozen account token across Providers.
     @discardableResult
     func fetchQuota(
         client: AssistantClient,
         providerID: String,
         storedAccessToken: String? = nil,
         requestCredentials: CodexRequestCredentials? = nil,
+        consumerID: UUID = UUID(),
         completion: @escaping (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void
     ) -> Bool {
         let credentialSource = Self.credentialSource(
             client: client,
             storedAccessToken: storedAccessToken
         )
-        if client == .codex, let requestCredentials, requestCredentials.accessToken == nil {
+        if client != .grok, let requestCredentials, requestCredentials.accessToken == nil {
             completion(.failure(.missingCredentials))
             return true
         }
-        guard let request = makeRequest(client: client, storedAccessToken: requestCredentials?.accessToken ?? storedAccessToken) else {
+        // Claude freezes its token once; request, scope and cache all use it.
+        let claudeToken = client == .claude
+            ? (requestCredentials?.accessToken ?? storedAccessToken ?? credentialReader.claudeAccessToken()) : nil
+        if client == .claude, claudeToken?.isEmpty != false {
+            completion(.failure(.missingCredentials))
+            return true
+        }
+        guard let request = makeRequest(client: client,
+            storedAccessToken: claudeToken ?? requestCredentials?.accessToken ?? storedAccessToken) else {
             completion(.failure(.missingCredentials))
             return true
         }
 
-        let key = Self.requestKey(
+        // Claude's usage endpoint is account-wide. Requests are shared per
+        // token scope across Providers and entry points, and every entry point,
+        // including manual refresh, honors the calibration interval and any
+        // longer server backoff. The interval is anchored to the request start,
+        // matching the coordinator's cadence clock.
+        let claudeScope = claudeToken.map(Self.claudeScope(token:))
+        let key = claudeScope.map(Self.claudeRequestKey(scope:)) ?? Self.requestKey(
             client: client,
             providerID: providerID,
             credentialSource: credentialSource,
@@ -282,14 +488,32 @@ final class OfficialQuotaClient {
             storedAccessToken: storedAccessToken
         )
         let registry = inFlight
-        guard let generation = registry.register(key: key, completion: completion) else {
+        let startedAt = now()
+        let consumer = InFlightRegistry.Consumer(providerID: providerID, id: consumerID)
+        let registered: UUID?
+        if let claudeScope {
+            // Cache lookup and registration are atomic with completion's
+            // cache write and removal, so no window allows a duplicate request.
+            claudeCacheLock.lock()
+            if let cached = claudeResponses[claudeScope],
+               claudeNextRequestDate(cached, interval: max(60, claudeCalibrationInterval())) > startedAt {
+                claudeCacheLock.unlock()
+                completion(cached.result)
+                return false
+            }
+            registered = registry.register(key: key, consumer: consumer, startedAt: startedAt, completion: completion)
+            claudeCacheLock.unlock()
+        } else {
+            registered = registry.register(key: key, consumer: consumer, startedAt: startedAt, completion: completion)
+        }
+        guard let generation = registered else {
             SwitchLog.write("official-quota transport coalesced; scope_omitted=true", level: .debug, category: "refresh.transport")
             return false
         }
-        SwitchLog.write("official-quota transport started; scope_omitted=true", level: .debug, category: "refresh.transport")
+        SwitchLog.write("official-quota transport started; client=\(client.rawValue); scope_omitted=true", level: .debug, category: "refresh.transport")
 
         let parser = self.parser
-        let task = session.dataTask(with: request) { data, response, error in
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
             let result: Result<OfficialQuotaResult, OfficialQuotaClientError>
             if let error {
                 result = .failure(.transport(Self.transportError(from: error)))
@@ -303,11 +527,62 @@ final class OfficialQuotaClient {
                     dataSize: data?.count ?? 0
                 ))
             }
-            registry.finish(key: key, generation: generation, result: result)
+            if case .failure(.httpStatus(let status, _)) = result {
+                SwitchLog.write("official quota request failed; client=\(client.rawValue); http_status=\(status)",
+                    level: .warning, category: "refresh.transport")
+            }
+            guard let claudeScope, let self else {
+                registry.take(key: key, generation: generation)?.forEach { $0(result) }
+                return
+            }
+            self.claudeCacheLock.lock()
+            let completions = registry.take(key: key, generation: generation)
+            if completions != nil {
+                self.recordClaudeResponse(result, response: response, scope: claudeScope, requestedAt: startedAt)
+            }
+            self.claudeCacheLock.unlock()
+            completions?.forEach { $0(result) }
         }
         registry.attach(task: task, to: key, generation: generation)
         task.resume()
         return true
+    }
+
+    /// Caller holds `claudeCacheLock`.
+    private func recordClaudeResponse(
+        _ result: Result<OfficialQuotaResult, OfficialQuotaClientError>,
+        response: URLResponse?,
+        scope: String,
+        requestedAt: Date
+    ) {
+        var retryUntil: Date?
+        switch result {
+        case .success:
+            claudeRateLimitFailures.removeValue(forKey: scope)
+        case .failure(.httpStatus(let status, _)) where status == 429:
+            let failures = min((claudeRateLimitFailures[scope] ?? 0) + 1, 5)
+            claudeRateLimitFailures[scope] = failures
+            let fallback = min(60 * pow(2, Double(failures - 1)), 900)
+            let header = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After")
+            let ttl: TimeInterval
+            if let seconds = header.flatMap(Double.init), seconds.isFinite, seconds > 0 {
+                ttl = max(60, seconds)
+            } else {
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+                let interval = header.flatMap(formatter.date(from:))?.timeIntervalSince(now()) ?? 0
+                ttl = interval > 0 ? max(60, interval) : fallback
+            }
+            retryUntil = now().addingTimeInterval(ttl)
+        default:
+            break
+        }
+        let interval = max(60, claudeCalibrationInterval())
+        let current = now()
+        claudeResponses = claudeResponses.filter { claudeNextRequestDate($0.value, interval: interval) > current }
+        claudeResponses[scope] = (result, requestedAt, retryUntil)
     }
 
     /// Read-only list of banked Codex reset credits. Used only when the
@@ -431,8 +706,9 @@ final class OfficialQuotaClient {
         return .urlError(urlError.code)
     }
 
-    /// Cancels a request and immediately releases all consumers. URLSession may
-    /// still deliver a late cancellation callback, but the registry ignores it.
+    /// Cancels every consumer this Provider registered on the request. Shared
+    /// transport stops only when no other consumer waits; a late callback is
+    /// ignored by the registry.
     func cancelQuota(
         client: AssistantClient,
         providerID: String,
@@ -447,11 +723,15 @@ final class OfficialQuotaClient {
             requestCredentials: requestCredentials,
             storedAccessToken: storedAccessToken
         )
+        cancelQuota(key: key) { $0.providerID == providerID }
+    }
+
+    private func cancelQuota(key: String, where matches: (InFlightRegistry.Consumer) -> Bool) {
         creditLock.lock()
         let creditTask = creditRequests.removeValue(forKey: key)?.1
         creditLock.unlock()
         creditTask?.cancel()
-        let completions = inFlight.cancel(key: key)
+        let completions = inFlight.cancel(key: key, where: matches)
         let result: Result<OfficialQuotaResult, OfficialQuotaClientError> =
             .failure(.transport(.urlError(.cancelled)))
         completions.forEach { $0(result) }
@@ -468,7 +748,7 @@ final class OfficialQuotaClient {
             accessToken = storedAccessToken ?? credentialReader.codexAccessToken()
             url = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
         case .claude:
-            accessToken = credentialReader.claudeAccessToken()
+            accessToken = storedAccessToken ?? credentialReader.claudeAccessToken()
             url = URL(string: "https://api.anthropic.com/api/oauth/usage")!
         case .grok:
             return nil

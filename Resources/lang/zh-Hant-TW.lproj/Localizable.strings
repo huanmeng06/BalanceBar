@@ -211,11 +211,11 @@
 "dashboard.general.and.refresh.pages.for_6_sec" = "持續 6 秒";
 "dashboard.general.and.refresh.pages.for_12_sec" = "持續 12 秒";
 "dashboard.general.and.refresh.pages.for_30_sec" = "持續 30 秒";
-"dashboard.general.and.refresh.pages.running" = "執行中";
+"dashboard.general.and.refresh.pages.running" = "任務中";
 "dashboard.general.and.refresh.pages.after" = "結束後";
 "dashboard.general.and.refresh.pages.refresh_now" = "立即刷新";
 "dashboard.general.and.refresh.pages.refresh" = "刷新";
-"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "任務執行期間的餘額更新頻率";
+"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API 供應商餘額刷新頻率";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "任務執行時，按所選頻率刷新目前服務商的餘額";
 "dashboard.general.and.refresh.pages.balance_data" = "餘額資訊";
 "dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "立即刷新目前服務商資料";
@@ -558,3 +558,7 @@
 "quick_switch.routing_protected" = "路由模式，請在 CC Switch 中管理";
 "quick_switch.state_untrusted" = "無法確認模式，請在 CC Switch 中管理";
 "quick_switch.manage_in_cc_switch" = "在 CC Switch 中管理";
+
+"dashboard.refresh.official_quota_frequency" = "官方額度刷新頻率";
+"dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
+"dashboard.refresh.official_for_minutes" = "持續 %1$@ 分鐘";

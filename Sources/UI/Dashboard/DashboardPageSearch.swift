@@ -335,6 +335,8 @@ struct DashboardSearchMatchResult: Sendable {
 enum DashboardSettingsSearchCatalog {
     private static let languageKey = LocalizationKey.keyDashboardGeneralAndRefreshPagesLanguage
     private static let keysRequiringArguments: Set<String> = [
+        "dashboard.refresh.official_every_seconds",
+        "dashboard.refresh.official_for_minutes",
         "dashboard.about.page.version_value",
         "dashboard.general.and.refresh.pages.current_provider_value",
         "dashboard.general.and.refresh.pages.downloading_value",
@@ -390,6 +392,12 @@ enum DashboardSettingsSearchCatalog {
         values.append(contentsOf: localizedSettingsCopy(for: section))
         if section == .general {
             values.append(contentsOf: languageSearchTitles())
+            values.append(contentsOf: AppPreferences.officialUsageRefreshIntervals.map {
+                tr(.keyDashboardOfficialEverySeconds, arguments: [String(Int($0))])
+            })
+            values.append(contentsOf: AppPreferences.officialPostTaskRefreshDurations.filter { $0 > 0 }.map {
+                tr(.keyDashboardOfficialForMinutes, arguments: [String(Int($0 / 60))])
+            })
         }
         return values
     }
@@ -472,6 +480,7 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardGeneralAndRefreshPagesLaunchWithChatGPT,
                 .keyDashboardGeneralAndRefreshPagesStartup,
                 .keyDashboardGeneralAndRefreshPagesRefresh,
+                .keyDashboardOfficialQuotaRefreshFrequency,
                 .keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks,
                 .keyDashboardGeneralAndRefreshPagesBalanceData,
                 .keyDashboardGeneralAndRefreshPagesApplication,
