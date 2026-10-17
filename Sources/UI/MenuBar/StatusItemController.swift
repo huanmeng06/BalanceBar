@@ -2465,7 +2465,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var aggregationBoundsObserver: NSObjectProtocol?
 
     private var statusItem: NSStatusItem?
-    private let statusMenu = NSMenu()
+    private var statusMenu = NSMenu()
+    private var retiringStatusMenus: [NSMenu] = []
     private var statusItemAttachmentCheckScheduled = false
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
@@ -3325,6 +3326,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        let previousView = statusMenu.items.first?.view
+        let previousWindowVisible = previousView?.window?.isVisible == true
+        let previousViewDismissing = previousView.map {
+            descendantViews(of: $0, as: MenuHoverLinkHostView.self).contains { $0.isMenuDismissing }
+        } ?? false
         menuDismissalTrace = MenuDismissalTrace.beginRound(menu: statusMenu)
         menuDismissalTrace?.host = statusMenu.items.first?.view as? MenuHoverLinkHostView
         menuDismissalTrace?.record("menu.willOpen", view: statusMenu.items.first?.view)
@@ -3336,19 +3342,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // structure change: the former is complete once the mounted viewport
         // has been reconciled, while the latter still requires a real rebuild.
         if statusMenuNeedsRebuild, menuInput.aggregatedProviders.isEmpty {
-            rebuildStatusMenu(reason: "nextOpen")
+            if previousWindowVisible || previousViewDismissing {
+                menuDismissalTrace?.record("menu.rebuild.deferred", view: previousView,
+                    details: "reason=nextOpen; direct_target_waiting_for_old_window")
+            } else {
+                rebuildStatusMenu(reason: "nextOpen")
+            }
         } else if statusMenuNeedsRebuild {
-            // A quick reopen can beat the closed rebuild. The cards just
-            // finished dismissing, so sync them inside the mounted viewport.
-            // Native menu structure changes remain pending: replacing menu
-            // items during this boundary can mutate the outgoing AppKit
-            // window, so the closed rebuild owns that transition.
+            // menuWillOpen is the boundary for the next presentation. Apply a
+            // top-level mode or native-structure change before tracking starts;
+            // card-only changes can reuse the mounted viewport.
             let view = makeAggregationOverview()
-            if statusMenu.items.first?.view !== view {
+            let topLevelViewChanged = statusMenu.items.first?.view !== view
+            let needsNativeStructure = statusMenuNeedsNativeStructureRebuild
+            if (topLevelViewChanged || needsNativeStructure)
+                && !previousWindowVisible && !previousViewDismissing {
+                rebuildStatusMenu(reason: "nextOpen")
+                menuDismissalTrace?.record("menu.aggregation.rebuilt", view: statusMenu.items.first?.view,
+                    details: "reason=nextOpen; top_level_changed=\(topLevelViewChanged); native_structure=\(needsNativeStructure)")
+            } else if topLevelViewChanged || needsNativeStructure {
                 statusMenuNeedsRebuild = true
                 menuDismissalTrace?.record("menu.aggregation.sync-deferred", view: view,
-                    details: "reason=nextOpen; top_level_view_changed=true")
-            } else if !statusMenuNeedsNativeStructureRebuild {
+                    details: "reason=nextOpen; old_window_visible=\(previousWindowVisible); old_view_dismissing=\(previousViewDismissing)")
+            } else if !needsNativeStructure {
                 statusMenuNeedsRebuild = false
                 menuDismissalTrace?.record("menu.aggregation.synced", view: view,
                     details: "reason=nextOpen; pending_cleared=true")
@@ -3397,7 +3413,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
         logAggregationLifecycle(reason: "did-close")
-        scheduleClosedMenuRebuild()
+        if statusMenuNeedsRebuild, statusMenu.items.first?.view?.window?.isVisible == true {
+            rebuildStatusMenu(reason: "closed-next-session", replacingMenu: true)
+        } else {
+            scheduleClosedMenuRebuild()
+        }
     }
 
     /// Keep the outgoing menu intact for AppKit's dismissal. A main-queue hop
@@ -6028,11 +6048,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return item
     }
 
-    private func rebuildStatusMenu(reason: String? = nil) {
+    private func rebuildStatusMenu(reason: String? = nil, replacingMenu: Bool = false) {
         guard !isStatusMenuTracking else { statusMenuNeedsRebuild = true; return }
+        let oldMenu = statusMenu
+        let menu = replacingMenu ? NSMenu() : oldMenu
+        if replacingMenu {
+            if oldMenu.items.first?.view?.window?.isVisible == true {
+                retiringStatusMenus.append(oldMenu)
+            }
+            retiringStatusMenus.removeAll { $0.items.first?.view?.window?.isVisible != true }
+            statusMenu = menu
+            menu.delegate = self
+            statusItem?.menu = menu
+            // The retiring menu owns its old card tree until its window hides.
+            // Start new aggregation state without detaching or reusing that tree.
+            aggregationViewport = nil
+            aggregationViewportShowsSingleCard = false
+            aggregationCards = [:]
+            aggregationOrder = []
+            if let aggregationBoundsObserver { NotificationCenter.default.removeObserver(aggregationBoundsObserver) }
+            aggregationBoundsObserver = nil
+        }
         statusMenuNeedsRebuild = false
         statusMenuNeedsNativeStructureRebuild = false
-        menuDismissalTrace?.record("menu.rebuild.removeAllItems", view: statusMenu.items.first?.view,
+        menuDismissalTrace?.record("menu.rebuild.removeAllItems", view: oldMenu.items.first?.view,
             details: "reason=\(reason ?? menuRebuildReason)")
         logAggregationLifecycle(reason: "rebuild-" + menuRebuildReason)
         statusMenuRebuildCountForTesting += 1
@@ -6041,18 +6080,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let previousDistanceFromTop = aggregationViewport.flatMap { scroll in
             scroll.documentView.map { max(0, $0.frame.height - scroll.contentView.bounds.maxY) }
         }
-        if aggregationViewport != nil {
-            statusMenu.items.first?.view = nil
+        if !replacingMenu, aggregationViewport != nil {
+            oldMenu.items.first?.view = nil
             (aggregationViewport as? AggregationOverviewScrollView)?.setMenuContentVisible(false)
             aggregationViewport = nil
             aggregationViewportShowsSingleCard = false
             if let aggregationBoundsObserver { NotificationCenter.default.removeObserver(aggregationBoundsObserver) }
             aggregationBoundsObserver = nil
         }
-        statusMenu.removeAllItems()
+        if !replacingMenu { menu.removeAllItems() }
         if menuInput.aggregatedProviders.isEmpty {
             clearAggregationOverview()
-            statusMenu.addItem(makeOverviewMenuItem(for: snapshot))
+            menu.addItem(makeOverviewMenuItem(for: snapshot))
         } else {
             let item = NSMenuItem()
             let viewport = makeAggregationOverview()
@@ -6060,44 +6099,44 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 (viewport as? AggregationOverviewScrollView)?.restoreViewportAfterMount(distanceFromTop: previousDistanceFromTop)
             }
             item.view = viewport
-            statusMenu.addItem(item)
+            menu.addItem(item)
         }
-        statusMenu.addItem(.separator())
+        menu.addItem(.separator())
         if menuInput.showQuickSwitchMenu {
-            statusMenu.addItem(makeQuickSwitchMenuItem())
+            menu.addItem(makeQuickSwitchMenuItem())
         }
-        statusMenu.addItem(
+        menu.addItem(
             withTitle: tr(.keyStatusItemControllerRefreshNow),
             action: #selector(manualRefresh),
             keyEquivalent: "r"
         ).target = self
-        statusMenu.addItem(.separator())
-        statusMenu.addItem(makeOpenDashboardMenuItem())
+        menu.addItem(.separator())
+        menu.addItem(makeOpenDashboardMenuItem())
         if menuInput.showOpenChatGPTMenu {
-            statusMenu.addItem(
+            menu.addItem(
                 withTitle: openCurrentAgentMenuTitle(),
                 action: #selector(openChatGPT),
                 keyEquivalent: ""
             ).target = self
         }
         if menuInput.showOpenCCSwitchMenu {
-            statusMenu.addItem(
+            menu.addItem(
                 withTitle: tr(.keyStatusItemControllerOpenCcSwitch),
                 action: #selector(openCCSwitch),
                 keyEquivalent: ""
             ).target = self
         }
         if menuInput.showStatusMenu {
-            statusMenu.addItem(makeStatusLinksMenuItem())
+            menu.addItem(makeStatusLinksMenuItem())
         }
-        statusMenu.addItem(.separator())
-        statusMenu.addItem(
+        menu.addItem(.separator())
+        menu.addItem(
             withTitle: tr(.keyStatusItemControllerQuitBalancebar),
             action: #selector(quit),
             keyEquivalent: "q"
         ).target = self
-        (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
-        menuDismissalTrace?.record("menu.rebuild.complete", view: statusMenu.items.first?.view,
+        (menu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
+        menuDismissalTrace?.record("menu.rebuild.complete", view: menu.items.first?.view,
             details: "reason=\(reason)")
         let statusWindow = statusItem?.button?.window
         SwitchLog.write(

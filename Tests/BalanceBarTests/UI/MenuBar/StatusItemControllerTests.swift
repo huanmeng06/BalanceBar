@@ -60,7 +60,7 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testClosedRebuildKeepsWaitingPastTheFastRetriesUntilTheWindowHides() throws {
+    func testClosedRebuildPreparesNewMenuWhileOutgoingWindowRemainsVisible() throws {
         let controller = makeController()
         defer { controller.teardown() }
         controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
@@ -72,20 +72,29 @@ final class StatusItemControllerTests: XCTestCase {
         defer { window.orderOut(nil); host.finishMenuDismissal() }
         controller.update(snapshot: .official("OpenAI Official", 50, "5h", nil, Date()), refreshDate: nil,
             menuInput: makeMenuInput(), settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        let outgoingItems = outgoingMenu.items.map(ObjectIdentifier.init)
         let rebuilds = controller.statusMenuRebuildCountForTesting
-        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.menuDidClose(outgoingMenu)
+        let preparedMenu = controller.statusMenuForTesting
+        XCTAssertFalse(preparedMenu === outgoingMenu)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertEqual(outgoingMenu.items.map(ObjectIdentifier.init), outgoingItems,
+            "preparing the next presentation leaves the outgoing menu structure untouched")
         func run(_ seconds: TimeInterval) {
             let deadline = Date().addingTimeInterval(seconds)
             while Date() < deadline { RunLoop.main.run(mode: .default, before: deadline) }
         }
-        // Longer than the 20 fast retries (2s) while the window stays visible.
+        // The outgoing window remains visible, but the next menu is already
+        // independently prepared and usable.
         run(2.5)
-        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
-        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertTrue(host.isMenuDismissing)
         window.orderOut(nil)
-        run(1.0)
-        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1, "the pending rebuild still lands")
+        controller.menuWillOpen(preparedMenu)
         XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        controller.menuDidClose(preparedMenu)
     }
 
     @MainActor
@@ -105,22 +114,26 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
         let items = controller.menuItemsForTesting.map(ObjectIdentifier.init)
         let rebuilds = controller.statusMenuRebuildCountForTesting
-        controller.menuDidClose(controller.statusMenuForTesting)
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuDidClose(outgoingMenu)
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === outgoingMenu)
         let deadline = Date().addingTimeInterval(0.05)
         while Date() < deadline { RunLoop.main.run(mode: .default, before: deadline) }
-        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds,
-            "The next main-queue turn must not remove outgoing native menu items")
-        XCTAssertEqual(controller.menuItemsForTesting.map(ObjectIdentifier.init), items)
-        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertEqual(outgoingMenu.items.map(ObjectIdentifier.init), items,
+            "preparing the next menu must not remove outgoing native menu items")
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
         XCTAssertTrue(host.isMenuDismissing)
         controller.updateMenu(input: makeMenuInput())
-        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
-        XCTAssertEqual(controller.menuItemsForTesting.map(ObjectIdentifier.init), items)
-        controller.menuWillOpen(controller.statusMenuForTesting)
-        XCTAssertFalse(host.isMenuDismissing)
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertEqual(outgoingMenu.items.map(ObjectIdentifier.init), items)
+        controller.menuWillOpen(nextMenu)
+        let nextHost = try XCTUnwrap(nextMenu.items.first?.view as? MenuHoverLinkHostView)
+        XCTAssertFalse(nextHost.isMenuDismissing)
+        XCTAssertTrue(host.isMenuDismissing, "the old tree remains frozen during its visual dismissal")
         XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
-        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.menuDidClose(nextMenu)
     }
 
     @MainActor
@@ -3435,16 +3448,36 @@ extension StatusItemControllerTests {
         controller.updateMenu(input: aggregationInput(count: 4, choices: choices, showStatusMenu: true))
         controller.menuDidClose(menu)
         controller.menuWillOpen(menu)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
-        XCTAssertTrue(menu.items.first?.view === root)
-        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, before)
-        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting,
-            "native menu item changes remain pending through a quick reopen")
-        controller.menuDidClose(menu)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertFalse(menu.items.first?.view === root,
+            "the first new presentation receives the updated menu structure")
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, before + 1)
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
         let quick = try XCTUnwrap(menu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
         XCTAssertTrue(quick.items.contains { $0.representedObject as? String == "new" })
+        controller.menuDidClose(menu)
+    }
+
+    @MainActor
+    func testDirectToAggregationTransitionAppliesOnFirstReopen() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        let originalView = try XCTUnwrap(menu.items.first?.view)
+
+        controller.updateMenu(input: aggregationInput(count: 2))
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertTrue(menu.items.first?.view === originalView,
+            "the currently tracked menu remains intact")
+        controller.menuDidClose(menu)
+
+        controller.menuWillOpen(menu)
+        let viewport = try XCTUnwrap(menu.items.first?.view as? AggregationOverviewScrollView)
+        XCTAssertEqual(viewport.cardHosts().count, 2)
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        controller.menuDidClose(menu)
     }
 
     @MainActor
