@@ -442,7 +442,7 @@ final class CCSwitchRepository {
         let websiteText = text(from: statement, column: 5)
         let revision = SHA256.hash(data: Data([id, name, configText, metaText, category ?? "", websiteText ?? ""].joined(separator: "\u{0}").utf8))
             .map { String(format: "%02x", $0) }.joined()
-        guard category != "official" else {
+        guard !Self.usesOfficialQuota(category: category, settingsText: configText, metaText: metaText, appType: appType) else {
             return CCSwitchProvider(
                 id: id,
                 name: name,
@@ -469,6 +469,38 @@ final class CCSwitchRepository {
             queryFailure: queryFailure,
             configurationRevision: revision
         )
+    }
+
+    // A CCS "official" card may contain a pay-as-you-go API key. Do not
+    // substitute the locally signed-in subscription's quota for that identity.
+    private static func usesOfficialQuota(
+        category: String?, settingsText: String, metaText: String, appType: String
+    ) -> Bool {
+        guard category == "official" else { return false }
+        let settings = settingsText.data(using: .utf8)
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        func nonEmpty(_ value: Any?) -> Bool {
+            guard let value = value as? String else { return false }
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if appType == "codex" {
+            let meta = metaText.data(using: .utf8)
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let binding = meta?["authBinding"] as? [String: Any]
+            if binding?["source"] as? String == "managed_account",
+               binding?["authProvider"] as? String == "codex_oauth",
+               nonEmpty(binding?["accountId"]) {
+                return true
+            }
+            let auth = settings?["auth"] as? [String: Any]
+            return !nonEmpty(auth?["OPENAI_API_KEY"])
+        }
+        if appType == "claude" {
+            let env = settings?["env"] as? [String: Any]
+            return !nonEmpty(env?["ANTHROPIC_API_KEY"])
+                && !nonEmpty(env?["ANTHROPIC_AUTH_TOKEN"])
+        }
+        return true
     }
 
     func loadChoices(appType: String) -> [ProviderChoice] {
@@ -622,7 +654,7 @@ final class CCSwitchRepository {
 
             let revisionData = Data([id, name, settingsText, metaText, category ?? "", websiteText ?? "", String(sqlite3_column_int64(statement, 6))].joined(separator: "\u{0}").utf8)
             let revision = SHA256.hash(data: revisionData).map { String(format: "%02x", $0) }.joined()
-            if category == "official" {
+            if Self.usesOfficialQuota(category: category, settingsText: settingsText, metaText: metaText, appType: appType) {
                 let stored = settingsText.data(using: .utf8)
                     .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
                 let auth = stored?["auth"] as? [String: Any]
