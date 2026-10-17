@@ -2470,6 +2470,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
+    private var statusMenuNeedsNativeStructureRebuild = false
     private var menuDismissalTrace: MenuDismissalTrace?
     private var lastSeenOverviewNumerics: [OverviewNumericIdentity: OverviewNumericSample] = [:]
     private var presentedOverviewNumerics: [OverviewNumericSample] = []
@@ -3034,6 +3035,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemAttachmentCheckScheduled = false
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
+        statusMenuNeedsNativeStructureRebuild = false
         isStatusMenuTracking = false
         overviewMenuWasSeen = false
         stopBankedResetCountdownTimer()
@@ -3329,17 +3331,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let view = statusMenu.items.first?.view {
             descendantViews(of: view, as: MenuHoverLinkHostView.self).forEach { $0.finishMenuDismissal(beforeOpening: true) }
         }
-        // A direct card applies a pending rebuild before it is shown again; a
-        // mounted aggregation viewport waits for the closed rebuild instead.
+        // A direct card applies a pending rebuild before it is shown again. For
+        // an aggregated menu, distinguish a card-only sync from a native menu
+        // structure change: the former is complete once the mounted viewport
+        // has been reconciled, while the latter still requires a real rebuild.
         if statusMenuNeedsRebuild, menuInput.aggregatedProviders.isEmpty {
             rebuildStatusMenu(reason: "nextOpen")
         } else if statusMenuNeedsRebuild {
             // A quick reopen can beat the closed rebuild. The cards just
-            // finished dismissing, so sync them inside the mounted viewport;
-            // replace the top-level view only if it has to change.
+            // finished dismissing, so sync them inside the mounted viewport.
+            // Native menu structure changes remain pending: replacing menu
+            // items during this boundary can mutate the outgoing AppKit
+            // window, so the closed rebuild owns that transition.
             let view = makeAggregationOverview()
-            if statusMenu.items.first?.view !== view { rebuildStatusMenu(reason: "nextOpen") }
-            menuDismissalTrace?.record("menu.aggregation.synced", view: view, details: "reason=nextOpen")
+            if statusMenu.items.first?.view !== view {
+                statusMenuNeedsRebuild = true
+                menuDismissalTrace?.record("menu.aggregation.sync-deferred", view: view,
+                    details: "reason=nextOpen; top_level_view_changed=true")
+            } else if !statusMenuNeedsNativeStructureRebuild {
+                statusMenuNeedsRebuild = false
+                menuDismissalTrace?.record("menu.aggregation.synced", view: view,
+                    details: "reason=nextOpen; pending_cleared=true")
+            } else {
+                menuDismissalTrace?.record("menu.aggregation.synced", view: view,
+                    details: "reason=nextOpen; native_structure_pending=true")
+            }
         }
         (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
         isStatusMenuTracking = true
@@ -3458,6 +3474,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func rebuildOrDeferMenu(forceDefer: Bool = false, nativeItemsChanged: Bool = true) {
         guard statusItem != nil else { return }
+        if nativeItemsChanged { statusMenuNeedsNativeStructureRebuild = true }
         let firstView = statusMenu.items.first?.view
         let host = firstView as? MenuHoverLinkHostView
         if !isStatusMenuTracking, outgoingMenuIsDismissing || firstView?.window?.isVisible == true {
@@ -3491,6 +3508,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if isStatusMenuTracking, aggregationViewport != nil {
             // Retain the mounted top-level viewport until tracking ends.
+            if outgoingMenuIsDismissing {
+                // The old aggregation cards are still owned by the outgoing
+                // native menu. Do not detach them while their dismissal is in
+                // flight; the closed rebuild will apply the mode transition.
+                statusMenuNeedsRebuild = true
+                menuDismissalTrace?.record("menu.rebuild.deferred", view: firstView,
+                    details: "controller_tracking=true; aggregation_to_direct=true; aggregated_dismissing=true")
+                scheduleClosedMenuRebuild()
+                return
+            }
             let viewport = aggregationViewport!
             aggregationCards.values.forEach { ($0.card as? MenuHoverLinkHostView)?.setMenuContentVisible(false) }
             aggregationCards.removeAll()
@@ -6004,6 +6031,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func rebuildStatusMenu(reason: String? = nil) {
         guard !isStatusMenuTracking else { statusMenuNeedsRebuild = true; return }
         statusMenuNeedsRebuild = false
+        statusMenuNeedsNativeStructureRebuild = false
         menuDismissalTrace?.record("menu.rebuild.removeAllItems", view: statusMenu.items.first?.view,
             details: "reason=\(reason ?? menuRebuildReason)")
         logAggregationLifecycle(reason: "rebuild-" + menuRebuildReason)

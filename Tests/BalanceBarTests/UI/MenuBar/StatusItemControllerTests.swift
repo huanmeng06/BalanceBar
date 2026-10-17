@@ -3438,6 +3438,8 @@ extension StatusItemControllerTests {
         RunLoop.main.run(until: Date().addingTimeInterval(0.02))
         XCTAssertTrue(menu.items.first?.view === root)
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, before)
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting,
+            "native menu item changes remain pending through a quick reopen")
         controller.menuDidClose(menu)
         RunLoop.main.run(until: Date().addingTimeInterval(0.02))
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, before + 1)
@@ -4646,6 +4648,36 @@ extension StatusItemControllerTests {
         let shown = (controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)?.cardHosts() ?? []
         XCTAssertEqual(shown.count, 3, "the reopened menu shows the current providers")
         XCTAssertTrue(shown.allSatisfy { $0.isMenuContentVisible && !$0.isMenuDismissing })
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting,
+            "a content-only aggregation sync consumes the pending rebuild")
+    }
+
+    @MainActor
+    func testAggregationToDirectModeWaitsForDismissingMenu() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 2), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let (window, viewport) = try mountAggregation(controller)
+        defer { window.orderOut(nil) }
+        let cards = viewport.cardHosts()
+        XCTAssertEqual(cards.count, 2)
+
+        cards[0].setMenuContentVisible(false)
+        XCTAssertTrue(cards[0].isMenuDismissing)
+
+        // Switching out of aggregation while the native menu is still
+        // tracking must leave the outgoing viewport mounted until it is safe
+        // to rebuild.
+        controller.updateMenu(input: makeMenuInput())
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertTrue(controller.statusMenuForTesting.items.first?.view === viewport)
+        XCTAssertEqual(viewport.cardHosts().count, 2)
+        XCTAssertNotNil(cards[0].superview,
+            "the dismissing aggregation card remains mounted")
     }
 
     @MainActor
