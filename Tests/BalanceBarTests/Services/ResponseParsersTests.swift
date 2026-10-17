@@ -408,7 +408,7 @@ final class ResponseParsersTests: XCTestCase {
 
     func testClaudeUnusedWindowShowsFullDurationCountdownLikeCodex() throws {
         let output = try OfficialQuotaResponseParser.parse(
-            data: fixture(#"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":16}}"#),
+            data: fixture(#"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":0}}"#),
             client: .claude, now: now)
         XCTAssertEqual(output.windows.map(\.reset), ["5h0m", ResponseParsingSupport.resetDescription(604_800.0, now: now)])
         XCTAssertEqual(output.windows.map(\.resetAt), [nil, nil], "no wall-clock reset is invented before first use")
@@ -416,6 +416,21 @@ final class ResponseParsersTests: XCTestCase {
             data: fixture(#"{"rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":18000,"reset_after_seconds":18000}}}"#),
             client: .codex, now: now)
         XCTAssertEqual(output.windows[0].reset, codex.windows[0].reset)
+    }
+
+    func testClaudeUsedWindowWithoutResetTimeStaysUnknown() throws {
+        for utilization in [16, 100] {
+            let output = try OfficialQuotaResponseParser.parse(
+                data: fixture(#"{"five_hour":{"utilization":\#(utilization)},"seven_day":{"utilization":\#(utilization),"resets_at":null}}"#),
+                client: .claude, now: now)
+            XCTAssertEqual(output.windows.map(\.reset), [nil, nil], "\(utilization)% used has an unknown window start")
+            XCTAssertEqual(output.windows.map(\.resetAt), [nil, nil])
+        }
+        let valid = try OfficialQuotaResponseParser.parse(
+            data: fixture(#"{"five_hour":{"utilization":16,"resets_at":"2023-11-15T00:13:20Z"}}"#),
+            client: .claude, now: now)
+        XCTAssertEqual(valid.windows.first?.reset, "2h0m")
+        XCTAssertEqual(valid.windows.first?.resetAt, Date(timeIntervalSince1970: 1_700_007_200))
     }
 
     func testClaudeMicrosecondResetTimestampFormatsAsCountdown() throws {
