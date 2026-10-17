@@ -215,7 +215,7 @@
 "dashboard.general.and.refresh.pages.after" = "После";
 "dashboard.general.and.refresh.pages.refresh_now" = "Обновить сейчас";
 "dashboard.general.and.refresh.pages.refresh" = "Обновить";
-"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Обновление баланса во время задач";
+"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Частота обновления баланса API-провайдера";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "Обновлять баланс выбранного провайдера через заданный интервал во время выполнения задачи";
 "dashboard.general.and.refresh.pages.balance_data" = "Информация о балансе";
 "dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "Обновить данные текущего провайдера";
@@ -537,3 +537,7 @@
 "quick_switch.routing_protected" = "Режим маршрутизации: настройте в CC Switch";
 "quick_switch.state_untrusted" = "Режим не подтверждён: настройте в CC Switch";
 "quick_switch.manage_in_cc_switch" = "Настроить в CC Switch";
+
+"dashboard.refresh.official_quota_frequency" = "Частота обновления официальной квоты";
+"dashboard.refresh.official_every_seconds" = "Каждые %1$@ с";
+"dashboard.refresh.official_for_minutes" = "В течение %1$@ мин";

@@ -297,6 +297,9 @@ final class ProviderRefreshCoordinator {
     private let queue: DispatchQueue
     private let queueKey = DispatchSpecificKey<Void>()
     private let now: () -> Date
+    private let refreshPreferences: AppPreferences?
+    private var officialRefreshInterval: TimeInterval { refreshPreferences?.officialUsageRefreshInterval ?? 60 }
+    private var lastOfficialSummaryFetch: [SummaryIdentity: Date] = [:]
     private let actions: ProviderRefreshActions
     private let codexResetObservationStore: CodexResetObservationStore
     // Cadence timestamps are owned by `queue`; public entry points never read
@@ -357,6 +360,7 @@ final class ProviderRefreshCoordinator {
         codexResetObservationStore: CodexResetObservationStore = CodexResetObservationStore(),
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-refresh"),
         actions: ProviderRefreshActions,
+        refreshPreferences: AppPreferences? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
         self.repository = repository
@@ -366,6 +370,7 @@ final class ProviderRefreshCoordinator {
         self.codexResetObservationStore = codexResetObservationStore
         self.queue = queue
         self.now = now
+        self.refreshPreferences = refreshPreferences
         self.actions = actions
         queue.setSpecific(key: queueKey, value: ())
     }
@@ -401,7 +406,7 @@ final class ProviderRefreshCoordinator {
 
     /// Called on the refresh owner queue before the ordinary single-provider path.
     @discardableResult
-    func refreshAggregation(reader: CCSwitchAggregationRepository, force: Bool) -> Bool {
+    func refreshAggregation(reader: CCSwitchAggregationRepository, force: Bool, forceAPIBalance: Bool? = nil) -> Bool {
         guard lifetime.isCurrent() else { return false }
         SwitchLog.write("aggregation refresh triggered; force=\(force)", level: .debug,
             category: "refresh.aggregation", throttleKey: "aggregation-trigger-\(force)", minimumInterval: 1)
@@ -475,9 +480,12 @@ final class ProviderRefreshCoordinator {
                         subscription: OpenAISubscriptionTier(planType: profile?.planType)) : nil,
                     status: .loading, reason: nil, fetchedAt: nil)
             }
-            let interval = TimeInterval(max(60, (entry.source.query?.intervalMinutes ?? 1) * 60))
+            let interval = entry.source.isOfficial ? officialRefreshInterval
+                : TimeInterval(max(60, (entry.source.query?.intervalMinutes ?? 1) * 60))
             let due = aggregationAttempts[identity].map { now().timeIntervalSince($0) >= interval } ?? true
-            if (force || due), aggregationRequests[identity] == nil, !aggregationPending.contains(identity) {
+            let forceEntry = entry.source.isOfficial
+                ? (force && refreshPreferences == nil) : (forceAPIBalance ?? force)
+            if (forceEntry || due), aggregationRequests[identity] == nil, !aggregationPending.contains(identity) {
                 aggregationPending.append(identity)
             } else {
                 SwitchLog.write("aggregation refresh skipped; ttl=\(!due && !force); coalesced=\(aggregationRequests[identity] != nil || aggregationPending.contains(identity))",
@@ -711,8 +719,8 @@ final class ProviderRefreshCoordinator {
                 return
             }
             let currentDate = now()
-            let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= 60 } ?? true
-            let shouldRefresh = client == .claude ? (sourceChanged || due)
+            let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= officialRefreshInterval } ?? true
+            let shouldRefresh = (client == .claude || refreshPreferences != nil) ? (sourceChanged || due)
                 : (forceBalance || switched || sourceChanged || due)
             guard shouldRefresh else { return }
             if standardIdentityChanged(from: lastStandardSourceKey, client: client, provider: current) != nil,
@@ -800,6 +808,12 @@ final class ProviderRefreshCoordinator {
                 if let providerIDs, !providerIDs.contains(source.id) { continue }
                 if source.isOfficial {
                     guard client == .codex || client == .claude else { continue }
+                    let identity = SummaryIdentity(client: client, providerID: source.id)
+                    if self.refreshPreferences != nil, !force,
+                       previousRevisions[source.id] == source.configurationRevision,
+                       let previous = self.lastOfficialSummaryFetch[identity],
+                       currentDate.timeIntervalSince(previous) < self.officialRefreshInterval { continue }
+                    self.lastOfficialSummaryFetch[identity] = currentDate
                     let credentials: CodexRequestCredentials? = client == .codex ? source.officialAccessToken.map {
                         CodexRequestCredentials(accessToken: $0, accountKey: nil)
                     } ?? self.officialQuotaClient.codexRequestCredentials() : nil

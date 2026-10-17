@@ -211,11 +211,11 @@
 "dashboard.general.and.refresh.pages.for_6_sec" = "持续 6 秒";
 "dashboard.general.and.refresh.pages.for_12_sec" = "持续 12 秒";
 "dashboard.general.and.refresh.pages.for_30_sec" = "持续 30 秒";
-"dashboard.general.and.refresh.pages.running" = "运行中";
+"dashboard.general.and.refresh.pages.running" = "任务中";
 "dashboard.general.and.refresh.pages.after" = "结束后";
 "dashboard.general.and.refresh.pages.refresh_now" = "立即刷新";
 "dashboard.general.and.refresh.pages.refresh" = "刷新";
-"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "任务期间余额刷新频率";
+"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API 服务商余额刷新频率";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "任务运行时，按所选频率刷新当前服务商的余额";
 "dashboard.general.and.refresh.pages.balance_data" = "余额信息";
 "dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "立即刷新当前服务商数据";
@@ -537,3 +537,7 @@
 "quick_switch.routing_protected" = "路由模式，请在 CC Switch 中管理";
 "quick_switch.state_untrusted" = "无法确认模式，请在 CC Switch 中管理";
 "quick_switch.manage_in_cc_switch" = "在 CC Switch 中管理";
+
+"dashboard.refresh.official_quota_frequency" = "官方额度刷新频率";
+"dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
+"dashboard.refresh.official_for_minutes" = "持续 %1$@ 分钟";

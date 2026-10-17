@@ -180,7 +180,14 @@ final class OfficialQuotaClient {
     private let parser: OfficialQuotaParsing
     private let now: () -> Date
     private let claudeCacheLock = NSLock()
-    private var claudeResponses: [String: (result: Result<OfficialQuotaResult, OfficialQuotaClientError>, expiresAt: Date)] = [:]
+    private var claudeResponses: [String: (result: Result<OfficialQuotaResult, OfficialQuotaClientError>, recordedAt: Date, retryUntil: Date?)] = [:]
+    private var claudeCalibrationInterval: () -> TimeInterval = { 60 }
+
+    func configureClaudeCalibrationInterval(_ interval: @escaping () -> TimeInterval) {
+        claudeCacheLock.lock()
+        claudeCalibrationInterval = interval
+        claudeCacheLock.unlock()
+    }
     private var claudeRateLimitFailures: [String: Int] = [:]
     private let inFlight = InFlightRegistry()
     private let creditLock = NSLock()
@@ -294,8 +301,9 @@ final class OfficialQuotaClient {
         if let claudeScope {
             claudeCacheLock.lock()
             let cached = claudeResponses[claudeScope]
+            let interval = max(60, claudeCalibrationInterval())
             claudeCacheLock.unlock()
-            if let cached, cached.expiresAt > now() {
+            if let cached, max(cached.recordedAt.addingTimeInterval(interval), cached.retryUntil ?? .distantPast) > now() {
                 completion(cached.result)
                 return false
             }
@@ -358,8 +366,15 @@ final class OfficialQuotaClient {
                     }
                 default: ttl = 60
                 }
-                self.claudeResponses = self.claudeResponses.filter { $0.value.expiresAt > self.now() }
-                self.claudeResponses[claudeScope] = (result, self.now().addingTimeInterval(ttl))
+                let interval = max(60, self.claudeCalibrationInterval())
+                self.claudeResponses = self.claudeResponses.filter {
+                    max($0.value.recordedAt.addingTimeInterval(interval), $0.value.retryUntil ?? .distantPast) > self.now()
+                }
+                let retryUntil: Date?
+                if case .failure(.httpStatus(let status, _)) = result, status == 429 {
+                    retryUntil = self.now().addingTimeInterval(ttl)
+                } else { retryUntil = nil }
+                self.claudeResponses[claudeScope] = (result, self.now(), retryUntil)
                 self.claudeCacheLock.unlock()
             }
         }

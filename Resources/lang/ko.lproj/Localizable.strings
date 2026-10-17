@@ -215,7 +215,7 @@
 "dashboard.general.and.refresh.pages.after" = "이후";
 "dashboard.general.and.refresh.pages.refresh_now" = "지금 업데이트";
 "dashboard.general.and.refresh.pages.refresh" = "업데이트";
-"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "작업 중 잔액 새로 고침 빈도";
+"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API 공급자 잔액 새로 고침 빈도";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "작업 실행 중 선택한 빈도로 선택한 서비스 제공자의 잔액을 새로 고칩니다";
 "dashboard.general.and.refresh.pages.balance_data" = "잔액 정보";
 "dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "현재 서비스 제공자 데이터를 지금 새로 고침";
@@ -537,3 +537,7 @@
 "quick_switch.routing_protected" = "라우팅 모드: CC Switch에서 관리";
 "quick_switch.state_untrusted" = "모드를 확인할 수 없습니다: CC Switch에서 관리";
 "quick_switch.manage_in_cc_switch" = "CC Switch에서 관리";
+
+"dashboard.refresh.official_quota_frequency" = "공식 할당량 새로 고침 빈도";
+"dashboard.refresh.official_every_seconds" = "%1$@초마다";
+"dashboard.refresh.official_for_minutes" = "%1$@분 동안";

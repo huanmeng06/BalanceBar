@@ -472,6 +472,23 @@ final class AppPreferences {
     }
     var animateCodexActivity: Bool { get { bool("animateCodexActivity", default: true) } set { defaults.set(newValue, forKey: "animateCodexActivity") } }
     var activityPollInterval: TimeInterval { get { positiveDouble("activityPollInterval", default: 0.25) } set { defaults.set(newValue, forKey: "activityPollInterval") } }
+    static let officialUsageRefreshIntervals: [TimeInterval] = [60, 90, 120, 150, 180]
+    static let officialPostTaskRefreshDurations: [TimeInterval] = [0, 60, 120, 180, 300]
+    var officialUsageRefreshInterval: TimeInterval {
+        get {
+            let value = defaults.double(forKey: "officialUsageRefreshInterval")
+            return Self.officialUsageRefreshIntervals.contains(value) ? value : 60
+        }
+        set { defaults.set(Self.officialUsageRefreshIntervals.contains(newValue) ? newValue : 60, forKey: "officialUsageRefreshInterval") }
+    }
+    var officialPostTaskRefreshDuration: TimeInterval {
+        get {
+            guard defaults.object(forKey: "officialPostTaskRefreshDuration") != nil else { return 120 }
+            let value = defaults.double(forKey: "officialPostTaskRefreshDuration")
+            return Self.officialPostTaskRefreshDurations.contains(value) ? value : 120
+        }
+        set { defaults.set(Self.officialPostTaskRefreshDurations.contains(newValue) ? newValue : 120, forKey: "officialPostTaskRefreshDuration") }
+    }
     var codexUsageRefreshInterval: TimeInterval { get { positiveDouble("codexUsageRefreshInterval", default: 3) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }
     var postCodexRefreshDuration: TimeInterval {
         get { max(0, (defaults.object(forKey: "postCodexRefreshDuration") as? NSNumber)?.doubleValue ?? 12) }

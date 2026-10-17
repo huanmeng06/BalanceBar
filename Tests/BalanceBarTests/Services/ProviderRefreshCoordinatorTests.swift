@@ -415,6 +415,34 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 
+    func testConfiguredOfficialCadenceHonorsSelectedIntervalForCodex() throws {
+        try setCurrentProvider("codex-replacement")
+        let suite = "OfficialCadence.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.officialUsageRefreshInterval = 180
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let ready = DispatchSemaphore(value: 0)
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data("{}".utf8), statusCode: 200) }
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture"),
+                parser: IncrementingOfficialQuotaParser(counter: IncrementingCounter())),
+            actions: makeActions { _ in ready.signal() }, refreshPreferences: preferences, now: { clock.now })
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        waitForEvent(ready)
+        clock.advance(by: 179)
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        clock.advance(by: 1)
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: false, switched: false)
+        waitForEvent(ready)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+    }
+
     private func useClaudeOfficialProvider() throws -> CCSwitchProvider {
         try withDatabase { database in
             try execute(database, sql: "UPDATE providers SET name = 'Claude Official', category = 'official', settings_config = '{}', meta = '{}' WHERE app_type = 'claude'")
@@ -2602,11 +2630,13 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         codexResetObservationStore: CodexResetObservationStore = CodexResetObservationStore(),
         queue: DispatchQueue = DispatchQueue(label: "test.provider-refresh.owner"),
         actions: ProviderRefreshActions,
+        refreshPreferences: AppPreferences? = nil,
         now: @escaping () -> Date = Date.init
     ) -> ProviderRefreshCoordinator {
         let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: officialQuotaClient,
             balanceAPIClient: balanceAPIClient, balanceProgressStore: balanceProgressStore,
-            codexResetObservationStore: codexResetObservationStore, queue: queue, actions: actions, now: now)
+            codexResetObservationStore: codexResetObservationStore, queue: queue, actions: actions,
+            refreshPreferences: refreshPreferences, now: now)
         coordinators.append(coordinator)
         return coordinator
     }
@@ -3174,6 +3204,55 @@ extension ProviderRefreshCoordinatorTests {
             balanceProgressStore: ProviderBalanceProgressStore(defaults: defaults),
             codexResetObservationStore: CodexResetObservationStore(defaults: defaults),
             actions: actions)
+    }
+
+    func testConfiguredAggregationKeepsOfficialAndAPICadencesIndependent() throws {
+        let reader = try aggregationFixture(members: ["codex-custom"], route: "codex-replacement")
+        let suite = "AggregationCadence.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.officialUsageRefreshInterval = 180
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let counter = IncrementingCounter()
+        DelayedBalanceURLProtocol.setHandler { request in
+            if request.url?.host == "codex.provider.test" {
+                return DelayedBalanceURLProtocol.success(amount: String(counter.next()))
+            }
+            return .init(data: Data("{}".utf8), statusCode: 200)
+        }
+        let first = expectation(description: "both providers initially fresh")
+        let api = expectation(description: "API independently refreshes after three seconds")
+        var initialDelivered = false
+        var apiDelivered = false
+        var actions = makeActions()
+        actions.aggregationChanged = { displays, _ in
+            if displays.filter({ $0.status == .fresh }).count == 2, !initialDelivered {
+                initialDelivered = true
+                first.fulfill()
+            }
+            if displays.contains(where: { $0.identity.providerID == "codex-custom" && $0.snapshot.amount == 2 }), !apiDelivered {
+                apiDelivered = true
+                api.fulfill()
+            }
+        }
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 80, label: "5h",
+            daysText: "5 hours", reset: nil, durationSeconds: 18_000)
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture"),
+                parser: FixedOfficialQuotaParser(windows: [window])),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: actions,
+            refreshPreferences: preferences, now: { clock.now })
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [first], timeout: 3)
+        clock.advance(by: 3)
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true, forceAPIBalance: true) }
+        wait(for: [api], timeout: 3)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3, "official quota must not follow API's three-second cadence")
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true, forceAPIBalance: false) }
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3, "API trailing window can end independently")
     }
 
     func testAggregationBoundsConcurrentRequestsAndCancelsRemovedMembers() throws {

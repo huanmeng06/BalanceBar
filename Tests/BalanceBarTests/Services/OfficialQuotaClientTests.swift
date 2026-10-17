@@ -373,6 +373,21 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertEqual(StubURLProtocol.requestCount, 6)
     }
 
+    func testClaudeCalibrationUsesSelectedIntervalAndAppliesChangesToCachedResults() throws {
+        var time = Date(timeIntervalSince1970: 1_700_000_000)
+        var interval: TimeInterval = 180
+        let client = makeClient(claudeToken: "fixture", now: { time })
+        client.configureClaudeCalibrationInterval { interval }
+        StubURLProtocol.setHandler { _ in StubResult(data: Self.claudeBody) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        interval = 90
+        time.addTimeInterval(30)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+    }
+
     func testClaudeFailuresAlsoWaitOneMinuteBeforeRetrying() throws {
         for reply in [StubResult(statusCode: 503, data: Data()), StubResult(error: URLError(.timedOut)),
                       StubResult(data: Data("bad-json".utf8))] {

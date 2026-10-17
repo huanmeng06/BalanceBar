@@ -215,7 +215,7 @@
 "dashboard.general.and.refresh.pages.after" = "After";
 "dashboard.general.and.refresh.pages.refresh_now" = "Refresh Now";
 "dashboard.general.and.refresh.pages.refresh" = "Refresh";
-"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Balance refresh while tasks run";
+"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API provider balance refresh frequency";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "Refreshes the selected provider's balance at the chosen interval while a task runs";
 "dashboard.general.and.refresh.pages.balance_data" = "Balance information";
 "dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "Refresh the current provider's data now";
@@ -537,3 +537,7 @@
 "quick_switch.routing_protected" = "Routing mode — manage in CC Switch";
 "quick_switch.state_untrusted" = "State could not be verified — manage in CC Switch";
 "quick_switch.manage_in_cc_switch" = "Manage in CC Switch";
+
+"dashboard.refresh.official_quota_frequency" = "Official quota refresh frequency";
+"dashboard.refresh.official_every_seconds" = "Every %1$@ s";
+"dashboard.refresh.official_for_minutes" = "For %1$@ min";
