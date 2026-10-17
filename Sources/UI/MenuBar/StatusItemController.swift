@@ -2445,6 +2445,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let date: Date?
         var notes: String? = nil
         var noteTags: [String]? = nil
+        /// Client that owns this card's quota prediction evidence.
+        var paceClient: AssistantClient = .codex
     }
     private struct AggregationCard {
         let wrapper: NSView
@@ -2947,11 +2949,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // the notification boundary so an already-running timer cannot
             // outlive the user's accessibility preference.
             self.updateActivityIcon()
-            (self.statusMenu.items.first?.view as? MenuHoverLinkHostView)?.paceViews.forEach {
-                $0.refreshMarkerAccessibility()
-            }
+            let hosts = self.overviewCardHosts()
+            hosts.forEach { $0.paceViews.forEach { $0.refreshMarkerAccessibility() } }
             MainActor.assumeIsolated {
-                (self.statusMenu.items.first?.view as? MenuHoverLinkHostView)?.sectionFocus.refreshAccessibility()
+                hosts.forEach {
+                    $0.sectionFocus.refreshAccessibility()
+                    $0.reconcilePeerBlur()
+                }
             }
         }
     }
@@ -3379,14 +3383,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func scheduleClosedMenuRebuild(attempt: Int = 0) {
         guard statusMenuNeedsRebuild, !isStatusMenuTracking, !closedMenuRebuildScheduled else { return }
         closedMenuRebuildScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0 : 0.1)) { [weak self] in
+        // Poll quickly at first, then back off; never give up while a rebuild
+        // is pending, or an aggregated menu could keep stale content.
+        let delay: TimeInterval = attempt == 0 ? 0 : (attempt <= 20 ? 0.1 : 0.5)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
             self.closedMenuRebuildScheduled = false
             guard self.statusItem != nil, !self.isStatusMenuTracking, self.statusMenuNeedsRebuild else { return }
             guard self.statusMenu.items.first?.view?.window?.isVisible != true else {
                 self.menuDismissalTrace?.record("menu.rebuild.closed.waiting", view: self.statusMenu.items.first?.view,
                     details: "attempt=\(attempt)")
-                if attempt < 20 { self.scheduleClosedMenuRebuild(attempt: attempt + 1) }
+                self.scheduleClosedMenuRebuild(attempt: attempt + 1)
                 return
             }
             self.rebuildStatusMenu(reason: "closed")
@@ -3446,7 +3453,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard statusItem != nil else { return }
         let firstView = statusMenu.items.first?.view
         let host = firstView as? MenuHoverLinkHostView
-        if !isStatusMenuTracking, host?.isMenuDismissing == true || firstView?.window?.isVisible == true {
+        if !isStatusMenuTracking, outgoingMenuIsDismissing || firstView?.window?.isVisible == true {
             // The outgoing native menu is still on screen; never mutate it.
             statusMenuNeedsRebuild = true
             menuDismissalTrace?.record("menu.rebuild.deferred", view: host,
@@ -3458,6 +3465,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         updateQuickSwitchContent()
         if !menuInput.aggregatedProviders.isEmpty, !statusMenu.items.isEmpty,
            isStatusMenuTracking || (!nativeItemsChanged && aggregationViewport != nil) {
+            // Between app deactivation and menuDidClose the cards may already
+            // be dismissing; leave them intact for the closed rebuild.
+            if outgoingMenuIsDismissing {
+                statusMenuNeedsRebuild = true
+                menuDismissalTrace?.record("menu.rebuild.deferred", view: firstView,
+                    details: "controller_tracking=\(isStatusMenuTracking); aggregated_dismissing=true")
+                return
+            }
             let view = makeAggregationOverview()
             if statusMenu.items.first?.view !== view {
                 if isStatusMenuTracking { statusMenuNeedsRebuild = true; return }
@@ -3508,6 +3523,43 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         menuDismissalTrace?.record("content.update", view: host, details: "source=\(source)")
         return host
+    }
+
+    /// Every overview card in the menu: the direct card, or each aggregated
+    /// card in display order.
+    private func overviewCardHosts() -> [MenuHoverLinkHostView] {
+        if menuInput.aggregatedProviders.isEmpty {
+            return (statusMenu.items.first?.view as? MenuHoverLinkHostView).map { [$0] } ?? []
+        }
+        return aggregationOverviewDisplays.compactMap { aggregationCards[$0.identity]?.card as? MenuHoverLinkHostView }
+    }
+
+    /// Any card of the outgoing menu is still dismissing; never mutate it.
+    private var outgoingMenuIsDismissing: Bool {
+        overviewCardHosts().contains { $0.isMenuDismissing }
+    }
+
+    /// Cards that may take a tracking-time mutation now, each with its own
+    /// data context. Direct mode uses the shared host gate above; aggregated
+    /// cards pass the same tracking/visibility/dismissal checks one by one.
+    private func menuContentCardsForUpdate(_ source: String) -> [(host: MenuHoverLinkHostView, context: OverviewCardContext)] {
+        if menuInput.aggregatedProviders.isEmpty {
+            return menuContentHostForUpdate(source).map { [($0, directCardContext(for: snapshot))] } ?? []
+        }
+        var cards: [(host: MenuHoverLinkHostView, context: OverviewCardContext)] = []
+        for display in aggregationOverviewDisplays {
+            guard let host = aggregationCards[display.identity]?.card as? MenuHoverLinkHostView else { continue }
+            guard isStatusMenuTracking, host.isMenuContentVisible, !host.isMenuDismissing else {
+                if isStatusMenuTracking || host.isMenuDismissing || host.window?.isVisible == true {
+                    statusMenuNeedsRebuild = true
+                    menuDismissalTrace?.record("content.update.deferred", view: host,
+                        details: "source=\(source); card=aggregated")
+                }
+                continue
+            }
+            cards.append((host, cardContext(display)))
+        }
+        return cards
     }
 
     private func refreshNativeCodexIconAppearance() {
@@ -6142,7 +6194,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func directCardContext(for snapshot: Snapshot) -> OverviewCardContext {
         OverviewCardContext(snapshot: snapshot,
             identity: menuInput.directProviderID.map { menuInput.activeClient.rawValue + "|" + $0 } ?? snapshot.provider,
-            account: menuInput.openAIAccount, date: refreshDate, noteTags: menuInput.directProviderNotes)
+            account: menuInput.openAIAccount, date: refreshDate, noteTags: menuInput.directProviderNotes,
+            paceClient: menuInput.activeClient)
     }
 
     private func cardContext(_ display: AggregatedProviderDisplay) -> OverviewCardContext {
@@ -6719,8 +6772,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let layout = makeOverviewCardLayout(for: snapshot, presentation: quotaPresentation, account: context.account,
             aggregation: supplied != nil || (snapshot.kind == .balance && !menuInput.directProviderIsOfficial))
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
-        view.quotaPaceAccount = menuInput.openAIAccount
-        view.quotaPaceClient = menuInput.activeClient
+        view.quotaPaceAccount = context.account
+        view.quotaPaceClient = context.paceClient
         view.overviewLayout = layout
         view.providerIdentity = context.identity
         view.forecastContentKey = forecastContentKey(quotaPresentation.resetForecast)
@@ -6818,7 +6871,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 let plan = overviewNumericPlan(for: sample)
                 let progress = settings.showQuotaProgressBar
                     ? makeOverviewQuotaProgress(plan: plan, frame: row.progress, window: window,
-                        cycleStart: quotaPaceCycleStart(for: window, in: snapshot), now: quotaPaceNow) : nil
+                        cycleStart: quotaPaceCycleStart(for: window, context: context), now: quotaPaceNow) : nil
 
                 let amount = makeOverviewNumericAmount(plan: plan, sample: sample, frame: row.amount)
 
@@ -7371,36 +7424,50 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         bankedResetCountdownNowForTesting ?? Date()
     }
 
-    private func quotaPaceCycleStart(for window: OfficialQuotaWindow, in snapshot: Snapshot) -> Date? {
-        guard menuInput.activeClient == .codex, snapshot.kind == .official,
-              case .available(let email) = menuInput.openAIAccount?.state,
+    /// Each card is validated against its own account: aggregated Codex
+    /// cards may belong to accounts other than the active one.
+    private func quotaPaceCycleStart(for window: OfficialQuotaWindow, context: OverviewCardContext) -> Date? {
+        let snapshot = context.snapshot
+        guard context.paceClient == .codex, snapshot.kind == .official,
+              case .available(let email) = context.account?.state,
               snapshot.quotaPredictionAccountKey == email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               let cycle = QuotaPredictionCycle(window: window) else { return nil }
         return snapshot.quotaPredictionContexts.first { $0.cycle == cycle }?.inferredCycleStart
     }
 
     private func refreshQuotaPaceViews() {
-        guard let host = menuContentHostForUpdate("pace") else { return }
-        host.reconcilePaceMenuTracking()
+        let cards = menuContentCardsForUpdate("pace")
+        guard !cards.isEmpty else { return }
         let now = quotaPaceNowForTesting ?? Date()
-        let windows = snapshot.officialQuotaMenuPresentation(
-            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
-        ).windows
-        let identityMatches = snapshot.kind == .official
-            && host.quotaPaceAccount == menuInput.openAIAccount && host.quotaPaceClient == menuInput.activeClient
-            && quotaPaceSnapshotAccount == menuInput.openAIAccount && quotaPaceSnapshotClient == menuInput.activeClient
-            && settings.showQuotaProgressBar && settings.showQuotaPaceIndicator
-        for view in host.paceViews {
-            if identityMatches, let window = windows.first(where: {
-                OverviewNumericPresentation.identity(for: $0, provider: snapshot.provider) == view.numericIdentity
-            }) {
-                view.update(window: window, now: now, cycleStart: quotaPaceCycleStart(for: window, in: snapshot), timeZone: settings.displayTimeZone)
-            } else {
-                view.invalidatePresentation()
+        let aggregated = !menuInput.aggregatedProviders.isEmpty
+        for (host, context) in cards {
+            host.reconcilePaceMenuTracking()
+            let snapshot = context.snapshot
+            let windows = snapshot.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+            ).windows
+            // Aggregated cards carry their own account; the direct card must
+            // also match the account its snapshot was fetched for.
+            let ownerMatches = aggregated
+                ? host.quotaPaceAccount == context.account && host.quotaPaceClient == context.paceClient
+                : host.quotaPaceAccount == menuInput.openAIAccount && host.quotaPaceClient == menuInput.activeClient
+                    && quotaPaceSnapshotAccount == menuInput.openAIAccount && quotaPaceSnapshotClient == menuInput.activeClient
+            let identityMatches = snapshot.kind == .official && ownerMatches
+                && settings.showQuotaProgressBar && settings.showQuotaPaceIndicator
+            for view in host.paceViews {
+                if identityMatches, let window = windows.first(where: {
+                    OverviewNumericPresentation.identity(for: $0, provider: context.identity) == view.numericIdentity
+                }) {
+                    view.update(window: window, now: now, cycleStart: quotaPaceCycleStart(for: window, context: context),
+                        timeZone: settings.displayTimeZone)
+                } else {
+                    view.invalidatePresentation()
+                }
             }
         }
-        if host.paceViews.contains(where: { $0.pace != nil }) {
+        // One menu-level timer serves every card.
+        if cards.contains(where: { $0.host.paceViews.contains { $0.pace != nil } }) {
             guard quotaPaceTimer == nil else { return }
             let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.refreshQuotaPaceViews() }
             timer.tolerance = 1
@@ -7420,13 +7487,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func syncBankedResetCountdownTimer() {
-        let shouldRun = menuContentHostForUpdate("countdown.timer") != nil
-            && settings.showBankedReset
-            && snapshot.kind == .official
-            && snapshot.officialQuotaMenuPresentation(
-                lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
-            ).resetForecast.remainingCountdownSeconds(now: bankedResetCountdownNow()) != nil
+        let shouldRun = settings.showBankedReset
+            && menuContentCardsForUpdate("countdown.timer").contains { card in
+                card.context.snapshot.kind == .official
+                    && card.context.snapshot.officialQuotaMenuPresentation(
+                        lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+                        hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+                    ).resetForecast.remainingCountdownSeconds(now: bankedResetCountdownNow()) != nil
+            }
         if shouldRun {
             startBankedResetCountdownTimerIfNeeded()
         } else {
@@ -7886,8 +7954,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.overviewNumericOpenWorkItem = nil
-            guard let overview = self.menuContentHostForUpdate("numerics.open") else { return }
-            self.playOverviewNumericTransitions(in: overview)
+            for card in self.menuContentCardsForUpdate("numerics.open") {
+                self.playOverviewNumericTransitions(in: card.host)
+            }
         }
         overviewNumericOpenWorkItem = work
         DispatchQueue.main.asyncAfter(
@@ -7942,6 +8011,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func reconcileOverviewSections(in host: MenuHoverLinkHostView, context: OverviewCardContext) {
+        // A lifted ticket floats as a snapshot; resync it with whatever changed.
+        defer { host.refreshLiftedTickets() }
         let snapshot = context.snapshot
         guard snapshot.kind == .official, let previous = host.overviewLayout else { return }
         let presentation = snapshot.officialQuotaMenuPresentation(
@@ -8078,25 +8149,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func applyInPlaceOverviewNumericUpdatesIfTracking() {
-        guard let overview = statusMenu.items.first?.view else { return }
-        if menuInput.aggregatedProviders.isEmpty {
-            guard menuContentHostForUpdate("numerics") != nil else { return }
-        } else {
-            guard isStatusMenuTracking else { return }
-        }
+        guard statusMenu.items.first?.view != nil else { return }
+        let cards = menuContentCardsForUpdate("numerics")
+        let aggregated = !menuInput.aggregatedProviders.isEmpty
+        // Error cards are plain views without their own dismissal state; they
+        // follow the menu-wide gate.
+        let plainCards = aggregated && isStatusMenuTracking && !outgoingMenuIsDismissing
+            ? aggregationOverviewDisplays.filter { !(aggregationCards[$0.identity]?.card is MenuHoverLinkHostView) }
+            : []
+        guard !cards.isEmpty || !plainCards.isEmpty else { return }
         presentedOverviewNumerics = currentOverviewNumericSamples()
-        if menuInput.aggregatedProviders.isEmpty {
-            applyInPlaceOverviewNumericUpdates(in: overview, context: directCardContext(for: snapshot))
-        } else {
-            for display in aggregationOverviewDisplays {
-                guard let card = aggregationCards[display.identity] else { continue }
-                applyInPlaceOverviewNumericUpdates(in: card.card, context: cardContext(display))
-                updateAggregationTimestamp(in: card.card, display: display)
+        for (host, context) in cards {
+            applyInPlaceOverviewNumericUpdates(in: host, context: context)
+            if aggregated, let display = aggregationOverviewDisplays.first(where: {
+                aggregationCards[$0.identity]?.card === host
+            }) {
+                updateAggregationTimestamp(in: host, display: display)
             }
+        }
+        for display in plainCards {
+            guard let card = aggregationCards[display.identity]?.card else { continue }
+            applyInPlaceOverviewNumericUpdates(in: card, context: cardContext(display))
+            updateAggregationTimestamp(in: card, display: display)
         }
     }
 
     private func applyInPlaceOverviewNumericUpdates(in overview: NSView, context: OverviewCardContext) {
+        defer { (overview as? MenuHoverLinkHostView)?.refreshLiftedTickets() }
         let snapshot = context.snapshot
         if snapshot.kind == .balance, let host = overview as? MenuHoverLinkHostView {
             let presentation = snapshot.officialQuotaMenuPresentation(lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,

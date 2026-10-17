@@ -251,6 +251,55 @@ final class DashboardComponentsTests: XCTestCase {
         })
     }
 
+    @MainActor
+    func testOpenLinkBubbleFocusesItsSectionAndRecedesTheRest() throws {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
+        let probability = OpenCodexOverviewSectionView(layout: OpenCodexOverviewSectionLayout(id: .resetProbability,
+            frame: NSRect(x: 0, y: 0, width: 220, height: 40), row: nil))
+        let quota = OpenCodexOverviewSectionView(layout: OpenCodexOverviewSectionLayout(id: .fiveHour,
+            frame: NSRect(x: 0, y: 40, width: 220, height: 40), row: nil))
+        [probability, quota].forEach {
+            $0.focusReduceMotionForTesting = true
+            host.addSubview($0)
+        }
+        let link = HoverLinkTextField(text: "重置概率")
+        probability.addSubview(link)
+        host.track(link)
+        host.setPaceMenuTracking(true)
+
+        link.onHoverHintVisibilityChanged?(true)
+
+        XCTAssertEqual(host.sectionFocus.focusedID, .resetProbability)
+        XCTAssertEqual(probability.focusState, .focused)
+        XCTAssertEqual(quota.focusState, .receded)
+
+        link.onHoverHintVisibilityChanged?(false)
+
+        XCTAssertNil(host.sectionFocus.focusedID)
+        XCTAssertEqual(probability.focusState, .normal)
+        XCTAssertEqual(quota.focusState, .normal)
+    }
+
+    func testPaceExitKeepsAnOpenLinkBubbleFocused() throws {
+        let controller = SectionFocusController()
+        let sections = focusSections()
+        controller.update(sections: sections)
+        controller.isActive = true
+
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        controller.setHintFocus(.resetProbability, from: .resetProbability)
+        controller.hoverChanged(.fiveHour, isHovering: false)
+        try XCTUnwrap(controller.pendingTimerForTesting).fire()
+
+        XCTAssertEqual(controller.focusedID, .resetProbability)
+        XCTAssertEqual(sections[.resetProbability]?.focusState, .focused)
+        XCTAssertEqual(sections[.fiveHour]?.focusState, .receded)
+
+        controller.setHintFocus(nil, from: .resetProbability)
+        XCTAssertNil(controller.focusedID)
+        XCTAssertTrue(sections.values.allSatisfy { $0.focusState == .normal })
+    }
+
     func testSectionFocusTrackingDelaysSwitchAndRetiredEvents() throws {
         let controller = SectionFocusController()
         let sections = focusSections()

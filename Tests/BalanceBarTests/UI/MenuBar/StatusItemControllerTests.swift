@@ -60,6 +60,35 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testClosedRebuildKeepsWaitingPastTheFastRetriesUntilTheWindowHides() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        controller.update(snapshot: .official("OpenAI Official", 50, "5h", nil, Date()), refreshDate: nil,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        controller.menuDidClose(controller.statusMenuForTesting)
+        func run(_ seconds: TimeInterval) {
+            let deadline = Date().addingTimeInterval(seconds)
+            while Date() < deadline { RunLoop.main.run(mode: .default, before: deadline) }
+        }
+        // Longer than the 20 fast retries (2s) while the window stays visible.
+        run(2.5)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        window.orderOut(nil)
+        run(1.0)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1, "the pending rebuild still lands")
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+    }
+
+    @MainActor
     func testClosingMenuKeepsAllItemsUntilNextOpenAndDefersLateUpdates() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -4513,5 +4542,71 @@ extension StatusItemControllerTests {
             XCTAssertFalse(peer.isPeerReceded, "a reopened menu starts clear")
             XCTAssertFalse(peer.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" })
         }
+    }
+
+    @MainActor
+    func testOverlappingFocusHandoffKeepsTheNewOwnersPeersReceded() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 3), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)
+        let cards = viewport.cardHosts()
+        XCTAssertEqual(cards.count, 3)
+        let (a, b, c) = (cards[0], cards[1], cards[2])
+
+        a.sectionFocus.onFocusActiveChanged?(true)
+        b.sectionFocus.onFocusActiveChanged?(true)
+        // A's exit lands after B already took focus.
+        a.sectionFocus.onFocusActiveChanged?(false)
+
+        XCTAssertTrue(viewport.focusOwner === b)
+        XCTAssertFalse(b.isPeerReceded)
+        XCTAssertTrue(a.isPeerReceded)
+        XCTAssertTrue(c.isPeerReceded)
+
+        b.sectionFocus.onFocusActiveChanged?(false)
+        XCTAssertNil(viewport.focusOwner)
+        XCTAssertTrue(cards.allSatisfy { !$0.isPeerReceded })
+    }
+
+    @MainActor
+    func testRestoreInterruptedByDismissalLeavesNoBlurFilterAfterReopen() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 2), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        let viewport = try XCTUnwrap(menu.items.first?.view as? AggregationOverviewScrollView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 304, height: 400), styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = viewport
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        let cards = viewport.cardHosts()
+        let (source, peer) = (cards[0], cards[1])
+        source.sectionFocus.onFocusActiveChanged?(true)
+        let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        if !reduceTransparency {
+            XCTAssertTrue(peer.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" })
+        }
+
+        // The restore animation starts, then the menu closes before it ends.
+        source.sectionFocus.onFocusActiveChanged?(false)
+        controller.menuDidClose(menu)
+        XCTAssertTrue(peer.isMenuDismissing)
+        // The departing window hides; dismissal cleanup runs on the next open.
+        window.orderOut(nil)
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+
+        XCTAssertFalse(peer.isMenuDismissing)
+        XCTAssertFalse(peer.isPeerReceded)
+        XCTAssertFalse(peer.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" })
+        XCTAssertNil(peer.layer?.animation(forKey: "peerFocus.radius"))
+        XCTAssertEqual(peer.alphaValue, 1, accuracy: 0.001)
     }
 }

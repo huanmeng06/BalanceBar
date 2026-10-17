@@ -98,6 +98,8 @@ final class SectionFocusController {
     private(set) var sections: [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView] = [:]
     private(set) var hoveredID: OpenCodexOverviewSectionID?
     private(set) var focusedID: OpenCodexOverviewSectionID?
+    /// Section whose link bubble (e.g. the reset forecast) is open.
+    private(set) var hintFocusID: OpenCodexOverviewSectionID?
     private weak var targetPace: QuotaProgressPaceView?
     private weak var presentedPace: QuotaProgressPaceView?
     private enum Phase { case focus, tooltip, exit }
@@ -157,6 +159,20 @@ final class SectionFocusController {
         }
     }
 
+    /// Link bubbles focus their section immediately; the bubble has its own
+    /// hover delay. Closing restores normal unless pace hover took over.
+    func setHintFocus(_ id: OpenCodexOverviewSectionID?, from source: OpenCodexOverviewSectionID) {
+        guard isActive, !isMenuDismissing else { return }
+        if let id {
+            hintFocusID = id
+            setFocus(id)
+        } else {
+            guard hintFocusID == source else { return }
+            hintFocusID = nil
+            if focusedID == source, hoveredID == nil { setFocus(nil) }
+        }
+    }
+
     private func schedule(_ nextPhase: Phase, after delay: TimeInterval, target: OpenCodexOverviewSectionID?) {
         let token = generation
         let trace = dismissalTrace
@@ -184,7 +200,7 @@ final class SectionFocusController {
                     pace.showTooltip()
                     if pace.isTooltipVisible { self.presentedPace = pace }
                 case .exit:
-                    self.setFocus(nil)
+                    self.setFocus(self.hintFocusID)
                     self.presentedPace?.dismissTooltip(animated: true)
                     self.presentedPace = nil
                     self.targetPace = nil
@@ -237,6 +253,7 @@ final class SectionFocusController {
         cancelPending()
         hoveredID = nil
         focusedID = nil
+        hintFocusID = nil
         presentedPace?.dismissTooltip(animated: false)
         presentedPace = nil
         targetPace = nil
@@ -253,6 +270,7 @@ final class SectionFocusController {
         cancelPending()
         hoveredID = nil
         focusedID = nil
+        hintFocusID = nil
         presentedPace?.dismissTooltip(animated: false)
         presentedPace = nil
         targetPace = nil
@@ -545,6 +563,8 @@ final class BankedResetChromeView: NSView {
     /// Original views hidden behind the overlay, with their alpha to restore.
     private var hiddenViews: [(view: NSView, alpha: CGFloat)] = []
     private var scrollObserver: NSObjectProtocol?
+    /// Content the current snapshot was taken from.
+    private var liftedSignature: [String] = []
 
     var liftOverlayForTesting: BankedResetLiftOverlayWindow? { overlay }
 
@@ -741,11 +761,8 @@ final class BankedResetChromeView: NSView {
     private func makeOverlay() -> BankedResetLiftOverlayWindow? {
         guard window != nil else { return nil }
         let views = cardViews()
-        guard let resting = snapshot() else { return nil }
-        drawsLiftedSurface = true
-        let lifted = snapshot()
-        drawsLiftedSurface = false
-        guard let lifted else { return nil }
+        guard let (resting, lifted) = snapshots() else { return nil }
+        liftedSignature = contentSignature(of: views)
 
         let overlay = BankedResetLiftOverlayWindow()
         overlay.install(
@@ -773,8 +790,43 @@ final class BankedResetChromeView: NSView {
         return overlay
     }
 
+    /// Re-captures the floating snapshot when the card changed while lifted
+    /// (refreshed text, a replaced label) and hides views that replaced the
+    /// originals, so nothing stale floats and nothing new shows behind it.
+    func refreshLiftedSnapshotIfNeeded() {
+        guard let overlay else { return }
+        let views = cardViews()
+        let signature = contentSignature(of: views)
+        guard signature != liftedSignature else { return }
+        liftedSignature = signature
+        // Snapshot the views as they draw normally, then hide the new set.
+        hiddenViews.forEach { $0.view.alphaValue = $0.alpha }
+        let previous = Dictionary(uniqueKeysWithValues: hiddenViews.map { (ObjectIdentifier($0.view), $0.alpha) })
+        if let (resting, lifted) = snapshots() {
+            overlay.updateSnapshots(resting: resting, lifted: lifted)
+        }
+        hiddenViews = views.map { ($0, previous[ObjectIdentifier($0)] ?? $0.alphaValue) }
+        render()
+    }
+
+    private func snapshots() -> (resting: CGImage, lifted: CGImage)? {
+        guard let resting = snapshot() else { return nil }
+        drawsLiftedSurface = true
+        let lifted = snapshot()
+        drawsLiftedSurface = false
+        return lifted.map { (resting, $0) }
+    }
+
+    private func contentSignature(of views: [NSView]) -> [String] {
+        func texts(_ view: NSView) -> [String] {
+            ((view as? NSTextField).map { [$0.stringValue] } ?? []) + view.subviews.flatMap(texts)
+        }
+        return views.map { "\(ObjectIdentifier($0).hashValue)|\($0.frame)|" + texts($0).joined(separator: "\u{1F}") }
+    }
+
     private func tearDownOverlay() {
         guard let overlay else { return }
+        liftedSignature = []
         overlay.orderOut(nil)
         self.overlay = nil
         hiddenViews.forEach { $0.view.alphaValue = $0.alpha }
@@ -877,6 +929,14 @@ final class BankedResetLiftOverlayWindow: NSPanel {
         glareLayer.frame = bounds
         glareLayer.cornerRadius = cornerRadius
         glareLayer.cornerCurve = .continuous
+        CATransaction.commit()
+    }
+
+    func updateSnapshots(resting: CGImage, lifted: CGImage) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        restingLayer.contents = resting
+        liftedLayer.contents = lifted
         CATransaction.commit()
     }
 
@@ -1574,6 +1634,39 @@ final class MenuBarTextView: NSView {
 /// Native menus swallow ordinary wheel delivery. This viewport forwards only
 /// events in its own visible bounds, leaving nested ticket scrolling to its host.
 final class AggregationOverviewScrollView: NSScrollView {
+    /// The card whose focused section recedes every other card. Only the
+    /// current owner can clear it, so a late exit from a previous owner cannot
+    /// undo the blur a newly focused card needs.
+    private(set) weak var focusOwner: MenuHoverLinkHostView?
+
+    func focusActivityChanged(_ active: Bool, host: MenuHoverLinkHostView) {
+        if active {
+            focusOwner = host
+        } else if focusOwner === host {
+            focusOwner = nil
+        } else {
+            return
+        }
+        let owner = focusOwner
+        for card in cardHosts() {
+            card.setPeerReceded(owner != nil && card !== owner && card.dismissalExperiment != .focusOff,
+                animated: true)
+        }
+    }
+
+    func cardHosts() -> [MenuHoverLinkHostView] {
+        var hosts: [MenuHoverLinkHostView] = []
+        func visit(_ view: NSView) {
+            if let host = view as? MenuHoverLinkHostView {
+                hosts.append(host)
+                return
+            }
+            view.subviews.forEach(visit)
+        }
+        if let documentView { visit(documentView) }
+        return hosts
+    }
+
     private var wheelMonitor: Any?
     private var isMenuContentVisible = false
     private var pendingDistanceFromTop: CGFloat?
@@ -1656,6 +1749,8 @@ final class AggregationOverviewScrollView: NSScrollView {
     func setMenuContentVisible(_ visible: Bool) {
         guard isMenuContentVisible != visible else { return }
         isMenuContentVisible = visible
+        // Each card clears its own frozen blur when dismissal finishes.
+        focusOwner = nil
         if let wheelMonitor { NSEvent.removeMonitor(wheelMonitor) }
         wheelMonitor = nil
         guard visible else { return }

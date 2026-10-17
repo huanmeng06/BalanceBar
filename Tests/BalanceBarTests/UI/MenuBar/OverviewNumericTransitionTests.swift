@@ -709,6 +709,76 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         controller.menuDidClose(controller.statusMenuForTesting)
     }
 
+    func testAggregatedCodexCardsUseOwnAccountsShareTimersAndRespectCardDismissal() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func display(_ index: Int, email: String, remaining: Double = 40) -> AggregatedProviderDisplay {
+            let windows = [OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h", reset: nil,
+                durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000))]
+            let id = "codex-\(index)"
+            let contexts = predictionStore.updatePredictionContexts(providerID: id, accountKey: email, windows: windows, now: now)
+            return AggregatedProviderDisplay(
+                entry: AggregatedProviderEntry(source: ProviderSummarySource(id: id, name: id, isOfficial: true,
+                    query: nil, officialAccessToken: nil, notes: nil), role: index == 0 ? .default : .member),
+                identity: AggregationDisplayIdentity(providerID: id, accountScope: email, configurationRevision: "fixture"),
+                snapshot: .official("OpenAI Official", remaining, "5h", nil, now, windows: windows,
+                    resetForecast: CodexResetForecast(probability24h: .percent(20), probability48h: .percent(35),
+                        confidence: .low, updatedAt: now, isCached: false,
+                        officialSignal: CodexResetOfficialSignal(probability: .percent(71), targetAt: now.addingTimeInterval(3_665))),
+                    quotaPredictionContexts: contexts, quotaPredictionAccountKey: email),
+                account: OpenAIAccountPresentation(email: email), status: .fresh, reason: nil, fetchedAt: now)
+        }
+        // The active account is A; card B belongs to another account.
+        func input(remainingB: Double = 40) -> StatusItemController.MenuInput {
+            StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                openAIAccount: OpenAIAccountPresentation(email: "pace@example.com"), statusLinks: [],
+                showQuickSwitchMenu: true, showOpenChatGPTMenu: true, showOpenCCSwitchMenu: true, showStatusMenu: false,
+                aggregatedProviders: [display(0, email: "pace@example.com"),
+                    display(1, email: "other@example.com", remaining: remainingB)],
+                aggregationQuickSwitchBlocked: true)
+        }
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.bankedResetCountdownNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        controller.start(snapshot: .placeholder, refreshDate: now, menuInput: input(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 304, height: 600), styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = viewport
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        let cards = viewport.cardHosts()
+        XCTAssertEqual(cards.count, 2)
+        let paces = try cards.map { try XCTUnwrap($0.paceViews.first) }
+        XCTAssertNotNil(paces[0].prediction)
+        XCTAssertNotNil(paces[1].prediction, "card B is validated against its own account")
+
+        let paceTimer = try XCTUnwrap(controller.quotaPaceTimerForTesting, "one menu-level pace timer")
+        XCTAssertNotNil(controller.bankedResetCountdownTimerForTesting, "aggregated countdown runs")
+        let before = paces.map(\.prediction)
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(60)
+        paceTimer.fire()
+        XCTAssertNotEqual(paces[0].prediction, before[0])
+        XCTAssertNotEqual(paces[1].prediction, before[1])
+
+        // Card B starts dismissing while the controller still tracks the menu.
+        cards[1].setMenuContentVisible(false)
+        XCTAssertTrue(cards[1].isMenuDismissing)
+        let frozen = paces[1].prediction
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(120)
+        paceTimer.fire()
+        XCTAssertNotEqual(paces[0].prediction, frozen)
+        XCTAssertEqual(paces[1].prediction, frozen, "a dismissing card is never mutated")
+        XCTAssertEqual(paces[1].progress.percentage, 40)
+        controller.updateMenu(input: input(remainingB: 30))
+        XCTAssertEqual(paces[1].progress.percentage, 40, "new data waits for the closed rebuild")
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        cards[1].finishMenuDismissal(beforeOpening: true)
+    }
+
     func testWeeklyPredictionConsumesMatchingContextAndMinuteTickKeepsViews() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let windows = [

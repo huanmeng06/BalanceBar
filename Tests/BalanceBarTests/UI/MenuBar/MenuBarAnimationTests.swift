@@ -1200,6 +1200,47 @@ final class MenuBarAnimationTests: XCTestCase {
         }
     }
 
+    func testLiftedTicketSnapshotFollowsContentChanges() throws {
+        try XCTSkipIf(
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Reduce Motion disables the lift"
+        )
+        let (window, host) = makeTicketHost(flipped: false)
+        defer { window.orderOut(nil) }
+        let chrome = BankedResetChromeView(frame: NSRect(x: 10, y: 50, width: 280, height: 60))
+        let title = NSTextField(labelWithString: "完全重置")
+        title.frame = NSRect(x: 60, y: 80, width: 120, height: 18)
+        let remaining = NSTextField(labelWithString: "12 天 15 小时")
+        remaining.frame = NSRect(x: 180, y: 70, width: 100, height: 18)
+        [chrome, title, remaining].forEach(host.addSubview)
+        host.displayIfNeeded()
+        chrome.setHoverForTesting(at: NSPoint(x: 150, y: 80))
+        let overlay = try XCTUnwrap(chrome.liftOverlayForTesting)
+        let first = try XCTUnwrap(overlay.restingImageForTesting)
+
+        chrome.refreshLiftedSnapshotIfNeeded()
+        XCTAssertTrue(try XCTUnwrap(overlay.restingImageForTesting) === first, "unchanged content keeps the snapshot")
+
+        remaining.stringValue = "12 天 14 小时"
+        chrome.refreshLiftedSnapshotIfNeeded()
+        let second = try XCTUnwrap(overlay.restingImageForTesting)
+        XCTAssertFalse(second === first)
+        XCTAssertEqual(remaining.alphaValue, 0)
+
+        // An in-place refresh can replace a label outright.
+        title.removeFromSuperview()
+        let replacement = NSTextField(labelWithString: "完全重置")
+        replacement.frame = title.frame
+        host.addSubview(replacement)
+        chrome.refreshLiftedSnapshotIfNeeded()
+        XCTAssertFalse(try XCTUnwrap(overlay.restingImageForTesting) === second)
+        XCTAssertEqual(replacement.alphaValue, 0, "a replacement never shows behind the overlay")
+
+        chrome.setHoverForTesting(at: nil)
+        XCTAssertEqual(replacement.alphaValue, 1)
+        XCTAssertEqual(remaining.alphaValue, 1)
+    }
+
     private func makeTicketHost(flipped: Bool) -> (NSWindow, NSView) {
         let window = NSWindow(
             contentRect: NSRect(x: 200, y: 200, width: 300, height: 160),
