@@ -3503,7 +3503,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menuDismissalTrace?.record("menu.rebuild.deferred", view: host,
                 details: "controller_tracking=\(isStatusMenuTracking); force=\(forceDefer)")
             scheduleClosedMenuRebuild()
-        } else if nativeItemsChanged || statusMenu.items.isEmpty || aggregationViewport != nil {
+        } else if nativeItemsChanged || statusMenu.items.isEmpty || aggregationViewport != nil || statusMenuNeedsRebuild {
+            // A rebuild still pending from a tracked update must land here;
+            // swapping only the card would leave the flag set and make the
+            // next open discard the fresh card.
             rebuildStatusMenu(reason: "idleUpdate")
         } else if let first = statusMenu.items.first {
             first.view = makeOverviewMenuItem(for: snapshot).view

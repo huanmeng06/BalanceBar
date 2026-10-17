@@ -347,6 +347,8 @@ final class DashboardComponentsTests: XCTestCase {
     func testSectionFocusFilterOwnershipLateCompletionAndAccessibility() throws {
         let section = try XCTUnwrap(focusSections()[.account])
         section.focusReduceMotionForTesting = false
+        // CI runners may report Reduce Transparency, which skips the blur.
+        section.focusReduceTransparencyForTesting = false
         section.wantsLayer = true
         let foreign = try XCTUnwrap(CIFilter(name: "CISepiaTone"))
         foreign.name = "unrelated"

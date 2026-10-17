@@ -527,7 +527,7 @@
 
 "quota.pace.time.tomorrow" = "Domani %1$@";
 
-"quota.pace.body.reset_unavailable" = "L’ora del ripristino non è disponibile.";
+"quota.pace.body.reset_unavailable" = "L’orario di ripristino non è al momento disponibile.";
 
 // CC Switch aggregation overview
 "aggregation.default" = "Predefinito";
