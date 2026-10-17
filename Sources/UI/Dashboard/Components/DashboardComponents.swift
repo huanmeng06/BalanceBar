@@ -1783,6 +1783,7 @@ final class MenuHoverLinkHostView: NSView {
         isMenuContentVisible = visible
         if visible {
             finishMenuDismissal(beforeOpening: true)
+            setPeerReceded(false, animated: false)
             setPaceMenuTracking(true)
         } else if wasActive || isMenuDismissing {
             beginMenuDismissal()
@@ -1815,6 +1816,7 @@ final class MenuHoverLinkHostView: NSView {
         guard let departingWindow = window, departingWindow.isVisible else {
             activeLinks.forEach { $0.clearHoverState() }
             setPaceMenuTracking(false)
+            setPeerReceded(false, animated: false)
             return
         }
         isMenuDismissing = true
@@ -1826,6 +1828,8 @@ final class MenuHoverLinkHostView: NSView {
         paceMenuTracking = false
         dismissalPaceViews = paceViews
         sectionFocus.suspendForMenuDismissal()
+        // Lifted tickets float in their own window; drop them before the menu fades.
+        resetBankedResetTicketHover()
         dismissalPaceViews.forEach { $0.stopMenuInteractionPreservingVisuals() }
         removeTrackingAreaReference()
         removeTicketScrollMonitor()
@@ -1859,11 +1863,108 @@ final class MenuHoverLinkHostView: NSView {
         isMenuDismissing = false
         dismissalWindow = nil
         sectionFocus.finishMenuDismissal()
+        resetBankedResetTicketHover()
+        setPeerReceded(false, animated: false)
         var visited = Set<ObjectIdentifier>()
         for pace in dismissalPaceViews + paceViews where visited.insert(ObjectIdentifier(pace)).inserted {
             pace.finishMenuInteractionAfterDismissal()
         }
         dismissalPaceViews.removeAll()
+    }
+
+    private func observePeerFocus() {
+        sectionFocus.onFocusActiveChanged = { [weak self] active in
+            guard let self else { return }
+            let recede = active && self.dismissalExperiment != .focusOff
+            self.peerHosts().forEach { $0.setPeerReceded(recede, animated: true) }
+        }
+    }
+
+    private static let peerBlurName = "balancebarPeerFocusBlur"
+    private static let peerRadiusPath = "filters.balancebarPeerFocusBlur.inputRadius"
+    private(set) var isPeerReceded = false
+    private var peerBlurFilter: CIFilter?
+
+    /// Blurs and dims this whole card while another card in the menu holds
+    /// focus. Balance cards place controls directly on the host rather than in
+    /// focus sections, so the effect applies to the host itself.
+    func setPeerReceded(_ receded: Bool, animated: Bool) {
+        guard !isMenuDismissing, isPeerReceded != receded else { return }
+        isPeerReceded = receded
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        let alpha: CGFloat = receded ? 0.5 : 1
+        let radius: CGFloat = receded && !reduceTransparency ? 3 : 0
+        let duration = receded ? PaceHoverTiming.blurDuration : PaceHoverTiming.restoreDuration
+        let animate = animated && !reduceMotion
+        wantsLayer = true
+        if radius > 0, peerBlurFilter == nil, let filter = CIFilter(name: "CIGaussianBlur") {
+            filter.name = Self.peerBlurName
+            filter.setValue(0, forKey: kCIInputRadiusKey) // Configure before attaching.
+            contentFilters = contentFilters + [filter]
+            peerBlurFilter = filter
+        }
+
+        if animate {
+            alphaValue = CGFloat(layer?.presentation()?.opacity ?? Float(alphaValue))
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = duration
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                animator().alphaValue = alpha
+            }
+        } else {
+            alphaValue = alpha
+        }
+
+        guard peerBlurFilter != nil, let node = layer else { return }
+        let from = (node.presentation()?.value(forKeyPath: Self.peerRadiusPath) as? NSNumber)?.doubleValue
+            ?? (node.value(forKeyPath: Self.peerRadiusPath) as? NSNumber)?.doubleValue ?? 0
+        node.removeAnimation(forKey: "peerFocus.radius")
+        let removeFilter: () -> Void = { [weak self] in
+            guard let self, !self.isPeerReceded, !self.isMenuDismissing else { return }
+            self.contentFilters = self.contentFilters.filter { $0.name != Self.peerBlurName }
+            self.peerBlurFilter = nil
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        node.setValue(radius, forKeyPath: Self.peerRadiusPath)
+        if animate {
+            let animation = CABasicAnimation(keyPath: Self.peerRadiusPath)
+            animation.fromValue = from
+            animation.toValue = radius
+            animation.duration = duration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            if radius == 0 { CATransaction.setCompletionBlock(removeFilter) }
+            node.add(animation, forKey: "peerFocus.radius")
+        }
+        CATransaction.commit()
+        if !animate, radius == 0 { removeFilter() }
+    }
+
+    /// Other provider cards in the same aggregated overview. Each card owns its
+    /// own focus controller, so focus in one card must recede the others too.
+    private func peerHosts() -> [MenuHoverLinkHostView] {
+        var node = superview
+        while let current = node, !(current is AggregationOverviewScrollView) { node = current.superview }
+        guard let container = node else { return [] }
+        var hosts: [MenuHoverLinkHostView] = []
+        func visit(_ view: NSView) {
+            if let host = view as? MenuHoverLinkHostView {
+                if host !== self { hosts.append(host) }
+                return
+            }
+            view.subviews.forEach(visit)
+        }
+        visit(container)
+        return hosts
+    }
+
+    private func resetBankedResetTicketHover() {
+        func visit(_ node: NSView) {
+            (node as? BankedResetChromeView)?.resetHover(animated: false)
+            node.subviews.forEach(visit)
+        }
+        visit(self)
     }
 
     func prepareForMenuWindowDetachment() -> Bool {
@@ -1998,10 +2099,12 @@ final class MenuHoverLinkHostView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        observePeerFocus()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        observePeerFocus()
     }
 
     func track(_ link: HoverLinkTextField) {

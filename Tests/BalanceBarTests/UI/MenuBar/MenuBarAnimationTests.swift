@@ -1144,4 +1144,90 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(ClaudeThinkingAnimationTiming.frameCount, 9)
         XCTAssertEqual(ClaudeThinkingAnimationTiming.duration, 0.81, accuracy: 0.000_001)
     }
+
+    func testBankedResetTicketHoverLiftsCardIntoOverlayAndRestoresIt() throws {
+        try XCTSkipIf(
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Reduce Motion disables the lift"
+        )
+        for flipped in [false, true] {
+            let (window, host) = makeTicketHost(flipped: flipped)
+            defer { window.orderOut(nil) }
+            let chrome = BankedResetChromeView(frame: NSRect(x: 10, y: 50, width: 280, height: 60))
+            // Red marks the visual top half of the card, both by placement and
+            // inside the view's own drawing.
+            let marker = TopHalfMarkerView(frame: flipped
+                ? NSRect(x: 20, y: 52, width: 40, height: 26)
+                : NSRect(x: 20, y: 82, width: 40, height: 26))
+            let otherChrome = BankedResetChromeView(frame: NSRect(x: 10, y: flipped ? 120 : 10, width: 280, height: 30))
+            [chrome, marker, otherChrome].forEach(host.addSubview)
+            host.displayIfNeeded()
+
+            chrome.setHoverForTesting(at: NSPoint(x: 280, y: 60))
+
+            let overlay = try XCTUnwrap(chrome.liftOverlayForTesting, "flipped=\(flipped)")
+            XCTAssertTrue(overlay.isVisible)
+            XCTAssertTrue(overlay.ignoresMouseEvents)
+            XCTAssertFalse(CATransform3DIsIdentity(overlay.cardLayer.transform))
+            XCTAssertEqual(chrome.alphaValue, 0)
+            XCTAssertEqual(marker.alphaValue, 0)
+            XCTAssertEqual(otherChrome.alphaValue, 1)
+            // The overlay is centered on the card's screen rect.
+            let cardOnScreen = window.convertToScreen(chrome.convert(chrome.bounds, to: nil))
+            XCTAssertEqual(overlay.frame.midX, cardOnScreen.midX, accuracy: 0.5)
+            XCTAssertEqual(overlay.frame.midY, cardOnScreen.midY, accuracy: 0.5)
+
+            let image = try XCTUnwrap(overlay.restingImageForTesting)
+            let rep = NSBitmapImageRep(cgImage: image)
+            let scale = CGFloat(image.width) / chrome.bounds.width
+            func pixel(_ x: CGFloat, _ yFromTop: CGFloat) -> NSColor? {
+                rep.colorAt(x: Int(x * scale), y: Int(yFromTop * scale))?.usingColorSpace(.sRGB)
+            }
+            // Marker spans card-top y 2...28 (from top); its red half is the upper 13pt.
+            let upper = try XCTUnwrap(pixel(30, 8))
+            let lower = try XCTUnwrap(pixel(30, 22))
+            XCTAssertGreaterThan(upper.redComponent, 0.8, "flipped=\(flipped)")
+            XCTAssertLessThan(upper.blueComponent, 0.2, "flipped=\(flipped)")
+            XCTAssertGreaterThan(lower.blueComponent, 0.8, "flipped=\(flipped)")
+
+            chrome.setHoverForTesting(at: nil)
+
+            XCTAssertNil(chrome.liftOverlayForTesting)
+            XCTAssertFalse(overlay.isVisible)
+            XCTAssertEqual(chrome.alphaValue, 1)
+            XCTAssertEqual(marker.alphaValue, 1)
+            XCTAssertFalse(chrome.isHovering)
+        }
+    }
+
+    private func makeTicketHost(flipped: Bool) -> (NSWindow, NSView) {
+        let window = NSWindow(
+            contentRect: NSRect(x: 200, y: 200, width: 300, height: 160),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let host: NSView = flipped
+            ? FlippedTestView(frame: NSRect(x: 0, y: 0, width: 300, height: 160))
+            : NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 160))
+        host.wantsLayer = true
+        window.contentView = host
+        window.orderFrontRegardless()
+        return (window, host)
+    }
+}
+
+private final class FlippedTestView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+private final class TopHalfMarkerView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.blue.setFill()
+        bounds.fill()
+        NSColor.red.setFill()
+        let half = bounds.height / 2
+        NSRect(x: 0, y: isFlipped ? 0 : half, width: bounds.width, height: half).fill()
+    }
+
 }

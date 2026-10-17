@@ -4468,3 +4468,50 @@ extension StatusItemControllerTests {
         }
     }
 }
+
+extension StatusItemControllerTests {
+    @MainActor
+    func testFocusInOneAggregatedCardRecedesEveryOtherCard() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 3), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)
+        func hosts(_ view: NSView) -> [MenuHoverLinkHostView] {
+            (view as? MenuHoverLinkHostView).map { [$0] } ?? view.subviews.flatMap(hosts)
+        }
+        let cards = hosts(viewport)
+        XCTAssertGreaterThanOrEqual(cards.count, 2)
+        let source = try XCTUnwrap(cards.first)
+        let peers = cards.dropFirst()
+
+        source.sectionFocus.onFocusActiveChanged?(true)
+
+        for peer in peers {
+            XCTAssertTrue(peer.isPeerReceded)
+            XCTAssertEqual(peer.alphaValue, 0.5, accuracy: 0.001)
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+                XCTAssertTrue(peer.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" })
+            }
+        }
+        XCTAssertFalse(source.isPeerReceded)
+        XCTAssertEqual(source.alphaValue, 1)
+
+        source.sectionFocus.onFocusActiveChanged?(false)
+
+        for peer in peers {
+            XCTAssertFalse(peer.isPeerReceded)
+            XCTAssertEqual(peer.alphaValue, 1, accuracy: 0.001)
+        }
+
+        source.sectionFocus.onFocusActiveChanged?(true)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        for peer in peers {
+            XCTAssertFalse(peer.isPeerReceded, "a reopened menu starts clear")
+            XCTAssertFalse(peer.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" })
+        }
+    }
+}

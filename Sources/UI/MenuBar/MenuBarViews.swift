@@ -109,6 +109,9 @@ final class SectionFocusController {
     var experiment = PaceDismissalExperiment.current
     var isActive = false
     var pendingTimerForTesting: Timer? { timer }
+    /// Fires when this card gains or loses a focused section, so peer cards in
+    /// the same menu can recede with it.
+    var onFocusActiveChanged: ((Bool) -> Void)?
 
     func update(sections next: [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView]) {
         guard !isMenuDismissing else { return }
@@ -216,8 +219,10 @@ final class SectionFocusController {
     }
     private func setFocus(_ id: OpenCodexOverviewSectionID?) {
         guard focusedID != id else { return }
+        let wasActive = focusedID != nil
         focusedID = id
         for (key, view) in sections { view.setFocusState(state(for: key), animated: true) }
+        if wasActive != (id != nil) { onFocusActiveChanged?(id != nil) }
     }
     func refreshAccessibility() {
         guard !isMenuDismissing else { return }
@@ -244,6 +249,7 @@ final class SectionFocusController {
     func reset() {
         guard !isMenuDismissing else { return }
         dismissalTrace?.record("focus.reset")
+        let wasActive = focusedID != nil
         cancelPending()
         hoveredID = nil
         focusedID = nil
@@ -251,6 +257,7 @@ final class SectionFocusController {
         presentedPace = nil
         targetPace = nil
         sections.values.forEach { $0.restoreFocusAfterDismissal() }
+        if wasActive { onFocusActiveChanged?(false) }
     }
     deinit { timer?.invalidate() }
 }
@@ -476,14 +483,426 @@ final class OverviewSectionOutlineView: PassthroughView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
+/// Ticket background that also drives the hover "lift". A menu window clips
+/// everything at its edges, so the lifted card is shown in a click-through
+/// overlay window above the menu: the card is snapshotted, the originals are
+/// hidden, and the snapshot springs up, tilts toward the pointer and gains a
+/// shadow and glare, free to break past the menu margins. Once it settles back
+/// the overlay goes away and the original views reappear.
 final class BankedResetChromeView: NSView {
+    static let hoverScale: CGFloat = 1.22
+    /// Pitch (pointer above/below center).
+    static let maxPitchDegrees: CGFloat = 18
+    /// Yaw (pointer left/right of center); the card is wide, so keep it lower.
+    static let maxYawDegrees: CGFloat = 12
+    static let perspectiveDistance: CGFloat = 600
+    static let springStiffness: CGFloat = 320
+    static let springDamping: CGFloat = 19
+    /// Below this lift the snapshot cross-fades with the original views. The
+    /// snapshot loses the menu's vibrant text rendering, so a hard swap would
+    /// make the labels visibly change color as the card lands.
+    static let handoffLift: CGFloat = 0.2
+
+    private struct Spring {
+        var value: CGFloat
+        var velocity: CGFloat = 0
+        var target: CGFloat
+
+        init(_ value: CGFloat) {
+            self.value = value
+            target = value
+        }
+
+        var isSettled: Bool { abs(value - target) < 0.0005 && abs(velocity) < 0.001 }
+
+        mutating func step(_ dt: CGFloat) {
+            let force = BankedResetChromeView.springStiffness * (target - value)
+                - BankedResetChromeView.springDamping * velocity
+            velocity += force * dt
+            value += velocity * dt
+        }
+
+        mutating func snap() {
+            value = target
+            velocity = 0
+        }
+    }
+
+    private var hoverTrackingArea: NSTrackingArea?
+    private(set) var isHovering = false
+    /// 0 at rest, 1 fully lifted (overshoots slightly while springing).
+    private var lift = Spring(0)
+    /// Normalized pointer offset from the center, -1...1, y up.
+    private var tiltX = Spring(0)
+    private var tiltY = Spring(0)
+    /// Pointer position in bounds, normalized to 0...1, y up.
+    private var glarePoint = NSPoint(x: 0.5, y: 0.5)
+    private var displayLink: CADisplayLink?
+    private var lastFrameTimestamp: CFTimeInterval?
+    /// Draws the opaque lifted surface; only set while taking a snapshot.
+    private var drawsLiftedSurface = false
+    private var overlay: BankedResetLiftOverlayWindow?
+    /// Original views hidden behind the overlay, with their alpha to restore.
+    private var hiddenViews: [(view: NSView, alpha: CGFloat)] = []
+    private var scrollObserver: NSObjectProtocol?
+
+    var liftOverlayForTesting: BankedResetLiftOverlayWindow? { overlay }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+    }
+
+    deinit {
+        displayLink?.invalidate()
+        overlay?.orderOut(nil)
+        if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.labelColor.withAlphaComponent(0.06).setFill()
-        NSBezierPath(
-            roundedRect: bounds,
-            xRadius: OpenCodexCardLayout.bankedResetChromeCornerRadius,
-            yRadius: OpenCodexCardLayout.bankedResetChromeCornerRadius
-        ).fill()
+        let radius = OpenCodexCardLayout.bankedResetChromeCornerRadius
+        let path = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
+        guard drawsLiftedSurface else {
+            NSColor.labelColor.withAlphaComponent(0.06).setFill()
+            path.fill()
+            return
+        }
+        // Opaque surface so the shadow stays outside instead of tinting the card.
+        let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        NSColor(white: isDark ? 0.25 : 0.985, alpha: 1).setFill()
+        path.fill()
+    }
+
+    override func updateTrackingAreas() {
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        super.updateTrackingAreas()
+        let trackingArea = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+        hoverTrackingArea = trackingArea
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        guard !isMenuDismissing, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        isHovering = true
+        setPointer(convert(event.locationInWindow, from: nil))
+        startAnimating()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        guard isHovering, !isMenuDismissing else { return }
+        setPointer(convert(event.locationInWindow, from: nil))
+        startAnimating()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        guard isHovering, !isMenuDismissing else { return }
+        resetHover(animated: true)
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { resetHover(animated: false) }
+    }
+
+    /// Test seam mirroring the tracking-area path with a point in the
+    /// superview's coordinate space; jumps straight to the settled state.
+    func setHoverForTesting(at superviewPoint: NSPoint?) {
+        guard let superviewPoint, let superview else {
+            resetHover(animated: false)
+            return
+        }
+        isHovering = true
+        setPointer(convert(superviewPoint, from: superview))
+        lift.snap()
+        tiltX.snap()
+        tiltY.snap()
+        render()
+    }
+
+    /// Drops the card back into the menu; the host calls this when the menu
+    /// starts dismissing so the overlay never outlives the menu window.
+    func resetHover(animated: Bool) {
+        isHovering = false
+        lift.target = 0
+        tiltX.target = 0
+        tiltY.target = 0
+        if animated && overlay != nil {
+            startAnimating()
+        } else {
+            stopAnimating()
+            lift.snap()
+            tiltX.snap()
+            tiltY.snap()
+            render()
+        }
+    }
+
+    private var isMenuDismissing: Bool {
+        var node = superview
+        while let current = node {
+            if let host = current as? MenuHoverLinkHostView { return host.isMenuDismissing }
+            node = current.superview
+        }
+        return false
+    }
+
+    private func setPointer(_ local: NSPoint) {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        lift.target = 1
+        tiltX.target = max(-1, min(1, (local.x - bounds.midX) / (bounds.width / 2)))
+        tiltY.target = max(-1, min(1, (local.y - bounds.midY) / (bounds.height / 2)))
+        glarePoint = NSPoint(
+            x: max(0, min(1, local.x / bounds.width)),
+            y: max(0, min(1, local.y / bounds.height))
+        )
+    }
+
+    private func startAnimating() {
+        guard displayLink == nil, window != nil else { return }
+        lastFrameTimestamp = nil
+        let link = displayLink(target: self, selector: #selector(step(_:)))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    private func stopAnimating() {
+        displayLink?.invalidate()
+        displayLink = nil
+        lastFrameTimestamp = nil
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        guard !isMenuDismissing else {
+            resetHover(animated: false)
+            return
+        }
+        let dt = CGFloat(min(1.0 / 30, link.timestamp - (lastFrameTimestamp ?? link.timestamp - 1.0 / 120)))
+        lastFrameTimestamp = link.timestamp
+        // Sub-step for a stable spring regardless of refresh rate.
+        let substeps = 4
+        for _ in 0..<substeps {
+            lift.step(dt / CGFloat(substeps))
+            tiltX.step(dt / CGFloat(substeps))
+            tiltY.step(dt / CGFloat(substeps))
+        }
+        if lift.isSettled && tiltX.isSettled && tiltY.isSettled {
+            lift.snap()
+            tiltX.snap()
+            tiltY.snap()
+            stopAnimating()
+        }
+        render()
+    }
+
+    private func render() {
+        guard lift.value != 0 || lift.target != 0 else {
+            tearDownOverlay()
+            return
+        }
+        guard let overlay = overlay ?? makeOverlay() else { return }
+        positionOverlay()
+
+        // The side under the pointer presses away from the viewer (y up).
+        let scale = 1 + (Self.hoverScale - 1) * lift.value
+        var transform = CATransform3DIdentity
+        transform.m34 = -1 / Self.perspectiveDistance
+        transform = CATransform3DRotate(transform, -tiltY.value * Self.maxPitchDegrees * .pi / 180, 1, 0, 0)
+        transform = CATransform3DRotate(transform, tiltX.value * Self.maxYawDegrees * .pi / 180, 0, 1, 0)
+        transform = CATransform3DScale(transform, scale, scale, 1)
+        let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        overlay.apply(
+            transform: transform,
+            progress: max(0, min(1, lift.value)),
+            glarePoint: glarePoint,
+            glareAlpha: isDark ? 0.14 : 0.35
+        )
+        let handoff = max(0, min(1, lift.value / Self.handoffLift))
+        overlay.alphaValue = handoff
+        hiddenViews.forEach { $0.view.alphaValue = $0.alpha * (1 - handoff) }
+    }
+
+    /// Snapshots the card in its resting and lifted looks, hides the originals
+    /// and shows the overlay exactly on top of them.
+    private func makeOverlay() -> BankedResetLiftOverlayWindow? {
+        guard window != nil else { return nil }
+        let views = cardViews()
+        guard let resting = snapshot() else { return nil }
+        drawsLiftedSurface = true
+        let lifted = snapshot()
+        drawsLiftedSurface = false
+        guard let lifted else { return nil }
+
+        let overlay = BankedResetLiftOverlayWindow()
+        overlay.install(
+            resting: resting,
+            lifted: lifted,
+            cardSize: bounds.size,
+            cornerRadius: OpenCodexCardLayout.bankedResetChromeCornerRadius,
+            contentsScale: window?.backingScaleFactor ?? 2
+        )
+        self.overlay = overlay
+        positionOverlay()
+        overlay.orderFrontRegardless()
+
+        hiddenViews = views.map { ($0, $0.alphaValue) }
+        views.forEach { $0.alphaValue = 0 }
+
+        if let clipView = enclosingScrollView?.contentView {
+            clipView.postsBoundsChangedNotifications = true
+            scrollObserver = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification, object: clipView, queue: .main
+            ) { [weak self] _ in
+                self?.positionOverlay()
+            }
+        }
+        return overlay
+    }
+
+    private func tearDownOverlay() {
+        guard let overlay else { return }
+        overlay.orderOut(nil)
+        self.overlay = nil
+        hiddenViews.forEach { $0.view.alphaValue = $0.alpha }
+        hiddenViews.removeAll()
+        if let scrollObserver {
+            NotificationCenter.default.removeObserver(scrollObserver)
+            self.scrollObserver = nil
+        }
+    }
+
+    private func positionOverlay() {
+        guard let overlay, let window else { return }
+        overlay.place(cardScreenFrame: window.convertToScreen(convert(bounds, to: nil)))
+    }
+
+    /// Draws the superview region under this card (the chrome plus the views
+    /// on top of it) through AppKit, which works whether or not the views have
+    /// their own layers.
+    private func snapshot() -> CGImage? {
+        guard let superview, let rep = superview.bitmapImageRepForCachingDisplay(in: frame) else { return nil }
+        superview.cacheDisplay(in: frame, to: rep)
+        return rep.cgImage
+    }
+
+    /// The chrome plus every sibling drawn on top of this card.
+    private func cardViews() -> [NSView] {
+        guard let superview else { return [self] }
+        return [self] + superview.subviews.filter { sibling in
+            sibling !== self
+                && !(sibling is BankedResetChromeView)
+                && frame.contains(NSPoint(x: sibling.frame.midX, y: sibling.frame.midY))
+        }
+    }
+}
+
+/// Click-through window above the menu that hosts a lifted ticket snapshot,
+/// padded so the card can scale, tilt and cast a shadow past the menu edges.
+final class BankedResetLiftOverlayWindow: NSPanel {
+    static let padding: CGFloat = 110
+
+    let cardLayer = CALayer()
+    private let restingLayer = CALayer()
+    private let liftedLayer = CALayer()
+    private let glareLayer = CAGradientLayer()
+    private var cardSize: CGSize = .zero
+
+    init() {
+        super.init(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        ignoresMouseEvents = true
+        isReleasedWhenClosed = false
+        hidesOnDeactivate = false
+        animationBehavior = .none
+        level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+
+        let content = NSView()
+        content.wantsLayer = true
+        contentView = content
+        content.layer?.addSublayer(cardLayer)
+        [restingLayer, liftedLayer, glareLayer].forEach(cardLayer.addSublayer)
+        glareLayer.type = .radial
+        glareLayer.colors = [NSColor.white.cgColor, NSColor.white.withAlphaComponent(0).cgColor]
+        glareLayer.masksToBounds = true
+        cardLayer.shadowColor = NSColor.black.cgColor
+        cardLayer.shadowRadius = 18
+        cardLayer.shadowOffset = CGSize(width: 0, height: -12)
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    var restingImageForTesting: CGImage? {
+        restingLayer.contents.map { $0 as! CGImage }
+    }
+
+    func install(resting: CGImage, lifted: CGImage, cardSize: CGSize, cornerRadius: CGFloat, contentsScale: CGFloat) {
+        self.cardSize = cardSize
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let bounds = CGRect(origin: .zero, size: cardSize)
+        cardLayer.bounds = bounds
+        cardLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        cardLayer.shadowPath = CGPath(
+            roundedRect: bounds, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil
+        )
+        for (layer, image) in [(restingLayer, resting), (liftedLayer, lifted)] {
+            layer.frame = bounds
+            layer.contents = image
+            layer.contentsScale = contentsScale
+            layer.contentsGravity = .resize
+        }
+        glareLayer.frame = bounds
+        glareLayer.cornerRadius = cornerRadius
+        glareLayer.cornerCurve = .continuous
+        CATransaction.commit()
+    }
+
+    func place(cardScreenFrame: NSRect) {
+        let target = cardScreenFrame.insetBy(dx: -Self.padding, dy: -Self.padding)
+        if frame != target { setFrame(target, display: false) }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        cardLayer.position = CGPoint(x: target.width / 2, y: target.height / 2)
+        CATransaction.commit()
+    }
+
+    func apply(transform: CATransform3D, progress: CGFloat, glarePoint: NSPoint, glareAlpha: CGFloat) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        cardLayer.transform = transform
+        cardLayer.shadowOpacity = Float(0.3 * progress)
+        liftedLayer.opacity = Float(progress)
+        glareLayer.opacity = Float(glareAlpha * progress)
+        let radius = cardSize.width * 0.45
+        glareLayer.startPoint = glarePoint
+        glareLayer.endPoint = CGPoint(
+            x: glarePoint.x + radius / max(1, cardSize.width),
+            y: glarePoint.y + radius / max(1, cardSize.height)
+        )
+        CATransaction.commit()
     }
 }
 
