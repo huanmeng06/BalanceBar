@@ -4610,3 +4610,92 @@ extension StatusItemControllerTests {
         XCTAssertEqual(peer.alphaValue, 1, accuracy: 0.001)
     }
 }
+
+extension StatusItemControllerTests {
+    /// Mounts the aggregated viewport in a visible window so closing the menu
+    /// puts its cards into the real dismissal state.
+    @MainActor
+    private func mountAggregation(_ controller: StatusItemController) throws -> (NSWindow, AggregationOverviewScrollView) {
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 304, height: 600), styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = viewport
+        ApplicationWindowPresentation.presentInBackground(window)
+        return (window, viewport)
+    }
+
+    @MainActor
+    func testAggregatedReopenBeforeClosedRebuildShowsProvidersChangedDuringDismissal() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 2), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        let (window, viewport) = try mountAggregation(controller)
+        defer { window.orderOut(nil) }
+        XCTAssertEqual(viewport.cardHosts().count, 2)
+        controller.menuDidClose(menu)
+        XCTAssertTrue(viewport.cardHosts().allSatisfy(\.isMenuDismissing))
+        // A provider is added while the outgoing menu is still on screen.
+        controller.updateMenu(input: aggregationInput(count: 3))
+        XCTAssertEqual(viewport.cardHosts().count, 2, "the dismissing menu is left intact")
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        // Reopen before the closed rebuild had a chance to run.
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let shown = (controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)?.cardHosts() ?? []
+        XCTAssertEqual(shown.count, 3, "the reopened menu shows the current providers")
+        XCTAssertTrue(shown.allSatisfy { $0.isMenuContentVisible && !$0.isMenuDismissing })
+    }
+
+    @MainActor
+    func testRemovingADismissingCardWaitsForTheClosedRebuild() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 3), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let (window, viewport) = try mountAggregation(controller)
+        defer { window.orderOut(nil) }
+        let cards = viewport.cardHosts()
+        XCTAssertEqual(cards.count, 3)
+        // Only the last card is leaving; the new provider list drops it.
+        cards[2].setMenuContentVisible(false)
+        XCTAssertTrue(cards[2].isMenuDismissing)
+        controller.updateMenu(input: aggregationInput(count: 2))
+        XCTAssertNotNil(cards[2].window, "a dismissing card stays mounted until the menu is safe to rebuild")
+        XCTAssertEqual(viewport.cardHosts().count, 3)
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        cards[2].finishMenuDismissal(beforeOpening: true)
+    }
+
+    @MainActor
+    func testProviderSetChangesRecomputeAggregatedFocusRecession() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 3), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let viewport = try XCTUnwrap(menu.items.first?.view as? AggregationOverviewScrollView)
+        let cards = viewport.cardHosts()
+
+        // The focused card disappears: nobody stays receded behind it.
+        cards[2].sectionFocus.onFocusActiveChanged?(true)
+        XCTAssertTrue(cards[0].isPeerReceded)
+        controller.updateMenu(input: aggregationInput(count: 2))
+        XCTAssertEqual(viewport.cardHosts().count, 2)
+        XCTAssertNil(viewport.focusOwner)
+        XCTAssertTrue(viewport.cardHosts().allSatisfy { !$0.isPeerReceded })
+
+        // A card that arrives while another holds focus recedes with the rest.
+        cards[0].sectionFocus.onFocusActiveChanged?(true)
+        controller.updateMenu(input: aggregationInput(count: 3))
+        let grown = viewport.cardHosts()
+        XCTAssertEqual(grown.count, 3)
+        XCTAssertFalse(grown[0].isPeerReceded)
+        XCTAssertTrue(grown[1].isPeerReceded)
+        XCTAssertTrue(grown[2].isPeerReceded, "a newly added card follows the current focus owner")
+    }
+}

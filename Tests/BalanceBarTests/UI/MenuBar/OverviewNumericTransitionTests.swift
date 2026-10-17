@@ -764,6 +764,13 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertNotEqual(paces[0].prediction, before[0])
         XCTAssertNotEqual(paces[1].prediction, before[1])
 
+        // A data refresh for card B keeps its own-account identity: the pace
+        // view and its prediction survive instead of being reset as foreign.
+        controller.updateMenu(input: input(remainingB: 35))
+        XCTAssertTrue(cards[1].paceViews.first === paces[1], "card B keeps its pace view")
+        XCTAssertNotNil(paces[1].prediction, "card B keeps its prediction")
+        XCTAssertEqual(paces[1].progress.percentage, 35)
+
         // Card B starts dismissing while the controller still tracks the menu.
         cards[1].setMenuContentVisible(false)
         XCTAssertTrue(cards[1].isMenuDismissing)
@@ -772,9 +779,9 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         paceTimer.fire()
         XCTAssertNotEqual(paces[0].prediction, frozen)
         XCTAssertEqual(paces[1].prediction, frozen, "a dismissing card is never mutated")
-        XCTAssertEqual(paces[1].progress.percentage, 40)
+        XCTAssertEqual(paces[1].progress.percentage, 35)
         controller.updateMenu(input: input(remainingB: 30))
-        XCTAssertEqual(paces[1].progress.percentage, 40, "new data waits for the closed rebuild")
+        XCTAssertEqual(paces[1].progress.percentage, 35, "new data waits for the closed rebuild")
         XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
         cards[1].finishMenuDismissal(beforeOpening: true)
     }

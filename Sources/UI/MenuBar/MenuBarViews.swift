@@ -567,6 +567,8 @@ final class BankedResetChromeView: NSView {
     private var liftedSignature: [String] = []
 
     var liftOverlayForTesting: BankedResetLiftOverlayWindow? { overlay }
+    /// Simulates a failed capture (e.g. no backing store yet).
+    var failsSnapshotsForTesting = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -798,28 +800,35 @@ final class BankedResetChromeView: NSView {
         let views = cardViews()
         let signature = contentSignature(of: views)
         guard signature != liftedSignature else { return }
-        liftedSignature = signature
         // Snapshot the views as they draw normally, then hide the new set.
         hiddenViews.forEach { $0.view.alphaValue = $0.alpha }
         let previous = Dictionary(uniqueKeysWithValues: hiddenViews.map { (ObjectIdentifier($0.view), $0.alpha) })
         if let (resting, lifted) = snapshots() {
             overlay.updateSnapshots(resting: resting, lifted: lifted)
+            // Only an installed capture settles the change; a failed one is
+            // retried by the next refresh even if the content stays the same.
+            liftedSignature = signature
         }
         hiddenViews = views.map { ($0, previous[ObjectIdentifier($0)] ?? $0.alphaValue) }
         render()
     }
 
     private func snapshots() -> (resting: CGImage, lifted: CGImage)? {
-        guard let resting = snapshot() else { return nil }
+        guard !failsSnapshotsForTesting, let resting = snapshot() else { return nil }
         drawsLiftedSurface = true
         let lifted = snapshot()
         drawsLiftedSurface = false
         return lifted.map { (resting, $0) }
     }
 
+    /// What the snapshot depends on: view identity and frame, plus each label's
+    /// text, color and font (e.g. the orange expiry warning).
     private func contentSignature(of views: [NSView]) -> [String] {
         func texts(_ view: NSView) -> [String] {
-            ((view as? NSTextField).map { [$0.stringValue] } ?? []) + view.subviews.flatMap(texts)
+            let own = (view as? NSTextField).map { field in
+                ["\(field.stringValue)|\(field.textColor?.description ?? "-")|\(field.font?.description ?? "-")|\(field.isHidden)"]
+            } ?? []
+            return own + view.subviews.flatMap(texts)
         }
         return views.map { "\(ObjectIdentifier($0).hashValue)|\($0.frame)|" + texts($0).joined(separator: "\u{1F}") }
     }
@@ -1647,8 +1656,20 @@ final class AggregationOverviewScrollView: NSScrollView {
         } else {
             return
         }
+        applyFocusRecession()
+    }
+
+    /// Re-derives every card's state after the card set changed: a removed
+    /// owner no longer holds focus, and newly added cards follow the owner.
+    func reconcileFocusOwnership() {
+        let cards = cardHosts()
+        if let owner = focusOwner, !cards.contains(where: { $0 === owner }) { focusOwner = nil }
+        applyFocusRecession(cards)
+    }
+
+    private func applyFocusRecession(_ cards: [MenuHoverLinkHostView]? = nil) {
         let owner = focusOwner
-        for card in cardHosts() {
+        for card in cards ?? cardHosts() {
             card.setPeerReceded(owner != nil && card !== owner && card.dismissalExperiment != .focusOff,
                 animated: true)
         }

@@ -247,6 +247,8 @@ final class DashboardComponentsTests: XCTestCase {
             let view = OpenCodexOverviewSectionView(layout: OpenCodexOverviewSectionLayout(id: id,
                 frame: NSRect(x: 0, y: 0, width: 220, height: 40), row: nil))
             view.focusReduceMotionForTesting = true
+            // Do not inherit the host's Reduce Transparency (CI runners may set it).
+            view.focusReduceTransparencyForTesting = false
             return (id, view)
         })
     }
@@ -278,6 +280,27 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertNil(host.sectionFocus.focusedID)
         XCTAssertEqual(probability.focusState, .normal)
         XCTAssertEqual(quota.focusState, .normal)
+    }
+
+    @MainActor
+    func testStalePeerRestoreCompletionCannotDropANewerRestoresFilter() throws {
+        try XCTSkipIf(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, "restores are not animated")
+        try XCTSkipIf(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency, "no blur filter is attached")
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
+        host.wantsLayer = true
+        func hasBlur() -> Bool { host.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" } }
+
+        host.setPeerReceded(true, animated: true)
+        host.setPeerReceded(false, animated: true)
+        let firstRestore = try XCTUnwrap(host.peerRestoreCompletionForTesting)
+        host.setPeerReceded(true, animated: true)
+        host.setPeerReceded(false, animated: true)
+        let secondRestore = try XCTUnwrap(host.peerRestoreCompletionForTesting)
+
+        firstRestore()
+        XCTAssertTrue(hasBlur(), "the first restore's late completion must not cut the second restore short")
+        secondRestore()
+        XCTAssertFalse(hasBlur())
     }
 
     func testPaceExitKeepsAnOpenLinkBubbleFocused() throws {
@@ -1071,7 +1094,10 @@ final class DashboardComponentsTests: XCTestCase {
         fixture.host.layoutSubtreeIfNeeded()
         fixture.host.setPaceMenuTracking(true)
         fixture.views.forEach { $0.markerReduceMotionForTesting = false }
-        fixture.host.sectionFocus.sections.values.forEach { $0.focusReduceMotionForTesting = false }
+        fixture.host.sectionFocus.sections.values.forEach {
+            $0.focusReduceMotionForTesting = false
+            $0.focusReduceTransparencyForTesting = false
+        }
         let view = fixture.views[0]
         let probe = fixture.popovers[0]
         func run(_ seconds: TimeInterval) {

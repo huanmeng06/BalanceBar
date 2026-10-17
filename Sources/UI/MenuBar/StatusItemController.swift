@@ -3333,6 +3333,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // mounted aggregation viewport waits for the closed rebuild instead.
         if statusMenuNeedsRebuild, menuInput.aggregatedProviders.isEmpty {
             rebuildStatusMenu(reason: "nextOpen")
+        } else if statusMenuNeedsRebuild {
+            // A quick reopen can beat the closed rebuild. The cards just
+            // finished dismissing, so sync them inside the mounted viewport;
+            // replace the top-level view only if it has to change.
+            let view = makeAggregationOverview()
+            if statusMenu.items.first?.view !== view { rebuildStatusMenu(reason: "nextOpen") }
+            menuDismissalTrace?.record("menu.aggregation.synced", view: view, details: "reason=nextOpen")
         }
         (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
         isStatusMenuTracking = true
@@ -3528,13 +3535,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return host
     }
 
-    /// Every overview card in the menu: the direct card, or each aggregated
-    /// card in display order.
+    /// Every overview card actually mounted in the menu. The provider list may
+    /// already have changed, so a card that is leaving is found by the view
+    /// hierarchy rather than by the latest displays.
     private func overviewCardHosts() -> [MenuHoverLinkHostView] {
-        if menuInput.aggregatedProviders.isEmpty {
-            return (statusMenu.items.first?.view as? MenuHoverLinkHostView).map { [$0] } ?? []
-        }
-        return aggregationOverviewDisplays.compactMap { aggregationCards[$0.identity]?.card as? MenuHoverLinkHostView }
+        guard let view = statusMenu.items.first?.view else { return [] }
+        return descendantViews(of: view, as: MenuHoverLinkHostView.self)
     }
 
     /// Any card of the outgoing menu is still dismissing; never mutate it.
@@ -6424,6 +6430,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if host?.isMenuContentVisible != isStatusMenuTracking { host?.setMenuContentVisible(isStatusMenuTracking) }
         }
         (scroll as? AggregationOverviewScrollView)?.setMenuContentVisible(isStatusMenuTracking)
+        // Cards came or went: drop a removed focus owner, recede newcomers.
+        (scroll as? AggregationOverviewScrollView)?.reconcileFocusOwnership()
         presentedOverviewNumerics = currentOverviewNumericSamples()
         (scroll as? AggregationOverviewScrollView)?.logGeometry(reason: "overview-updated")
         return scroll
@@ -8026,8 +8034,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let nextForecastKey = forecastContentKey(presentation.resetForecast)
         let nextCardIDs = presentation.bankedReset?.cards.map(\.id) ?? []
         let providerChanged = host.providerIdentity != context.identity
-        let quotaIdentityChanged = host.quotaPaceAccount != menuInput.openAIAccount
-            || host.quotaPaceClient != menuInput.activeClient
+        // Each card owns its account: aggregated Codex cards are not the active one.
+        let quotaIdentityChanged = host.quotaPaceAccount != context.account
+            || host.quotaPaceClient != context.paceClient
         if providerChanged || quotaIdentityChanged {
             host.clearPaceHover()
             host.paceViews.forEach { $0.invalidatePresentation() }
@@ -8066,8 +8075,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             host.frame.size = next.cardSize
             host.overviewLayout = next
             host.providerIdentity = context.identity
-            host.quotaPaceAccount = menuInput.openAIAccount
-            host.quotaPaceClient = menuInput.activeClient
+            host.quotaPaceAccount = context.account
+            host.quotaPaceClient = context.paceClient
             host.forecastContentKey = nextForecastKey
             host.bankedResetCardIDs = nextCardIDs
             // Moved sections were tracked by the proposal host; re-register every link here.

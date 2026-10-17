@@ -1241,6 +1241,40 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(remaining.alphaValue, 1)
     }
 
+    func testLiftedTicketRetriesAFailedSnapshotAndFollowsColorChanges() throws {
+        try XCTSkipIf(
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Reduce Motion disables the lift"
+        )
+        let (window, host) = makeTicketHost(flipped: false)
+        defer { window.orderOut(nil) }
+        let chrome = BankedResetChromeView(frame: NSRect(x: 10, y: 50, width: 280, height: 60))
+        let remaining = NSTextField(labelWithString: "12 天 15 小时")
+        remaining.frame = NSRect(x: 180, y: 70, width: 100, height: 18)
+        [chrome, remaining].forEach(host.addSubview)
+        host.displayIfNeeded()
+        chrome.setHoverForTesting(at: NSPoint(x: 150, y: 80))
+        let overlay = try XCTUnwrap(chrome.liftOverlayForTesting)
+        let first = try XCTUnwrap(overlay.restingImageForTesting)
+
+        // A failed capture keeps the old image and does not mark the change done.
+        chrome.failsSnapshotsForTesting = true
+        remaining.stringValue = "12 天 14 小时"
+        chrome.refreshLiftedSnapshotIfNeeded()
+        XCTAssertTrue(try XCTUnwrap(overlay.restingImageForTesting) === first)
+        XCTAssertEqual(remaining.alphaValue, 0, "the label stays hidden behind the overlay")
+        chrome.failsSnapshotsForTesting = false
+        chrome.refreshLiftedSnapshotIfNeeded()
+        let retried = try XCTUnwrap(overlay.restingImageForTesting)
+        XCTAssertFalse(retried === first, "the same pending change is captured on the next refresh")
+
+        // A warning color is a visual change too.
+        remaining.textColor = .systemOrange
+        chrome.refreshLiftedSnapshotIfNeeded()
+        XCTAssertFalse(try XCTUnwrap(overlay.restingImageForTesting) === retried)
+        chrome.setHoverForTesting(at: nil)
+    }
+
     private func makeTicketHost(flipped: Bool) -> (NSWindow, NSView) {
         let window = NSWindow(
             contentRect: NSRect(x: 200, y: 200, width: 300, height: 160),

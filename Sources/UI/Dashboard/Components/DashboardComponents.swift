@@ -1903,6 +1903,11 @@ final class MenuHoverLinkHostView: NSView {
     private var peerBlurFilter: CIFilter?
     /// Radius the filter is heading to; the filter is only removed at 0.
     private var peerTargetRadius: CGFloat = 0
+    /// Bumped on every transition; a completion only acts for its own.
+    private var peerBlurGeneration = 0
+    /// Completion of the latest animated restore, exposed so tests can fire
+    /// an older one out of order.
+    private(set) var peerRestoreCompletionForTesting: (() -> Void)?
 
     /// Blurs and dims this whole card while another card in the menu holds
     /// focus. Balance cards place controls directly on the host rather than in
@@ -1938,6 +1943,8 @@ final class MenuHoverLinkHostView: NSView {
         let duration = receded ? PaceHoverTiming.blurDuration : PaceHoverTiming.restoreDuration
         let animate = animated && !reduceMotion
         peerTargetRadius = radius
+        peerBlurGeneration += 1
+        let generation = peerBlurGeneration
         if radius > 0 {
             wantsLayer = true
             if peerBlurFilter == nil, let filter = CIFilter(name: "CIGaussianBlur") {
@@ -1960,8 +1967,12 @@ final class MenuHoverLinkHostView: NSView {
             alphaValue = alpha
         }
 
+        let attached = peerBlurFilter
         let removeFilter: () -> Void = { [weak self] in
-            guard let self, self.peerTargetRadius == 0, !self.isMenuDismissing else { return }
+            // A stale completion (e.g. from A → B → A focus changes) must not
+            // drop the filter a newer transition is still animating.
+            guard let self, self.peerBlurGeneration == generation, self.peerTargetRadius == 0,
+                  !self.isMenuDismissing, self.peerBlurFilter === attached else { return }
             self.layer?.removeAnimation(forKey: "peerFocus.radius")
             self.contentFilters = self.contentFilters.filter { $0.name != Self.peerBlurName }
             self.peerBlurFilter = nil
@@ -1991,7 +2002,10 @@ final class MenuHoverLinkHostView: NSView {
         animation.toValue = radius
         animation.duration = duration
         animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        if radius == 0 { CATransaction.setCompletionBlock(removeFilter) }
+        if radius == 0 {
+            peerRestoreCompletionForTesting = removeFilter
+            CATransaction.setCompletionBlock(removeFilter)
+        }
         node.add(animation, forKey: "peerFocus.radius")
         CATransaction.commit()
     }
