@@ -3037,6 +3037,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
         statusMenuNeedsNativeStructureRebuild = false
+        retiringStatusMenus.removeAll()
         isStatusMenuTracking = false
         overviewMenuWasSeen = false
         stopBankedResetCountdownTimer()
@@ -6072,7 +6073,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         statusMenuNeedsRebuild = false
         statusMenuNeedsNativeStructureRebuild = false
-        retiringStatusMenus.removeAll()
         menuDismissalTrace?.record("menu.rebuild.removeAllItems", view: oldMenu.items.first?.view,
             details: "reason=\(reason ?? menuRebuildReason)")
         logAggregationLifecycle(reason: "rebuild-" + menuRebuildReason)
