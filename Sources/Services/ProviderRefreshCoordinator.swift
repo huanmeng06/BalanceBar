@@ -935,10 +935,9 @@ final class ProviderRefreshCoordinator {
                     self.officialQuotaClient.fetchQuota(context: context) { [weak self] result in
                         guard let self else { return }
                         self.performOnQueue {
-                            guard self.quickSwitchSourceIsCurrent(
+                            guard let currentSource = self.currentQuickSwitchSource(
                                 client: client, providerID: source.id, revision: source.configurationRevision
-                            ) else { return }
-                            guard let currentSource = self.repository.loadSummarySources(appType: client.appType).first(where: { $0.id == source.id && $0.isOfficial }),
+                            ), currentSource.isOfficial,
                                   currentSource.officialAccessToken == source.officialAccessToken,
                                   self.officialCredentialsAreCurrent(client: client, storedAccessToken: context.storedAccessToken,
                                       credentials: credentials) else { return }
@@ -995,9 +994,9 @@ final class ProviderRefreshCoordinator {
                 ) { [weak self] result in
                     guard let self else { return }
                     self.performOnQueue {
-                        guard self.quickSwitchSourceIsCurrent(
+                        guard self.currentQuickSwitchSource(
                             client: client, providerID: source.id, revision: source.configurationRevision
-                        ) else { return }
+                        ) != nil else { return }
                         guard case .success(let response) = result else {
                             if previousRevisions[source.id] != source.configurationRevision {
                                 self.removeQuickSwitchSummary(providerID: source.id, client: client)
@@ -1087,11 +1086,14 @@ final class ProviderRefreshCoordinator {
         repository.configurationRevision(appType: client.appType, providerID: providerID) == revision
     }
 
-    private func quickSwitchSourceIsCurrent(client: AssistantClient, providerID: String, revision: String) -> Bool {
+    /// Re-reads only this provider's row: many summary responses can complete
+    /// together, and each must not reparse the whole provider list.
+    private func currentQuickSwitchSource(client: AssistantClient, providerID: String, revision: String) -> ProviderSummarySource? {
         guard quickSwitchSourceRevisions[client]?[providerID] == revision,
-              let source = try? repository.loadSummarySourcesChecked(appType: client.appType)
-                .first(where: { $0.id == providerID }) else { return false }
-        return source.configurationRevision == revision
+              let source = try? repository.loadSummarySourcesChecked(appType: client.appType, providerIDs: [providerID])
+                .first(where: { $0.id == providerID }),
+              source.configurationRevision == revision else { return nil }
+        return source
     }
 
     /// Returns the previous Provider ID when client/id/revision actually changed.

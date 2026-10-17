@@ -4205,7 +4205,7 @@ extension ProviderRefreshCoordinatorTests {
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
         let readLock = NSLock()
         var summaryReads = 0
-        repository.loadSummarySourcesObserver = {
+        repository.loadSummarySourcesObserver = { _ in
             readLock.lock(); summaryReads += 1; readLock.unlock()
         }
         defer { repository.loadSummarySourcesObserver = nil }
@@ -4253,7 +4253,7 @@ extension ProviderRefreshCoordinatorTests {
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
         let readsLock = NSLock()
         var reads = 0
-        repository.loadSummarySourcesObserver = { readsLock.lock(); reads += 1; readsLock.unlock() }
+        repository.loadSummarySourcesObserver = { _ in readsLock.lock(); reads += 1; readsLock.unlock() }
         defer { repository.loadSummarySourcesObserver = nil }
         DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "10.00") }
         let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(session: session),
@@ -4278,6 +4278,50 @@ extension ProviderRefreshCoordinatorTests {
         coordinator.refreshQuickSwitchSummaries(force: false, for: .codex, providerIDs: ["codex-custom"])
         waitForCoordinator(coordinator)
         readsLock.lock(); XCTAssertGreaterThan(reads, initialReads); readsLock.unlock()
+    }
+
+    func testConcurrentSummaryCompletionsReadOnlyTheirOwnProviderRows() throws {
+        try withDatabase { db in
+            for index in 0..<250 {
+                try execute(db, sql: """
+                    INSERT INTO providers VALUES (
+                        'codex-bench-\(index)', 'Benchmark \(index)',
+                        '{"api_key":"fixture-key","base_url":"https://provider.example"}',
+                        '{"usage_script":{"enabled":true,"baseUrl":"https://provider.example","code":"url: `{{baseUrl}}/usage`"}}',
+                        'custom', 'https://provider.example', 'codex', 0, \(index + 10), \(index + 10)
+                    )
+                    """)
+            }
+        }
+        let sources = repository.loadSummarySources(appType: "codex")
+        XCTAssertTrue(sources.contains(where: \.isOfficial), "the official callback path must be covered too")
+        let readsLock = NSLock()
+        var fullReads = 0
+        var rowReads: [[String]] = []
+        repository.loadSummarySourcesObserver = { ids in
+            readsLock.lock(); defer { readsLock.unlock() }
+            if let ids { rowReads.append(ids) } else { fullReads += 1 }
+        }
+        defer { repository.loadSummarySourcesObserver = nil }
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "10.00") }
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: "fixture")),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: makeActions())
+
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            readsLock.lock(); let done = rowReads.count >= sources.count; readsLock.unlock()
+            if done { break }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        waitForCoordinator(coordinator)
+
+        readsLock.lock(); defer { readsLock.unlock() }
+        XCTAssertEqual(fullReads, 1, "only the refresh itself may read the whole provider list")
+        XCTAssertEqual(rowReads.count, sources.count, "each completion verifies exactly its own row")
+        XCTAssertTrue(rowReads.allSatisfy { $0.count == 1 })
+        XCTAssertEqual(Set(rowReads.map { $0[0] }), Set(sources.map(\.id)))
     }
 
     func testQuickSwitchPollsSkipAggregationMembersAndScriptlessAPIProvidersUntilTTL() throws {
@@ -4318,7 +4362,7 @@ extension ProviderRefreshCoordinatorTests {
         coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
         wait(for: [direct], timeout: 3)
         waitForCoordinator(coordinator)
-        repository.loadSummarySourcesObserver = { readsLock.lock(); reads += 1; readsLock.unlock() }
+        repository.loadSummarySourcesObserver = { _ in readsLock.lock(); reads += 1; readsLock.unlock() }
         defer { repository.loadSummarySourcesObserver = nil }
 
         for _ in 0..<19 {
