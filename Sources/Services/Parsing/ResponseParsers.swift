@@ -374,7 +374,7 @@ enum OfficialQuotaResponseParser {
         _ window: [String: Any],
         now: Date
     ) -> OfficialQuotaWindow? {
-        guard let used = ResponseParsingSupport.numberValue(window["used_percent"]) else {
+        guard let used = ResponseParsingSupport.numberValue(window["used_percent"]), used.isFinite else {
             return nil
         }
         let duration = ResponseParsingSupport.numberValue(window["limit_window_seconds"])

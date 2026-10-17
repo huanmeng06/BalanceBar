@@ -606,6 +606,418 @@ final class OverviewNumericTransitionTests: XCTestCase {
 
 @MainActor
 final class OverviewNumericPresentationControllerTests: XCTestCase {
+    private lazy var predictionStore: CodexResetObservationStore = {
+        let name = "BalanceBarTests.pace-context.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        return CodexResetObservationStore(defaults: defaults)
+    }()
+    private func timedPaceSnapshot(now: Date, remaining: Double, resetAt: Date? = nil) -> Snapshot {
+        let reset = resetAt ?? now.addingTimeInterval(9_000)
+        let windows = [OfficialQuotaWindow(kind: .fiveHour, remaining: remaining,
+            label: "5h", daysText: "5h", reset: "obsolete", durationSeconds: 18_000, resetAt: reset)]
+        return Snapshot.official("OpenAI Official", remaining, "5h", "obsolete", now,
+            windows: windows, quotaPredictionContexts: predictionStore.updatePredictionContexts(
+                providerID: "official", accountKey: "pace@example.com", windows: windows, now: now),
+            quotaPredictionAccountKey: "pace@example.com")
+    }
+
+    @MainActor
+    func testDeactivationBeforeDidCloseDefersEveryContentMutationAndAppliesLatestOnOpen() throws {
+        var lines: [String] = []
+        MenuDismissalTrace.sinkForTesting = { lines.append($0) }
+        defer { MenuDismissalTrace.sinkForTesting = nil }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.bankedResetCountdownNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        func snapshot(remaining: Double, onlyWeek: Bool) -> Snapshot {
+            let windows = [
+                OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                    reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000)),
+                OfficialQuotaWindow(kind: .sevenDay, remaining: remaining, label: "7d", daysText: "7d",
+                    reset: nil, durationSeconds: 604_800, resetAt: now.addingTimeInterval(302_400))
+            ]
+            return .official("OpenAI Official", remaining, "quota", nil, now,
+                windows: onlyWeek ? [windows[1]] : windows, bankedReset: CodexBankedReset(cards: []),
+                resetForecast: CodexResetForecast(probability24h: .percent(20), probability48h: .percent(35),
+                    confidence: .low, updatedAt: now, isCached: false,
+                    officialSignal: CodexResetOfficialSignal(probability: .percent(71), targetAt: now.addingTimeInterval(3_665))))
+        }
+        func descendants(_ node: NSView) -> [NSView] { node.subviews.flatMap { [$0] + descendants($0) } }
+        controller.start(snapshot: snapshot(remaining: 40, onlyWeek: false), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        let countdown = try XCTUnwrap(descendants(host).compactMap { $0 as? OverviewNumericHoverLinkTextField }
+            .first { $0.sample?.format == .remainingMinutes })
+        let countdownValue = countdown.sample?.value
+        let timer = try XCTUnwrap(controller.bankedResetCountdownTimerForTesting)
+        let paceTimer = try XCTUnwrap(controller.quotaPaceTimerForTesting)
+        let views = host.paceViews
+        let sections = host.subviews.map(ObjectIdentifier.init)
+        let labels = descendants(host).compactMap { ($0 as? NSTextField)?.stringValue }
+        let items = controller.menuItemsForTesting.map(ObjectIdentifier.init)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+        XCTAssertTrue(host.isMenuDismissing)
+        let deadline = Date().addingTimeInterval(OverviewNumericTransition.openDelay + 0.05)
+        while Date() < deadline { RunLoop.main.run(mode: .default, before: deadline) }
+        controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(120)
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(120)
+        timer.fire()
+        paceTimer.fire()
+        // Numeric-only refresh, then a structural change, both in the gap
+        // before AppKit delivers menuDidClose.
+        for onlyWeek in [false, true] {
+            controller.update(snapshot: snapshot(remaining: 10, onlyWeek: onlyWeek), refreshDate: now.addingTimeInterval(120),
+                menuInput: makeMenuInput(), settings: makeSettings())
+            XCTAssertEqual(host.subviews.map(ObjectIdentifier.init), sections)
+            XCTAssertEqual(host.paceViews.map(ObjectIdentifier.init), views.map(ObjectIdentifier.init))
+            XCTAssertEqual(descendants(host).compactMap { ($0 as? NSTextField)?.stringValue }, labels)
+            XCTAssertTrue(views.allSatisfy { $0.progress.percentage == 40 && $0.pace?.roundedActual == 40 })
+        }
+        XCTAssertEqual(countdown.sample?.value, countdownValue)
+        XCTAssertEqual(controller.menuItemsForTesting.map(ObjectIdentifier.init), items)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        for source in ["sections", "numerics", "numerics.open", "pace", "countdown.timer"] {
+            XCTAssertTrue(lines.contains { $0.contains("event=content.update.deferred;") && $0.contains("source=\(source)") })
+        }
+        controller.menuDidClose(outgoingMenu)
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === outgoingMenu,
+            "Prepare an independent next menu while the old window finishes dismissal")
+        XCTAssertFalse(nextMenu.items.first?.view === host)
+        host.finishMenuDismissal() // Auxiliary cleanup must not restore a still-visible window.
+        XCTAssertTrue(host.isMenuDismissing)
+        XCTAssertTrue(window.isVisible)
+        controller.update(snapshot: snapshot(remaining: 10, onlyWeek: true), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        // The counter includes building the independent next menu. Protect
+        // the actual outgoing tree rather than forbidding all new-menu work.
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertTrue(controller.statusMenuForTesting === nextMenu)
+        XCTAssertTrue(outgoingMenu.items.first?.view === host)
+        XCTAssertTrue(host.window === window)
+        XCTAssertEqual(outgoingMenu.items.map(ObjectIdentifier.init), items)
+        XCTAssertEqual(host.subviews.map(ObjectIdentifier.init), sections)
+        XCTAssertEqual(host.paceViews.map(ObjectIdentifier.init), views.map(ObjectIdentifier.init))
+        XCTAssertEqual(descendants(host).compactMap { ($0 as? NSTextField)?.stringValue }, labels)
+        XCTAssertTrue(views.allSatisfy { $0.progress.percentage == 40 && $0.pace?.roundedActual == 40 })
+        XCTAssertEqual(countdown.sample?.value, countdownValue)
+        controller.menuWillOpen(nextMenu)
+        let latest = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertEqual(latest.paceViews.count, 1)
+        XCTAssertEqual(latest.paceViews.first?.quotaWindow.kind, .sevenDay)
+        XCTAssertEqual(latest.paceViews.first?.progress.percentage, 10)
+        let latestCountdown = try XCTUnwrap(descendants(latest).compactMap { $0 as? OverviewNumericHoverLinkTextField }
+            .first { $0.sample?.format == .remainingMinutes })
+        XCTAssertEqual(latestCountdown.sample?.value, 59)
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    func testAggregatedCodexCardsUseOwnAccountsShareTimersAndRespectCardDismissal() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func display(_ index: Int, email: String, remaining: Double = 40) -> AggregatedProviderDisplay {
+            let windows = [OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h", reset: nil,
+                durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000))]
+            let id = "codex-\(index)"
+            let contexts = predictionStore.updatePredictionContexts(providerID: id, accountKey: email, windows: windows, now: now)
+            return AggregatedProviderDisplay(
+                entry: AggregatedProviderEntry(source: ProviderSummarySource(id: id, name: id, isOfficial: true,
+                    query: nil, officialAccessToken: nil, notes: nil), role: index == 0 ? .default : .member),
+                identity: AggregationDisplayIdentity(providerID: id, accountScope: email, configurationRevision: "fixture"),
+                snapshot: .official("OpenAI Official", remaining, "5h", nil, now, windows: windows,
+                    resetForecast: CodexResetForecast(probability24h: .percent(20), probability48h: .percent(35),
+                        confidence: .low, updatedAt: now, isCached: false,
+                        officialSignal: CodexResetOfficialSignal(probability: .percent(71), targetAt: now.addingTimeInterval(3_665))),
+                    quotaPredictionContexts: contexts, quotaPredictionAccountKey: email),
+                account: OpenAIAccountPresentation(email: email), status: .fresh, reason: nil, fetchedAt: now)
+        }
+        // The active account is A; card B belongs to another account.
+        func input(remainingB: Double = 40) -> StatusItemController.MenuInput {
+            StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                openAIAccount: OpenAIAccountPresentation(email: "pace@example.com"), statusLinks: [],
+                showQuickSwitchMenu: true, showOpenChatGPTMenu: true, showOpenCCSwitchMenu: true, showStatusMenu: false,
+                aggregatedProviders: [display(0, email: "pace@example.com"),
+                    display(1, email: "other@example.com", remaining: remainingB)],
+                aggregationQuickSwitchBlocked: true)
+        }
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.bankedResetCountdownNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        controller.start(snapshot: .placeholder, refreshDate: now, menuInput: input(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        let viewport = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 304, height: 600), styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = viewport
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        let cards = viewport.cardHosts()
+        XCTAssertEqual(cards.count, 2)
+        let paces = try cards.map { try XCTUnwrap($0.paceViews.first) }
+        XCTAssertNotNil(paces[0].prediction)
+        XCTAssertNotNil(paces[1].prediction, "card B is validated against its own account")
+
+        let paceTimer = try XCTUnwrap(controller.quotaPaceTimerForTesting, "one menu-level pace timer")
+        XCTAssertNotNil(controller.bankedResetCountdownTimerForTesting, "aggregated countdown runs")
+        let before = paces.map(\.prediction)
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(60)
+        paceTimer.fire()
+        XCTAssertNotEqual(paces[0].prediction, before[0])
+        XCTAssertNotEqual(paces[1].prediction, before[1])
+
+        // A data refresh for card B keeps its own-account identity: the pace
+        // view and its prediction survive instead of being reset as foreign.
+        controller.updateMenu(input: input(remainingB: 35))
+        XCTAssertTrue(cards[1].paceViews.first === paces[1], "card B keeps its pace view")
+        XCTAssertNotNil(paces[1].prediction, "card B keeps its prediction")
+        XCTAssertEqual(paces[1].progress.percentage, 35)
+
+        // Card B starts dismissing while the controller still tracks the menu.
+        cards[1].setMenuContentVisible(false)
+        XCTAssertTrue(cards[1].isMenuDismissing)
+        let frozen = paces[1].prediction
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(120)
+        paceTimer.fire()
+        XCTAssertNotEqual(paces[0].prediction, frozen)
+        XCTAssertEqual(paces[1].prediction, frozen, "a dismissing card is never mutated")
+        XCTAssertEqual(paces[1].progress.percentage, 35)
+        controller.updateMenu(input: input(remainingB: 30))
+        XCTAssertEqual(paces[1].progress.percentage, 35, "new data waits for the closed rebuild")
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        cards[1].finishMenuDismissal(beforeOpening: true)
+    }
+
+    func testWeeklyPredictionConsumesMatchingContextAndMinuteTickKeepsViews() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let windows = [
+            OfficialQuotaWindow(kind: .fiveHour, remaining: 40, label: "5h", daysText: "5h", reset: nil,
+                durationSeconds: 18_000, resetAt: now.addingTimeInterval(9000)),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 40, label: "7d", daysText: "7d", reset: nil,
+                durationSeconds: 604_800, resetAt: now.addingTimeInterval(302_400))]
+        let contexts = predictionStore.updatePredictionContexts(providerID: "official", accountKey: "pace@example.com",
+            windows: windows, now: now)
+        func snapshot(account: String = "pace@example.com", contexts: [QuotaPredictionContext]) -> Snapshot {
+            .official("OpenAI Official", 40, "7d", nil, now, windows: windows,
+                quotaPredictionContexts: contexts, quotaPredictionAccountKey: account)
+        }
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.start(snapshot: snapshot(contexts: []), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.prediction == nil }, "No UI metadata inference without a coordinator context")
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.update(snapshot: snapshot(account: "other@example.com", contexts: contexts), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.prediction == nil })
+        controller.update(snapshot: snapshot(contexts: contexts), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let weekly = try XCTUnwrap(host.paceViews.first { $0.quotaWindow.kind == .sevenDay })
+        XCTAssertNotNil(weekly.prediction)
+        let prediction = weekly.prediction
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(60)
+        try XCTUnwrap(controller.quotaPaceTimerForTesting).fire()
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === host)
+        XCTAssertTrue(host.paceViews.contains { $0 === weekly })
+        XCTAssertNotEqual(weekly.prediction, prediction)
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.prediction != nil })
+        // A context for a different deadline cannot qualify the current weekly window.
+        let wrongWindow = OfficialQuotaWindow(kind: .sevenDay, remaining: 40, label: "7d", daysText: "7d", reset: nil,
+            durationSeconds: 604_800, resetAt: now.addingTimeInterval(320_000))
+        let wrong = QuotaPredictionContext(cycle: try XCTUnwrap(QuotaPredictionCycle(window: wrongWindow)),
+            inferredCycleStart: now.addingTimeInterval(-284_800))
+        controller.update(snapshot: snapshot(contexts: contexts.filter { $0.cycle.kind == .fiveHour } + [wrong]), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertNil(weekly.prediction)
+        XCTAssertNotNil(host.paceViews.first { $0.quotaWindow.kind == .fiveHour }?.prediction)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+    }
+
+    func testPaceMinuteTickAndQuotaRefreshKeepExistingProgressAndView() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let reset = now.addingTimeInterval(9_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 40), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let pace = try XCTUnwrap(host.paceViews.first)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        XCTAssertEqual(pace.progress.identifier, OverviewNumericPresentation.progressIdentifier(for: pace.numericIdentity))
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(60)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertEqual(try XCTUnwrap(pace.pace?.expectedRemaining), 100 * 8_940.0 / 18_000, accuracy: 0.0001)
+        let initialPrediction = pace.prediction
+        XCTAssertNotNil(initialPrediction)
+        let timer = try XCTUnwrap(controller.quotaPaceTimerForTesting)
+        XCTAssertEqual(timer.timeInterval, 60)
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(120)
+        timer.fire()
+        XCTAssertNotEqual(pace.prediction, initialPrediction)
+        XCTAssertEqual(try XCTUnwrap(pace.pace?.expectedRemaining), 100 * 8_880.0 / 18_000, accuracy: 0.0001)
+        XCTAssertTrue(controller.menuItemsForTesting.first?.view === host)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 35, resetAt: reset), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(host.paceViews.first === pace)
+        XCTAssertEqual(pace.progress.percentage, 35)
+        XCTAssertEqual(pace.pace?.roundedActual, 35)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        XCTAssertFalse(timer.isValid)
+        XCTAssertFalse(pace.isMenuTracking)
+    }
+
+    func testPaceAnimationRuntimePolicyUsesExistingWorkspaceObserver() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 40), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.orderOut(nil) }
+        host.layoutSubtreeIfNeeded()
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let view = try XCTUnwrap(host.paceViews.first)
+        let sections = Array(host.sectionFocus.sections.values)
+        sections.forEach { $0.focusReduceMotionForTesting = false; $0.focusReduceTransparencyForTesting = false }
+        view.markerReduceMotionForTesting = false
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: view.bounds.midY))
+        XCTAssertNotNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        host.sectionFocus.pendingTimerForTesting?.fire()
+        let receded = try XCTUnwrap(sections.first { $0.focusState == .receded })
+        XCTAssertNotNil(receded.layer?.animation(forKey: "sectionFocus.radius"))
+        sections.forEach { $0.focusReduceMotionForTesting = true; $0.focusReduceTransparencyForTesting = true }
+        view.markerReduceMotionForTesting = true
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        XCTAssertEqual(receded.alphaValue, 0.5)
+        XCTAssertTrue(receded.contentFilters.isEmpty)
+        XCTAssertNil(receded.layer?.animation(forKey: "sectionFocus.radius"))
+        sections.forEach { $0.focusReduceMotionForTesting = false; $0.focusReduceTransparencyForTesting = false }
+        view.markerReduceMotionForTesting = false
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        XCTAssertFalse(receded.contentFilters.isEmpty)
+        XCTAssertNil(receded.layer?.animation(forKey: "sectionFocus.radius"), "Disabling Reduce Motion does not replay")
+        controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertTrue(sections.allSatisfy { $0.alphaValue == 1 && $0.contentFilters.isEmpty })
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        XCTAssertFalse(view.hasPendingShowForTesting)
+    }
+
+    func testPaceTooltipUsesSettingsTimezoneAtCreationAndOpenRefresh() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        let input = makeMenuInput()
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 40), refreshDate: now,
+            menuInput: input, settings: makeSettings(timeZone: TimeZone(secondsFromGMT: 8 * 3600)!))
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let pace = try XCTUnwrap(host.paceViews.first)
+        XCTAssertTrue(try XCTUnwrap(pace.tooltipContent?.body).contains("07:55"))
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 40), refreshDate: now,
+            menuInput: input, settings: makeSettings(timeZone: TimeZone(secondsFromGMT: 0)!))
+        XCTAssertTrue(host.paceViews.first === pace)
+        XCTAssertTrue(try XCTUnwrap(pace.tooltipContent?.body).contains("23:55"))
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    func testPaceInvalidWindowCanRecoverInPlaceAndIdentitySwitchClearsIt() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 60, resetAt: now), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let pace = try XCTUnwrap(host.paceViews.first)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertNil(pace.pace)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 60), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertNotNil(pace.pace)
+        XCTAssertNotNil(controller.quotaPaceTimerForTesting)
+        controller.quotaPaceNowForTesting = now.addingTimeInterval(9_000)
+        controller.quotaPaceTimerForTesting?.fire()
+        XCTAssertNil(pace.pace)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        controller.quotaPaceNowForTesting = now
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 60), refreshDate: now,
+            menuInput: makeMenuInput(activeClient: .claude), settings: makeSettings())
+        XCTAssertNil(pace.pace)
+        XCTAssertTrue(pace.markerHitRect.isEmpty)
+        XCTAssertFalse(pace.isMenuTracking)
+        let replacement = try XCTUnwrap(host.paceViews.first)
+        XCTAssertFalse(replacement === pace)
+        XCTAssertNotNil(replacement.pace)
+        XCTAssertTrue(replacement.isMenuTracking)
+        XCTAssertNotNil(controller.quotaPaceTimerForTesting)
+    }
+
+    func testPredictionRestorationGuardSurvivesClosedMenuAndRecoversOnNewDeadline() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let reset = now.addingTimeInterval(9_000)
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.start(snapshot: timedPaceSnapshot(now: now, remaining: 40, resetAt: reset), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        func currentPace() throws -> QuotaProgressPaceView {
+            try XCTUnwrap((controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)?.paceViews.first)
+        }
+        XCTAssertNotNil(try currentPace().prediction)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 60, resetAt: reset), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertNotNil(try currentPace().pace)
+        XCTAssertNil(try currentPace().prediction)
+        XCTAssertNotNil(try currentPace().tooltipContent?.body)
+        controller.update(snapshot: .error("Temporary quota failure"), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertNil(try currentPace().prediction)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 55, resetAt: reset), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertNil(try currentPace().prediction)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 80, resetAt: now.addingTimeInterval(12_000)), refreshDate: now,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertNotNil(try currentPace().prediction)
+        controller.update(snapshot: timedPaceSnapshot(now: now, remaining: 50), refreshDate: now,
+            menuInput: makeMenuInput(activeClient: .claude), settings: makeSettings())
+        XCTAssertNil(try currentPace().prediction, "Five-hour semantics were only checked for Codex")
+    }
+
     func testFirstOpenShowsCurrentValuesAndLaterOpenStartsFromLastSeen() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -1073,7 +1485,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: activeClient,
-            openAIAccount: nil,
+            openAIAccount: OpenAIAccountPresentation(email: "pace@example.com"),
             statusLinks: [],
             showQuickSwitchMenu: false,
             showOpenChatGPTMenu: false,
@@ -1082,13 +1494,14 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         )
     }
 
-    private func makeSettings() -> StatusItemController.MenuBarSettings {
+    private func makeSettings(timeZone: TimeZone = .autoupdatingCurrent) -> StatusItemController.MenuBarSettings {
         StatusItemController.MenuBarSettings(
             showIcon: true,
             showAmount: true,
             showReset: true,
             horizontalPadding: 6,
-            keepMenuOpenAfterRefresh: true
+            keepMenuOpenAfterRefresh: true,
+            displayTimeZone: timeZone
         )
     }
 }

@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "进度条";
 "dashboard.menu.page.show_quota_progress_bar" = "显示进度条";
 "dashboard.menu.page.show_quota_progress_bar_description" = "关闭后，菜单和额度卡片不再显示进度条";
+"dashboard.menu.page.show_quota_pace_indicator" = "显示使用节奏刻度";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "在官方 5 小时和 7 日额度进度条上显示匀速参考刻度";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@显示方式";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "选择 %1$@ 在菜单中的显示时机";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "不显示";
@@ -507,6 +509,25 @@
 "dashboard.logs.page.preview_truncated" = "仅显示最近预览；请导出全部保留日志。";
 "dashboard.logs.page.read_warning" = "部分诊断文件无法读取";
 "dashboard.logs.page.export_failed" = "诊断日志导出失败";
+"quota.pace.status.unused" = "还没开始用";
+"quota.pace.status.fast" = "用得有点快";
+"quota.pace.status.normal" = "用得刚刚好";
+"quota.pace.status.slow" = "用得很从容";
+"quota.pace.body.unused" = "这一轮额度还是满的。";
+"quota.pace.body.fast" = "照这一轮的平均速度，大约 %1$@ 会用完，早于重置时间。";
+"quota.pace.body.normal" = "和时间进度基本同步。";
+"quota.pace.body.slow" = "额度比时间进度更充裕，放心用。";
+"quota.pace.body.exhausted" = "将在%1$@重置。";
+
+"quota.pace.status.exhausted" = "额度已用完";
+
+"quota.pace.body.qualitative.fast" = "比时间进度快一些，可以适当放慢。";
+
+
+
+"quota.pace.time.tomorrow" = "明天 %1$@";
+
+"quota.pace.body.reset_unavailable" = "重置时间暂不可用。";
 
 // CC Switch aggregation overview
 "aggregation.default" = "默认";

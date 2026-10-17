@@ -8,6 +8,22 @@ final class ResponseParsersTests: XCTestCase {
     {"mode":"model","updated_at":"2026-09-13T14:35:22.017Z","probabilities":{"raw_24h":0.23953072768015632,"raw_48h":0.4216864858573275,"rounded_24h":24,"rounded_48h":42,"model_24h":24,"model_48h":42},"confidence":"low","confidence_note":"Experimental: walk-forward backtest has not beaten both baselines yet.","hint_copy":"do not show"}
     """#.utf8)
 
+    func testCodexRejectsNonFiniteUsedPercentBeforeRemainingClamp() throws {
+        for invalid in ["NaN", "Infinity", "-Infinity"] {
+            let primary: [String: Any] = ["used_percent": invalid, "limit_window_seconds": 18_000,
+                                          "reset_at": 1_700_009_000]
+            let data = try JSONSerialization.data(withJSONObject: ["rate_limit": ["primary_window": primary]])
+            XCTAssertThrowsError(try OfficialQuotaResponseParser.parse(data: data, client: .codex, now: now))
+            let secondary: [String: Any] = ["used_percent": 25, "limit_window_seconds": 604_800,
+                                            "reset_at": 1_700_302_400]
+            let mixed = try JSONSerialization.data(withJSONObject:
+                ["rate_limit": ["primary_window": primary, "secondary_window": secondary]])
+            let output = try OfficialQuotaResponseParser.parse(data: mixed, client: .codex, now: now)
+            XCTAssertEqual(output.windows.map(\.kind), [.sevenDay])
+            XCTAssertEqual(output.windows.map(\.remaining), [75])
+        }
+    }
+
     func testBalanceFixturesCoverGenericRightCodeAndNativeProviders() throws {
         let cases: [(String, Data, BalanceResponseParser.Context, Double, String)] = [
             (

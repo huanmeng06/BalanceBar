@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Barra de progresso";
 "dashboard.menu.page.show_quota_progress_bar" = "Mostrar barra de progresso";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Quando desativada, os menus e os cartões de cota não mostram mais a barra de cota restante";
+"dashboard.menu.page.show_quota_pace_indicator" = "Mostrar ritmo de uso";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Mostrar a referência de uso uniforme nas cotas oficiais de 5 horas e 7 dias";
 "dashboard.menu.page.luna_reserve_display_mode" = "Exibição da 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Escolha quando a 🌙 %1$@ será exibida no menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Não mostrar";
@@ -507,6 +509,25 @@
 "dashboard.logs.page.preview_truncated" = "Apenas a pré-visualização recente é mostrada; exporte todos os logs retidos.";
 "dashboard.logs.page.read_warning" = "Não foi possível ler alguns arquivos de diagnóstico";
 "dashboard.logs.page.export_failed" = "Falha ao exportar os logs de diagnóstico";
+"quota.pace.status.unused" = "Ainda não começou";
+"quota.pace.status.fast" = "Uso um pouco rápido";
+"quota.pace.status.normal" = "Usa ao ritmo certo";
+"quota.pace.status.slow" = "Ainda há bastante disponível";
+"quota.pace.body.unused" = "A quota deste ciclo continua completa.";
+"quota.pace.body.fast" = "Ao ritmo médio deste ciclo, a quota deverá esgotar-se por volta das %1$@, antes da reposição.";
+"quota.pace.body.normal" = "O uso está aproximadamente alinhado com o tempo decorrido.";
+"quota.pace.body.slow" = "Resta mais quota do que o tempo decorrido sugere. Use-a à vontade.";
+"quota.pace.body.exhausted" = "A reposição será às %1$@.";
+
+"quota.pace.status.exhausted" = "Quota esgotada";
+
+"quota.pace.body.qualitative.fast" = "O uso está um pouco adiantado face ao tempo. Pode abrandar ligeiramente.";
+
+
+
+"quota.pace.time.tomorrow" = "Amanhã %1$@";
+
+"quota.pace.body.reset_unavailable" = "A hora de reposição está indisponível.";
 
 // CC Switch aggregation overview
 "aggregation.default" = "Predefinido";

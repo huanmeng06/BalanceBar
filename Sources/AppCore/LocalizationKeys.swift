@@ -383,6 +383,8 @@
     case keyDashboardMenuPageProgressBar = "dashboard.menu.page.progress_bar"
     case keyDashboardMenuPageShowQuotaProgressBar = "dashboard.menu.page.show_quota_progress_bar"
     case keyDashboardMenuPageShowQuotaProgressBarDescription = "dashboard.menu.page.show_quota_progress_bar_description"
+    case keyDashboardMenuPageShowQuotaPaceIndicator = "dashboard.menu.page.show_quota_pace_indicator"
+    case keyDashboardMenuPageShowQuotaPaceIndicatorDescription = "dashboard.menu.page.show_quota_pace_indicator_description"
     case keyDashboardMenuPageProgressColorRanges = "dashboard.menu.page.progress_color_ranges"
     case keyDashboardMenuPageProgressColorRangesDescription = "dashboard.menu.page.progress_color_ranges_description"
     case keyDashboardMenuPageDisplayedColors = "dashboard.menu.page.displayed_colors"
@@ -528,6 +530,19 @@
     case keyCodexResetSignalTooltipTitle = "codex.reset_signal.tooltip_title"
     case keyCodexResetSignalTooltipBody = "codex.reset_signal.tooltip_body"
     case keyCodexResetSignalTooltipDisclaimer = "codex.reset_signal.tooltip_disclaimer"
+    case keyQuotaPaceStatusUnused = "quota.pace.status.unused"
+    case keyQuotaPaceStatusFast = "quota.pace.status.fast"
+    case keyQuotaPaceStatusNormal = "quota.pace.status.normal"
+    case keyQuotaPaceStatusSlow = "quota.pace.status.slow"
+    case keyQuotaPaceBodyUnused = "quota.pace.body.unused"
+    case keyQuotaPaceBodyFast = "quota.pace.body.fast"
+    case keyQuotaPaceBodyNormal = "quota.pace.body.normal"
+    case keyQuotaPaceBodySlow = "quota.pace.body.slow"
+    case keyQuotaPaceStatusExhausted = "quota.pace.status.exhausted"
+    case keyQuotaPaceBodyQualitativeFast = "quota.pace.body.qualitative.fast"
+    case keyQuotaPaceTimeTomorrow = "quota.pace.time.tomorrow"
+    case keyQuotaPaceBodyResetUnavailable = "quota.pace.body.reset_unavailable"
+    case keyQuotaPaceBodyExhausted = "quota.pace.body.exhausted"
 
     var rawKey: String { rawValue }
 }

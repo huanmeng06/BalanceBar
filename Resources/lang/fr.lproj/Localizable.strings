@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Barre de progression";
 "dashboard.menu.page.show_quota_progress_bar" = "Afficher la barre de progression";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Une fois désactivée, les menus et les cartes de quota n’affichent plus la barre de quota restant";
+"dashboard.menu.page.show_quota_pace_indicator" = "Afficher le repère de rythme";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Afficher le repère d’utilisation régulière sur les quotas officiels de 5 heures et 7 jours";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 Affichage de %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Choisissez quand afficher %1$@ dans le menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Ne pas afficher";
@@ -507,6 +509,25 @@
 "dashboard.logs.page.preview_truncated" = "Seul l’aperçu récent est affiché ; exportez tous les journaux conservés.";
 "dashboard.logs.page.read_warning" = "Certains fichiers de diagnostic sont illisibles";
 "dashboard.logs.page.export_failed" = "Échec de l’export des journaux de diagnostic";
+"quota.pace.status.unused" = "Pas encore commencé";
+"quota.pace.status.fast" = "Utilisation un peu rapide";
+"quota.pace.status.normal" = "Vous l’utilisez au bon rythme";
+"quota.pace.status.slow" = "Il reste une bonne marge";
+"quota.pace.body.unused" = "Le quota de cette période est encore intact.";
+"quota.pace.body.fast" = "Au rythme moyen de cette période, le quota serait épuisé vers %1$@, avant sa réinitialisation.";
+"quota.pace.body.normal" = "Votre utilisation suit à peu près le temps écoulé.";
+"quota.pace.body.slow" = "Il reste davantage de quota que le temps écoulé ne le suggère. Utilisez-le sereinement.";
+"quota.pace.body.exhausted" = "Réinitialisation à %1$@.";
+
+"quota.pace.status.exhausted" = "Quota épuisé";
+
+"quota.pace.body.qualitative.fast" = "Vous l’utilisez un peu plus vite que le temps écoulé. Vous pouvez ralentir légèrement.";
+
+
+
+"quota.pace.time.tomorrow" = "Demain %1$@";
+
+"quota.pace.body.reset_unavailable" = "L’heure de réinitialisation est indisponible.";
 
 // CC Switch aggregation overview
 "aggregation.default" = "Par défaut";

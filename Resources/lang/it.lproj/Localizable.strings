@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Barra di avanzamento";
 "dashboard.menu.page.show_quota_progress_bar" = "Mostra la barra di avanzamento";
 "dashboard.menu.page.show_quota_progress_bar_description" = "Se disattivata, i menu e le schede quota non mostrano più la barra della quota rimanente";
+"dashboard.menu.page.show_quota_pace_indicator" = "Mostra ritmo di utilizzo";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Mostra il riferimento di utilizzo uniforme sui quota ufficiali di 5 ore e 7 giorni";
 "dashboard.menu.page.luna_reserve_display_mode" = "Visualizzazione di 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Scegli quando mostrare 🌙 %1$@ nel menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Non mostrare";
@@ -507,6 +509,25 @@
 "dashboard.logs.page.preview_truncated" = "Viene mostrata solo l’anteprima recente; esporta tutti i registri conservati.";
 "dashboard.logs.page.read_warning" = "Impossibile leggere alcuni file diagnostici";
 "dashboard.logs.page.export_failed" = "Esportazione dei registri diagnostici non riuscita";
+"quota.pace.status.unused" = "Non hai ancora iniziato";
+"quota.pace.status.fast" = "Utilizzo un po’ rapido";
+"quota.pace.status.normal" = "Lo usi al ritmo giusto";
+"quota.pace.status.slow" = "Resta un buon margine";
+"quota.pace.body.unused" = "La quota di questo ciclo è ancora completa.";
+"quota.pace.body.fast" = "Al ritmo medio di questo ciclo, la quota si esaurirebbe verso le %1$@, prima del ripristino.";
+"quota.pace.body.normal" = "Il consumo è circa in linea con il tempo trascorso.";
+"quota.pace.body.slow" = "Rimane più quota di quanto suggerisca il tempo trascorso. Usala con tranquillità.";
+"quota.pace.body.exhausted" = "Si ripristina alle %1$@.";
+
+"quota.pace.status.exhausted" = "Quota esaurita";
+
+"quota.pace.body.qualitative.fast" = "Il consumo è un po’ più avanti del tempo trascorso. Puoi rallentare leggermente.";
+
+
+
+"quota.pace.time.tomorrow" = "Domani %1$@";
+
+"quota.pace.body.reset_unavailable" = "L’orario di ripristino non è al momento disponibile.";
 
 // CC Switch aggregation overview
 "aggregation.default" = "Predefinito";

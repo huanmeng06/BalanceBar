@@ -343,6 +343,8 @@
 "dashboard.menu.page.progress_bar" = "Progress Bar";
 "dashboard.menu.page.show_quota_progress_bar" = "Show Progress Bar";
 "dashboard.menu.page.show_quota_progress_bar_description" = "When off, menus and quota cards no longer show the remaining-quota bar";
+"dashboard.menu.page.show_quota_pace_indicator" = "Show usage pace marker";
+"dashboard.menu.page.show_quota_pace_indicator_description" = "Show the even-use reference marker on official 5-hour and 7-day quota bars";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ Display";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Choose when %1$@ is shown in the menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Do not show";
@@ -507,6 +509,25 @@
 "dashboard.logs.page.preview_truncated" = "Only the recent preview is shown; export the full retained logs.";
 "dashboard.logs.page.read_warning" = "Some diagnostic files could not be read";
 "dashboard.logs.page.export_failed" = "Diagnostic log export failed";
+"quota.pace.status.unused" = "You have not started yet";
+"quota.pace.status.fast" = "Usage is a little fast";
+"quota.pace.status.normal" = "You’re using it just right";
+"quota.pace.status.slow" = "You have plenty left";
+"quota.pace.body.unused" = "This cycle’s quota is still full.";
+"quota.pace.body.fast" = "At this cycle’s average pace, you’ll run out around %1$@, before the reset.";
+"quota.pace.body.normal" = "Your usage is roughly in step with the time elapsed.";
+"quota.pace.body.slow" = "You have more quota left than the time elapsed calls for. Use it comfortably.";
+"quota.pace.body.exhausted" = "Resets at %1$@.";
+
+"quota.pace.status.exhausted" = "Quota used up";
+
+"quota.pace.body.qualitative.fast" = "You’re using it a little ahead of schedule. Consider slowing down.";
+
+
+
+"quota.pace.time.tomorrow" = "Tomorrow %1$@";
+
+"quota.pace.body.reset_unavailable" = "The reset time is currently unavailable.";
 
 // CC Switch aggregation overview
 "aggregation.default" = "Default";

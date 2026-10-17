@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import XCTest
 @testable import BalanceBar
 
@@ -34,8 +35,1511 @@ private final class FixedPreviewRowAccessory: NSView, SettingsRowAccessoryLayout
     }
 }
 
+/// Isolates native window presentation from the mandatory background host
+/// policy. Content, anchor, ownership and timing still use production code.
+@MainActor
+private final class QuotaPacePopoverProbe: NSPopover {
+    private var showing = false
+    private var controller: NSViewController?
+    private var size = NSSize.zero
+    private var rect = NSRect.zero
+    private(set) var showCount = 0
+    private(set) var showAnimationFlags: [Bool] = []
+    private(set) var closeAnimationFlags: [Bool] = []
+    var delaysCloseCompletion = false
+    weak var anchorView: NSView?
+    private(set) var preferredEdge: NSRectEdge?
+
+    override var isShown: Bool { showing }
+    override var contentViewController: NSViewController? {
+        get { controller }
+        set { controller = newValue }
+    }
+    override var contentSize: NSSize {
+        get { size }
+        set { size = newValue }
+    }
+    override var positioningRect: NSRect {
+        get { rect }
+        set { rect = newValue }
+    }
+    override func show(relativeTo positioningRect: NSRect, of positioningView: NSView, preferredEdge: NSRectEdge) {
+        rect = positioningRect
+        anchorView = positioningView
+        self.preferredEdge = preferredEdge
+        showing = true
+        showCount += 1
+        showAnimationFlags.append(animates)
+    }
+    override func close() {
+        closeAnimationFlags.append(animates)
+        delegate?.popoverWillClose?(Notification(name: NSPopover.willCloseNotification, object: self))
+        if !delaysCloseCompletion { completeClose() }
+    }
+    func completeClose() {
+        showing = false
+        delegate?.popoverDidClose?(Notification(name: NSPopover.didCloseNotification, object: self))
+    }
+}
+
+private final class PaceDismissalWindowProbe: NSWindow {
+    var reportedOcclusionState: NSWindow.OcclusionState = .visible
+    override var occlusionState: NSWindow.OcclusionState { reportedOcclusionState }
+}
+
+private final class PacePresentationProbeLayer: CALayer {
+    var presented: PacePresentationProbeLayer?
+    override func presentation() -> Self? { presented as? Self }
+}
+
 @MainActor
 final class DashboardComponentsTests: XCTestCase {
+    private func paceWindow(remaining: Double = 50, reset: Date, kind: OfficialQuotaWindow.Kind = .fiveHour) -> OfficialQuotaWindow {
+        OfficialQuotaWindow(kind: kind, remaining: remaining, label: "quota", daysText: "quota",
+            reset: "obsolete", durationSeconds: kind == .sevenDay ? 604_800 : 18_000, resetAt: reset)
+    }
+
+    func testPaceTickLayerMetricsSpringReverseAndCopy() throws {
+        let tick = PaceTickLayer()
+        XCTAssertEqual(tick.bodyLayer.bounds.size, CGSize(width: 2, height: 8))
+        XCTAssertEqual(tick.strokeLayer.bounds.size, CGSize(width: 3.5, height: 9.5))
+        XCTAssertEqual(tick.bodyLayer.cornerRadius, 1)
+        XCTAssertEqual(tick.bodyLayer.opacity, 0.85)
+        tick.updateGeometry(center: CGPoint(x: 100, y: 9), scale: 2)
+        XCTAssertEqual(tick.bodyLayer.position, tick.strokeLayer.position)
+        tick.setHovered(true, reduceMotion: false)
+        XCTAssertEqual(tick.bodyLayer.bounds.size, CGSize(width: 3.5, height: 11))
+        XCTAssertEqual(tick.strokeLayer.bounds.size, CGSize(width: 5.5, height: 13))
+        XCTAssertEqual(tick.bodyLayer.cornerRadius, 1.75)
+        XCTAssertEqual(tick.strokeLayer.cornerRadius, 2.75)
+        XCTAssertEqual(tick.bodyLayer.opacity, 1)
+        XCTAssertTrue(CATransform3DIsIdentity(tick.bodyLayer.transform))
+        for child in [tick.bodyLayer, tick.strokeLayer] {
+            for key in ["bounds", "cornerRadius", "opacity"] {
+                let animation = try XCTUnwrap(child.animation(forKey: "pace.\(key)") as? CASpringAnimation)
+                XCTAssertEqual(animation.keyPath, key)
+                XCTAssertEqual(animation.damping, 18)
+                XCTAssertEqual(animation.stiffness, 320)
+                XCTAssertEqual(animation.mass, 1)
+                XCTAssertEqual(animation.initialVelocity, 0)
+                XCTAssertEqual(animation.duration, animation.settlingDuration)
+                XCTAssertNotNil(animation.fromValue)
+                XCTAssertNotNil(animation.toValue)
+            }
+        }
+        tick.setHovered(true, reduceMotion: false)
+        let unchanged = try XCTUnwrap(tick.bodyLayer.animation(forKey: "pace.bounds") as? CABasicAnimation)
+        XCTAssertEqual((unchanged.fromValue as? NSValue)?.rectValue.size, CGSize(width: 2, height: 8), "Repeated hover must not restart from the model target")
+        tick.setHovered(false, reduceMotion: false)
+        let exit = try XCTUnwrap(tick.bodyLayer.animation(forKey: "pace.bounds") as? CABasicAnimation)
+        XCTAssertFalse(exit is CASpringAnimation)
+        XCTAssertEqual(exit.duration, 0.15)
+        XCTAssertEqual((exit.fromValue as? NSValue)?.rectValue.size, CGSize(width: 3.5, height: 11))
+        XCTAssertEqual((exit.toValue as? NSValue)?.rectValue.size, CGSize(width: 2, height: 8))
+        tick.setHovered(true, reduceMotion: false)
+        XCTAssertEqual(tick.bodyLayer.animationKeys()?.count, 3)
+        let copy = PaceTickLayer(layer: tick)
+        XCTAssertEqual(copy.sublayers?.count, 2)
+        XCTAssertEqual(copy.bodyLayer.bounds, tick.bodyLayer.bounds)
+        XCTAssertTrue(copy.isHovered)
+        XCTAssertFalse(copy.bodyLayer === tick.bodyLayer)
+        copy.setHovered(false, reduceMotion: true)
+        XCTAssertEqual(tick.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        tick.setHovered(false, reduceMotion: false, immediately: true)
+        XCTAssertNil(tick.bodyLayer.animationKeys())
+        XCTAssertNil(tick.strokeLayer.animationKeys())
+        XCTAssertEqual(tick.bodyLayer.bounds.size, PaceTickLayer.restSize)
+    }
+
+    func testPaceReverseAnimationUsesPresentationInsteadOfModelTarget() throws {
+        let tick = PaceTickLayer()
+        let model = PacePresentationProbeLayer()
+        model.name = "pace.body"
+        model.bounds = CGRect(origin: .zero, size: PaceTickLayer.restSize)
+        let visible = PacePresentationProbeLayer()
+        visible.bounds = CGRect(x: 0, y: 0, width: 2.8, height: 9.9)
+        visible.cornerRadius = 1.4
+        visible.opacity = 0.93
+        model.presented = visible
+        tick.sublayers = [tick.strokeLayer, model]
+        tick.setHovered(true, reduceMotion: false)
+        tick.setHovered(false, reduceMotion: false)
+        let bounds = try XCTUnwrap(model.animation(forKey: "pace.bounds") as? CABasicAnimation)
+        XCTAssertEqual((bounds.fromValue as? NSValue)?.rectValue, visible.bounds)
+        XCTAssertEqual((bounds.toValue as? NSValue)?.rectValue.size, PaceTickLayer.restSize)
+        let radius = try XCTUnwrap(model.animation(forKey: "pace.cornerRadius") as? CABasicAnimation)
+        XCTAssertEqual((radius.fromValue as? NSNumber)?.doubleValue, 1.4)
+        let opacity = try XCTUnwrap(model.animation(forKey: "pace.opacity") as? CABasicAnimation)
+        XCTAssertEqual(try XCTUnwrap(opacity.fromValue as? NSNumber).doubleValue, 0.93, accuracy: 0.001)
+    }
+
+    func testPaceTickColorsScaleAndReduceMotion() throws {
+        let tick = PaceTickLayer()
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try XCTUnwrap(NSAppearance(named: name))
+            tick.updateColors(for: appearance)
+            var expected: CGColor?
+            appearance.performAsCurrentDrawingAppearance { expected = NSColor.labelColor.cgColor }
+            XCTAssertEqual(tick.bodyLayer.backgroundColor, expected)
+            let outline = try XCTUnwrap(tick.strokeLayer.backgroundColor)
+            XCTAssertEqual(outline.alpha, 0.4, accuracy: 0.0001)
+            let color = try XCTUnwrap(NSColor(cgColor: outline)?.usingColorSpace(.deviceRGB))
+            XCTAssertEqual(color.redComponent, name == .darkAqua ? 0 : 1, accuracy: 0.0001)
+        }
+        for scale in [1.0, 2.0] {
+            tick.updateGeometry(center: CGPoint(x: 75, y: 9), scale: scale)
+            XCTAssertEqual(tick.position, CGPoint(x: 75, y: 9))
+            for child in [tick, tick.bodyLayer, tick.strokeLayer] { XCTAssertEqual(child.contentsScale, scale) }
+        }
+        tick.setHovered(true, reduceMotion: true)
+        XCTAssertEqual(tick.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        XCTAssertNil(tick.bodyLayer.animationKeys())
+        tick.setHovered(false, reduceMotion: true)
+        XCTAssertEqual(tick.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        XCTAssertNil(tick.strokeLayer.animationKeys())
+    }
+
+    func testPaceHoverAnimationKeepsHeatRectAndRuntimeReduceMotion() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = paceProbeFixture(now: now)
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        defer { fixture.host.setMenuContentVisible(false); window.orderOut(nil) }
+        fixture.host.layoutSubtreeIfNeeded()
+        let view = fixture.views[0]
+        view.markerReduceMotionForTesting = false
+        fixture.host.setPaceMenuTracking(true)
+        let heat = view.markerHitRect
+        let overlay = try XCTUnwrap(view.subviews.last)
+        overlay.appearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        overlay.viewDidChangeEffectiveAppearance()
+        let outline = try XCTUnwrap(view.markerLayerForTesting.strokeLayer.backgroundColor)
+        XCTAssertEqual(try XCTUnwrap(NSColor(cgColor: outline)?.usingColorSpace(.deviceRGB)).redComponent, 0, accuracy: 0.001)
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        XCTAssertEqual(view.markerHitRect, heat)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        XCTAssertNotNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        view.markerReduceMotionForTesting = true
+        view.refreshMarkerAccessibility()
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+        view.markerReduceMotionForTesting = false
+        view.refreshMarkerAccessibility()
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys(), "Disabling Reduce Motion does not replay")
+        view.updateHover(at: NSPoint(x: -100, y: -100))
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        XCTAssertEqual(view.markerHitRect, heat)
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertTrue(view.hasPendingCloseForTesting)
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.animation(forKey: "pace.bounds")?.duration, 0.15)
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+        view.clearInteraction()
+        XCTAssertNil(view.markerLayerForTesting.bodyLayer.animationKeys())
+        XCTAssertNil(view.markerLayerForTesting.strokeLayer.animationKeys())
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        XCTAssertFalse(view.hasPendingShowForTesting)
+    }
+
+    private func focusSections() -> [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView] {
+        Dictionary(uniqueKeysWithValues: [OpenCodexOverviewSectionID.account, .fiveHour, .sevenDay, .lunaReserve, .resetProbability, .bankedReset].map { id in
+            let view = OpenCodexOverviewSectionView(layout: OpenCodexOverviewSectionLayout(id: id,
+                frame: NSRect(x: 0, y: 0, width: 220, height: 40), row: nil))
+            view.focusReduceMotionForTesting = true
+            // Do not inherit the host's Reduce Transparency (CI runners may set it).
+            view.focusReduceTransparencyForTesting = false
+            return (id, view)
+        })
+    }
+
+    @MainActor
+    func testOpenLinkBubbleFocusesItsSectionAndRecedesTheRest() throws {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
+        let probability = OpenCodexOverviewSectionView(layout: OpenCodexOverviewSectionLayout(id: .resetProbability,
+            frame: NSRect(x: 0, y: 0, width: 220, height: 40), row: nil))
+        let quota = OpenCodexOverviewSectionView(layout: OpenCodexOverviewSectionLayout(id: .fiveHour,
+            frame: NSRect(x: 0, y: 40, width: 220, height: 40), row: nil))
+        [probability, quota].forEach {
+            $0.focusReduceMotionForTesting = true
+            host.addSubview($0)
+        }
+        let link = HoverLinkTextField(text: "重置概率")
+        probability.addSubview(link)
+        host.track(link)
+        host.setPaceMenuTracking(true)
+
+        link.onHoverHintVisibilityChanged?(true)
+
+        XCTAssertEqual(host.sectionFocus.focusedID, .resetProbability)
+        XCTAssertEqual(probability.focusState, .focused)
+        XCTAssertEqual(quota.focusState, .receded)
+
+        link.onHoverHintVisibilityChanged?(false)
+
+        XCTAssertNil(host.sectionFocus.focusedID)
+        XCTAssertEqual(probability.focusState, .normal)
+        XCTAssertEqual(quota.focusState, .normal)
+    }
+
+    @MainActor
+    func testStalePeerRestoreCompletionCannotDropANewerRestoresFilter() throws {
+        try XCTSkipIf(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, "restores are not animated")
+        try XCTSkipIf(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency, "no blur filter is attached")
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
+        host.wantsLayer = true
+        func hasBlur() -> Bool { host.contentFilters.contains { $0.name == "balancebarPeerFocusBlur" } }
+
+        host.setPeerReceded(true, animated: true)
+        host.setPeerReceded(false, animated: true)
+        let firstRestore = try XCTUnwrap(host.peerRestoreCompletionForTesting)
+        host.setPeerReceded(true, animated: true)
+        host.setPeerReceded(false, animated: true)
+        let secondRestore = try XCTUnwrap(host.peerRestoreCompletionForTesting)
+
+        firstRestore()
+        XCTAssertTrue(hasBlur(), "the first restore's late completion must not cut the second restore short")
+        secondRestore()
+        XCTAssertFalse(hasBlur())
+    }
+
+    func testPaceExitKeepsAnOpenLinkBubbleFocused() throws {
+        let controller = SectionFocusController()
+        let sections = focusSections()
+        controller.update(sections: sections)
+        controller.isActive = true
+
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        controller.setHintFocus(.resetProbability, from: .resetProbability)
+        controller.hoverChanged(.fiveHour, isHovering: false)
+        try XCTUnwrap(controller.pendingTimerForTesting).fire()
+
+        XCTAssertEqual(controller.focusedID, .resetProbability)
+        XCTAssertEqual(sections[.resetProbability]?.focusState, .focused)
+        XCTAssertEqual(sections[.fiveHour]?.focusState, .receded)
+
+        controller.setHintFocus(nil, from: .resetProbability)
+        XCTAssertNil(controller.focusedID)
+        XCTAssertTrue(sections.values.allSatisfy { $0.focusState == .normal })
+    }
+
+    func testSectionFocusTrackingDelaysSwitchAndRetiredEvents() throws {
+        let controller = SectionFocusController()
+        let sections = focusSections()
+        controller.update(sections: sections)
+        controller.isActive = true
+        func run(_ seconds: TimeInterval) {
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end { _ = RunLoop.current.run(mode: .eventTracking, before: end) }
+        }
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        let cancelled = try XCTUnwrap(controller.pendingTimerForTesting)
+        controller.hoverChanged(.fiveHour, isHovering: false)
+        cancelled.fire()
+        XCTAssertNil(controller.focusedID)
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        run(0.1)
+        XCTAssertNil(controller.focusedID)
+        run(0.08)
+        XCTAssertEqual(controller.focusedID, .fiveHour)
+        for (id, section) in sections {
+            XCTAssertEqual(section.focusState, id == .fiveHour ? .focused : .receded)
+            XCTAssertEqual(section.alphaValue, id == .fiveHour ? 1 : 0.5)
+        }
+        controller.hoverChanged(.fiveHour, isHovering: false)
+        let staleExit = try XCTUnwrap(controller.pendingTimerForTesting)
+        controller.hoverChanged(.sevenDay, isHovering: true)
+        controller.hoverChanged(.fiveHour, isHovering: false)
+        staleExit.fire()
+        XCTAssertEqual(controller.focusedID, .sevenDay)
+        XCTAssertNil(controller.pendingTimerForTesting)
+        controller.hoverChanged(.sevenDay, isHovering: false)
+        run(0.04)
+        XCTAssertEqual(controller.focusedID, .sevenDay)
+        run(0.06)
+        XCTAssertNil(controller.focusedID)
+        XCTAssertTrue(sections.values.allSatisfy { $0.alphaValue == 1 && $0.contentFilters.isEmpty })
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        let staleEnter = try XCTUnwrap(controller.pendingTimerForTesting)
+        controller.reset()
+        controller.isActive = false
+        staleEnter.fire()
+        XCTAssertNil(controller.focusedID)
+    }
+
+    func testSectionFocusFilterOwnershipLateCompletionAndAccessibility() throws {
+        let section = try XCTUnwrap(focusSections()[.account])
+        section.focusReduceMotionForTesting = false
+        // CI runners may report Reduce Transparency, which skips the blur.
+        section.focusReduceTransparencyForTesting = false
+        section.wantsLayer = true
+        let foreign = try XCTUnwrap(CIFilter(name: "CISepiaTone"))
+        foreign.name = "unrelated"
+        section.contentFilters = [foreign]
+        section.setFocusState(.normal, animated: false)
+        XCTAssertEqual(section.contentFilters.count, 1)
+        section.setFocusState(.receded, animated: true)
+        let node = try XCTUnwrap(section.layer)
+        XCTAssertEqual((node.value(forKeyPath: "filters.balancebarSectionFocusBlur.inputRadius") as? NSNumber)?.doubleValue, 3)
+        XCTAssertEqual(node.animation(forKey: "sectionFocus.radius")?.duration, PaceHoverTiming.blurDuration)
+        let count = section.focusTransitionCountForTesting
+        section.setFocusState(.receded, animated: true)
+        XCTAssertEqual(section.focusTransitionCountForTesting, count)
+        section.setFocusState(.normal, animated: true)
+        XCTAssertEqual(node.animation(forKey: "sectionFocus.radius")?.duration, 0.2)
+        let oldCompletion = try XCTUnwrap(section.focusRestoreCompletionForTesting)
+        section.setFocusState(.receded, animated: true)
+        oldCompletion()
+        XCTAssertTrue(section.contentFilters.contains { $0.name == "balancebarSectionFocusBlur" })
+        section.focusReduceMotionForTesting = true
+        section.setFocusState(.receded, animated: false)
+        XCTAssertNil(node.animation(forKey: "sectionFocus.radius"))
+        XCTAssertEqual(section.alphaValue, 0.5)
+        section.focusReduceTransparencyForTesting = true
+        section.setFocusState(.receded, animated: false)
+        XCTAssertEqual(section.contentFilters.map(\.name), ["unrelated"])
+        section.focusReduceTransparencyForTesting = false
+        section.setFocusState(.receded, animated: false)
+        XCTAssertTrue(section.contentFilters.contains { $0.name == "balancebarSectionFocusBlur" })
+        section.setFocusState(.normal, animated: false)
+        XCTAssertEqual(section.alphaValue, 1)
+        XCTAssertEqual(section.contentFilters.map(\.name), ["unrelated"])
+        oldCompletion()
+        XCTAssertEqual(section.contentFilters.map(\.name), ["unrelated"])
+        let fallback = try XCTUnwrap(focusSections()[.fiveHour])
+        var attempts = 0
+        fallback.focusFilterFactoryForTesting = { attempts += 1; return nil }
+        fallback.setFocusState(.receded, animated: true)
+        fallback.setFocusState(.receded, animated: true)
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(fallback.alphaValue, 0.5)
+        XCTAssertTrue(fallback.contentFilters.isEmpty)
+    }
+
+    func testSectionFocusHostRefreshInvalidationAndRetiredCallback() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = paceProbeFixture(now: now)
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        defer { fixture.host.setPaceMenuTracking(false); window.orderOut(nil) }
+        fixture.host.layoutSubtreeIfNeeded()
+        fixture.host.setPaceMenuTracking(true)
+        let view = fixture.views[0]
+        let section = try XCTUnwrap(view.superview as? OpenCodexOverviewSectionView)
+        let other = try XCTUnwrap(fixture.views[1].superview as? OpenCodexOverviewSectionView)
+        section.focusReduceMotionForTesting = true
+        other.focusReduceMotionForTesting = true
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        fixture.host.sectionFocus.pendingTimerForTesting?.fire()
+        XCTAssertEqual(fixture.host.sectionFocus.focusedID, .fiveHour)
+        let count = other.focusTransitionCountForTesting
+        let monitor = fixture.host.monitorRegistrationCountForTesting
+        for _ in 0..<10 { fixture.host.reconcilePaceMenuTracking() }
+        XCTAssertEqual(other.focusTransitionCountForTesting, count)
+        XCTAssertEqual(fixture.host.monitorRegistrationCountForTesting, monitor)
+        let oldCallback = try XCTUnwrap(view.onHoverChanged)
+        view.invalidatePresentation()
+        XCTAssertNil(fixture.host.sectionFocus.focusedID)
+        XCTAssertEqual(other.alphaValue, 1)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+        section.removeFromSuperview()
+        fixture.host.reconcileSectionFocus()
+        fixture.views[1].updateHover(at: NSPoint(x: fixture.views[1].markerCenterX, y: 9))
+        fixture.host.sectionFocus.pendingTimerForTesting?.fire()
+        oldCallback(true)
+        oldCallback(false)
+        XCTAssertEqual(fixture.host.sectionFocus.focusedID, .sevenDay)
+        fixture.views[1].removeFromSuperview()
+        XCTAssertNil(fixture.host.sectionFocus.focusedID)
+        XCTAssertNil(fixture.host.sectionFocus.pendingTimerForTesting)
+        XCTAssertEqual(other.alphaValue, 1)
+    }
+
+    func testSectionFocusHostReplacementChecksActualViewsCycleAndHeatRect() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = paceProbeFixture(now: now)
+        let host = fixture.host
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        defer { host.setPaceMenuTracking(false); window.orderOut(nil) }
+        host.layoutSubtreeIfNeeded()
+        host.setPaceMenuTracking(true)
+        let old = fixture.views[0]
+        let oldSection = try XCTUnwrap(old.superview as? OpenCodexOverviewSectionView)
+        host.focusPointerLocationForTesting = host.convert(NSPoint(x: old.markerCenterX, y: 9), from: old)
+        old.updateHover(at: NSPoint(x: old.markerCenterX, y: 9))
+        host.sectionFocus.pendingTimerForTesting?.fire()
+        XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
+        let pendingTooltip = try XCTUnwrap(host.sectionFocus.pendingTimerForTesting)
+        let stale = try XCTUnwrap(old.onHoverChanged)
+        host.beginFocusSectionReplacement()
+        oldSection.removeFromSuperview()
+        let replacement = OpenCodexMetricSectionView(layout: OpenCodexOverviewSectionLayout(
+            id: .fiveHour, frame: oldSection.frame, row: nil))
+        let pace = QuotaProgressPaceView(percentage: 50, window: old.quotaWindow,
+            identity: old.numericIdentity, now: now, colorConfiguration: .default)
+        pace.frame = old.frame
+        replacement.addSubview(pace)
+        host.addSubview(replacement)
+        host.finishFocusSectionReplacement()
+        XCTAssertTrue(host.sectionFocus.sections[.fiveHour] === replacement)
+        XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
+        XCTAssertTrue(pace.isHovered)
+        XCTAssertTrue(host.sectionFocus.pendingTimerForTesting === pendingTooltip, "Replacement keeps the outstanding tooltip phase")
+        XCTAssertTrue(pace.hasPendingShowForTesting)
+        stale(false)
+        XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
+        // A new cycle cannot inherit the active focus from the replaced quota.
+        host.beginFocusSectionReplacement()
+        pace.update(window: paceWindow(reset: now.addingTimeInterval(8_000)), now: now)
+        host.focusPointerLocationForTesting = host.convert(NSPoint(x: pace.markerCenterX, y: 9), from: pace)
+        host.finishFocusSectionReplacement()
+        XCTAssertNil(host.sectionFocus.focusedID)
+        XCTAssertNotNil(host.sectionFocus.pendingTimerForTesting)
+        host.sectionFocus.pendingTimerForTesting?.fire()
+        XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
+        host.beginFocusSectionReplacement()
+        host.focusPointerLocationForTesting = NSPoint(x: -100, y: -100)
+        host.finishFocusSectionReplacement()
+        XCTAssertNil(host.sectionFocus.focusedID)
+        XCTAssertNil(host.sectionFocus.pendingTimerForTesting)
+    }
+
+    func testSectionFocusRegistryReplacementAndRemovalPreserveOrReset() throws {
+        let controller = SectionFocusController()
+        var sections = focusSections()
+        controller.update(sections: sections)
+        controller.isActive = true
+        controller.hoverChanged(.fiveHour, isHovering: true)
+        controller.pendingTimerForTesting?.fire()
+        let old = try XCTUnwrap(sections[.fiveHour])
+        let untouched = try XCTUnwrap(sections[.sevenDay])
+        let transitions = untouched.focusTransitionCountForTesting
+        controller.update(sections: sections)
+        XCTAssertEqual(untouched.focusTransitionCountForTesting, transitions)
+        sections[.fiveHour] = OpenCodexOverviewSectionView(layout: OpenCodexOverviewSectionLayout(id: .fiveHour,
+            frame: old.frame, row: nil))
+        controller.update(sections: sections)
+        XCTAssertEqual(controller.focusedID, .fiveHour)
+        XCTAssertEqual(sections[.fiveHour]?.focusState, .focused)
+        XCTAssertTrue(old.contentFilters.isEmpty)
+        sections.removeValue(forKey: .fiveHour)
+        controller.update(sections: sections)
+        XCTAssertNil(controller.focusedID)
+        XCTAssertTrue(sections.values.allSatisfy { $0.alphaValue == 1 && $0.contentFilters.isEmpty })
+    }
+
+    func testPaceMarkerOverlayAndExactTrackingBoundary() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quota = paceWindow(reset: now.addingTimeInterval(9_000))
+        let view = QuotaProgressPaceView(percentage: 50, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+            now: now, colorConfiguration: .default)
+        view.frame = NSRect(x: 0, y: 0, width: 200, height: 18)
+        view.layoutSubtreeIfNeeded()
+        view.updateTrackingAreas()
+        XCTAssertNil(view.hitTest(NSPoint(x: 100, y: 9)))
+        XCTAssertTrue(view.subviews.first === view.progress)
+        XCTAssertTrue(view.subviews.last?.isHidden == false)
+        XCTAssertEqual(view.progress.frame.height, 5)
+        XCTAssertEqual(view.markerHitRect, NSRect(x: 92, y: 0, width: 16, height: 18))
+        let area = try XCTUnwrap(view.trackingAreas.first)
+        XCTAssertEqual(area.rect, view.markerHitRect)
+        XCTAssertTrue(area.options.contains(.activeAlways))
+        XCTAssertFalse(area.options.contains(.inVisibleRect))
+        XCTAssertFalse(area.options.contains(.activeInKeyWindow))
+        for seconds in [18_000.0, 1.0] {
+            view.update(window: paceWindow(reset: now.addingTimeInterval(seconds)), now: now)
+            XCTAssertGreaterThanOrEqual(view.markerHitRect.minX, 0)
+            XCTAssertLessThanOrEqual(view.markerHitRect.maxX, 200)
+            XCTAssertGreaterThanOrEqual(view.markerCenterX, 1)
+            XCTAssertLessThanOrEqual(view.markerCenterX, 199)
+        }
+    }
+
+    func testPaceHostForwardsHoverAndCancelsReentryAndRemovalTasks() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 70))
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        let menu = NSMenu()
+        let item = NSMenuItem()
+        item.view = host
+        menu.addItem(item)
+        window.contentView = host
+        let section = NSView(frame: host.bounds)
+        host.addSubview(section)
+        let quota = paceWindow(reset: now.addingTimeInterval(9_000))
+        let view = QuotaProgressPaceView(percentage: 50, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+            now: now, colorConfiguration: .default)
+        view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
+        section.addSubview(view)
+        view.layoutSubtreeIfNeeded()
+        host.setPaceMenuTracking(true)
+        let inside = host.convert(NSPoint(x: view.markerCenterX, y: 9), from: view)
+        host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        let enter = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseEntered,
+            location: view.convert(NSPoint(x: view.markerCenterX, y: 9), to: nil), modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, trackingNumber: 1, userData: nil))
+        view.mouseEntered(with: enter)
+        XCTAssertTrue(view.isHovered)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertTrue(view.hasPendingCloseForTesting)
+        host.forwardHover(atHostPoint: inside)
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+        view.firePendingCloseForTesting()
+        XCTAssertTrue(view.isHovered)
+        view.firePendingShowForTesting()
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertFalse(view.isTooltipVisible, "An invisible window must not show a popover")
+        let weekly = paceWindow(reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        let weeklyView = QuotaProgressPaceView(percentage: 50, window: weekly,
+            identity: OverviewNumericPresentation.identity(for: weekly, provider: "Official"),
+            now: now, colorConfiguration: .default)
+        weeklyView.frame = NSRect(x: 10, y: 40, width: 200, height: 18)
+        section.addSubview(weeklyView)
+        host.setPaceMenuTracking(true)
+        weeklyView.mouseMoved(with: makeMouseEvent(type: .mouseMoved,
+            location: weeklyView.convert(NSPoint(x: weeklyView.markerCenterX, y: 9), to: nil)))
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertTrue(weeklyView.hasPendingShowForTesting)
+        host.setPaceMenuTracking(false)
+        XCTAssertFalse(weeklyView.hasPendingShowForTesting)
+        XCTAssertFalse(weeklyView.hasPendingCloseForTesting)
+        XCTAssertFalse(view.isHovered)
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+        host.setPaceMenuTracking(true)
+        host.forwardHover(atHostPoint: inside)
+        view.removeFromSuperview()
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+        XCTAssertFalse(view.isTooltipVisible)
+    }
+
+    private func paceProbeFixture(now: Date, experiment: PaceDismissalExperiment = .full) -> (menu: NSMenu, host: MenuHoverLinkHostView,
+                                               views: [QuotaProgressPaceView], popovers: [QuotaPacePopoverProbe]) {
+        let menu = NSMenu(title: "Quota pace tracking regression")
+        let item = NSMenuItem()
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
+        // Existing native-close regressions explicitly exercise C; default B is tested separately.
+        host.dismissalExperiment = experiment
+        let quotas = [paceWindow(reset: now.addingTimeInterval(9_000)),
+                      paceWindow(reset: now.addingTimeInterval(302_400), kind: .sevenDay)]
+        let views = quotas.enumerated().map { index, quota in
+            let view = QuotaProgressPaceView(percentage: 50, window: quota,
+                identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+                now: now, colorConfiguration: .default,
+                cycleStart: OfficialQuotaUsagePrediction.inferredCycleStart(for: quota))
+            let section = OpenCodexMetricSectionView(layout: OpenCodexOverviewSectionLayout(
+                id: index == 0 ? .fiveHour : .sevenDay,
+                frame: NSRect(x: 0, y: CGFloat(index) * 30, width: 220, height: 30), row: nil))
+            host.addSubview(section)
+            view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
+            section.addSubview(view)
+            return view
+        }
+        let popovers = views.map { _ in QuotaPacePopoverProbe() }
+        for (index, view) in views.enumerated() { view.makePopoverForTesting = { popovers[index] } }
+        item.view = host
+        menu.addItem(item)
+        return (menu, host, views, popovers)
+    }
+
+    private func enterPace(_ view: QuotaProgressPaceView) {
+        let event = NSEvent.enterExitEvent(with: .mouseEntered,
+            location: view.convert(NSPoint(x: view.markerCenterX, y: 9), to: nil), modifierFlags: [],
+            timestamp: 0, windowNumber: view.window?.windowNumber ?? 0, context: nil,
+            eventNumber: 1, trackingNumber: 1, userData: nil)!
+        view.mouseEntered(with: event)
+    }
+
+    func testPacePopoverCoordinationInsideRealMenuTrackingLoop() {
+        let (menu, host, views, popovers) = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        host.setMenuContentVisible(true)
+        var completed = false
+        var attempts = 0
+        let probe = Timer(timeInterval: 0.02, repeats: true) { timer in
+            attempts += 1
+            guard attempts < 50 else { timer.invalidate(); menu.cancelTracking(); return }
+            guard host.window != nil else { return }
+            timer.invalidate()
+            host.layoutSubtreeIfNeeded()
+            host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+            XCTAssertFalse(views[0].isHovered)
+            self.enterPace(views[0])
+            XCTAssertTrue(views[0].hasPendingShowForTesting)
+            views[0].firePendingShowForTesting()
+            XCTAssertTrue(views[0].isTooltipVisible)
+            XCTAssertEqual(views[0].markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+            XCTAssertNotNil(views[0].tooltipContent?.body)
+            host.sectionFocus.pendingTimerForTesting?.fire()
+            XCTAssertEqual(host.sectionFocus.focusedID, .fiveHour)
+            XCTAssertTrue(popovers[0].anchorView === host)
+            XCTAssertEqual(popovers[0].preferredEdge, .minY)
+            let contentController = popovers[0].contentViewController
+            views[0].pointerLocationForTesting = NSPoint(x: views[0].markerCenterX, y: 9)
+            let now = Date(timeIntervalSince1970: 1_700_000_000)
+            for minute in 1...3 {
+                views[0].update(window: views[0].quotaWindow, now: now.addingTimeInterval(Double(minute) * 60),
+                    cycleStart: OfficialQuotaUsagePrediction.inferredCycleStart(for: views[0].quotaWindow))
+                XCTAssertTrue(views[0].isTooltipVisible)
+                XCTAssertTrue(popovers[0].contentViewController === contentController)
+                XCTAssertEqual(popovers[0].showCount, 1)
+            }
+            host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+            XCTAssertTrue(views[0].hasPendingCloseForTesting)
+            self.enterPace(views[0])
+            views[0].firePendingCloseForTesting()
+            XCTAssertTrue(views[0].isTooltipVisible)
+            self.enterPace(views[1])
+            XCTAssertFalse(views[0].isTooltipVisible)
+            XCTAssertTrue(views[1].isTooltipVisible)
+            XCTAssertEqual(views[0].markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+            XCTAssertEqual(views[1].markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.hoverSize)
+            XCTAssertEqual(host.sectionFocus.focusedID, .sevenDay)
+            XCTAssertEqual(popovers[0].showCount, 1)
+            XCTAssertEqual(popovers[1].showCount, 0)
+            XCTAssertEqual((popovers[0].contentViewController as? QuotaPaceTooltipViewController)?.content,
+                views[1].tooltipContent)
+            XCTAssertNotNil(views[1].tooltipContent?.body)
+            XCTAssertEqual(popovers[0].positioningRect, host.convert(views[1].markerHitRect, from: views[1]))
+            host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+            views[1].firePendingCloseForTesting()
+            XCTAssertFalse(views[1].isTooltipVisible)
+            self.enterPace(views[0])
+            XCTAssertTrue(views[0].hasPendingShowForTesting)
+            host.setMenuContentVisible(false)
+            completed = true
+            menu.cancelTracking()
+        }
+        RunLoop.main.add(probe, forMode: .eventTracking)
+        menu.popUp(positioning: nil, at: .zero, in: nil)
+        probe.invalidate()
+        host.setMenuContentVisible(false)
+        XCTAssertTrue(completed, "The real menu must attach and execute the event-routing probe")
+        for view in views {
+            XCTAssertFalse(view.isTooltipVisible)
+            XCTAssertFalse(view.hasPendingShowForTesting)
+            XCTAssertFalse(view.hasPendingCloseForTesting)
+        }
+        menu.removeAllItems()
+    }
+
+    func testPaceRealDelaysReentryAndCloseInEventTrackingMode() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quota = paceWindow(reset: now.addingTimeInterval(9_000))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 80))
+        let view = QuotaProgressPaceView(percentage: 50, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+            now: now, colorConfiguration: .default,
+            cycleStart: OfficialQuotaUsagePrediction.inferredCycleStart(for: quota))
+        view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
+        root.addSubview(view)
+        let window = NSWindow(contentRect: root.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = root
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { view.setMenuTracking(false); window.orderOut(nil) }
+        root.layoutSubtreeIfNeeded()
+        view.makePopoverForTesting = { QuotaPacePopoverProbe() }
+        view.setMenuTracking(true)
+        func runTracking(until deadline: Date) {
+            while Date() < deadline { _ = RunLoop.current.run(mode: .eventTracking, before: deadline) }
+        }
+        func exitPace() { view.updateHover(at: NSPoint(x: -100, y: -100)) }
+        enterPace(view)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        let entered = Date()
+        runTracking(until: entered.addingTimeInterval(0.2))
+        XCTAssertFalse(view.isTooltipVisible, "The 300ms delay must not fire early")
+        runTracking(until: entered.addingTimeInterval(0.36))
+        XCTAssertTrue(view.isTooltipVisible)
+        exitPace()
+        let exited = Date()
+        runTracking(until: exited.addingTimeInterval(0.04))
+        XCTAssertTrue(view.isTooltipVisible, "The unified 80ms exit debounce must not fire early")
+        enterPace(view)
+        runTracking(until: Date().addingTimeInterval(0.14))
+        XCTAssertTrue(view.isTooltipVisible, "The cancelled old close must not dismiss after reentry")
+        exitPace()
+        runTracking(until: Date().addingTimeInterval(0.14))
+        XCTAssertFalse(view.isTooltipVisible)
+        enterPace(view)
+        view.setMenuTracking(false)
+        runTracking(until: Date().addingTimeInterval(0.36))
+        XCTAssertFalse(view.isTooltipVisible)
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+    }
+
+    func testDismissalTracePolicyMonotonicCaptureAndNoContentLogging() throws {
+        XCTAssertTrue(MenuDismissalTrace.isEnabled(bundleIdentifier: "com.huanmeng06.BalanceBar.dev"))
+        XCTAssertTrue(MenuDismissalTrace.isEnabled(bundleIdentifier: "com.huanmeng06.BalanceBar.dev.test"))
+        XCTAssertFalse(MenuDismissalTrace.isEnabled(bundleIdentifier: "com.huanmeng06.BalanceBar.app"))
+        XCTAssertFalse(MenuDismissalTrace.isEnabled(bundleIdentifier: nil))
+        var lines: [String] = []
+        MenuDismissalTrace.sinkForTesting = { lines.append($0) }
+        defer { MenuDismissalTrace.sinkForTesting = nil }
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let host = fixture.host
+        let window = PaceDismissalWindowProbe(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        let trace = try XCTUnwrap(MenuDismissalTrace.beginRound(menu: fixture.menu))
+        host.setDismissalTrace(trace)
+        host.quotaPaceAccount = OpenAIAccountPresentation(email: "secret@example.invalid")
+        host.addSubview(NSTextField(labelWithString: "secret tooltip text"))
+        host.setMenuContentVisible(true)
+        host.layoutSubtreeIfNeeded()
+        fixture.views[0].markerReduceMotionForTesting = false
+        host.sectionFocus.sections.values.forEach {
+            $0.focusReduceMotionForTesting = false
+            $0.focusReduceTransparencyForTesting = false
+        }
+        enterPace(fixture.views[0])
+        fixture.views[0].firePendingShowForTesting()
+        fixture.views[0].updateHover(at: NSPoint(x: -100, y: -100))
+        fixture.views[0].firePendingCloseForTesting()
+        let exitStart = lines.count
+        host.setMenuContentVisible(false)
+        XCTAssertGreaterThan(lines.count, exitStart)
+        XCTAssertFalse(lines[exitStart...].contains { $0.contains("event=filter.remove;") })
+        host.finishMenuDismissal(beforeOpening: true)
+        XCTAssertTrue(lines.contains { $0.contains("event=filter.remove;") })
+        for event in ["marker.enter", "marker.leave", "hover.timer.fire", "popover.show.request",
+                      "popover.willClose", "popover.didClose", "dismissal.begin", "dismissal.cleanup", "section.suspend"] {
+            XCTAssertTrue(lines.contains { $0.contains("event=\(event);") }, event)
+        }
+        func field(_ line: String, _ key: String) -> String? {
+            line.components(separatedBy: "; ").first { $0.hasPrefix("\(key)=") }.map { String($0.dropFirst(key.count + 1)) }
+        }
+        let sequences = lines.compactMap { field($0, "seq").flatMap(Int.init) }
+        let times = lines.compactMap { field($0, "mono_ns").flatMap(UInt64.init) }
+        XCTAssertEqual(sequences, Array(1...lines.count))
+        XCTAssertEqual(times.count, lines.count)
+        XCTAssertEqual(times, times.sorted())
+        XCTAssertTrue(lines.allSatisfy { field($0, "round") == String(trace.round) })
+        XCTAssertTrue(lines.contains { $0.contains("sections=2;") && $0.contains("items=1;") })
+        XCTAssertFalse(lines.joined().contains("secret"))
+        XCTAssertFalse(lines.joined().contains("@example"))
+    }
+
+    func testOldPopoverCloseTraceKeepsOriginalRoundAfterReopen() throws {
+        var lines: [String] = []
+        MenuDismissalTrace.sinkForTesting = { lines.append($0) }
+        defer { MenuDismissalTrace.sinkForTesting = nil }
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let host = fixture.host
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        host.layoutSubtreeIfNeeded()
+        let old = try XCTUnwrap(MenuDismissalTrace.beginRound(menu: fixture.menu))
+        host.setDismissalTrace(old)
+        host.setMenuContentVisible(true)
+        let view = fixture.views[0]
+        let departing = fixture.popovers[0]
+        departing.delaysCloseCompletion = true
+        enterPace(view)
+        view.firePendingShowForTesting()
+        view.dismissTooltip(animated: true)
+        host.setMenuContentVisible(false)
+        host.finishMenuDismissal(beforeOpening: true)
+        let next = try XCTUnwrap(MenuDismissalTrace.beginRound(menu: fixture.menu))
+        XCTAssertGreaterThan(next.round, old.round)
+        host.setDismissalTrace(next)
+        host.setMenuContentVisible(true)
+        let newPopover = QuotaPacePopoverProbe()
+        view.makePopoverForTesting = { newPopover }
+        enterPace(view)
+        view.firePendingShowForTesting()
+        departing.completeClose()
+        XCTAssertTrue(view.isTooltipVisible)
+        let callback = try XCTUnwrap(lines.last { $0.contains("event=popover.didClose;") })
+        XCTAssertTrue(callback.contains("round=\(old.round);"))
+        XCTAssertTrue(callback.contains("host_round=\(next.round);"))
+        XCTAssertTrue(callback.contains("active_matches=false;"))
+    }
+
+    func testWillMoveWithoutEarlierRemoveFreezesUntilExplicitNextOpen() throws {
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let host = fixture.host
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        host.layoutSubtreeIfNeeded()
+        host.setMenuContentVisible(true)
+        let view = fixture.views[0]
+        let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+        other.focusReduceTransparencyForTesting = false
+        other.focusReduceMotionForTesting = false
+        enterPace(view)
+        host.sectionFocus.pendingTimerForTesting?.fire()
+        let count = other.focusTransitionCountForTesting
+        host.viewWillMove(toWindow: nil)
+        view.viewWillMove(toWindow: nil)
+        host.viewDidMoveToWindow()
+        host.setPaceMenuTracking(false)
+        XCTAssertTrue(host.isMenuDismissing)
+        XCTAssertFalse(view.isMenuTracking)
+        XCTAssertTrue(other.isFocusSuspended)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.focusTransitionCountForTesting, count)
+        XCTAssertNil(host.sectionFocus.pendingTimerForTesting)
+        // If the hidden-window notification is absent, next-open is the
+        // explicit safe reset point. It must resume the same surviving views.
+        host.setMenuContentVisible(true)
+        XCTAssertFalse(host.isMenuDismissing)
+        XCTAssertFalse(other.isFocusSuspended)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.alphaValue, 1)
+        XCTAssertTrue(view.isMenuTracking)
+        enterPace(view)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        host.setMenuContentVisible(false)
+    }
+
+    func testDefaultDismissalPolicyKeepsFocusAndShowButClosesWithoutAnimation() throws {
+        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app"]), .popoverCloseOff)
+        XCTAssertEqual(MenuHoverLinkHostView(frame: .zero).dismissalExperiment, .popoverCloseOff)
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000), experiment: .current)
+        let host = fixture.host
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        host.layoutSubtreeIfNeeded()
+        host.setMenuContentVisible(true)
+        defer { window.orderOut(nil); host.setMenuContentVisible(false); host.finishMenuDismissal() }
+        fixture.views.forEach { $0.markerReduceMotionForTesting = false }
+        host.sectionFocus.sections.values.forEach {
+            $0.focusReduceMotionForTesting = false
+            $0.focusReduceTransparencyForTesting = false
+        }
+        enterPace(fixture.views[0])
+        fixture.views[0].firePendingShowForTesting()
+        let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.alphaValue, 0.5)
+        XCTAssertEqual(fixture.popovers[0].showAnimationFlags, [true])
+        fixture.views[0].updateHover(at: NSPoint(x: -100, y: -100))
+        fixture.views[0].firePendingCloseForTesting()
+        XCTAssertEqual(fixture.popovers[0].closeAnimationFlags, [false])
+    }
+
+    func testDismissalExperimentsAreDevelopmentOnlyAndKeepShowAnimation() throws {
+        for mode in [PaceDismissalExperiment.full, .focusOff, .popoverCloseOff] {
+            let args = ["app", "--pace-dismissal-experiment", mode.rawValue]
+            XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: args), mode)
+            XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.app", arguments: args), .popoverCloseOff)
+            let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+            let host = fixture.host
+            host.dismissalExperiment = mode
+            let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+            window.contentView = host
+            ApplicationWindowPresentation.presentInBackground(window)
+            host.layoutSubtreeIfNeeded()
+            host.setMenuContentVisible(true)
+            defer { window.orderOut(nil); host.setMenuContentVisible(false); host.finishMenuDismissal() }
+            fixture.views.forEach { $0.markerReduceMotionForTesting = false }
+            host.sectionFocus.sections.values.forEach {
+                $0.focusReduceMotionForTesting = false
+                $0.focusReduceTransparencyForTesting = false
+            }
+            enterPace(fixture.views[0])
+            fixture.views[0].firePendingShowForTesting()
+            let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+            XCTAssertEqual(other.contentFilters.isEmpty, mode == .focusOff)
+            XCTAssertEqual(other.alphaValue, mode == .focusOff ? 1 : 0.5)
+            XCTAssertEqual(fixture.popovers[0].showAnimationFlags, [true])
+            enterPace(fixture.views[1])
+            XCTAssertTrue(fixture.views[1].isTooltipVisible)
+            XCTAssertEqual(fixture.popovers[0].showCount, 1)
+            fixture.views[1].updateHover(at: NSPoint(x: -100, y: -100))
+            fixture.views[1].firePendingCloseForTesting()
+            XCTAssertEqual(fixture.popovers[0].closeAnimationFlags, [mode != .popoverCloseOff])
+        }
+        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app", "--pace-dismissal-experiment"]), .popoverCloseOff)
+        XCTAssertEqual(PaceDismissalExperiment.resolve(bundleIdentifier: "com.huanmeng06.BalanceBar.dev", arguments: ["app", "--pace-dismissal-experiment", "unknown"]), .popoverCloseOff)
+    }
+
+    func testMenuDismissalPreservesOutgoingFiltersAndCancelsAllHoverWork() throws {
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let host = fixture.host
+        let window = PaceDismissalWindowProbe(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil); host.finishMenuDismissal() }
+        host.layoutSubtreeIfNeeded()
+        host.setMenuContentVisible(true)
+        let view = fixture.views[0]
+        let other = try XCTUnwrap(host.sectionFocus.sections[.sevenDay])
+        other.focusReduceMotionForTesting = false
+        other.focusReduceTransparencyForTesting = false
+        enterPace(view)
+        view.firePendingShowForTesting()
+        XCTAssertTrue(view.isTooltipVisible)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        // A pending exit's completion must not remove filters during menu fade.
+        other.setFocusState(.normal, animated: true)
+        let oldCompletion = try XCTUnwrap(other.focusRestoreCompletionForTesting)
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+        XCTAssertFalse(host.isMenuContentVisible)
+        XCTAssertTrue(host.isMenuDismissing)
+        XCTAssertFalse(view.isMenuTracking)
+        XCTAssertFalse(view.isTooltipVisible)
+        XCTAssertNil(host.sectionFocus.pendingTimerForTesting)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        XCTAssertNil(other.layer?.animation(forKey: "sectionFocus.radius"))
+        oldCompletion()
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        let alpha = other.alphaValue
+        let registrations = host.monitorRegistrationCountForTesting
+        // The controller's stop call, a late monitor and an accessibility event
+        // must not restore or reinstall anything in an outgoing menu.
+        host.setPaceMenuTracking(false)
+        host.clearPaceHover()
+        host.reconcilePaceMenuTracking()
+        host.sectionFocus.refreshAccessibility()
+        XCTAssertEqual(other.alphaValue, alpha)
+        XCTAssertFalse(other.contentFilters.isEmpty)
+        XCTAssertEqual(host.monitorRegistrationCountForTesting, registrations)
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        XCTAssertTrue(host.isMenuDismissing, "A still-visible window must retain outgoing visuals")
+        window.reportedOcclusionState = []
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        XCTAssertTrue(host.isMenuDismissing, "Occlusion is not proof the old window finished exiting")
+        window.orderOut(nil)
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        XCTAssertFalse(host.isMenuDismissing)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+        XCTAssertEqual(other.alphaValue, 1)
+        XCTAssertEqual(view.markerLayerForTesting.bodyLayer.bounds.size, PaceTickLayer.restSize)
+        ApplicationWindowPresentation.presentInBackground(window)
+        host.setMenuContentVisible(true)
+        XCTAssertTrue(view.isMenuTracking)
+        enterPace(view)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        host.setMenuContentVisible(false)
+        // Reopen before an old hidden-window notification: the notification
+        // cannot clear the new interaction or wait a second entry delay.
+        host.setMenuContentVisible(true)
+        enterPace(view)
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        host.setMenuContentVisible(false)
+        host.removeFromSuperview()
+        XCTAssertTrue(host.isMenuDismissing)
+        window.orderOut(nil)
+        host.finishMenuDismissal()
+        XCTAssertFalse(host.isMenuDismissing)
+        XCTAssertTrue(other.contentFilters.isEmpty)
+    }
+
+    func testAnimatedPopoverCloseStaysOwnedUntilCompletionAndCannotClearNewBubble() throws {
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { fixture.host.setPaceMenuTracking(false); window.orderOut(nil) }
+        fixture.host.layoutSubtreeIfNeeded()
+        fixture.host.setPaceMenuTracking(true)
+        let view = fixture.views[0]
+        view.markerReduceMotionForTesting = false
+        let departing = fixture.popovers[0]
+        departing.delaysCloseCompletion = true
+        enterPace(view)
+        view.firePendingShowForTesting()
+        view.updateHover(at: NSPoint(x: -100, y: -100))
+        view.firePendingCloseForTesting()
+        XCTAssertEqual(view.closingPopoverCountForTesting, 1)
+        XCTAssertEqual(departing.closeAnimationFlags, [true])
+        XCTAssertFalse(view.isTooltipVisible)
+        let next = QuotaPacePopoverProbe()
+        view.makePopoverForTesting = { next }
+        enterPace(view)
+        view.firePendingShowForTesting()
+        departing.completeClose()
+        XCTAssertEqual(view.closingPopoverCountForTesting, 0)
+        XCTAssertTrue(view.isTooltipVisible, "An old didClose must not clear the new Popover")
+        next.delaysCloseCompletion = true
+        view.updateHover(at: NSPoint(x: -100, y: -100))
+        view.firePendingCloseForTesting()
+        fixture.host.clearPaceHover()
+        fixture.host.clearPaceHover()
+        XCTAssertEqual(next.closeAnimationFlags, [true], "Do not send a second close during native animation")
+        XCTAssertFalse(next.animates)
+        XCTAssertEqual(view.closingPopoverCountForTesting, 1)
+        next.completeClose()
+        XCTAssertEqual(view.closingPopoverCountForTesting, 0)
+        enterPace(view)
+        view.firePendingShowForTesting()
+        next.completeClose() // Native transient outside-click dismissal.
+        XCTAssertFalse(view.isTooltipVisible)
+    }
+
+    func testPaceUnifiedTimelineOrderingAndNativeAnimationPolicy() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = paceProbeFixture(now: now)
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { fixture.host.setPaceMenuTracking(false); window.orderOut(nil) }
+        fixture.host.layoutSubtreeIfNeeded()
+        fixture.host.setPaceMenuTracking(true)
+        fixture.views.forEach { $0.markerReduceMotionForTesting = false }
+        fixture.host.sectionFocus.sections.values.forEach {
+            $0.focusReduceMotionForTesting = false
+            $0.focusReduceTransparencyForTesting = false
+        }
+        let view = fixture.views[0]
+        let probe = fixture.popovers[0]
+        func run(_ seconds: TimeInterval) {
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end { _ = RunLoop.current.run(mode: .eventTracking, before: end) }
+        }
+        // Brief pass: neither background nor bubble is shown.
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        let oldEnter = try XCTUnwrap(fixture.host.sectionFocus.pendingTimerForTesting)
+        view.updateHover(at: NSPoint(x: -100, y: -100))
+        oldEnter.fire()
+        run(0.14)
+        XCTAssertNil(fixture.host.sectionFocus.focusedID)
+        XCTAssertEqual(probe.showCount, 0)
+        // A deliberately late focus callback must still allow a full blur phase.
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        Thread.sleep(forTimeInterval: 0.16) // Block only this test's main loop; no UI automation.
+        XCTAssertNil(fixture.host.sectionFocus.focusedID)
+        fixture.host.sectionFocus.pendingTimerForTesting?.fire()
+        XCTAssertEqual(fixture.host.sectionFocus.focusedID, .fiveHour)
+        let other = try XCTUnwrap(fixture.host.sectionFocus.sections[.sevenDay])
+        let animation = try XCTUnwrap(other.layer?.animation(forKey: "sectionFocus.radius"))
+        XCTAssertEqual(animation.duration, PaceHoverTiming.blurDuration)
+        XCTAssertEqual(animation.timingFunction, CAMediaTimingFunction(name: .easeOut))
+        run(0.1)
+        XCTAssertFalse(view.isTooltipVisible, "Late focus must not catch up by showing in the same frame")
+        run(0.12)
+        XCTAssertTrue(view.isTooltipVisible)
+        XCTAssertEqual(probe.showAnimationFlags, [true])
+        // Refresh and transfer retain the same Popover and suppress resize/move animations.
+        view.pointerLocationForTesting = NSPoint(x: view.markerCenterX, y: 9)
+        let controller = probe.contentViewController
+        view.update(window: view.quotaWindow, now: now)
+        XCTAssertFalse(probe.animates)
+        enterPace(fixture.views[1])
+        XCTAssertTrue(fixture.views[1].isTooltipVisible)
+        XCTAssertTrue(probe.contentViewController === controller)
+        XCTAssertEqual(probe.showCount, 1)
+        XCTAssertTrue(probe.closeAnimationFlags.isEmpty)
+        XCTAssertFalse(probe.animates)
+        XCTAssertNil(fixture.host.sectionFocus.pendingTimerForTesting)
+        // Both exit operations begin after the same debounce.
+        fixture.views[1].updateHover(at: NSPoint(x: -100, y: -100))
+        run(0.04)
+        XCTAssertTrue(fixture.views[1].isTooltipVisible)
+        XCTAssertEqual(fixture.host.sectionFocus.focusedID, .sevenDay)
+        run(0.07)
+        XCTAssertNil(fixture.host.sectionFocus.focusedID)
+        XCTAssertEqual(probe.closeAnimationFlags, [true])
+        XCTAssertEqual(other.alphaValue, 1)
+        XCTAssertEqual(other.layer?.animation(forKey: "sectionFocus.radius")?.duration, PaceHoverTiming.restoreDuration)
+        XCTAssertFalse(DashboardTextTooltip.makePopover().animates, "Shared factory remains unchanged")
+    }
+
+    func testPaceUnifiedCancellationFreshEntryAndReduceMotion() throws {
+        let fixture = paceProbeFixture(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { fixture.host.setPaceMenuTracking(false); window.orderOut(nil) }
+        fixture.host.layoutSubtreeIfNeeded()
+        fixture.host.setPaceMenuTracking(true)
+        let view = fixture.views[0]
+        view.markerReduceMotionForTesting = false
+        var created: [QuotaPacePopoverProbe] = []
+        view.makePopoverForTesting = { let p = QuotaPacePopoverProbe(); created.append(p); return p }
+        func enter() { view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9)) }
+        func leave() { view.updateHover(at: NSPoint(x: -100, y: -100)) }
+        enter()
+        fixture.host.sectionFocus.pendingTimerForTesting?.fire() // Focus starts, bubble still pending.
+        let staleShow = try XCTUnwrap(fixture.host.sectionFocus.pendingTimerForTesting)
+        leave()
+        staleShow.fire()
+        XCTAssertTrue(created.isEmpty)
+        enter()
+        let reentry = try XCTUnwrap(fixture.host.sectionFocus.pendingTimerForTesting)
+        XCTAssertGreaterThan(reentry.fireDate.timeIntervalSinceNow, PaceHoverTiming.tooltipDelay - 0.03)
+        XCTAssertLessThanOrEqual(reentry.fireDate.timeIntervalSinceNow, PaceHoverTiming.tooltipDelay)
+        view.firePendingShowForTesting()
+        XCTAssertEqual(created.count, 1)
+        leave()
+        let staleClose = try XCTUnwrap(fixture.host.sectionFocus.pendingTimerForTesting)
+        enter()
+        staleClose.fire()
+        XCTAssertTrue(view.isTooltipVisible)
+        XCTAssertTrue(created[0].closeAnimationFlags.isEmpty)
+        XCTAssertNil(fixture.host.sectionFocus.pendingTimerForTesting)
+        leave()
+        view.firePendingCloseForTesting()
+        XCTAssertEqual(created[0].closeAnimationFlags, [true])
+        enter()
+        XCTAssertTrue(view.hasPendingShowForTesting, "A native close already requested is followed by a fresh entry")
+        view.firePendingShowForTesting()
+        XCTAssertEqual(created.count, 2)
+        XCTAssertEqual(created[1].showAnimationFlags, [true])
+        // Runtime policy changes neither reset the timeline nor re-show the bubble.
+        view.markerReduceMotionForTesting = true
+        fixture.host.sectionFocus.refreshAccessibility()
+        XCTAssertFalse(created[1].animates)
+        leave()
+        view.firePendingCloseForTesting()
+        XCTAssertEqual(created[1].closeAnimationFlags, [false])
+        enter()
+        view.firePendingShowForTesting()
+        XCTAssertEqual(created[2].showAnimationFlags, [false])
+        view.markerReduceMotionForTesting = false
+        fixture.host.sectionFocus.refreshAccessibility()
+        XCTAssertEqual(created[2].showCount, 1)
+        fixture.host.clearPaceHover()
+        XCTAssertEqual(created[2].closeAnimationFlags, [false], "Lifecycle cleanup closes without animation")
+        XCTAssertFalse(view.hasPendingShowForTesting)
+        XCTAssertFalse(view.hasPendingCloseForTesting)
+    }
+
+    func testPaceUpdateInvalidationAndCompactPredictionCopy() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quota = paceWindow(remaining: 60, reset: now.addingTimeInterval(11_160))
+        let start = OfficialQuotaUsagePrediction.inferredCycleStart(for: quota)
+        let view = QuotaProgressPaceView(percentage: 60, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+            now: now, colorConfiguration: .default, cycleStart: start)
+        let pace = try XCTUnwrap(view.pace)
+        XCTAssertEqual(pace.status, .normal)
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: pace, prediction: view.prediction, resetAt: quota.resetAt,
+            language: .simplifiedChinese, now: now, timeZone: TimeZone(secondsFromGMT: 0)!),
+            QuotaPaceTooltipContent(title: "用得刚刚好", body: "和时间进度基本同步。"))
+        let original = view.prediction
+        view.update(window: quota, now: now.addingTimeInterval(60), cycleStart: start)
+        XCTAssertNotEqual(view.prediction, original)
+        view.update(window: quota, now: quota.resetAt!, cycleStart: start)
+        XCTAssertNil(view.pace)
+        XCTAssertNil(view.prediction)
+        XCTAssertTrue(view.markerHitRect.isEmpty)
+        XCTAssertEqual(view.accessibilityLabel(), "")
+        view.update(window: quota, now: now)
+        XCTAssertNotNil(view.tooltipContent?.body)
+        XCTAssertEqual(view.accessibilityLabel(), [view.tooltipContent!.title, view.tooltipContent!.body!].joined(separator: "\n"))
+        let unused = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 100, reset: quota.resetAt!), now: now))
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .simplifiedChinese).body, "这一轮额度还是满的。")
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: unused, prediction: nil, language: .english).body, "This cycle’s quota is still full.")
+        let week = paceWindow(remaining: 50, reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        view.update(window: week, now: now)
+        XCTAssertNotNil(view.pace)
+        XCTAssertNil(view.prediction)
+        XCTAssertNotNil(view.tooltipContent?.body)
+        let fastWeek = paceWindow(remaining: 20, reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        view.update(window: fastWeek, now: now)
+        XCTAssertEqual(view.pace?.status, .fast)
+        XCTAssertNil(view.prediction)
+        XCTAssertFalse(view.tooltipContent!.body!.contains(":"))
+        let emptyWeek = paceWindow(remaining: 0, reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        view.update(window: emptyWeek, now: now, timeZone: TimeZone(secondsFromGMT: 0)!)
+        XCTAssertNil(view.prediction)
+        XCTAssertEqual(view.tooltipContent?.title, tr(.keyQuotaPaceStatusExhausted))
+        XCTAssertTrue(view.tooltipContent!.body!.contains(":"), "Weekly reset time is factual and still available")
+    }
+
+    func testCompactPaceTooltipHasOnlyTitleAndOptionalSentenceAcrossAllLanguages() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for language in AppLanguage.allCases where language != .system {
+            for remaining in [0.0, 40, 60, 80, 100] {
+                let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: remaining, reset: now.addingTimeInterval(11_160)), now: now))
+                for prediction: OfficialQuotaUsagePrediction? in [nil, .runsOut(after: 10_260), .lastsUntilReset] {
+                    let content = QuotaPaceTooltipContent(pace: pace, prediction: prediction, resetAt: now.addingTimeInterval(11_160), language: language,
+                        now: now, timeZone: TimeZone(secondsFromGMT: 0)!)
+                    let controller = QuotaPaceTooltipViewController(content: content)
+                    controller.loadViewIfNeeded()
+                    let labels = controller.visibleLabelsForTesting
+                    XCTAssertEqual(labels.map(\.stringValue), [content.title, try XCTUnwrap(content.body)])
+                    XCTAssertEqual(labels.count, 2)
+                    XCTAssertLessThanOrEqual(controller.contentSize.width, 260)
+                    for label in labels {
+                        XCTAssertTrue(controller.view.bounds.contains(label.convert(label.bounds, to: controller.view)))
+                        XCTAssertEqual(label.superview!.convert(label.alignmentRect(forFrame: label.frame), to: controller.view).minX, 14, accuracy: 0.01)
+                        XCTAssertEqual(controller.view.bounds.maxX - label.superview!.convert(label.alignmentRect(forFrame: label.frame), to: controller.view).maxX, 14, accuracy: 0.01)
+                        XCTAssertEqual(label.maximumNumberOfLines, 0)
+                        XCTAssertFalse(label.cell!.truncatesLastVisibleLine)
+                        let measured = label.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: label.frame.width, height: 100_000))
+                        XCTAssertGreaterThanOrEqual(label.frame.height, ceil(measured.height), language.rawValue)
+                        XCTAssertFalse(label.stringValue.contains("%@"))
+                        XCTAssertFalse(label.stringValue.contains("%1$@"))
+                    }
+                    let revision = controller.layoutRevision
+                    controller.update(content: content)
+                    XCTAssertEqual(controller.layoutRevision, revision)
+                }
+            }
+        }
+        let titleOnly = QuotaPaceTooltipViewController(content: QuotaPaceTooltipContent(title: "用量刚刚好", body: nil))
+        titleOnly.loadViewIfNeeded()
+        let label = try XCTUnwrap(titleOnly.visibleLabelsForTesting.first)
+        XCTAssertEqual(label.stringValue, "用量刚刚好")
+        XCTAssertLessThan(titleOnly.contentSize.width, 200)
+        XCTAssertLessThan(titleOnly.contentSize.height, 76)
+        XCTAssertGreaterThanOrEqual(label.frame.width, label.intrinsicContentSize.width)
+        let compact = titleOnly.contentSize
+        titleOnly.update(content: QuotaPaceTooltipContent(title: "用得有点快", body: "照这一轮的平均速度，大约明天 00:20 会用完，早于重置时间。"))
+        XCTAssertEqual(titleOnly.visibleLabelsForTesting.count, 2)
+        XCTAssertGreaterThan(titleOnly.contentSize.height, compact.height)
+        titleOnly.update(content: QuotaPaceTooltipContent(title: "用量刚刚好", body: nil))
+        XCTAssertEqual(titleOnly.visibleLabelsForTesting.count, 1)
+        XCTAssertEqual(titleOnly.contentSize, compact)
+    }
+
+    func testPaceTitlesFollowRoundedDifferenceAndForecastOnlyFast() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let reset = now.addingTimeInterval(9000)
+        let utc = TimeZone(secondsFromGMT: 0)!
+        for (remaining, status) in [(44.0, OfficialQuotaUsagePace.Status.fast), (45, .normal), (55, .normal), (56, .slow)] {
+            let pace = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: remaining, reset: reset), now: now))
+            XCTAssertEqual(pace.status, status)
+            let content = QuotaPaceTooltipContent(pace: pace, prediction: .runsOut(after: 6000), resetAt: reset,
+                language: .simplifiedChinese, now: now, timeZone: utc)
+            if status == .fast {
+                XCTAssertEqual(content.title, "用得有点快")
+                XCTAssertEqual(content.body, "照这一轮的平均速度，大约 23:55 会用完，早于重置时间。")
+            } else {
+                XCTAssertEqual(content.title, status == .normal ? "用得刚刚好" : "用得很从容")
+                XCTAssertFalse(content.body!.contains("用完"))
+                XCTAssertFalse(content.body!.contains("撑到"))
+            }
+        }
+        let fast = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 40, reset: reset), now: now))
+        for prediction: OfficialQuotaUsagePrediction? in [nil, .lastsUntilReset, .runsOut(after: .nan), .runsOut(after: .infinity), .runsOut(after: -1), .runsOut(after: 0), .runsOut(after: 9000)] {
+            let content = QuotaPaceTooltipContent(pace: fast, prediction: prediction, resetAt: reset,
+                language: .simplifiedChinese, now: now, timeZone: utc)
+            XCTAssertEqual(content.body, "比时间进度快一些，可以适当放慢。")
+        }
+        let nearReset = now.addingTimeInterval(70)
+        let inconsistent = QuotaPaceTooltipContent(pace: fast, prediction: .runsOut(after: 60), resetAt: nearReset,
+            language: .simplifiedChinese, now: now, timeZone: utc)
+        XCTAssertEqual(inconsistent.body, "比时间进度快一些，可以适当放慢。", "Rounded time past reset must fall back")
+        let exhausted = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 0, reset: now.addingTimeInterval(540)), now: now))
+        XCTAssertEqual(exhausted.status, .normal)
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, resetAt: reset,
+            language: .simplifiedChinese, now: now, timeZone: utc),
+            QuotaPaceTooltipContent(title: "额度已用完", body: "将在明天 00:43重置。"))
+        for invalid: Date? in [nil, now, now.addingTimeInterval(-1), Date(timeIntervalSince1970: .infinity)] {
+            XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, resetAt: invalid,
+                language: .simplifiedChinese, now: now, timeZone: utc).body, "重置时间暂不可用。")
+        }
+        let tiny = try XCTUnwrap(OfficialQuotaUsagePace.make(for: paceWindow(remaining: 0.1, reset: now.addingTimeInterval(540)), now: now))
+        XCTAssertEqual(tiny.roundedActual, 0)
+        XCTAssertEqual(QuotaPaceTooltipContent(pace: tiny, prediction: nil, language: .simplifiedChinese).title, "用得刚刚好")
+    }
+
+    func testPaceFiveMinuteRoundingAndCalendarLabels() throws {
+        let iso = ISO8601DateFormatter()
+        func date(_ value: String) -> Date { iso.date(from: value)! }
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let now = date("2026-10-14T18:00:00Z")
+        func rounded(_ value: String, relativeTo current: Date = now, zone: TimeZone = utc) -> Date {
+            QuotaPaceTooltipContent.roundedExhaustionDate(date(value), now: current, timeZone: zone)!
+        }
+        XCTAssertEqual(rounded("2026-10-14T19:21:00Z"), date("2026-10-14T19:20:00Z"))
+        XCTAssertEqual(rounded("2026-10-14T19:22:30Z"), date("2026-10-14T19:25:00Z"))
+        XCTAssertEqual(rounded("2026-10-14T18:01:00Z"), date("2026-10-14T18:05:00Z"))
+        XCTAssertNil(QuotaPaceTooltipContent.roundedExhaustionDate(now, now: now, timeZone: utc))
+        XCTAssertNil(QuotaPaceTooltipContent.roundedExhaustionDate(Date(timeIntervalSince1970: .nan), now: now, timeZone: utc))
+        let midnight = rounded("2026-10-14T23:58:00Z")
+        XCTAssertEqual(QuotaPaceTooltipContent.displayTime(midnight, now: now, timeZone: utc, language: .simplifiedChinese), "明天 00:00")
+        XCTAssertEqual(QuotaPaceTooltipContent.displayTime(date("2026-10-14T19:20:00Z"), now: now, timeZone: TimeZone(secondsFromGMT: 8 * 3600)!, language: .simplifiedChinese), "03:20")
+        XCTAssertEqual(QuotaPaceTooltipContent.displayTime(date("2026-10-16T14:00:00Z"), now: now, timeZone: utc, language: .simplifiedChinese), "周五 14:00")
+        let crossYear = QuotaPaceTooltipContent.displayTime(date("2027-01-10T14:00:00Z"), now: date("2026-12-30T18:00:00Z"), timeZone: utc, language: .simplifiedChinese)
+        XCTAssertTrue(crossYear.contains("2027"))
+        XCTAssertTrue(crossYear.hasSuffix("14:00"))
+        let ny = TimeZone(identifier: "America/New_York")!
+        XCTAssertEqual(rounded("2026-03-08T06:58:00Z", relativeTo: date("2026-03-08T06:00:00Z"), zone: ny), date("2026-03-08T07:00:00Z"))
+        XCTAssertEqual(rounded("2026-11-01T05:58:00Z", relativeTo: date("2026-11-01T05:00:00Z"), zone: ny), date("2026-11-01T06:00:00Z"))
+        XCTAssertEqual(rounded("2026-11-01T06:21:00Z", relativeTo: date("2026-11-01T06:00:00Z"), zone: ny), date("2026-11-01T06:20:00Z"))
+    }
+
+    func testWeeklyThirtyMinuteRoundingCalendarAndForecastFallback() throws {
+        let iso = ISO8601DateFormatter()
+        func date(_ value: String) -> Date { iso.date(from: value)! }
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let now = date("2026-10-14T18:00:00Z")
+        func rounded(_ value: String, now: Date = now, zone: TimeZone = utc) -> Date? {
+            QuotaPaceTooltipContent.roundedExhaustionDate(date(value), now: now, timeZone: zone, windowKind: .sevenDay)
+        }
+        XCTAssertEqual(rounded("2026-10-14T19:14:00Z"), date("2026-10-14T19:00:00Z"))
+        XCTAssertEqual(rounded("2026-10-14T19:15:00Z"), date("2026-10-14T19:30:00Z"))
+        XCTAssertEqual(rounded("2026-10-14T19:02:00Z", now: date("2026-10-14T19:01:00Z")), date("2026-10-14T19:30:00Z"))
+        XCTAssertEqual(rounded("2026-10-14T23:55:00Z"), date("2026-10-15T00:00:00Z"))
+        let kathmandu = TimeZone(secondsFromGMT: 5 * 3600 + 45 * 60)!
+        XCTAssertEqual(rounded("2026-10-14T13:29:00Z", now: date("2026-10-14T12:00:00Z"), zone: kathmandu), date("2026-10-14T13:15:00Z"))
+        XCTAssertEqual(rounded("2026-10-14T13:30:00Z", now: date("2026-10-14T12:00:00Z"), zone: kathmandu), date("2026-10-14T13:45:00Z"))
+        let ny = TimeZone(identifier: "America/New_York")!
+        XCTAssertEqual(rounded("2026-03-08T06:58:00Z", now: date("2026-03-08T06:00:00Z"), zone: ny), date("2026-03-08T07:00:00Z"))
+        XCTAssertEqual(rounded("2026-11-01T05:58:00Z", now: date("2026-11-01T05:00:00Z"), zone: ny), date("2026-11-01T06:00:00Z"))
+        XCTAssertEqual(rounded("2026-11-01T06:15:00Z", now: date("2026-11-01T05:00:00Z"), zone: ny), date("2026-11-01T06:30:00Z"))
+        let fast = OfficialQuotaUsagePace(actualRemaining: 40, expectedRemaining: 60, difference: -20, status: .fast)
+        let tooLate = QuotaPaceTooltipContent(pace: fast, prediction: .runsOut(after: 4560), resetAt: now.addingTimeInterval(5100),
+            windowKind: .sevenDay, language: .simplifiedChinese, now: now, timeZone: utc)
+        XCTAssertEqual(tooLate.body, "比时间进度快一些，可以适当放慢。")
+        let body = QuotaPaceTooltipContent(pace: fast, prediction: .runsOut(after: 158_400), resetAt: now.addingTimeInterval(302_400),
+            windowKind: .sevenDay, language: .simplifiedChinese, now: now, timeZone: utc).body
+        XCTAssertEqual(body, "照这一轮的平均速度，大约 周五 14:00 会用完，早于重置时间。")
+        for language in AppLanguage.allCases where language != .system {
+            for status: OfficialQuotaUsagePace.Status in [.unused, .fast, .normal, .slow] {
+                let pace = OfficialQuotaUsagePace(actualRemaining: status == .unused ? 100 : 40,
+                    expectedRemaining: 60, difference: -20, status: status)
+                for prediction: OfficialQuotaUsagePrediction? in [nil, .runsOut(after: 158_400), .lastsUntilReset] {
+                    let content = QuotaPaceTooltipContent(pace: pace, prediction: prediction,
+                        resetAt: now.addingTimeInterval(302_400), windowKind: .sevenDay, language: language, now: now, timeZone: utc)
+                    let controller = QuotaPaceTooltipViewController(content: content)
+                    controller.loadViewIfNeeded()
+                    XCTAssertLessThanOrEqual(controller.contentSize.width, 260)
+                    for label in controller.visibleLabelsForTesting {
+                        let fit = label.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: label.frame.width, height: 100_000))
+                        XCTAssertGreaterThanOrEqual(label.frame.height, ceil(fit.height), language.rawValue)
+                        XCTAssertFalse(label.cell!.truncatesLastVisibleLine)
+                    }
+                }
+            }
+        }
+    }
+
+    func testPaceContinuousRefreshKeepsPresentationAndSkipsIdenticalLayout() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quota = paceWindow(remaining: 40, reset: now.addingTimeInterval(9000))
+        let view = QuotaProgressPaceView(percentage: 40, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"), now: now,
+            colorConfiguration: .default, cycleStart: now.addingTimeInterval(-9000))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 60))
+        let window = NSWindow(contentRect: root.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = root
+        view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
+        root.addSubview(view)
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { view.setMenuTracking(false); window.orderOut(nil) }
+        view.layoutSubtreeIfNeeded()
+        let probe = QuotaPacePopoverProbe()
+        view.makePopoverForTesting = { probe }
+        view.pointerLocationForTesting = NSPoint(x: view.markerCenterX, y: 9)
+        view.setMenuTracking(true)
+        view.updateHover(at: view.pointerLocationForTesting!)
+        view.firePendingShowForTesting()
+        let controller = try XCTUnwrap(probe.contentViewController as? QuotaPaceTooltipViewController)
+        let revision = controller.layoutRevision
+        let tracking = try XCTUnwrap(view.trackingAreas.first)
+        view.update(window: quota, now: now, cycleStart: now.addingTimeInterval(-9000))
+        XCTAssertEqual(controller.layoutRevision, revision)
+        XCTAssertTrue(view.trackingAreas.first === tracking)
+        for tick in 1...5 {
+            view.update(window: quota, now: now.addingTimeInterval(Double(tick) * 60), cycleStart: now.addingTimeInterval(-9000))
+            XCTAssertTrue(probe.contentViewController === controller)
+            if tick == 1 { XCTAssertEqual(controller.layoutRevision, revision) }
+            XCTAssertEqual(probe.contentSize, controller.contentSize)
+            XCTAssertTrue(view.isTooltipVisible)
+            XCTAssertFalse(view.hasPendingShowForTesting)
+            XCTAssertEqual(probe.showCount, 1)
+        }
+        XCTAssertGreaterThan(controller.layoutRevision, revision)
+        view.update(window: quota, now: now.addingTimeInterval(1200), cycleStart: now.addingTimeInterval(-9000))
+        XCTAssertFalse(view.isTooltipVisible, "Moved marker no longer contains the stationary pointer")
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        view.update(window: paceWindow(remaining: 40, reset: now.addingTimeInterval(10_000)), now: now,
+            cycleStart: now.addingTimeInterval(-8000))
+        XCTAssertFalse(view.hasPendingShowForTesting, "A new cycle cancels the old pending tooltip")
+        XCTAssertFalse(view.isTooltipVisible)
+        view.invalidatePresentation()
+        XCTAssertFalse(view.hasPendingShowForTesting)
+    }
+
+    func testWeeklyContinuousRefreshKeepsPresentationAndSkipsIdenticalLayout() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quota = paceWindow(remaining: 40, reset: now.addingTimeInterval(302_400), kind: .sevenDay)
+        let view = QuotaProgressPaceView(percentage: 40, window: quota,
+            identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"), now: now,
+            colorConfiguration: .default, cycleStart: now.addingTimeInterval(-302_400))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 60))
+        let window = NSWindow(contentRect: root.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = root
+        view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
+        root.addSubview(view)
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { view.setMenuTracking(false); window.orderOut(nil) }
+        view.layoutSubtreeIfNeeded()
+        let probe = QuotaPacePopoverProbe()
+        view.makePopoverForTesting = { probe }
+        view.pointerLocationForTesting = NSPoint(x: view.markerCenterX, y: 9)
+        view.setMenuTracking(true)
+        view.updateHover(at: view.pointerLocationForTesting!)
+        view.firePendingShowForTesting()
+        let controller = try XCTUnwrap(probe.contentViewController as? QuotaPaceTooltipViewController)
+        let revision = controller.layoutRevision
+        let tracking = try XCTUnwrap(view.trackingAreas.first)
+        view.update(window: quota, now: now, cycleStart: now.addingTimeInterval(-302_400))
+        XCTAssertEqual(controller.layoutRevision, revision)
+        XCTAssertTrue(view.trackingAreas.first === tracking)
+        for tick in 1...5 {
+            let previousContent = controller.content
+            let previousRevision = controller.layoutRevision
+            view.update(window: quota, now: now.addingTimeInterval(Double(tick) * 60), cycleStart: now.addingTimeInterval(-302_400))
+            if controller.content == previousContent { XCTAssertEqual(controller.layoutRevision, previousRevision) }
+            XCTAssertTrue(probe.contentViewController === controller)
+            XCTAssertEqual(probe.contentSize, controller.contentSize)
+            XCTAssertTrue(view.isTooltipVisible)
+            XCTAssertFalse(view.hasPendingShowForTesting)
+            XCTAssertEqual(probe.showCount, 1)
+        }
+        view.update(window: quota, now: now.addingTimeInterval(3600), cycleStart: now.addingTimeInterval(-302_400))
+        XCTAssertTrue(probe.contentViewController === controller)
+        XCTAssertGreaterThan(controller.layoutRevision, revision)
+        view.update(window: quota, now: now.addingTimeInterval(3660), cycleStart: nil)
+        XCTAssertNil(view.prediction)
+        XCTAssertTrue(view.isTooltipVisible)
+        XCTAssertTrue(probe.contentViewController === controller)
+        XCTAssertEqual(probe.showCount, 1, "Withholding prediction updates the existing bubble")
+        XCTAssertEqual(view.accessibilityLabel(), [view.tooltipContent!.title, view.tooltipContent!.body!].joined(separator: "\n"))
+        view.update(window: quota, now: now.addingTimeInterval(40_000), cycleStart: now.addingTimeInterval(-302_400))
+        XCTAssertFalse(view.isTooltipVisible, "Moved marker no longer contains the stationary pointer")
+        view.updateHover(at: NSPoint(x: view.markerCenterX, y: 9))
+        XCTAssertTrue(view.hasPendingShowForTesting)
+        view.update(window: paceWindow(remaining: 40, reset: now.addingTimeInterval(320_000), kind: .sevenDay), now: now,
+            cycleStart: now.addingTimeInterval(-284_800))
+        XCTAssertFalse(view.hasPendingShowForTesting, "A new cycle cancels the old pending tooltip")
+        XCTAssertFalse(view.isTooltipVisible)
+        view.invalidatePresentation()
+        XCTAssertFalse(view.hasPendingShowForTesting)
+    }
+
+    func testPaceListenerRegistrationIsIdempotentAndReconcilesViewChanges() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = paceProbeFixture(now: now)
+        let window = NSWindow(contentRect: fixture.host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = fixture.host
+        fixture.host.setPaceMenuTracking(true)
+        let count = fixture.host.monitorRegistrationCountForTesting
+        for _ in 0..<10 { fixture.host.setPaceMenuTracking(true) }
+        XCTAssertEqual(fixture.host.monitorRegistrationCountForTesting, count)
+        fixture.views[1].removeFromSuperview()
+        fixture.host.setPaceMenuTracking(true)
+        XCTAssertEqual(fixture.host.monitorRegistrationCountForTesting, count + 1)
+        fixture.host.setPaceMenuTracking(false)
+        fixture.host.setPaceMenuTracking(false)
+        XCTAssertEqual(fixture.host.monitorRegistrationCountForTesting, count + 1)
+        window.orderOut(nil)
+    }
+
     func testDashboardSectionsPreserveNavigationOrderAndMetadata() {
         let sections = DashboardSection.allCases
 
