@@ -366,6 +366,9 @@ final class ProviderRefreshCoordinator {
     private var knownOfficialSummaryIDs: Set<SummaryIdentity> = []
     private var knownAPISummaryIDs: Set<SummaryIdentity> = []
     private var lastAPISummaryFetch: [SummaryIdentity: Date] = [:]
+    /// Last successful Claude official snapshot per provider and account; a
+    /// rate-limited refresh keeps showing it, marked stale, instead of an error.
+    private var lastClaudeOfficialSnapshots: [String: (fingerprint: String, snapshot: Snapshot)] = [:]
     private var loadedSummaryClients: Set<AssistantClient> = []
     /// Fingerprint of the Claude account behind the visible official data.
     /// Nil until the first Claude request freezes an account.
@@ -720,6 +723,7 @@ final class ProviderRefreshCoordinator {
             self.lastBalanceFetch = nil
             self.lastOfficialFetch = nil
             self.lastAPISummaryFetch = [:]
+            self.lastClaudeOfficialSnapshots.removeAll()
             self.knownOfficialSummaryIDs.removeAll()
             self.knownAPISummaryIDs.removeAll()
             self.loadedSummaryClients.removeAll()
@@ -1278,6 +1282,7 @@ final class ProviderRefreshCoordinator {
     /// payloads, both official cadences, and the standard display. The next
     /// refresh requests the new account immediately.
     private func invalidateClaudeAccountData(newFingerprint: String?) {
+        lastClaudeOfficialSnapshots.removeAll()
         lastOfficialSummaryFetch = lastOfficialSummaryFetch.filter { $0.key.client != .claude }
         lastAPISummaryFetch = lastAPISummaryFetch.filter { $0.key.client != .claude }
         quickSwitchSummaryLock.lock()
@@ -1447,20 +1452,24 @@ final class ProviderRefreshCoordinator {
                             accountKey: accountKey,
                             client: client
                         ) : .unavailable
+                        let snapshot = Snapshot.official(
+                            providerName,
+                            response.output.remaining,
+                            response.output.label,
+                            response.output.reset,
+                            response.fetchedAt,
+                            windows: response.output.windows,
+                            lunaReserve: response.output.lunaReserve,
+                            bankedReset: client == .codex ? bankedReset : nil,
+                            resetForecast: resolvedForecast,
+                            quotaPredictionContexts: predictionContexts,
+                            quotaPredictionAccountKey: client == .codex ? accountKey : nil
+                        )
+                        if client == .claude, let fingerprint = OfficialQuotaClient.claudeAccountFingerprint(credentials) {
+                            self.lastClaudeOfficialSnapshots[providerID] = (fingerprint, snapshot)
+                        }
                         publish(
-                            .official(
-                                providerName,
-                                response.output.remaining,
-                                response.output.label,
-                                response.output.reset,
-                                response.fetchedAt,
-                                windows: response.output.windows,
-                                lunaReserve: response.output.lunaReserve,
-                                bankedReset: client == .codex ? bankedReset : nil,
-                                resetForecast: resolvedForecast,
-                                quotaPredictionContexts: predictionContexts,
-                                quotaPredictionAccountKey: client == .codex ? accountKey : nil
-                            ),
+                            snapshot,
                             providerID: providerID,
                             client: client,
                             isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) }
@@ -1520,8 +1529,17 @@ final class ProviderRefreshCoordinator {
                 case .failure(.httpStatus(let status, _)) where status == 429:
                     let reason = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
                         arguments: [String(status)]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
-                    fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
-                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) })
+                    // Like a stale aggregation card: keep the same account's
+                    // last quota visible and flag its refresh time instead.
+                    if client == .claude, let last = self.lastClaudeOfficialSnapshots[providerID],
+                       last.fingerprint == OfficialQuotaClient.claudeAccountFingerprint(credentials) {
+                        publish(Self.staleOfficialSnapshot(last.snapshot, reason: reason, now: self.now()),
+                            providerID: providerID, client: client,
+                            isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) })
+                    } else {
+                        fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
+                            isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) })
+                    }
                 case .failure:
                     fail(
                         providerID: providerID,
@@ -1534,6 +1552,26 @@ final class ProviderRefreshCoordinator {
             }
         }
         return context
+    }
+
+    /// Recomputes countdowns from each window's absolute reset time so a kept
+    /// snapshot does not show the countdown from when it was fetched.
+    static func staleOfficialSnapshot(_ snapshot: Snapshot, reason: String, now: Date) -> Snapshot {
+        let windows = snapshot.officialQuotaWindows.map { window -> OfficialQuotaWindow in
+            guard let resetAt = window.resetAt else { return window }
+            return OfficialQuotaWindow(kind: window.kind, remaining: window.remaining, label: window.label,
+                daysText: window.daysText,
+                reset: ResponseParsingSupport.resetDescription(resetAt.timeIntervalSince1970, now: now),
+                durationSeconds: window.durationSeconds, resetAt: resetAt)
+        }
+        let representative = windows.first(where: { $0.kind == .sevenDay }) ?? windows.first(where: { $0.kind == .fiveHour }) ?? windows.first
+        var stale = Snapshot.official(snapshot.provider, snapshot.amount ?? representative?.remaining ?? 0,
+            snapshot.unit ?? representative?.label ?? "", representative?.reset, snapshot.date ?? now,
+            windows: windows, lunaReserve: snapshot.lunaReserve, bankedReset: snapshot.bankedReset,
+            resetForecast: snapshot.resetForecast, quotaPredictionContexts: snapshot.quotaPredictionContexts,
+            quotaPredictionAccountKey: snapshot.quotaPredictionAccountKey)
+        stale.staleReason = reason
+        return stale
     }
 
     /// Official quota evidence is captured before any forecast/credit transport.

@@ -938,6 +938,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 visibilityChanged: { [weak self] _ in
                     guard let self else { return }
                     self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)
+                },
+                manualRefreshBlockedUntil: { [weak self] in
+                    // Claude official refreshes only its quota; during a 429
+                    // wait a manual refresh cannot reach the endpoint.
+                    guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
+                    return self.officialQuotaClient.claudeRateLimitedUntil()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(

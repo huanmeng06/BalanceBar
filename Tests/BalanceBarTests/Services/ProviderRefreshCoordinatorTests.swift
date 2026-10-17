@@ -4168,6 +4168,58 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(renders, 1)
     }
 
+    func testClaudeRateLimitKeepsSameAccountQuotaVisibleAsStaleAndErrorsForNewAccount() throws {
+        let current = try useClaudeOfficialProvider()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let rateLimited = AtomicFlag()
+        DelayedBalanceURLProtocol.setHandler { _ in
+            rateLimited.isSet ? .init(data: Data(), statusCode: 429) : .init(data: Self.claudeUsage, statusCode: 200)
+        }
+        let reader = SwitchableClaudeReader(token: "account-a")
+        var renders: [Snapshot] = []
+        var next: XCTestExpectation?
+        var awaitedKind: Snapshot.Kind = .official
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { $0 == .claude }, render: { snapshot in
+                renders.append(snapshot)
+                if snapshot.kind == awaitedKind { next?.fulfill(); next = nil }
+            },
+            storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        let official = OfficialQuotaClient(session: session, credentialReader: reader, now: { clock.now })
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+            actions: actions, now: { clock.now })
+
+        next = expectation(description: "fresh quota")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        let fresh = try XCTUnwrap(renders.last)
+        XCTAssertNil(fresh.staleReason)
+
+        rateLimited.set()
+        clock.advance(by: 60)
+        next = expectation(description: "same account rate-limited")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        let stale = try XCTUnwrap(renders.last)
+        XCTAssertEqual(stale.kind, .official, "429 keeps the last quota instead of an error card")
+        XCTAssertNotNil(stale.staleReason)
+        XCTAssertEqual(stale.officialQuotaWindows.map(\.remaining), fresh.officialQuotaWindows.map(\.remaining))
+        XCTAssertEqual(stale.officialQuotaWindows.map(\.resetAt), fresh.officialQuotaWindows.map(\.resetAt))
+        XCTAssertEqual(stale.date, fresh.date, "the card keeps the last successful refresh time")
+        let waitUntil = try XCTUnwrap(official.claudeRateLimitedUntil(), "menu refresh is disabled during the wait")
+        XCTAssertGreaterThan(waitUntil, clock.now)
+
+        reader.set("account-b")
+        clock.advance(by: 60)
+        awaitedKind = .error
+        next = expectation(description: "new account rate-limited")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        XCTAssertFalse(renders.dropFirst(2).contains { $0.staleReason != nil },
+            "another account's quota must never be shown as stale data")
+    }
+
     func testClaudeAccountSwitchWhileRequestIsInFlightDropsPreviousAccountResult() throws {
         let current = try useClaudeOfficialProvider()
         let releaseA = DispatchSemaphore(value: 0)

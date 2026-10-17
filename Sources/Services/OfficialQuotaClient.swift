@@ -318,6 +318,23 @@ final class OfficialQuotaClient {
         return Self.claudeAccountFingerprint(claudeRequestCredentials(cacheFor: maxAge))
     }
 
+    /// Server-requested wait (Retry-After or 429 backoff) for the account in
+    /// the last probe; nil when not rate-limited. Never starts `security`.
+    func claudeRateLimitedUntil() -> Date? {
+        guard let token = cachedClaudeAccessToken(), !token.isEmpty else { return nil }
+        let scope = Self.claudeScope(token: token)
+        claudeCacheLock.lock()
+        defer { claudeCacheLock.unlock() }
+        guard let retryUntil = claudeResponses[scope]?.retryUntil, retryUntil > now() else { return nil }
+        return retryUntil
+    }
+
+    private func cachedClaudeAccessToken() -> String? {
+        claudeProbeCondition.lock()
+        defer { claudeProbeCondition.unlock() }
+        return claudeAccountProbe?.credentials.accessToken
+    }
+
     /// Display-only email/plan from the last probe; never starts `security`.
     func cachedClaudeAccountProfile() -> CodexAccountProfile? {
         claudeProbeCondition.lock()
