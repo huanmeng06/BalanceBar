@@ -649,7 +649,8 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         func descendants(_ node: NSView) -> [NSView] { node.subviews.flatMap { [$0] + descendants($0) } }
         controller.start(snapshot: snapshot(remaining: 40, onlyWeek: false), refreshDate: now,
             menuInput: makeMenuInput(), settings: makeSettings())
-        controller.menuWillOpen(controller.statusMenuForTesting)
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
         let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
         let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
@@ -690,14 +691,29 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         for source in ["sections", "numerics", "numerics.open", "pace", "countdown.timer"] {
             XCTAssertTrue(lines.contains { $0.contains("event=content.update.deferred;") && $0.contains("source=\(source)") })
         }
-        controller.menuDidClose(controller.statusMenuForTesting)
+        controller.menuDidClose(outgoingMenu)
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === outgoingMenu,
+            "Prepare an independent next menu while the old window finishes dismissal")
+        XCTAssertFalse(nextMenu.items.first?.view === host)
         host.finishMenuDismissal() // Auxiliary cleanup must not restore a still-visible window.
         XCTAssertTrue(host.isMenuDismissing)
         XCTAssertTrue(window.isVisible)
         controller.update(snapshot: snapshot(remaining: 10, onlyWeek: true), refreshDate: now,
             menuInput: makeMenuInput(), settings: makeSettings())
-        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds, "Still-visible native menu must never rebuild")
-        controller.menuWillOpen(controller.statusMenuForTesting)
+        // The counter includes building the independent next menu. Protect
+        // the actual outgoing tree rather than forbidding all new-menu work.
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
+        XCTAssertTrue(controller.statusMenuForTesting === nextMenu)
+        XCTAssertTrue(outgoingMenu.items.first?.view === host)
+        XCTAssertTrue(host.window === window)
+        XCTAssertEqual(outgoingMenu.items.map(ObjectIdentifier.init), items)
+        XCTAssertEqual(host.subviews.map(ObjectIdentifier.init), sections)
+        XCTAssertEqual(host.paceViews.map(ObjectIdentifier.init), views.map(ObjectIdentifier.init))
+        XCTAssertEqual(descendants(host).compactMap { ($0 as? NSTextField)?.stringValue }, labels)
+        XCTAssertTrue(views.allSatisfy { $0.progress.percentage == 40 && $0.pace?.roundedActual == 40 })
+        XCTAssertEqual(countdown.sample?.value, countdownValue)
+        controller.menuWillOpen(nextMenu)
         let latest = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1)
         XCTAssertEqual(latest.paceViews.count, 1)
