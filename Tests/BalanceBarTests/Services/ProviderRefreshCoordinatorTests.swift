@@ -4137,6 +4137,12 @@ extension ProviderRefreshCoordinatorTests {
     func testQuickSwitchOfficialSummaryUsesNinetyAndOneHundredFiftySecondIntervals() throws {
         let current = try useClaudeOfficialProvider()
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let readLock = NSLock()
+        var summaryReads = 0
+        repository.loadSummarySourcesObserver = {
+            readLock.lock(); summaryReads += 1; readLock.unlock()
+        }
+        defer { repository.loadSummarySourcesObserver = nil }
         DelayedBalanceURLProtocol.setHandler { _ in .init(data: Self.claudeUsage, statusCode: 200) }
         for interval: TimeInterval in [90, 150] {
             let official = OfficialQuotaClient(session: session,
@@ -4144,22 +4150,68 @@ extension ProviderRefreshCoordinatorTests {
             let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
                 actions: makeActions(), refreshPreferences: preferences(interval: interval), now: { clock.now })
             let before = DelayedBalanceURLProtocol.requestCount
-            coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+            coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
             let token = "summary-cadence-\(Int(interval))"
             waitForClaudeTransport(official, token: token, count: before + 1, coordinator: coordinator)
+            readLock.lock(); let initialReads = summaryReads; XCTAssertGreaterThan(initialReads, 0); readLock.unlock()
 
             clock.advance(by: interval - 1)
-            coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+            coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
             waitForCoordinator(coordinator)
             XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, before + 1)
+            readLock.lock(); XCTAssertEqual(summaryReads, initialReads, "3-second timer polls must not reload provider configurations"); readLock.unlock()
 
             clock.advance(by: 1)
-            coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+            coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
             waitForClaudeTransport(official, token: token, count: before + 2, coordinator: coordinator)
+            readLock.lock(); XCTAssertGreaterThan(summaryReads, initialReads, "the official deadline must trigger a provider read"); readLock.unlock()
             coordinator.stop()
             coordinators.removeAll { $0 === coordinator }
         }
         XCTAssertNotNil(current)
+    }
+
+    func testQuickSwitchDoesNotReloadLargeProviderListOnEveryThreeSecondPoll() throws {
+        for index in 0..<250 {
+            try withDatabase { db in
+                try execute(db, sql: """
+                    INSERT INTO providers VALUES (
+                        'codex-bench-\(index)', 'Benchmark \(index)',
+                        '{"api_key":"fixture-key","base_url":"https://provider.example"}',
+                        '{"usage_script":{"enabled":true,"baseUrl":"https://provider.example","code":"url: `{{baseUrl}}/usage`"}}',
+                        'custom', 'https://provider.example', 'codex', 0, \(index + 10), \(index + 10)
+                    )
+                    """)
+            }
+        }
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let readsLock = NSLock()
+        var reads = 0
+        repository.loadSummarySourcesObserver = { readsLock.lock(); reads += 1; readsLock.unlock() }
+        defer { repository.loadSummarySourcesObserver = nil }
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "10.00") }
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(session: session),
+            actions: makeActions(), now: { clock.now })
+
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex, providerIDs: ["codex-custom"])
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, DelayedBalanceURLProtocol.requestCount == 0 { Thread.sleep(forTimeInterval: 0.005) }
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(repository.loadSummarySources(appType: "codex").count, 252)
+        readsLock.lock(); let initialReads = reads; readsLock.unlock()
+        XCTAssertGreaterThan(initialReads, 0)
+
+        for _ in 0..<19 {
+            clock.advance(by: 3)
+            coordinator.refreshQuickSwitchSummaries(force: false, for: .codex, providerIDs: ["codex-custom"])
+            waitForCoordinator(coordinator)
+        }
+        readsLock.lock(); XCTAssertEqual(reads, initialReads, "60 seconds of timer polls must not reload all 252 provider configurations"); readsLock.unlock()
+
+        clock.advance(by: 3)
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex, providerIDs: ["codex-custom"])
+        waitForCoordinator(coordinator)
+        readsLock.lock(); XCTAssertGreaterThan(reads, initialReads); readsLock.unlock()
     }
 
     func testManualQuickSwitchRefreshHonorsCodexOfficialIntervalButStillRefreshesAPIBalances() throws {

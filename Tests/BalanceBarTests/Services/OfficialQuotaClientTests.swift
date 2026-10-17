@@ -986,6 +986,43 @@ extension OfficialQuotaClientTests {
         XCTAssertEqual(reader.reads, 3)
     }
 
+    func testConcurrentClaudeCredentialProbesAreCoalesced() {
+        final class Reader: OfficialQuotaCredentialReading {
+            private let lock = NSLock()
+            private(set) var reads = 0
+            let started = DispatchSemaphore(value: 0)
+            let release = DispatchSemaphore(value: 0)
+            func claudeAccessToken() -> String? {
+                lock.lock(); reads += 1; lock.unlock()
+                started.signal()
+                release.wait()
+                return "shared-account"
+            }
+            func codexAccessToken() -> String? { nil }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+            func readCount() -> Int { lock.lock(); defer { lock.unlock() }; return reads }
+        }
+        let reader = Reader()
+        let client = OfficialQuotaClient(session: session, credentialReader: reader)
+        let group = DispatchGroup()
+        let resultsLock = NSLock()
+        var credentials: [CodexRequestCredentials] = []
+        for _ in 0..<8 {
+            group.enter()
+            DispatchQueue.global().async {
+                let value = client.claudeRequestCredentials()
+                resultsLock.lock(); credentials.append(value); resultsLock.unlock()
+                group.leave()
+            }
+        }
+        XCTAssertEqual(reader.started.wait(timeout: .now() + 2), .success)
+        reader.release.signal()
+        XCTAssertEqual(group.wait(timeout: .now() + 3), .success)
+        XCTAssertEqual(reader.readCount(), 1)
+        XCTAssertEqual(credentials.count, 8)
+        XCTAssertTrue(credentials.allSatisfy { $0.accessToken == "shared-account" })
+    }
+
     func testClaudeAccountSwitchDuringInFlightRequestUsesSeparateFrozenTokens() throws {
         let bothStarted = expectation(description: "both account requests reached transport")
         bothStarted.expectedFulfillmentCount = 2

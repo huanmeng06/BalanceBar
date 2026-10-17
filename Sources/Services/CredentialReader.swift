@@ -24,9 +24,11 @@ struct DefaultCredentialFileReader: CredentialFileReading {
 
 struct DefaultCredentialProcessRunner: CredentialProcessRunning {
     let executableURL: URL
+    let timeout: TimeInterval
 
-    init(executableURL: URL = URL(fileURLWithPath: "/usr/bin/security")) {
+    init(executableURL: URL = URL(fileURLWithPath: "/usr/bin/security"), timeout: TimeInterval = 2) {
         self.executableURL = executableURL
+        self.timeout = timeout
     }
 
     func run(arguments: [String]) throws -> CredentialProcessResult {
@@ -36,9 +38,15 @@ struct DefaultCredentialProcessRunner: CredentialProcessRunning {
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
         try process.run()
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            _ = finished.wait(timeout: .now() + 0.25)
+            return CredentialProcessResult(terminationStatus: -1, standardOutput: Data())
+        }
         let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
         return CredentialProcessResult(terminationStatus: process.terminationStatus, standardOutput: data)
     }
 }

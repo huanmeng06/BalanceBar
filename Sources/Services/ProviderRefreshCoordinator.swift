@@ -300,10 +300,14 @@ final class ProviderRefreshCoordinator {
     private let refreshPreferences: AppPreferences?
     private var officialRefreshInterval: TimeInterval { refreshPreferences?.officialUsageRefreshInterval ?? 60 }
     private var lastOfficialSummaryFetch: [SummaryIdentity: Date] = [:]
+    private var knownOfficialSummaryIDs: Set<SummaryIdentity> = []
+    private var knownAPISummaryIDs: Set<SummaryIdentity> = []
+    private var loadedSummaryClients: Set<AssistantClient> = []
     /// Fingerprint of the Claude account behind the visible official data.
     /// Nil until the first Claude request freezes an account.
     private struct ClaudeAccountObservation { let fingerprint: String? }
     private var observedClaudeAccount: ClaudeAccountObservation?
+    private var lastClaudeIdentityProbe: Date?
     private let actions: ProviderRefreshActions
     private let codexResetObservationStore: CodexResetObservationStore
     // Cadence timestamps are owned by `queue`; public entry points never read
@@ -653,6 +657,12 @@ final class ProviderRefreshCoordinator {
             self.lastBalanceFetch = nil
             self.lastOfficialFetch = nil
             self.lastQuickSwitchFetch = [:]
+            self.knownOfficialSummaryIDs.removeAll()
+            self.knownAPISummaryIDs.removeAll()
+            self.loadedSummaryClients.removeAll()
+            self.lastClaudeIdentityProbe = nil
+            self.lastOfficialSummaryFetch = [:]
+            self.quickSwitchSourceRevisions = [:]
         }
     }
 
@@ -793,19 +803,35 @@ final class ProviderRefreshCoordinator {
             guard let self, self.lifetime.isCurrent() else { return }
             if client == .claude { self.detectClaudeAccountChange() }
             let currentDate = self.now()
-            let apiDue = self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
+            let initialLoad = !self.loadedSummaryClients.contains(client)
+            let apiDue = initialLoad || self.knownAPISummaryIDs.contains { identity in
+                guard identity.client == client else { return false }
+                if let providerIDs, !providerIDs.contains(identity.providerID) { return false }
+                return self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
+            }
             SwitchLog.write("quick-switch refresh triggered; force=\(force); api_ttl_due=\(apiDue); configuration_event=\(configurationChanged)", level: .debug,
                 category: "refresh.summary", throttleKey: "summary-trigger-\(force)", minimumInterval: 1)
+            let knownOfficialDue = self.knownOfficialSummaryIDs.contains { identity in
+                guard identity.client == client else { return false }
+                if let providerIDs, !providerIDs.contains(identity.providerID) { return false }
+                return self.lastOfficialSummaryFetch[identity].map {
+                    currentDate.timeIntervalSince($0) >= self.officialRefreshInterval
+                } ?? true
+            }
+            guard force || configurationChanged || initialLoad || apiDue || knownOfficialDue else { return }
             guard let sources = try? self.repository.loadSummarySourcesChecked(appType: client.appType) else { return }
+            self.loadedSummaryClients.insert(client)
+            self.knownOfficialSummaryIDs.formUnion(sources.filter(\.isOfficial).map { SummaryIdentity(client: client, providerID: $0.id) })
+            self.knownAPISummaryIDs.formUnion(sources.filter { !$0.isOfficial }.map { SummaryIdentity(client: client, providerID: $0.id) })
             let previousRevisions = self.quickSwitchSourceRevisions[client] ?? [:]
             self.quickSwitchSourceRevisions[client] = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.configurationRevision) })
             self.invalidateStaleQuickSwitchSummaries(client: client, sources: sources, previousRevisions: previousRevisions)
-            var refreshedAPI = false
             let aggregationIDs: Set<String>
             if client == .codex, let reader = self.aggregationReader, case .active(let entries) = reader.load() {
                 _ = self.refreshAggregation(reader: reader, force: force && self.refreshPreferences == nil)
                 aggregationIDs = Set(entries.map(\.providerID))
             } else { aggregationIDs = [] }
+            if initialLoad || apiDue || force || configurationChanged { self.lastQuickSwitchFetch[client] = currentDate }
             self.balanceProgressStore.prepareMigration(identities: sources.compactMap { source in
                 source.query.map { ProviderBalanceProgressIdentity(client: client, providerID: source.id, query: $0, providerName: source.name) }
             })
@@ -876,7 +902,6 @@ final class ProviderRefreshCoordinator {
                     continue
                 }
                 guard force || apiDue || previousRevisions[source.id] != source.configurationRevision else { continue }
-                refreshedAPI = true
                 guard let query = source.query else { continue }
                 let sampleSequence = self.balanceProgressStore.beginSample()
                 self.balanceAPIClient.fetchBalance(
@@ -925,7 +950,6 @@ final class ProviderRefreshCoordinator {
                     }
                 }
             }
-            if refreshedAPI { self.lastQuickSwitchFetch[client] = currentDate }
         }
     }
 
@@ -1149,7 +1173,10 @@ final class ProviderRefreshCoordinator {
     /// Keychain reads when Claude official quota was never shown.
     private func detectClaudeAccountChange() {
         guard observedClaudeAccount != nil else { return }
-        observeClaudeAccount(officialQuotaClient.currentClaudeAccountFingerprint())
+        let currentDate = now()
+        guard lastClaudeIdentityProbe.map({ currentDate.timeIntervalSince($0) >= 15 }) ?? true else { return }
+        lastClaudeIdentityProbe = currentDate
+        observeClaudeAccount(officialQuotaClient.currentClaudeAccountFingerprint(maxAge: 0))
     }
 
     private func observeClaudeAccount(_ fingerprint: String?) {
@@ -1219,7 +1246,7 @@ final class ProviderRefreshCoordinator {
         case .claude:
             let currentFingerprint: String?
             if DispatchQueue.getSpecific(key: queueKey) != nil {
-                currentFingerprint = OfficialQuotaClient.claudeAccountFingerprint(officialQuotaClient.claudeRequestCredentials())
+                currentFingerprint = OfficialQuotaClient.claudeAccountFingerprint(officialQuotaClient.claudeRequestCredentials(cacheFor: 0))
             } else {
                 currentFingerprint = officialQuotaClient.cachedClaudeAccountFingerprint()
             }
@@ -1264,6 +1291,7 @@ final class ProviderRefreshCoordinator {
         }
         // Freeze the account before transport starts. Never assign a late
         // response to the auth profile that happens to be current on arrival.
+        if client == .claude { lastClaudeIdentityProbe = nil }
         let credentials: CodexRequestCredentials?
         switch client {
         case _ where requestContext != nil: credentials = requestContext?.credentials

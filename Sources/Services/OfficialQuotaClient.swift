@@ -205,8 +205,9 @@ final class OfficialQuotaClient {
     private let claudeCacheLock = NSLock()
     private var claudeResponses: [String: (result: Result<OfficialQuotaResult, OfficialQuotaClientError>, recordedAt: Date, retryUntil: Date?)] = [:]
     private var claudeCalibrationInterval: () -> TimeInterval = { 60 }
-    private let claudeProbeLock = NSLock()
-    private var claudeAccountProbe: (fingerprint: String?, readAt: Date)?
+    private var claudeAccountProbe: (credentials: CodexRequestCredentials, readAt: Date)?
+    private var claudeProbeInFlight = false
+    private let claudeProbeCondition = NSCondition()
 
     func configureClaudeCalibrationInterval(_ interval: @escaping () -> TimeInterval) {
         claudeCacheLock.lock()
@@ -241,9 +242,27 @@ final class OfficialQuotaClient {
     }
 
     /// Claude's usage endpoint is account-wide; the token is the account scope.
-    func claudeRequestCredentials() -> CodexRequestCredentials {
+    func claudeRequestCredentials(cacheFor maxAge: TimeInterval = 0.1) -> CodexRequestCredentials {
+        claudeProbeCondition.lock()
+        if maxAge > 0, let probe = claudeAccountProbe, now().timeIntervalSince(probe.readAt) < maxAge {
+            claudeProbeCondition.unlock()
+            return probe.credentials
+        }
+        if claudeProbeInFlight {
+            let deadline = Date().addingTimeInterval(2.5)
+            while claudeProbeInFlight, claudeProbeCondition.wait(until: deadline) {}
+            let credentials = claudeAccountProbe?.credentials ?? CodexRequestCredentials(accessToken: nil, accountKey: nil)
+            claudeProbeCondition.unlock()
+            return credentials
+        }
+        claudeProbeInFlight = true
+        claudeProbeCondition.unlock()
         let credentials = CodexRequestCredentials(accessToken: credentialReader.claudeAccessToken(), accountKey: nil)
-        recordClaudeAccountProbe(Self.claudeAccountFingerprint(credentials))
+        claudeProbeCondition.lock()
+        claudeAccountProbe = (credentials, now())
+        claudeProbeInFlight = false
+        claudeProbeCondition.broadcast()
+        claudeProbeCondition.unlock()
         return credentials
     }
 
@@ -258,27 +277,21 @@ final class OfficialQuotaClient {
     /// that run on every provider poll share one reading for a short window.
     /// Requests themselves always freeze a fresh token.
     func currentClaudeAccountFingerprint(maxAge: TimeInterval = 2) -> String? {
-        claudeProbeLock.lock()
+        claudeProbeCondition.lock()
         if let probe = claudeAccountProbe, abs(now().timeIntervalSince(probe.readAt)) < maxAge {
-            claudeProbeLock.unlock()
-            return probe.fingerprint
+            claudeProbeCondition.unlock()
+            return Self.claudeAccountFingerprint(probe.credentials)
         }
-        claudeProbeLock.unlock()
-        return Self.claudeAccountFingerprint(claudeRequestCredentials())
+        claudeProbeCondition.unlock()
+        return Self.claudeAccountFingerprint(claudeRequestCredentials(cacheFor: maxAge))
     }
 
     /// Returns only the last background probe. This is safe for UI callbacks:
     /// it never starts `/usr/bin/security` or touches the credential store.
     func cachedClaudeAccountFingerprint() -> String? {
-        claudeProbeLock.lock()
-        defer { claudeProbeLock.unlock() }
-        return claudeAccountProbe?.fingerprint
-    }
-
-    private func recordClaudeAccountProbe(_ fingerprint: String?) {
-        claudeProbeLock.lock()
-        claudeAccountProbe = (fingerprint, now())
-        claudeProbeLock.unlock()
+        claudeProbeCondition.lock()
+        defer { claudeProbeCondition.unlock() }
+        return claudeAccountProbe.flatMap { Self.claudeAccountFingerprint($0.credentials) }
     }
 
     private static func claudeScope(token: String) -> String {

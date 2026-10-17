@@ -45,6 +45,7 @@ final class CCSwitchRepository {
 
     private let loadChoicesObserverLock = NSLock()
     private var loadChoicesObserverStorage: (() -> Void)?
+    private var loadSummarySourcesObserverStorage: (() -> Void)?
 
     /// Tests may observe provider-list reads. Production leaves this nil.
     var loadChoicesObserver: (() -> Void)? {
@@ -56,6 +57,19 @@ final class CCSwitchRepository {
         set {
             loadChoicesObserverLock.lock()
             loadChoicesObserverStorage = newValue
+            loadChoicesObserverLock.unlock()
+        }
+    }
+
+    var loadSummarySourcesObserver: (() -> Void)? {
+        get {
+            loadChoicesObserverLock.lock()
+            defer { loadChoicesObserverLock.unlock() }
+            return loadSummarySourcesObserverStorage
+        }
+        set {
+            loadChoicesObserverLock.lock()
+            loadSummarySourcesObserverStorage = newValue
             loadChoicesObserverLock.unlock()
         }
     }
@@ -613,6 +627,7 @@ final class CCSwitchRepository {
 
     /// A single read transaction; callers must distinguish SQL failure from an empty list.
     func loadSummarySourcesChecked(appType: String, providerIDs: [String]? = nil) throws -> [ProviderSummarySource] {
+        loadSummarySourcesObserver?()
         var database: OpaquePointer?
         guard sqlite3_open_v2(
             databaseURL.path,
