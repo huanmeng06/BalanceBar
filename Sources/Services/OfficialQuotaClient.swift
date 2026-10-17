@@ -181,6 +181,7 @@ final class OfficialQuotaClient {
     private let now: () -> Date
     private let claudeCacheLock = NSLock()
     private var claudeResponses: [String: (result: Result<OfficialQuotaResult, OfficialQuotaClientError>, expiresAt: Date)] = [:]
+    private var claudeRateLimitFailures: [String: Int] = [:]
     private let inFlight = InFlightRegistry()
     private let creditLock = NSLock()
     private var creditRequests: [String: (UUID, URLSessionDataTask)] = [:]
@@ -248,11 +249,10 @@ final class OfficialQuotaClient {
 
     @discardableResult
     func fetchQuota(context: OfficialQuotaRequestContext,
-                    forceRefresh: Bool = false,
                     completion: @escaping (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void) -> Bool {
         fetchQuota(client: context.client, providerID: context.providerID,
             storedAccessToken: context.storedAccessToken, requestCredentials: context.credentials,
-            forceRefresh: forceRefresh, completion: completion)
+            completion: completion)
     }
 
     func cancelQuota(context: OfficialQuotaRequestContext) {
@@ -269,7 +269,6 @@ final class OfficialQuotaClient {
         providerID: String,
         storedAccessToken: String? = nil,
         requestCredentials: CodexRequestCredentials? = nil,
-        forceRefresh: Bool = false,
         completion: @escaping (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void
     ) -> Bool {
         let credentialSource = Self.credentialSource(
@@ -287,7 +286,8 @@ final class OfficialQuotaClient {
 
         // Claude's usage endpoint is account-wide. Share a short-lived result
         // across startup, summaries and activity refreshes using an opaque token
-        // scope. A manual refresh may bypass success TTL, never server backoff.
+        // scope. Every entry point, including manual refresh, honors the same
+        // one-minute calibration interval and any longer server backoff.
         let claudeScope = client == .claude ? CodexRequestCredentials(
             accessToken: request.value(forHTTPHeaderField: "Authorization"), accountKey: nil
         ).requestScope : nil
@@ -296,12 +296,8 @@ final class OfficialQuotaClient {
             let cached = claudeResponses[claudeScope]
             claudeCacheLock.unlock()
             if let cached, cached.expiresAt > now() {
-                let mayReuse: Bool
-                switch cached.result {
-                case .success: mayReuse = !forceRefresh
-                case .failure: mayReuse = true
-                }
-                if mayReuse { completion(cached.result); return false }
+                completion(cached.result)
+                return false
             }
         }
         let key = Self.requestKey(
@@ -316,7 +312,7 @@ final class OfficialQuotaClient {
             SwitchLog.write("official-quota transport coalesced; scope_omitted=true", level: .debug, category: "refresh.transport")
             return false
         }
-        SwitchLog.write("official-quota transport started; scope_omitted=true", level: .debug, category: "refresh.transport")
+        SwitchLog.write("official-quota transport started; client=\(client.rawValue); scope_omitted=true", level: .debug, category: "refresh.transport")
 
         let parser = self.parser
         let task = session.dataTask(with: request) { [weak self] data, response, error in
@@ -339,29 +335,31 @@ final class OfficialQuotaClient {
             }
             registry.finish(key: key, generation: generation, result: result) {
                 guard let claudeScope, let self else { return }
-                let ttl: TimeInterval?
+                self.claudeCacheLock.lock()
+                let ttl: TimeInterval
                 switch result {
-                case .success: ttl = 60
+                case .success:
+                    self.claudeRateLimitFailures.removeValue(forKey: claudeScope)
+                    ttl = 60
                 case .failure(.httpStatus(let status, _)) where status == 429:
+                    let failures = min((self.claudeRateLimitFailures[claudeScope] ?? 0) + 1, 5)
+                    self.claudeRateLimitFailures[claudeScope] = failures
+                    let fallback = min(60 * pow(2, Double(failures - 1)), 900)
                     let header = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After")
-                    if let seconds = header.flatMap(Double.init), seconds.isFinite {
+                    if let seconds = header.flatMap(Double.init), seconds.isFinite, seconds > 0 {
                         ttl = max(60, seconds)
                     } else {
                         let formatter = DateFormatter()
                         formatter.locale = Locale(identifier: "en_US_POSIX")
                         formatter.timeZone = TimeZone(secondsFromGMT: 0)
                         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
-                        ttl = max(60, header.flatMap(formatter.date(from:))?.timeIntervalSince(self.now()) ?? 60)
+                        let interval = header.flatMap(formatter.date(from:))?.timeIntervalSince(self.now()) ?? 0
+                        ttl = interval > 0 ? max(60, interval) : fallback
                     }
-                default: ttl = nil
+                default: ttl = 60
                 }
-                self.claudeCacheLock.lock()
                 self.claudeResponses = self.claudeResponses.filter { $0.value.expiresAt > self.now() }
-                if let ttl {
-                    self.claudeResponses[claudeScope] = (result, self.now().addingTimeInterval(ttl))
-                } else {
-                    self.claudeResponses.removeValue(forKey: claudeScope)
-                }
+                self.claudeResponses[claudeScope] = (result, self.now().addingTimeInterval(ttl))
                 self.claudeCacheLock.unlock()
             }
         }

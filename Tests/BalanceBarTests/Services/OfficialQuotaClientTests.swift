@@ -325,7 +325,7 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-beta"), "oauth-2025-04-20")
     }
 
-    func testClaudeSuccessCacheSharesSequentialConsumersAndManualRefreshBypassesTTL() throws {
+    func testClaudeSuccessCacheSharesSequentialConsumersAndManualRefreshHonorsTTL() throws {
         var time = Date(timeIntervalSince1970: 1_700_000_000)
         let client = makeClient(claudeToken: "fixture", now: { time })
         StubURLProtocol.setHandler { _ in StubResult(data: Self.claudeBody) }
@@ -334,13 +334,13 @@ final class OfficialQuotaClientTests: XCTestCase {
         guard case .success(let original) = first, case .success(let reused) = cached else { return XCTFail("expected cached success") }
         XCTAssertEqual(original.fetchedAt, reused.fetchedAt, "cached data must keep its actual fetch time")
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
-        _ = try waitForResult(client, clientName: .claude, providerID: "standard", forceRefresh: true)
-        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard", expectsTransport: false)
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
         time.addTimeInterval(59)
         _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
         time.addTimeInterval(1)
         _ = try waitForResult(client, clientName: .claude, providerID: "standard")
-        XCTAssertEqual(StubURLProtocol.requestCount, 3)
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
     }
 
     func testClaudeRateLimitBackoffHonorsRetryAfterEvenForManualRefresh() throws {
@@ -349,7 +349,7 @@ final class OfficialQuotaClientTests: XCTestCase {
         StubURLProtocol.setHandler { _ in StubResult(statusCode: 429, data: Data(), headers: ["Retry-After": "170"]) }
         _ = try waitForResult(client, clientName: .claude, providerID: "standard")
         time.addTimeInterval(169)
-        let throttled = try waitForResult(client, clientName: .claude, providerID: "summary", forceRefresh: true, expectsTransport: false)
+        let throttled = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
         guard case .failure(.httpStatus(let status, _)) = throttled else { return XCTFail("expected rate-limit error") }
         XCTAssertEqual(status, 429)
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
@@ -366,11 +366,50 @@ final class OfficialQuotaClientTests: XCTestCase {
             StubURLProtocol.setHandler { _ in StubResult(statusCode: 429, data: Data(), headers: ["Retry-After": header]) }
             _ = try waitForResult(client, clientName: .claude, providerID: "standard")
             time.addTimeInterval(header.hasSuffix("GMT") ? 169 : 59)
-            _ = try waitForResult(client, clientName: .claude, providerID: "summary", forceRefresh: true, expectsTransport: false)
+            _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
             time.addTimeInterval(1)
             _ = try waitForResult(client, clientName: .claude, providerID: "standard")
         }
         XCTAssertEqual(StubURLProtocol.requestCount, 6)
+    }
+
+    func testClaudeFailuresAlsoWaitOneMinuteBeforeRetrying() throws {
+        for reply in [StubResult(statusCode: 503, data: Data()), StubResult(error: URLError(.timedOut)),
+                      StubResult(data: Data("bad-json".utf8))] {
+            var time = Date(timeIntervalSince1970: 1_700_000_000)
+            let client = makeClient(claudeToken: "fixture", now: { time })
+            StubURLProtocol.setHandler { _ in reply }
+            _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+            time.addTimeInterval(59)
+            _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+            time.addTimeInterval(1)
+            _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        }
+        XCTAssertEqual(StubURLProtocol.requestCount, 6)
+    }
+
+    func testClaudeRepeatedRateLimitsWithoutRetryAfterBackOffAndResetAfterSuccess() throws {
+        var time = Date(timeIntervalSince1970: 1_700_000_000)
+        let client = makeClient(claudeToken: "fixture", now: { time })
+        StubURLProtocol.setHandler { _ in StubResult(statusCode: 429, data: Data()) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(239)
+        _ = try waitForResult(client, clientName: .claude, providerID: "summary", expectsTransport: false)
+        time.addTimeInterval(1)
+        StubURLProtocol.setHandler { _ in StubResult(data: Self.claudeBody) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        StubURLProtocol.setHandler { _ in StubResult(statusCode: 429, data: Data()) }
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "standard")
+        XCTAssertEqual(StubURLProtocol.requestCount, 6, "successful calibration resets the failure backoff")
     }
 
     func testClaudeCacheDoesNotReusePreviousAccountTokenOrApplyToCodex() throws {
@@ -712,7 +751,6 @@ final class OfficialQuotaClientTests: XCTestCase {
         clientName: AssistantClient,
         providerID: String,
         storedAccessToken: String? = nil,
-        forceRefresh: Bool = false,
         expectsTransport: Bool = true
     ) throws -> Result<OfficialQuotaResult, OfficialQuotaClientError> {
         let expectation = expectation(description: "official quota request completed")
@@ -720,8 +758,7 @@ final class OfficialQuotaClientTests: XCTestCase {
         let started = client.fetchQuota(
             client: clientName,
             providerID: providerID,
-            storedAccessToken: storedAccessToken,
-            forceRefresh: forceRefresh
+            storedAccessToken: storedAccessToken
         ) { result in
             captured = result
             expectation.fulfill()

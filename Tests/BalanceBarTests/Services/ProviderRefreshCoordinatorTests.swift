@@ -460,7 +460,11 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         clock.advance(by: 1)
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         wait(for: [rendered[1]], timeout: 3)
-        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false, bypassClaudeCache: true)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2, "manual/activity force must not bypass one minute")
+        clock.advance(by: 60)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false)
         wait(for: [rendered[2]], timeout: 3)
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
@@ -474,14 +478,14 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             return .init(data: Self.claudeUsage, statusCode: 200)
         }
         let first = expectation(description: "initial quota")
-        let activity = expectation(description: "activity reuses quota")
         var rendered = 0
         let actions = ProviderRefreshActions(
             currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
             isActiveClient: { $0 == .claude }, render: { snapshot in
                 XCTAssertEqual(snapshot.kind, .official, "burst must not replace success with HTTP 429")
                 rendered += 1
-                if rendered == 1 { first.fulfill() } else { activity.fulfill() }
+                XCTAssertEqual(rendered, 1, "activity refresh should wait for the calibration interval")
+                first.fulfill()
             }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
         let coordinator = makeCoordinator(repository: repository,
             officialQuotaClient: OfficialQuotaClient(session: session,
@@ -489,7 +493,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: true)
         wait(for: [first], timeout: 3)
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false)
-        wait(for: [activity], timeout: 3)
+        waitForCoordinator(coordinator)
         // Summary starts after transport has finished, so in-flight dedup alone cannot help.
         coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
         waitForCoordinator(coordinator)

@@ -672,16 +672,14 @@ final class ProviderRefreshCoordinator {
         current: CCSwitchProvider,
         client: AssistantClient,
         forceBalance: Bool,
-        switched: Bool,
-        bypassClaudeCache: Bool = false
+        switched: Bool
     ) {
         performOnQueue { [weak self] in
             self?.refreshStandardProviderOnQueue(
                 current: current,
                 client: client,
                 forceBalance: forceBalance,
-                switched: switched,
-                bypassClaudeCache: bypassClaudeCache
+                switched: switched
             )
         }
     }
@@ -690,8 +688,7 @@ final class ProviderRefreshCoordinator {
         current: CCSwitchProvider,
         client: AssistantClient,
         forceBalance: Bool,
-        switched: Bool,
-        bypassClaudeCache: Bool = false
+        switched: Bool
     ) {
         let sourceKey = "\(client.appType)|\(current.id)|\(current.configurationRevision)"
         let sourceChanged = lastStandardSourceKey != sourceKey
@@ -715,7 +712,9 @@ final class ProviderRefreshCoordinator {
             }
             let currentDate = now()
             let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= 60 } ?? true
-            guard forceBalance || switched || sourceChanged || due else { return }
+            let shouldRefresh = client == .claude ? (sourceChanged || due)
+                : (forceBalance || switched || sourceChanged || due)
+            guard shouldRefresh else { return }
             if standardIdentityChanged(from: lastStandardSourceKey, client: client, provider: current) != nil,
                let previous = standardOfficialRequests[client] {
                 officialQuotaClient.cancelQuota(context: previous)
@@ -727,7 +726,6 @@ final class ProviderRefreshCoordinator {
                 providerID: current.id,
                 providerName: current.name,
                 client: client,
-                forceRefresh: bypassClaudeCache,
                 configurationRevision: revision,
                 isValid: { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
             )
@@ -1118,7 +1116,6 @@ final class ProviderRefreshCoordinator {
 
     private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient,
                                     source: ProviderSummarySource? = nil,
-                                    forceRefresh: Bool = false,
                                     requestContext: OfficialQuotaRequestContext? = nil,
                                     configurationRevision: String = "",
                                     isValid: @escaping () -> Bool = { true },
@@ -1169,7 +1166,7 @@ final class ProviderRefreshCoordinator {
             }
             standardOfficialRequests[client] = context
         }
-        officialQuotaClient.fetchQuota(context: context, forceRefresh: forceRefresh) { [weak self] result in
+        officialQuotaClient.fetchQuota(context: context) { [weak self] result in
             guard let self else { return }
             self.performOnQueue {
                 guard credentialsMatch() else { return }
