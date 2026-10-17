@@ -2467,6 +2467,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var statusMenu = NSMenu()
     private var retiringStatusMenus: [NSMenu] = []
+    private var retiringStatusMenuObservers: [ObjectIdentifier: [NSObjectProtocol]] = [:]
     private var statusItemAttachmentCheckScheduled = false
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
@@ -2496,6 +2497,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private(set) var layoutStatusItemCallCountForTesting = 0
     private(set) var statusMenuRebuildCountForTesting = 0
     var statusMenuNeedsRebuildForTesting: Bool { statusMenuNeedsRebuild }
+    var retiringStatusMenuCountForTesting: Int { retiringStatusMenus.count }
     private let menuBarIconView: RotatingTemplateImageView
     private let menuBarIconSlot = PassthroughView()
     private let menuBarTextStack = MenuBarTextView()
@@ -3037,6 +3039,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
         statusMenuNeedsNativeStructureRebuild = false
+        retiringStatusMenuObservers.values.flatMap { $0 }.forEach(NotificationCenter.default.removeObserver)
+        retiringStatusMenuObservers.removeAll()
         retiringStatusMenus.removeAll()
         isStatusMenuTracking = false
         overviewMenuWasSeen = false
@@ -3338,14 +3342,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let view = statusMenu.items.first?.view {
             descendantViews(of: view, as: MenuHoverLinkHostView.self).forEach { $0.finishMenuDismissal(beforeOpening: true) }
         }
+        let currentViewDismissing = statusMenu.items.first?.view.map {
+            descendantViews(of: $0, as: MenuHoverLinkHostView.self).contains { $0.isMenuDismissing }
+        } ?? false
+        let canReplaceBeforeOpen = !previousWindowVisible && !currentViewDismissing
         // A direct card applies a pending rebuild before it is shown again. For
         // an aggregated menu, distinguish a card-only sync from a native menu
         // structure change: the former is complete once the mounted viewport
         // has been reconciled, while the latter still requires a real rebuild.
         if statusMenuNeedsRebuild, menuInput.aggregatedProviders.isEmpty {
-            if previousWindowVisible || previousViewDismissing {
+            if !canReplaceBeforeOpen {
                 menuDismissalTrace?.record("menu.rebuild.deferred", view: previousView,
-                    details: "reason=nextOpen; direct_target_waiting_for_old_window")
+                    details: "reason=nextOpen; direct_target_waiting_for_old_window; stale_dismissing=\(previousViewDismissing)")
             } else {
                 rebuildStatusMenu(reason: "nextOpen")
             }
@@ -3353,24 +3361,34 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // menuWillOpen is the boundary for the next presentation. Apply a
             // top-level mode or native-structure change before tracking starts;
             // card-only changes can reuse the mounted viewport.
-            let view = makeAggregationOverview()
-            let topLevelViewChanged = statusMenu.items.first?.view !== view
             let needsNativeStructure = statusMenuNeedsNativeStructureRebuild
+            let topLevelView = statusMenu.items.first?.view
+            let topLevelViewChanged = menuInput.aggregatedProviders.isEmpty
+                ? !(topLevelView is MenuHoverLinkHostView)
+                : !(topLevelView is AggregationOverviewScrollView)
             if (topLevelViewChanged || needsNativeStructure)
-                && !previousWindowVisible && !previousViewDismissing {
+                && canReplaceBeforeOpen {
                 rebuildStatusMenu(reason: "nextOpen")
                 menuDismissalTrace?.record("menu.aggregation.rebuilt", view: statusMenu.items.first?.view,
                     details: "reason=nextOpen; top_level_changed=\(topLevelViewChanged); native_structure=\(needsNativeStructure)")
             } else if topLevelViewChanged || needsNativeStructure {
                 statusMenuNeedsRebuild = true
-                menuDismissalTrace?.record("menu.aggregation.sync-deferred", view: view,
-                    details: "reason=nextOpen; old_window_visible=\(previousWindowVisible); old_view_dismissing=\(previousViewDismissing)")
+                menuDismissalTrace?.record("menu.aggregation.sync-deferred", view: previousView,
+                    details: "reason=nextOpen; old_window_visible=\(previousWindowVisible); old_view_dismissing=\(currentViewDismissing)")
             } else if !needsNativeStructure {
-                statusMenuNeedsRebuild = false
-                menuDismissalTrace?.record("menu.aggregation.synced", view: view,
-                    details: "reason=nextOpen; pending_cleared=true")
+                if canReplaceBeforeOpen {
+                    let view = makeAggregationOverview()
+                    statusMenuNeedsRebuild = false
+                    menuDismissalTrace?.record("menu.aggregation.synced", view: view,
+                        details: "reason=nextOpen; pending_cleared=true")
+                } else {
+                    statusMenuNeedsRebuild = true
+                    menuDismissalTrace?.record("menu.aggregation.sync-deferred", view: previousView,
+                        details: "reason=nextOpen; content_sync_waiting_for_old_window=true")
+                }
             } else {
-                menuDismissalTrace?.record("menu.aggregation.synced", view: view,
+                statusMenuNeedsRebuild = true
+                menuDismissalTrace?.record("menu.aggregation.sync-deferred", view: previousView,
                     details: "reason=nextOpen; native_structure_pending=true")
             }
         }
@@ -3403,7 +3421,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
             overviewMenuWasSeen = false
         }
-        retiringStatusMenus.removeAll { $0.items.first?.view?.window?.isVisible != true }
+        releaseHiddenRetiringStatusMenus()
         isStatusMenuTracking = false
         if let view = statusMenu.items.first?.view {
             descendantViews(of: view, as: MenuHoverLinkHostView.self).forEach { $0.setMenuContentVisible(false) }
@@ -3497,17 +3515,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func rebuildOrDeferMenu(forceDefer: Bool = false, nativeItemsChanged: Bool = true) {
         guard statusItem != nil else { return }
         if nativeItemsChanged { statusMenuNeedsNativeStructureRebuild = true }
+        menuRebuildReason = nativeItemsChanged ? "native-structure" : "overview-content"
         let firstView = statusMenu.items.first?.view
         let host = firstView as? MenuHoverLinkHostView
         if !isStatusMenuTracking, outgoingMenuIsDismissing || firstView?.window?.isVisible == true {
-            // The outgoing native menu is still on screen; never mutate it.
+            // Keep the outgoing menu immutable and prepare a separate next
+            // presentation as soon as new data arrives during its dismissal.
             statusMenuNeedsRebuild = true
             menuDismissalTrace?.record("menu.rebuild.deferred", view: host,
                 details: "controller_tracking=false; force=\(forceDefer)")
-            scheduleClosedMenuRebuild()
+            if firstView?.window?.isVisible == true {
+                rebuildStatusMenu(reason: "late-update-next-session", replacingMenu: true)
+            } else {
+                scheduleClosedMenuRebuild()
+            }
             return
         }
-        menuRebuildReason = nativeItemsChanged ? "native-structure" : "overview-content"
         updateQuickSwitchContent()
         if !menuInput.aggregatedProviders.isEmpty, !statusMenu.items.isEmpty,
            isStatusMenuTracking || (!nativeItemsChanged && aggregationViewport != nil) {
@@ -6054,11 +6077,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard !isStatusMenuTracking else { statusMenuNeedsRebuild = true; return }
         let oldMenu = statusMenu
         let menu = replacingMenu ? NSMenu() : oldMenu
+        let previousDistanceFromTop = aggregationViewport.flatMap { scroll in
+            scroll.documentView.map { max(0, $0.frame.height - scroll.contentView.bounds.maxY) }
+        }
         if replacingMenu {
-            if oldMenu.items.first?.view?.window?.isVisible == true {
-                retiringStatusMenus.append(oldMenu)
+            if let outgoingWindow = oldMenu.items.first?.view?.window, outgoingWindow.isVisible {
+                retainRetiringStatusMenu(oldMenu, until: outgoingWindow)
             }
-            retiringStatusMenus.removeAll { $0.items.first?.view?.window?.isVisible != true }
+            releaseHiddenRetiringStatusMenus()
             statusMenu = menu
             menu.delegate = self
             statusItem?.menu = menu
@@ -6073,15 +6099,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         statusMenuNeedsRebuild = false
         statusMenuNeedsNativeStructureRebuild = false
+        releaseHiddenRetiringStatusMenus()
         menuDismissalTrace?.record("menu.rebuild.removeAllItems", view: oldMenu.items.first?.view,
             details: "reason=\(reason ?? menuRebuildReason)")
         logAggregationLifecycle(reason: "rebuild-" + menuRebuildReason)
         statusMenuRebuildCountForTesting += 1
         // A custom view must not move from a retired menu item to a new one.
         // Keep card subtrees, but give each rebuilt item a fresh AppKit host.
-        let previousDistanceFromTop = aggregationViewport.flatMap { scroll in
-            scroll.documentView.map { max(0, $0.frame.height - scroll.contentView.bounds.maxY) }
-        }
         if !replacingMenu, aggregationViewport != nil {
             oldMenu.items.first?.view = nil
             (aggregationViewport as? AggregationOverviewScrollView)?.setMenuContentVisible(false)
@@ -6148,6 +6172,34 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             throttleKey: "status-menu-render",
             minimumInterval: 1
         )
+    }
+
+    private func retainRetiringStatusMenu(_ menu: NSMenu, until window: NSWindow) {
+        let identity = ObjectIdentifier(menu)
+        guard retiringStatusMenuObservers[identity] == nil else { return }
+        retiringStatusMenus.append(menu)
+        let notifications: [Notification.Name] = [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification]
+        retiringStatusMenuObservers[identity] = notifications.map { name in
+            NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
+                guard let self, let window else { return }
+                DispatchQueue.main.async { [weak self, weak window] in
+                    guard let self, let window, !window.isVisible else { return }
+                    self.releaseRetiringStatusMenu(identity)
+                }
+            }
+        }
+    }
+
+    private func releaseRetiringStatusMenu(_ identity: ObjectIdentifier) {
+        retiringStatusMenus.removeAll { ObjectIdentifier($0) == identity }
+        retiringStatusMenuObservers.removeValue(forKey: identity)?.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    private func releaseHiddenRetiringStatusMenus() {
+        let hiddenIdentities = retiringStatusMenus
+            .filter { $0.items.first?.view?.window?.isVisible != true }
+            .map(ObjectIdentifier.init)
+        hiddenIdentities.forEach(releaseRetiringStatusMenu)
     }
 
     private func makeStatusLinksMenuItem() -> NSMenuItem {

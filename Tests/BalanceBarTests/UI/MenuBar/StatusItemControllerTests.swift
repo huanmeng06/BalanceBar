@@ -3481,6 +3481,61 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testUpdateAfterCloseBuildsFreshMenuWithoutChangingOutgoingAggregationTree() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 12), settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
+        let (outgoingWindow, outgoingViewport) = try mountAggregation(controller)
+        defer { outgoingWindow.orderOut(nil) }
+        outgoingViewport.restoreViewport(distanceFromTop: 80)
+        let outgoingCards = outgoingViewport.cardHosts()
+        let outgoingItem = try XCTUnwrap(outgoingMenu.items.first)
+
+        // Nothing is pending at close time. A provider update arrives later,
+        // while the old native menu window is still visible.
+        controller.menuDidClose(outgoingMenu)
+        XCTAssertEqual(controller.retiringStatusMenuCountForTesting, 0)
+        controller.updateMenu(input: aggregationInput(count: 13))
+
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === outgoingMenu)
+        XCTAssertTrue(outgoingMenu.items.first === outgoingItem)
+        XCTAssertTrue(outgoingItem.view === outgoingViewport)
+        XCTAssertEqual(outgoingViewport.cardHosts().count, 12,
+            "late updates must not mutate the visible outgoing card tree")
+        XCTAssertTrue(outgoingCards.allSatisfy(\.isMenuDismissing))
+
+        let nextViewport = try XCTUnwrap(nextMenu.items.first?.view as? AggregationOverviewScrollView)
+        XCTAssertEqual(nextViewport.cardHosts().count, 13,
+            "the newly prepared menu uses the latest provider set")
+        XCTAssertEqual(controller.retiringStatusMenuCountForTesting, 1)
+    }
+
+    @MainActor
+    func testDismissalFlagIsRecheckedAfterOpenCleanup() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
+        controller.update(snapshot: .official("OpenAI Official", 50, "5h", nil, Date()),
+            refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+        let rebuilds = controller.statusMenuRebuildCountForTesting
+        controller.menuDidClose(outgoingMenu)
+
+        controller.menuWillOpen(outgoingMenu)
+        XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuilds + 1,
+            "the old dismissal state was cleared before deciding whether the new menu can rebuild")
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    @MainActor
     func testUnavailableAggregationProviderKeepsNoteInTitle() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -4674,10 +4729,12 @@ extension StatusItemControllerTests {
         // A provider is added while the outgoing menu is still on screen.
         controller.updateMenu(input: aggregationInput(count: 3))
         XCTAssertEqual(viewport.cardHosts().count, 2, "the dismissing menu is left intact")
-        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
-        // Reopen before the closed rebuild had a chance to run.
-        controller.menuWillOpen(menu)
-        defer { controller.menuDidClose(menu) }
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        // Reopen the independently prepared menu before the old window hides.
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === menu)
+        controller.menuWillOpen(nextMenu)
+        defer { controller.menuDidClose(nextMenu) }
         let shown = (controller.statusMenuForTesting.items.first?.view as? AggregationOverviewScrollView)?.cardHosts() ?? []
         XCTAssertEqual(shown.count, 3, "the reopened menu shows the current providers")
         XCTAssertTrue(shown.allSatisfy { $0.isMenuContentVisible && !$0.isMenuDismissing })
