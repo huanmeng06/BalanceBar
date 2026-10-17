@@ -2498,6 +2498,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private(set) var statusMenuRebuildCountForTesting = 0
     var statusMenuNeedsRebuildForTesting: Bool { statusMenuNeedsRebuild }
     var retiringStatusMenuCountForTesting: Int { retiringStatusMenus.count }
+    var isStatusMenuDetachedForCustomClickForTesting: Bool { isStatusMenuDetachedForCustomClick }
+    var statusItemMenuIsBoundForTesting: Bool { statusItem?.menu === statusMenu }
+    func detachStatusMenuForCustomClickForTesting() { detachStatusMenuForCustomClick() }
+    func restoreStatusMenuAfterCustomClickForTesting() { restoreStatusMenuAfterCustomClick() }
     private let menuBarIconView: RotatingTemplateImageView
     private let menuBarIconSlot = PassthroughView()
     private let menuBarTextStack = MenuBarTextView()
@@ -6087,7 +6091,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             releaseHiddenRetiringStatusMenus()
             statusMenu = menu
             menu.delegate = self
-            statusItem?.menu = menu
+            if !isStatusMenuDetachedForCustomClick {
+                statusItem?.menu = menu
+            }
             // The retiring menu owns its old card tree until its window hides.
             // Start new aggregation state without detaching or reusing that tree.
             aggregationViewport = nil
@@ -6178,6 +6184,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let identity = ObjectIdentifier(menu)
         guard retiringStatusMenuObservers[identity] == nil else { return }
         retiringStatusMenus.append(menu)
+        scheduleRetiringStatusMenuRelease(identity, attempt: 0)
         let notifications: [Notification.Name] = [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification]
         retiringStatusMenuObservers[identity] = notifications.map { name in
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
@@ -6200,6 +6207,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             .filter { $0.items.first?.view?.window?.isVisible != true }
             .map(ObjectIdentifier.init)
         hiddenIdentities.forEach(releaseRetiringStatusMenu)
+    }
+
+    private func scheduleRetiringStatusMenuRelease(_ identity: ObjectIdentifier, attempt: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, self.retiringStatusMenuObservers[identity] != nil else { return }
+            guard let menu = self.retiringStatusMenus.first(where: { ObjectIdentifier($0) == identity }) else {
+                self.releaseRetiringStatusMenu(identity)
+                return
+            }
+            if menu.items.first?.view?.window?.isVisible != true {
+                self.releaseRetiringStatusMenu(identity)
+            } else if attempt < 40 {
+                self.scheduleRetiringStatusMenuRelease(identity, attempt: attempt + 1)
+            }
+        }
     }
 
     private func makeStatusLinksMenuItem() -> NSMenuItem {

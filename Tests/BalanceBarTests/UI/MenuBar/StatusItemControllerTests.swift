@@ -3512,6 +3512,11 @@ extension StatusItemControllerTests {
         XCTAssertEqual(nextViewport.cardHosts().count, 13,
             "the newly prepared menu uses the latest provider set")
         XCTAssertEqual(controller.retiringStatusMenuCountForTesting, 1)
+        outgoingWindow.orderOut(nil)
+        let releaseDeadline = Date().addingTimeInterval(0.25)
+        while Date() < releaseDeadline { RunLoop.main.run(mode: .default, before: releaseDeadline) }
+        XCTAssertEqual(controller.retiringStatusMenuCountForTesting, 0,
+            "hidden retiring menus release without another menu interaction")
     }
 
     @MainActor
@@ -3533,6 +3538,37 @@ extension StatusItemControllerTests {
             "the old dismissal state was cleared before deciding whether the new menu can rebuild")
         XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
         controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    @MainActor
+    func testReplacingMenuRespectsTemporaryCustomClickDetachment() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: makeMenuInput(), settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
+        let host = try XCTUnwrap(outgoingMenu.items.first?.view as? MenuHoverLinkHostView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        controller.menuDidClose(outgoingMenu)
+
+        controller.detachStatusMenuForCustomClickForTesting()
+        XCTAssertTrue(controller.isStatusMenuDetachedForCustomClickForTesting)
+        XCTAssertFalse(controller.statusItemMenuIsBoundForTesting)
+
+        controller.update(snapshot: .official("OpenAI Official", 50, "5h", nil, Date()),
+            refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertTrue(controller.isStatusMenuDetachedForCustomClickForTesting)
+        XCTAssertFalse(controller.statusItemMenuIsBoundForTesting,
+            "menu replacement must not undo custom-click detachment")
+
+        controller.restoreStatusMenuAfterCustomClickForTesting()
+        XCTAssertFalse(controller.isStatusMenuDetachedForCustomClickForTesting)
+        XCTAssertTrue(controller.statusItemMenuIsBoundForTesting)
     }
 
     @MainActor
