@@ -4075,15 +4075,24 @@ extension ProviderRefreshCoordinatorTests {
 
 // MARK: - PR #508 review regressions
 
+private final class AtomicFlag {
+    private let lock = NSLock()
+    private var value = false
+    var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    func set() { lock.lock(); value = true; lock.unlock() }
+}
+
 /// Lets a test switch the signed-in Claude account while a request is in flight.
 private final class SwitchableClaudeReader: OfficialQuotaCredentialReading {
     private let lock = NSLock()
     private var token: String
+    private var readCount = 0
     init(token: String) { self.token = token }
     func set(_ value: String) { lock.lock(); token = value; lock.unlock() }
+    var reads: Int { lock.lock(); defer { lock.unlock() }; return readCount }
     func codexAccessToken() -> String? { nil }
     func codexAccountProfile() -> CodexAccountProfile? { nil }
-    func claudeAccessToken() -> String? { lock.lock(); defer { lock.unlock() }; return token }
+    func claudeAccessToken() -> String? { lock.lock(); defer { lock.unlock() }; readCount += 1; return token }
 }
 
 extension ProviderRefreshCoordinatorTests {
@@ -4113,6 +4122,50 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertFalse(client.isRequestInFlight(client: .claude, providerID: "", requestCredentials: credentials),
             file: file, line: line)
         waitForCoordinator(coordinator)
+    }
+
+    func testClaudeOfficialResultVerifiesCredentialStoreOnceAndStillDropsSwitchedAccount() throws {
+        let current = try useClaudeOfficialProvider()
+        let releaseA = DispatchSemaphore(value: 0)
+        let gateA = AtomicFlag()
+        DelayedBalanceURLProtocol.setHandler { request in
+            request.value(forHTTPHeaderField: "Authorization") == "Bearer account-a" && gateA.isSet
+                ? .init(data: Self.claudeUsage, statusCode: 200, delayUntil: releaseA)
+                : .init(data: Self.claudeUsage, statusCode: 200)
+        }
+        let reader = SwitchableClaudeReader(token: "account-a")
+        var rendered: XCTestExpectation?
+        var renders = 0
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { $0 == .claude }, render: { _ in renders += 1; rendered?.fulfill() },
+            storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let official = OfficialQuotaClient(session: session, credentialReader: reader, now: { clock.now })
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+            actions: actions, now: { clock.now })
+
+        rendered = expectation(description: "first result renders")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [rendered!], timeout: 3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(reader.reads, 2, "one read freezes the request; one verifies the completed result")
+
+        // Account switch while the next request is in flight.
+        gateA.set()
+        clock.advance(by: 60)
+        let readsBefore = reader.reads
+        let stale = expectation(description: "switched-away result never renders")
+        stale.isInverted = true
+        rendered = stale
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        waitForCoordinator(coordinator)
+        reader.set("account-b")
+        releaseA.signal()
+        wait(for: [stale], timeout: 0.5)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(reader.reads - readsBefore, 2, "the switched result is rejected by its single verification")
+        XCTAssertEqual(renders, 1)
     }
 
     func testClaudeAccountSwitchWhileRequestIsInFlightDropsPreviousAccountResult() throws {

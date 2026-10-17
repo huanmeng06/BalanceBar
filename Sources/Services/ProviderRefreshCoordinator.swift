@@ -1326,13 +1326,17 @@ final class ProviderRefreshCoordinator {
     }
 
     /// Requests made before this check must belong to the account still signed in.
+    /// `verifyClaudeStore` rereads the Keychain on the owner queue; later checks of
+    /// the same result compare against that shared probe, which any newer read
+    /// (account-change detection or a new request) replaces.
     private func officialCredentialsAreCurrent(client: AssistantClient, storedAccessToken: String?,
-                                               credentials: CodexRequestCredentials?) -> Bool {
+                                               credentials: CodexRequestCredentials?,
+                                               verifyClaudeStore: Bool = true) -> Bool {
         switch client {
         case .codex: return storedAccessToken != nil || officialQuotaClient.codexRequestCredentials() == credentials
         case .claude:
             let currentFingerprint: String?
-            if DispatchQueue.getSpecific(key: queueKey) != nil {
+            if verifyClaudeStore, DispatchQueue.getSpecific(key: queueKey) != nil {
                 currentFingerprint = OfficialQuotaClient.claudeAccountFingerprint(officialQuotaClient.claudeRequestCredentials(cacheFor: 0))
             } else {
                 currentFingerprint = officialQuotaClient.cachedClaudeAccountFingerprint()
@@ -1393,10 +1397,12 @@ final class ProviderRefreshCoordinator {
         if client == .claude { observeClaudeAccount(OfficialQuotaClient.claudeAccountFingerprint(credentials)) }
         let context = requestContext ?? OfficialQuotaRequestContext(client: client, providerID: providerID,
             storedAccessToken: source?.officialAccessToken, credentials: credentials)
-        let credentialsMatch = { [weak self] in
+        // Only the completion verifies against the credential store; every
+        // later check of the same result reuses that probe.
+        let credentialsMatch = { [weak self] (verify: Bool) -> Bool in
             guard let self, isValid() else { return false }
             return self.officialCredentialsAreCurrent(client: client, storedAccessToken: source?.officialAccessToken,
-                credentials: credentials)
+                credentials: credentials, verifyClaudeStore: verify)
         }
         let accountKey = credentials?.accountKey
         if source == nil {
@@ -1409,7 +1415,7 @@ final class ProviderRefreshCoordinator {
         officialQuotaClient.fetchQuota(context: context) { [weak self] result in
             guard let self else { return }
             self.performOnQueue {
-                guard credentialsMatch() else { return }
+                guard credentialsMatch(true) else { return }
                 // Every completed quota response owns a new generation, including
                 // errors. Pending credit/forecast callbacks from older successes
                 // must not replace a newer failure or mutate its observation state.
@@ -1432,7 +1438,7 @@ final class ProviderRefreshCoordinator {
                         payload: .officialWindows(response.output.windows)
                     )
                     let renderOfficial: (CodexBankedReset?, CodexResetForecast) -> Void = { bankedReset, forecast in
-                        guard credentialsMatch(),
+                        guard credentialsMatch(false),
                               isCurrentQuota() else { return }
                         let resolvedForecast = client == .codex ? self.resolveCodexResetObservation(
                             providerID: providerID,
@@ -1457,7 +1463,7 @@ final class ProviderRefreshCoordinator {
                             ),
                             providerID: providerID,
                             client: client,
-                            isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) }
+                            isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) }
                         )
                     }
                     // Observation consumes successful quota data immediately,
@@ -1472,7 +1478,7 @@ final class ProviderRefreshCoordinator {
                     )
                     let finishOfficial: (CodexBankedReset?) -> Void = { bankedReset in
                         self.performOnQueue {
-                            guard credentialsMatch(),
+                            guard credentialsMatch(false),
                                   isCurrentQuota() else { return }
                             guard client == .codex, bankedReset != nil || self.cachedCodexResetForecast != nil else {
                                 renderOfficial(bankedReset, cachedForecast)
@@ -1501,7 +1507,7 @@ final class ProviderRefreshCoordinator {
                         providerName: providerName,
                         reason: tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [String(describing: client.displayName)]),
                         client: client,
-                        isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) }
+                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) }
                     )
                 case .failure(.transport(let error)):
                     fail(
@@ -1509,20 +1515,20 @@ final class ProviderRefreshCoordinator {
                         providerName: providerName,
                         reason: tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [String(describing: client.displayName), String(describing: error.localizedDescription)]),
                         client: client,
-                        isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) }
+                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) }
                     )
                 case .failure(.httpStatus(let status, _)) where status == 429:
                     let reason = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
                         arguments: [String(status)]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
                     fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
-                        isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) })
+                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) })
                 case .failure:
                     fail(
                         providerID: providerID,
                         providerName: providerName,
                         reason: tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [String(describing: client.displayName)]),
                         client: client,
-                        isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) }
+                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) }
                     )
                 }
             }
