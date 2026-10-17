@@ -449,7 +449,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
         let coordinator = makeCoordinator(repository: repository,
             officialQuotaClient: OfficialQuotaClient(session: session,
-                credentialReader: FixtureCredentialReader(codexToken: "codex-fixture", claudeToken: "claude-fixture")),
+                credentialReader: FixtureCredentialReader(codexToken: "codex-fixture", claudeToken: "claude-fixture"), now: { clock.now }),
             actions: actions, now: { clock.now })
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         wait(for: [rendered[0]], timeout: 3)
@@ -460,9 +460,41 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         clock.advance(by: 1)
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         wait(for: [rendered[1]], timeout: 3)
-        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false, bypassClaudeCache: true)
         wait(for: [rendered[2]], timeout: 3)
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+    }
+
+    func testClaudeOfficialActivityAndSequentialSummaryDoNotImmediatelyReplaceSuccessWithRateLimitError() throws {
+        let current = try useClaudeOfficialProvider()
+        DelayedBalanceURLProtocol.setHandler { _ in
+            if DelayedBalanceURLProtocol.requestCount > 1 {
+                return .init(data: Data(), statusCode: 429)
+            }
+            return .init(data: Self.claudeUsage, statusCode: 200)
+        }
+        let first = expectation(description: "initial quota")
+        let activity = expectation(description: "activity reuses quota")
+        var rendered = 0
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { $0 == .claude }, render: { snapshot in
+                XCTAssertEqual(snapshot.kind, .official, "burst must not replace success with HTTP 429")
+                rendered += 1
+                if rendered == 1 { first.fulfill() } else { activity.fulfill() }
+            }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "fixture")), actions: actions)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: true)
+        wait(for: [first], timeout: 3)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false)
+        wait(for: [activity], timeout: 3)
+        // Summary starts after transport has finished, so in-flight dedup alone cannot help.
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        XCTAssertFalse(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .claude).isEmpty)
     }
 
     func testClaudeOfficialInactivePrefetchSharesTransportWithSummaryAndKeepsClientScope() throws {
@@ -511,6 +543,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         for (token, status, data) in [
             (nil as String?, 200, Self.claudeUsage),
             ("fixture", 401, Data()),
+            ("fixture", 429, Data()),
             ("fixture", 200, Data("not-json".utf8)),
             ("fixture", 200, Data("{}".utf8))
         ] {
@@ -521,6 +554,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 isActiveClient: { $0 == .claude }, render: { snapshot in
                     XCTAssertEqual(snapshot.kind, .error)
                     XCTAssertEqual(snapshot.provider, "Claude Official")
+                    if status == 429 { XCTAssertTrue(snapshot.message?.contains("429") == true) }
                     rendered.fulfill()
                 }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
             let coordinator = makeCoordinator(repository: repository,
@@ -531,7 +565,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             wait(for: [rendered], timeout: 3)
             coordinator.stop()
         }
-        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3, "missing credentials must not start transport")
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 4, "missing credentials must not start transport")
     }
 
     func testClaudeOfficialLatePrefetchIsDroppedAfterProviderConfigurationChanges() throws {

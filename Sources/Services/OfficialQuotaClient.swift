@@ -30,6 +30,7 @@ extension OfficialQuotaTransportError: LocalizedError {
 struct OfficialQuotaResult {
     let output: OfficialQuotaResponseParser.Output
     let dataSize: Int
+    let fetchedAt = Date()
 }
 
 /// Identifies the credential path used by a request without retaining the
@@ -154,12 +155,14 @@ final class OfficialQuotaClient {
         func finish(
             key: String,
             generation: UUID,
-            result: Result<OfficialQuotaResult, OfficialQuotaClientError>
+            result: Result<OfficialQuotaResult, OfficialQuotaClientError>,
+            beforeCompletion: () -> Void = {}
         ) {
             lock.lock()
             guard entries[key]?.generation == generation else { lock.unlock(); return }
             let completions = entries.removeValue(forKey: key)?.completions ?? []
             lock.unlock()
+            beforeCompletion()
             completions.forEach { $0(result) }
         }
 
@@ -175,6 +178,9 @@ final class OfficialQuotaClient {
     private let session: URLSession
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
+    private let now: () -> Date
+    private let claudeCacheLock = NSLock()
+    private var claudeResponses: [String: (result: Result<OfficialQuotaResult, OfficialQuotaClientError>, expiresAt: Date)] = [:]
     private let inFlight = InFlightRegistry()
     private let creditLock = NSLock()
     private var creditRequests: [String: (UUID, URLSessionDataTask)] = [:]
@@ -182,11 +188,13 @@ final class OfficialQuotaClient {
     init(
         session: URLSession = .shared,
         credentialReader: OfficialQuotaCredentialReading = CredentialReader(),
-        parser: OfficialQuotaParsing = DefaultOfficialQuotaParser()
+        parser: OfficialQuotaParsing = DefaultOfficialQuotaParser(),
+        now: @escaping () -> Date = Date.init
     ) {
         self.session = session
         self.credentialReader = credentialReader
         self.parser = parser
+        self.now = now
     }
 
     /// Reads the same Codex auth source used by official quota requests. The
@@ -240,9 +248,11 @@ final class OfficialQuotaClient {
 
     @discardableResult
     func fetchQuota(context: OfficialQuotaRequestContext,
+                    forceRefresh: Bool = false,
                     completion: @escaping (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void) -> Bool {
         fetchQuota(client: context.client, providerID: context.providerID,
-            storedAccessToken: context.storedAccessToken, requestCredentials: context.credentials, completion: completion)
+            storedAccessToken: context.storedAccessToken, requestCredentials: context.credentials,
+            forceRefresh: forceRefresh, completion: completion)
     }
 
     func cancelQuota(context: OfficialQuotaRequestContext) {
@@ -259,6 +269,7 @@ final class OfficialQuotaClient {
         providerID: String,
         storedAccessToken: String? = nil,
         requestCredentials: CodexRequestCredentials? = nil,
+        forceRefresh: Bool = false,
         completion: @escaping (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void
     ) -> Bool {
         let credentialSource = Self.credentialSource(
@@ -274,6 +285,25 @@ final class OfficialQuotaClient {
             return true
         }
 
+        // Claude's usage endpoint is account-wide. Share a short-lived result
+        // across startup, summaries and activity refreshes using an opaque token
+        // scope. A manual refresh may bypass success TTL, never server backoff.
+        let claudeScope = client == .claude ? CodexRequestCredentials(
+            accessToken: request.value(forHTTPHeaderField: "Authorization"), accountKey: nil
+        ).requestScope : nil
+        if let claudeScope {
+            claudeCacheLock.lock()
+            let cached = claudeResponses[claudeScope]
+            claudeCacheLock.unlock()
+            if let cached, cached.expiresAt > now() {
+                let mayReuse: Bool
+                switch cached.result {
+                case .success: mayReuse = !forceRefresh
+                case .failure: mayReuse = true
+                }
+                if mayReuse { completion(cached.result); return false }
+            }
+        }
         let key = Self.requestKey(
             client: client,
             providerID: providerID,
@@ -289,7 +319,7 @@ final class OfficialQuotaClient {
         SwitchLog.write("official-quota transport started; scope_omitted=true", level: .debug, category: "refresh.transport")
 
         let parser = self.parser
-        let task = session.dataTask(with: request) { data, response, error in
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
             let result: Result<OfficialQuotaResult, OfficialQuotaClientError>
             if let error {
                 result = .failure(.transport(Self.transportError(from: error)))
@@ -303,7 +333,37 @@ final class OfficialQuotaClient {
                     dataSize: data?.count ?? 0
                 ))
             }
-            registry.finish(key: key, generation: generation, result: result)
+            if case .failure(.httpStatus(let status, _)) = result {
+                SwitchLog.write("official quota request failed; client=\(client.rawValue); http_status=\(status)",
+                    level: .warning, category: "refresh.transport")
+            }
+            registry.finish(key: key, generation: generation, result: result) {
+                guard let claudeScope, let self else { return }
+                let ttl: TimeInterval?
+                switch result {
+                case .success: ttl = 60
+                case .failure(.httpStatus(let status, _)) where status == 429:
+                    let header = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After")
+                    if let seconds = header.flatMap(Double.init), seconds.isFinite {
+                        ttl = max(60, seconds)
+                    } else {
+                        let formatter = DateFormatter()
+                        formatter.locale = Locale(identifier: "en_US_POSIX")
+                        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+                        ttl = max(60, header.flatMap(formatter.date(from:))?.timeIntervalSince(self.now()) ?? 60)
+                    }
+                default: ttl = nil
+                }
+                self.claudeCacheLock.lock()
+                self.claudeResponses = self.claudeResponses.filter { $0.value.expiresAt > self.now() }
+                if let ttl {
+                    self.claudeResponses[claudeScope] = (result, self.now().addingTimeInterval(ttl))
+                } else {
+                    self.claudeResponses.removeValue(forKey: claudeScope)
+                }
+                self.claudeCacheLock.unlock()
+            }
         }
         registry.attach(task: task, to: key, generation: generation)
         task.resume()

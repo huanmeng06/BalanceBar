@@ -672,14 +672,16 @@ final class ProviderRefreshCoordinator {
         current: CCSwitchProvider,
         client: AssistantClient,
         forceBalance: Bool,
-        switched: Bool
+        switched: Bool,
+        bypassClaudeCache: Bool = false
     ) {
         performOnQueue { [weak self] in
             self?.refreshStandardProviderOnQueue(
                 current: current,
                 client: client,
                 forceBalance: forceBalance,
-                switched: switched
+                switched: switched,
+                bypassClaudeCache: bypassClaudeCache
             )
         }
     }
@@ -688,7 +690,8 @@ final class ProviderRefreshCoordinator {
         current: CCSwitchProvider,
         client: AssistantClient,
         forceBalance: Bool,
-        switched: Bool
+        switched: Bool,
+        bypassClaudeCache: Bool = false
     ) {
         let sourceKey = "\(client.appType)|\(current.id)|\(current.configurationRevision)"
         let sourceChanged = lastStandardSourceKey != sourceKey
@@ -724,6 +727,7 @@ final class ProviderRefreshCoordinator {
                 providerID: current.id,
                 providerName: current.name,
                 client: client,
+                forceRefresh: bypassClaudeCache,
                 configurationRevision: revision,
                 isValid: { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
             )
@@ -837,7 +841,7 @@ final class ProviderRefreshCoordinator {
                                     response.output.remaining,
                                     response.output.label,
                                     response.output.reset,
-                                    Date(),
+                                    response.fetchedAt,
                                     windows: response.output.windows,
                                     lunaReserve: response.output.lunaReserve
                                 )
@@ -1114,6 +1118,7 @@ final class ProviderRefreshCoordinator {
 
     private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient,
                                     source: ProviderSummarySource? = nil,
+                                    forceRefresh: Bool = false,
                                     requestContext: OfficialQuotaRequestContext? = nil,
                                     configurationRevision: String = "",
                                     isValid: @escaping () -> Bool = { true },
@@ -1164,7 +1169,7 @@ final class ProviderRefreshCoordinator {
             }
             standardOfficialRequests[client] = context
         }
-        officialQuotaClient.fetchQuota(context: context) { [weak self] result in
+        officialQuotaClient.fetchQuota(context: context, forceRefresh: forceRefresh) { [weak self] result in
             guard let self else { return }
             self.performOnQueue {
                 guard credentialsMatch() else { return }
@@ -1202,7 +1207,7 @@ final class ProviderRefreshCoordinator {
                                 response.output.remaining,
                                 response.output.label,
                                 response.output.reset,
-                                Date(),
+                                response.fetchedAt,
                                 windows: response.output.windows,
                                 lunaReserve: response.output.lunaReserve,
                                 bankedReset: bankedReset,
@@ -1263,6 +1268,11 @@ final class ProviderRefreshCoordinator {
                         client: client,
                         isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) }
                     )
+                case .failure(.httpStatus(let status, _)) where status == 429:
+                    let reason = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
+                        arguments: [String(status)]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
+                    fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
+                        isCurrentRequest: { isCurrentQuota() && (credentialsMatch()) })
                 case .failure:
                     fail(
                         providerID: providerID,

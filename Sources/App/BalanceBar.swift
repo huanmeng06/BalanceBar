@@ -2251,7 +2251,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 current: current,
                 client: client,
                 forceBalance: reason.forcesStandardProviderBalance,
-                switched: switched
+                switched: switched,
+                bypassClaudeCache: reason == .manual
             )
         }
     }

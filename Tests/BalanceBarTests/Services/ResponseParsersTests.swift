@@ -390,6 +390,17 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(legacyWithoutDuration.reset, "later")
     }
 
+    func testClaudeMicrosecondResetTimestampFormatsAsCountdown() throws {
+        let reference = ISO8601DateFormatter().date(from: "2026-10-17T02:30:00Z")!
+        let reset = "2026-10-17T06:59:59.997388+00:00"
+        XCTAssertEqual(ResponseParsingSupport.resetDescription(reset, now: reference), "4h29m")
+        let output = try OfficialQuotaResponseParser.parse(
+            data: fixture(#"{"five_hour":{"utilization":10,"resets_at":"2026-10-17T06:59:59.997388+00:00"}}"#),
+            client: .claude, now: reference)
+        XCTAssertEqual(output.windows.first?.reset, "4h29m")
+        XCTAssertNotNil(output.windows.first?.resetAt)
+    }
+
     func testResetDescriptionsSupportNumericAndTextValues() {
         XCTAssertEqual(ResponseParsingSupport.numberValue(NSNumber(value: 12.5)), 12.5)
         XCTAssertEqual(ResponseParsingSupport.numberValue("12.5"), 12.5)

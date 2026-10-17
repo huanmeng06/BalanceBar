@@ -44,7 +44,7 @@ enum ResponseParsingSupport {
         }
         guard let text = stringValue(value), !text.isEmpty else { return nil }
         if let number = Double(text) { return resetDescription(number, now: now) }
-        if let date = ISO8601DateFormatter().date(from: text) {
+        if let date = timestampDate(text) {
             return remainingTime(until: date, now: now)
         }
         return text
