@@ -497,6 +497,42 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .claude).isEmpty)
     }
 
+    func testClaudeOfficialDoesNotInheritCachedCodexResetProbability() throws {
+        try setCurrentProvider("codex-replacement")
+        let claude = try useClaudeOfficialProvider()
+        DelayedBalanceURLProtocol.setHandler { request in
+            .init(data: request.url?.path == "/api/forecast"
+                ? ResponseParsersTests.codexResetIssueJSON : Data("{}".utf8), statusCode: 200)
+        }
+        let codexReady = expectation(description: "Codex forecast cache populated")
+        let claudeReady = expectation(description: "Claude excludes Codex forecast")
+        var sawCodexForecast = false
+        let windows = [OfficialQuotaWindow(kind: .fiveHour, remaining: 77, label: "5h",
+            daysText: "5 hours", reset: "4h", durationSeconds: 18_000)]
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "codex", claudeToken: "claude"),
+                parser: FixedOfficialQuotaParser(windows: windows, bankedReset: CodexBankedReset(cards: []))),
+            actions: ProviderRefreshActions(
+                currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+                isActiveClient: { _ in true }, render: { snapshot in
+                    if snapshot.provider == "Codex Replacement", snapshot.resetForecast.hasAnyValue, !sawCodexForecast {
+                        sawCodexForecast = true
+                        codexReady.fulfill()
+                    } else if snapshot.provider == "Claude Official" {
+                        XCTAssertEqual(snapshot.resetForecast, .unavailable)
+                        XCTAssertNil(snapshot.bankedReset)
+                        XCTAssertEqual(snapshot.officialQuotaWindows, windows)
+                        claudeReady.fulfill()
+                    }
+                }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in }))
+        coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")),
+            client: .codex, forceBalance: true, switched: true)
+        wait(for: [codexReady], timeout: 3)
+        coordinator.refreshStandardProvider(current: claude, client: .claude, forceBalance: true, switched: true)
+        wait(for: [claudeReady], timeout: 3)
+    }
+
     func testClaudeOfficialInactivePrefetchSharesTransportWithSummaryAndKeepsClientScope() throws {
         let current = try useClaudeOfficialProvider()
         let started = DispatchSemaphore(value: 0)

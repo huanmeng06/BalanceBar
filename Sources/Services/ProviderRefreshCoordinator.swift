@@ -1194,13 +1194,13 @@ final class ProviderRefreshCoordinator {
                     let renderOfficial: (CodexBankedReset?, CodexResetForecast) -> Void = { bankedReset, forecast in
                         guard credentialsMatch(),
                               isCurrentQuota() else { return }
-                        let resolvedForecast = self.resolveCodexResetObservation(
+                        let resolvedForecast = client == .codex ? self.resolveCodexResetObservation(
                             providerID: providerID,
                             windows: response.output.windows,
                             forecast: forecast,
                             accountKey: accountKey,
                             client: client
-                        )
+                        ) : .unavailable
                         publish(
                             .official(
                                 providerName,
@@ -1210,7 +1210,7 @@ final class ProviderRefreshCoordinator {
                                 response.fetchedAt,
                                 windows: response.output.windows,
                                 lunaReserve: response.output.lunaReserve,
-                                bankedReset: bankedReset,
+                                bankedReset: client == .codex ? bankedReset : nil,
                                 resetForecast: resolvedForecast
                             ),
                             providerID: providerID,
@@ -1222,7 +1222,8 @@ final class ProviderRefreshCoordinator {
                     // independently of credit-list transport. Keep the existing
                     // forecast eligibility; no-card quota refreshes use a cached
                     // signal without initiating extra forecast polling.
-                    let cachedForecast = self.cachedCodexResetForecast?.forecast.markingCached() ?? .unavailable
+                    let cachedForecast: CodexResetForecast = client == .codex
+                        ? (self.cachedCodexResetForecast?.forecast.markingCached() ?? .unavailable) : .unavailable
                     _ = self.resolveCodexResetObservation(
                         providerID: providerID, windows: response.output.windows,
                         forecast: cachedForecast, accountKey: accountKey, client: client
