@@ -319,12 +319,15 @@ enum OfficialQuotaResponseParser {
                 guard let window = object[name] as? [String: Any],
                       let utilization = ResponseParsingSupport.numberValue(window["utilization"])
                 else { return nil }
+                // An unused window has no `resets_at` yet; like Codex's idle
+                // `reset_after_seconds`, it resets a full duration after first use.
                 return OfficialQuotaWindow(
                     kind: kind,
                     remaining: max(0, min(100, 100 - utilization)),
                     label: label,
                     daysText: daysText,
-                    reset: ResponseParsingSupport.resetDescription(window["resets_at"], now: now),
+                    reset: ResponseParsingSupport.resetDescription(window["resets_at"], now: now)
+                        ?? ResponseParsingSupport.resetDescription(duration, now: now),
                     durationSeconds: duration,
                     resetAt: ResponseParsingSupport.resetDate(window["resets_at"], now: now)
                 )

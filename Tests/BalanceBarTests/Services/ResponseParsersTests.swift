@@ -406,6 +406,18 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(legacyWithoutDuration.reset, "later")
     }
 
+    func testClaudeUnusedWindowShowsFullDurationCountdownLikeCodex() throws {
+        let output = try OfficialQuotaResponseParser.parse(
+            data: fixture(#"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":16}}"#),
+            client: .claude, now: now)
+        XCTAssertEqual(output.windows.map(\.reset), ["5h0m", ResponseParsingSupport.resetDescription(604_800.0, now: now)])
+        XCTAssertEqual(output.windows.map(\.resetAt), [nil, nil], "no wall-clock reset is invented before first use")
+        let codex = try OfficialQuotaResponseParser.parse(
+            data: fixture(#"{"rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":18000,"reset_after_seconds":18000}}}"#),
+            client: .codex, now: now)
+        XCTAssertEqual(output.windows[0].reset, codex.windows[0].reset)
+    }
+
     func testClaudeMicrosecondResetTimestampFormatsAsCountdown() throws {
         let reference = ISO8601DateFormatter().date(from: "2026-10-17T02:30:00Z")!
         let reset = "2026-10-17T06:59:59.997388+00:00"
