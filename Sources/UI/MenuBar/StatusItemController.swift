@@ -3227,6 +3227,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuInput = input
         aggregationOverviewDisplays = aggregationGrouping.cards(input.aggregatedProviders)
         if !nativeItemsChanged && overviewUnchanged {
+            guard menuContentCanMutate else {
+                rebuildOrDeferMenu(forceDefer: deferRebuild, nativeItemsChanged: false)
+                refreshQuotaPaceViews()
+                return
+            }
             updateQuickSwitchContent()
             updateQuickSwitchProtection()
             refreshQuotaPaceViews()
@@ -3594,6 +3599,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else if let first = statusMenu.items.first {
             first.view = makeOverviewMenuItem(for: snapshot).view
         }
+    }
+
+    private var menuContentCanMutate: Bool {
+        guard let view = statusMenu.items.first?.view else { return !isStatusMenuTracking }
+        if let host = view as? MenuHoverLinkHostView {
+            return isStatusMenuTracking && host.isMenuContentVisible && !host.isMenuDismissing
+        }
+        if view is AggregationOverviewScrollView {
+            let hosts = descendantViews(of: view, as: MenuHoverLinkHostView.self)
+            return isStatusMenuTracking && hosts.allSatisfy { $0.isMenuContentVisible && !$0.isMenuDismissing }
+        }
+        return !isStatusMenuTracking && view.window?.isVisible != true
     }
 
     /// All tracking-time mutations share the same gate, including the gap
@@ -6210,7 +6227,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func scheduleRetiringStatusMenuRelease(_ identity: ObjectIdentifier, attempt: Int) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+        let delay = attempt < 40 ? 0.05 : 1.0
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.retiringStatusMenuObservers[identity] != nil else { return }
             guard let menu = self.retiringStatusMenus.first(where: { ObjectIdentifier($0) == identity }) else {
                 self.releaseRetiringStatusMenu(identity)
@@ -6218,8 +6236,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             if menu.items.first?.view?.window?.isVisible != true {
                 self.releaseRetiringStatusMenu(identity)
-            } else if attempt < 40 {
-                self.scheduleRetiringStatusMenuRelease(identity, attempt: attempt + 1)
+            } else {
+                self.scheduleRetiringStatusMenuRelease(identity, attempt: min(attempt + 1, 41))
             }
         }
     }

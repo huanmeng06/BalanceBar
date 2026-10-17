@@ -3541,6 +3541,35 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testQuickSwitchUpdateDuringDismissalUsesFreshMenu() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let initialChoices = [ProviderChoice(id: "provider-0", name: "old", isCurrent: true)]
+        controller.start(snapshot: .placeholder, refreshDate: nil,
+            menuInput: aggregationInput(count: 2, summaries: ["provider-0": "old summary"], choices: initialChoices),
+            settings: makeSettings())
+        let outgoingMenu = controller.statusMenuForTesting
+        controller.menuWillOpen(outgoingMenu)
+        let host = try XCTUnwrap(outgoingMenu.items.first?.view as? NSView)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = host
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        let oldQuick = try XCTUnwrap(outgoingMenu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        let oldSummary = oldQuick.items.first { $0.representedObject as? String == "provider-0" }?.title
+        controller.menuDidClose(outgoingMenu)
+
+        controller.updateMenu(input: aggregationInput(count: 2, summaries: ["provider-0": "new summary"], choices: initialChoices))
+        let nextMenu = controller.statusMenuForTesting
+        XCTAssertFalse(nextMenu === outgoingMenu)
+        XCTAssertEqual(oldQuick.items.first { $0.representedObject as? String == "provider-0" }?.title, oldSummary,
+            "the outgoing Quick Switch submenu remains unchanged")
+        let nextQuick = try XCTUnwrap(nextMenu.items.first { $0.title == tr(.keyStatusItemControllerQuickSwitch) }?.submenu)
+        XCTAssertNotEqual(nextQuick.items.first { $0.representedObject as? String == "provider-0" }?.title, oldSummary)
+    }
+
+    @MainActor
     func testReplacingMenuRespectsTemporaryCustomClickDetachment() throws {
         let controller = makeController()
         defer { controller.teardown() }
