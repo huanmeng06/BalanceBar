@@ -415,6 +415,159 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 
+    private func useClaudeOfficialProvider() throws -> CCSwitchProvider {
+        try withDatabase { database in
+            try execute(database, sql: "UPDATE providers SET name = 'Claude Official', category = 'official', settings_config = '{}', meta = '{}' WHERE app_type = 'claude'")
+        }
+        return try XCTUnwrap(repository.loadCurrent(appType: "claude"))
+    }
+
+    private static let claudeUsage = Data(#"{"five_hour":{"utilization":23,"resets_at":"2099-01-01T05:00:00Z"},"seven_day":{"utilization":41,"resets_at":"2099-01-07T00:00:00Z"}}"#.utf8)
+
+    func testClaudeOfficialStandardRefreshRendersRealWindowsAndHonorsCadence() throws {
+        let current = try useClaudeOfficialProvider()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        DelayedBalanceURLProtocol.setHandler { request in
+            XCTAssertEqual(request.url?.host, "api.anthropic.com")
+            XCTAssertEqual(request.url?.path, "/api/oauth/usage")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer claude-fixture")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-beta"), "oauth-2025-04-20")
+            return .init(data: Self.claudeUsage, statusCode: 200)
+        }
+        let rendered = (0..<3).map { expectation(description: "Claude quota publication \($0)") }
+        var renderIndex = 0
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { $0 == .claude }, render: { snapshot in
+                XCTAssertEqual(snapshot.kind, .official)
+                XCTAssertEqual(snapshot.provider, "Claude Official")
+                XCTAssertEqual(snapshot.officialQuotaWindows.map(\.remaining), [77, 59])
+                XCTAssertTrue(snapshot.officialQuotaWindows.allSatisfy { $0.resetAt != nil })
+                XCTAssertLessThan(renderIndex, rendered.count)
+                if renderIndex < rendered.count { rendered[renderIndex].fulfill() }
+                renderIndex += 1
+            }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "codex-fixture", claudeToken: "claude-fixture")),
+            actions: actions, now: { clock.now })
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [rendered[0]], timeout: 3)
+        clock.advance(by: 59)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        clock.advance(by: 1)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [rendered[1]], timeout: 3)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false)
+        wait(for: [rendered[2]], timeout: 3)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+    }
+
+    func testClaudeOfficialInactivePrefetchSharesTransportWithSummaryAndKeepsClientScope() throws {
+        let current = try useClaudeOfficialProvider()
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        DelayedBalanceURLProtocol.setHandler { _ in
+            started.signal()
+            return .init(data: Self.claudeUsage, statusCode: 200, delayUntil: release)
+        }
+        let stored = expectation(description: "inactive Claude quota cached")
+        let notified = expectation(description: "summary and prefetch notified")
+        notified.expectedFulfillmentCount = 2
+        var actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { $0 == .codex },
+            render: { _ in XCTFail("inactive Claude must not replace active Codex") },
+            storeClientSnapshot: { client, id, snapshot in
+                XCTAssertEqual(client, .claude)
+                XCTAssertEqual(id, current.id)
+                XCTAssertEqual(snapshot.officialQuotaWindows.map(\.remaining), [77, 59])
+                stored.fulfill()
+            }, quickSwitchSummaryChanged: { _ in })
+        actions.notificationSnapshot = { client, _, _ in
+            XCTAssertEqual(client, .claude)
+            notified.fulfill()
+        }
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "unused-codex", claudeToken: "claude-fixture")),
+            actions: actions)
+        coordinator.prefetchCurrentBalance(for: .claude)
+        waitForEvent(started)
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+        waitForCoordinator(coordinator)
+        release.signal()
+        wait(for: [stored, notified], timeout: 3)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        XCTAssertFalse(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .claude).isEmpty)
+        XCTAssertTrue(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .codex).isEmpty)
+    }
+
+    func testClaudeOfficialMissingCredentialsAndFailedResponsesRenderErrors() throws {
+        let current = try useClaudeOfficialProvider()
+        for (token, status, data) in [
+            (nil as String?, 200, Self.claudeUsage),
+            ("fixture", 401, Data()),
+            ("fixture", 200, Data("not-json".utf8)),
+            ("fixture", 200, Data("{}".utf8))
+        ] {
+            DelayedBalanceURLProtocol.setHandler { _ in .init(data: data, statusCode: status) }
+            let rendered = expectation(description: "Claude error replaces placeholder")
+            let actions = ProviderRefreshActions(
+                currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+                isActiveClient: { $0 == .claude }, render: { snapshot in
+                    XCTAssertEqual(snapshot.kind, .error)
+                    XCTAssertEqual(snapshot.provider, "Claude Official")
+                    rendered.fulfill()
+                }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+            let coordinator = makeCoordinator(repository: repository,
+                officialQuotaClient: OfficialQuotaClient(session: session,
+                    credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: token)),
+                actions: actions)
+            coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false)
+            wait(for: [rendered], timeout: 3)
+            coordinator.stop()
+        }
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3, "missing credentials must not start transport")
+    }
+
+    func testClaudeOfficialLatePrefetchIsDroppedAfterProviderConfigurationChanges() throws {
+        _ = try useClaudeOfficialProvider()
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        DelayedBalanceURLProtocol.setHandler { _ in
+            started.signal()
+            return .init(data: Self.claudeUsage, statusCode: 200, delayUntil: release)
+        }
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { _ in true },
+            render: { _ in XCTFail("obsolete configuration must not render") },
+            storeClientSnapshot: { _, _, _ in XCTFail("obsolete configuration must not cache") },
+            quickSwitchSummaryChanged: { _ in })
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "fixture")), actions: actions)
+        coordinator.prefetchCurrentBalance(for: .claude)
+        waitForEvent(started)
+        try withDatabase { database in
+            try execute(database, sql: "UPDATE providers SET name = 'Changed Claude' WHERE app_type = 'claude'")
+        }
+        release.signal()
+        XCTAssertTrue(DelayedBalanceURLProtocol.waitUntilIdle())
+        session.finishTasksAndInvalidate()
+        XCTAssertTrue(sessionLifetime.waitUntilInvalidated())
+        waitForCoordinator(coordinator)
+        let mainDrained = expectation(description: "main publications drained")
+        DispatchQueue.main.async { mainDrained.fulfill() }
+        wait(for: [mainDrained], timeout: 2)
+        XCTAssertTrue(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .claude).isEmpty)
+    }
+
     func testOfficialRefreshUsesUsageCreditsAndDoesNotCallResetCreditList() throws {
         try setCurrentProvider("codex-replacement")
         let fiveHour = OfficialQuotaWindow(
@@ -2533,10 +2686,11 @@ private final class PublicationRecorder {
 
 private struct FixtureCredentialReader: OfficialQuotaCredentialReading {
     let codexToken: String?
+    var claudeToken: String? = nil
 
     func codexAccessToken() -> String? { codexToken }
     func codexAccountProfile() -> CodexAccountProfile? { nil }
-    func claudeAccessToken() -> String? { nil }
+    func claudeAccessToken() -> String? { claudeToken }
 }
 
 private struct IncrementingOfficialQuotaParser: OfficialQuotaParsing {

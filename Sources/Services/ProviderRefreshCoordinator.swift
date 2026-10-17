@@ -693,7 +693,7 @@ final class ProviderRefreshCoordinator {
         let sourceKey = "\(client.appType)|\(current.id)|\(current.configurationRevision)"
         let sourceChanged = lastStandardSourceKey != sourceKey
         guard let query = current.query else {
-            guard current.isOfficial, client == .codex else {
+            guard current.isOfficial, client == .codex || client == .claude else {
                 if current.isOfficial {
                     return
                 }
@@ -758,7 +758,7 @@ final class ProviderRefreshCoordinator {
             if let query = current.query {
                 self.fetchBalance(providerID: current.id, providerName: current.name, query: query, client: client,
                     configurationRevision: revision, isValid: isValid)
-            } else if current.isOfficial, client == .codex {
+            } else if current.isOfficial, client == .codex || client == .claude {
                 self.fetchOfficialQuota(providerID: current.id, providerName: current.name, client: client,
                     configurationRevision: revision, isValid: isValid)
             }
@@ -797,14 +797,14 @@ final class ProviderRefreshCoordinator {
                 if aggregationIDs.contains(source.id) { continue }
                 if let providerIDs, !providerIDs.contains(source.id) { continue }
                 if source.isOfficial {
-                    if client != .codex { continue }
-                    let credentials = source.officialAccessToken.map {
+                    guard client == .codex || client == .claude else { continue }
+                    let credentials: CodexRequestCredentials? = client == .codex ? source.officialAccessToken.map {
                         CodexRequestCredentials(accessToken: $0, accountKey: nil)
-                    } ?? self.officialQuotaClient.codexRequestCredentials()
+                    } ?? self.officialQuotaClient.codexRequestCredentials() : nil
                     self.officialQuotaClient.fetchQuota(
                         client: client,
                         providerID: source.id,
-                        storedAccessToken: source.officialAccessToken,
+                        storedAccessToken: client == .codex ? source.officialAccessToken : nil,
                         requestCredentials: credentials
                     ) { [weak self] result in
                         guard let self else { return }
@@ -814,14 +814,14 @@ final class ProviderRefreshCoordinator {
                             ) else { return }
                             guard let currentSource = self.repository.loadSummarySources(appType: client.appType).first(where: { $0.id == source.id && $0.isOfficial }),
                                   currentSource.officialAccessToken == source.officialAccessToken,
-                                  source.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
+                                  client != .codex || source.officialAccessToken != nil || self.officialQuotaClient.codexRequestCredentials() == credentials else { return }
                             guard case .success(let response) = result else {
                                 if previousRevisions[source.id] != source.configurationRevision {
                                     self.removeQuickSwitchSummary(providerID: source.id, client: client)
                                 }
                                 return
                             }
-                            if let accountKey = credentials.accountKey {
+                            if client == .codex, let accountKey = credentials?.accountKey {
                                 self.recordCodexQuotaEvidence(providerID: source.id, accountKey: accountKey, windows: response.output.windows)
                             }
                             self.updateQuickSwitchSummary(
@@ -1136,7 +1136,7 @@ final class ProviderRefreshCoordinator {
                   isCurrentRequest: @escaping () -> Bool) {
             publish(.providerError(providerName, reason: reason, cachedBalance: nil), providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
         }
-        if source == nil, let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
+        if client == .codex, source == nil, let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
             ?? DevelopmentBankedResetDemo.snapshot(providerName: providerName) {
             publish(
                 demoSnapshot,

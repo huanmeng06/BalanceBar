@@ -105,6 +105,29 @@ final class ResponseParsersTests: XCTestCase {
         }
     }
 
+    func testClaudeQuotaPreservesBothWindowsAndModelSpecificTiers() throws {
+        let output = try OfficialQuotaResponseParser.parse(data: fixture(#"""
+        {"five_hour":{"utilization":23,"resets_at":"2023-11-15T00:13:20Z"},
+         "seven_day":{"utilization":"41","resets_at":"2023-11-21T00:13:20Z"},
+         "seven_day_sonnet":{"utilization":110},"seven_day_opus":{"utilization":-5}}
+        """#), client: .claude, now: now)
+        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour, .sevenDay, .other, .other])
+        XCTAssertEqual(output.windows.map(\.remaining), [77, 59, 0, 100])
+        XCTAssertEqual(output.windows.map(\.durationSeconds), [18_000, 604_800, 604_800, 604_800])
+        XCTAssertEqual(output.windows[0].resetAt, Date(timeIntervalSince1970: 1_700_007_200))
+        XCTAssertNotNil(output.windows[1].resetAt)
+        XCTAssertNil(output.windows[2].resetAt)
+        XCTAssertEqual(output.remaining, 59, "legacy scalar accessors still prefer weekly quota")
+    }
+
+    func testClaudeQuotaSkipsMissingOrMalformedWindowsWithoutInventingValues() throws {
+        let output = try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":{"utilization":"25"},"seven_day":null,"seven_day_sonnet":{"utilization":"invalid"}}"#), client: .claude, now: now)
+        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour])
+        XCTAssertEqual(output.remaining, 75)
+        XCTAssertNil(output.windows.first?.resetAt)
+        XCTAssertThrowsError(try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":null,"seven_day":{}}"#), client: .claude, now: now))
+    }
+
     func testOfficialQuotaFixturesCoverClaudeAndCodexWindows() throws {
         let claude = try OfficialQuotaResponseParser.parse(
             data: fixture(#"{"seven_day":{"utilization":"12.5","resets_at":"2023-11-15T00:13:20Z"}}"#),

@@ -309,28 +309,28 @@ enum OfficialQuotaResponseParser {
         now: Date = Date()
     ) throws -> Output {
         if client == .claude {
-            let tierNames = [
-                ("seven_day", tr(.keyResponseParsers7DayQuota), tr(.keyResponseParsers7Days)),
-                ("five_hour", tr(.keyResponseParsers5HourQuota), tr(.keyResponseParsers5Hours)),
-                ("seven_day_sonnet", tr(.keyResponseParsersSonnet7DayQuota), tr(.keyResponseParsers7Days2)),
-                ("seven_day_opus", tr(.keyResponseParsersOpus7DayQuota), tr(.keyResponseParsers7Days3))
+            let tiers: [(String, OfficialQuotaWindow.Kind, String, String, Double)] = [
+                ("five_hour", .fiveHour, tr(.keyResponseParsers5HourQuota), tr(.keyResponseParsers5Hours), 5 * 3_600),
+                ("seven_day", .sevenDay, tr(.keyResponseParsers7DayQuota), tr(.keyResponseParsers7Days), 7 * 86_400),
+                ("seven_day_sonnet", .other, tr(.keyResponseParsersSonnet7DayQuota), tr(.keyResponseParsers7Days2), 7 * 86_400),
+                ("seven_day_opus", .other, tr(.keyResponseParsersOpus7DayQuota), tr(.keyResponseParsers7Days3), 7 * 86_400)
             ]
-            for (name, label, daysText) in tierNames {
+            let windows = tiers.compactMap { name, kind, label, daysText, duration -> OfficialQuotaWindow? in
                 guard let window = object[name] as? [String: Any],
                       let utilization = ResponseParsingSupport.numberValue(window["utilization"])
-                else { continue }
-                return Output(
-                    windows: [OfficialQuotaWindow(
-                        kind: .other,
-                        remaining: max(0, min(100, 100 - utilization)),
-                        label: label,
-                        daysText: daysText,
-                        reset: ResponseParsingSupport.resetDescription(window["resets_at"], now: now),
-                        durationSeconds: nil
-                    )]
+                else { return nil }
+                return OfficialQuotaWindow(
+                    kind: kind,
+                    remaining: max(0, min(100, 100 - utilization)),
+                    label: label,
+                    daysText: daysText,
+                    reset: ResponseParsingSupport.resetDescription(window["resets_at"], now: now),
+                    durationSeconds: duration,
+                    resetAt: ResponseParsingSupport.resetDate(window["resets_at"], now: now)
                 )
             }
-            throw ResponseParserError.unsupportedFormat
+            guard !windows.isEmpty else { throw ResponseParserError.unsupportedFormat }
+            return Output(windows: windows)
         }
 
         let limits = (object["rate_limit"] as? [String: Any]) ?? object
