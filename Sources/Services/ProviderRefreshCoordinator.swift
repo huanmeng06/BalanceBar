@@ -302,6 +302,7 @@ final class ProviderRefreshCoordinator {
     private var lastOfficialSummaryFetch: [SummaryIdentity: Date] = [:]
     private var knownOfficialSummaryIDs: Set<SummaryIdentity> = []
     private var knownAPISummaryIDs: Set<SummaryIdentity> = []
+    private var lastAPISummaryFetch: [SummaryIdentity: Date] = [:]
     private var loadedSummaryClients: Set<AssistantClient> = []
     /// Fingerprint of the Claude account behind the visible official data.
     /// Nil until the first Claude request freezes an account.
@@ -314,7 +315,6 @@ final class ProviderRefreshCoordinator {
     // or write them until their work reaches that serial boundary.
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
-    private var lastQuickSwitchFetch: [AssistantClient: Date] = [:]
     private var quickSwitchSourceRevisions: [AssistantClient: [String: String]] = [:]
     private var lastStandardSourceKey: String?
     private var quickSwitchSummaryLock = NSLock()
@@ -656,7 +656,7 @@ final class ProviderRefreshCoordinator {
             self.lastStandardSourceKey = nil
             self.lastBalanceFetch = nil
             self.lastOfficialFetch = nil
-            self.lastQuickSwitchFetch = [:]
+            self.lastAPISummaryFetch = [:]
             self.knownOfficialSummaryIDs.removeAll()
             self.knownAPISummaryIDs.removeAll()
             self.loadedSummaryClients.removeAll()
@@ -804,16 +804,21 @@ final class ProviderRefreshCoordinator {
             if client == .claude { self.detectClaudeAccountChange() }
             let currentDate = self.now()
             let initialLoad = !self.loadedSummaryClients.contains(client)
+            // Aggregation members follow refreshAggregation's own cadence, so
+            // they must not make every timer poll reload provider configurations.
+            let aggregatedIDs: Set<String> = client == .codex ? Set(self.aggregationEntries.map(\.providerID)) : []
             let apiDue = initialLoad || self.knownAPISummaryIDs.contains { identity in
                 guard identity.client == client else { return false }
                 if let providerIDs, !providerIDs.contains(identity.providerID) { return false }
-                return self.lastQuickSwitchFetch[client].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
+                guard !aggregatedIDs.contains(identity.providerID) else { return false }
+                return self.lastAPISummaryFetch[identity].map { currentDate.timeIntervalSince($0) >= 60 } ?? true
             }
             SwitchLog.write("quick-switch refresh triggered; force=\(force); api_ttl_due=\(apiDue); configuration_event=\(configurationChanged)", level: .debug,
                 category: "refresh.summary", throttleKey: "summary-trigger-\(force)", minimumInterval: 1)
             let knownOfficialDue = self.knownOfficialSummaryIDs.contains { identity in
                 guard identity.client == client else { return false }
                 if let providerIDs, !providerIDs.contains(identity.providerID) { return false }
+                guard !aggregatedIDs.contains(identity.providerID) else { return false }
                 return self.lastOfficialSummaryFetch[identity].map {
                     currentDate.timeIntervalSince($0) >= self.officialRefreshInterval
                 } ?? true
@@ -821,8 +826,14 @@ final class ProviderRefreshCoordinator {
             guard force || configurationChanged || initialLoad || apiDue || knownOfficialDue else { return }
             guard let sources = try? self.repository.loadSummarySourcesChecked(appType: client.appType) else { return }
             self.loadedSummaryClients.insert(client)
-            self.knownOfficialSummaryIDs.formUnion(sources.filter(\.isOfficial).map { SummaryIdentity(client: client, providerID: $0.id) })
-            self.knownAPISummaryIDs.formUnion(sources.filter { !$0.isOfficial }.map { SummaryIdentity(client: client, providerID: $0.id) })
+            let currentOfficialIDs = Set(sources.filter(\.isOfficial).map { SummaryIdentity(client: client, providerID: $0.id) })
+            let currentAPIIDs = Set(sources.filter { !$0.isOfficial }.map { SummaryIdentity(client: client, providerID: $0.id) })
+            self.knownOfficialSummaryIDs = self.knownOfficialSummaryIDs.filter { $0.client != client }
+                .union(currentOfficialIDs)
+            self.knownAPISummaryIDs = self.knownAPISummaryIDs.filter { $0.client != client }
+                .union(currentAPIIDs)
+            self.lastOfficialSummaryFetch = self.lastOfficialSummaryFetch.filter { $0.key.client != client || currentOfficialIDs.contains($0.key) }
+            self.lastAPISummaryFetch = self.lastAPISummaryFetch.filter { $0.key.client != client || currentAPIIDs.contains($0.key) }
             let previousRevisions = self.quickSwitchSourceRevisions[client] ?? [:]
             self.quickSwitchSourceRevisions[client] = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.configurationRevision) })
             self.invalidateStaleQuickSwitchSummaries(client: client, sources: sources, previousRevisions: previousRevisions)
@@ -831,7 +842,6 @@ final class ProviderRefreshCoordinator {
                 _ = self.refreshAggregation(reader: reader, force: force && self.refreshPreferences == nil)
                 aggregationIDs = Set(entries.map(\.providerID))
             } else { aggregationIDs = [] }
-            if initialLoad || apiDue || force || configurationChanged { self.lastQuickSwitchFetch[client] = currentDate }
             self.balanceProgressStore.prepareMigration(identities: sources.compactMap { source in
                 source.query.map { ProviderBalanceProgressIdentity(client: client, providerID: source.id, query: $0, providerName: source.name) }
             })
@@ -901,8 +911,15 @@ final class ProviderRefreshCoordinator {
                     self.lastOfficialSummaryFetch[identity] = self.officialCadenceAnchor(context: context, now: currentDate)
                     continue
                 }
-                guard force || apiDue || previousRevisions[source.id] != source.configurationRevision else { continue }
-                guard let query = source.query else { continue }
+                let apiIdentity = SummaryIdentity(client: client, providerID: source.id)
+                let apiProviderDue = self.lastAPISummaryFetch[apiIdentity].map {
+                    currentDate.timeIntervalSince($0) >= 60
+                } ?? true
+                guard force || apiProviderDue || previousRevisions[source.id] != source.configurationRevision else { continue }
+                guard let query = source.query else {
+                    self.lastAPISummaryFetch[apiIdentity] = currentDate
+                    continue
+                }
                 let sampleSequence = self.balanceProgressStore.beginSample()
                 self.balanceAPIClient.fetchBalance(
                     query: query,
@@ -949,6 +966,7 @@ final class ProviderRefreshCoordinator {
                         )
                     }
                 }
+                self.lastAPISummaryFetch[apiIdentity] = currentDate
             }
         }
     }
@@ -1191,8 +1209,8 @@ final class ProviderRefreshCoordinator {
     /// payloads, both official cadences, and the standard display. The next
     /// refresh requests the new account immediately.
     private func invalidateClaudeAccountData(newFingerprint: String?) {
-        lastQuickSwitchFetch[.claude] = nil
         lastOfficialSummaryFetch = lastOfficialSummaryFetch.filter { $0.key.client != .claude }
+        lastAPISummaryFetch = lastAPISummaryFetch.filter { $0.key.client != .claude }
         quickSwitchSummaryLock.lock()
         let summaryIDs = quickSwitchSummaryPayloads.compactMap { identity, payload -> String? in
             guard identity.client == .claude, case .officialWindows = payload else { return nil }

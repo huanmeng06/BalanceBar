@@ -4214,6 +4214,60 @@ extension ProviderRefreshCoordinatorTests {
         readsLock.lock(); XCTAssertGreaterThan(reads, initialReads); readsLock.unlock()
     }
 
+    func testQuickSwitchPollsSkipAggregationMembersAndScriptlessAPIProvidersUntilTTL() throws {
+        try addAggregationMembers(1)
+        try withDatabase { db in
+            try execute(db, sql: """
+                INSERT INTO providers VALUES (
+                    'codex-no-script', 'No Script', '{"api_key":"fixture-key","base_url":"https://provider.example"}',
+                    '{}', 'custom', 'https://provider.example', 'codex', 0, 20, 20
+                )
+                """)
+            try execute(db, sql: "INSERT INTO providers SELECT 'codex-direct', 'Codex Direct', settings_config, meta, category, website_url, app_type, 0, 21, 21 FROM providers WHERE id='codex-custom'")
+            // Official completions reread providers; this test isolates API members.
+            try execute(db, sql: "DELETE FROM providers WHERE app_type = 'codex' AND category = 'official'")
+        }
+        let reader = try aggregationFixture(members: ["member-0"])
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let readsLock = NSLock()
+        var reads = 0
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "10.00") }
+        let aggregated = expectation(description: "aggregation member fresh")
+        let direct = expectation(description: "direct API summary delivered")
+        var aggregatedDelivered = false
+        var actions = makeActions()
+        actions.aggregationChanged = { displays, _ in
+            guard !aggregatedDelivered, displays.contains(where: { $0.status == .fresh }) else { return }
+            aggregatedDelivered = true
+            aggregated.fulfill()
+        }
+        actions.notificationSnapshot = { _, providerID, _ in
+            if providerID == "codex-direct" { direct.fulfill() }
+        }
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: "fixture")),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: actions, now: { clock.now })
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [aggregated], timeout: 3)
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        wait(for: [direct], timeout: 3)
+        waitForCoordinator(coordinator)
+        repository.loadSummarySourcesObserver = { readsLock.lock(); reads += 1; readsLock.unlock() }
+        defer { repository.loadSummarySourcesObserver = nil }
+
+        for _ in 0..<19 {
+            clock.advance(by: 3)
+            coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+            waitForCoordinator(coordinator)
+        }
+        readsLock.lock(); XCTAssertEqual(reads, 0, "aggregation members and providers without a script must not force a reload on every poll"); readsLock.unlock()
+
+        clock.advance(by: 3)
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForCoordinator(coordinator)
+        readsLock.lock(); XCTAssertGreaterThan(reads, 0, "the shared 60-second API TTL still reloads"); readsLock.unlock()
+    }
+
     func testManualQuickSwitchRefreshHonorsCodexOfficialIntervalButStillRefreshesAPIBalances() throws {
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
         let lock = NSLock()

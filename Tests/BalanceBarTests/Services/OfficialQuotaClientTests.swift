@@ -1023,6 +1023,38 @@ extension OfficialQuotaClientTests {
         XCTAssertTrue(credentials.allSatisfy { $0.accessToken == "shared-account" })
     }
 
+    func testTimedOutConcurrentClaudeProbeDoesNotReturnStaleCredentials() {
+        final class Reader: OfficialQuotaCredentialReading {
+            let started = DispatchSemaphore(value: 0)
+            let release = DispatchSemaphore(value: 0)
+            private var tokens = ["old-account", "new-account"]
+            func claudeAccessToken() -> String? {
+                let token = tokens.removeFirst()
+                started.signal()
+                release.wait()
+                return token
+            }
+            func codexAccessToken() -> String? { nil }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+        }
+        let reader = Reader()
+        let client = OfficialQuotaClient(session: session, credentialReader: reader)
+        reader.release.signal()
+        XCTAssertEqual(client.claudeRequestCredentials(cacheFor: 0).accessToken, "old-account")
+        XCTAssertEqual(reader.started.wait(timeout: .now()), .success)
+
+        let blockedFinished = expectation(description: "blocked probe finishes")
+        DispatchQueue.global().async {
+            XCTAssertEqual(client.claudeRequestCredentials(cacheFor: 0).accessToken, "new-account")
+            blockedFinished.fulfill()
+        }
+        XCTAssertEqual(reader.started.wait(timeout: .now() + 2), .success)
+        let waiter = client.claudeRequestCredentials(cacheFor: 0)
+        XCTAssertNil(waiter.accessToken, "a timed-out waiter must not reuse the previous account's token")
+        reader.release.signal()
+        wait(for: [blockedFinished], timeout: 3)
+    }
+
     func testClaudeAccountSwitchDuringInFlightRequestUsesSeparateFrozenTokens() throws {
         let bothStarted = expectation(description: "both account requests reached transport")
         bothStarted.expectedFulfillmentCount = 2

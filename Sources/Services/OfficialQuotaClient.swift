@@ -251,6 +251,10 @@ final class OfficialQuotaClient {
         if claudeProbeInFlight {
             let deadline = Date().addingTimeInterval(2.5)
             while claudeProbeInFlight, claudeProbeCondition.wait(until: deadline) {}
+            guard !claudeProbeInFlight else {
+                claudeProbeCondition.unlock()
+                return CodexRequestCredentials(accessToken: nil, accountKey: nil)
+            }
             let credentials = claudeAccountProbe?.credentials ?? CodexRequestCredentials(accessToken: nil, accountKey: nil)
             claudeProbeCondition.unlock()
             return credentials
