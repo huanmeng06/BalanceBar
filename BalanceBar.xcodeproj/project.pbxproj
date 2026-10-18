@@ -179,6 +179,8 @@
 		B51100000000000000000031 /* QuotaContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51100000000000000000011 /* QuotaContracts.swift */; };
 		B51100000000000000000032 /* QuotaSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51100000000000000000012 /* QuotaSnapshot.swift */; };
 		B51100000000000000000033 /* QuotaModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51100000000000000000020 /* QuotaModelTests.swift */; };
+		B51800000000000000000030 /* QuotaNotificationAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51800000000000000000010 /* QuotaNotificationAdapter.swift */; };
+		B51800000000000000000031 /* QuotaNotificationAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -381,6 +383,8 @@
 		B51100000000000000000011 /* QuotaContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaContracts.swift; sourceTree = "<group>"; };
 		B51100000000000000000012 /* QuotaSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSnapshot.swift; sourceTree = "<group>"; };
 		B51100000000000000000020 /* QuotaModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaModelTests.swift; sourceTree = "<group>"; };
+		B51800000000000000000010 /* QuotaNotificationAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaNotificationAdapter.swift; sourceTree = "<group>"; };
+		B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaNotificationAdapterTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -598,6 +602,7 @@
 			isa = PBXGroup;
 			children = (
 				B51100000000000000000020 /* QuotaModelTests.swift */,
+				B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */,
 			);
 			path = Quota;
 			sourceTree = "<group>";
@@ -696,8 +701,17 @@
 			isa = PBXGroup;
 			children = (
 				B51100000000000000000002 /* Model */,
+				B51800000000000000000002 /* Notify */,
 			);
 			path = Quota;
+			sourceTree = "<group>";
+		};
+		B51800000000000000000002 /* Notify */ = {
+			isa = PBXGroup;
+			children = (
+				B51800000000000000000010 /* QuotaNotificationAdapter.swift */,
+			);
+			path = Notify;
 			sourceTree = "<group>";
 		};
 		B51100000000000000000002 /* Model */ = {
@@ -1148,6 +1162,7 @@
 				B51100000000000000000030 /* QuotaTypes.swift in Sources */,
 				B51100000000000000000031 /* QuotaContracts.swift in Sources */,
 				B51100000000000000000032 /* QuotaSnapshot.swift in Sources */,
+				B51800000000000000000030 /* QuotaNotificationAdapter.swift in Sources */,
 				A47000000000000000000002 /* BalanceNotificationModels.swift in Sources */,
 				A1000000000000000000004B /* Snapshot.swift in Sources */,
 				A1000000000000000000004C /* StatusLink.swift in Sources */,
@@ -1275,6 +1290,7 @@
 				A26400000000000000000003 /* QuotaProgressColorConfigurationTests.swift in Sources */,
 				A1000000000000000000004D /* DomainModelsTests.swift in Sources */,
 				B51100000000000000000033 /* QuotaModelTests.swift in Sources */,
+				B51800000000000000000031 /* QuotaNotificationAdapterTests.swift in Sources */,
 				40553B8214484039881EED35 /* UsageScriptRequestParserTests.swift in Sources */,
 				A10000000000000000000057 /* ResponseParsersTests.swift in Sources */,
 				A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */,
