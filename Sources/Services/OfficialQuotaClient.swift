@@ -318,15 +318,38 @@ final class OfficialQuotaClient {
         return Self.claudeAccountFingerprint(claudeRequestCredentials(cacheFor: maxAge))
     }
 
-    /// Server-requested wait (Retry-After or 429 backoff) for the account in
-    /// the last probe; nil when not rate-limited. Never starts `security`.
-    func claudeRateLimitedUntil() -> Date? {
+    /// When the last request for the probed account failed (429 wait or any
+    /// other error), a manual refresh would only replay that cached failure
+    /// until this date; nil when a real request is possible. Never starts `security`.
+    func claudeManualRefreshBlockedUntil() -> Date? {
         guard let token = cachedClaudeAccessToken(), !token.isEmpty else { return nil }
         let scope = Self.claudeScope(token: token)
         claudeCacheLock.lock()
         defer { claudeCacheLock.unlock() }
-        guard let retryUntil = claudeResponses[scope]?.retryUntil, retryUntil > now() else { return nil }
-        return retryUntil
+        guard let entry = claudeResponses[scope], case .failure = entry.result else { return nil }
+        let next = claudeNextRequestDate(entry, interval: max(60, claudeCalibrationInterval()))
+        return next > now() ? next : nil
+    }
+
+    /// Stable account identity for notification progress and account-change
+    /// detection: a hash of the account email when known, so a refreshed
+    /// access token for the same account is not treated as another account.
+    /// Falls back to the token fingerprint. Never contains credential material.
+    func claudeAccountScope(for credentials: CodexRequestCredentials?) -> String? {
+        guard let fingerprint = Self.claudeAccountFingerprint(credentials) else { return nil }
+        claudeProbeCondition.lock()
+        let email = claudeAccountProbe.flatMap { $0.credentials == credentials ? $0.profile?.email : nil }
+        claudeProbeCondition.unlock()
+        guard let email = email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !email.isEmpty else {
+            return fingerprint
+        }
+        return "account:" + SHA256.hash(data: Data(email.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Rereads the credential store (bounded by `maxAge`) and returns the
+    /// current account identity.
+    func currentClaudeAccountScope(maxAge: TimeInterval = 2) -> String? {
+        claudeAccountScope(for: claudeRequestCredentials(cacheFor: maxAge))
     }
 
     private func cachedClaudeAccessToken() -> String? {

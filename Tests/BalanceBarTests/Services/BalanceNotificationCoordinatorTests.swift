@@ -228,6 +228,51 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(client.deliveries.count, 1)
     }
 
+    func testCrossingProgressIsIsolatedPerAccountWhileThresholdsAreShared() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.AccountProgress.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .claude)
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-official")
+        let key = BalanceNotificationResourceKey(agent: .claude, providerID: "claude-official", resourceID: "five-hour")
+        coordinator.updateRule(key: key, kind: .quotaPercent, unit: "%") { $0.recoveryEnabled = true }
+        func process(_ remaining: Double, account: String) {
+            var snapshot = Snapshot.official("Claude Official", remaining, "5h", nil, Date(), windows: [
+                OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                    reset: nil, durationSeconds: 18_000)
+            ])
+            snapshot.notificationAccountScope = account
+            coordinator.setCurrentAccountScope(account, agent: .claude)
+            coordinator.process(snapshot: snapshot, agent: .claude, providerID: "claude-official")
+        }
+
+        process(80, account: "A")
+        process(18, account: "A")
+        XCTAssertEqual(client.deliveries.count, 1, "account A crosses the first threshold")
+
+        process(18, account: "B")
+        XCTAssertEqual(client.deliveries.count, 2, "account B's own first crossing still alerts")
+        process(80, account: "B")
+        XCTAssertEqual(client.deliveries.count, 3, "B recovers from B's own alert")
+        process(90, account: "B")
+        XCTAssertEqual(client.deliveries.count, 3)
+
+        process(18, account: "A")
+        XCTAssertEqual(client.deliveries.count, 3, "returning to A restores A's progress: no duplicate first alert")
+
+        // Account C starts high while A is still alerted: never A's recovery.
+        process(80, account: "C")
+        XCTAssertEqual(client.deliveries.count, 3, "another account's normal quota is not A's recovery")
+
+        // A shared threshold change starts a fresh cycle for every account.
+        coordinator.updateRule(key: key, kind: .quotaPercent, unit: "%") { $0.firstThreshold = 25 }
+        process(18, account: "A")
+        XCTAssertEqual(client.deliveries.count, 4)
+    }
+
     func testApplyGlobalRulesRestoresInheritanceWithoutReenablingResources() {
         let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
         let suiteName = "BalanceNotificationCoordinatorTests.ApplyGlobalRules.\(UUID().uuidString)"
@@ -642,7 +687,7 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
     }
 }
 
-private final class FakeBalanceNotificationClient: BalanceNotificationClient {
+final class FakeBalanceNotificationClient: BalanceNotificationClient {
     var onResponse: (([AnyHashable: Any]) -> Void)?
     var status: BalanceNotificationPermissionState
     let requestResult: Bool

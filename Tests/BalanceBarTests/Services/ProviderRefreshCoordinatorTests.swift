@@ -3076,11 +3076,19 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
         let data: Data
         let statusCode: Int
         let delayUntil: DispatchSemaphore?
+        /// Fails the request at the transport level instead of answering.
+        var transportError: URLError? = nil
 
         init(data: Data, statusCode: Int, delayUntil: DispatchSemaphore? = nil) {
             self.data = data
             self.statusCode = statusCode
             self.delayUntil = delayUntil
+        }
+
+        static func transportFailure(_ code: URLError.Code = .notConnectedToInternet) -> Reply {
+            var reply = Reply(data: Data(), statusCode: 0)
+            reply.transportError = URLError(code)
+            return reply
         }
     }
 
@@ -3153,6 +3161,10 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
         deliveryLock.lock()
         defer { deliveryLock.unlock() }
         guard !stopped else { return }
+        if let error = reply.transportError {
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: reply.statusCode,
@@ -4226,7 +4238,7 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(stale.officialQuotaWindows.map(\.remaining), fresh.officialQuotaWindows.map(\.remaining))
         XCTAssertEqual(stale.officialQuotaWindows.map(\.resetAt), fresh.officialQuotaWindows.map(\.resetAt))
         XCTAssertEqual(stale.date, fresh.date, "the card keeps the last successful refresh time")
-        let waitUntil = try XCTUnwrap(official.claudeRateLimitedUntil(), "menu refresh is disabled during the wait")
+        let waitUntil = try XCTUnwrap(official.claudeManualRefreshBlockedUntil(), "menu refresh is disabled during the wait")
         XCTAssertGreaterThan(waitUntil, clock.now)
         waitForCoordinator(coordinator)
         XCTAssertEqual(notifications().count, 1, "kept 429 data is never a real notification sample")
@@ -4258,6 +4270,259 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(invalidations.first?.0, .claude)
         XCTAssertTrue(invalidations.first?.1.contains(current.id) == true)
         XCTAssertEqual(notifications().count, 2, "account B's 429 produced no new notification sample")
+    }
+
+    private static let claudeLowUsage = Data(#"{"five_hour":{"utilization":82,"resets_at":"2099-01-01T05:00:00Z"},"seven_day":{"utilization":10,"resets_at":"2099-01-07T00:00:00Z"}}"#.utf8)
+
+    /// Wires a real notification coordinator exactly like the app composition.
+    private func notificationHarness(providerID: String) -> (BalanceNotificationCoordinator, FakeBalanceNotificationClient, () -> Void) {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suite = "PR508.Notifications.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let notifications = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        let enable = {
+            notifications.setGlobalEnabled(true)
+            notifications.setAgentEnabled(true, agent: .claude)
+            notifications.setProviderEnabled(true, agent: .claude, providerID: providerID)
+        }
+        return (notifications, client, enable)
+    }
+
+    private func wire(_ actions: inout ProviderRefreshActions, to notifications: BalanceNotificationCoordinator) {
+        actions.notificationSnapshot = { client, providerID, snapshot in
+            notifications.process(snapshot: snapshot, agent: client == .claude ? .claude : .gpt, providerID: providerID)
+        }
+        actions.notificationSamplesInvalidated = { client, ids in
+            notifications.invalidateCurrentSamples(agent: client == .claude ? .claude : .gpt, providerIDs: ids)
+        }
+        actions.notificationAccountScopeChanged = { client, scope in
+            notifications.setCurrentAccountScope(scope, agent: client == .claude ? .claude : .gpt)
+        }
+    }
+
+    func testAccountAThenCodexThenAccountBFailureNeverAlertsFromAccountA() throws {
+        let current = try useClaudeOfficialProvider()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let bSucceeds = AtomicFlag()
+        DelayedBalanceURLProtocol.setHandler { request in
+            switch request.value(forHTTPHeaderField: "Authorization") {
+            case "Bearer account-a": return .init(data: Self.claudeLowUsage, statusCode: 200)
+            default: return bSucceeds.isSet ? .init(data: Self.claudeLowUsage, statusCode: 200) : .init(data: Data(), statusCode: 429)
+            }
+        }
+        let reader = SwitchableClaudeReader(token: "account-a")
+        let (notifications, notificationClient, enableNotifications) = notificationHarness(providerID: current.id)
+        var next: XCTestExpectation?
+        var awaitedKind: Snapshot.Kind = .official
+        var actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { $0 == .claude }, render: { snapshot in
+                if snapshot.kind == awaitedKind { next?.fulfill(); next = nil }
+            }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        wire(&actions, to: notifications)
+        let official = OfficialQuotaClient(session: session, credentialReader: reader, now: { clock.now })
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official, actions: actions, now: { clock.now })
+
+        // Account A: real low quota stored while notifications are off, then enabled.
+        next = expectation(description: "account A quota")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        waitForCoordinator(coordinator)
+        enableNotifications()
+        XCTAssertTrue(notificationClient.deliveries.isEmpty)
+
+        // Switching to Codex resets the refresh indices; account B signs in meanwhile.
+        coordinator.resetCadence()
+        reader.set("account-b")
+        clock.advance(by: 60)
+        awaitedKind = .error
+        next = expectation(description: "account B first request fails")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        waitForCoordinator(coordinator)
+        notifications.refreshPermission()
+        XCTAssertTrue(notificationClient.deliveries.isEmpty, "account A's low sample must not alert for account B")
+
+        // Account B's first success is evaluated with B's own progress.
+        bSucceeds.set()
+        clock.advance(by: try XCTUnwrap(official.claudeManualRefreshBlockedUntil()).timeIntervalSince(clock.now) + 1)
+        awaitedKind = .official
+        next = expectation(description: "account B quota")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(notificationClient.deliveries.count, 1, "account B's real low quota alerts normally")
+    }
+
+    func testQuickSwitchOfficialFailuresInvalidateNotificationSamplesUntilRealRecovery() throws {
+        let current = try useClaudeOfficialProvider()
+        let failures: [(String, DelayedBalanceURLProtocol.Reply)] = [
+            ("429", .init(data: Data(), statusCode: 429)),
+            ("401", .init(data: Data(), statusCode: 401)),
+            ("403", .init(data: Data(), statusCode: 403)),
+            ("network", .transportFailure()),
+        ]
+        for (label, failure) in failures {
+            let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+            let failing = AtomicFlag()
+            DelayedBalanceURLProtocol.setHandler { _ in failing.isSet ? failure : .init(data: Self.claudeLowUsage, statusCode: 200) }
+            let (notifications, notificationClient, enableNotifications) = notificationHarness(providerID: current.id)
+            var actions = makeActions()
+            wire(&actions, to: notifications)
+            let token = "summary-\(label)"
+            let official = OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: token), now: { clock.now })
+            let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+                actions: actions, now: { clock.now })
+            var requests = DelayedBalanceURLProtocol.requestCount
+
+            coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
+            requests += 1
+            waitForClaudeTransport(official, token: token, count: requests, coordinator: coordinator)
+            enableNotifications()
+
+            failing.set()
+            clock.advance(by: 61)
+            coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
+            requests += 1
+            waitForClaudeTransport(official, token: token, count: requests, coordinator: coordinator)
+            notifications.refreshPermission()
+            XCTAssertTrue(notificationClient.deliveries.isEmpty, "\(label): a failed background refresh is not a current sample")
+
+            failing.clear()
+            clock.advance(by: try XCTUnwrap(official.claudeManualRefreshBlockedUntil(), label).timeIntervalSince(clock.now) + 61)
+            coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
+            requests += 1
+            waitForClaudeTransport(official, token: token, count: requests, coordinator: coordinator)
+            XCTAssertEqual(notificationClient.deliveries.count, 1, "\(label): the real recovery sample alerts normally")
+            coordinator.stop()
+            coordinators.removeAll { $0 === coordinator }
+        }
+    }
+
+    func testMultipleClaudeOfficialSummariesVerifyCredentialStoreOncePerBatch() throws {
+        _ = try useClaudeOfficialProvider()
+        try withDatabase { db in
+            for index in 0..<3 {
+                try execute(db, sql: "INSERT INTO providers SELECT 'claude-official-\(index)', name, settings_config, meta, category, website_url, app_type, 0, \(index + 20), \(index + 20) FROM providers WHERE app_type = 'claude' LIMIT 1")
+            }
+        }
+        let officialCount = repository.loadSummarySources(appType: "claude").filter(\.isOfficial).count
+        XCTAssertGreaterThanOrEqual(officialCount, 4)
+        let release = DispatchSemaphore(value: 0)
+        let secondBatch = AtomicFlag()
+        DelayedBalanceURLProtocol.setHandler { _ in
+            .init(data: secondBatch.isSet ? Self.claudeUsageB : Self.claudeUsage, statusCode: 200, delayUntil: release)
+        }
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let reader = SwitchableClaudeReader(token: "account-a")
+        let official = OfficialQuotaClient(session: session, credentialReader: reader, now: { clock.now })
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+            actions: makeActions(), now: { clock.now })
+
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+        waitForCoordinator(coordinator)
+        release.signal()
+        waitForClaudeTransport(official, token: "account-a", count: 1, coordinator: coordinator)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .claude).count, officialCount)
+        XCTAssertEqual(reader.reads, 2, "one read freezes the batch; one verifies every completion of that batch")
+        let firstSummaries = coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .claude)
+
+        // Account switch while the next batch is in flight: no completion publishes.
+        secondBatch.set()
+        coordinator.resetCadence()
+        clock.advance(by: 61)
+        let readsBefore = reader.reads
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .claude)
+        waitForCoordinator(coordinator)
+        reader.set("account-b")
+        release.signal()
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, official.isRequestInFlight(client: .claude, providerID: "",
+            requestCredentials: CodexRequestCredentials(accessToken: "account-a", accountKey: nil)) {
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        waitForCoordinator(coordinator)
+        XCTAssertLessThanOrEqual(reader.reads - readsBefore, 2, "the switched batch is still verified once")
+        XCTAssertEqual(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .claude), firstSummaries,
+            "account A's in-flight batch must not publish after switching to account B")
+    }
+
+    func testClaudeTokenRefreshForSameAccountKeepsDataButAnotherAccountClearsIt() throws {
+        final class Reader: OfficialQuotaCredentialReading {
+            private let lock = NSLock()
+            private var token = "token-1"
+            private var email = "person@example.com"
+            func set(token: String, email: String) { lock.lock(); self.token = token; self.email = email; lock.unlock() }
+            func claudeAccessToken() -> String? { lock.lock(); defer { lock.unlock() }; return token }
+            func claudeAccountEmail() -> String? { lock.lock(); defer { lock.unlock() }; return email }
+            func codexAccessToken() -> String? { nil }
+            func codexAccountProfile() -> CodexAccountProfile? { nil }
+        }
+        let current = try useClaudeOfficialProvider()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Self.claudeUsage, statusCode: 200) }
+        let reader = Reader()
+        var renders: [Snapshot.Kind] = []
+        var next: XCTestExpectation?
+        let scopesLock = NSLock()
+        var scopes: [String?] = []
+        var actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { $0 == .claude }, render: { snapshot in
+                renders.append(snapshot.kind)
+                if snapshot.kind == .official { next?.fulfill(); next = nil }
+            }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        actions.notificationAccountScopeChanged = { _, scope in scopesLock.lock(); scopes.append(scope); scopesLock.unlock() }
+        let official = OfficialQuotaClient(session: session, credentialReader: reader, now: { clock.now })
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official, actions: actions, now: { clock.now })
+
+        next = expectation(description: "token 1")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+
+        reader.set(token: "token-2", email: "Person@Example.com")
+        clock.advance(by: 60)
+        next = expectation(description: "rotated token, same account")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        waitForCoordinator(coordinator)
+        XCTAssertFalse(renders.contains(.placeholder), "a refreshed token for the same account is not an account switch")
+        scopesLock.lock(); let sameAccountScopes = Set(scopes); scopesLock.unlock()
+        XCTAssertEqual(sameAccountScopes.count, 1, "notification progress keeps one identity across token refresh")
+
+        reader.set(token: "token-3", email: "other@example.com")
+        clock.advance(by: 60)
+        next = expectation(description: "another account")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        XCTAssertTrue(renders.contains(.placeholder), "a different account clears the previous account's quota")
+        scopesLock.lock(); XCTAssertEqual(Set(scopes).count, 2); scopesLock.unlock()
+    }
+
+    func testClaudeNonRateLimitFailureBlocksManualRefreshOnlyUntilARealRequestIsPossible() throws {
+        let current = try useClaudeOfficialProvider()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data(), statusCode: 500) }
+        var next: XCTestExpectation?
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
+            isActiveClient: { $0 == .claude }, render: { snapshot in
+                if snapshot.kind == .error { next?.fulfill(); next = nil }
+            }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        let official = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "fixture"), now: { clock.now })
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official, actions: actions, now: { clock.now })
+        XCTAssertNil(official.claudeManualRefreshBlockedUntil())
+        next = expectation(description: "server error")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        let until = try XCTUnwrap(official.claudeManualRefreshBlockedUntil(), "a manual refresh would only replay the cached error")
+        XCTAssertEqual(until.timeIntervalSince(clock.now), 60, accuracy: 1)
+        clock.advance(by: 60)
+        XCTAssertNil(official.claudeManualRefreshBlockedUntil(), "available again once a real request is possible")
     }
 
     func testClaudeAccountSwitchWhileRequestIsInFlightDropsPreviousAccountResult() throws {

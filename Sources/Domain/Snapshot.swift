@@ -956,6 +956,9 @@ struct Snapshot: Equatable {
     /// the latest request failed (for example HTTP 429); the reason is shown
     /// on the refresh time instead of replacing the card with an error.
     var staleReason: String? = nil
+    /// Opaque identity of the account this official quota belongs to, so
+    /// notification progress and stored samples never cross accounts.
+    var notificationAccountScope: String? = nil
     let officialQuotaWindows: [OfficialQuotaWindow]
     let quotaPredictionContexts: [QuotaPredictionContext]
     let quotaPredictionAccountKey: String?

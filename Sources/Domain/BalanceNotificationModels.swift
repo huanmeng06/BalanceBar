@@ -73,6 +73,10 @@ struct BalanceNotificationResourceRule: Codable, Equatable {
     var recoveryEnabled: Bool
     var stage: BalanceNotificationAlertStage
     var lastValue: Double?
+    /// Account that `stage`/`lastValue` belong to (an opaque hash), for
+    /// resources whose quota follows the signed-in account. Thresholds and
+    /// switches are shared; crossing progress never moves between accounts.
+    var progressScope: String?
     /// True when this rule still inherits the global default for its kind.
     /// Once an Agent/resource threshold is edited, the coordinator marks it
     /// as a local override so later global changes leave it untouched.
@@ -89,6 +93,7 @@ struct BalanceNotificationResourceRule: Codable, Equatable {
         case recoveryEnabled
         case stage
         case lastValue
+        case progressScope
         case usesGlobalDefaults
     }
 
@@ -140,6 +145,7 @@ struct BalanceNotificationResourceRule: Codable, Equatable {
         recoveryEnabled = try container.decodeIfPresent(Bool.self, forKey: .recoveryEnabled) ?? false
         stage = try container.decodeIfPresent(BalanceNotificationAlertStage.self, forKey: .stage) ?? .normal
         lastValue = try container.decodeIfPresent(Double.self, forKey: .lastValue)
+        progressScope = try container.decodeIfPresent(String.self, forKey: .progressScope)
         usesGlobalDefaults = try container.decodeIfPresent(Bool.self, forKey: .usesGlobalDefaults) ?? false
     }
 
@@ -353,6 +359,11 @@ enum BalanceNotificationPauseMode: String, Codable {
     case today
 }
 
+struct BalanceNotificationProgress: Codable, Equatable {
+    let stage: BalanceNotificationAlertStage
+    let lastValue: Double?
+}
+
 struct BalanceNotificationSettings: Codable, Equatable {
     var globalEnabled = false
     /// Legacy aggregate defaults retained for settings migration. New UI uses
@@ -371,6 +382,9 @@ struct BalanceNotificationSettings: Codable, Equatable {
     )
     var providerPreferences: [BalanceNotificationProviderPreference] = []
     var resourceRules: [BalanceNotificationResourceRule] = []
+    /// Crossing progress of accounts that are not currently active, keyed by
+    /// resource and account scope, restored when that account returns.
+    var parkedProgress: [String: BalanceNotificationProgress] = [:]
     var pauseUntil: Date?
     /// Preserves whether the user chose a fixed duration or local-day pause.
     var pauseMode: BalanceNotificationPauseMode?
@@ -388,6 +402,7 @@ struct BalanceNotificationSettings: Codable, Equatable {
         case agentEnabled
         case providerPreferences
         case resourceRules
+        case parkedProgress
         case pauseUntil
         case pauseMode
     }
@@ -409,6 +424,7 @@ struct BalanceNotificationSettings: Codable, Equatable {
             ?? Dictionary(uniqueKeysWithValues: BalanceNotificationAgent.allCases.map { ($0.rawValue, false) })
         providerPreferences = try container.decodeIfPresent([BalanceNotificationProviderPreference].self, forKey: .providerPreferences) ?? []
         resourceRules = try container.decodeIfPresent([BalanceNotificationResourceRule].self, forKey: .resourceRules) ?? []
+        parkedProgress = try container.decodeIfPresent([String: BalanceNotificationProgress].self, forKey: .parkedProgress) ?? [:]
         pauseUntil = try container.decodeIfPresent(Date.self, forKey: .pauseUntil)
         if let rawMode = try? container.decode(String.self, forKey: .pauseMode) {
             pauseMode = BalanceNotificationPauseMode(rawValue: rawMode)
@@ -539,6 +555,40 @@ struct BalanceNotificationSettings: Codable, Equatable {
             resourceRules[index].stage = .normal
             resourceRules[index].lastValue = nil
         }
+        parkedProgress.removeAll()
+    }
+
+    private static func parkedKey(_ key: BalanceNotificationResourceKey, scope: String) -> String {
+        [key.agent.rawValue, key.providerID, key.resourceID, scope].joined(separator: "\u{0}")
+    }
+
+    /// Makes `rule` hold the crossing progress of `scope`: the current account's
+    /// progress is parked and the target account's own progress (or a fresh
+    /// cycle) is loaded. Returns true when stored state changed.
+    @discardableResult
+    mutating func activateProgress(_ rule: inout BalanceNotificationResourceRule, scope: String?) -> Bool {
+        guard let scope, rule.progressScope != scope else { return false }
+        // Progress saved before accounts were tracked belongs to whichever
+        // account reports first; adopting it avoids a repeat alert on upgrade.
+        guard let current = rule.progressScope else {
+            rule.progressScope = scope
+            return true
+        }
+        if rule.stage != .normal || rule.lastValue != nil {
+            parkedProgress[Self.parkedKey(rule.key, scope: current)] =
+                BalanceNotificationProgress(stage: rule.stage, lastValue: rule.lastValue)
+        }
+        let restored = parkedProgress.removeValue(forKey: Self.parkedKey(rule.key, scope: scope))
+        rule.stage = restored?.stage ?? .normal
+        rule.lastValue = restored?.lastValue
+        rule.progressScope = scope
+        return true
+    }
+
+    /// A threshold/source change starts a fresh cycle for every account.
+    mutating func clearParkedProgress(for key: BalanceNotificationResourceKey) {
+        let prefix = [key.agent.rawValue, key.providerID, key.resourceID, ""].joined(separator: "\u{0}")
+        parkedProgress = parkedProgress.filter { !$0.key.hasPrefix(prefix) }
     }
 }
 

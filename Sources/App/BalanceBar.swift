@@ -803,6 +803,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self?.notificationCoordinator.invalidateCurrentSamples(
                         agent: Self.notificationAgent(for: client), providerIDs: providerIDs)
                 },
+                notificationAccountScopeChanged: { [weak self] client, scope in
+                    self?.notificationCoordinator.setCurrentAccountScope(scope, agent: Self.notificationAgent(for: client))
+                },
                 quickSwitchSafetyChanged: { [weak self] safety in
                     DispatchQueue.main.async { [weak self] in
                         guard let self else { return }
@@ -947,7 +950,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     // Claude official refreshes only its quota; during a 429
                     // wait a manual refresh cannot reach the endpoint.
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
-                    return self.officialQuotaClient.claudeRateLimitedUntil()
+                    return self.officialQuotaClient.claudeManualRefreshBlockedUntil()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
