@@ -216,4 +216,57 @@ final class QuotaMergeEngineTests: XCTestCase {
         engine.refresh()
         XCTAssertEqual(makeEngine(store: store).displayModel.window(for: .fiveHour)?.state, .resetPendingConfirmation)
     }
+
+    // MARK: - Review regressions
+
+    func testStaleAccountChangeIsIgnored() {
+        let engine = makeEngine()
+        engine.accountDidChange(epoch: AccountEpoch(2), accountID: "acct-b")
+        engine.merge(obs(40, account: "acct-b", epoch: 2))
+        var model = engine.accountDidChange(epoch: AccountEpoch(1), accountID: "acct-a")
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 40)
+        XCTAssertEqual(engine.currentState.accountID, "acct-b")
+        XCTAssertEqual(engine.currentState.epoch, AccountEpoch(2))
+        model = engine.merge(obs(42, at: 5, account: "acct-b", epoch: 2))
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 42)
+    }
+
+    func testEpochSwitchPersistsEvenWhenObservationRejected() {
+        let store = MemoryStore()
+        let engine = makeEngine(store: store)
+        engine.merge(obs(40))
+        let model = engine.merge(obs(45, at: 5, trust: .b, account: "acct-b", epoch: 1))
+        XCTAssertNil(model.window(for: .fiveHour)?.usedPercentage)
+
+        let restarted = makeEngine(store: store)
+        XCTAssertEqual(restarted.displayModel.state, .noData)
+        XCTAssertEqual(restarted.currentState.accountID, "acct-b")
+        XCTAssertEqual(restarted.currentState.epoch, AccountEpoch(1))
+    }
+
+    func testStaleObservationDuringPendingDoesNotConfirm() {
+        let engine = makeEngine()
+        engine.merge(obs(80, resetsIn: 3_600, at: 100))
+        clock = t0.addingTimeInterval(3_601)
+        engine.refresh()
+
+        var model = engine.merge(obs(0, resetsIn: nil, at: 50))
+        XCTAssertEqual(model.window(for: .fiveHour)?.state, .resetPendingConfirmation)
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 80)
+        model = engine.merge(obs(0, resetsIn: 3_600 + 18_000, at: 3_000))
+        XCTAssertEqual(model.window(for: .fiveHour)?.state, .resetPendingConfirmation)
+        XCTAssertTrue(sink.events.isEmpty)
+
+        model = engine.merge(obs(1, resetsIn: 3_600 + 18_000, at: 3_602))
+        XCTAssertEqual(model.window(for: .fiveHour)?.state, .inProgress)
+        XCTAssertEqual(sink.events, [.resetConfirmed(window: .fiveHour)])
+    }
+
+    func testGradeBZeroDoesNotProduceNotStarted() {
+        let engine = makeEngine()
+        engine.merge(obs(1, resetsIn: nil))
+        let model = engine.merge(obs(0, resetsIn: nil, at: 5, trust: .b))
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 0)
+        XCTAssertEqual(model.window(for: .fiveHour)?.state, .inProgress)
+    }
 }

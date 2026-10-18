@@ -193,8 +193,9 @@ public final class QuotaMergeEngine: QuotaMerging {
         let model: QuotaDisplayModel
         lock.lock()
         requestConfirmation = advanceClock()
-        let accepted = accept(observation, events: &events)
-        if accepted || requestConfirmation {
+        var stateChanged = false
+        let accepted = accept(observation, stateChanged: &stateChanged, events: &events)
+        if accepted || stateChanged || requestConfirmation {
             store?.save(state)
         }
         model = makeDisplayModel()
@@ -220,8 +221,9 @@ public final class QuotaMergeEngine: QuotaMerging {
     @discardableResult
     public func accountDidChange(epoch: AccountEpoch, accountID: String?) -> QuotaDisplayModel {
         lock.lock()
-        if epoch > state.epoch || accountID != state.accountID {
-            state = QuotaMergeState(epoch: max(epoch, state.epoch), accountID: accountID)
+        // A late callback from an older account generation must not replace the current account.
+        if epoch > state.epoch || (epoch == state.epoch && accountID != state.accountID) {
+            state = QuotaMergeState(epoch: epoch, accountID: accountID)
             store?.save(state)
         }
         let model = makeDisplayModel()
@@ -246,12 +248,18 @@ public final class QuotaMergeEngine: QuotaMerging {
         return changed
     }
 
-    private func accept(_ observation: QuotaObservation, events: inout [QuotaNotificationEvent]) -> Bool {
+    private func accept(
+        _ observation: QuotaObservation,
+        stateChanged: inout Bool,
+        events: inout [QuotaNotificationEvent]
+    ) -> Bool {
         if observation.epoch < state.epoch { return false }
         if observation.epoch > state.epoch {
             state = QuotaMergeState(epoch: observation.epoch, accountID: observation.accountID)
+            stateChanged = true
         } else if state.accountID == nil {
             state.accountID = observation.accountID
+            stateChanged = true
         } else if state.accountID != observation.accountID {
             return false
         }
@@ -261,8 +269,11 @@ public final class QuotaMergeEngine: QuotaMerging {
         let reading = QuotaMergedReading(observation)
 
         if let pending = window.pendingResetOf {
-            // Only a grade-A reading of the next cycle confirms the reset.
-            guard observation.trust == .a, isNextCycle(reading, after: pending) else { return false }
+            // Only a fresh grade-A reading of the next cycle confirms the reset.
+            guard observation.trust == .a,
+                  reading.effectiveTime > pending,
+                  reading.effectiveTime >= window.displayed?.effectiveTime ?? .distantPast,
+                  isNextCycle(reading, after: pending) else { return false }
             window = QuotaMergedWindow(displayed: reading, latestGradeA: reading, pendingResetOf: nil)
             state.windows[key] = window
             events.append(.resetConfirmed(window: observation.window))
@@ -326,7 +337,7 @@ public final class QuotaMergeEngine: QuotaMerging {
             let windowState: WindowState
             if window.pendingResetOf != nil {
                 windowState = .resetPendingConfirmation
-            } else if reading.usedPercentage == 0, reading.resetsAt == nil {
+            } else if reading.trust == .a, reading.usedPercentage == 0, reading.resetsAt == nil {
                 windowState = .notStarted
             } else {
                 windowState = .inProgress
