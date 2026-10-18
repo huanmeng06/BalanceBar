@@ -29,6 +29,21 @@ def api(path, timeout=20):
 
 
 def api_text(path, timeout=30):
+    escaped = subprocess.run(
+        ['gh', 'api', '--allow-escape-sequences', path],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        timeout=timeout
+    )
+    if escaped.returncode == 0:
+        return escaped.stdout
+    error = escaped.stdout + escaped.stderr
+    if 'unknown flag' not in error and 'unknown option' not in error:
+        raise subprocess.CalledProcessError(
+            escaped.returncode,
+            escaped.args,
+            output=escaped.stdout,
+            stderr=escaped.stderr
+        )
     return subprocess.check_output(
         ['gh', 'api', path],
         text=True, timeout=timeout)
