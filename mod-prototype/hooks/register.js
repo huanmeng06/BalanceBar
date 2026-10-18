@@ -36,6 +36,7 @@ async function readEnv($, name) {
     BALANCEBAR_MOD_INBOX: () => $.env.get("BALANCEBAR_MOD_INBOX"),
     BALANCEBAR_MOD_LOCAL_URL: () => $.env.get("BALANCEBAR_MOD_LOCAL_URL"),
     BALANCEBAR_MOD_FORCE_FAILURE: () => $.env.get("BALANCEBAR_MOD_FORCE_FAILURE"),
+    BALANCEBAR_MOD_RECORD_MEASURE: () => $.env.get("BALANCEBAR_MOD_RECORD_MEASURE"),
   }
   const result = await tryCall(`env.get:${name}`, operations[name])
   return result.ok && typeof result.value === "string" ? result.value : undefined
@@ -241,7 +242,12 @@ export function register(on) {
   on("session.measure", async ($, event, next) => {
     measureEvents += 1
     await observe("session.measure", async () => {
-      latestSnapshot = await capture($, { event: "session.measure", allowForcedFailure: true })
+      const recordMeasure = await envFlag($, "BALANCEBAR_MOD_RECORD_MEASURE")
+      latestSnapshot = await capture($, {
+        event: "session.measure",
+        write: recordMeasure,
+        allowForcedFailure: true,
+      })
     })
     return next(event)
   })

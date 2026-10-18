@@ -60,6 +60,20 @@ local test server you control. Non-loopback URLs are rejected by the probe.
 `BALANCEBAR_MOD_FORCE_FAILURE=1` deliberately fails the probe inside the
 protected observation path. Use it only for the session-isolation check.
 
+For a headless turn, opt in to one snapshot write per `session.measure` event:
+
+```sh
+MEASURE_INBOX="$(mktemp -d /tmp/balancebar-mod-measure.XXXXXX)"
+BALANCEBAR_MOD_INBOX="$MEASURE_INBOX" \
+BALANCEBAR_MOD_RECORD_MEASURE=1 \
+claude -p "请只回复：headless measure test" --plugin-dir ./mod-prototype
+find "$MEASURE_INBOX" -type f -name 'balancebar-mod-spike-*.json' -print
+```
+
+An output file whose `mod_observation.event` is `session.measure` is the
+observable evidence that the event fired. The flag is opt-in and is off by
+default so ordinary sessions do not write on every measurement.
+
 ## Install-command probe
 
 The exact local-marketplace commands are:

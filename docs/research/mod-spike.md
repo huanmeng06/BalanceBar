@@ -1,6 +1,6 @@
 # Claude Code Mod spike (BB-02 / Issue #512)
 
-状态：已完成可用终端和 Desktop Code 环境中的人工验证；Agent SDK、低于 v2.1.287 的终端环境和跨账号 hash 稳定性不可用/未完成，相关项目保留为阻塞。本文把官方文档推断、实现检查和运行时实测分开，不把推断写成实测。
+状态：已完成可用终端和 Desktop Code 环境中的人工验证；针对审查意见增加了显式 opt-in 的 headless `session.measure` 记录机制。Agent SDK、低于 v2.1.287 的终端环境和跨账号 hash 稳定性不可用/未完成，相关项目保留为阻塞。本文把官方文档推断、实现检查和运行时实测分开，不把推断写成实测。
 
 ## 范围、基线与缺失输入
 
@@ -36,12 +36,12 @@ $ claude --version
 | # | 结论 | 证据边界 | 可复现命令/步骤 | 当前状态 |
 |---|---|---|---|---|
 | 1 | 实测 `$.session.usage()` 返回 `rateLimits`；当前终端输出的 kind 为 `five_hour` / `seven_day`，`percentUsed` 为数字 `1` / `0`，`resetsAt` 为 ISO 字符串。 | 这是当前账号、当前终端会话的实测，不外推到其他账号或版本。 | 通过 `/balancebar-mod-spike` 写出的 JSON 读取 `raw_rate_limits`；对应 `windows` 保留同样 kind 和 ISO `resets_at`。 | 当前终端 PASS |
-| 2 | 交互式终端、两个并行会话和 Desktop Code 均观察到 `measureEvents=2`；`claude -p` 的命令-only 测试加载了 Mod，但 `measureEvents=0`，不能据此断言 headless turn 不触发。Agent SDK 不可用/未测。 | 交互式、并行和 Desktop 结果为用户实测；headless 命令-only 只证明 Mod 可加载和 API 可用。 | A/B 临时收件箱和 Desktop 默认收件箱均产生快照；`claude -p` 的普通 turn/`session.measure` 没有可见快照输出，Agent SDK 保留阻塞。 | CLI/并行/Desktop PASS；其余部分阻塞 |
+| 2 | 交互式终端、两个并行会话和 Desktop Code 均观察到 `measureEvents=2`；审查后增加 `BALANCEBAR_MOD_RECORD_MEASURE=1`，使普通 `claude -p` turn 可显式写出 `session.measure` 快照。Agent SDK 不可用/未测。 | 交互式、并行和 Desktop 结果为用户实测；headless command-only 只证明 Mod 可加载和 API 可用；新的 opt-in recorder 使 headless turn 有可观察证据。 | `BALANCEBAR_MOD_INBOX=/tmp/... BALANCEBAR_MOD_RECORD_MEASURE=1 claude -p "..." --plugin-dir ./mod-prototype`，再检查 JSON 的 `mod_observation.event=session.measure`。 | CLI/并行/Desktop PASS；headless recorder 待用户运行，Agent SDK 阻塞 |
 | 3 | `$.fs.write` 在两个交互式会话、`claude -p`、安装版新会话和 Desktop Code 的默认 BalanceBar inbox 均成功。`~/.claude` fallback、loopback HTTP 未测。 | 临时目录与默认收件箱结果是实测；不能外推到 fallback 或 HTTP 服务。 | Desktop 中第一次无目标目录时为 `blocked`；创建 `~/Library/Application Support/BalanceBar/inbox/` 后再次执行得到 `write=written`。 | 临时/默认路径 PASS；fallback/HTTP 阻塞 |
 | 4 | 交互式终端和 `claude -p` 中设置 `BALANCEBAR_MOD_FORCE_FAILURE=1` 后，Claude 仍正常工作；命令返回 `blocked (forced probe failure for isolation test)`。 | 这是当前 Claude Code 2.1.291 的实测。 | 故障探针命令返回 blocked，但会话没有崩溃或中断。 | PASS |
-| 5 | Marketplace add/install、安装版新会话自动加载和 `/reload-plugins` 均成功。 | 实测退出码和 JSON 输出已记录；操作使用 local scope。 | `marketplace-add` 和 `install` 均返回 `outcome=ok`；新会话显示 `1 mod active`；reload 返回 `Reloaded: 3 plugins ...`。 | PASS |
-| 6 | 显式 probe 成功生成 `identity_source=account-id` 的 SHA-256 哈希，未输出原始值；同一会话多次生成 hash，但未完成跨账号稳定性实验。 | 账号 hash 属于当前本机隐私数据，不把 hash 本身写入报告。 | 检查 JSON 的 `account` 和 `account_probe`，只记录 status/source，不记录 hash。 | 部分 PASS；稳定性阻塞 |
-| 7 | 当前终端版本为 2.1.291；文档给出终端门槛 v2.1.287，Desktop Code v2.1.286。低于 v2.1.287 的终端行为没有实证。 | `claude --version` 是本机实测；版本门槛来自官方文档。没有可安全切换的旧版运行时。 | 在 v2.1.286 及更低终端上重复 #1、#2、#4、#5；若无法提供版本，记录 `not tested`，不要把 Desktop 2.1.286 的门槛外推到终端。 | 当前版本确认；旧版阻塞 |
+| 5 | Marketplace add/install、安装版新会话自动加载和 `/reload-plugins` 均成功。 | 用户手动 transcript 已记录 JSON 输出；审查修复要求下一次重跑同时打印 shell exit code。 | `marketplace-add` 和 `install` 均返回 `outcome=ok`；新会话显示 `1 mod active`；reload 返回 `Reloaded: 3 plugins ...`。 | 功能 PASS；独立 exit code 记录待补 |
+| 6 | 显式 probe 成功生成 `identity_source=account-id` 的 SHA-256 哈希，未输出原始值；新增测试证明同一输入的 hash 确定性，但未完成跨账号/重新登录实验。 | 账号 hash 属于当前本机隐私数据，不把 hash 本身写入报告。确定性测试不等于跨账号实测。 | 检查 JSON 的 `account` 和 `account_probe`，只记录 status/source；在两个专用账号或重新登录状态下私下比较 hash，不把 hash 贴入 Issue。 | 当前账号 PASS；跨账号稳定性阻塞 |
+| 7 | 当前终端版本为 2.1.291；文档给出终端门槛 v2.1.287，Desktop Code v2.1.286。低于 v2.1.287 的终端行为没有实证。 | `claude --version` 是本机实测；版本门槛来自官方文档。没有可安全切换的旧版运行时。 | 兼容策略：终端 `<2.1.287` 视为不支持，不启用 Mod、不写入快照，BB-15 应提示升级或复制命令；有旧版环境时再重复实测。 | 当前版本确认；旧版阻塞，策略已明确 |
 
 ### 用户人工记录（2026-10-18 EDT）
 
@@ -51,10 +51,12 @@ $ claude --version
 - 交互式与 headless 故障隔离均返回 `blocked (forced probe failure for isolation test)`，会话仍继续。
 - local marketplace add/install 均返回 `outcome=ok`；安装版新会话显示 `1 mod active`；`/reload-plugins` 返回 `Reloaded: 3 plugins · 2 skills · 6 agents · 0 hooks · 0 plugin MCP servers · 1 plugin LSP server`。
 - Desktop Code 第二次执行在创建默认收件箱后得到 `write=written`，路径为 `~/Library/Application Support/BalanceBar/inbox/`；未记录账号 hash 原文。Agent SDK、旧版本终端和跨账号 hash 稳定性保留阻塞。
+- 审查修复增加 `BALANCEBAR_MOD_RECORD_MEASURE=1`；它仅在显式启用时于 `session.measure` 写入快照，避免普通会话产生持续文件写入。当前 rework 中尚未代用户运行新的普通 headless turn。
+- 用户此前手动安装 transcript 的 JSON 为 `marketplace-add`/`install` 且 `outcome=ok`；审查要求的独立 shell exit code 将在下一次命令重跑时单独记录。Worker 沙箱重跑因共享 `.claude/settings.local.json` 权限受限而得到 `error_permission`，不作为用户命令结果。
 
 ### 不能提前写成“已验证”的项目
 
-Agent SDK 和低于 v2.1.287 的终端环境不可用，因此这些子项仍是实测阻塞。#510 中关于 Claude HUD `statusLine` 的 `rate_limits`/Unix 秒证据属于另一条输入路径，不能冒充 `$.session.usage()` 的实测结果。
+Agent SDK 和低于 v2.1.287 的终端环境不可用，因此这些子项仍是实测阻塞；终端版本兼容策略已明确为不支持时不启用/不写入并提示升级。#510 中关于 Claude HUD `statusLine` 的 `rate_limits`/Unix 秒证据属于另一条输入路径，不能冒充 `$.session.usage()` 的实测结果。
 
 ## 快照与 #511 Schema v1 对照
 

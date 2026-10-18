@@ -1,5 +1,5 @@
 import { expect, test } from "claude-code/testing"
-import { buildSnapshot, canonicalWindowKind, findStableIdentity } from "../hooks/probe.js"
+import { buildSnapshot, canonicalWindowKind, findStableIdentity, hashIdentity } from "../hooks/probe.js"
 
 test("maps known windows while retaining the raw rate-limit kinds", () => {
   const snapshot = buildSnapshot({
@@ -42,4 +42,11 @@ test("does not invent top-level fields for an unknown window kind", () => {
 test("only supported identity fields are selected for hashing", () => {
   expect(findStableIdentity({ oauthAccount: { accountUuid: "account-123" } }).path).toBe("oauthAccount.accountUuid")
   expect(findStableIdentity({ unrelated: { id: "not-an-account" } })).toBe(null)
+})
+
+test("hashing the same identity is deterministic", async () => {
+  const first = await hashIdentity("fixture-account-123")
+  const second = await hashIdentity("fixture-account-123")
+  expect(first).toBe(second)
+  expect(first.startsWith("sha256:")).toBe(true)
 })
