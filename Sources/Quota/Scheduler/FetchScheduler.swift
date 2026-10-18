@@ -26,7 +26,7 @@ public final class FetchScheduler: FetchScheduling {
     private var isCoalescing = false
     private var isBusy = false
     private var lastDispatchAt: Date?
-    private var lastSuccessAt: Date?
+    private var lastSuccess: (at: Date, epoch: AccountEpoch)?
     private var resultHandlers: [(FetchSchedulerDelivery) -> Void] = []
 
     /// - Parameter calibrationIntervalCap: Reads the existing refresh-interval setting, used as an
@@ -125,7 +125,7 @@ public final class FetchScheduler: FetchScheduling {
 
     private func evaluateManual(_ reasons: [FetchRequestReason], now: Date) {
         let window = configuration.manualRefreshWindow
-        if let lastSuccessAt, now.timeIntervalSince(lastSuccessAt) < window {
+        if let lastSuccessAt = currentEpochLastSuccessAt, now.timeIntervalSince(lastSuccessAt) < window {
             return log(.skipped, reasons: reasons, skip: .recentResult)
         }
         guard let freePathChecker else { return spendAndDispatch(reasons, cost: configuration.manualTokenCost) }
@@ -154,9 +154,15 @@ public final class FetchScheduler: FetchScheduling {
         spendAndDispatch(reasons, cost: configuration.automaticTokenCost)
     }
 
+    /// Last success time for the current account epoch; another account's success never counts.
+    private var currentEpochLastSuccessAt: Date? {
+        guard let lastSuccess, lastSuccess.epoch == identity.accountEpoch else { return nil }
+        return lastSuccess.at
+    }
+
     private func calibrationCapExceeded(now: Date) -> Bool {
         guard let cap = calibrationIntervalCap(), cap > 0 else { return false }
-        guard let lastSuccessAt else { return true }
+        guard let lastSuccessAt = currentEpochLastSuccessAt else { return true }
         return now.timeIntervalSince(lastSuccessAt) >= cap
     }
 
@@ -168,13 +174,21 @@ public final class FetchScheduler: FetchScheduling {
         isBusy = true
         lastDispatchAt = clock.now
         let epoch = identity.accountEpoch
+        let credentialVersion = identity.credentialVersion
         log(.dispatched, reasons: reasons)
         transport.fetchUsage { [self] result in
-            queue.async { complete(result, reasons: reasons, epoch: epoch) }
+            queue.async {
+                complete(result, reasons: reasons, epoch: epoch, credentialVersion: credentialVersion)
+            }
         }
     }
 
-    private func complete(_ result: UsageFetchResult, reasons: [FetchRequestReason], epoch: AccountEpoch) {
+    private func complete(
+        _ result: UsageFetchResult,
+        reasons: [FetchRequestReason],
+        epoch: AccountEpoch,
+        credentialVersion: CredentialVersion?
+    ) {
         isBusy = false
         let now = clock.now
         // A 429 is honored even for a stale epoch so an account switch cannot bypass the cooldown.
@@ -186,16 +200,19 @@ public final class FetchScheduler: FetchScheduling {
         }
         switch result {
         case .success:
-            lastSuccessAt = now
+            lastSuccess = (now, epoch)
             if persistent.consecutiveRateLimitBackoffs != 0 || persistent.cooldownUntil != nil {
                 persistent.consecutiveRateLimitBackoffs = 0
                 persistent.cooldownUntil = nil
                 stateStore.save(persistent)
             }
         case .unauthorized:
-            persistent.isUnauthorizedPaused = true
-            persistent.unauthorizedCredentialVersion = identity.credentialVersion
-            stateStore.save(persistent)
+            // A 401 for credentials replaced mid-flight must not pause the new credentials.
+            if identity.credentialVersion == credentialVersion {
+                persistent.isUnauthorizedPaused = true
+                persistent.unauthorizedCredentialVersion = credentialVersion
+                stateStore.save(persistent)
+            }
         case .rateLimited, .failure:
             break
         }

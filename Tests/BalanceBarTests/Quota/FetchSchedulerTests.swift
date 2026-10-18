@@ -275,4 +275,27 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(logs.last?.tokens, 1)
         XCTAssertEqual(logs.last?.cooldownRemaining, 0)
     }
+
+    func testManualRefreshAfterAccountSwitchIgnoresPreviousAccountSuccess() {
+        let freePath = FakeFreePath()
+        let scheduler = makeScheduler(freePath: freePath)
+        request(scheduler, .manual)
+        complete(scheduler, .success(Data()))
+        clock.advance(30)
+        identity.accountEpoch = identity.accountEpoch.next
+        request(scheduler, .manual)
+        XCTAssertEqual(freePath.windows.count, 2, "free path is checked for the new account")
+        XCTAssertEqual(transport.completions.count, 1)
+        XCTAssertNotEqual(lastSkip, .recentResult)
+    }
+
+    func testUnauthorizedForOldCredentialDoesNotPauseNewCredential() {
+        let scheduler = makeScheduler()
+        request(scheduler, .manual)
+        identity.credentialVersion = CredentialVersion("v2")
+        complete(scheduler, .unauthorized)
+        XCTAssertNotEqual(store.state?.isUnauthorizedPaused, true)
+        request(scheduler, .manual)
+        XCTAssertEqual(transport.completions.count, 1)
+    }
 }
