@@ -45,6 +45,8 @@ git switch -c <类型>/<简短名称>
 
 Draft PR 自动运行 Fast CI；Draft 的非必需提示任务只说明门禁尚未启动，不会故意报错。转 Ready 或 Ready 后追加提交自动运行 Full CI，并创建正式的 `PR merge gate`；仅修改 Ready PR 的标题或描述时，也必须重新确认已有相同代码及目标分支的 Full 验收，不能无条件绿灯。Fast 成功不等于全部测试通过。PR 必须记录实际命令、通过/失败/跳过、未执行范围及原因。稳定 `PR merge gate` 的仓库强制设置由 Owner 按开发文档启用；未配置时不能声称已阻止不合格合并。
 
+推荐验证路径是“本地编译与受影响测试 → Ready PR 云端 Full 一次 → 只追加合法版本号时使用严格的历史 Full 复用”。复用只接受同一 PR、相同 base ref/SHA、最近可审计的祖先 head 及其完整 Ready Full 证据；它会逐个检查中间版本提交并重新创建当前 gate，明确记录 run、attempt、job、head、base 和 merge 身份，当前 HEAD 不报告 XCTest PASS。任一证据缺失、失败、取消、排队、竞争或非版本改动都回退真实 Full。涉及广泛共享边界、基础设施、无法可靠定向或维护者明确要求时，仍应运行本地 Full；本地 PASS 不能替代 hosted Full 凭证。
+
 终端检查不能证明视觉和交互体验正确。涉及菜单栏、Dashboard、窗口行为、供应商切换、深浅色或无障碍体验时，请构建独立开发版，并把具体人工步骤与逐步预期写入 Pull Request：
 
 ```bash

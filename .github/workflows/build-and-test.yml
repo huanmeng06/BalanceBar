@@ -26,6 +26,7 @@ jobs:
       probes: ${{ steps.scope.outputs.probes }}
       action: ${{ steps.scope.outputs.action }}
       force_full: ${{ steps.scope.outputs.force_full }}
+      reuse_full: ${{ steps.scope.outputs.reuse_full }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +37,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           FORCE_FULL: ${{ github.event.action == 'edited' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           base="${BASE_SHA:-HEAD^}"
@@ -49,6 +51,16 @@ jobs:
             [[ "$classification" != version-only ]] || version_only=true
           fi
           echo "version_only=$version_only" >> "$GITHUB_OUTPUT"
+          reuse_full=false
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            reuse_result="$RUNNER_TEMP/BalanceBar-full-reuse.txt"
+            python3 .github/scripts/ci-full-reuse.py "$base" "$head" > "$reuse_result"
+            cat "$reuse_result" >> "$GITHUB_OUTPUT"
+            tee -a "$GITHUB_STEP_SUMMARY" < "$reuse_result"
+          else
+            echo "reuse_full=$reuse_full" >> "$GITHUB_OUTPUT"
+            echo 'reuse_reason=not-a-pull-request' >> "$GITHUB_OUTPUT"
+          fi
           echo "Event head: $head; checkout/merge SHA: $GITHUB_SHA; version exemption: $version_only" >> "$GITHUB_STEP_SUMMARY"
 
   fast:
@@ -89,10 +101,28 @@ jobs:
     steps:
       - run: echo 'Only approved version strings differ across the entire PR. XCTest NOT executed; explicit version exemption.' >> "$GITHUB_STEP_SUMMARY"
 
+  full-reuse:
+    name: Verified prior Full reuse (version increment; no XCTest)
+    needs: scope
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft && needs.scope.outputs.version_only != 'true' && needs.scope.outputs.reuse_full == 'true' && needs.scope.outputs.force_full != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Revalidate historical Full evidence and version chain
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/ci-full-reuse.py "$BASE_SHA" "$HEAD_SHA" --require
+
   build-and-test:
     name: Full CI (CLI, probes and serial XCTest)
     needs: scope
-    if: github.event_name == 'workflow_dispatch' || (!github.event.pull_request.draft && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true'))
+    if: github.event_name == 'workflow_dispatch' || (!github.event.pull_request.draft && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true'))
     runs-on: macos-26
     timeout-minutes: 20
     env:
