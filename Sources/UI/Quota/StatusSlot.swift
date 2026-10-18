@@ -30,18 +30,23 @@ struct StatusSlotContext: Equatable {
     }
 }
 
-/// The five status-slot states, ordered by display priority.
+/// Status-slot states, ordered by display priority.
 enum StatusSlotState: Equatable {
     case refreshing
     case error(at: Date?)
+    case resetPending(at: Date?)
     case estimated(at: Date?)
     case realtime
     case official(at: Date?)
 
-    /// Picks the first matching state: refreshing, error, estimated, realtime, official.
+    /// Picks the first matching state: refreshing, error, reset pending, estimated, realtime, official.
     static func resolve(model: QuotaDisplayModel, context: StatusSlotContext) -> StatusSlotState {
         if context.isRefreshing { return .refreshing }
         if model.state == .error || model.state == .expired { return .error(at: context.updatedAt) }
+        if model.state == .resetPendingConfirmation
+            || model.windows.contains(where: { $0.state == .resetPendingConfirmation }) {
+            return .resetPending(at: context.updatedAt)
+        }
         if model.isEstimated { return .estimated(at: context.updatedAt) }
         if context.source == .realtime { return .realtime }
         return .official(at: context.updatedAt)
@@ -62,6 +67,7 @@ enum StatusSlotText: String, CaseIterable {
     case hoverOfficial = "quota.status.hover.official"
     case hoverExternalActivity = "quota.status.hover.external_activity"
     case resetPending = "quota.status.reset_pending"
+    case resetPendingShort = "quota.status.reset_pending_short"
     case openUsagePage = "quota.failure.open_usage_page"
     case accessibilityStatus = "quota.status.accessibility"
 
@@ -76,6 +82,7 @@ enum StatusSlotText: String, CaseIterable {
         case .hoverOfficial: return "官方数据，更新于 %@"
         case .hoverExternalActivity: return "检测到其他端在使用，已提高更新频率"
         case .resetPending: return "预计已重置，等待确认"
+        case .resetPendingShort: return "待确认"
         case .openUsagePage: return "打开官方用量页"
         case .accessibilityStatus: return "额度状态：%@"
         }
@@ -188,6 +195,7 @@ final class StatusSlotView: NSView {
         switch state {
         case .refreshing: base = localize(.hoverRefreshing)
         case let .error(at): base = String(format: localize(.hoverError), time(at))
+        case .resetPending: base = localize(.resetPending)
         case let .estimated(at): base = String(format: localize(.hoverEstimated), time(at))
         case .realtime: base = localize(.hoverRealtime)
         case let .official(at): base = String(format: localize(.hoverOfficial), time(at))
@@ -207,6 +215,9 @@ final class StatusSlotView: NSView {
         case let .error(at):
             label.stringValue = "⚠︎ " + time(at)
             label.textColor = .systemOrange
+        case .resetPending:
+            label.stringValue = localize(.resetPendingShort)
+            label.textColor = .secondaryLabelColor
         case let .estimated(at):
             label.stringValue = StatusSlotAppearance.estimatePrefix + time(at)
             label.textColor = .secondaryLabelColor

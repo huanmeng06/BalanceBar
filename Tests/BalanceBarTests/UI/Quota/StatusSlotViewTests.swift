@@ -20,6 +20,7 @@ final class StatusSlotViewTests: XCTestCase {
         [
             ("refreshing", .refreshing),
             ("error", .error(at: time)),
+            ("resetPending", .resetPending(at: time)),
             ("estimated", .estimated(at: time)),
             ("realtime", .realtime),
             ("official", .official(at: time)),
@@ -35,6 +36,7 @@ final class StatusSlotViewTests: XCTestCase {
         var c = ctx; c.isRefreshing = false
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .error, estimated: true), context: c), .error(at: time))
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .expired), context: c), .error(at: time))
+        XCTAssertEqual(StatusSlotState.resolve(model: model(state: .resetPendingConfirmation, estimated: true), context: c), .resetPending(at: time))
         XCTAssertEqual(StatusSlotState.resolve(model: model(estimated: true), context: c), .estimated(at: time))
         XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .realtime)
         c.source = .official
@@ -43,36 +45,121 @@ final class StatusSlotViewTests: XCTestCase {
 
     // MARK: Snapshots (light + dark)
 
-    /// Textual snapshot of every state in both appearances, plus a rendered bitmap
-    /// check that the slot draws visible pixels at its fixed size.
-    func testSnapshotsAllStatesLightAndDark() throws {
-        let expected: [String: String] = [
-            "refreshing": "刷新中…|secondary|dot=false",
-            "error": "⚠︎ 13:40|orange|dot=false",
-            "estimated": "≈ 13:40|secondary|dot=false",
-            "realtime": "实时|secondary|dot=true",
-            "official": "13:40|secondary|dot=false",
-        ]
-        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
-            let appearance = try XCTUnwrap(NSAppearance(named: appearanceName))
-            for (name, state) in allStates {
-                let view = StatusSlotView(timeZone: utc)
-                view.appearance = appearance
-                view.update(state: state)
-                view.layoutSubtreeIfNeeded()
-                let color = view.textColorForTesting == .systemOrange ? "orange" : "secondary"
-                XCTAssertEqual(
-                    "\(view.textForTesting)|\(color)|dot=\(view.isDotVisibleForTesting)",
-                    expected[name],
-                    "\(appearanceName.rawValue) \(name)"
-                )
+    private static let snapshotDirectory = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .appendingPathComponent("__Snapshots__", isDirectory: true)
 
-                let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-                view.cacheDisplay(in: view.bounds, to: rep)
-                XCTAssertEqual(rep.size, NSSize(width: StatusSlotView.fixedWidth, height: StatusSlotView.fixedHeight))
-                XCTAssertTrue(hasOpaquePixel(rep), "\(appearanceName.rawValue) \(name) rendered blank")
+    private func render(_ state: StatusSlotState, _ appearanceName: NSAppearance.Name) throws -> (StatusSlotView, NSBitmapImageRep) {
+        let view = StatusSlotView(timeZone: utc)
+        view.appearance = try XCTUnwrap(NSAppearance(named: appearanceName))
+        view.frame = NSRect(x: 0, y: 0, width: StatusSlotView.fixedWidth, height: StatusSlotView.fixedHeight)
+        view.update(state: state)
+        view.layoutSubtreeIfNeeded()
+        let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return (view, rep)
+    }
+
+    /// Compares the real rendering of every state in light and dark mode against
+    /// checked-in reference PNGs. Set BB_RECORD_SNAPSHOTS=1 to (re)record.
+    func testRenderedSnapshotsMatchReferenceImages() throws {
+        let record = ProcessInfo.processInfo.environment["BB_RECORD_SNAPSHOTS"] == "1"
+        var missing: [String] = []
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let suffix = appearanceName == .aqua ? "light" : "dark"
+            for (name, state) in allStates {
+                let (_, rep) = try render(state, appearanceName)
+                let url = Self.snapshotDirectory.appendingPathComponent("\(name)-\(suffix).png")
+                if record || !FileManager.default.fileExists(atPath: url.path) {
+                    try FileManager.default.createDirectory(at: Self.snapshotDirectory, withIntermediateDirectories: true)
+                    try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)
+                    missing.append(url.lastPathComponent)
+                    continue
+                }
+                let reference = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: url)))
+                XCTAssertEqual(reference.pixelsWide, rep.pixelsWide, url.lastPathComponent)
+                XCTAssertEqual(reference.pixelsHigh, rep.pixelsHigh, url.lastPathComponent)
+                guard reference.pixelsWide == rep.pixelsWide, reference.pixelsHigh == rep.pixelsHigh else { continue }
+                let ratio = differingPixelRatio(rep, reference)
+                XCTAssertLessThanOrEqual(ratio, 0.02, "\(url.lastPathComponent) differs from reference (\(ratio))")
             }
         }
+        if !missing.isEmpty {
+            XCTFail("Recorded snapshots (re-run to verify): \(missing)")
+        }
+    }
+
+    /// Rendering-level checks that do not depend on font rasterisation details.
+    func testRenderedColorsClippingAndAppearance() throws {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        for (name, state) in allStates {
+            let (lightView, light) = try render(state, .aqua)
+            let (_, dark) = try render(state, .darkAqua)
+            XCTAssertGreaterThan(differingPixelRatio(light, dark), 0, "\(name): light and dark render identically")
+
+            for (appearanceName, rep) in [(NSAppearance.Name.aqua, light), (.darkAqua, dark)] {
+                let label = "\(appearanceName.rawValue) \(name)"
+                let appearance = try XCTUnwrap(NSAppearance(named: appearanceName))
+                XCTAssertTrue(hasOpaquePixel(rep), "\(label) rendered blank")
+
+                let green = resolved(.systemGreen, in: appearance)
+                let orange = resolved(.systemOrange, in: appearance)
+                if case .realtime = state {
+                    XCTAssertTrue(containsPixel(near: green, in: rep), "\(label) missing green dot")
+                } else {
+                    XCTAssertFalse(containsPixel(near: green, in: rep), "\(label) unexpected green")
+                }
+                if case .error = state {
+                    XCTAssertTrue(containsPixel(near: orange, in: rep, tolerance: 0.2), "\(label) error text not orange")
+                }
+                // Text is right-aligned: ink touching the leading column means it was clipped.
+                XCTAssertFalse(columnHasInk(0, rep), "\(label) clipped at leading edge")
+            }
+
+            let textWidth = (lightView.textForTesting as NSString).size(withAttributes: [.font: font]).width
+            var available = StatusSlotView.fixedWidth
+            if case .realtime = state { available -= StatusSlotView.dotDiameter + 3 }
+            XCTAssertLessThanOrEqual(textWidth, available, "\(name) text wider than slot")
+        }
+    }
+
+    private func srgb(_ color: NSColor?) -> NSColor? { color?.usingColorSpace(.sRGB) }
+
+    private func resolved(_ color: NSColor, in appearance: NSAppearance) -> NSColor {
+        var result = color
+        appearance.performAsCurrentDrawingAppearance {
+            result = color.usingColorSpace(.sRGB) ?? color
+        }
+        return result
+    }
+
+    private func distance(_ a: NSColor, _ b: NSColor) -> CGFloat {
+        max(abs(a.redComponent - b.redComponent), abs(a.greenComponent - b.greenComponent), abs(a.blueComponent - b.blueComponent))
+    }
+
+    private func containsPixel(near target: NSColor, in rep: NSBitmapImageRep, tolerance: CGFloat = 0.12) -> Bool {
+        for x in 0..<rep.pixelsWide {
+            for y in 0..<rep.pixelsHigh {
+                guard let c = srgb(rep.colorAt(x: x, y: y)), c.alphaComponent > 0.9 else { continue }
+                if distance(c, target) <= tolerance { return true }
+            }
+        }
+        return false
+    }
+
+    private func columnHasInk(_ x: Int, _ rep: NSBitmapImageRep) -> Bool {
+        (0..<rep.pixelsHigh).contains { (rep.colorAt(x: x, y: $0)?.alphaComponent ?? 0) > 0.1 }
+    }
+
+    private func differingPixelRatio(_ a: NSBitmapImageRep, _ b: NSBitmapImageRep) -> Double {
+        var differing = 0
+        for x in 0..<a.pixelsWide {
+            for y in 0..<a.pixelsHigh {
+                guard let ca = srgb(a.colorAt(x: x, y: y)), let cb = srgb(b.colorAt(x: x, y: y)) else { continue }
+                if distance(ca, cb) > 0.1 || abs(ca.alphaComponent - cb.alphaComponent) > 0.1 { differing += 1 }
+            }
+        }
+        return Double(differing) / Double(max(1, a.pixelsWide * a.pixelsHigh))
     }
 
     // MARK: Title stability
@@ -98,6 +185,28 @@ final class StatusSlotViewTests: XCTestCase {
         }
         XCTAssertEqual(titleFrames.count, 1, "title moved: \(titleFrames)")
         XCTAssertEqual(slotFrames.count, 1, "slot resized: \(slotFrames)")
+    }
+
+    func testResetPendingWithoutEstimateIsNotReportedAsOfficialOrRealtime() {
+        for source in [StatusSlotSource.official, .realtime] {
+            let ctx = StatusSlotContext(source: source, updatedAt: time)
+            XCTAssertEqual(StatusSlotState.resolve(model: model(state: .resetPendingConfirmation), context: ctx), .resetPending(at: time))
+        }
+        // Aggregate in progress but one window awaiting reset confirmation.
+        let mixed = QuotaDisplayModel(
+            windows: [
+                QuotaWindowDisplay(kind: .fiveHour, usedPercentage: 0, isEstimated: false, state: .resetPendingConfirmation, hoverTextKey: "k"),
+                QuotaWindowDisplay(kind: .sevenDay, usedPercentage: 30, isEstimated: false, state: .inProgress, hoverTextKey: "k"),
+            ],
+            isEstimated: false, state: .inProgress, hoverTextKey: "k"
+        )
+        XCTAssertEqual(StatusSlotState.resolve(model: mixed, context: StatusSlotContext(updatedAt: time)), .resetPending(at: time))
+
+        let view = StatusSlotView(timeZone: utc)
+        view.update(model: model(state: .resetPendingConfirmation), context: StatusSlotContext(updatedAt: time))
+        XCTAssertEqual(view.textForTesting, "待确认")
+        XCTAssertEqual(view.toolTip, "预计已重置，等待确认")
+        XCTAssertEqual(view.accessibilityLabel(), "额度状态：待确认")
     }
 
     // MARK: Hover + VoiceOver
