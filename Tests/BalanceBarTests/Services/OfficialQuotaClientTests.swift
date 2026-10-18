@@ -186,6 +186,49 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "anthropic-beta"))
     }
 
+    func testClaudeProxyConfigurationBuildsHTTPSAndSOCKSSessions() throws {
+        let httpsSession = OfficialQuotaClient.makeClaudeSession(
+            proxyConfiguration: CCSwitchProxyConfiguration(
+                httpsProxy: URL(string: "http://proxy.example:8443"),
+                allProxy: URL(string: "socks5://fallback.example:1080")
+            )
+        )
+        let httpsProxy = try XCTUnwrap(httpsSession.configuration.connectionProxyDictionary)
+        XCTAssertEqual(httpsProxy["HTTPSEnable"] as? Bool, true)
+        XCTAssertEqual(httpsProxy["HTTPSProxy"] as? String, "proxy.example")
+        XCTAssertEqual(httpsProxy["HTTPSPort"] as? Int, 8443)
+        XCTAssertNil(httpsProxy["SOCKSEnable"])
+        httpsSession.invalidateAndCancel()
+
+        let socksSession = OfficialQuotaClient.makeClaudeSession(
+            proxyConfiguration: CCSwitchProxyConfiguration(allProxy: URL(string: "socks5://fallback.example:1080"))
+        )
+        let socksProxy = try XCTUnwrap(socksSession.configuration.connectionProxyDictionary)
+        XCTAssertEqual(socksProxy["SOCKSEnable"] as? Bool, true)
+        XCTAssertEqual(socksProxy["SOCKSProxy"] as? String, "fallback.example")
+        XCTAssertEqual(socksProxy["SOCKSPort"] as? Int, 1080)
+        XCTAssertNil(socksProxy["HTTPSEnable"])
+        socksSession.invalidateAndCancel()
+
+        let directSession = OfficialQuotaClient.makeClaudeSession(
+            proxyConfiguration: CCSwitchProxyConfiguration()
+        )
+        XCTAssertNil(directSession.configuration.connectionProxyDictionary)
+        directSession.invalidateAndCancel()
+    }
+
+    func testClaudeConnectionFailureIsClassifiedAsPossibleProxy() throws {
+        StubURLProtocol.setHandler { _ in
+            StubResult(error: URLError(.cannotConnectToHost))
+        }
+        let client = makeClient(claudeToken: "fixture-claude-value")
+        let result = try waitForResult(client, clientName: .claude, providerID: "proxy-failure")
+
+        guard case .failure(.transport(.possibleProxy(.cannotConnectToHost))) = result else {
+            return XCTFail("expected a possible-proxy transport classification, got (result)")
+        }
+    }
+
     func testCodexUsageRequestDoesNotFetchBankedResetCreditsWhenUsageIncludesCards() throws {
         StubURLProtocol.setHandler { _ in
             StubResult(data: Self.codexBankedResetBody)

@@ -148,31 +148,56 @@ final class CCSwitchRepositoryTests: XCTestCase {
         XCTAssertEqual(official as NSDictionary, originalIndependent)
     }
 
-    func testClaudeProxyOAuthAndUnknownEnvironmentDifferencesBlockDirectSwitching() throws {
+    func testClaudeDirectSafetyComparesManagedKeysButIgnoresUserEnvironment() throws {
         let url = try prepareClaudeDirect()
         let original = try Data(contentsOf: url)
         for variable in ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy",
-                         "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "NODE_EXTRA_CA_CERTS",
+                         "NODE_EXTRA_CA_CERTS", "CLAUDE_CODE_ENABLE_TELEMETRY",
                          "NEW_UNRECOGNIZED_AUTH_SETTING"] {
             var object = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
             var env = try XCTUnwrap(object["env"] as? [String: String])
             env[variable] = "fixture-override"
             object["env"] = env
             try JSONSerialization.data(withJSONObject: object).write(to: url)
-            let changed = try Data(contentsOf: url)
-            XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .blockedUntrusted, variable)
-            XCTAssertThrowsError(try repository.switchCurrent(to: "claude-target", appType: "claude"), variable)
-            XCTAssertEqual(try currentValue(for: "claude-other"), 1)
-            XCTAssertEqual(try Data(contentsOf: url), changed)
-            XCTAssertFalse(FileManager.default.fileExists(atPath: appSettingsURL.path))
+            XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .allowedDirect, variable)
         }
         try original.write(to: url)
         XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .allowedDirect)
+        for variable in ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "ANTHROPIC_MODEL"] {
+            var object = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+            var env = try XCTUnwrap(object["env"] as? [String: String])
+            env[variable] = "fixture-override"
+            object["env"] = env
+            try JSONSerialization.data(withJSONObject: object).write(to: url)
+            XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .blockedUntrusted, variable)
+        }
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET settings_config = '{\"env\":{\"ANTHROPIC_AUTH_TOKEN\":\"fixture\"}}' WHERE id = 'claude-other'")
+        }
+        try Data(#"{"env":{"ANTHROPIC_AUTH_TOKEN":"fixture","ANTHROPIC_BASE_URL":"https://api.anthropic.com"}}"#.utf8)
+            .write(to: url)
+        XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .allowedDirect, "the official base URL is equivalent to an omitted base URL")
+        try original.write(to: url)
         try withDatabase { db in
             try execute(db, sql: #"UPDATE providers SET settings_config = '{"env":{"ANTHROPIC_BASE_URL":"https://claude.example","ANTHROPIC_AUTH_TOKEN":"fixture","HTTPS_PROXY":"fixture-matched","CLAUDE_CODE_OAUTH_TOKEN":"fixture-oauth"}}' WHERE id = 'claude-other'"#)
         }
         try Data(#"{"env":{"ANTHROPIC_BASE_URL":"https://claude.example","ANTHROPIC_AUTH_TOKEN":"fixture","HTTPS_PROXY":"fixture-matched","CLAUDE_CODE_OAUTH_TOKEN":"fixture-oauth"},"theme":"light"}"#.utf8).write(to: url)
         XCTAssertEqual(repository.quickSwitchSafety(appType: "claude"), .allowedDirect, "matched environment and unrelated theme are compatible")
+    }
+
+    func testClaudeProxyConfigurationReadsHTTPSBeforeALLProxy() throws {
+        let settingsURL = temporaryDirectoryURL.appendingPathComponent(".claude/settings.json")
+        try FileManager.default.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"env":{"HTTPS_PROXY":"http://https-proxy.example:8443","ALL_PROXY":"socks5://all-proxy.example:1080","OTEL_EXPORTER_OTLP_ENDPOINT":"https://telemetry.example"}}"#.utf8)
+            .write(to: settingsURL)
+
+        let configuration = repository.claudeProxyConfiguration()
+
+        XCTAssertEqual(configuration.httpsProxy?.host, "https-proxy.example")
+        XCTAssertEqual(configuration.httpsProxy?.port, 8443)
+        XCTAssertEqual(configuration.allProxy?.scheme, "socks5")
+        XCTAssertEqual(configuration.allProxy?.host, "all-proxy.example")
+        XCTAssertFalse(configuration.isEmpty)
     }
 
     func testClaudeProxyBeforeAndDuringTerminationNeverWrites() throws {

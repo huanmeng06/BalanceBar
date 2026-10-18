@@ -17,6 +17,21 @@ enum CCSwitchProxyTakeoverStatus: Equatable {
     case unavailable
 }
 
+/// Proxy values read from Claude Code's user settings. The raw URL is kept
+/// only long enough to build an injected URLSession configuration; callers do
+/// not log or expose it.
+struct CCSwitchProxyConfiguration: Equatable {
+    let httpsProxy: URL?
+    let allProxy: URL?
+
+    init(httpsProxy: URL? = nil, allProxy: URL? = nil) {
+        self.httpsProxy = httpsProxy
+        self.allProxy = allProxy
+    }
+
+    var isEmpty: Bool { httpsProxy == nil && allProxy == nil }
+}
+
 enum CCSwitchQuickSwitchSafety: Equatable {
     case allowedDirect, allowedLegacyDirect
     case blockedAggregation, blockedRouting, blockedUntrusted
@@ -225,6 +240,37 @@ final class CCSwitchRepository {
     }
 
     var deviceStateURL: URL { homeDirectoryURL.appendingPathComponent(".cc-switch/live-state.json") }
+
+    /// Reads only the proxy settings used for Claude's official HTTPS quota
+    /// request. Invalid or non-string values fail closed to direct transport.
+    func claudeProxyConfiguration(
+        readSettings: (URL) throws -> Data = { try Data(contentsOf: $0) }
+    ) -> CCSwitchProxyConfiguration {
+        let settingsURL = homeDirectoryURL
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        guard let data = try? readSettings(settingsURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let env = object["env"] as? [String: Any] else {
+            return CCSwitchProxyConfiguration()
+        }
+        return CCSwitchProxyConfiguration(
+            httpsProxy: Self.proxyURL(from: env["HTTPS_PROXY"]),
+            allProxy: Self.proxyURL(from: env["ALL_PROXY"])
+        )
+    }
+
+    private static func proxyURL(from value: Any?) -> URL? {
+        guard let raw = value as? String,
+              let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https", "socks", "socks5", "socks5h"].contains(scheme),
+              let host = url.host, !host.isEmpty else {
+            return nil
+        }
+        return url
+    }
+
     private func proxyHistoryKey(appType: String) -> String {
         let scope = homeDirectoryURL.standardizedFileURL.path + "|" + databaseURL.standardizedFileURL.path + "|" + appType
         return "quickSwitch.proxyObserved." + SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -361,12 +407,49 @@ final class CCSwitchRepository {
             guard object["env"] == nil || object["env"] is [String: String] else { return nil }
             let env = object["env"] as? [String: String] ?? [:]
             guard !env.values.contains(where: { $0.contains("PROXY_MANAGED") }) else { return nil }
-            // Compare the complete environment: proxy/OAuth/TLS and future credential
-            // selectors must not disappear through a routing-prefix allowlist.
-            return env
+            return Self.managedClaudeEnvironment(env)
         }
         guard let expectedRoute = route(expected), let actualRoute = route(actual) else { return false }
         return expectedRoute == actualRoute
+    }
+
+    /// The provider card owns the routing and credential selectors. Proxy,
+    /// telemetry, TLS and other user-owned environment keys do not establish
+    /// whether CC Switch's direct route is still intact.
+    private static func managedClaudeEnvironment(_ env: [String: String]) -> [String: String] {
+        var managed = env.filter { key, _ in
+            switch key {
+            case "ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+                 "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+                 "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+                 "AWS_REGION", "AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+                 "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "CLOUD_ML_REGION":
+                return true
+            default:
+                let uppercased = key.uppercased()
+                if key.hasPrefix("ANTHROPIC_") {
+                    return uppercased.contains("TOKEN") || uppercased.contains("API_KEY")
+                        || uppercased.contains("MODEL") || uppercased.contains("BEDROCK")
+                        || uppercased.contains("VERTEX") || uppercased.contains("FOUNDRY")
+                }
+                return key.hasPrefix("CLAUDE_CODE_USE_")
+                    || (key.hasPrefix("CLAUDE_CODE_") && uppercased.contains("MODEL"))
+            }
+        }
+        if let baseURL = managed["ANTHROPIC_BASE_URL"], isOfficialClaudeBaseURL(baseURL) {
+            managed.removeValue(forKey: "ANTHROPIC_BASE_URL")
+        }
+        return managed
+    }
+
+    private static func isOfficialClaudeBaseURL(_ value: String) -> Bool {
+        guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
+              url.scheme?.lowercased() == "https",
+              url.host?.lowercased() == "api.anthropic.com",
+              url.user == nil, url.password == nil,
+              url.query == nil, url.fragment == nil,
+              url.port == nil || url.port == 443 else { return false }
+        return true
     }
 
     /// Strict single-line routing subset. Unsupported/ambiguous routing syntax fails closed.

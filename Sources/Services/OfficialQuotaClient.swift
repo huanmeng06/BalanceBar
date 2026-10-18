@@ -13,6 +13,7 @@ enum OfficialQuotaClientError: Error {
 
 enum OfficialQuotaTransportError: Error {
     case urlError(URLError.Code)
+    case possibleProxy(URLError.Code)
     case unknown
 }
 
@@ -21,6 +22,8 @@ extension OfficialQuotaTransportError: LocalizedError {
         switch self {
         case .urlError(let code):
             return URLError(code).localizedDescription
+        case .possibleProxy(let code):
+            return "Possible proxy required: \(URLError(code).localizedDescription)"
         case .unknown:
             return "The network request failed"
         }
@@ -215,6 +218,9 @@ final class OfficialQuotaClient {
     }
 
     private let session: URLSession
+    private let claudeProxyConfigurationProvider: (() -> CCSwitchProxyConfiguration)?
+    private let claudeSessionLock = NSLock()
+    private var claudeSessionStorage: URLSession?
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
     private let now: () -> Date
@@ -236,15 +242,80 @@ final class OfficialQuotaClient {
     private var creditRequests: [String: (UUID, URLSessionDataTask)] = [:]
 
     init(
-        session: URLSession = .shared,
+        session: URLSession? = nil,
+        claudeSession: URLSession? = nil,
+        claudeProxyConfiguration: CCSwitchProxyConfiguration? = nil,
         credentialReader: OfficialQuotaCredentialReading = CredentialReader(),
         parser: OfficialQuotaParsing = DefaultOfficialQuotaParser(),
         now: @escaping () -> Date = Date.init
     ) {
-        self.session = session
+        let baseSession = session ?? .shared
+        self.session = baseSession
+        self.claudeSessionStorage = claudeSession
+            ?? (claudeProxyConfiguration == nil && session != nil ? baseSession : nil)
+        if let claudeProxyConfiguration {
+            self.claudeProxyConfigurationProvider = { claudeProxyConfiguration }
+        } else if session == nil && claudeSession == nil {
+            self.claudeProxyConfigurationProvider = { CCSwitchRepository().claudeProxyConfiguration() }
+        } else {
+            self.claudeProxyConfigurationProvider = nil
+        }
         self.credentialReader = credentialReader
         self.parser = parser
         self.now = now
+    }
+
+    /// Builds a session whose HTTPS traffic uses the proxy selected by Claude
+    /// Code. A caller may pass a base session so tests retain their URLProtocol
+    /// transport without reaching the network.
+    static func makeClaudeSession(
+        baseSession: URLSession? = nil,
+        proxyConfiguration: CCSwitchProxyConfiguration
+    ) -> URLSession {
+        let configuration = baseSession?.configuration ?? URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = connectionProxyDictionary(for: proxyConfiguration)
+        return URLSession(configuration: configuration)
+    }
+
+    private static func connectionProxyDictionary(
+        for configuration: CCSwitchProxyConfiguration
+    ) -> [AnyHashable: Any]? {
+        guard let proxy = configuration.httpsProxy ?? configuration.allProxy,
+              let host = proxy.host, !host.isEmpty else { return nil }
+        let scheme = proxy.scheme?.lowercased() ?? ""
+        let port = proxy.port ?? {
+            if scheme == "socks" || scheme == "socks5" || scheme == "socks5h" { return 1080 }
+            return scheme == "https" ? 443 : 80
+        }()
+        guard (1...65535).contains(port) else { return nil }
+        if scheme == "socks" || scheme == "socks5" || scheme == "socks5h" {
+            return [
+                "SOCKSEnable": true,
+                "SOCKSProxy": host,
+                "SOCKSPort": port
+            ]
+        }
+        return [
+            "HTTPSEnable": true,
+            "HTTPSProxy": host,
+            "HTTPSPort": port
+        ]
+    }
+
+    private func claudeSession() -> URLSession {
+        claudeSessionLock.lock()
+        defer { claudeSessionLock.unlock() }
+        if let claudeSessionStorage { return claudeSessionStorage }
+        let configuration = claudeProxyConfigurationProvider?() ?? CCSwitchProxyConfiguration()
+        if configuration.isEmpty {
+            claudeSessionStorage = session
+        } else {
+            claudeSessionStorage = Self.makeClaudeSession(
+                baseSession: session,
+                proxyConfiguration: configuration
+            )
+        }
+        return claudeSessionStorage!
     }
 
     /// Reads the same Codex auth source used by official quota requests. The
@@ -536,10 +607,10 @@ final class OfficialQuotaClient {
         SwitchLog.write("official-quota transport started; client=\(client.rawValue); scope_omitted=true", level: .debug, category: "refresh.transport")
 
         let parser = self.parser
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
+        let task = (client == .claude ? claudeSession() : session).dataTask(with: request) { [weak self] data, response, error in
             let result: Result<OfficialQuotaResult, OfficialQuotaClientError>
             if let error {
-                result = .failure(.transport(Self.transportError(from: error)))
+                result = .failure(.transport(Self.transportError(from: error, client: client)))
             } else if let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode),
                       let data {
@@ -724,9 +795,26 @@ final class OfficialQuotaClient {
         }
     }
 
-    private static func transportError(from error: Error) -> OfficialQuotaTransportError {
+    private static func transportError(
+        from error: Error,
+        client: AssistantClient? = nil
+    ) -> OfficialQuotaTransportError {
         guard let urlError = error as? URLError else { return .unknown }
+        if client == .claude, urlError.code != .cancelled, mayNeedProxy(urlError.code) {
+            return .possibleProxy(urlError.code)
+        }
         return .urlError(urlError.code)
+    }
+
+    private static func mayNeedProxy(_ code: URLError.Code) -> Bool {
+        switch code {
+        case .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost,
+             .notConnectedToInternet, .dnsLookupFailed, .cannotLoadFromNetwork,
+             .resourceUnavailable, .secureConnectionFailed:
+            return true
+        default:
+            return false
+        }
     }
 
     /// Cancels every consumer this Provider registered on the request. Shared
