@@ -19,8 +19,10 @@ def load(name):
 scope = load('ci-scope')
 gate = load('ci-merge-gate')
 meta = load('ci-metadata-gate')
+reuse = load('ci-full-reuse')
 READY = {'number': 499, 'state': 'open', 'draft': False,
-         'head': {'sha': 'new'}, 'base': {'sha': 'base', 'ref': 'main'}}
+         'head': {'sha': 'new'}, 'base': {'sha': 'base', 'ref': 'main'},
+         'merge_commit_sha': 'merge'}
 ENV = {'GITHUB_REPOSITORY': 'owner/repo', 'GITHUB_RUN_ID': '123',
        'GITHUB_RUN_ATTEMPT': '2', 'GITHUB_SHA': 'merge'}
 
@@ -63,6 +65,10 @@ class PolicyTests(unittest.TestCase):
             if '/attempts/' in path:
                 values = current(clock.now) if callable(current) else current
                 return {'jobs': values}
+            if path.endswith('/runs/123'):
+                return {'id': 123, 'head_sha': 'new', 'run_attempt': attempt,
+                        'event': 'pull_request', 'workflow_id': 9,
+                        'path': '.github/workflows/build-and-test.yml'}
             return {'id': 123, 'head_sha': 'new'}
 
         with patch.dict(os.environ, dict(ENV, GITHUB_RUN_ATTEMPT=str(attempt))), \
@@ -305,6 +311,103 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("- name: Confirm prior Full gate for metadata-only edit", gate_job)
         self.assertIn("run: python3 .github/scripts/ci-metadata-gate.py", gate_job)
         self.assertNotIn('PR metadata edit (no merge credential)', gate_job)
+
+    def test_reuse_lane_requires_a_second_evidence_check(self):
+        with patch.object(gate, 'verify_reuse', return_value=(True, 'verified')):
+            result, elapsed, _, _ = self.run_gate(
+                [job('scope'), job('full', 'skipped'), job('reuse')], classifier='full')
+        self.assertTrue(result[0])
+        self.assertEqual(elapsed, 0)
+        self.assertEqual(result[2]['reuse'], 'success')
+        self.assertTrue(result[2]['reuse_revalidated'])
+
+        with patch.object(gate, 'verify_reuse', return_value=(False, 'changed')):
+            result, _, _, _ = self.run_gate(
+                [job('scope'), job('full', 'skipped'), job('reuse')])
+        self.assertFalse(result[0])
+        self.assertIn('changed', result[1])
+
+    def test_full_and_reuse_lanes_never_coexist(self):
+        with patch.object(gate, 'verify_reuse', return_value=(True, 'verified')):
+            result, _, _, _ = self.run_gate(
+                [job('scope'), job('full'), job('reuse')])
+        self.assertFalse(result[0])
+        self.assertIn('both published', result[1])
+
+        result, _, _, _ = self.run_gate(
+            [job('scope'), job('full'), job('reuse', 'skipped'), job('smoke')])
+        self.assertTrue(result[0])
+        self.assertEqual(result[2]['full'], 'success')
+
+    def test_reuse_identity_parser_rejects_legacy_gate_logs(self):
+        old_log = ('PASS: Full CI for event head/base\n'
+                   'Event head: new\nBase: main / base\n'
+                   'Checkout/merge SHA: merge\n')
+        with self.assertRaises(reuse.EvidenceError):
+            reuse.parse_identity(reuse.normalize_log_lines(old_log))
+
+    def test_reuse_requires_exact_pr_merge_parents(self):
+        commit = {'sha': 'merge', 'parents': [{'sha': 'base'}, {'sha': 'new'}]}
+        with patch.object(reuse, 'api', return_value=commit):
+            reuse.verify_merge_commit('owner/repo', 'merge', 'base', 'new')
+        with patch.object(reuse, 'api', return_value={
+                'sha': 'merge', 'parents': [{'sha': 'base'}, {'sha': 'other'}]}):
+            with self.assertRaises(reuse.EvidenceError):
+                reuse.verify_merge_commit('owner/repo', 'merge', 'base', 'new')
+
+    def test_reuse_checks_each_intermediate_commit_and_aggregate(self):
+        def fake_git(*args):
+            if args == ('rev-list', '--reverse', 'base..head'):
+                return 'c1\nc2'
+            if args == ('rev-list', '--parents', '-n', '1', 'c1'):
+                return 'c1 base'
+            if args == ('rev-list', '--parents', '-n', '1', 'c2'):
+                return 'c2 c1'
+            raise AssertionError(args)
+
+        class Result:
+            returncode = 0
+            stdout = 'version-only\n'
+            stderr = ''
+
+        with patch.object(reuse, 'is_ancestor', return_value=True), \
+             patch.object(reuse, 'git', side_effect=fake_git), \
+             patch.object(reuse.subprocess, 'run', return_value=Result()):
+            self.assertEqual(reuse.validate_version_chain('base', 'head'), 2)
+
+        def not_version(command, **_):
+            result = Result()
+            if command[-1] == 'c2':
+                result.stdout = 'full\n'
+            return result
+
+        with patch.object(reuse, 'is_ancestor', return_value=True), \
+             patch.object(reuse, 'git', side_effect=fake_git), \
+             patch.object(reuse.subprocess, 'run', side_effect=not_version):
+            with self.assertRaises(reuse.EvidenceError):
+                reuse.validate_version_chain('base', 'head')
+
+    def test_reuse_rejects_ambiguous_nearest_head(self):
+        def fake_git(*args):
+            if args == ('rev-list', '--count', 'a..current'):
+                return '2'
+            if args == ('rev-list', '--count', 'b..current'):
+                return '2'
+            raise AssertionError(args)
+
+        with patch.object(reuse, 'is_ancestor', return_value=True), \
+             patch.object(reuse, 'git', side_effect=fake_git):
+            with self.assertRaises(reuse.EvidenceError):
+                reuse.nearest_prior_head(
+                    [{'head_sha': 'a'}, {'head_sha': 'b'}], 'current')
+
+    def test_workflow_keeps_full_fallback_and_explicit_reuse_lane(self):
+        workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
+                    'build-and-test.yml').read_text(encoding='utf-8')
+        self.assertIn('reuse_full: ${{ steps.scope.outputs.reuse_full }}', workflow)
+        self.assertIn('name: Verified prior Full reuse (version increment; no XCTest)', workflow)
+        self.assertIn('python3 .github/scripts/ci-full-reuse.py "$BASE_SHA" "$HEAD_SHA" --require', workflow)
+        self.assertIn("needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true'", workflow)
 
     def test_event_routes_and_retarget_full(self):
         for changes in ({'body': {'from': ''}}, {'title': {'from': 'old'}}):

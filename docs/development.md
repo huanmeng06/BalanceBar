@@ -231,6 +231,7 @@ shell syntax, classifier/policy tests and actionlint checks on Ubuntu.
 | --- | --- | --- |
 | Draft open/push/reopen/convert | Fast Debug build + localization probes for non-documentation changes; documentation adds/edits skip app build | A short successful `Draft merge gate inactive (not required)` check has no merge credential; GitHub prohibits merging Draft PRs |
 | Ready open/push/reopen/convert | Full CLI + probes + build-for-testing + all serial XCTest + artifact/smoke | Gate requires this run's successful Full |
+| Ready `synchronize` after a trusted Ready Full, with only version increments since that Full | Scope, a verified prior-Full reuse job and the current gate; no CLI/Xcode/XCTest/artifact/smoke rerun | Gate requires the current reuse job plus a fresh gate; the historical Full is evidence, not a current XCTest PASS |
 | Ready, entire PR version-only | Explicit `PR-wide version-only exemption (no XCTest)` | Gate accepts the named exemption, never reports XCTest PASS |
 | Ready target-branch edit | Force Full, including version-only PRs | Fresh gate checks base ref and SHA |
 | Draft target-branch edit | Fast | No required gate is published; Draft remains unmergeable |
@@ -289,6 +290,20 @@ head/base SHA and **base ref**, rejecting missing identity fields. Hosted check-
 tests GitHub's synthetic merge commit (`GITHUB_SHA`), and summaries identify both
 SHAs. Do not confuse check attachment with the integrated commit under test.
 Failure/cancellation/queued/missing/skipped Full never becomes a Full credential.
+The incremental version path is separate from the existing PR-wide version exemption. It is
+eligible only for a Ready `pull_request` `synchronize` event after a successful Ready Full
+on the same PR and unchanged base ref/SHA. The validator selects the nearest audited ancestor
+head, requires the latest validation for that head to be completed/successful, and rejects a
+newer failed, cancelled, queued, Draft, partial, or identity-mismatched run instead of falling
+back to an older green run. It verifies the workflow/run/attempt, Full/smoke/gate job IDs and
+attempt timestamps, the gate log's PR/head/base/merge identity, and the synthetic merge commit's
+base/head parents. Every intermediate commit and the aggregate diff must pass the strict plist
+classifier; merge commits, code changes, plist structure/mode changes, empty/invalid values and
+API or race uncertainty fail closed to the real Full lane. The current `Verified prior Full reuse
+(version increment; no XCTest)` job repeats that evidence check, and the current `PR merge gate`
+repeats it again before success. Its summary records the historical run/attempt/job/head/base
+evidence and explicitly says that current-head XCTest did not run; a skipped Full job is never a
+credential.
 Target changes subscribe to `edited`: Ready requires Full even when version-only;
 Draft retains Fast. Ready title/body-only edits also publish the REQUIRED `PR merge gate`
 without new XCTest, in a separate metadata concurrency group that does not cancel
@@ -305,8 +320,9 @@ While the newest unclassified run is queued the metadata
 gate waits rather than using older evidence or applying the missing-job grace.
 It checks for newer runs again immediately before reporting success. This
 required-name refresh prevents GitHub from leaving the PR blocked after a
-successful non-required metadata-only job despite older Full checks. This is
-the **sole** narrowly scoped cross-run reuse; code,
+successful non-required metadata-only job despite older Full checks. Metadata-only
+confirmation remains its own narrowly scoped cross-run path. Incremental version
+reuse is independently bound to the strict historical Full evidence above; code,
 retarget and Ready transitions still require fresh Full evidence. Edited events
 lacking reliable change information revalidate.
 
