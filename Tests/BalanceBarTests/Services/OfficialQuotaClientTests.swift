@@ -186,6 +186,65 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "anthropic-beta"))
     }
 
+    func testClaudeProxyConfigurationBuildsHTTPSAndSOCKSSessions() throws {
+        let httpsSession = OfficialQuotaClient.makeClaudeSession(
+            proxyConfiguration: CCSwitchProxyConfiguration(
+                httpsProxy: URL(string: "https://user:password@proxy.example:8443"),
+                allProxy: URL(string: "socks5://fallback.example:1080")
+            )
+        )
+        XCTAssertEqual(httpsSession.configuration.proxyConfigurations.count, 1)
+        httpsSession.invalidateAndCancel()
+
+        let socksSession = OfficialQuotaClient.makeClaudeSession(
+            proxyConfiguration: CCSwitchProxyConfiguration(allProxy: URL(string: "socks5://fallback.example:1080"))
+        )
+        XCTAssertEqual(socksSession.configuration.proxyConfigurations.count, 1)
+        socksSession.invalidateAndCancel()
+
+        let directSession = OfficialQuotaClient.makeClaudeSession(
+            proxyConfiguration: CCSwitchProxyConfiguration()
+        )
+        XCTAssertTrue(directSession.configuration.proxyConfigurations.isEmpty)
+        directSession.invalidateAndCancel()
+    }
+
+    func testClaudeProxyConfigurationIsReadForEachNewTransport() throws {
+        var reads = 0
+        var configuration = CCSwitchProxyConfiguration()
+        var time = Date(timeIntervalSince1970: 1_700_000_000)
+        StubURLProtocol.setHandler { _ in StubResult(data: Self.claudeBody) }
+        let client = OfficialQuotaClient(
+            session: session,
+            claudeProxyConfigurationProvider: {
+                reads += 1
+                return configuration
+            },
+            credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "fixture"),
+            now: { time }
+        )
+
+        _ = try waitForResult(client, clientName: .claude, providerID: "dynamic-proxy-1")
+        configuration = CCSwitchProxyConfiguration(httpsProxy: URL(string: "http://proxy.example:8080"))
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "dynamic-proxy-2")
+
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+    }
+
+    func testClaudeConnectionFailureIsClassifiedAsPossibleProxy() throws {
+        StubURLProtocol.setHandler { _ in
+            StubResult(error: URLError(.cannotConnectToHost))
+        }
+        let client = makeClient(claudeToken: "fixture-claude-value")
+        let result = try waitForResult(client, clientName: .claude, providerID: "proxy-failure")
+
+        guard case .failure(.transport(.possibleProxy(.cannotConnectToHost))) = result else {
+            return XCTFail("expected a possible-proxy transport classification, got (result)")
+        }
+    }
+
     func testCodexUsageRequestDoesNotFetchBankedResetCreditsWhenUsageIncludesCards() throws {
         StubURLProtocol.setHandler { _ in
             StubResult(data: Self.codexBankedResetBody)

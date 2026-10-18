@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Network
 
 /// Errors surfaced by official OpenAI and Claude quota requests.
 /// Values never include a request URL or credential material.
@@ -13,6 +14,7 @@ enum OfficialQuotaClientError: Error {
 
 enum OfficialQuotaTransportError: Error {
     case urlError(URLError.Code)
+    case possibleProxy(URLError.Code)
     case unknown
 }
 
@@ -21,6 +23,8 @@ extension OfficialQuotaTransportError: LocalizedError {
         switch self {
         case .urlError(let code):
             return URLError(code).localizedDescription
+        case .possibleProxy(let code):
+            return "Possible proxy required: \(URLError(code).localizedDescription)"
         case .unknown:
             return "The network request failed"
         }
@@ -215,6 +219,10 @@ final class OfficialQuotaClient {
     }
 
     private let session: URLSession
+    private let claudeProxyConfigurationProvider: (() -> CCSwitchProxyConfiguration)?
+    private let claudeSessionLock = NSLock()
+    private var claudeSessionStorage: URLSession?
+    private var claudeSessionConfiguration: CCSwitchProxyConfiguration?
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
     private let now: () -> Date
@@ -236,15 +244,103 @@ final class OfficialQuotaClient {
     private var creditRequests: [String: (UUID, URLSessionDataTask)] = [:]
 
     init(
-        session: URLSession = .shared,
+        session: URLSession? = nil,
+        claudeSession: URLSession? = nil,
+        claudeProxyConfiguration: CCSwitchProxyConfiguration? = nil,
+        claudeProxyConfigurationProvider: (() -> CCSwitchProxyConfiguration)? = nil,
         credentialReader: OfficialQuotaCredentialReading = CredentialReader(),
         parser: OfficialQuotaParsing = DefaultOfficialQuotaParser(),
         now: @escaping () -> Date = Date.init
     ) {
-        self.session = session
+        let baseSession = session ?? .shared
+        self.session = baseSession
+        self.claudeSessionStorage = claudeSession
+            ?? (claudeProxyConfiguration == nil && claudeProxyConfigurationProvider == nil && session != nil ? baseSession : nil)
+        self.claudeSessionConfiguration = claudeSession != nil || (session != nil && claudeProxyConfiguration == nil && claudeProxyConfigurationProvider == nil)
+            ? CCSwitchProxyConfiguration() : nil
+        if let claudeProxyConfigurationProvider {
+            self.claudeProxyConfigurationProvider = claudeProxyConfigurationProvider
+        } else if let claudeProxyConfiguration {
+            self.claudeProxyConfigurationProvider = { claudeProxyConfiguration }
+        } else if session == nil && claudeSession == nil {
+            self.claudeProxyConfigurationProvider = { CCSwitchRepository().claudeProxyConfiguration() }
+        } else {
+            self.claudeProxyConfigurationProvider = nil
+        }
         self.credentialReader = credentialReader
         self.parser = parser
         self.now = now
+    }
+
+    /// Builds a session whose HTTPS traffic uses the proxy selected by Claude
+    /// Code. A caller may pass a base session so tests retain their URLProtocol
+    /// transport without reaching the network.
+    static func makeClaudeSession(
+        baseSession: URLSession? = nil,
+        proxyConfiguration: CCSwitchProxyConfiguration
+    ) -> URLSession {
+        let configuration = baseSession?.configuration ?? URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = nil
+        configuration.proxyConfigurations = proxyConfigurations(for: proxyConfiguration)
+        return URLSession(configuration: configuration)
+    }
+
+    private static func proxyConfigurations(
+        for configuration: CCSwitchProxyConfiguration
+    ) -> [ProxyConfiguration] {
+        guard let proxy = configuration.httpsProxy ?? configuration.allProxy,
+              let host = proxy.host, !host.isEmpty,
+              let endpoint = proxyEndpoint(for: proxy) else { return [] }
+        let scheme = proxy.scheme?.lowercased() ?? ""
+        let port = proxy.port ?? {
+            if scheme == "socks" || scheme == "socks5" || scheme == "socks5h" { return 1080 }
+            return scheme == "https" ? 443 : 80
+        }()
+        guard (1...65535).contains(port) else { return [] }
+        var proxyConfiguration: ProxyConfiguration
+        if scheme == "socks" || scheme == "socks5" || scheme == "socks5h" {
+            proxyConfiguration = ProxyConfiguration(socksv5Proxy: endpoint)
+        } else {
+            let tlsOptions = scheme == "https" ? NWProtocolTLS.Options() : nil
+            proxyConfiguration = ProxyConfiguration(httpCONNECTProxy: endpoint, tlsOptions: tlsOptions)
+        }
+        if let username = proxy.user {
+            proxyConfiguration.applyCredential(username: username, password: proxy.password ?? "")
+        }
+        return [proxyConfiguration]
+    }
+
+    private static func proxyEndpoint(for proxy: URL) -> NWEndpoint? {
+        let port = proxy.port ?? {
+            switch proxy.scheme?.lowercased() {
+            case "socks", "socks5", "socks5h": return 1080
+            case "https": return 443
+            default: return 80
+            }
+        }()
+        guard let host = proxy.host, !host.isEmpty,
+              (1...65535).contains(port),
+              let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else { return nil }
+        return .hostPort(host: NWEndpoint.Host(host), port: nwPort)
+    }
+
+    private func claudeSession() -> URLSession {
+        let configuration = claudeProxyConfigurationProvider?() ?? CCSwitchProxyConfiguration()
+        claudeSessionLock.lock()
+        defer { claudeSessionLock.unlock() }
+        if let claudeSessionStorage, claudeSessionConfiguration == configuration {
+            return claudeSessionStorage
+        }
+        if configuration.isEmpty {
+            claudeSessionStorage = session
+        } else {
+            claudeSessionStorage = Self.makeClaudeSession(
+                baseSession: session,
+                proxyConfiguration: configuration
+            )
+        }
+        claudeSessionConfiguration = configuration
+        return claudeSessionStorage!
     }
 
     /// Reads the same Codex auth source used by official quota requests. The
@@ -536,10 +632,10 @@ final class OfficialQuotaClient {
         SwitchLog.write("official-quota transport started; client=\(client.rawValue); scope_omitted=true", level: .debug, category: "refresh.transport")
 
         let parser = self.parser
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
+        let task = (client == .claude ? claudeSession() : session).dataTask(with: request) { [weak self] data, response, error in
             let result: Result<OfficialQuotaResult, OfficialQuotaClientError>
             if let error {
-                result = .failure(.transport(Self.transportError(from: error)))
+                result = .failure(.transport(Self.transportError(from: error, client: client)))
             } else if let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode),
                       let data {
@@ -724,9 +820,26 @@ final class OfficialQuotaClient {
         }
     }
 
-    private static func transportError(from error: Error) -> OfficialQuotaTransportError {
+    private static func transportError(
+        from error: Error,
+        client: AssistantClient? = nil
+    ) -> OfficialQuotaTransportError {
         guard let urlError = error as? URLError else { return .unknown }
+        if client == .claude, urlError.code != .cancelled, mayNeedProxy(urlError.code) {
+            return .possibleProxy(urlError.code)
+        }
         return .urlError(urlError.code)
+    }
+
+    private static func mayNeedProxy(_ code: URLError.Code) -> Bool {
+        switch code {
+        case .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost,
+             .notConnectedToInternet, .dnsLookupFailed, .cannotLoadFromNetwork,
+             .resourceUnavailable, .secureConnectionFailed:
+            return true
+        default:
+            return false
+        }
     }
 
     /// Cancels every consumer this Provider registered on the request. Shared
