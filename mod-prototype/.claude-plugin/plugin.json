@@ -1,0 +1,10 @@
+{
+  "name": "balancebar-mod-spike",
+  "displayName": "BalanceBar Mod Spike",
+  "version": "0.1.0",
+  "description": "A deliberately opt-in Claude Code Mod probe for BalanceBar's seven feasibility questions.",
+  "author": {
+    "name": "BalanceBar"
+  },
+  "license": "MIT"
+}
