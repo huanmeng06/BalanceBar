@@ -166,6 +166,38 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(client.deliveries.count, 2, "a real recovery re-arms the reminder")
     }
 
+    func testPermissionRecheckDuringRateLimitDoesNotAlertFromLastRealSample() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.StaleRecheck.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        func snapshot(_ remaining: Double, stale: Bool = false) -> Snapshot {
+            var snapshot = Snapshot.official("Claude Official", remaining, "5h", nil, Date(), windows: [
+                OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                    reset: nil, durationSeconds: nil)
+            ])
+            if stale { snapshot.staleReason = "HTTP 429" }
+            return snapshot
+        }
+
+        // Real low quota while notifications are off, then the user enables them.
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .claude)
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-official")
+        XCTAssertTrue(client.deliveries.isEmpty)
+
+        // The next refresh is rate-limited; reactivating the app re-checks permission.
+        coordinator.process(snapshot: snapshot(18, stale: true), agent: .claude, providerID: "claude-official")
+        coordinator.refreshPermission()
+        XCTAssertTrue(client.deliveries.isEmpty, "a permission re-check must not treat the pre-429 sample as current")
+
+        // The first successful refresh is a real sample and alerts normally.
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        XCTAssertEqual(client.deliveries.count, 1)
+    }
+
     func testApplyGlobalRulesRestoresInheritanceWithoutReenablingResources() {
         let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
         let suiteName = "BalanceNotificationCoordinatorTests.ApplyGlobalRules.\(UUID().uuidString)"

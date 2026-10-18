@@ -4193,7 +4193,10 @@ extension ProviderRefreshCoordinatorTests {
         actions.notificationSnapshot = { _, _, snapshot in
             notificationLock.lock(); notified.append(snapshot); notificationLock.unlock()
         }
-        func notifications() -> [Snapshot] { notificationLock.lock(); defer { notificationLock.unlock() }; return notified }
+        func notifications(stale: Bool = false) -> [Snapshot] {
+            notificationLock.lock(); defer { notificationLock.unlock() }
+            return notified.filter { ($0.staleReason != nil) == stale }
+        }
         let official = OfficialQuotaClient(session: session, credentialReader: reader, now: { clock.now })
         let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
             actions: actions, now: { clock.now })
@@ -4222,7 +4225,8 @@ extension ProviderRefreshCoordinatorTests {
         let waitUntil = try XCTUnwrap(official.claudeRateLimitedUntil(), "menu refresh is disabled during the wait")
         XCTAssertGreaterThan(waitUntil, clock.now)
         waitForCoordinator(coordinator)
-        XCTAssertEqual(notifications().count, 1, "kept 429 data is display-only and never a notification sample")
+        XCTAssertEqual(notifications().count, 1, "kept 429 data is never a real notification sample")
+        XCTAssertEqual(notifications(stale: true).count, 1, "notifications learn the stored sample is no longer current")
 
         // Recovery after the server wait publishes a real sample again.
         rateLimited.clear()
@@ -4233,7 +4237,6 @@ extension ProviderRefreshCoordinatorTests {
         wait(for: [next!], timeout: 3)
         waitForCoordinator(coordinator)
         XCTAssertEqual(notifications().count, 2)
-        XCTAssertTrue(notifications().allSatisfy { $0.staleReason == nil })
         let recoveredCount = renders.count
 
         rateLimited.set()

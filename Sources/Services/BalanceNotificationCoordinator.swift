@@ -125,6 +125,10 @@ final class BalanceNotificationCoordinator {
     private let queueKey = DispatchSpecificKey<Void>()
     private var permissionStateStorage: BalanceNotificationPermissionState = .unknown
     private var snapshots: [SnapshotKey: Snapshot] = [:]
+    /// Providers whose latest refresh failed and only re-showed old data. Their
+    /// stored real sample is kept for the next real refresh, but must not be
+    /// re-evaluated as current (permission re-check, enabling notifications).
+    private var staleSampleKeys: Set<SnapshotKey> = []
     private var resourceDescriptors: [SnapshotKey: [BalanceNotificationResourceDescriptor]] = [:]
 
     var onPermissionStateChanged: ((BalanceNotificationPermissionState) -> Void)?
@@ -472,10 +476,15 @@ final class BalanceNotificationCoordinator {
         agent: BalanceNotificationAgent,
         providerID: String
     ) {
+        let key = SnapshotKey(agent: agent, providerID: providerID)
         // Data kept on screen after a failed refresh must neither trigger an
         // alert nor replace the last real sample used for later evaluation.
-        guard snapshot.staleReason == nil else { return }
+        guard snapshot.staleReason == nil else {
+            onQueue { self.staleSampleKeys.insert(key) }
+            return
+        }
         onQueue {
+            self.staleSampleKeys.remove(key)
             self.storeSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)
             self.processSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)
         }
@@ -504,7 +513,8 @@ final class BalanceNotificationCoordinator {
         agent: BalanceNotificationAgent? = nil,
         providerID: String? = nil
     ) {
-        for (key, snapshot) in snapshots where (agent == nil || key.agent == agent) && (providerID == nil || key.providerID == providerID) {
+        for (key, snapshot) in snapshots where (agent == nil || key.agent == agent) && (providerID == nil || key.providerID == providerID)
+            && !staleSampleKeys.contains(key) {
             processSnapshotOnQueue(snapshot, agent: key.agent, providerID: key.providerID)
         }
     }

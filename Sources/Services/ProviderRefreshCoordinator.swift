@@ -1762,8 +1762,9 @@ final class ProviderRefreshCoordinator {
                     configurationRevision: configurationRevision
                 )
             }
-            // A kept (stale) snapshot is display-only; it is not a new sample.
-            if next.kind == .official || next.kind == .balance, next.staleReason == nil {
+            // A kept (stale) snapshot still reaches notifications so they can mark
+            // the stored sample as not current; it is never evaluated as a sample.
+            if next.kind == .official || next.kind == .balance {
                 self.actions.notificationSnapshot?(client, providerID, next)
             }
             DispatchQueue.main.async {
