@@ -191,4 +191,94 @@ final class ClaudeAccountIdentityProviderTests: XCTestCase {
         provider.stopMonitoring()
         withExtendedLifetime(token) {}
     }
+
+    private func writeInPlace(_ json: String, to url: URL) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: 0)
+        try handle.write(contentsOf: Data(json.utf8))
+    }
+
+    private func monitoredProvider(initial json: String) throws -> (ClaudeAccountIdentityProvider, URL, URL) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fileURL = directory.appendingPathComponent(".claude.json")
+        try Data(json.utf8).write(to: fileURL, options: .atomic)
+        let provider = ClaudeAccountIdentityProvider(configurationURL: fileURL, workQueue: queue, coalescingInterval: 0.05)
+        provider.startMonitoring()
+        drain()
+        return (provider, fileURL, directory)
+    }
+
+    private func waitForEpoch(_ epoch: UInt64, on provider: ClaudeAccountIdentityProvider, after action: () throws -> Void) rethrows {
+        let reached = expectation(description: "epoch \(epoch)")
+        reached.assertForOverFulfill = false
+        let token = provider.addObserver { if $0.epoch == AccountEpoch(epoch) { reached.fulfill() } }
+        try action()
+        wait(for: [reached], timeout: 3)
+        withExtendedLifetime(token) {}
+    }
+
+    func testInPlaceOverwriteIsDetected() throws {
+        let (provider, fileURL, directory) = try monitoredProvider(initial: account("acc-1"))
+        defer { provider.stopMonitoring(); try? FileManager.default.removeItem(at: directory) }
+
+        try waitForEpoch(1, on: provider) { try writeInPlace(account("acc-2"), to: fileURL) }
+        XCTAssertEqual(provider.accountIdentity?.stableID, "claude:acc-2:org-1")
+    }
+
+    func testAtomicReplaceThenInPlaceWriteStillDetected() throws {
+        let (provider, fileURL, directory) = try monitoredProvider(initial: account("acc-1"))
+        defer { provider.stopMonitoring(); try? FileManager.default.removeItem(at: directory) }
+
+        try waitForEpoch(1, on: provider) { try Data(account("acc-2").utf8).write(to: fileURL, options: .atomic) }
+        drain()
+        try waitForEpoch(2, on: provider) { try writeInPlace(account("acc-3"), to: fileURL) }
+        XCTAssertEqual(provider.accountIdentity?.stableID, "claude:acc-3:org-1")
+    }
+
+    func testAccountSwitchClearsCredentialVersion() {
+        let reader = FakeReader()
+        reader.set(account("acc-1"))
+        let provider = makeProvider(reader)
+        reloadAndWait(provider)
+        provider.ingestCredential(accessToken: "token-a")
+        drain()
+        XCTAssertNotNil(provider.credentialVersion)
+
+        var changes: [AccountIdentityChange] = []
+        let token = provider.addObserver { changes.append($0) }
+        reader.set(account("acc-2"))
+        reloadAndWait(provider)
+
+        XCTAssertNil(provider.credentialVersion)
+        XCTAssertEqual(changes.count, 1)
+        XCTAssertEqual(changes.first?.epoch, AccountEpoch(1))
+        XCTAssertNil(changes.first?.credentialVersion)
+        withExtendedLifetime(token) {}
+    }
+
+    func testStaleCredentialForPreviousEpochIsDropped() {
+        let reader = FakeReader()
+        reader.set(account("acc-1"))
+        let provider = makeProvider(reader)
+        reloadAndWait(provider)
+        let capturedEpoch = provider.accountEpoch
+
+        reader.set(account("acc-2"))
+        reloadAndWait(provider)
+        var changes: [AccountIdentityChange] = []
+        let token = provider.addObserver { changes.append($0) }
+
+        provider.ingestCredential(accessToken: "token-a", expectedEpoch: capturedEpoch)
+        drain()
+        XCTAssertNil(provider.credentialVersion)
+        XCTAssertTrue(changes.isEmpty)
+
+        provider.ingestCredential(accessToken: "token-b", expectedEpoch: provider.accountEpoch)
+        drain()
+        XCTAssertNotNil(provider.credentialVersion)
+        XCTAssertEqual(changes.map(\.epoch), [AccountEpoch(1)])
+        withExtendedLifetime(token) {}
+    }
 }

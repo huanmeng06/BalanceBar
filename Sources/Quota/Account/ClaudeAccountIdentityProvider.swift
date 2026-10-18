@@ -106,7 +106,8 @@ public final class ClaudeAccountIdentityProvider: AccountIdentityProviding {
     private var observers: [UUID: Observer] = [:]
     private var hasLoadedAccount = false
     private var pendingReload: DispatchWorkItem?
-    private var fileSource: DispatchSourceFileSystemObject?
+    private var directorySource: DispatchSourceFileSystemObject?
+    private var configFileSource: DispatchSourceFileSystemObject?
 
     public init(
         configurationURL: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -124,7 +125,8 @@ public final class ClaudeAccountIdentityProvider: AccountIdentityProviding {
     }
 
     deinit {
-        fileSource?.cancel()
+        directorySource?.cancel()
+        configFileSource?.cancel()
     }
 
     public var accountIdentity: AccountIdentity? { locked { identity } }
@@ -165,11 +167,15 @@ public final class ClaudeAccountIdentityProvider: AccountIdentityProviding {
     }
 
     /// Records the token from the existing credential read; only its SHA-256 digest is kept.
-    public func ingestCredential(accessToken: String?) {
+    ///
+    /// Pass the `accountEpoch` captured before the asynchronous read as `expectedEpoch`;
+    /// the token is dropped when the account switched in the meantime.
+    public func ingestCredential(accessToken: String?, expectedEpoch: AccountEpoch? = nil) {
         workQueue.async { [weak self] in
             guard let self else { return }
             let version = accessToken.flatMap(Self.credentialVersion(for:))
             let changed: Bool = locked {
+                if let expectedEpoch, expectedEpoch != self.epoch { return false }
                 guard self.credential != version else { return false }
                 self.credential = version
                 return true
@@ -178,21 +184,18 @@ public final class ClaudeAccountIdentityProvider: AccountIdentityProviding {
         }
     }
 
-    /// Watches the configuration file's directory and reloads after coalesced changes.
+    /// Watches the configuration file and its directory, reloading after coalesced changes.
+    ///
+    /// The directory source sees creation, deletion and atomic replacement; the file source
+    /// sees in-place writes and is reopened after the file is replaced.
     public func startMonitoring() {
         workQueue.async { [weak self] in
-            guard let self, fileSource == nil else { return }
-            let descriptor = open(configurationURL.deletingLastPathComponent().path, O_EVTONLY)
-            guard descriptor >= 0 else { return }
-            let source = DispatchSource.makeFileSystemObjectSource(
-                fileDescriptor: descriptor,
-                eventMask: [.write, .rename, .delete, .extend],
-                queue: workQueue
-            )
-            source.setEventHandler { [weak self] in self?.scheduleReload() }
-            source.setCancelHandler { close(descriptor) }
-            fileSource = source
-            source.resume()
+            guard let self, directorySource == nil else { return }
+            directorySource = makeSource(
+                path: configurationURL.deletingLastPathComponent().path,
+                eventMask: [.write, .rename, .delete, .extend]
+            ) { [weak self] _ in self?.scheduleReload() }
+            attachConfigFileSourceIfNeeded()
             reloadNow()
         }
     }
@@ -202,9 +205,46 @@ public final class ClaudeAccountIdentityProvider: AccountIdentityProviding {
         workQueue.async { [weak self] in
             self?.pendingReload?.cancel()
             self?.pendingReload = nil
-            self?.fileSource?.cancel()
-            self?.fileSource = nil
+            self?.directorySource?.cancel()
+            self?.directorySource = nil
+            self?.configFileSource?.cancel()
+            self?.configFileSource = nil
         }
+    }
+
+    private func attachConfigFileSourceIfNeeded() {
+        dispatchPrecondition(condition: .onQueue(workQueue))
+        guard directorySource != nil, configFileSource == nil else { return }
+        configFileSource = makeSource(
+            path: configurationURL.path,
+            eventMask: [.write, .extend, .delete, .rename, .attrib]
+        ) { [weak self] events in
+            guard let self else { return }
+            if !events.isDisjoint(with: [.delete, .rename]) {
+                // The watched inode was removed or replaced; reopen on the next reload.
+                configFileSource?.cancel()
+                configFileSource = nil
+            }
+            scheduleReload()
+        }
+    }
+
+    private func makeSource(
+        path: String,
+        eventMask: DispatchSource.FileSystemEvent,
+        handler: @escaping (DispatchSource.FileSystemEvent) -> Void
+    ) -> DispatchSourceFileSystemObject? {
+        let descriptor = open(path, O_EVTONLY)
+        guard descriptor >= 0 else { return nil }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: eventMask,
+            queue: workQueue
+        )
+        source.setEventHandler { [unowned source] in handler(source.data) }
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+        return source
     }
 
     /// Irreversible, non-secret credential version derived from a token.
@@ -218,6 +258,7 @@ public final class ClaudeAccountIdentityProvider: AccountIdentityProviding {
     private func reloadNow() {
         dispatchPrecondition(condition: .onQueue(workQueue))
         pendingReload = nil
+        attachConfigFileSourceIfNeeded()
         let result: Result<AccountIdentity, AccountIdentityError>
         do {
             let data = try reader.readData(from: configurationURL)
@@ -235,7 +276,11 @@ public final class ClaudeAccountIdentityProvider: AccountIdentityProviding {
                 let changed = !hasLoadedAccount || identity?.stableID != newIdentity.stableID
                 identity = newIdentity
                 guard changed else { return false }
-                if hasLoadedAccount { epoch = epoch.next }
+                if hasLoadedAccount {
+                    // The previous account's credential must not be attributed to the new account.
+                    credential = nil
+                    epoch = epoch.next
+                }
                 hasLoadedAccount = true
                 timelineEntries.append(AccountTimelineEntry(identity: newIdentity, epoch: epoch, switchedAt: now()))
                 return true
