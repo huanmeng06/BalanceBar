@@ -1,6 +1,6 @@
 # Claude Code Mod spike (BB-02 / Issue #512)
 
-状态：实现了可审计的原型与本地无会话测试；七项真实运行验证仍需在有权使用 Claude Code 的测试配置中按下文执行。本文把官方文档推断、实现检查和运行时实测分开，不把推断写成实测。
+状态：已完成可用终端环境中的人工验证；Desktop Code、Agent SDK 和低于 v2.1.287 的终端环境不可用，相关项目保留为阻塞。本文把官方文档推断、实现检查和运行时实测分开，不把推断写成实测。
 
 ## 范围、基线与缺失输入
 
@@ -35,17 +35,26 @@ $ claude --version
 
 | # | 结论 | 证据边界 | 可复现命令/步骤 | 当前状态 |
 |---|---|---|---|---|
-| 1 | `$.session.usage()` 的接口文档形状为 `{ startedAt, context, rateLimits, cost }`；每个 rate limit 文档字段为 `kind`、`percentUsed`、`resetsAt`。实际 kind 和实际时间格式尚未确认。 | 官方 API 参考是文档证据，不是本机 Mod 输出。原型会把原始三字段放进 `mod_observation.raw_rate_limits`，同时按明显别名映射 v1 的 `windows`。 | 启动原型，完成至少一个 turn，执行 `/balancebar-mod-spike`；查看输出文件的 `mod_observation.raw_rate_limits`。记录每个 `kind` 的精确字符串、`typeof percentUsed` 与 `typeof resetsAt`。 | 部分确认；实测阻塞 |
-| 2 | `session.measure` 按文档在每次 turn 后，以及 plan limit 的 percent changed 时触发；其在交互式终端、`claude -p`、Agent SDK、Desktop Code、并行会话的实际触发矩阵尚未确认。 | 官方文档说明 hooks 在 CLI、Desktop Code、VS Code、`claude -p` 和 Agent SDK 运行；是否每个目标表面都产生该事件仍需现场观测。原型仅在事件回调中增加 `measure_events`，不靠推断写快照。 | 分别执行终端、`claude -p`、Agent SDK、Desktop Code Code tab；每个会话完成 2 个 turn 后执行命令或读取显式临时 inbox，记录 `event`、`measure_events` 与 `surfaces`。并行开两个独立会话，比较各自计数。 | 部分确认；实测阻塞 |
-| 3 | `$.fs.write`、`$.http.fetch` 是可用 API；对 BalanceBar inbox、`~/.claude` fallback、loopback HTTP 的权限和成功条件尚未实测。 | 官方 API 参考说明 Mod 以用户权限读写文件和发请求；这不是对本机路径的写权限承诺。原型默认不写，只有显式命令才尝试。 | 预先创建临时目录并以 `BALANCEBAR_MOD_INBOX=/tmp/...` 启动；执行 `/balancebar-mod-spike`。再在受控测试配置中测试目标 inbox、已存在的 `~/.claude/balancebar-inbox` 和 `BALANCEBAR_MOD_LOCAL_URL=http://127.0.0.1:<port>/...`；保存每次的 `write.status`、退出码和 HTTP 状态。 | API 已实现；实测阻塞 |
-| 4 | 原型将观测、读取、哈希、写入全部包在捕获边界内，并始终 `next(event)`；这说明实现意图是失败不阻断，但 Claude Code 会话级实际不受影响尚未确认。 | 代码检查可证明 `session.start`/`session.measure` 的 probe 异常被吞并，不能替代真实会话。`BALANCEBAR_MOD_FORCE_FAILURE=1` 只用于制造受控错误。 | 以 `BALANCEBAR_MOD_FORCE_FAILURE=1` 启动交互会话，完成一个 turn；同时把 `BALANCEBAR_MOD_INBOX` 指向不存在或不可写目录。预期 Claude 仍可继续、命令返回 blocked、没有未处理异常。记录终端和会话日志。 | 代码层防护；实测阻塞 |
-| 5 | 官方 CLI 语法为 `claude plugin marketplace add <source>`、`claude plugin install <plugin>@<marketplace>`；打开的会话可用 `/reload-plugins`，新会话自动加载。实际退出码和输出尚未在 disposable profile 中运行。 | 文档给出了子命令、scope、JSON 输出字段；本仓库不持有发布 marketplace，原型只提供本地 marketplace manifest。 | 在 disposable Claude 配置中运行 `claude plugin marketplace add ./mod-prototype --scope local --json`，再运行 `claude plugin install balancebar-mod-spike@balancebar-mods --scope local --json`；保存 stdout/stderr/退出码，打开新会话检查 `/plugin`，修改文件后检查 `/reload-plugins`。 | 命令已定稿；实测阻塞 |
-| 6 | 原型只在显式命令中读取 `~/.claude.json`，仅尝试白名单字段并输出 SHA-256 哈希，不输出原值；本机文件是否存在、字段名是否稳定、是否代表账号而非组织尚未确认。 | 代码是安全边界证据；未读本机真实配置，避免泄露凭据。`oauthAccount.accountUuid` 等字段是探测候选，不是事实声明。 | 在专用测试账号中执行 `/balancebar-mod-spike`，检查 `account_probe.status` 与 `account.identity_hash`；手工确认重启/切换账号后的 hash 是否稳定且不同。不得把 `.claude.json` 原文或邮箱放入报告。 | 代码已就绪；实测阻塞 |
+| 1 | 实测 `$.session.usage()` 返回 `rateLimits`；当前终端输出的 kind 为 `five_hour` / `seven_day`，`percentUsed` 为数字 `1` / `0`，`resetsAt` 为 ISO 字符串。 | 这是当前账号、当前终端会话的实测，不外推到其他账号或版本。 | 通过 `/balancebar-mod-spike` 写出的 JSON 读取 `raw_rate_limits`；对应 `windows` 保留同样 kind 和 ISO `resets_at`。 | 当前终端 PASS |
+| 2 | 交互式终端和两个并行会话均观察到 `measureEvents=2`；`claude -p` 的命令-only 测试加载了 Mod，但 `measureEvents=0`，不能据此断言 headless turn 不触发。Desktop Code、Agent SDK 不可用/未测。 | 交互式和并行结果为用户实测；headless 命令-only 只证明 Mod 可加载和 API 可用。 | A/B 两个独立临时收件箱均写入成功；`claude -p` 的普通 turn/`session.measure` 没有可见快照输出，故保留该子项阻塞。 | CLI/并行 PASS；其余部分阻塞 |
+| 3 | `$.fs.write` 在两个交互式会话、`claude -p` 和安装版新会话的临时 inbox 均成功。默认 BalanceBar inbox、`~/.claude` fallback、loopback HTTP 未测。 | 临时目录结果是实测；不能外推到目标用户目录或 HTTP 服务。 | 使用 `BALANCEBAR_MOD_INBOX` 指向每次新建的 `/tmp` 目录，观察 `write=written` 和具体文件路径。 | 临时目录 PASS；目标路径阻塞 |
+| 4 | 交互式终端和 `claude -p` 中设置 `BALANCEBAR_MOD_FORCE_FAILURE=1` 后，Claude 仍正常工作；命令返回 `blocked (forced probe failure for isolation test)`。 | 这是当前 Claude Code 2.1.291 的实测。 | 故障探针命令返回 blocked，但会话没有崩溃或中断。 | PASS |
+| 5 | Marketplace add/install、安装版新会话自动加载和 `/reload-plugins` 均成功。 | 实测退出码和 JSON 输出已记录；操作使用 local scope。 | `marketplace-add` 和 `install` 均返回 `outcome=ok`；新会话显示 `1 mod active`；reload 返回 `Reloaded: 3 plugins ...`。 | PASS |
+| 6 | 显式 probe 成功生成 `identity_source=account-id` 的 SHA-256 哈希，未输出原始值；同一会话多次生成 hash，但未完成跨账号稳定性实验。 | 账号 hash 属于当前本机隐私数据，不把 hash 本身写入报告。 | 检查 JSON 的 `account` 和 `account_probe`，只记录 status/source，不记录 hash。 | 部分 PASS；稳定性阻塞 |
 | 7 | 当前终端版本为 2.1.291；文档给出终端门槛 v2.1.287，Desktop Code v2.1.286。低于 v2.1.287 的终端行为没有实证。 | `claude --version` 是本机实测；版本门槛来自官方文档。没有可安全切换的旧版运行时。 | 在 v2.1.286 及更低终端上重复 #1、#2、#4、#5；若无法提供版本，记录 `not tested`，不要把 Desktop 2.1.286 的门槛外推到终端。 | 当前版本确认；旧版阻塞 |
+
+### 用户人工记录（2026-10-18 EDT）
+
+- 交互式终端快照：`five_hour` 的 `percentUsed=1`、`resetsAt=2026-10-18T16:10:00.000Z`；`seven_day` 的 `percentUsed=0`、`resetsAt=2026-10-25T10:00:00.000Z`；surface 为 `terminal`。
+- 两个并行 CLI 会话 A/B 均得到 `rateLimits=available`、`measureEvents=2`、`account=hashed`、`write=written`，且分别写入 A/B 临时 inbox。
+- `claude -p "/balancebar-mod-spike" --plugin-dir ./mod-prototype` 得到 `rateLimits=available`、`measureEvents=0`、`account=hashed`、`write=written`；这是 command-only headless 检查，不是 `session.measure` turn 触发证据。
+- 交互式与 headless 故障隔离均返回 `blocked (forced probe failure for isolation test)`，会话仍继续。
+- local marketplace add/install 均返回 `outcome=ok`；安装版新会话显示 `1 mod active`；`/reload-plugins` 返回 `Reloaded: 3 plugins · 2 skills · 6 agents · 0 hooks · 0 plugin MCP servers · 1 plugin LSP server`。
+- 未记录账号 hash 原文；Desktop Code、Agent SDK、旧版本终端不可用，保留阻塞。
 
 ### 不能提前写成“已验证”的项目
 
-`docs/research/mod-spike.md` 的结论表 deliberately 保留“实测阻塞”：官方文档能确认能力和 API 形状，但没有授权在本轮自动启动真实 Claude 会话、读取用户账号文件、修改插件设置或访问网络。#510 中关于 Claude HUD `statusLine` 的 `rate_limits`/Unix 秒证据属于另一条输入路径，不能冒充 `$.session.usage()` 的实测结果。
+Desktop Code、Agent SDK 和低于 v2.1.287 的终端环境不可用，因此这些子项仍是实测阻塞。#510 中关于 Claude HUD `statusLine` 的 `rate_limits`/Unix 秒证据属于另一条输入路径，不能冒充 `$.session.usage()` 的实测结果。
 
 ## 快照与 #511 Schema v1 对照
 
