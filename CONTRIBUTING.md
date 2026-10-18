@@ -67,4 +67,3 @@ Draft PR 自动运行 Fast CI；Draft 的非必需提示任务只说明门禁尚
 - 确认没有提交凭据、个人绝对路径或生成产物。
 
 实现者的自检不等于最终审阅。维护者会独立核对 Issue 契约、完整 diff、验证证据和人工测试结果，并可能要求在同一个分支与 Pull Request 中继续修改。
-<!-- Issue 537 controlled fallback validation marker; removed after hosted test. -->
