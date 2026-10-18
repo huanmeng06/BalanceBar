@@ -1,0 +1,14 @@
+{
+  "name": "balancebar-mods",
+  "owner": {
+    "name": "BalanceBar"
+  },
+  "description": "Local marketplace for the BalanceBar Mod spike.",
+  "plugins": [
+    {
+      "name": "balancebar-mod-spike",
+      "source": "./",
+      "description": "Opt-in instrumentation for Claude Code Mod feasibility checks."
+    }
+  ]
+}
