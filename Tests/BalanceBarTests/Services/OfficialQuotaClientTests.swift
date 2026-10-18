@@ -189,32 +189,48 @@ final class OfficialQuotaClientTests: XCTestCase {
     func testClaudeProxyConfigurationBuildsHTTPSAndSOCKSSessions() throws {
         let httpsSession = OfficialQuotaClient.makeClaudeSession(
             proxyConfiguration: CCSwitchProxyConfiguration(
-                httpsProxy: URL(string: "http://proxy.example:8443"),
+                httpsProxy: URL(string: "https://user:password@proxy.example:8443"),
                 allProxy: URL(string: "socks5://fallback.example:1080")
             )
         )
-        let httpsProxy = try XCTUnwrap(httpsSession.configuration.connectionProxyDictionary)
-        XCTAssertEqual(httpsProxy["HTTPSEnable"] as? Bool, true)
-        XCTAssertEqual(httpsProxy["HTTPSProxy"] as? String, "proxy.example")
-        XCTAssertEqual(httpsProxy["HTTPSPort"] as? Int, 8443)
-        XCTAssertNil(httpsProxy["SOCKSEnable"])
+        XCTAssertEqual(httpsSession.configuration.proxyConfigurations.count, 1)
         httpsSession.invalidateAndCancel()
 
         let socksSession = OfficialQuotaClient.makeClaudeSession(
             proxyConfiguration: CCSwitchProxyConfiguration(allProxy: URL(string: "socks5://fallback.example:1080"))
         )
-        let socksProxy = try XCTUnwrap(socksSession.configuration.connectionProxyDictionary)
-        XCTAssertEqual(socksProxy["SOCKSEnable"] as? Bool, true)
-        XCTAssertEqual(socksProxy["SOCKSProxy"] as? String, "fallback.example")
-        XCTAssertEqual(socksProxy["SOCKSPort"] as? Int, 1080)
-        XCTAssertNil(socksProxy["HTTPSEnable"])
+        XCTAssertEqual(socksSession.configuration.proxyConfigurations.count, 1)
         socksSession.invalidateAndCancel()
 
         let directSession = OfficialQuotaClient.makeClaudeSession(
             proxyConfiguration: CCSwitchProxyConfiguration()
         )
-        XCTAssertNil(directSession.configuration.connectionProxyDictionary)
+        XCTAssertTrue(directSession.configuration.proxyConfigurations.isEmpty)
         directSession.invalidateAndCancel()
+    }
+
+    func testClaudeProxyConfigurationIsReadForEachNewTransport() throws {
+        var reads = 0
+        var configuration = CCSwitchProxyConfiguration()
+        var time = Date(timeIntervalSince1970: 1_700_000_000)
+        StubURLProtocol.setHandler { _ in StubResult(data: Self.claudeBody) }
+        let client = OfficialQuotaClient(
+            session: session,
+            claudeProxyConfigurationProvider: {
+                reads += 1
+                return configuration
+            },
+            credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "fixture"),
+            now: { time }
+        )
+
+        _ = try waitForResult(client, clientName: .claude, providerID: "dynamic-proxy-1")
+        configuration = CCSwitchProxyConfiguration(httpsProxy: URL(string: "http://proxy.example:8080"))
+        time.addTimeInterval(60)
+        _ = try waitForResult(client, clientName: .claude, providerID: "dynamic-proxy-2")
+
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
     }
 
     func testClaudeConnectionFailureIsClassifiedAsPossibleProxy() throws {

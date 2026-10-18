@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Network
 
 /// Errors surfaced by official OpenAI and Claude quota requests.
 /// Values never include a request URL or credential material.
@@ -221,6 +222,7 @@ final class OfficialQuotaClient {
     private let claudeProxyConfigurationProvider: (() -> CCSwitchProxyConfiguration)?
     private let claudeSessionLock = NSLock()
     private var claudeSessionStorage: URLSession?
+    private var claudeSessionConfiguration: CCSwitchProxyConfiguration?
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
     private let now: () -> Date
@@ -245,6 +247,7 @@ final class OfficialQuotaClient {
         session: URLSession? = nil,
         claudeSession: URLSession? = nil,
         claudeProxyConfiguration: CCSwitchProxyConfiguration? = nil,
+        claudeProxyConfigurationProvider: (() -> CCSwitchProxyConfiguration)? = nil,
         credentialReader: OfficialQuotaCredentialReading = CredentialReader(),
         parser: OfficialQuotaParsing = DefaultOfficialQuotaParser(),
         now: @escaping () -> Date = Date.init
@@ -252,8 +255,12 @@ final class OfficialQuotaClient {
         let baseSession = session ?? .shared
         self.session = baseSession
         self.claudeSessionStorage = claudeSession
-            ?? (claudeProxyConfiguration == nil && session != nil ? baseSession : nil)
-        if let claudeProxyConfiguration {
+            ?? (claudeProxyConfiguration == nil && claudeProxyConfigurationProvider == nil && session != nil ? baseSession : nil)
+        self.claudeSessionConfiguration = claudeSession != nil || (session != nil && claudeProxyConfiguration == nil && claudeProxyConfigurationProvider == nil)
+            ? CCSwitchProxyConfiguration() : nil
+        if let claudeProxyConfigurationProvider {
+            self.claudeProxyConfigurationProvider = claudeProxyConfigurationProvider
+        } else if let claudeProxyConfiguration {
             self.claudeProxyConfigurationProvider = { claudeProxyConfiguration }
         } else if session == nil && claudeSession == nil {
             self.claudeProxyConfigurationProvider = { CCSwitchRepository().claudeProxyConfiguration() }
@@ -273,40 +280,57 @@ final class OfficialQuotaClient {
         proxyConfiguration: CCSwitchProxyConfiguration
     ) -> URLSession {
         let configuration = baseSession?.configuration ?? URLSessionConfiguration.ephemeral
-        configuration.connectionProxyDictionary = connectionProxyDictionary(for: proxyConfiguration)
+        configuration.connectionProxyDictionary = nil
+        configuration.proxyConfigurations = proxyConfigurations(for: proxyConfiguration)
         return URLSession(configuration: configuration)
     }
 
-    private static func connectionProxyDictionary(
+    private static func proxyConfigurations(
         for configuration: CCSwitchProxyConfiguration
-    ) -> [AnyHashable: Any]? {
+    ) -> [ProxyConfiguration] {
         guard let proxy = configuration.httpsProxy ?? configuration.allProxy,
-              let host = proxy.host, !host.isEmpty else { return nil }
+              let host = proxy.host, !host.isEmpty,
+              let endpoint = proxyEndpoint(for: proxy) else { return [] }
         let scheme = proxy.scheme?.lowercased() ?? ""
         let port = proxy.port ?? {
             if scheme == "socks" || scheme == "socks5" || scheme == "socks5h" { return 1080 }
             return scheme == "https" ? 443 : 80
         }()
-        guard (1...65535).contains(port) else { return nil }
+        guard (1...65535).contains(port) else { return [] }
+        var proxyConfiguration: ProxyConfiguration
         if scheme == "socks" || scheme == "socks5" || scheme == "socks5h" {
-            return [
-                "SOCKSEnable": true,
-                "SOCKSProxy": host,
-                "SOCKSPort": port
-            ]
+            proxyConfiguration = ProxyConfiguration(socksv5Proxy: endpoint)
+        } else {
+            let tlsOptions = scheme == "https" ? NWProtocolTLS.Options() : nil
+            proxyConfiguration = ProxyConfiguration(httpCONNECTProxy: endpoint, tlsOptions: tlsOptions)
         }
-        return [
-            "HTTPSEnable": true,
-            "HTTPSProxy": host,
-            "HTTPSPort": port
-        ]
+        if let username = proxy.user {
+            proxyConfiguration.applyCredential(username: username, password: proxy.password ?? "")
+        }
+        return [proxyConfiguration]
+    }
+
+    private static func proxyEndpoint(for proxy: URL) -> NWEndpoint? {
+        let port = proxy.port ?? {
+            switch proxy.scheme?.lowercased() {
+            case "socks", "socks5", "socks5h": return 1080
+            case "https": return 443
+            default: return 80
+            }
+        }()
+        guard let host = proxy.host, !host.isEmpty,
+              (1...65535).contains(port),
+              let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else { return nil }
+        return .hostPort(host: NWEndpoint.Host(host), port: nwPort)
     }
 
     private func claudeSession() -> URLSession {
+        let configuration = claudeProxyConfigurationProvider?() ?? CCSwitchProxyConfiguration()
         claudeSessionLock.lock()
         defer { claudeSessionLock.unlock() }
-        if let claudeSessionStorage { return claudeSessionStorage }
-        let configuration = claudeProxyConfigurationProvider?() ?? CCSwitchProxyConfiguration()
+        if let claudeSessionStorage, claudeSessionConfiguration == configuration {
+            return claudeSessionStorage
+        }
         if configuration.isEmpty {
             claudeSessionStorage = session
         } else {
@@ -315,6 +339,7 @@ final class OfficialQuotaClient {
                 proxyConfiguration: configuration
             )
         }
+        claudeSessionConfiguration = configuration
         return claudeSessionStorage!
     }
 
