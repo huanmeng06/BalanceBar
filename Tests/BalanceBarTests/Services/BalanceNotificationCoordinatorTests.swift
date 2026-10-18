@@ -198,6 +198,36 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(client.deliveries.count, 1)
     }
 
+    func testClaudeAccountSwitchInvalidatesPreviousAccountSampleUntilNewAccountRefreshes() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.AccountSwitch.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        func snapshot(_ remaining: Double) -> Snapshot {
+            .official("Claude Official", remaining, "5h", nil, Date(), windows: [
+                OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                    reset: nil, durationSeconds: nil)
+            ])
+        }
+
+        // Account A's real low sample is stored while notifications are off.
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .claude)
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-official")
+        XCTAssertTrue(client.deliveries.isEmpty)
+
+        // Switch to account B; its first request fails with an error card (no snapshot).
+        coordinator.invalidateCurrentSamples(agent: .claude, providerIDs: ["claude-official"])
+        coordinator.refreshPermission()
+        XCTAssertTrue(client.deliveries.isEmpty, "account A's sample must not alert for account B")
+
+        // Account B's first successful refresh is evaluated normally.
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        XCTAssertEqual(client.deliveries.count, 1)
+    }
+
     func testApplyGlobalRulesRestoresInheritanceWithoutReenablingResources() {
         let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
         let suiteName = "BalanceNotificationCoordinatorTests.ApplyGlobalRules.\(UUID().uuidString)"

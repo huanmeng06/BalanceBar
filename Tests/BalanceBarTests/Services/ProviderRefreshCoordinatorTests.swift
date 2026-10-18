@@ -4193,6 +4193,10 @@ extension ProviderRefreshCoordinatorTests {
         actions.notificationSnapshot = { _, _, snapshot in
             notificationLock.lock(); notified.append(snapshot); notificationLock.unlock()
         }
+        var invalidated: [(AssistantClient, Set<String>)] = []
+        actions.notificationSamplesInvalidated = { client, ids in
+            notificationLock.lock(); invalidated.append((client, ids)); notificationLock.unlock()
+        }
         func notifications(stale: Bool = false) -> [Snapshot] {
             notificationLock.lock(); defer { notificationLock.unlock() }
             return notified.filter { ($0.staleReason != nil) == stale }
@@ -4248,6 +4252,12 @@ extension ProviderRefreshCoordinatorTests {
         wait(for: [next!], timeout: 3)
         XCTAssertFalse(renders.dropFirst(recoveredCount).contains { $0.staleReason != nil },
             "another account's quota must never be shown as stale data")
+        waitForCoordinator(coordinator)
+        notificationLock.lock(); let invalidations = invalidated; notificationLock.unlock()
+        XCTAssertEqual(invalidations.count, 1, "the account switch invalidates the previous account's notification samples")
+        XCTAssertEqual(invalidations.first?.0, .claude)
+        XCTAssertTrue(invalidations.first?.1.contains(current.id) == true)
+        XCTAssertEqual(notifications().count, 2, "account B's 429 produced no new notification sample")
     }
 
     func testClaudeAccountSwitchWhileRequestIsInFlightDropsPreviousAccountResult() throws {

@@ -799,6 +799,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                         providerID: providerID
                     )
                 },
+                notificationSamplesInvalidated: { [weak self] client, providerIDs in
+                    self?.notificationCoordinator.invalidateCurrentSamples(
+                        agent: Self.notificationAgent(for: client), providerIDs: providerIDs)
+                },
                 quickSwitchSafetyChanged: { [weak self] safety in
                     DispatchQueue.main.async { [weak self] in
                         guard let self else { return }

@@ -221,6 +221,9 @@ struct ProviderRefreshActions {
     var storeClientSnapshotWithRevision: ((AssistantClient, String, String, Snapshot) -> Void)? = nil
     let quickSwitchSummaryChanged: (String) -> Void
     var notificationSnapshot: ((AssistantClient, String, Snapshot) -> Void)? = nil
+    /// The account behind these providers' last notification samples changed;
+    /// those samples must no longer be evaluated as current.
+    var notificationSamplesInvalidated: ((AssistantClient, Set<String>) -> Void)? = nil
     var quickSwitchSafetyChanged: ((CCSwitchQuickSwitchSafety) -> Void)? = nil
     var aggregationChanged: (([AggregatedProviderDisplay], Bool) -> Void)? = nil
     var ownedRender: ((String, Snapshot) -> Void)? = nil
@@ -1282,6 +1285,10 @@ final class ProviderRefreshCoordinator {
     /// payloads, both official cadences, and the standard display. The next
     /// refresh requests the new account immediately.
     private func invalidateClaudeAccountData(newFingerprint: String?) {
+        // Every Claude official provider shares the signed-in account, so all of
+        // their notification samples belonged to the previous account.
+        var officialIDs = Set(lastClaudeOfficialSnapshots.keys)
+        officialIDs.formUnion(knownOfficialSummaryIDs.filter { $0.client == .claude }.map(\.providerID))
         lastClaudeOfficialSnapshots.removeAll()
         lastOfficialSummaryFetch = lastOfficialSummaryFetch.filter { $0.key.client != .claude }
         lastAPISummaryFetch = lastAPISummaryFetch.filter { $0.key.client != .claude }
@@ -1292,6 +1299,12 @@ final class ProviderRefreshCoordinator {
         }
         quickSwitchSummaryLock.unlock()
         summaryIDs.forEach { removeQuickSwitchSummary(providerID: $0, client: .claude) }
+        let standardParts = lastStandardSourceKey?.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+        if let standardParts, standardParts.count == 3, standardParts[0] == AssistantClient.claude.appType {
+            officialIDs.insert(standardParts[1])
+        }
+        officialIDs.formUnion(summaryIDs)
+        if !officialIDs.isEmpty { actions.notificationSamplesInvalidated?(.claude, officialIDs) }
 
         if let previous = standardOfficialRequests[.claude],
            OfficialQuotaClient.claudeAccountFingerprint(previous.credentials) != newFingerprint {

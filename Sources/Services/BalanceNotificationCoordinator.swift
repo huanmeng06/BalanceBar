@@ -490,6 +490,17 @@ final class BalanceNotificationCoordinator {
         }
     }
 
+    /// The account behind these samples changed (for example a Claude account
+    /// switch). Rules and the stored sample stay; until a real refresh for the
+    /// new account arrives, the sample is not re-evaluated as current.
+    func invalidateCurrentSamples(agent: BalanceNotificationAgent, providerIDs: Set<String>) {
+        onQueue {
+            for providerID in providerIDs {
+                self.staleSampleKeys.insert(SnapshotKey(agent: agent, providerID: providerID))
+            }
+        }
+    }
+
     private func storeSnapshotOnQueue(
         _ snapshot: Snapshot,
         agent: BalanceNotificationAgent,
