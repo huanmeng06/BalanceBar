@@ -106,4 +106,51 @@ final class QuotaNotificationAdapterTests: XCTestCase {
         adapter.update(model(fiveHourUsed: 1), accountScope: "acct")
         XCTAssertEqual(client.deliveries.count, 2)
     }
+
+    func testConcurrentResetCannotDeliverStaleSnapshotAfterNewerOne() {
+        let processor = BlockingSnapshotProcessor(blockingRemaining: 10)
+        let adapter = QuotaNotificationAdapter(processor: processor, providerID: "claude-official")
+        adapter.update(model(fiveHourUsed: 50), accountScope: "acct")
+
+        let group = DispatchGroup()
+        DispatchQueue.global().async(group: group) {
+            adapter.update(self.model(fiveHourUsed: 90), accountScope: "acct")
+        }
+        XCTAssertEqual(processor.entered.wait(timeout: .now() + 5), .success)
+        DispatchQueue.global().async(group: group) {
+            adapter.publish(.resetConfirmed(window: .fiveHour))
+            adapter.update(self.model(fiveHourUsed: 2), accountScope: "acct")
+        }
+        Thread.sleep(forTimeInterval: 0.2)
+        XCTAssertEqual(processor.recorded, [50, 10])
+
+        processor.gate.signal()
+        XCTAssertEqual(group.wait(timeout: .now() + 5), .success)
+        XCTAssertEqual(processor.recorded, [50, 10, 98])
+    }
+}
+
+/// Records each snapshot's 5h remaining value; blocks inside `process` on
+/// one value so the test can interleave a second caller.
+private final class BlockingSnapshotProcessor: QuotaNotificationSnapshotProcessing {
+    let entered = DispatchSemaphore(value: 0)
+    let gate = DispatchSemaphore(value: 0)
+    private let blockingRemaining: Double
+    private let lock = NSLock()
+    private var values: [Double] = []
+
+    init(blockingRemaining: Double) {
+        self.blockingRemaining = blockingRemaining
+    }
+
+    var recorded: [Double] { lock.withLock { values } }
+
+    func process(snapshot: Snapshot, agent: BalanceNotificationAgent, providerID: String) {
+        let remaining = snapshot.officialQuotaWindows.first { $0.kind == .fiveHour }?.remaining ?? -1
+        lock.withLock { values.append(remaining) }
+        if remaining == blockingRemaining {
+            entered.signal()
+            gate.wait()
+        }
+    }
 }

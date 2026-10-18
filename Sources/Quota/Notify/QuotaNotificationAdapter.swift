@@ -19,6 +19,11 @@ extension BalanceNotificationCoordinator: QuotaNotificationSnapshotProcessing {}
 /// - A rise in remaining quota (which the existing rules treat as recovery)
 ///   is held back until `.resetConfirmed` arrives for that window, so a
 ///   predicted-but-unconfirmed reset never produces a recovery notification.
+///
+/// Safe to call from any thread. Calls are serialized, and each snapshot is
+/// handed to the processor inside the same critical section that produced
+/// it, so the processor sees snapshots in state-change order. The processor
+/// must therefore never call back into this adapter.
 final class QuotaNotificationAdapter: QuotaNotificationSink {
     private struct WindowState {
         /// Remaining percentage last handed to the existing rules.
@@ -49,7 +54,7 @@ final class QuotaNotificationAdapter: QuotaNotificationSink {
 
     /// Forwards the official part of one merged display model.
     func update(_ model: QuotaDisplayModel, accountScope: String?) {
-        let snapshot: Snapshot? = lock.withLock {
+        lock.withLock {
             if accountScope != self.accountScope {
                 self.accountScope = accountScope
                 windows = [:]
@@ -74,31 +79,34 @@ final class QuotaNotificationAdapter: QuotaNotificationSink {
                 }
                 windows[display.kind] = state
             }
-            return changed ? makeSnapshot() : nil
+            if changed { submit(makeSnapshot()) }
         }
-        if let snapshot { processor.process(snapshot: snapshot, agent: agent, providerID: providerID) }
     }
 
     func publish(_ event: QuotaNotificationEvent) {
         switch event {
         case let .resetConfirmed(window):
-            let snapshot: Snapshot? = lock.withLock {
-                guard var state = windows[window] else { return nil }
+            lock.withLock {
+                guard var state = windows[window] else { return }
                 guard let held = state.heldRemaining else {
                     // The confirming official value has not arrived yet; let
                     // the next higher value through.
                     state.resetConfirmed = true
                     windows[window] = state
-                    return nil
+                    return
                 }
                 state.forwardedRemaining = held
                 state.heldRemaining = nil
                 state.resetConfirmed = false
                 windows[window] = state
-                return makeSnapshot()
+                submit(makeSnapshot())
             }
-            if let snapshot { processor.process(snapshot: snapshot, agent: agent, providerID: providerID) }
         }
+    }
+
+    /// Must be called with `lock` held; see the type's ordering contract.
+    private func submit(_ snapshot: Snapshot) {
+        processor.process(snapshot: snapshot, agent: agent, providerID: providerID)
     }
 
     private static func officialRemaining(_ display: QuotaWindowDisplay) -> Double? {
