@@ -26,6 +26,10 @@
     {
       "kind": "sonnet_context",
       "used_percentage": 12.0
+    },
+    {
+      "kind": "extra_usage",
+      "used_percentage": 35.0
     }
   ]
 }

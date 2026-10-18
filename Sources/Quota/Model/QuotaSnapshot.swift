@@ -30,15 +30,16 @@ public enum QuotaSnapshotError: Error, Equatable, LocalizedError {
 
 /// A required rolling-window value in the Schema v1 payload.
 public struct QuotaSnapshotWindow: Codable, Equatable {
-    /// Percentage already used, constrained to 0...100.
-    public let usedPercentage: Double
+    /// Percentage already used, constrained to 0...100 when present.
+    /// `nil` represents a valid source value that is currently unknown.
+    public let usedPercentage: Double?
 
     /// Absolute reset time supplied by the source, when available.
     public let resetsAt: Date?
 
     /// Creates a validated snapshot window.
-    public init?(usedPercentage: Double, resetsAt: Date? = nil) {
-        guard usedPercentage.isFinite, (0...100).contains(usedPercentage),
+    public init?(usedPercentage: Double?, resetsAt: Date? = nil) {
+        guard usedPercentage.map({ $0.isFinite && (0...100).contains($0) }) ?? true,
               resetsAt?.timeIntervalSince1970.isFinite ?? true else {
             return nil
         }
@@ -53,8 +54,17 @@ public struct QuotaSnapshotWindow: Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let percentage = try container.decode(Double.self, forKey: .usedPercentage)
-        guard percentage.isFinite, (0...100).contains(percentage) else {
+        guard container.contains(.usedPercentage) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.usedPercentage,
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Required used_percentage field is missing"
+                )
+            )
+        }
+        let percentage = try container.decodeIfPresent(Double.self, forKey: .usedPercentage)
+        if let percentage, !(percentage.isFinite && (0...100).contains(percentage)) {
             throw QuotaSnapshotError.invalidPercentage(field: "used_percentage", value: percentage)
         }
 
@@ -129,7 +139,11 @@ public struct QuotaSnapshotWindowEntry: Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let kind = QuotaWindowKind(rawValue: try container.decode(String.self, forKey: .kind))
+        let kindString = try container.decode(String.self, forKey: .kind)
+        guard !kindString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw QuotaSnapshotError.emptyField("windows[].kind")
+        }
+        let kind = QuotaWindowKind(rawValue: kindString)
         let percentage = try container.decode(Double.self, forKey: .usedPercentage)
         guard percentage.isFinite, (0...100).contains(percentage) else {
             throw QuotaSnapshotError.invalidPercentage(field: "windows[].used_percentage", value: percentage)

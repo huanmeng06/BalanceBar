@@ -18,8 +18,8 @@ final class QuotaModelTests: XCTestCase {
             snapshot.updatedAt,
             formatter.date(from: "2026-10-17T06:12:03Z")
         )
-        XCTAssertEqual(snapshot.fiveHour.usedPercentage, 34)
-        XCTAssertEqual(snapshot.sevenDay.usedPercentage, 61.5)
+        XCTAssertEqual(try XCTUnwrap(snapshot.fiveHour.usedPercentage), 34)
+        XCTAssertEqual(try XCTUnwrap(snapshot.sevenDay.usedPercentage), 61.5)
         XCTAssertEqual(snapshot.source, "unknown")
         XCTAssertNil(snapshot.account)
         XCTAssertTrue(snapshot.windows.isEmpty)
@@ -30,11 +30,13 @@ final class QuotaModelTests: XCTestCase {
 
         XCTAssertEqual(snapshot.source, "balancebar-mod")
         XCTAssertEqual(snapshot.account?.emailHash, "sha256:4a1d8cd98f00b204e9800998ecf8427e")
-        XCTAssertEqual(snapshot.windows.count, 3)
+        XCTAssertEqual(snapshot.windows.count, 4)
         XCTAssertEqual(snapshot.windows[0].kind, .fiveHour)
         XCTAssertEqual(snapshot.windows[1].kind, .sevenDay)
-        XCTAssertEqual(snapshot.windows[2].kind, .other)
+        XCTAssertEqual(snapshot.windows[2].kind, .other("sonnet_context"))
         XCTAssertEqual(snapshot.windows[2].usedPercentage, 12)
+        XCTAssertEqual(snapshot.windows[3].kind, .other("extra_usage"))
+        XCTAssertEqual(snapshot.windows[3].usedPercentage, 35)
     }
 
     func testCorruptOutOfRangeAndMissingWindowFixturesAreRejected() throws {
@@ -52,8 +54,8 @@ final class QuotaModelTests: XCTestCase {
         }
         """
         let snapshot = try QuotaSnapshot.decode(Data(payload.utf8))
-        XCTAssertEqual(snapshot.fiveHour.usedPercentage, 0)
-        XCTAssertEqual(snapshot.sevenDay.usedPercentage, 100)
+        XCTAssertEqual(try XCTUnwrap(snapshot.fiveHour.usedPercentage), 0)
+        XCTAssertEqual(try XCTUnwrap(snapshot.sevenDay.usedPercentage), 100)
 
         let oversized = Data(repeating: 0x20, count: QuotaConstants.snapshotMaximumSizeBytes + 1)
         XCTAssertThrowsError(try QuotaSnapshot.decode(oversized)) { error in
@@ -73,8 +75,24 @@ final class QuotaModelTests: XCTestCase {
         let decoded = try QuotaSnapshot.decode(encoded)
 
         XCTAssertEqual(decoded, original)
-        XCTAssertTrue(String(decoding: encoded, as: UTF8.self).contains("updated_at"))
-        XCTAssertTrue(String(decoding: encoded, as: UTF8.self).contains("used_percentage"))
+        let encodedText = String(decoding: encoded, as: UTF8.self)
+        XCTAssertTrue(encodedText.contains("updated_at"))
+        XCTAssertTrue(encodedText.contains("used_percentage"))
+        XCTAssertTrue(encodedText.contains("sonnet_context"))
+        XCTAssertTrue(encodedText.contains("extra_usage"))
+    }
+
+    func testHUDFixtureAllowsNullPercentageAndRoundTripsNull() throws {
+        let original = try QuotaSnapshot.decode(fixture("hud-null-percentage.json"))
+
+        XCTAssertEqual(try XCTUnwrap(original.fiveHour.usedPercentage), 34)
+        XCTAssertNil(original.sevenDay.usedPercentage)
+
+        let encoded = try original.encodedData()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let sevenDay = try XCTUnwrap(object["seven_day"] as? [String: Any])
+        XCTAssertTrue(sevenDay["used_percentage"] is NSNull)
+        XCTAssertEqual(try QuotaSnapshot.decode(encoded), original)
     }
 
     func testModelTypesValidateObservationAndExposeDisplayContract() throws {

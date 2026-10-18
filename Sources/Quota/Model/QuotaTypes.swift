@@ -137,20 +137,24 @@ public enum QuotaWindowKind: Codable, Equatable, Hashable, CustomStringConvertib
     case sevenDay
 
     /// A provider-specific window that is not one of the two standard windows.
-    case other
+    ///
+    /// The associated value preserves the source's original kind string so an
+    /// unknown window can be decoded and encoded without information loss.
+    case other(String)
 
     /// The canonical Schema v1 name for this window category.
     public var rawValue: String {
         switch self {
         case .fiveHour: return "five_hour"
         case .sevenDay: return "seven_day"
-        case .other: return "other"
+        case let .other(value): return value
         }
     }
 
     /// Creates a category from common HUD/Schema spellings.
     public init(rawValue: String) {
-        let normalized = rawValue
+        let preserved = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = preserved
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .replacingOccurrences(of: "-", with: "_")
@@ -158,7 +162,7 @@ public enum QuotaWindowKind: Codable, Equatable, Hashable, CustomStringConvertib
         switch normalized {
         case "five_hour", "fivehour", "5h": self = .fiveHour
         case "seven_day", "sevenday", "7d": self = .sevenDay
-        default: self = .other
+        default: self = .other(preserved)
         }
     }
 
