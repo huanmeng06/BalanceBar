@@ -1,6 +1,6 @@
 # Claude Code Mod spike (BB-02 / Issue #512)
 
-状态：已完成可用终端和 Desktop Code 环境中的人工验证；针对审查意见增加了显式 opt-in 的 headless `session.measure` 记录机制。Agent SDK、低于 v2.1.287 的终端环境和跨账号 hash 稳定性不可用/未完成，相关项目保留为阻塞。本文把官方文档推断、实现检查和运行时实测分开，不把推断写成实测。
+状态：已完成可用终端、Desktop Code 和 Agent SDK 环境中的人工验证；针对审查意见增加了显式 opt-in 的 headless `session.measure` 记录机制。低于 v2.1.287 的终端环境和跨账号 hash 稳定性不可用/未完成，相关项目保留为阻塞。本文把官方文档推断、实现检查和运行时实测分开，不把推断写成实测。
 
 ## 范围、基线与缺失输入
 
@@ -36,7 +36,7 @@ $ claude --version
 | # | 结论 | 证据边界 | 可复现命令/步骤 | 当前状态 |
 |---|---|---|---|---|
 | 1 | 实测 `$.session.usage()` 返回 `rateLimits`；当前终端输出的 kind 为 `five_hour` / `seven_day`，`percentUsed` 为数字 `1` / `0`，`resetsAt` 为 ISO 字符串。 | 这是当前账号、当前终端会话的实测，不外推到其他账号或版本。 | 通过 `/balancebar-mod-spike` 写出的 JSON 读取 `raw_rate_limits`；对应 `windows` 保留同样 kind 和 ISO `resets_at`。 | 当前终端 PASS |
-| 2 | 交互式终端、两个并行会话和 Desktop Code 均观察到 `measureEvents=2`；审查后增加 `BALANCEBAR_MOD_RECORD_MEASURE=1`，使普通 `claude -p` turn 可显式写出 `session.measure` 快照。Agent SDK 不可用/未测。 | 交互式、并行、Desktop 和新的 headless recorder 均有用户实测；headless command-only 只证明 Mod 可加载和 API 可用。 | `BALANCEBAR_MOD_INBOX=/tmp/... BALANCEBAR_MOD_RECORD_MEASURE=1 claude -p "..." --plugin-dir ./mod-prototype` 已产生 `event=session.measure` 的 JSON。 | CLI/并行/Desktop/headless PASS；Agent SDK 阻塞 |
+| 2 | 交互式终端、两个并行会话、Desktop Code 和 Agent SDK 均观察到 `session.measure`；审查后增加 `BALANCEBAR_MOD_RECORD_MEASURE=1`，使普通 headless turn 可显式写出快照。 | Agent SDK 真实会话生成两个快照，`measure_events=2` 和 `1`；两次均为 `rate_limits_available=true`，包含 `five_hour`/`seven_day`。 | Python Agent SDK 使用本地插件路径、临时 inbox 和 `BALANCEBAR_MOD_RECORD_MEASURE=1`；检查 JSON 的 `mod_observation.event=session.measure`。 | CLI/并行/Desktop/Agent SDK PASS |
 | 3 | `$.fs.write` 在两个交互式会话、`claude -p`、安装版新会话和 Desktop Code 的默认 BalanceBar inbox 均成功。`~/.claude` fallback、loopback HTTP 未测。 | 临时目录与默认收件箱结果是实测；不能外推到 fallback 或 HTTP 服务。 | Desktop 中第一次无目标目录时为 `blocked`；创建 `~/Library/Application Support/BalanceBar/inbox/` 后再次执行得到 `write=written`。 | 临时/默认路径 PASS；fallback/HTTP 阻塞 |
 | 4 | 交互式终端和 `claude -p` 中设置 `BALANCEBAR_MOD_FORCE_FAILURE=1` 后，Claude 仍正常工作；命令返回 `blocked (forced probe failure for isolation test)`。 | 这是当前 Claude Code 2.1.291 的实测。 | 故障探针命令返回 blocked，但会话没有崩溃或中断。 | PASS |
 | 5 | Marketplace add/install、安装版新会话自动加载和 `/reload-plugins` 均成功。 | 用户手动 transcript 已记录 JSON 输出及独立 shell exit code。 | add 返回 `outcome=ok`、`marketplace_exit=0`；install 返回 `outcome=ok`、`install_exit=0`；新会话显示 `1 mod active`；reload 返回 `Reloaded: 3 plugins ...`。 | PASS |
@@ -50,13 +50,24 @@ $ claude --version
 - `claude -p "/balancebar-mod-spike" --plugin-dir ./mod-prototype` 得到 `rateLimits=available`、`measureEvents=0`、`account=hashed`、`write=written`；这是 command-only headless 检查，不是 `session.measure` turn 触发证据。
 - 交互式与 headless 故障隔离均返回 `blocked (forced probe failure for isolation test)`，会话仍继续。
 - local marketplace add/install 均返回 `outcome=ok`；安装版新会话显示 `1 mod active`；`/reload-plugins` 返回 `Reloaded: 3 plugins · 2 skills · 6 agents · 0 hooks · 0 plugin MCP servers · 1 plugin LSP server`。
-- Desktop Code 第二次执行在创建默认收件箱后得到 `write=written`，路径为 `~/Library/Application Support/BalanceBar/inbox/`；未记录账号 hash 原文。Agent SDK、旧版本终端和跨账号 hash 稳定性保留阻塞。
-- 审查修复增加 `BALANCEBAR_MOD_RECORD_MEASURE=1`；用户运行普通 `claude -p` 后产生了 `event=session.measure`、`measure_events=1`、`rate_limits_available=true` 的 JSON，且默认行为仍不自动写入。
+- Desktop Code 第二次执行在创建默认收件箱后得到 `write=written`，路径为 `~/Library/Application Support/BalanceBar/inbox/`；Agent SDK 生成两个临时快照，未记录账号 hash 原文。旧版本终端和跨账号 hash 稳定性保留阻塞。
+- 审查修复增加 `BALANCEBAR_MOD_RECORD_MEASURE=1`；用户运行普通 `claude -p` 后产生了 `event=session.measure`、`measure_events=1`、`rate_limits_available=true` 的 JSON；随后 Agent SDK 真实会话生成两个 `session.measure` 快照，`measure_events=2` 和 `1`，且默认行为仍不自动写入。
 - 用户手动安装 transcript：Marketplace add 返回 `outcome=ok`、`marketplace_exit=0`；install 返回 `outcome=ok`、`install_exit=0`。Worker 沙箱重跑因共享 `.claude/settings.local.json` 权限受限而得到 `error_permission`，不作为用户命令结果。
+- 完整脱敏安装 transcript：
+
+  ```text
+  $ claude plugin marketplace add ./mod-prototype --scope local --json
+  {"command":"marketplace-add","outcome":"ok","marketplace":"balancebar-mods","message":"Marketplace 'balancebar-mods' already on disk — declared in local settings"}
+  marketplace_exit=0
+
+  $ claude plugin install balancebar-mod-spike@balancebar-mods --scope local --json
+  {"command":"install","outcome":"ok","plugin":"balancebar-mod-spike@balancebar-mods","pluginId":"balancebar-mod-spike@balancebar-mods","scope":"local","message":"Plugin \\"balancebar-mod-spike@balancebar-mods\\" is already installed (scope: local) — it loads in place from /Users/huan_meeng/.codex/worktrees/c71c/BalanceBar/mod-prototype, so edits there take effect at the next session start or /reload-plugins","installedVersion":"0.1.0","availableVersion":"0.1.0"}
+  install_exit=0
+  ```
 
 ### 不能提前写成“已验证”的项目
 
-Agent SDK 和低于 v2.1.287 的终端环境不可用，因此这些子项仍是实测阻塞；终端版本兼容策略已明确为不支持时不启用/不写入并提示升级。#510 中关于 Claude HUD `statusLine` 的 `rate_limits`/Unix 秒证据属于另一条输入路径，不能冒充 `$.session.usage()` 的实测结果。
+低于 v2.1.287 的终端环境不可用，跨账号/重新登录后的 hash 稳定性也未完成；终端版本兼容策略已明确为不支持时不启用/不写入并提示升级。#510 中关于 Claude HUD `statusLine` 的 `rate_limits`/Unix 秒证据属于另一条输入路径，不能冒充 `$.session.usage()` 的实测结果。
 
 ## 快照与 #511 Schema v1 对照
 
