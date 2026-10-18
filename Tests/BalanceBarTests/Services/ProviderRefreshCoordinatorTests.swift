@@ -4080,6 +4080,7 @@ private final class AtomicFlag {
     private var value = false
     var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
     func set() { lock.lock(); value = true; lock.unlock() }
+    func clear() { lock.lock(); value = false; lock.unlock() }
 }
 
 /// Lets a test switch the signed-in Claude account while a request is in flight.
@@ -4179,13 +4180,20 @@ extension ProviderRefreshCoordinatorTests {
         var renders: [Snapshot] = []
         var next: XCTestExpectation?
         var awaitedKind: Snapshot.Kind = .official
-        let actions = ProviderRefreshActions(
+        var awaitStale = false
+        var actions = ProviderRefreshActions(
             currentProvider: { [repository] in repository?.loadCurrent(appType: $0.appType) },
             isActiveClient: { $0 == .claude }, render: { snapshot in
                 renders.append(snapshot)
-                if snapshot.kind == awaitedKind { next?.fulfill(); next = nil }
+                if snapshot.kind == awaitedKind, (snapshot.staleReason != nil) == awaitStale { next?.fulfill(); next = nil }
             },
             storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        let notificationLock = NSLock()
+        var notified: [Snapshot] = []
+        actions.notificationSnapshot = { _, _, snapshot in
+            notificationLock.lock(); notified.append(snapshot); notificationLock.unlock()
+        }
+        func notifications() -> [Snapshot] { notificationLock.lock(); defer { notificationLock.unlock() }; return notified }
         let official = OfficialQuotaClient(session: session, credentialReader: reader, now: { clock.now })
         let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
             actions: actions, now: { clock.now })
@@ -4196,8 +4204,12 @@ extension ProviderRefreshCoordinatorTests {
         let fresh = try XCTUnwrap(renders.last)
         XCTAssertNil(fresh.staleReason)
 
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(notifications().count, 1)
+
         rateLimited.set()
         clock.advance(by: 60)
+        awaitStale = true
         next = expectation(description: "same account rate-limited")
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         wait(for: [next!], timeout: 3)
@@ -4209,14 +4221,29 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(stale.date, fresh.date, "the card keeps the last successful refresh time")
         let waitUntil = try XCTUnwrap(official.claudeRateLimitedUntil(), "menu refresh is disabled during the wait")
         XCTAssertGreaterThan(waitUntil, clock.now)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(notifications().count, 1, "kept 429 data is display-only and never a notification sample")
 
+        // Recovery after the server wait publishes a real sample again.
+        rateLimited.clear()
+        clock.advance(by: waitUntil.timeIntervalSince(clock.now) + 60)
+        awaitStale = false
+        next = expectation(description: "recovered quota")
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [next!], timeout: 3)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(notifications().count, 2)
+        XCTAssertTrue(notifications().allSatisfy { $0.staleReason == nil })
+        let recoveredCount = renders.count
+
+        rateLimited.set()
         reader.set("account-b")
         clock.advance(by: 60)
         awaitedKind = .error
         next = expectation(description: "new account rate-limited")
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         wait(for: [next!], timeout: 3)
-        XCTAssertFalse(renders.dropFirst(2).contains { $0.staleReason != nil },
+        XCTAssertFalse(renders.dropFirst(recoveredCount).contains { $0.staleReason != nil },
             "another account's quota must never be shown as stale data")
     }
 

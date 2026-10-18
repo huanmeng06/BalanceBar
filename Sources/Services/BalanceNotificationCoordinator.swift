@@ -472,6 +472,9 @@ final class BalanceNotificationCoordinator {
         agent: BalanceNotificationAgent,
         providerID: String
     ) {
+        // Data kept on screen after a failed refresh must neither trigger an
+        // alert nor replace the last real sample used for later evaluation.
+        guard snapshot.staleReason == nil else { return }
         onQueue {
             self.storeSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)
             self.processSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)

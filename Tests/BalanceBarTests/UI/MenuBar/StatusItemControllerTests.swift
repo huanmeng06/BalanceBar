@@ -3314,6 +3314,44 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testOpenMenuUpdatesStaleRefreshTimeInPlaceThroughRateLimitAndRecovery() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let fetchedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 86, label: "5h", daysText: "5 hours",
+            reset: "1h5m", durationSeconds: 18_000, resetAt: fetchedAt.addingTimeInterval(3_900))
+        let fresh = Snapshot.official("Claude Official", 86, "5h", "1h5m", fetchedAt, windows: [window])
+        var stale = fresh
+        stale.staleReason = "Too many requests (HTTP 429)"
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        controller.start(snapshot: fresh, refreshDate: fetchedAt, menuInput: input, settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        func fields(_ view: NSView) -> [NSTextField] { (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap(fields) }
+        func time() throws -> NSTextField {
+            XCTAssertTrue(controller.menuItemsForTesting.first?.view === host, "the open menu updates the card in place")
+            return try XCTUnwrap(fields(host).first { $0.identifier?.rawValue == "overview.refreshTime" })
+        }
+        let plain = try time().stringValue
+        XCTAssertFalse(plain.contains("⚠︎"))
+
+        controller.update(snapshot: stale, refreshDate: fetchedAt, menuInput: input, settings: makeSettings())
+        XCTAssertEqual(try time().stringValue, "⚠︎ " + plain, "normal → 429 shows the warning")
+        XCTAssertEqual(try time().textColor, .systemOrange)
+        XCTAssertEqual(try time().toolTip, "Too many requests (HTTP 429)")
+        XCTAssertTrue(try time().accessibilityLabel()?.contains("HTTP 429") == true)
+
+        controller.update(snapshot: fresh, refreshDate: fetchedAt.addingTimeInterval(60), menuInput: input, settings: makeSettings())
+        XCTAssertFalse(try time().stringValue.contains("⚠︎"), "recovery clears the warning")
+        XCTAssertEqual(try time().textColor, .secondaryLabelColor)
+        XCTAssertNil(try time().toolTip)
+        XCTAssertFalse(try time().accessibilityLabel()?.contains("HTTP 429") == true)
+    }
+
+    @MainActor
     func testAggregationAndDirectBalanceTitlesOpenTheirOwnSafeWebsite() throws {
         var opened: [URL] = []
         var currentWebsiteOpens = 0
