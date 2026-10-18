@@ -44,6 +44,7 @@ a network request by itself.
 | Domain | Sources/Domain/ | Value types and pure planning rules: AssistantClient, BalanceQuery, provider models, Snapshot, StatusLink, and official/balance overview card layout. |
 | Services | Sources/Services/ | CC Switch SQLite access/watchers, credential readers, URL sessions, balance/quota clients, response parsing, provider refresh, and provider switching. |
 | Monitoring | Sources/Monitoring/ | Codex/Claude activity observation and ActivityCoordinator, including process, SQLite, NSWorkspace, timer, and notification integration. |
+| Quota contract | Sources/Quota/Model/, Tests/Fixtures/Quota/, Tests/BalanceBarTests/Quota/ | Provider-neutral quota identities, observations, display state, source protocols, centralized request constants, Schema v1 decoding, and contract fixtures. |
 | Menu-bar UI | Sources/UI/MenuBar/ | NSStatusItem, status menu content, menu-bar geometry, views, and activity animation. |
 | Dashboard UI | Sources/UI/Dashboard/ | Dashboard composition, native window/delegate, components, native settings rows, preference/provider pages, and the status-link editor. The status-link editor is the existing SwiftUI island hosted by AppKit. |
 | Tests | Tests/BalanceBarTests/ | XCTest coverage for domain rules, parsers, clients, repositories, monitoring, menu-bar geometry, dashboard components/pages/window behavior, preferences, and composition wiring. |
@@ -116,6 +117,15 @@ parsers are pure and fixture-testable. Keep HTTP, credential, endpoint, and
 retry behavior in the corresponding service client (BalanceAPIClient or
 OfficialQuotaClient). Provider pages consume the
 resulting models; they do not parse response payloads.
+
+### Shared quota contract
+
+The shared quota contract lives under `Sources/Quota/Model/`. It contains only
+value types, protocol seams, centralized constants, and Schema v1 validation;
+it does not own request scheduling, source adapters, persistence, or UI wiring.
+Schema fixtures and focused contract tests live under `Tests/Fixtures/Quota/`
+and `Tests/BalanceBarTests/Quota/` respectively. Later quota modules depend on
+these contracts through the public protocols and value types.
 
 ### A native window or AppKit capability
 

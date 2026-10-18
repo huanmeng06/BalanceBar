@@ -866,7 +866,17 @@ final class StatusItemControllerTests: XCTestCase {
             menuIdentities
         )
         XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        // The controller hops to the main queue and waits for AppKit to report
+        // the outgoing menu window hidden; a fixed 20 ms wait is too strict
+        // for the hosted runner.
+        let rebuildDeadline = Date().addingTimeInterval(2)
+        while controller.statusMenuRebuildCountForTesting < rebuildBefore + 1,
+              Date() < rebuildDeadline {
+            RunLoop.main.run(
+                mode: .default,
+                before: Date().addingTimeInterval(0.01)
+            )
+        }
         XCTAssertEqual(controller.statusMenuRebuildCountForTesting, rebuildBefore + 1,
             "the deferred rebuild must complete while closed")
         controller.menuWillOpen(controller.statusMenuForTesting)
