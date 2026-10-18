@@ -29,7 +29,7 @@ def api(path, timeout=20):
 
 def api_text(path, timeout=30):
     return subprocess.check_output(
-        ['gh', 'api', '--allow-escape-sequences', path],
+        ['gh', 'api', path],
         text=True, timeout=timeout)
 
 
@@ -288,21 +288,22 @@ def validate_version_chain(previous_head, current_head):
     return len(commits)
 
 
-def list_workflow_runs(repo, workflow_id):
+def list_workflow_runs_for_head(repo, workflow_id, head_sha):
     runs = []
     for page in range(1, MAX_RUN_PAGES + 1):
         data = api(
-            f'repos/{repo}/actions/workflows/{workflow_id}/runs?event=pull_request&per_page=100&page={page}')
+            f'repos/{repo}/actions/workflows/{workflow_id}/runs?event=pull_request'
+            f'&head_sha={head_sha}&per_page=100&page={page}')
         page_runs = data.get('workflow_runs')
         total = data.get('total_count')
         if not isinstance(page_runs, list) or not isinstance(total, int):
-            raise EvidenceError('workflow run response incomplete')
+            raise EvidenceError('head-scoped workflow run response incomplete')
         runs.extend(page_runs)
         if len(runs) >= total:
             return runs
         if not page_runs:
-            raise EvidenceError('workflow run pagination incomplete')
-    raise EvidenceError('workflow run pagination exceeds safety bound')
+            raise EvidenceError('head-scoped workflow run pagination incomplete')
+    raise EvidenceError('head-scoped workflow run pagination exceeds safety bound')
 
 
 def run_belongs_to_pr(run, pr_number, head_ref):
@@ -332,6 +333,35 @@ def nearest_prior_head(runs, current_head):
     if len(choices) != 1:
         raise EvidenceError('ambiguous nearest prior validation head')
     return choices[0]
+
+
+def prior_commit_heads(base_sha, current_head):
+    commits = git(
+        'rev-list', '--first-parent', '--reverse', f'{base_sha}..{current_head}'
+    ).splitlines()
+    if not commits:
+        raise EvidenceError('version increment has no auditable prior commits')
+    return commits
+
+
+def find_nearest_prior_runs(repo, workflow_id, pr_number, head_ref,
+                            current_run_id, base_sha, current_head):
+    # Query Actions by each PR commit head instead of scanning the repository's
+    # entire workflow history. Large repositories can exceed the global
+    # workflow-run pagination bound even when this PR has a single valid prior
+    # Full run.
+    for candidate_head in reversed(prior_commit_heads(base_sha, current_head)):
+        candidates = [run for run in list_workflow_runs_for_head(
+            repo, workflow_id, candidate_head
+        ) if str(run.get('id')) != str(current_run_id)
+            and run.get('workflow_id') == workflow_id
+            and run.get('event') == 'pull_request'
+            and run.get('head_sha') == candidate_head
+            and run_belongs_to_pr(run, pr_number, head_ref)]
+        if candidates:
+            candidates.sort(key=lambda run: run.get('id', 0), reverse=True)
+            return candidate_head, candidates
+    raise EvidenceError('no prior ancestor validation head found')
 
 
 def evaluate(base_sha, head_sha):
@@ -380,18 +410,11 @@ def evaluate(base_sha, head_sha):
             or not live.get('merge_commit_sha')):
         raise EvidenceError('live PR identity changed or merge identity unavailable')
 
-    runs = [run for run in list_workflow_runs(repo, workflow_id)
-            if str(run.get('id')) != str(current_run_id)
-            and run.get('workflow_id') == workflow_id
-            and run.get('event') == 'pull_request'
-            and run_belongs_to_pr(run, pr_number, head['ref'])]
-    candidate_head = nearest_prior_head(runs, head_sha)
+    candidate_head, candidates = find_nearest_prior_runs(
+        repo, workflow_id, pr_number, head['ref'], current_run_id,
+        base_sha, head_sha
+    )
     commits = validate_version_chain(candidate_head, head_sha)
-    candidates = sorted(
-        [run for run in runs if run.get('head_sha') == candidate_head],
-        key=lambda run: run.get('id', 0), reverse=True)
-    if not candidates:
-        raise EvidenceError('nearest prior head has no run evidence')
     # The newest run for the candidate head wins. A newer failure, cancellation,
     # queue, Draft validation, or partial run must hide an older green result.
     evidence = inspect_full_run(

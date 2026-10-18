@@ -355,6 +355,21 @@ class PolicyTests(unittest.TestCase):
             with self.assertRaises(reuse.EvidenceError):
                 reuse.verify_merge_commit('owner/repo', 'merge', 'base', 'new')
 
+    def test_reuse_scopes_workflow_run_lookup_to_commit_head(self):
+        calls = []
+
+        def api(path):
+            calls.append(path)
+            return {'workflow_runs': [], 'total_count': 0}
+
+        with patch.object(reuse, 'api', side_effect=api):
+            self.assertEqual(
+                reuse.list_workflow_runs_for_head('owner/repo', 9, 'head'), []
+            )
+        self.assertEqual(len(calls), 1)
+        self.assertIn('event=pull_request', calls[0])
+        self.assertIn('head_sha=head', calls[0])
+
     def test_reuse_checks_each_intermediate_commit_and_aggregate(self):
         def fake_git(*args):
             if args == ('rev-list', '--reverse', 'base..head'):
