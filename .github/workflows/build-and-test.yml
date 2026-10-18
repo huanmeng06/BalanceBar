@@ -56,7 +56,7 @@ jobs:
             reuse_result="$RUNNER_TEMP/BalanceBar-full-reuse.txt"
             python3 .github/scripts/ci-full-reuse.py "$base" "$head" > "$reuse_result"
             cat "$reuse_result" >> "$GITHUB_OUTPUT"
-            cat "$reuse_result" >> "$GITHUB_STEP_SUMMARY"
+            tee -a "$GITHUB_STEP_SUMMARY" < "$reuse_result"
           else
             echo "reuse_full=$reuse_full" >> "$GITHUB_OUTPUT"
             echo 'reuse_reason=not-a-pull-request' >> "$GITHUB_OUTPUT"

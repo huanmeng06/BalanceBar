@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 
 WORKFLOW_PATH = '.github/workflows/build-and-test.yml'
@@ -350,17 +351,23 @@ def find_nearest_prior_runs(repo, workflow_id, pr_number, head_ref,
     # entire workflow history. Large repositories can exceed the global
     # workflow-run pagination bound even when this PR has a single valid prior
     # Full run.
-    for candidate_head in reversed(prior_commit_heads(base_sha, current_head)):
-        candidates = [run for run in list_workflow_runs_for_head(
-            repo, workflow_id, candidate_head
-        ) if str(run.get('id')) != str(current_run_id)
-            and run.get('workflow_id') == workflow_id
-            and run.get('event') == 'pull_request'
-            and run.get('head_sha') == candidate_head
-            and run_belongs_to_pr(run, pr_number, head_ref)]
-        if candidates:
-            candidates.sort(key=lambda run: run.get('id', 0), reverse=True)
-            return candidate_head, candidates
+    commit_heads = list(reversed(prior_commit_heads(base_sha, current_head)))
+    for attempt in range(2):
+        for candidate_head in commit_heads:
+            candidates = [run for run in list_workflow_runs_for_head(
+                repo, workflow_id, candidate_head
+            ) if str(run.get('id')) != str(current_run_id)
+                and run.get('workflow_id') == workflow_id
+                and run.get('event') == 'pull_request'
+                and run.get('head_sha') == candidate_head
+                and run_belongs_to_pr(run, pr_number, head_ref)]
+            if candidates:
+                candidates.sort(key=lambda run: run.get('id', 0), reverse=True)
+                return candidate_head, candidates
+        if attempt == 0:
+            # Actions can lag briefly when publishing a completed ancestor run;
+            # reread once without weakening any identity or job checks.
+            time.sleep(5)
     raise EvidenceError('no prior ancestor validation head found')
 
 
@@ -454,7 +461,8 @@ def main():
               f'prior-run-{evidence["run_id"]}-attempt-{evidence["attempt"]}-'
               f'gate-{evidence["gate_job_id"]}-commits-{evidence["increment_commits"]}')
     else:
-        print('reuse_reason=fall-back-to-full')
+        compact_error = re.sub(r'[^A-Za-z0-9_.:/-]+', '_', error or 'unknown')[:180]
+        print('reuse_reason=fall-back-to-full-' + compact_error)
     step_summary = os.environ.get('GITHUB_STEP_SUMMARY')
     if step_summary:
         with open(step_summary, 'a', encoding='utf-8') as out:
