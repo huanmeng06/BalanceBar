@@ -1,0 +1,31 @@
+{
+  "updated_at": "2026-10-17T06:12:03.250Z",
+  "five_hour": {
+    "used_percentage": 34.0,
+    "resets_at": "2026-10-17T09:00:00Z"
+  },
+  "seven_day": {
+    "used_percentage": 61.5,
+    "resets_at": "2026-10-21T02:00:00Z"
+  },
+  "source": "balancebar-mod",
+  "account": {
+    "email_hash": "sha256:4a1d8cd98f00b204e9800998ecf8427e"
+  },
+  "windows": [
+    {
+      "kind": "five_hour",
+      "used_percentage": 34.0,
+      "resets_at": "2026-10-17T09:00:00Z"
+    },
+    {
+      "kind": "seven_day",
+      "used_percentage": 61.5,
+      "resets_at": "2026-10-21T02:00:00Z"
+    },
+    {
+      "kind": "sonnet_context",
+      "used_percentage": 12.0
+    }
+  ]
+}

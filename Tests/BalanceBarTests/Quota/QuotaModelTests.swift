@@ -1,0 +1,136 @@
+import Foundation
+import XCTest
+@testable import BalanceBar
+
+final class QuotaModelTests: XCTestCase {
+    private func fixture(_ name: String) throws -> Data {
+        let root = try TestRepositoryRoot.locate(from: #filePath)
+        let url = root.appendingPathComponent("Tests/Fixtures/Quota").appendingPathComponent(name)
+        return try Data(contentsOf: url)
+    }
+
+    func testHUDFixtureDecodesAndDefaultsOptionalExtensions() throws {
+        let snapshot = try QuotaSnapshot.decode(fixture("hud-0.11.3.json"))
+
+        XCTAssertEqual(QuotaSnapshot.schemaVersion, 1)
+        let formatter = ISO8601DateFormatter()
+        XCTAssertEqual(
+            snapshot.updatedAt,
+            formatter.date(from: "2026-10-17T06:12:03Z")
+        )
+        XCTAssertEqual(snapshot.fiveHour.usedPercentage, 34)
+        XCTAssertEqual(snapshot.sevenDay.usedPercentage, 61.5)
+        XCTAssertEqual(snapshot.source, "unknown")
+        XCTAssertNil(snapshot.account)
+        XCTAssertTrue(snapshot.windows.isEmpty)
+    }
+
+    func testModFixtureDecodesSchemaExtensionsAndUnknownWindowKind() throws {
+        let snapshot = try QuotaSnapshot.decode(fixture("mod-super-set.json"))
+
+        XCTAssertEqual(snapshot.source, "balancebar-mod")
+        XCTAssertEqual(snapshot.account?.emailHash, "sha256:4a1d8cd98f00b204e9800998ecf8427e")
+        XCTAssertEqual(snapshot.windows.count, 3)
+        XCTAssertEqual(snapshot.windows[0].kind, .fiveHour)
+        XCTAssertEqual(snapshot.windows[1].kind, .sevenDay)
+        XCTAssertEqual(snapshot.windows[2].kind, .other)
+        XCTAssertEqual(snapshot.windows[2].usedPercentage, 12)
+    }
+
+    func testCorruptOutOfRangeAndMissingWindowFixturesAreRejected() throws {
+        for fixtureName in ["corrupt.json", "out-of-range.json", "missing-window.json"] {
+            XCTAssertThrowsError(try QuotaSnapshot.decode(fixture(fixtureName)), fixtureName)
+        }
+    }
+
+    func testSchemaAcceptsInclusivePercentageBoundariesAndRejectsOversizePayloads() throws {
+        let payload = """
+        {
+          "updated_at": "2026-10-17T06:12:03Z",
+          "five_hour": { "used_percentage": 0 },
+          "seven_day": { "used_percentage": 100 }
+        }
+        """
+        let snapshot = try QuotaSnapshot.decode(Data(payload.utf8))
+        XCTAssertEqual(snapshot.fiveHour.usedPercentage, 0)
+        XCTAssertEqual(snapshot.sevenDay.usedPercentage, 100)
+
+        let oversized = Data(repeating: 0x20, count: QuotaConstants.snapshotMaximumSizeBytes + 1)
+        XCTAssertThrowsError(try QuotaSnapshot.decode(oversized)) { error in
+            XCTAssertEqual(
+                error as? QuotaSnapshotError,
+                .snapshotTooLarge(
+                    actualBytes: oversized.count,
+                    maximumBytes: QuotaConstants.snapshotMaximumSizeBytes
+                )
+            )
+        }
+    }
+
+    func testSchemaRoundTripKeepsContractFields() throws {
+        let original = try QuotaSnapshot.decode(fixture("mod-super-set.json"))
+        let encoded = try original.encodedData()
+        let decoded = try QuotaSnapshot.decode(encoded)
+
+        XCTAssertEqual(decoded, original)
+        XCTAssertTrue(String(decoding: encoded, as: UTF8.self).contains("updated_at"))
+        XCTAssertTrue(String(decoding: encoded, as: UTF8.self).contains("used_percentage"))
+    }
+
+    func testModelTypesValidateObservationAndExposeDisplayContract() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let identity = AccountIdentity(
+            stableID: "account-uuid",
+            email: "person@example.com",
+            plan: "pro",
+            idSource: .accountUUID
+        )
+        let observation = QuotaObservation(
+            window: .fiveHour,
+            usedPercentage: 34,
+            resetsAt: now.addingTimeInterval(3_600),
+            observedAt: now,
+            receivedAt: now,
+            source: "claude-hud",
+            trust: .a,
+            accountID: identity.stableID,
+            epoch: .initial
+        )
+        XCTAssertNotNil(observation)
+        XCTAssertNil(QuotaObservation(
+            window: .fiveHour,
+            usedPercentage: 101,
+            receivedAt: now,
+            source: "claude-hud",
+            trust: .a,
+            accountID: identity.stableID,
+            epoch: .initial
+        ))
+
+        let window = QuotaWindowDisplay(
+            kind: .fiveHour,
+            usedPercentage: 34,
+            resetsAt: now.addingTimeInterval(3_600),
+            isEstimated: false,
+            state: .inProgress,
+            hoverTextKey: "quota.fiveHour"
+        )
+        let display = QuotaDisplayModel(
+            windows: [window],
+            isEstimated: false,
+            state: .inProgress,
+            hoverTextKey: "quota.summary"
+        )
+        XCTAssertEqual(display.window(for: .fiveHour)?.displayValue, 34)
+        XCTAssertEqual(display.status, .inProgress)
+        XCTAssertEqual(AccountEpoch.initial.next.rawValue, 1)
+    }
+
+    func testContractConstantsMatchIssueValues() {
+        XCTAssertEqual(QuotaConstants.automaticRequestMinimumInterval, 180)
+        XCTAssertEqual(QuotaConstants.minimumCooldown, 900)
+        XCTAssertEqual(QuotaConstants.realtimeSourceFreshness, 120)
+        XCTAssertEqual(QuotaConstants.gradeBTolerancePercentagePoints, 2)
+        XCTAssertEqual(QuotaConstants.snapshotMaximumSizeBytes, 64 * 1_024)
+    }
+}
