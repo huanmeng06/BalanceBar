@@ -31,6 +31,9 @@ public enum QuotaConstants {
 
     /// Time window used by a manual refresh eligibility check.
     public static let manualRefreshWindow: TimeInterval = 60
+
+    /// Delay used to coalesce bursts of account-configuration file events.
+    public static let accountChangeCoalescingInterval: TimeInterval = 0.5
 }
 
 /// Reason supplied when a caller asks the scheduler for a usage read.
