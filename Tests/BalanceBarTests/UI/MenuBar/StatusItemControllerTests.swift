@@ -3279,6 +3279,79 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testRateLimitedDirectQuotaShowsStaleTimeAndDisablesRefreshUntilWaitEnds() throws {
+        var blockedUntil: Date? = Date().addingTimeInterval(120)
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in },
+            iconChanged: { _ in }, manualRefreshBlockedUntil: { blockedUntil }))
+        defer { controller.teardown() }
+        let fetchedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 86, label: "5h", daysText: "5 hours",
+            reset: "1h5m", durationSeconds: 18_000, resetAt: fetchedAt.addingTimeInterval(3_900))
+        var snapshot = Snapshot.official("Claude Official", 86, "5h", "1h5m", fetchedAt, windows: [window])
+        snapshot.staleReason = "Too many requests (HTTP 429)"
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        controller.start(snapshot: snapshot, refreshDate: fetchedAt, menuInput: input, settings: makeSettings())
+
+        func fields(_ view: NSView) -> [NSTextField] { (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap(fields) }
+        let card = try XCTUnwrap(controller.statusMenuForTesting.items.compactMap(\.view).first {
+            fields($0).contains { $0.identifier?.rawValue == "overview.refreshTime" }
+        })
+        let time = try XCTUnwrap(fields(card).first { $0.identifier?.rawValue == "overview.refreshTime" })
+        XCTAssertTrue(time.stringValue.hasPrefix("⚠︎ "), "the card keeps the quota and flags the last refresh time")
+        XCTAssertEqual(time.textColor, .systemOrange)
+        XCTAssertEqual(time.toolTip, "Too many requests (HTTP 429)")
+        XCTAssertFalse(fields(card).contains { $0.stringValue.contains("HTTP 429") }, "no error text replaces the quota")
+
+        let refresh = try XCTUnwrap(controller.statusMenuForTesting.items.first { $0.title == tr(.keyStatusItemControllerRefreshNow) })
+        XCTAssertFalse(controller.validateMenuItem(refresh), "refresh is greyed out during the rate-limit wait")
+        blockedUntil = Date().addingTimeInterval(-1)
+        XCTAssertTrue(controller.validateMenuItem(refresh), "available again as soon as the wait ends")
+        blockedUntil = nil
+        XCTAssertTrue(controller.validateMenuItem(refresh))
+    }
+
+    @MainActor
+    func testOpenMenuUpdatesStaleRefreshTimeInPlaceThroughRateLimitAndRecovery() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let fetchedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 86, label: "5h", daysText: "5 hours",
+            reset: "1h5m", durationSeconds: 18_000, resetAt: fetchedAt.addingTimeInterval(3_900))
+        let fresh = Snapshot.official("Claude Official", 86, "5h", "1h5m", fetchedAt, windows: [window])
+        var stale = fresh
+        stale.staleReason = "Too many requests (HTTP 429)"
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        controller.start(snapshot: fresh, refreshDate: fetchedAt, menuInput: input, settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        func fields(_ view: NSView) -> [NSTextField] { (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap(fields) }
+        func time() throws -> NSTextField {
+            XCTAssertTrue(controller.menuItemsForTesting.first?.view === host, "the open menu updates the card in place")
+            return try XCTUnwrap(fields(host).first { $0.identifier?.rawValue == "overview.refreshTime" })
+        }
+        let plain = try time().stringValue
+        XCTAssertFalse(plain.contains("⚠︎"))
+
+        controller.update(snapshot: stale, refreshDate: fetchedAt, menuInput: input, settings: makeSettings())
+        XCTAssertEqual(try time().stringValue, "⚠︎ " + plain, "normal → 429 shows the warning")
+        XCTAssertEqual(try time().textColor, .systemOrange)
+        XCTAssertEqual(try time().toolTip, "Too many requests (HTTP 429)")
+        XCTAssertTrue(try time().accessibilityLabel()?.contains("HTTP 429") == true)
+
+        controller.update(snapshot: fresh, refreshDate: fetchedAt.addingTimeInterval(60), menuInput: input, settings: makeSettings())
+        XCTAssertFalse(try time().stringValue.contains("⚠︎"), "recovery clears the warning")
+        XCTAssertEqual(try time().textColor, .secondaryLabelColor)
+        XCTAssertNil(try time().toolTip)
+        XCTAssertFalse(try time().accessibilityLabel()?.contains("HTTP 429") == true)
+    }
+
+    @MainActor
     func testAggregationAndDirectBalanceTitlesOpenTheirOwnSafeWebsite() throws {
         var opened: [URL] = []
         var currentWebsiteOpens = 0

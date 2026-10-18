@@ -125,6 +125,13 @@ final class BalanceNotificationCoordinator {
     private let queueKey = DispatchSpecificKey<Void>()
     private var permissionStateStorage: BalanceNotificationPermissionState = .unknown
     private var snapshots: [SnapshotKey: Snapshot] = [:]
+    /// Providers whose latest refresh failed and only re-showed old data. Their
+    /// stored real sample is kept for the next real refresh, but must not be
+    /// re-evaluated as current (permission re-check, enabling notifications).
+    private var staleSampleKeys: Set<SnapshotKey> = []
+    /// Signed-in account per agent for account-bound official quotas. A key
+    /// present with a nil value means "known to be signed out".
+    private var currentAccountScopes: [BalanceNotificationAgent: String?] = [:]
     private var resourceDescriptors: [SnapshotKey: [BalanceNotificationResourceDescriptor]] = [:]
 
     var onPermissionStateChanged: ((BalanceNotificationPermissionState) -> Void)?
@@ -305,6 +312,7 @@ final class BalanceNotificationCoordinator {
                     rule.secondEnabled = second > 0
                     rule.stage = .normal
                     rule.lastValue = nil
+                    settings.clearParkedProgress(for: rule.key)
                     settings.resourceRules[index] = rule
                 }
             }
@@ -342,6 +350,7 @@ final class BalanceNotificationCoordinator {
                     if thresholdsChanged {
                         rule.stage = .normal
                         rule.lastValue = nil
+                        settings.clearParkedProgress(for: rule.key)
                     }
                     settings.resourceRules[index] = rule
                 }
@@ -379,6 +388,7 @@ final class BalanceNotificationCoordinator {
                     || old.enabled != rule.enabled {
                     rule.stage = .normal
                     rule.lastValue = nil
+                    settings.clearParkedProgress(for: key)
                 }
                 if old.firstThreshold != rule.firstThreshold
                     || old.secondThreshold != rule.secondThreshold
@@ -412,6 +422,7 @@ final class BalanceNotificationCoordinator {
                     rule.secondEnabled = thresholds.second > 0
                     rule.stage = .normal
                     rule.lastValue = nil
+                    settings.clearParkedProgress(for: key)
                 }
                 settings.upsert(rule)
             }
@@ -472,10 +483,47 @@ final class BalanceNotificationCoordinator {
         agent: BalanceNotificationAgent,
         providerID: String
     ) {
+        let key = SnapshotKey(agent: agent, providerID: providerID)
+        // Data kept on screen after a failed refresh must neither trigger an
+        // alert nor replace the last real sample used for later evaluation.
+        guard snapshot.staleReason == nil else {
+            onQueue { self.staleSampleKeys.insert(key) }
+            return
+        }
         onQueue {
+            // A late result from an account that is no longer signed in is not
+            // a sample of the current account.
+            guard self.belongsToCurrentAccount(snapshot, agent: agent) else { return }
+            self.staleSampleKeys.remove(key)
             self.storeSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)
             self.processSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)
         }
+    }
+
+    /// The latest request for these providers failed. Rules and the stored
+    /// sample stay; until a real refresh arrives, the sample is not
+    /// re-evaluated as current.
+    func invalidateCurrentSamples(agent: BalanceNotificationAgent, providerIDs: Set<String>) {
+        onQueue {
+            for providerID in providerIDs {
+                self.staleSampleKeys.insert(SnapshotKey(agent: agent, providerID: providerID))
+            }
+        }
+    }
+
+    /// Records the account currently signed in for `agent`. Stored samples of
+    /// any other account are never re-evaluated, independent of which provider
+    /// IDs the refresh side still remembers.
+    func setCurrentAccountScope(_ scope: String?, agent: BalanceNotificationAgent) {
+        onQueue { self.currentAccountScopes[agent] = .some(scope) }
+    }
+
+    /// False only for an account-bound sample whose account is known not to
+    /// be the signed-in one.
+    private func belongsToCurrentAccount(_ snapshot: Snapshot, agent: BalanceNotificationAgent) -> Bool {
+        guard let scope = snapshot.notificationAccountScope,
+              let current = currentAccountScopes[agent] else { return true }
+        return current == scope
     }
 
     private func storeSnapshotOnQueue(
@@ -501,7 +549,8 @@ final class BalanceNotificationCoordinator {
         agent: BalanceNotificationAgent? = nil,
         providerID: String? = nil
     ) {
-        for (key, snapshot) in snapshots where (agent == nil || key.agent == agent) && (providerID == nil || key.providerID == providerID) {
+        for (key, snapshot) in snapshots where (agent == nil || key.agent == agent) && (providerID == nil || key.providerID == providerID)
+            && !staleSampleKeys.contains(key) && belongsToCurrentAccount(snapshot, agent: key.agent) {
             processSnapshotOnQueue(snapshot, agent: key.agent, providerID: key.providerID)
         }
     }
@@ -531,6 +580,10 @@ final class BalanceNotificationCoordinator {
                     kind: descriptor.kind,
                     unit: descriptor.unit
                 )
+                // Thresholds are shared; crossing progress is the account's own.
+                if settings.activateProgress(&rule, scope: snapshot.notificationAccountScope) {
+                    settings.upsert(rule)
+                }
                 let evaluation = BalanceNotificationThresholdEvaluator.evaluate(
                     rule: rule,
                     value: value,

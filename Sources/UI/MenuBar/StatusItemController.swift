@@ -2213,6 +2213,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let grokAnimationStateChanged: (Bool, NSImage?, NSImage?) -> Void
         let animationFallbackChanged: (Bool) -> Void
         let visibilityChanged: (StatusItemVisibility) -> Void
+        /// Date until which the visible official quota is rate-limited, read
+        /// when the menu validates its items; nil when refresh is available.
+        let manualRefreshBlockedUntil: () -> Date?
 
         init(
             manualRefresh: @escaping () -> Void,
@@ -2229,8 +2232,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             claudeAnimationStateChanged: @escaping (Bool, NSImage?, NSImage?) -> Void = { _, _, _ in },
             grokAnimationStateChanged: @escaping (Bool, NSImage?, NSImage?) -> Void = { _, _, _ in },
             animationFallbackChanged: @escaping (Bool) -> Void = { _ in },
-            visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in }
+            visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in },
+            manualRefreshBlockedUntil: @escaping () -> Date? = { nil }
         ) {
+            self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
             self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
             self.openChatGPT = openChatGPT
@@ -6065,7 +6070,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
     }
 
+    /// Re-evaluated whenever the menu opens or ⌘R is pressed, so the item
+    /// becomes available again as soon as the rate-limit wait ends.
+    var isManualRefreshAvailable: Bool {
+        actions.manualRefreshBlockedUntil().map { Date() >= $0 } ?? true
+    }
+
     @objc private func manualRefresh() {
+        guard isManualRefreshAvailable else { return }
         actions.manualRefresh()
         if settings.keepMenuOpenAfterRefresh {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
@@ -7029,10 +7041,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         provider.frame = headerFrame(layout.title)
 
         if snapshot.kind == .official || snapshot.kind == .balance {
-            let timeText = context.date.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
-            let refreshTime = makeOverviewLabel(timeText, font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
-            refreshTime.textColor = .secondaryLabelColor
+            let refreshTime = makeOverviewLabel("", font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
             refreshTime.alignment = .right
+            applyRefreshTime(to: refreshTime, date: context.date, staleReason: snapshot.staleReason)
             refreshTime.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
             refreshTime.frame = headerFrame(layout.refreshTime)
             headerHost.addSubview(refreshTime)
@@ -8205,6 +8216,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return ForecastContentKey(primary: primary, subtitle: subtitle)
     }
 
+    /// Single source for the direct card's refresh time: a rebuilt card and an
+    /// in-place update while the menu stays open must show the same state.
+    private func applyRefreshTime(to label: NSTextField, date: Date?, staleReason: String?) {
+        let timeText = date.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
+        label.stringValue = staleReason == nil ? timeText : "⚠︎ " + timeText
+        label.textColor = staleReason == nil ? .secondaryLabelColor : .systemOrange
+        label.toolTip = staleReason
+        label.setAccessibilityLabel(staleReason.map { tr(.keyAggregationStale) + " · " + timeText + " · " + $0 } ?? timeText)
+    }
+
     private func reconcileOverviewSectionsIfTracking() {
         guard menuInput.aggregatedProviders.isEmpty, let host = menuContentHostForUpdate("sections") else { return }
         reconcileOverviewSections(in: host, context: directCardContext(for: snapshot))
@@ -8281,9 +8302,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let header = host.subviews.compactMap({ $0 as? OpenCodexAccountSectionView }).first {
             let labels = header.subviews.compactMap { $0 as? NSTextField }
             labels.first { $0.font?.pointSize == 15 }?.stringValue = snapshot.overviewProvider
-            labels.first { $0.font?.pointSize == 12 }?.stringValue = context.date.map {
-                AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0)
-            } ?? "--:--:--"
+            if let refreshTime = labels.first(where: { $0.identifier?.rawValue == "overview.refreshTime" }) {
+                applyRefreshTime(to: refreshTime, date: context.date, staleReason: snapshot.staleReason)
+            }
             if let account = context.account, case .available(let email) = account.state {
                 descendantViews(of: header, as: AccountEmailView.self).first?.updateText(email)
             }
@@ -8533,4 +8554,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+}
+
+extension StatusItemController: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(manualRefresh) else { return true }
+        return isManualRefreshAvailable
+    }
 }

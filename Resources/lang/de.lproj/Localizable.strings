@@ -215,7 +215,7 @@
 "dashboard.general.and.refresh.pages.after" = "Danach";
 "dashboard.general.and.refresh.pages.refresh_now" = "Jetzt aktualisieren";
 "dashboard.general.and.refresh.pages.refresh" = "Aktualisieren";
-"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Guthabenaktualisierung während laufender Aufgaben";
+"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Aktualisierung des API-Anbieterguthabens";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "Aktualisiert das Guthaben des ausgewählten Anbieters während einer Aufgabe im gewählten Intervall";
 "dashboard.general.and.refresh.pages.balance_data" = "Guthabeninformationen";
 "dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "Daten des aktuellen Anbieters jetzt aktualisieren";
@@ -558,3 +558,7 @@
 "quick_switch.routing_protected" = "Routing-Modus – in CC Switch verwalten";
 "quick_switch.state_untrusted" = "Modus nicht bestätigt – in CC Switch verwalten";
 "quick_switch.manage_in_cc_switch" = "In CC Switch verwalten";
+
+"dashboard.refresh.official_quota_frequency" = "Aktualisierung des offiziellen Kontingents";
+"dashboard.refresh.official_every_seconds" = "Alle %1$@ s";
+"dashboard.refresh.official_for_minutes" = "Für %1$@ Min.";

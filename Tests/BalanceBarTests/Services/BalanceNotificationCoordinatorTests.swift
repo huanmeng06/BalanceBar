@@ -132,6 +132,147 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(client.deliveries.count, 1)
     }
 
+    func testStaleSnapshotKeptAfterRateLimitNeverAlertsOrChangesThresholdState() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.Stale.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        func snapshot(_ remaining: Double, stale: Bool = false) -> Snapshot {
+            var snapshot = Snapshot.official("Claude Official", remaining, "5h", nil, Date(), windows: [
+                OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                    reset: nil, durationSeconds: nil)
+            ])
+            if stale { snapshot.staleReason = "HTTP 429" }
+            return snapshot
+        }
+
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .claude)
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-official")
+
+        coordinator.process(snapshot: snapshot(18, stale: true), agent: .claude, providerID: "claude-official")
+        XCTAssertTrue(client.deliveries.isEmpty, "a kept 429 snapshot is not a new sample after a settings change")
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        XCTAssertEqual(client.deliveries.count, 1, "the next real refresh alerts")
+
+        coordinator.process(snapshot: snapshot(100, stale: true), agent: .claude, providerID: "claude-official")
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        XCTAssertEqual(client.deliveries.count, 1, "stale data must not re-arm the threshold")
+
+        coordinator.process(snapshot: snapshot(100), agent: .claude, providerID: "claude-official")
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        XCTAssertEqual(client.deliveries.count, 2, "a real recovery re-arms the reminder")
+    }
+
+    func testPermissionRecheckDuringRateLimitDoesNotAlertFromLastRealSample() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.StaleRecheck.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        func snapshot(_ remaining: Double, stale: Bool = false) -> Snapshot {
+            var snapshot = Snapshot.official("Claude Official", remaining, "5h", nil, Date(), windows: [
+                OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                    reset: nil, durationSeconds: nil)
+            ])
+            if stale { snapshot.staleReason = "HTTP 429" }
+            return snapshot
+        }
+
+        // Real low quota while notifications are off, then the user enables them.
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .claude)
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-official")
+        XCTAssertTrue(client.deliveries.isEmpty)
+
+        // The next refresh is rate-limited; reactivating the app re-checks permission.
+        coordinator.process(snapshot: snapshot(18, stale: true), agent: .claude, providerID: "claude-official")
+        coordinator.refreshPermission()
+        XCTAssertTrue(client.deliveries.isEmpty, "a permission re-check must not treat the pre-429 sample as current")
+
+        // The first successful refresh is a real sample and alerts normally.
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        XCTAssertEqual(client.deliveries.count, 1)
+    }
+
+    func testClaudeAccountSwitchInvalidatesPreviousAccountSampleUntilNewAccountRefreshes() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.AccountSwitch.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        func snapshot(_ remaining: Double) -> Snapshot {
+            .official("Claude Official", remaining, "5h", nil, Date(), windows: [
+                OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                    reset: nil, durationSeconds: nil)
+            ])
+        }
+
+        // Account A's real low sample is stored while notifications are off.
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .claude)
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-official")
+        XCTAssertTrue(client.deliveries.isEmpty)
+
+        // Switch to account B; its first request fails with an error card (no snapshot).
+        coordinator.invalidateCurrentSamples(agent: .claude, providerIDs: ["claude-official"])
+        coordinator.refreshPermission()
+        XCTAssertTrue(client.deliveries.isEmpty, "account A's sample must not alert for account B")
+
+        // Account B's first successful refresh is evaluated normally.
+        coordinator.process(snapshot: snapshot(18), agent: .claude, providerID: "claude-official")
+        XCTAssertEqual(client.deliveries.count, 1)
+    }
+
+    func testCrossingProgressIsIsolatedPerAccountWhileThresholdsAreShared() {
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let suiteName = "BalanceNotificationCoordinatorTests.AccountProgress.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        coordinator.setGlobalEnabled(true)
+        coordinator.setAgentEnabled(true, agent: .claude)
+        coordinator.setProviderEnabled(true, agent: .claude, providerID: "claude-official")
+        let key = BalanceNotificationResourceKey(agent: .claude, providerID: "claude-official", resourceID: "five-hour")
+        coordinator.updateRule(key: key, kind: .quotaPercent, unit: "%") { $0.recoveryEnabled = true }
+        func process(_ remaining: Double, account: String) {
+            var snapshot = Snapshot.official("Claude Official", remaining, "5h", nil, Date(), windows: [
+                OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                    reset: nil, durationSeconds: 18_000)
+            ])
+            snapshot.notificationAccountScope = account
+            coordinator.setCurrentAccountScope(account, agent: .claude)
+            coordinator.process(snapshot: snapshot, agent: .claude, providerID: "claude-official")
+        }
+
+        process(80, account: "A")
+        process(18, account: "A")
+        XCTAssertEqual(client.deliveries.count, 1, "account A crosses the first threshold")
+
+        process(18, account: "B")
+        XCTAssertEqual(client.deliveries.count, 2, "account B's own first crossing still alerts")
+        process(80, account: "B")
+        XCTAssertEqual(client.deliveries.count, 3, "B recovers from B's own alert")
+        process(90, account: "B")
+        XCTAssertEqual(client.deliveries.count, 3)
+
+        process(18, account: "A")
+        XCTAssertEqual(client.deliveries.count, 3, "returning to A restores A's progress: no duplicate first alert")
+
+        // Account C starts high while A is still alerted: never A's recovery.
+        process(80, account: "C")
+        XCTAssertEqual(client.deliveries.count, 3, "another account's normal quota is not A's recovery")
+
+        // A shared threshold change starts a fresh cycle for every account.
+        coordinator.updateRule(key: key, kind: .quotaPercent, unit: "%") { $0.firstThreshold = 25 }
+        process(18, account: "A")
+        XCTAssertEqual(client.deliveries.count, 4)
+    }
+
     func testApplyGlobalRulesRestoresInheritanceWithoutReenablingResources() {
         let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
         let suiteName = "BalanceNotificationCoordinatorTests.ApplyGlobalRules.\(UUID().uuidString)"
@@ -546,7 +687,7 @@ final class BalanceNotificationCoordinatorTests: XCTestCase {
     }
 }
 
-private final class FakeBalanceNotificationClient: BalanceNotificationClient {
+final class FakeBalanceNotificationClient: BalanceNotificationClient {
     var onResponse: (([AnyHashable: Any]) -> Void)?
     var status: BalanceNotificationPermissionState
     let requestResult: Bool

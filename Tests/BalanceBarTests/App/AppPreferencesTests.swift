@@ -445,6 +445,28 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarHorizontalPadding, 14)
     }
 
+    func testOfficialRefreshSettingsPersistIndependentlyFromAPIBalanceSettings() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(preferences.officialUsageRefreshInterval, 60)
+        XCTAssertEqual(preferences.officialPostTaskRefreshDuration, 120)
+        preferences.codexUsageRefreshInterval = 5
+        preferences.postCodexRefreshDuration = 30
+        preferences.officialUsageRefreshInterval = 150
+        preferences.officialPostTaskRefreshDuration = 300
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertEqual(reloaded.officialUsageRefreshInterval, 150)
+        XCTAssertEqual(reloaded.officialPostTaskRefreshDuration, 300)
+        XCTAssertEqual(reloaded.codexUsageRefreshInterval, 5)
+        XCTAssertEqual(reloaded.postCodexRefreshDuration, 30)
+        defaults.set(3, forKey: "officialUsageRefreshInterval")
+        defaults.set(-5, forKey: "officialPostTaskRefreshDuration")
+        XCTAssertEqual(reloaded.officialUsageRefreshInterval, 60)
+        XCTAssertEqual(reloaded.officialPostTaskRefreshDuration, 120)
+        reloaded.officialPostTaskRefreshDuration = 0
+        XCTAssertEqual(reloaded.officialPostTaskRefreshDuration, 0)
+    }
+
     func testBalanceDisplayThresholdDefaultsRoundsAndRejectsInvalidValues() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

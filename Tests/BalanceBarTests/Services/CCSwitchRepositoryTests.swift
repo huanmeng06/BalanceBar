@@ -266,6 +266,136 @@ final class CCSwitchRepositoryTests: XCTestCase {
         XCTAssertNil(summaries.last?.officialAccessToken)
     }
 
+    func testOfficialAPIKeysUseBalanceQueriesForCurrentAndSummary() throws {
+        let cases: [(String, String)] = [
+            ("codex", #"{"auth":{"OPENAI_API_KEY":"fixture-api-key"}}"#),
+            ("claude", #"{"env":{"ANTHROPIC_API_KEY":"fixture-api-key"}}"#),
+            ("claude", #"{"env":{"ANTHROPIC_AUTH_TOKEN":"fixture-api-key"}}"#)
+        ]
+        for (app, settings) in cases {
+            let id = app == "codex" ? "codex-official" : "claude-other"
+            try withDatabase { db in
+                try execute(db, sql: "UPDATE providers SET is_current = 0 WHERE app_type = '\(app)'")
+                try execute(db, sql: """
+                    UPDATE providers SET settings_config = '\(settings)',
+                    meta = '{"usage_script":{"enabled":true,"baseUrl":"https://api.example","code":"url: `{{baseUrl}}/usage`"}}',
+                    is_current = 1 WHERE id = '\(id)'
+                    """)
+            }
+            let current = try XCTUnwrap(repository.loadCurrent(appType: app))
+            XCTAssertFalse(current.isOfficial, "\(app): \(settings)")
+            XCTAssertEqual(current.query?.apiKey, "fixture-api-key")
+            let summary = try XCTUnwrap(repository.loadSummarySources(appType: app).first { $0.id == id })
+            XCTAssertFalse(summary.isOfficial)
+            XCTAssertEqual(summary.query?.apiKey, "fixture-api-key")
+            XCTAssertNil(summary.officialAccessToken)
+        }
+    }
+
+    func testOfficialAPIWithoutUsageScriptDoesNotFallBackToSubscription() throws {
+        try withDatabase { db in
+            try execute(db, sql: """
+                UPDATE providers SET settings_config = '{"env":{"ANTHROPIC_API_KEY":"fixture-key"}}'
+                WHERE id = 'claude-other'
+                """)
+        }
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "claude"))
+        XCTAssertFalse(current.isOfficial)
+        XCTAssertNil(current.query)
+        XCTAssertEqual(current.queryFailure, .usageScriptMissing)
+        XCTAssertFalse(try XCTUnwrap(repository.loadSummarySources(appType: "claude").first).isOfficial)
+    }
+
+    func testOfficialSubscriptionAndManagedOAuthKeepQuotaIdentity() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET is_current = CASE WHEN id = 'codex-official' THEN 1 ELSE 0 END WHERE app_type = 'codex'")
+            try execute(db, sql: """
+                UPDATE providers SET settings_config = '{"auth":{"OPENAI_API_KEY":"  "}}'
+                WHERE id = 'codex-official'
+                """)
+        }
+        XCTAssertTrue(try XCTUnwrap(repository.loadCurrent(appType: "codex")).isOfficial)
+        XCTAssertTrue(try XCTUnwrap(repository.loadCurrent(appType: "claude")).isOfficial)
+        try withDatabase { db in
+            try execute(db, sql: """
+                UPDATE providers SET settings_config = '{"auth":{"OPENAI_API_KEY":"stale-fixture-key","tokens":{"access_token":"fixture-oauth"}}}',
+                meta = '{"authBinding":{"source":"managed_account","authProvider":"codex_oauth","accountId":"fixture-account"}}'
+                WHERE id = 'codex-official'
+                """)
+        }
+        XCTAssertTrue(try XCTUnwrap(repository.loadCurrent(appType: "codex")).isOfficial)
+        let summary = try XCTUnwrap(repository.loadSummarySources(appType: "codex").first { $0.id == "codex-official" })
+        XCTAssertTrue(summary.isOfficial)
+        XCTAssertEqual(summary.officialAccessToken, "fixture-oauth")
+        XCTAssertNil(summary.query)
+    }
+
+    func testCorruptOfficialConfigurationFailsClosedInsteadOfUsingSubscriptionQuota() throws {
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET settings_config = '{broken', meta = '{}' WHERE id = 'claude-other'")
+        }
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "claude"))
+        XCTAssertFalse(current.isOfficial)
+        XCTAssertNil(current.query)
+        XCTAssertEqual(current.queryFailure, .settingsJSONInvalid)
+        let summary = try XCTUnwrap(repository.loadSummarySources(appType: "claude").first)
+        XCTAssertFalse(summary.isOfficial)
+        XCTAssertNil(summary.officialAccessToken)
+    }
+
+    func testOfficialCredentialDetectionCoversEveryBalanceQueryLocation() throws {
+        let disabledScript = #"{"usage_script":{"enabled":false,"apiKey":"fixture-script-key"}}"#
+        let cases: [(app: String, settings: String, meta: String)] = [
+            ("claude", #"{"apiKey":"fixture-top-level"}"#, "{}"),
+            ("claude", #"{"settings":{"api_key":"fixture-nested"}}"#, "{}"),
+            ("claude", "{}", #"{"usage_script":{"enabled":true,"accessToken":"fixture-script-token"}}"#),
+            ("claude", "{}", disabledScript),
+            ("claude", "{}", #"{"usage_script":"{\"token\":\"fixture-json-string\"}"}"#),
+            ("codex", #"{"config":"model = \"gpt\"\napi_key = \"fixture-toml\""}"#, "{}"),
+            ("codex", #"{"config":"experimental_bearer_token = \"fixture-bearer\""}"#, "{}"),
+            ("codex", "{}", disabledScript)
+        ]
+        for item in cases {
+            let id = item.app == "codex" ? "codex-official" : "claude-other"
+            try withDatabase { db in
+                try execute(db, sql: "UPDATE providers SET is_current = CASE WHEN id = '\(id)' THEN 1 ELSE 0 END WHERE app_type = '\(item.app)'")
+                try execute(db, sql: "UPDATE providers SET settings_config = '\(item.settings)', meta = '\(item.meta)' WHERE id = '\(id)'")
+            }
+            let label = "\(item.app): \(item.settings) \(item.meta)"
+            XCTAssertFalse(try XCTUnwrap(repository.loadCurrent(appType: item.app)).isOfficial, label)
+            let summary = try XCTUnwrap(repository.loadSummarySources(appType: item.app).first { $0.id == id }, label)
+            XCTAssertFalse(summary.isOfficial, label)
+            XCTAssertNil(summary.officialAccessToken, label)
+        }
+    }
+
+    func testOfficialManagedOAuthOutranksEveryAPICredentialLocationAndSubscriptionsStayOfficial() throws {
+        let binding = #"{"authBinding":{"source":"managed_account","authProvider":"codex_oauth","accountId":"fixture-account"},"usage_script":{"enabled":true,"apiKey":"fixture-script-key"}}"#
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET is_current = CASE WHEN id = 'codex-official' THEN 1 ELSE 0 END WHERE app_type = 'codex'")
+            try execute(db, sql: """
+                UPDATE providers SET settings_config = '{"apiKey":"fixture-top-level","config":"api_key = \\"fixture-toml\\"","auth":{"tokens":{"access_token":"fixture-oauth"}}}',
+                meta = '\(binding)' WHERE id = 'codex-official'
+                """)
+        }
+        XCTAssertTrue(try XCTUnwrap(repository.loadCurrent(appType: "codex")).isOfficial)
+        let managed = try XCTUnwrap(repository.loadSummarySources(appType: "codex").first { $0.id == "codex-official" })
+        XCTAssertTrue(managed.isOfficial)
+        XCTAssertEqual(managed.officialAccessToken, "fixture-oauth")
+
+        // Plain subscription cards: OAuth tokens and whitespace placeholders are not API keys.
+        try withDatabase { db in
+            try execute(db, sql: """
+                UPDATE providers SET settings_config = '{"auth":{"OPENAI_API_KEY":null,"tokens":{"access_token":"fixture-oauth","id_token":"x","refresh_token":"y"}},"config":"model = \\"gpt\\""}',
+                meta = '{}' WHERE id = 'codex-official'
+                """)
+            try execute(db, sql: "UPDATE providers SET settings_config = '{\"env\":{\"ANTHROPIC_AUTH_TOKEN\":\"  \"}}', meta = '{}' WHERE id = 'claude-other'")
+            try execute(db, sql: "UPDATE providers SET is_current = CASE WHEN id = 'claude-other' THEN 1 ELSE 0 END WHERE app_type = 'claude'")
+        }
+        XCTAssertTrue(try XCTUnwrap(repository.loadCurrent(appType: "codex")).isOfficial)
+        XCTAssertTrue(try XCTUnwrap(repository.loadCurrent(appType: "claude")).isOfficial)
+    }
+
     func testSwitchCurrentCommitsFixtureAndWritesOnlyInjectedSettingsPath() throws {
         try repository.switchCurrent(to: "codex-official", appType: "codex")
 

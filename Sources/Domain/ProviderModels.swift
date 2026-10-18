@@ -41,10 +41,18 @@ struct ProviderChoice: Equatable {
     let isCurrent: Bool
 }
 
+/// Subscription badge for official accounts. Codex and Claude plan claims use
+/// separate initializers because both vendors call a different plan "pro".
 enum OpenAISubscriptionTier: Equatable {
     case plus
     case proFiveX
     case proTwentyX
+    case claudePro
+    case claudeMax
+    case claudeMaxFiveX
+    case claudeMaxTwentyX
+    case claudeTeam
+    case claudeEnterprise
 
     init?(planType: String?) {
         guard let planType else { return nil }
@@ -60,6 +68,27 @@ enum OpenAISubscriptionTier: Equatable {
         }
     }
 
+    init?(claudePlanType planType: String?) {
+        guard let planType else { return nil }
+        switch planType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "pro": self = .claudePro
+        case "max": self = .claudeMax
+        case "max_5x": self = .claudeMaxFiveX
+        case "max_20x": self = .claudeMaxTwentyX
+        case "team": self = .claudeTeam
+        case "enterprise": self = .claudeEnterprise
+        default: return nil
+        }
+    }
+
+    init?(planType: String?, client: AssistantClient) {
+        switch client {
+        case .codex: self.init(planType: planType)
+        case .claude: self.init(claudePlanType: planType)
+        case .grok: return nil
+        }
+    }
+
     var text: String {
         switch self {
         case .plus:
@@ -68,6 +97,18 @@ enum OpenAISubscriptionTier: Equatable {
             return "Pro · 5x"
         case .proTwentyX:
             return "Pro · 20x"
+        case .claudePro:
+            return "Pro"
+        case .claudeMax:
+            return "Max"
+        case .claudeMaxFiveX:
+            return "Max · 5x"
+        case .claudeMaxTwentyX:
+            return "Max · 20x"
+        case .claudeTeam:
+            return "Team"
+        case .claudeEnterprise:
+            return "Enterprise"
         }
     }
 }
@@ -98,7 +139,7 @@ struct OpenAIAccountPresentation: Equatable {
         email: String?,
         subscription: OpenAISubscriptionTier? = nil
     ) -> Self? {
-        guard activeClient == .codex, providerIsOfficial else { return nil }
+        guard activeClient == .codex || activeClient == .claude, providerIsOfficial else { return nil }
         return Self(email: email, subscription: subscription)
     }
 

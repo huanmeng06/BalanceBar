@@ -2007,6 +2007,43 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testOfficialAndAPIBalanceRefreshRowsHaveIndependentControlsAndNoSubtitles() throws {
+        let suite = "RefreshSplit.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        relay.onInterval = { identifier, value in
+            if identifier == "officialUsageRefreshInterval" { preferences.officialUsageRefreshInterval = value }
+            if identifier == "officialPostTaskRefreshDuration" { preferences.officialPostTaskRefreshDuration = value }
+        }
+        let page = DashboardGeneralPage().make(.init(preferences: preferences,
+            currentProviderName: "Claude", relay: relay,
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+        let popups = descendants(of: page).compactMap { $0 as? NSPopUpButton }
+        let official = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "officialUsageRefreshInterval" })
+        let trailing = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "officialPostTaskRefreshDuration" })
+        let api = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "codexUsageRefreshInterval" })
+        XCTAssertEqual(official.numberOfItems, 5)
+        XCTAssertEqual(trailing.numberOfItems, 5)
+        XCTAssertEqual(api.numberOfItems, 5)
+        let officialRow = try XCTUnwrap(SettingsRowView.enclosing(official))
+        let apiRow = try XCTUnwrap(SettingsRowView.enclosing(api))
+        XCTAssertTrue(officialRow.detailLabel.isHidden)
+        XCTAssertTrue(apiRow.detailLabel.isHidden)
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(officialRow))
+        XCTAssertTrue(section.contentViews[0] === officialRow)
+        XCTAssertTrue(section.contentViews[1] === apiRow)
+        official.selectItem(at: 3)
+        _ = official.sendAction(official.action!, to: official.target)
+        trailing.selectItem(at: 4)
+        _ = trailing.sendAction(trailing.action!, to: trailing.target)
+        XCTAssertEqual(preferences.officialUsageRefreshInterval, 150)
+        XCTAssertEqual(preferences.officialPostTaskRefreshDuration, 300)
+        XCTAssertEqual(preferences.codexUsageRefreshInterval, 3)
+        XCTAssertEqual(preferences.postCodexRefreshDuration, 12)
+    }
+
     func testRefreshIntervalPopupsExpandForLongSpanishAndFrenchTitles() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -2250,22 +2287,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     file: file,
                     line: line
                 )
-                let availableTextWidth = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
-                XCTAssertGreaterThan(
-                    row.detailLabel.preferredMaxLayoutWidth,
-                    controlsFrame.width - 0.5,
-                    "dedicated-row text uses the full content width above the accessory",
-                    file: file,
-                    line: line
-                )
-                XCTAssertEqual(
-                    row.detailLabel.preferredMaxLayoutWidth,
-                    availableTextWidth,
-                    accuracy: 1,
-                    "dedicated-row wrapping width matches the row's content column",
-                    file: file,
-                    line: line
-                )
+                XCTAssertTrue(row.detailLabel.isHidden, "refresh frequency rows contain only a title", file: file, line: line)
             } else {
                 XCTAssertFalse(
                     labelsFrame.intersects(controlsFrame),

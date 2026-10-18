@@ -215,7 +215,7 @@
 "dashboard.general.and.refresh.pages.after" = "Après";
 "dashboard.general.and.refresh.pages.refresh_now" = "Actualiser maintenant";
 "dashboard.general.and.refresh.pages.refresh" = "Actualiser";
-"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Fréquence d’actualisation du solde pendant les tâches";
+"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Fréquence d’actualisation du solde du fournisseur API";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "Actualise le solde du fournisseur sélectionné à la fréquence choisie pendant une tâche";
 "dashboard.general.and.refresh.pages.balance_data" = "Informations sur le solde";
 "dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "Actualiser maintenant les données du fournisseur actuel";
@@ -558,3 +558,7 @@
 "quick_switch.routing_protected" = "Mode routage : gérer dans CC Switch";
 "quick_switch.state_untrusted" = "Mode non confirmé : gérer dans CC Switch";
 "quick_switch.manage_in_cc_switch" = "Gérer dans CC Switch";
+
+"dashboard.refresh.official_quota_frequency" = "Fréquence d’actualisation du quota officiel";
+"dashboard.refresh.official_every_seconds" = "Toutes les %1$@ s";
+"dashboard.refresh.official_for_minutes" = "Pendant %1$@ min";
