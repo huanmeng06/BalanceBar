@@ -6,3 +6,4 @@ outputs/*.app/
 outputs/*.dmg/
 outputs/*.zip
 *.log
+__pycache__/
