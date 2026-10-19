@@ -53,7 +53,9 @@ enum CodexRolloutParser {
     }
 
     private static func number(_ value: Any?) -> Double? {
-        guard let number = value as? NSNumber, !(value is Bool) else { return nil }
+        // JSON booleans bridge to NSNumber, but `is Bool` is also true for numeric 0 and 1.
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
         let result = number.doubleValue
         return result.isFinite ? result : nil
     }
@@ -104,6 +106,7 @@ public final class CodexRolloutSource: QuotaSource {
     private var emittedAt: [QuotaWindowKind: Date] = [:]
     private let latestLock = NSLock()
     private var latestEventDate: Date?
+    private var latestEventAccountID: String?
 
     /// Resolves the sessions directory from `CODEX_HOME`, falling back to `~/.codex`.
     public static func sessionsDirectory(
@@ -152,7 +155,8 @@ public final class CodexRolloutSource: QuotaSource {
         let reference = date ?? now()
         latestLock.lock()
         defer { latestLock.unlock() }
-        guard let latest = latestEventDate else { return false }
+        guard let latest = latestEventDate,
+              latestEventAccountID == accountProvider.accountIdentity?.stableID else { return false }
         let age = reference.timeIntervalSince(latest)
         return age >= 0 && age <= configuration.freshness
     }
@@ -166,10 +170,11 @@ public final class CodexRolloutSource: QuotaSource {
             // Watch the sessions directory; before Codex creates it, watch its parent.
             let target = fileManager.fileExists(atPath: sessionsDirectory.path)
                 ? sessionsDirectory : sessionsDirectory.deletingLastPathComponent()
+            // The watcher's start/stop use `queue.sync`, so it needs its own queue.
             let created = DirectoryWatcher(
-                directory: target, configuration: ioConfiguration, queue: queue
+                directory: target, configuration: ioConfiguration
             ) { [weak self] paths in
-                self?.scan(paths: paths)
+                self?.queue.async { self?.scan(paths: paths) }
             }
             if created.start() { watcher = created }
         }
@@ -198,11 +203,6 @@ public final class CodexRolloutSource: QuotaSource {
                 }
             }
         }
-        if let latest = newest.values.map({ $0.event.timestamp }).max() {
-            latestLock.lock()
-            if latestEventDate.map({ latest > $0 }) ?? true { latestEventDate = latest }
-            latestLock.unlock()
-        }
         publish(newest)
     }
 
@@ -225,7 +225,18 @@ public final class CodexRolloutSource: QuotaSource {
                 epoch: epoch
             ) else { continue }
             emittedAt[kind] = item.event.timestamp
+            markFresh(item.event.timestamp, accountID: account.stableID)
             handler?(observation)
+        }
+    }
+
+    /// Records freshness only for a valid observation attributed to the current account.
+    private func markFresh(_ date: Date, accountID: String) {
+        latestLock.lock()
+        defer { latestLock.unlock() }
+        if latestEventAccountID != accountID || latestEventDate.map({ date > $0 }) ?? true {
+            latestEventDate = date
+            latestEventAccountID = accountID
         }
     }
 

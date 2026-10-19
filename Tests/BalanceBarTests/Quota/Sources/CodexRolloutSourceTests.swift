@@ -150,4 +150,79 @@ final class CodexRolloutSourceTests: XCTestCase {
         try Data(line(at: 10, primary: window(300, 10), secondary: window(10080, 20)).utf8).write(to: outside)
         XCTAssertTrue(scan(makeSource(), paths: [outside.path]).isEmpty)
     }
+
+    func testZeroAndOnePercentAreParsed() throws {
+        try writeRollout("a", line(at: 10, primary: window(300, 0), secondary: window(10080, 1)))
+        let byWindow = Dictionary(uniqueKeysWithValues: scan(makeSource()).map { ($0.window, $0) })
+        XCTAssertEqual(byWindow[.fiveHour]?.usedPercentage, 0)
+        XCTAssertEqual(byWindow[.sevenDay]?.usedPercentage, 1)
+    }
+
+    func testBooleanPercentIsRejected() {
+        let text = "{\"timestamp\":\"\(iso(10))\",\"payload\":{\"type\":\"token_count\",\"rate_limits\":{\"primary\":{\"used_percent\":true,\"window_minutes\":300}}}}"
+        XCTAssertNil(CodexRolloutParser.parse(line: Data(text.utf8)))
+    }
+
+    func testInvalidOrUnattributedDataIsNotFresh() throws {
+        try writeRollout("a", line(at: 10, primary: window(300, 150), secondary: window(10080, 150)))
+        let invalid = makeSource()
+        _ = scan(invalid)
+        XCTAssertFalse(invalid.hasFreshData(at: base.addingTimeInterval(20)))
+
+        let url = root.appendingPathComponent("sessions/2026/10/19/rollout-b.jsonl")
+        try Data(line(at: 10, primary: window(300, 10), secondary: window(10080, 20)).utf8).write(to: url)
+        let noAccount = makeSource(account: FakeAccount(accountIdentity: nil))
+        _ = scan(noAccount)
+        XCTAssertFalse(noAccount.hasFreshData(at: base.addingTimeInterval(20)))
+    }
+
+    func testFreshnessIsInvalidatedWhenAccountChanges() throws {
+        final class Switchable: AccountIdentityProviding {
+            var accountIdentity: AccountIdentity? = AccountIdentity(stableID: "codex:one", idSource: .accountUUID)
+            var credentialVersion: CredentialVersion? { nil }
+            var accountEpoch: AccountEpoch { .initial }
+        }
+        try writeRollout("a", line(at: 10, primary: window(300, 10), secondary: window(10080, 20)))
+        let account = Switchable()
+        let source = CodexRolloutSource(
+            sessionsDirectory: root.appendingPathComponent("sessions"),
+            accountProvider: account,
+            configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
+            now: { self.base.addingTimeInterval(100) }
+        )
+        _ = scan(source)
+        XCTAssertTrue(source.hasFreshData(at: base.addingTimeInterval(20)))
+        account.accountIdentity = AccountIdentity(stableID: "codex:two", idSource: .accountUUID)
+        XCTAssertFalse(source.hasFreshData(at: base.addingTimeInterval(20)))
+    }
+
+    func testStartAndStopLifecycleDeliversAppendedEvents() throws {
+        let url = try writeRollout("live", line(at: 10, primary: window(300, 10), secondary: window(10080, 20)))
+        let source = CodexRolloutSource(
+            sessionsDirectory: root.appendingPathComponent("sessions"),
+            accountProvider: FakeAccount(),
+            configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
+            ioConfiguration: QuotaIOConfiguration(watchCoalescingInterval: 0.1),
+            now: { self.base.addingTimeInterval(100) }
+        )
+        let lock = NSLock()
+        var received: [QuotaObservation] = []
+        let initial = expectation(description: "initial scan")
+        initial.expectedFulfillmentCount = 2
+        let appended = expectation(description: "appended event")
+        appended.expectedFulfillmentCount = 2
+        source.start { observation in
+            lock.lock(); received.append(observation); let count = received.count; lock.unlock()
+            if count <= 2 { initial.fulfill() } else { appended.fulfill() }
+        }
+        wait(for: [initial], timeout: 5)
+        Thread.sleep(forTimeInterval: 0.5) // let the FSEvents stream settle
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(line(at: 60, primary: window(300, 11), secondary: window(10080, 21)).utf8))
+        try handle.close()
+        wait(for: [appended], timeout: 10)
+        source.stop()
+        source.stop()
+    }
 }
