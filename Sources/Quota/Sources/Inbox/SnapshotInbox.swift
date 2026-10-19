@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Tunables for the snapshot inbox; defaults follow the Schema v1 inbox rules.
@@ -43,7 +44,9 @@ public final class SnapshotInbox: QuotaSource {
     private let configuration: SnapshotInboxConfiguration
     private let now: () -> Date
     private let fileManager: FileManager
-    private let queue = DispatchQueue(label: "BalanceBar.SnapshotInbox", qos: .utility)
+    private static let queueKey = DispatchSpecificKey<UUID>()
+    private let queueTag = UUID()
+    let queue: DispatchQueue
     private let watcherQueue = DispatchQueue(label: "BalanceBar.SnapshotInbox.Watcher", qos: .utility)
 
     private var handler: ((QuotaObservation) -> Void)?
@@ -61,6 +64,8 @@ public final class SnapshotInbox: QuotaSource {
         fileManager: FileManager = .default,
         now: @escaping () -> Date = Date.init
     ) {
+        queue = DispatchQueue(label: "BalanceBar.SnapshotInbox", qos: .utility)
+        queue.setSpecific(key: Self.queueKey, value: queueTag)
         self.inboxDirectory = inboxDirectory.standardizedFileURL
         self.adapters = [SchemaV1InboxAdapter(directory: inboxDirectory)] + adapters
         self.identity = identity
@@ -71,33 +76,48 @@ public final class SnapshotInbox: QuotaSource {
 
     deinit { stop() }
 
+    /// Starts watching. All file-system work runs on the inbox queue, never on the caller's thread.
     public func start(receiving handler: @escaping (QuotaObservation) -> Void) {
-        stop()
-        queue.sync {
+        let toStop = tearDown()
+        toStop.forEach { $0.stop() }
+        let token: Int = onQueue {
             self.handler = handler
-            try? fileManager.createDirectory(at: inboxDirectory, withIntermediateDirectories: true,
-                                             attributes: [.posixPermissions: 0o700])
+            return self.generation
         }
-        let roots = Set(adapters.flatMap(watchRoots(for:)).map(\.path)).sorted()
-            .filter { fileManager.fileExists(atPath: $0) }
-        let created: [DirectoryWatcher] = roots.compactMap { path in
-            let watcher = DirectoryWatcher(
-                directory: URL(fileURLWithPath: path), configuration: configuration.io, queue: watcherQueue
-            ) { [weak self] paths in self?.queue.async { self?.process(paths: paths) } }
-            return watcher.start() ? watcher : nil
+        queue.async { [weak self] in
+            guard let self, self.generation == token else { return }
+            try? self.fileManager.createDirectory(at: self.inboxDirectory, withIntermediateDirectories: true,
+                                                  attributes: [.posixPermissions: 0o700])
+            let roots = Set(self.adapters.flatMap(self.watchRoots(for:)).map(\.path)).sorted()
+            self.watchers = roots.compactMap { path in
+                let watcher = DirectoryWatcher(
+                    directory: URL(fileURLWithPath: path), configuration: self.configuration.io,
+                    queue: self.watcherQueue
+                ) { [weak self] paths in self?.queue.async { self?.process(paths: paths) } }
+                return watcher.start() ? watcher : nil
+            }
+            self.scanAll()
         }
-        queue.sync { watchers = created }
-        queue.async { [weak self] in self?.scanAll() }
     }
 
+    /// Safe to call from any thread, including from inside the observation handler.
     public func stop() {
-        let toStop: [DirectoryWatcher] = queue.sync {
+        tearDown().forEach { $0.stop() }
+    }
+
+    private func tearDown() -> [DirectoryWatcher] {
+        onQueue {
             generation += 1
             handler = nil
             defer { watchers = [] }
             return watchers
         }
-        toStop.forEach { $0.stop() }
+    }
+
+    /// Runs `body` on the inbox queue, or inline when already on it (avoids self-deadlock).
+    private func onQueue<T>(_ body: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: Self.queueKey) == queueTag { return body() }
+        return queue.sync(execute: body)
     }
 
     /// Rescans every discovered path. Runs on the inbox queue.
@@ -112,10 +132,24 @@ public final class SnapshotInbox: QuotaSource {
     /// Processes changed paths. Runs on the inbox queue.
     func process(paths: Set<String>) {
         removeExpiredFiles()
-        for path in paths.sorted() {
+        for path in expand(paths: paths) {
             guard let adapter = adapter(for: path) else { continue }
             read(path: path, adapter: adapter, allowRetry: true, generation: generation)
         }
+    }
+
+    /// Replaces directory paths (such as the post-wake catch-up event) with the files inside them.
+    func expand(paths: Set<String>) -> [String] {
+        var result: Set<String> = []
+        for path in paths {
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {
+                result.formUnion(files(under: URL(fileURLWithPath: path)))
+            } else {
+                result.insert(path)
+            }
+        }
+        return result.sorted()
     }
 
     // MARK: Reading
@@ -126,7 +160,7 @@ public final class SnapshotInbox: QuotaSource {
         guard !url.lastPathComponent.hasPrefix("."), isRegularFile(url) else { return }
 
         let validator = SafeFileValidator(
-            allowedDirectories: adapters.flatMap(watchRoots(for:)),
+            allowedDirectories: adapters.flatMap(allowedDirectories(for:)),
             maximumFileSize: QuotaConstants.snapshotMaximumSizeBytes
         )
         let parsed: ParsedQuotaSnapshot
@@ -177,11 +211,27 @@ public final class SnapshotInbox: QuotaSource {
 
     // MARK: Paths
 
-    private func watchRoots(for adapter: QuotaSourceAdapter) -> [URL] {
+    /// Directories each discovered path must be readable from: a directory itself, a file's parent,
+    /// or, for a path that does not exist yet, its parent (it may become a file).
+    private func allowedDirectories(for adapter: QuotaSourceAdapter) -> [URL] {
         adapter.discoverPaths().map { url in
             var isDirectory: ObjCBool = false
-            let exists = fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
-            return exists && !isDirectory.boolValue ? url.deletingLastPathComponent() : url
+            if fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+                return url
+            }
+            return url.deletingLastPathComponent()
+        }
+    }
+
+    /// Existing directories to watch. A path that does not exist yet is watched through its
+    /// nearest existing ancestor so its later creation is observed.
+    private func watchRoots(for adapter: QuotaSourceAdapter) -> [URL] {
+        allowedDirectories(for: adapter).map { url in
+            var candidate = url
+            while !fileManager.fileExists(atPath: candidate.path), candidate.pathComponents.count > 1 {
+                candidate = candidate.deletingLastPathComponent()
+            }
+            return candidate
         }
     }
 
@@ -212,13 +262,19 @@ public final class SnapshotInbox: QuotaSource {
     /// Removes inbox files whose session ended (no modification) longer than the retention period ago.
     /// Only the inbox directory itself is cleaned, never paths owned by other producers.
     private func removeExpiredFiles() {
+        // Never clean through a symlinked inbox or one owned by someone else.
+        guard let inboxValues = try? inboxDirectory.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey]),
+              inboxValues.isSymbolicLink != true, inboxValues.isDirectory == true,
+              (try? fileManager.attributesOfItem(atPath: inboxDirectory.path)[.ownerAccountID] as? NSNumber)?
+                  .uint32Value == getuid() else { return }
         let cutoff = now().addingTimeInterval(-configuration.retention)
         let urls = (try? fileManager.contentsOfDirectory(
             at: inboxDirectory, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey]
         )) ?? []
         for url in urls {
-            guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey]),
-                  values.isRegularFile == true, let modified = values.contentModificationDate,
+            guard let values = try? url.resourceValues(
+                    forKeys: [.contentModificationDateKey, .isRegularFileKey, .isSymbolicLinkKey]),
+                  values.isRegularFile == true, values.isSymbolicLink != true, let modified = values.contentModificationDate,
                   modified < cutoff else { continue }
             try? fileManager.removeItem(at: url)
         }

@@ -149,6 +149,64 @@ final class SnapshotInboxTests: XCTestCase {
         XCTAssertEqual(collector.all.count, 2)
     }
 
+    // MARK: Review fixes
+
+    func testFileInNotYetExistingDirectoryIsObservedAfterCreation() throws {
+        let target = root.appendingPathComponent("producer/state.json")
+        let collector = Collector()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox,
+            adapters: [SchemaV1InboxAdapter(directory: target, sourceID: "late")],
+            identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(io: QuotaIOConfiguration(watchCoalescingInterval: 0.05))
+        )
+        inboxes.append(source)
+        source.start { collector.add($0) }
+        Thread.sleep(forTimeInterval: 0.4)
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fixtureData("hud-0.11.3.json").write(to: target)
+        let deadline = Date().addingTimeInterval(5)
+        while collector.all.count < 2, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        XCTAssertEqual(collector.all.count, 2)
+    }
+
+    func testDirectoryCatchUpEventExpandsToFiles() throws {
+        try place(fixture: "hud-0.11.3.json", as: "a.json")
+        let source = SnapshotInbox(inboxDirectory: inbox, identity: FakeIdentity())
+        let expanded = source.queue.sync { source.expand(paths: [inbox.path]) }
+        XCTAssertEqual(expanded, [inbox.appendingPathComponent("a.json").path])
+    }
+
+    func testSymlinkedInboxIsNotCleaned() throws {
+        let shared = root.appendingPathComponent("shared", isDirectory: true)
+        try FileManager.default.createDirectory(at: shared, withIntermediateDirectories: true)
+        let foreign = shared.appendingPathComponent("foreign.txt")
+        try Data("keep".utf8).write(to: foreign)
+        let now = Date()
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-48 * 3_600)], ofItemAtPath: foreign.path
+        )
+        let link = root.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: shared)
+        inbox = link
+        _ = collect(now: { now })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: foreign.path))
+    }
+
+    func testStopFromObservationHandlerDoesNotDeadlock() throws {
+        try place(fixture: "hud-0.11.3.json")
+        let stopped = expectation(description: "stopped in handler")
+        stopped.assertForOverFulfill = false
+        let source = SnapshotInbox(inboxDirectory: inbox, identity: FakeIdentity())
+        inboxes.append(source)
+        source.start { [unowned source] _ in
+            source.stop()
+            stopped.fulfill()
+        }
+        wait(for: [stopped], timeout: 5)
+        source.queue.sync {}
+    }
+
     // MARK: Parser
 
     func testParserDropsWindowsWithBadResetTimesIndividually() throws {
