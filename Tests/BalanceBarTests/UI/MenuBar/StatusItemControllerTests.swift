@@ -3349,6 +3349,10 @@ extension StatusItemControllerTests {
         }
         let timeText = StatusSlotAppearance.timeText(fetchedAt, timeZone: settings.displayTimeZone)
         XCTAssertEqual(try slot().textForTesting, timeText)
+        // Same style as the Codex card's plain refresh time: HH:mm:ss at 12 pt monospaced digits.
+        XCTAssertEqual(timeText, AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: fetchedAt))
+        XCTAssertEqual(timeText.count, 8)
+        XCTAssertEqual(try slot().fontForTesting, .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
         XCTAssertEqual(try slot().identifier?.rawValue, "overview.refreshTime")
         XCTAssertEqual(try slot().frame.size, NSSize(width: StatusSlotView.fixedWidth, height: StatusSlotView.fixedHeight))
 
@@ -3398,6 +3402,7 @@ extension StatusItemControllerTests {
         let view = try XCTUnwrap(find(FailureStateView.self, in: withButton))
         XCTAssertEqual(view.reasonForTesting.replacingOccurrences(of: "\u{200B}", with: ""), "Network down")
         XCTAssertEqual(view.openUsageButton.title, tr(.keyQuotaFailureOpenUsagePage))
+        XCTAssertEqual(view.openUsageButton.accessibilityLabel(), tr(.keyQuotaFailureOpenUsagePage))
         XCTAssertEqual(withButton.frame.height, plain.frame.height + ErrorCardLayout.usagePageButtonHeight, accuracy: 0.5)
         view.openUsageButton.performClick(nil)
         XCTAssertEqual(opened, [FailureStateView.officialUsageURL])

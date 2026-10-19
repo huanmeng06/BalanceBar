@@ -357,4 +357,58 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         })
         XCTAssertEqual(state.windows.first?.remaining, 77, "an old-cycle reading is not a confirmation")
     }
+    // MARK: Manual-test fixtures (PR "如何人工测试" steps 6 and 7)
+
+    func testDocumentedCooldownFileDisablesReadsAfterRestart() throws {
+        let stateDirectory = directory.appendingPathComponent("state", isDirectory: true)
+        try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+        let json: [String: Any] = ["cooldownUntil": Self.start.timeIntervalSince1970 + 3_600,
+                                   "consecutiveRateLimitBackoffs": 1, "isUnauthorizedPaused": false]
+        try JSONSerialization.data(withJSONObject: json).write(to: stateDirectory.appendingPathComponent("claude-fetch-scheduler.json"))
+        let pipeline = makePipeline()
+        pipeline.requestFetch(reason: .initial)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0, "no request while the cooldown lasts")
+        XCTAssertEqual(try XCTUnwrap(pipeline.manualRefreshBlockedUntil()).timeIntervalSince(Self.start), 3_600, accuracy: 1)
+    }
+
+    func testDocumentedResetTimeEditMakesTheWindowPendingAfterRestart() throws {
+        let first = makePipeline()
+        first.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(first) { !$0.windows.isEmpty })
+        first.flush()
+        pipelines.removeAll()
+
+        // Same edit as the documented python snippet: every `resetsAt` becomes ten minutes ago, as
+        // seconds since 2001-01-01 (JSONEncoder's Date format).
+        let file = directory.appendingPathComponent("state/claude-quota-merge.json")
+        let reference = Self.start.timeIntervalSince1970 - 978_307_200 - 600
+        func fix(_ value: Any) -> Any {
+            if var dictionary = value as? [String: Any] {
+                for (key, inner) in dictionary {
+                    dictionary[key] = key == "resetsAt" && inner is NSNumber ? reference : fix(inner)
+                }
+                return dictionary
+            }
+            if let array = value as? [Any] { return array.map(fix) }
+            return value
+        }
+        let edited = fix(try JSONSerialization.jsonObject(with: Data(contentsOf: file)))
+        try JSONSerialization.data(withJSONObject: edited).write(to: file)
+
+        let restarted = makePipeline()
+        restarted.start()
+        restarted.tick()
+        let pending = try XCTUnwrap(waitForState(restarted) {
+            if case .resetPending = $0.status { return true }
+            return false
+        })
+        XCTAssertEqual(pending.display.window(for: .fiveHour)?.state, .resetPendingConfirmation)
+        // The next read of the new cycle confirms the reset and clears the pending state.
+        PipelineStubProtocol.set(.init(data: Self.nextCycle))
+        clock.advance(by: 5 * 3_600)
+        restarted.tick()
+        let confirmed = try XCTUnwrap(waitForState(restarted) { $0.windows.first?.remaining == 98 })
+        XCTAssertEqual(confirmed.status, .official(at: clock.now))
+    }
 }

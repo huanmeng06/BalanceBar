@@ -4619,4 +4619,51 @@ extension ProviderRefreshCoordinatorTests {
         notifications.refreshPermission()
         XCTAssertEqual(notificationClient.deliveries.count, 1, "account B's real low quota alerts normally")
     }
+    func testLowQuotaNotifiesOnceAndRepeatedReadsDoNotRepeatIt() throws {
+        let current = try useClaudeOfficialProvider()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Self.claudeLowUsage, statusCode: 200) }
+        let official = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "token"), now: { clock.now })
+        let harness = try makeClaudeHarness(official: official, clock: clock)
+        let (notifications, notificationClient, enableNotifications) = notificationHarness(providerID: current.id)
+        enableNotifications()
+        var actions = claudeActions { _ in }
+        wire(&actions, to: notifications)
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+            actions: actions, claudeQuota: harness.pipeline, now: { clock.now })
+
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        waitForRequestCount(1)
+        settle(coordinator, harness)
+        notifications.refreshPermission()
+        XCTAssertEqual(notificationClient.deliveries.count, 1, "the first low reading alerts once")
+
+        for round in 2...3 {
+            clock.advance(by: 360)
+            coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+            waitForRequestCount(round)
+            settle(coordinator, harness)
+            notifications.refreshPermission()
+        }
+        XCTAssertEqual(notificationClient.deliveries.count, 1, "later reads of the same crossing never repeat the alert")
+    }
+
+    func testProxyRequiredFailureTextIsShownOnTheCardWithoutCachedData() throws {
+        let current = try useClaudeOfficialProvider()
+        DelayedBalanceURLProtocol.setHandler { _ in .transportFailure() }
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let official = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "token"), now: { clock.now })
+        let harness = try makeClaudeHarness(official: official, clock: clock)
+        let rendered = expectation(description: "proxy hint rendered")
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+            actions: claudeActions { snapshot in
+                guard snapshot.kind == .error else { return }
+                XCTAssertTrue(snapshot.message?.contains("Possible proxy required") == true, snapshot.message ?? "")
+                rendered.fulfill()
+            }, claudeQuota: harness.pipeline, now: { clock.now })
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [rendered], timeout: 3)
+    }
 }

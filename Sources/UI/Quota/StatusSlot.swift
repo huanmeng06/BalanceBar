@@ -111,19 +111,21 @@ enum StatusSlotAppearance {
     }
 
     static func timeText(_ date: Date?, timeZone: TimeZone = .current) -> String {
-        guard let date else { return "--:--" }
+        guard let date else { return "--:--:--" }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
-        formatter.dateFormat = "HH:mm"
+        formatter.dateFormat = "HH:mm:ss"
         return formatter.string(from: date)
     }
 }
 
 /// The card's top-right status indicator. Fixed width so the card title never shifts.
 final class StatusSlotView: NSView {
-    /// Fixed slot width; sized for the widest state ("⚠︎ 88:88" / "刷新中…").
-    static let fixedWidth: CGFloat = 64
+    /// Fixed slot width, equal to the card's refresh-time column; sized for the widest
+    /// state ("⚠︎ 88:88:88" / "刷新中…") at the same 12 pt as the plain refresh time.
+    static let fixedWidth: CGFloat = 81
+    static let fontSize: CGFloat = 12
     static let fixedHeight: CGFloat = 16
     static let dotDiameter: CGFloat = 6
 
@@ -136,6 +138,7 @@ final class StatusSlotView: NSView {
 
     var textForTesting: String { label.stringValue }
     var textColorForTesting: NSColor? { label.textColor }
+    var fontForTesting: NSFont? { label.font }
     var isDotVisibleForTesting: Bool { !dot.isHidden }
 
     init(
@@ -145,7 +148,7 @@ final class StatusSlotView: NSView {
         self.localize = localize
         self.timeZone = timeZone
         super.init(frame: NSRect(x: 0, y: 0, width: Self.fixedWidth, height: Self.fixedHeight))
-        label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        label.font = .monospacedDigitSystemFont(ofSize: Self.fontSize, weight: .regular)
         label.alignment = .right
         label.lineBreakMode = .byClipping
         label.translatesAutoresizingMaskIntoConstraints = false

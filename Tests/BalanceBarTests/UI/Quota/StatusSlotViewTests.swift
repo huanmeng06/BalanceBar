@@ -107,7 +107,7 @@ final class StatusSlotViewTests: XCTestCase {
 
     /// Rendering-level checks that do not depend on font rasterisation details.
     func testRenderedColorsClippingAndAppearance() throws {
-        let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        let font = NSFont.monospacedDigitSystemFont(ofSize: StatusSlotView.fontSize, weight: .regular)
         for (name, state) in allStates {
             let (lightView, light) = try render(state, .aqua)
             let (_, dark) = try render(state, .darkAqua)
@@ -274,16 +274,37 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(view.accessibilityLabel(), "额度状态：待确认")
     }
 
+    // MARK: Time style (matches the Codex card's HH:mm:ss refresh time)
+
+    func testTimeStatesUseSecondsAndThePlainRefreshTimeFont() {
+        let withSeconds = time.addingTimeInterval(7)
+        let view = StatusSlotView(timeZone: utc)
+        XCTAssertEqual(view.fontForTesting, .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
+        view.update(state: .official(at: withSeconds))
+        XCTAssertEqual(view.textForTesting, "13:40:07")
+        XCTAssertEqual(view.toolTip, "官方数据，更新于 13:40:07")
+        XCTAssertEqual(view.accessibilityLabel(), "额度状态：13:40:07")
+        view.update(state: .error(at: withSeconds))
+        XCTAssertEqual(view.textForTesting, "⚠︎ 13:40:07")
+        XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40:07 的数据")
+        XCTAssertEqual(view.accessibilityLabel(), "额度状态：⚠︎ 13:40:07")
+        view.update(state: .estimated(at: withSeconds))
+        XCTAssertEqual(view.textForTesting, "≈ 13:40:07")
+        XCTAssertEqual(view.toolTip, "根据 13:40:07 的数据估算，等待官方确认")
+        view.update(state: .error(at: nil))
+        XCTAssertEqual(view.textForTesting, "⚠︎ --:--:--")
+    }
+
     // MARK: Hover + VoiceOver
 
     func testHoverTextsIncludingExternalActivity() {
         let view = StatusSlotView(timeZone: utc)
         view.update(state: .official(at: time))
-        XCTAssertEqual(view.toolTip, "官方数据，更新于 13:40")
+        XCTAssertEqual(view.toolTip, "官方数据，更新于 13:40:00")
         view.update(state: .estimated(at: time), externalActivityDetected: true)
-        XCTAssertEqual(view.toolTip, "根据 13:40 的数据估算，等待官方确认\n检测到其他端在使用，已提高更新频率")
+        XCTAssertEqual(view.toolTip, "根据 13:40:00 的数据估算，等待官方确认\n检测到其他端在使用，已提高更新频率")
         view.update(state: .error(at: time))
-        XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40 的数据")
+        XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40:00 的数据")
         for (_, state) in allStates {
             view.update(state: state)
             XCTAssertFalse(view.toolTip?.isEmpty ?? true)
