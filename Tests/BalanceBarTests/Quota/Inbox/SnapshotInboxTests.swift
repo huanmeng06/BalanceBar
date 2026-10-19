@@ -167,7 +167,7 @@ final class SnapshotInboxTests: XCTestCase {
         try fixtureData("hud-0.11.3.json").write(to: target)
         let deadline = Date().addingTimeInterval(5)
         while collector.all.count < 2, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
-        XCTAssertEqual(collector.all.count, 2)
+        XCTAssertEqual(Set(collector.all.map(\.window.rawValue)), ["five_hour", "seven_day"])
     }
 
     func testDirectoryCatchUpEventExpandsToFiles() throws {
@@ -175,6 +175,19 @@ final class SnapshotInboxTests: XCTestCase {
         let source = SnapshotInbox(inboxDirectory: inbox, identity: FakeIdentity())
         let expanded = source.queue.sync { source.expand(paths: [inbox.path]) }
         XCTAssertEqual(expanded, [inbox.appendingPathComponent("a.json").path])
+    }
+
+    func testAncestorCatchUpEventFindsNestedDiscoveredFile() throws {
+        let target = root.appendingPathComponent("producer/state.json")
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fixtureData("hud-0.11.3.json").write(to: target)
+        let source = SnapshotInbox(
+            inboxDirectory: inbox,
+            adapters: [SchemaV1InboxAdapter(directory: target, sourceID: "nested")],
+            identity: FakeIdentity()
+        )
+        let expanded = source.queue.sync { source.expand(paths: [root.path]) }
+        XCTAssertTrue(expanded.contains(target.path))
     }
 
     func testSymlinkedInboxIsNotCleaned() throws {

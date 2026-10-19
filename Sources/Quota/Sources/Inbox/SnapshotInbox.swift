@@ -138,13 +138,24 @@ public final class SnapshotInbox: QuotaSource {
         }
     }
 
-    /// Replaces directory paths (such as the post-wake catch-up event) with the files inside them.
+    /// Replaces directory paths (such as the post-wake catch-up event) with the files inside them,
+    /// including nested paths discovered by adapters.
     func expand(paths: Set<String>) -> [String] {
         var result: Set<String> = []
         for path in paths {
             var isDirectory: ObjCBool = false
             if fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {
                 result.formUnion(files(under: URL(fileURLWithPath: path)))
+                // A watched ancestor of a not-yet-existing path: rescan nested discovered paths too.
+                let prefix = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().pathComponents
+                for adapter in adapters {
+                    for discovered in adapter.discoverPaths() {
+                        let parts = discovered.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+                        if parts.count > prefix.count, Array(parts.prefix(prefix.count)) == prefix {
+                            result.formUnion(files(under: discovered))
+                        }
+                    }
+                }
             } else {
                 result.insert(path)
             }
