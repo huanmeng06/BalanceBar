@@ -1,0 +1,14 @@
+{
+  "name": "balancebar-mods",
+  "owner": {
+    "name": "BalanceBar"
+  },
+  "description": "BalanceBar Claude Code Mods.",
+  "plugins": [
+    {
+      "name": "balancebar-mod",
+      "source": "./",
+      "description": "Writes Claude rate-limit snapshots to the BalanceBar inbox."
+    }
+  ]
+}
