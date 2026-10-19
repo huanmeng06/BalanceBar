@@ -176,9 +176,25 @@
 		A10000000000000200000046 /* Foundation.framework in Launch Agent Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* Foundation.framework */; };
 		A49300000000000000000002 /* CCSwitchAggregationRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49300000000000000000001 /* CCSwitchAggregationRepository.swift */; };
 		B51100000000000000000030 /* QuotaTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51100000000000000000010 /* QuotaTypes.swift */; };
+		B51600000000000000000030 /* QuotaMergeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51600000000000000000010 /* QuotaMergeEngine.swift */; };
+		B51600000000000000000033 /* QuotaMergeEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51600000000000000000020 /* QuotaMergeEngineTests.swift */; };
 		B51100000000000000000031 /* QuotaContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51100000000000000000011 /* QuotaContracts.swift */; };
 		B51100000000000000000032 /* QuotaSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51100000000000000000012 /* QuotaSnapshot.swift */; };
+		C51700000000000000000001 /* StatusSlot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C51700000000000000000004 /* StatusSlot.swift */; };
+		C51700000000000000000002 /* FailureStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C51700000000000000000005 /* FailureStateView.swift */; };
+		C51700000000000000000003 /* StatusSlotViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C51700000000000000000006 /* StatusSlotViewTests.swift */; };
 		B51100000000000000000033 /* QuotaModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51100000000000000000020 /* QuotaModelTests.swift */; };
+		B51900000000000000000011 /* DirectoryWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51900000000000000000001 /* DirectoryWatcher.swift */; };
+		B51900000000000000000012 /* IncrementalJSONLReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51900000000000000000002 /* IncrementalJSONLReader.swift */; };
+		B51900000000000000000013 /* SafeFileValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51900000000000000000003 /* SafeFileValidator.swift */; };
+		B51900000000000000000014 /* QuotaIOTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51900000000000000000004 /* QuotaIOTests.swift */; };
+		B51800000000000000000030 /* QuotaNotificationAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51800000000000000000010 /* QuotaNotificationAdapter.swift */; };
+		B51800000000000000000031 /* QuotaNotificationAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */; };
+		B51400000000000000000030 /* ClaudeAccountIdentityProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51400000000000000000010 /* ClaudeAccountIdentityProvider.swift */; };
+		B51400000000000000000031 /* ClaudeAccountIdentityProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51400000000000000000020 /* ClaudeAccountIdentityProviderTests.swift */; };
+		B51500000000000000000030 /* FetchScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51500000000000000000010 /* FetchScheduler.swift */; };
+		B51500000000000000000031 /* FetchSchedulerSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51500000000000000000011 /* FetchSchedulerSupport.swift */; };
+		B51500000000000000000032 /* FetchSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51500000000000000000020 /* FetchSchedulerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -378,9 +394,25 @@
 		A10000000000000200000017 /* BalanceBarChatGPTLaunchAgent */ = {isa = PBXFileReference; explicitFileType = compiled.mach-o.executable; includeInIndex = 0; path = BalanceBarChatGPTLaunchAgent; sourceTree = BUILT_PRODUCTS_DIR; };
 		A49300000000000000000001 /* CCSwitchAggregationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchAggregationRepository.swift; sourceTree = "<group>"; };
 		B51100000000000000000010 /* QuotaTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaTypes.swift; sourceTree = "<group>"; };
+		B51600000000000000000010 /* QuotaMergeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaMergeEngine.swift; sourceTree = "<group>"; };
+		B51600000000000000000020 /* QuotaMergeEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaMergeEngineTests.swift; sourceTree = "<group>"; };
 		B51100000000000000000011 /* QuotaContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaContracts.swift; sourceTree = "<group>"; };
 		B51100000000000000000012 /* QuotaSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSnapshot.swift; sourceTree = "<group>"; };
+		C51700000000000000000004 /* StatusSlot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusSlot.swift; sourceTree = "<group>"; };
+		C51700000000000000000005 /* FailureStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailureStateView.swift; sourceTree = "<group>"; };
+		C51700000000000000000006 /* StatusSlotViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusSlotViewTests.swift; sourceTree = "<group>"; };
 		B51100000000000000000020 /* QuotaModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaModelTests.swift; sourceTree = "<group>"; };
+		B51900000000000000000001 /* DirectoryWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryWatcher.swift; sourceTree = "<group>"; };
+		B51900000000000000000002 /* IncrementalJSONLReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncrementalJSONLReader.swift; sourceTree = "<group>"; };
+		B51900000000000000000003 /* SafeFileValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeFileValidator.swift; sourceTree = "<group>"; };
+		B51900000000000000000004 /* QuotaIOTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaIOTests.swift; sourceTree = "<group>"; };
+		B51800000000000000000010 /* QuotaNotificationAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaNotificationAdapter.swift; sourceTree = "<group>"; };
+		B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaNotificationAdapterTests.swift; sourceTree = "<group>"; };
+		B51400000000000000000010 /* ClaudeAccountIdentityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAccountIdentityProvider.swift; sourceTree = "<group>"; };
+		B51400000000000000000020 /* ClaudeAccountIdentityProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAccountIdentityProviderTests.swift; sourceTree = "<group>"; };
+		B51500000000000000000010 /* FetchScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetchScheduler.swift; sourceTree = "<group>"; };
+		B51500000000000000000011 /* FetchSchedulerSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetchSchedulerSupport.swift; sourceTree = "<group>"; };
+		B51500000000000000000020 /* FetchSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetchSchedulerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -598,6 +630,11 @@
 			isa = PBXGroup;
 			children = (
 				B51100000000000000000020 /* QuotaModelTests.swift */,
+				B51900000000000000000004 /* QuotaIOTests.swift */,
+				B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */,
+				B51600000000000000000020 /* QuotaMergeEngineTests.swift */,
+				B51400000000000000000003 /* Account */,
+				B51500000000000000000020 /* FetchSchedulerTests.swift */,
 			);
 			path = Quota;
 			sourceTree = "<group>";
@@ -632,9 +669,18 @@
 			path = Monitoring;
 			sourceTree = "<group>";
 		};
+		C51700000000000000000008 /* Quota */ = {
+			isa = PBXGroup;
+			children = (
+				C51700000000000000000006 /* StatusSlotViewTests.swift */,
+			);
+			path = Quota;
+			sourceTree = "<group>";
+		};
 		A40000000000000000000016 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				C51700000000000000000008 /* Quota */,
 				A40000000000000000000017 /* MenuBar */,
 				A40000000000000000000018 /* Dashboard */,
 			);
@@ -695,9 +741,57 @@
 		B51100000000000000000001 /* Quota */ = {
 			isa = PBXGroup;
 			children = (
+				B51400000000000000000001 /* Account */,
 				B51100000000000000000002 /* Model */,
+				B51900000000000000000010 /* IO */,
+				B51800000000000000000002 /* Notify */,
+				B51600000000000000000002 /* Merge */,
+				B51500000000000000000001 /* Scheduler */,
 			);
 			path = Quota;
+			sourceTree = "<group>";
+		};
+		B51900000000000000000010 /* IO */ = {
+			isa = PBXGroup;
+			children = (
+				B51900000000000000000001 /* DirectoryWatcher.swift */,
+				B51900000000000000000002 /* IncrementalJSONLReader.swift */,
+				B51900000000000000000003 /* SafeFileValidator.swift */,
+			);
+			path = IO;
+			sourceTree = "<group>";
+		};
+		B51800000000000000000002 /* Notify */ = {
+			isa = PBXGroup;
+			children = (
+				B51800000000000000000010 /* QuotaNotificationAdapter.swift */,
+			);
+			path = Notify;
+			sourceTree = "<group>";
+		};
+		B51400000000000000000001 /* Account */ = {
+			isa = PBXGroup;
+			children = (
+				B51400000000000000000010 /* ClaudeAccountIdentityProvider.swift */,
+			);
+			path = Account;
+			sourceTree = "<group>";
+		};
+		B51400000000000000000003 /* Account */ = {
+			isa = PBXGroup;
+			children = (
+				B51400000000000000000020 /* ClaudeAccountIdentityProviderTests.swift */,
+			);
+			path = Account;
+			sourceTree = "<group>";
+		};
+		B51500000000000000000001 /* Scheduler */ = {
+			isa = PBXGroup;
+			children = (
+				B51500000000000000000010 /* FetchScheduler.swift */,
+				B51500000000000000000011 /* FetchSchedulerSupport.swift */,
+			);
+			path = Scheduler;
 			sourceTree = "<group>";
 		};
 		B51100000000000000000002 /* Model */ = {
@@ -708,6 +802,14 @@
 				B51100000000000000000012 /* QuotaSnapshot.swift */,
 			);
 			path = Model;
+			sourceTree = "<group>";
+		};
+		B51600000000000000000002 /* Merge */ = {
+			isa = PBXGroup;
+			children = (
+				B51600000000000000000010 /* QuotaMergeEngine.swift */,
+			);
+			path = Merge;
 			sourceTree = "<group>";
 		};
 		A10000000000000000000059 /* Services */ = {
@@ -762,9 +864,19 @@
 			path = Monitoring;
 			sourceTree = "<group>";
 		};
+		C51700000000000000000007 /* Quota */ = {
+			isa = PBXGroup;
+			children = (
+				C51700000000000000000004 /* StatusSlot.swift */,
+				C51700000000000000000005 /* FailureStateView.swift */,
+			);
+			path = Quota;
+			sourceTree = "<group>";
+		};
 		A1000000000000000000007F /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				C51700000000000000000007 /* Quota */,
 				A10000000000000000000086 /* MenuBar */,
 				A10000000000000000000092 /* Dashboard */,
 			);
@@ -1146,8 +1258,18 @@
 				E42F1EAD6178A2E4AADA325E /* UsageScriptRequestParser.swift in Sources */,
 				A1000000000000000000004A /* ProviderModels.swift in Sources */,
 				B51100000000000000000030 /* QuotaTypes.swift in Sources */,
+				C51700000000000000000001 /* StatusSlot.swift in Sources */,
+				C51700000000000000000002 /* FailureStateView.swift in Sources */,
+				B51600000000000000000030 /* QuotaMergeEngine.swift in Sources */,
+				B51400000000000000000030 /* ClaudeAccountIdentityProvider.swift in Sources */,
 				B51100000000000000000031 /* QuotaContracts.swift in Sources */,
+				B51900000000000000000011 /* DirectoryWatcher.swift in Sources */,
+				B51900000000000000000012 /* IncrementalJSONLReader.swift in Sources */,
+				B51900000000000000000013 /* SafeFileValidator.swift in Sources */,
 				B51100000000000000000032 /* QuotaSnapshot.swift in Sources */,
+				B51800000000000000000030 /* QuotaNotificationAdapter.swift in Sources */,
+				B51500000000000000000030 /* FetchScheduler.swift in Sources */,
+				B51500000000000000000031 /* FetchSchedulerSupport.swift in Sources */,
 				A47000000000000000000002 /* BalanceNotificationModels.swift in Sources */,
 				A1000000000000000000004B /* Snapshot.swift in Sources */,
 				A1000000000000000000004C /* StatusLink.swift in Sources */,
@@ -1275,6 +1397,12 @@
 				A26400000000000000000003 /* QuotaProgressColorConfigurationTests.swift in Sources */,
 				A1000000000000000000004D /* DomainModelsTests.swift in Sources */,
 				B51100000000000000000033 /* QuotaModelTests.swift in Sources */,
+				B51900000000000000000014 /* QuotaIOTests.swift in Sources */,
+				B51800000000000000000031 /* QuotaNotificationAdapterTests.swift in Sources */,
+				C51700000000000000000003 /* StatusSlotViewTests.swift in Sources */,
+				B51600000000000000000033 /* QuotaMergeEngineTests.swift in Sources */,
+				B51400000000000000000031 /* ClaudeAccountIdentityProviderTests.swift in Sources */,
+				B51500000000000000000032 /* FetchSchedulerTests.swift in Sources */,
 				40553B8214484039881EED35 /* UsageScriptRequestParserTests.swift in Sources */,
 				A10000000000000000000057 /* ResponseParsersTests.swift in Sources */,
 				A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */,

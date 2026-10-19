@@ -17,6 +17,18 @@ public enum QuotaConstants {
     /// Maximum accepted serialized snapshot size.
     public static let snapshotMaximumSizeBytes = 64 * 1_024
 
+    /// Window used to merge bursts of quota directory events into one notification.
+    public static let directoryWatchCoalescingInterval: TimeInterval = 1
+
+    /// Maximum bytes read from one file by a single incremental JSONL read.
+    public static let incrementalReadMaximumBytes = 4 * 1_024 * 1_024
+
+    /// Maximum complete lines returned by a single incremental JSONL read.
+    public static let incrementalReadMaximumLines = 10_000
+
+    /// Maximum remembered deduplication keys per incrementally read file.
+    public static let incrementalReadMaximumDeduplicationKeys = 50_000
+
     /// Capacity of the scheduler's request token bucket.
     public static let requestTokenBucketCapacity = 3
 
@@ -31,6 +43,9 @@ public enum QuotaConstants {
 
     /// Time window used by a manual refresh eligibility check.
     public static let manualRefreshWindow: TimeInterval = 60
+
+    /// Delay used to coalesce bursts of account-configuration file events.
+    public static let accountChangeCoalescingInterval: TimeInterval = 0.5
 }
 
 /// Reason supplied when a caller asks the scheduler for a usage read.
