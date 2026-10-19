@@ -119,6 +119,77 @@ final class QuotaIOTests: XCTestCase {
         }
     }
 
+    func testSingleReadNeverExceedsByteBudget() throws {
+        let duplicates = String(repeating: "dup\n", count: 1_000)
+        let oversized = String(repeating: "z", count: 10_000)
+        let url = try write(duplicates + oversized + "\nend\n", to: "log.jsonl")
+        let budget = 64
+        let reader = IncrementalJSONLReader(
+            configuration: QuotaIOConfiguration(maximumBytesPerRead: budget),
+            deduplicationKey: { String(decoding: $0, as: UTF8.self) }
+        )
+        var all: [String] = []
+        var calls = 0
+        var result: JSONLReadResult
+        repeat {
+            result = try reader.read(url)
+            calls += 1
+            XCTAssertLessThanOrEqual(reader.lastReadByteCount, budget)
+            all += strings(result)
+        } while result.hasMore && calls < 10_000
+        XCTAssertEqual(all, ["dup", "end"])
+        XCTAssertFalse(result.hasMore)
+    }
+
+    func testPartialTailAtEndReportsNoMore() throws {
+        let url = try write("a\nb\npartial", to: "log.jsonl")
+        let result = try IncrementalJSONLReader().read(url)
+        XCTAssertEqual(strings(result), ["a", "b"])
+        XCTAssertFalse(result.hasMore)
+    }
+
+    func testEvictedDeduplicationKeyIsAcceptedAgain() throws {
+        let url = try write("a\nb\nc\na\nc\n", to: "log.jsonl")
+        let reader = IncrementalJSONLReader(
+            configuration: QuotaIOConfiguration(maximumDeduplicationKeys: 2),
+            deduplicationKey: { String(decoding: $0, as: UTF8.self) }
+        )
+        XCTAssertEqual(strings(try reader.read(url)), ["a", "b", "c", "a"])
+    }
+
+    func testDeduplicationBeyondCapacityStaysLinear() throws {
+        let url = root.appendingPathComponent("unique.jsonl")
+        var text = ""
+        for index in 0..<150_000 { text += "{\"id\":\"\(UUID().uuidString)-\(index)\"}\n" }
+        try Data(text.utf8).write(to: url)
+        let reader = IncrementalJSONLReader(
+            configuration: QuotaIOConfiguration(maximumDeduplicationKeys: 50_000),
+            deduplicationKey: { String(decoding: $0, as: UTF8.self) }
+        )
+        let start = Date()
+        var count = 0
+        var result: JSONLReadResult
+        repeat {
+            result = try reader.read(url)
+            count += result.lines.count
+        } while result.hasMore
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertEqual(count, 150_000)
+        XCTAssertLessThan(elapsed, 10, "dedup eviction should be amortized O(1)")
+        print("QuotaIOBenchmark dedup: 150000 unique keys (cap 50000) in \(String(format: "%.3f", elapsed)) s")
+    }
+
+    func testReaderRejectsGroupWritableFileThroughValidator() throws {
+        let url = try write("x\n", to: "shared.jsonl")
+        try FileManager.default.setAttributes([.posixPermissions: 0o666], ofItemAtPath: url.path)
+        let reader = IncrementalJSONLReader(
+            validator: SafeFileValidator(allowedDirectories: [root], maximumFileSize: nil)
+        )
+        XCTAssertThrowsError(try reader.read(url)) {
+            XCTAssertEqual($0 as? SafeFileValidationError, .writableByOthers)
+        }
+    }
+
     // MARK: SafeFileValidator
 
     func testValidatorAcceptsSymlinkInsideAllowedDirectory() throws {
@@ -244,7 +315,7 @@ final class QuotaIOTests: XCTestCase {
         text.reserveCapacity(100_000 * 80)
         for index in 0..<50_000 { text += line.replacingOccurrences(of: "%d", with: "\(index)") }
         try Data(text.utf8).write(to: url)
-        let reader = IncrementalJSONLReader(deduplicationKey: { _ in nil })
+        let reader = IncrementalJSONLReader(deduplicationKey: { String(decoding: $0, as: UTF8.self) })
         var initial = 0
         var first: JSONLReadResult
         repeat {

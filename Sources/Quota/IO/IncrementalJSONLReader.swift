@@ -19,7 +19,9 @@ public struct JSONLReadResult: Equatable {
 /// file identity (device + inode). A trailing partial line is left unread until
 /// its newline arrives. A shrinking file is treated as truncation and a changed
 /// identity as rotation; both restart at offset 0. Lines longer than
-/// `maximumBytesPerRead` are skipped. Format parsing is the caller's job.
+/// `maximumBytesPerRead` are skipped. Each call reads at most
+/// `maximumBytesPerRead` bytes, regardless of duplicates or skipped lines.
+/// Format parsing is the caller's job.
 ///
 /// Methods perform blocking IO and are serialized on an internal background
 /// queue; `read(_:)` must not be called from the main thread.
@@ -33,6 +35,7 @@ public final class IncrementalJSONLReader {
         var skippingOversizedLine = false
         var seenKeys: Set<String> = []
         var keyOrder: [String] = []
+        var keyHead = 0
     }
 
     private let configuration: QuotaIOConfiguration
@@ -40,6 +43,9 @@ public final class IncrementalJSONLReader {
     private let deduplicationKey: DeduplicationKey?
     private let queue = DispatchQueue(label: "BalanceBar.IncrementalJSONLReader", qos: .utility)
     private var states: [String: FileState] = [:]
+
+    /// Bytes read from disk by the most recent call; exposed for tests.
+    private(set) var lastReadByteCount = 0
 
     public init(
         configuration: QuotaIOConfiguration = .default,
@@ -73,14 +79,19 @@ public final class IncrementalJSONLReader {
     }
 
     private func readLocked(_ url: URL) throws -> JSONLReadResult {
-        let path = try validator?.validateFile(at: url) ?? url
-        let handle = try FileHandle(forReadingFrom: path)
+        let handle: FileHandle
+        var info = stat()
+        if let validator {
+            (handle, info) = try validator.openValidatedFile(at: url)
+        } else {
+            handle = try FileHandle(forReadingFrom: url)
+            guard fstat(handle.fileDescriptor, &info) == 0 else {
+                try? handle.close()
+                throw SafeFileValidationError.unreadable(errno: errno)
+            }
+        }
         defer { try? handle.close() }
 
-        var info = stat()
-        guard fstat(handle.fileDescriptor, &info) == 0 else {
-            throw SafeFileValidationError.unreadable(errno: errno)
-        }
         let size = UInt64(info.st_size)
         let stateKey = key(for: url)
 
@@ -95,62 +106,67 @@ public final class IncrementalJSONLReader {
         }
 
         var lines: [Data] = []
-        while state.offset < size, lines.count < configuration.maximumLinesPerRead {
+        var stoppedAtPartialTail = false
+        lastReadByteCount = 0
+        if state.offset < size {
+            // Exactly one bounded read per call enforces the per-call byte budget.
             let length = Int(min(UInt64(configuration.maximumBytesPerRead), size - state.offset))
             try handle.seek(toOffset: state.offset)
-            guard let chunk = try handle.read(upToCount: length), !chunk.isEmpty else { break }
+            let chunk = try handle.read(upToCount: length) ?? Data()
+            lastReadByteCount = chunk.count
+            let readToEOF = state.offset + UInt64(chunk.count) == size
 
-            guard let lastNewline = chunk.lastIndex(of: 0x0A) else {
-                if chunk.count >= configuration.maximumBytesPerRead {
-                    // A single line exceeds the batch limit: drop it until its newline.
-                    state.offset += UInt64(chunk.count)
-                    state.skippingOversizedLine = true
-                    continue
+            if let lastNewline = chunk.lastIndex(of: 0x0A) {
+                var consumed = chunk.startIndex
+                var lineStart = chunk.startIndex
+                for index in chunk[...lastNewline].indices where chunk[index] == 0x0A {
+                    if lines.count >= configuration.maximumLinesPerRead { break }
+                    defer { lineStart = index + 1; consumed = index + 1 }
+                    if state.skippingOversizedLine {
+                        state.skippingOversizedLine = false
+                        continue
+                    }
+                    var line = chunk[lineStart..<index]
+                    if line.last == 0x0D { line = line.dropLast() }
+                    if line.allSatisfy({ $0 == 0x20 || $0 == 0x09 }) { continue }
+                    let data = Data(line)
+                    if let dedupeKey = deduplicationKey?(data) {
+                        if state.seenKeys.contains(dedupeKey) { continue }
+                        remember(dedupeKey, in: &state)
+                    }
+                    lines.append(data)
                 }
-                break // Partial trailing line; wait for the rest.
+                state.offset += UInt64(consumed - chunk.startIndex)
+                // Reached EOF with only an unterminated tail left after the last newline.
+                stoppedAtPartialTail = readToEOF && consumed == lastNewline + 1 && state.offset < size
+            } else if !chunk.isEmpty, chunk.count >= configuration.maximumBytesPerRead {
+                // A single line exceeds the batch limit: drop it until its newline.
+                state.offset += UInt64(chunk.count)
+                state.skippingOversizedLine = true
+            } else {
+                stoppedAtPartialTail = true // Partial trailing line; wait for the rest.
             }
-
-            var consumed = chunk.startIndex
-            var lineStart = chunk.startIndex
-            for index in chunk[...lastNewline].indices where chunk[index] == 0x0A {
-                defer { lineStart = index + 1; consumed = index + 1 }
-                if state.skippingOversizedLine {
-                    state.skippingOversizedLine = false
-                    continue
-                }
-                var line = chunk[lineStart..<index]
-                if line.last == 0x0D { line = line.dropLast() }
-                if line.allSatisfy({ $0 == 0x20 || $0 == 0x09 }) { continue }
-                let data = Data(line)
-                if let dedupeKey = deduplicationKey?(data) {
-                    if state.seenKeys.contains(dedupeKey) { continue }
-                    remember(dedupeKey, in: &state)
-                }
-                lines.append(data)
-                if lines.count >= configuration.maximumLinesPerRead { break }
-            }
-            state.offset += UInt64(consumed - chunk.startIndex)
         }
 
         states[stateKey] = state
-        return JSONLReadResult(lines: lines, didReset: didReset, hasMore: hasCompleteData(after: state, size: size, handle: handle))
+        return JSONLReadResult(
+            lines: lines,
+            didReset: didReset,
+            hasMore: state.offset < size && !stoppedAtPartialTail
+        )
     }
 
     private func remember(_ key: String, in state: inout FileState) {
         state.seenKeys.insert(key)
         state.keyOrder.append(key)
-        let overflow = state.keyOrder.count - configuration.maximumDeduplicationKeys
-        if overflow > 0 {
-            for evicted in state.keyOrder.prefix(overflow) { state.seenKeys.remove(evicted) }
-            state.keyOrder.removeFirst(overflow)
+        // Evict by advancing a head index; compact occasionally so eviction is O(1) amortized.
+        while state.keyOrder.count - state.keyHead > configuration.maximumDeduplicationKeys {
+            state.seenKeys.remove(state.keyOrder[state.keyHead])
+            state.keyHead += 1
         }
-    }
-
-    private func hasCompleteData(after state: FileState, size: UInt64, handle: FileHandle) -> Bool {
-        guard state.offset < size else { return false }
-        let probeLength = Int(min(UInt64(configuration.maximumBytesPerRead), size - state.offset))
-        guard (try? handle.seek(toOffset: state.offset)) != nil,
-              let probe = try? handle.read(upToCount: probeLength) else { return false }
-        return probe.contains(0x0A) || probe.count >= configuration.maximumBytesPerRead
+        if state.keyHead > state.keyOrder.count / 2 {
+            state.keyOrder.removeFirst(state.keyHead)
+            state.keyHead = 0
+        }
     }
 }

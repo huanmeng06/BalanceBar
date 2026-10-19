@@ -76,22 +76,31 @@ public struct SafeFileValidator: FileValidating {
     @discardableResult
     public func validateFile(at url: URL) throws -> URL {
         let resolved = try resolveAllowed(url)
-        let fd = try openNoFollow(resolved)
-        defer { close(fd) }
-        _ = try checkDescriptor(fd)
+        let (handle, _) = try openValidatedFile(resolved: resolved)
+        try? handle.close()
         return resolved
     }
 
     /// Validates and reads the file through a single descriptor, avoiding a
     /// check-then-open race on the final path component.
     public func readValidatedFile(at url: URL) throws -> Data {
-        let resolved = try resolveAllowed(url)
-        let fd = try openNoFollow(resolved)
-        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        _ = try checkDescriptor(fd)
+        let (handle, _) = try openValidatedFile(at: url)
+        defer { try? handle.close() }
         let data = try handle.readToEnd() ?? Data()
         try validate(data: data)
         return data
+    }
+
+    /// Validates and returns the still-open descriptor, so callers read exactly
+    /// the file that passed the checks instead of reopening the path.
+    func openValidatedFile(at url: URL) throws -> (FileHandle, stat) {
+        try openValidatedFile(resolved: resolveAllowed(url))
+    }
+
+    private func openValidatedFile(resolved: URL) throws -> (FileHandle, stat) {
+        let fd = try openNoFollow(resolved)
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        return (handle, try checkDescriptor(fd))
     }
 
     func resolveAllowed(_ url: URL) throws -> URL {
