@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C52600000000000000000011 /* ModOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000001 /* ModOnboardingModel.swift */; };
+		C52600000000000000000012 /* ModInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000002 /* ModInstaller.swift */; };
+		C52600000000000000000013 /* ModOnboardingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000003 /* ModOnboardingController.swift */; };
+		C52600000000000000000014 /* ModOnboardingPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000004 /* ModOnboardingPanelView.swift */; };
+		C52600000000000000000015 /* RealtimeBoostSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000005 /* RealtimeBoostSettingsView.swift */; };
+		C52600000000000000000016 /* ModOnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000006 /* ModOnboardingTests.swift */; };
 		A10000000000000000000020 /* BalanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* BalanceBar.swift */; };
 		A10000000000000000000044 /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000045 /* AppPreferences.swift */; };
 		A47000000000000000000002 /* BalanceNotificationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47000000000000000000001 /* BalanceNotificationModels.swift */; };
@@ -200,6 +206,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		C52600000000000000000001 /* ModOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingModel.swift; sourceTree = "<group>"; };
+		C52600000000000000000002 /* ModInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModInstaller.swift; sourceTree = "<group>"; };
+		C52600000000000000000003 /* ModOnboardingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingController.swift; sourceTree = "<group>"; };
+		C52600000000000000000004 /* ModOnboardingPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingPanelView.swift; sourceTree = "<group>"; };
+		C52600000000000000000005 /* RealtimeBoostSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeBoostSettingsView.swift; sourceTree = "<group>"; };
+		C52600000000000000000006 /* ModOnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* BalanceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceBar.swift; sourceTree = "<group>"; };
 		A10000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000012 /* BalanceBar.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = BalanceBar.icns; sourceTree = "<group>"; };
@@ -455,6 +467,41 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C52600000000000000000030 /* ModOnboarding */ = {
+			isa = PBXGroup;
+			children = (
+				C52600000000000000000001 /* ModOnboardingModel.swift */,
+				C52600000000000000000002 /* ModInstaller.swift */,
+				C52600000000000000000003 /* ModOnboardingController.swift */,
+				C52600000000000000000004 /* ModOnboardingPanelView.swift */,
+			);
+			path = ModOnboarding;
+			sourceTree = "<group>";
+		};
+		C52600000000000000000031 /* RealtimeBoost */ = {
+			isa = PBXGroup;
+			children = (
+				C52600000000000000000005 /* RealtimeBoostSettingsView.swift */,
+			);
+			path = RealtimeBoost;
+			sourceTree = "<group>";
+		};
+		C52600000000000000000032 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				C52600000000000000000031 /* RealtimeBoost */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		C52600000000000000000033 /* ModOnboarding */ = {
+			isa = PBXGroup;
+			children = (
+				C52600000000000000000006 /* ModOnboardingTests.swift */,
+			);
+			path = ModOnboarding;
+			sourceTree = "<group>";
+		};
 		A1000000000000000000001B /* BalanceBar */ = {
 			isa = PBXGroup;
 			children = (
@@ -686,6 +733,7 @@
 			isa = PBXGroup;
 			children = (
 				C51700000000000000000008 /* Quota */,
+				C52600000000000000000033 /* ModOnboarding */,
 				A40000000000000000000017 /* MenuBar */,
 				A40000000000000000000018 /* Dashboard */,
 			);
@@ -875,6 +923,7 @@
 			children = (
 				C51700000000000000000004 /* StatusSlot.swift */,
 				C51700000000000000000005 /* FailureStateView.swift */,
+				C52600000000000000000030 /* ModOnboarding */,
 			);
 			path = Quota;
 			sourceTree = "<group>";
@@ -883,6 +932,7 @@
 			isa = PBXGroup;
 			children = (
 				C51700000000000000000007 /* Quota */,
+				C52600000000000000000032 /* Settings */,
 				A10000000000000000000086 /* MenuBar */,
 				A10000000000000000000092 /* Dashboard */,
 			);
@@ -1266,6 +1316,11 @@
 				B51100000000000000000030 /* QuotaTypes.swift in Sources */,
 				C51700000000000000000001 /* StatusSlot.swift in Sources */,
 				C51700000000000000000002 /* FailureStateView.swift in Sources */,
+				C52600000000000000000011 /* ModOnboardingModel.swift in Sources */,
+				C52600000000000000000012 /* ModInstaller.swift in Sources */,
+				C52600000000000000000013 /* ModOnboardingController.swift in Sources */,
+				C52600000000000000000014 /* ModOnboardingPanelView.swift in Sources */,
+				C52600000000000000000015 /* RealtimeBoostSettingsView.swift in Sources */,
 				B51600000000000000000030 /* QuotaMergeEngine.swift in Sources */,
 				B51400000000000000000030 /* ClaudeAccountIdentityProvider.swift in Sources */,
 				B51100000000000000000031 /* QuotaContracts.swift in Sources */,
@@ -1407,6 +1462,7 @@
 				B51900000000000000000014 /* QuotaIOTests.swift in Sources */,
 				B51800000000000000000031 /* QuotaNotificationAdapterTests.swift in Sources */,
 				C51700000000000000000003 /* StatusSlotViewTests.swift in Sources */,
+				C52600000000000000000016 /* ModOnboardingTests.swift in Sources */,
 				B51600000000000000000033 /* QuotaMergeEngineTests.swift in Sources */,
 				B51400000000000000000031 /* ClaudeAccountIdentityProviderTests.swift in Sources */,
 				B51500000000000000000032 /* FetchSchedulerTests.swift in Sources */,
