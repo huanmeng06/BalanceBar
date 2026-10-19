@@ -506,7 +506,8 @@ final class DashboardGeneralPage {
         let refreshing = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             contentViews: [
-                SettingsRowView(title: tr(.keyDashboardOfficialQuotaRefreshFrequency), detail: nil,
+                SettingsRowView(title: tr(.keyDashboardOfficialQuotaRefreshFrequency),
+                    detail: tr(.keyDashboardRefreshClaudeCalibrationNote),
                     accessoryView: officialRefreshControls),
                 SettingsRowView(
                     title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),

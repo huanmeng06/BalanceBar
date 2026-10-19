@@ -1,0 +1,459 @@
+import CryptoKit
+import Foundation
+
+/// Why the latest Claude official refresh did not produce new data.
+enum ClaudeQuotaFailure: Equatable {
+    case missingCredentials
+    case rateLimited
+    case unauthorized
+    case transport(possibleProxy: Bool, description: String)
+    case http(Int)
+    case invalidResponse
+}
+
+/// Everything the refresh coordinator needs to publish Claude official quota.
+struct ClaudeQuotaState: Equatable {
+    /// Merged display model owned by `QuotaMergeEngine`.
+    let display: QuotaDisplayModel
+    /// Card windows rebuilt from `display`; empty when nothing is known.
+    let windows: [OfficialQuotaWindow]
+    let accountEpoch: AccountEpoch
+    /// Opaque account identity for notification progress; never credential material.
+    let accountScope: String?
+    /// Receipt time of the newest displayed official reading.
+    let updatedAt: Date?
+    let isRefreshing: Bool
+    let failure: ClaudeQuotaFailure?
+    /// Status-slot state resolved with BB-07's rules.
+    let status: StatusSlotState
+}
+
+/// Forwards notification snapshots from the quota adapter to the existing rules.
+/// The handler is attached by the refresh coordinator, which knows the Provider IDs.
+final class ClaudeNotificationRouter: QuotaNotificationSnapshotProcessing {
+    private let lock = NSLock()
+    private var handler: ((Snapshot) -> Void)?
+
+    var onSnapshot: ((Snapshot) -> Void)? {
+        get { lock.withLock { handler } }
+        set { lock.withLock { handler = newValue } }
+    }
+
+    func process(snapshot: Snapshot, agent: BalanceNotificationAgent, providerID: String) {
+        onSnapshot?(snapshot)
+    }
+}
+
+/// Keeps the scheduler's persisted state readable from other threads, so the
+/// menu can show the 429 wait without asking the scheduler queue.
+final class ObservedFetchSchedulerStateStore: FetchSchedulerStateStoring {
+    private let base: FetchSchedulerStateStoring
+    private let lock = NSLock()
+    private var latest = FetchSchedulerPersistentState()
+
+    init(base: FetchSchedulerStateStoring) { self.base = base }
+
+    var snapshot: FetchSchedulerPersistentState { lock.withLock { latest } }
+
+    func load() -> FetchSchedulerPersistentState? {
+        let loaded = base.load()
+        if let loaded { lock.withLock { latest = loaded } }
+        return loaded
+    }
+
+    func save(_ state: FetchSchedulerPersistentState) {
+        lock.withLock { latest = state }
+        base.save(state)
+    }
+}
+
+/// Restores merge state only for the signed-in account and rebases its epoch.
+///
+/// Account epochs restart at zero on every launch, so a persisted epoch from an earlier run
+/// would otherwise reject every new observation as stale.
+private final class RebasingMergeStore: QuotaMergeStateStoring {
+    private let base: QuotaMergeStateStoring
+    private let accountID: String?
+    private let epoch: AccountEpoch
+
+    init(base: QuotaMergeStateStoring, accountID: String?, epoch: AccountEpoch) {
+        self.base = base
+        self.accountID = accountID
+        self.epoch = epoch
+    }
+
+    func load() -> QuotaMergeState? {
+        guard let accountID, var state = base.load(), state.accountID == accountID else { return nil }
+        state.epoch = epoch
+        return state
+    }
+
+    func save(_ state: QuotaMergeState) { base.save(state) }
+}
+
+/// Claude official quota path: account identity → scheduler → merge engine → status and notifications.
+///
+/// All file, Keychain and merge-state work happens on private background queues; `latestState`
+/// and the other accessors only read memory. The coordinator observes `onUpdate`.
+final class ClaudeQuotaPipeline {
+    /// Source label recorded on observations from the OAuth usage endpoint.
+    static let sourceID = "oauth-api"
+
+    private let client: OfficialQuotaClient
+    private let identity: ClaudeAccountIdentityProvider
+    private let identityQueue: DispatchQueue
+    private let stateStore: ObservedFetchSchedulerStateStore
+    private let mergeFileStore: QuotaMergeFileStore
+    private let notificationRouter = ClaudeNotificationRouter()
+    private let now: () -> Date
+    private let queue = DispatchQueue(label: "BalanceBar.ClaudeQuotaPipeline", qos: .utility)
+    private let lock = NSLock()
+
+    private var scheduler: FetchScheduler!
+    private var engine: QuotaMergeEngine?
+    private var adapter: QuotaNotificationAdapter?
+    private var observerToken: AnyObject?
+    private var started = false
+    private var pendingReasons: [FetchRequestReason] = []
+    private var failure: ClaudeQuotaFailure?
+    private var refreshing = false
+    private var lastClientError: OfficialQuotaClientError?
+    private var state: ClaudeQuotaState?
+
+    /// Called on the pipeline queue whenever the published state changes.
+    var onUpdate: ((ClaudeQuotaState) -> Void)? {
+        get { lock.withLock { updateHandler } }
+        set { lock.withLock { updateHandler = newValue } }
+    }
+    private var updateHandler: ((ClaudeQuotaState) -> Void)?
+
+    /// - Parameters:
+    ///   - calibrationIntervalCap: Upper bound for how long a fresh real-time source may suppress requests.
+    init(
+        client: OfficialQuotaClient,
+        identity: ClaudeAccountIdentityProvider,
+        identityQueue: DispatchQueue,
+        stateDirectory: URL,
+        calibrationIntervalCap: @escaping () -> TimeInterval? = { nil },
+        schedulerClock: SchedulerClock = SystemSchedulerClock(),
+        schedulerTimer: SchedulerTimer = DispatchSchedulerTimer(),
+        schedulerConfiguration: FetchSchedulerConfiguration = FetchSchedulerConfiguration(),
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.client = client
+        self.identity = identity
+        self.identityQueue = identityQueue
+        self.now = now
+        stateStore = ObservedFetchSchedulerStateStore(
+            base: FileFetchSchedulerStateStore(fileURL: stateDirectory.appendingPathComponent("claude-fetch-scheduler.json")))
+        mergeFileStore = QuotaMergeFileStore(url: stateDirectory.appendingPathComponent("claude-quota-merge.json"))
+        scheduler = FetchScheduler(
+            transport: ClaudeUsageTransport(pipeline: self),
+            identity: identity,
+            stateStore: stateStore,
+            clock: schedulerClock,
+            timer: schedulerTimer,
+            calibrationIntervalCap: calibrationIntervalCap,
+            configuration: schedulerConfiguration,
+            logSink: { [weak self] event in self?.schedulerEvent(event) })
+        scheduler.addResultHandler { [weak self] delivery in
+            self?.queue.async { self?.handle(delivery) }
+        }
+    }
+
+    deinit {
+        identity.stopMonitoring()
+    }
+
+    /// Receives official snapshots that passed the notification adapter's rules.
+    var onNotification: ((Snapshot) -> Void)? {
+        get { notificationRouter.onSnapshot }
+        set { notificationRouter.onSnapshot = newValue }
+    }
+
+    /// Most recent published state, or `nil` before the engine is ready.
+    var latestState: ClaudeQuotaState? { lock.withLock { state } }
+
+    /// End of the 429 wait, when a manual refresh could only be skipped.
+    func manualRefreshBlockedUntil() -> Date? {
+        guard let until = stateStore.snapshot.cooldownUntil, until > now() else { return nil }
+        return until
+    }
+
+    /// Starts account monitoring and builds the merge engine off the caller's thread.
+    func start() {
+        queue.async { [self] in startOnQueue() }
+    }
+
+    /// Asks the scheduler for a read. Credentials are re-read first so the scheduler judges
+    /// the 401 pause against the current credential version.
+    func requestFetch(reason: FetchRequestReason) {
+        queue.async { [self] in
+            guard engine != nil else {
+                pendingReasons.append(reason)
+                startOnQueue()
+                return
+            }
+            prepareAndRequest(reason)
+        }
+    }
+
+    /// Re-evaluates reset deadlines; may ask the scheduler to confirm a reset.
+    func tick() {
+        queue.async { [self] in
+            guard let engine else { return }
+            engine.refresh()
+            publish()
+        }
+    }
+
+    /// Blocks until queued pipeline work has run. Intended for tests and shutdown.
+    func waitUntilIdle() {
+        queue.sync {}
+        identityQueue.sync {}
+        scheduler.waitUntilIdle()
+        queue.sync {}
+    }
+
+    /// Flushes the merge state to disk. Intended for tests and shutdown.
+    func flush() {
+        queue.sync {}
+        mergeFileStore.flush()
+    }
+
+    // MARK: - Pipeline queue
+
+    private func startOnQueue() {
+        guard !started else { return }
+        started = true
+        identity.startMonitoring()
+        // Monitoring's first read is queued on the identity queue; wait for it so the
+        // persisted state is matched against the real account.
+        identityQueue.sync {}
+        observerToken = identity.addObserver { [weak self] change in
+            self?.queue.async { self?.identityChanged(change) }
+        }
+        let restoring = RebasingMergeStore(
+            base: mergeFileStore, accountID: identity.accountIdentity?.stableID, epoch: identity.accountEpoch)
+        let adapter = QuotaNotificationAdapter(processor: notificationRouter, providerID: "claude")
+        self.adapter = adapter
+        engine = QuotaMergeEngine(scheduler: scheduler, notifications: adapter, store: restoring, now: now)
+        publish()
+        let reasons = pendingReasons
+        pendingReasons.removeAll()
+        if let reason = reasons.min(by: { $0.rawValue < $1.rawValue }) { prepareAndRequest(reason) }
+    }
+
+    private func prepareAndRequest(_ reason: FetchRequestReason) {
+        let epoch = identity.accountEpoch
+        let token = client.claudeRequestCredentials(cacheFor: 2).accessToken
+        identity.ingestCredential(accessToken: token, expectedEpoch: epoch)
+        identityQueue.sync {}
+        scheduler.requestFetch(reason: reason)
+    }
+
+    private func identityChanged(_ change: AccountIdentityChange) {
+        guard change.accountChanged, let engine else { return }
+        engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
+        lock.withLock {
+            failure = nil
+            refreshing = false
+        }
+        adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: change.identity))
+        publish()
+        if change.identity != nil { requestForNewAccount() }
+    }
+
+    /// The scheduler's automatic minimum interval spans accounts, so a new account would
+    /// wait for the previous account's interval. A manual-class read is epoch-aware instead.
+    private func requestForNewAccount() {
+        prepareAndRequest(.manual)
+    }
+
+    private func handle(_ delivery: FetchSchedulerDelivery) {
+        guard let engine else { return }
+        var newFailure: ClaudeQuotaFailure?
+        switch delivery.result {
+        case let .success(data):
+            newFailure = merge(data, delivery: delivery, into: engine)
+        case .rateLimited:
+            newFailure = .rateLimited
+        case .unauthorized:
+            newFailure = .unauthorized
+        case .failure:
+            newFailure = Self.failure(from: lock.withLock { lastClientError })
+        }
+        lock.withLock {
+            failure = newFailure
+            refreshing = false
+        }
+        publish()
+    }
+
+    private func merge(_ data: Data, delivery: FetchSchedulerDelivery, into engine: QuotaMergeEngine) -> ClaudeQuotaFailure? {
+        guard identity.accountEpoch == delivery.epoch else { return nil }
+        guard let account = identity.accountIdentity else { return .missingCredentials }
+        guard let readings = try? OfficialQuotaResponseParser.claudeReadings(data: data, now: delivery.receivedAt) else {
+            return .invalidResponse
+        }
+        for reading in readings {
+            guard let observation = QuotaObservation(
+                window: reading.quotaKind,
+                usedPercentage: reading.usedPercentage,
+                resetsAt: reading.resetsAt,
+                receivedAt: delivery.receivedAt,
+                source: Self.sourceID,
+                trust: .a,
+                accountID: account.stableID,
+                epoch: delivery.epoch) else { continue }
+            engine.merge(observation)
+        }
+        adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: account))
+        return nil
+    }
+
+    private func schedulerEvent(_ event: FetchSchedulerLogEvent) {
+        switch event.kind {
+        case .dispatched:
+            queue.async { [self] in
+                lock.withLock { refreshing = true }
+                publish()
+            }
+        case .discardedStaleEpoch:
+            // The request belonged to an account that is no longer signed in; the
+            // current account's own read was coalesced into it, so repeat that read.
+            queue.async { [self] in
+                lock.withLock { refreshing = false }
+                publish()
+                if identity.accountIdentity != nil { requestForNewAccount() }
+            }
+        case .requested, .skipped, .completed:
+            break
+        }
+    }
+
+    private func publish() {
+        guard let engine else { return }
+        let model = engine.displayModel
+        let merged = engine.currentState
+        let date = now()
+        let updatedAt = merged.windows.values.compactMap { $0.displayed?.receivedAt }.max()
+        let (failure, refreshing, handler) = lock.withLock { (self.failure, self.refreshing, updateHandler) }
+        // A failure marks the displayed values as outdated without discarding them.
+        let shown = failure == nil ? model : QuotaDisplayModel(
+            windows: model.windows, isEstimated: model.isEstimated, state: .error, hoverTextKey: model.hoverTextKey)
+        let status = StatusSlotState.resolve(
+            model: shown,
+            context: StatusSlotContext(isRefreshing: refreshing, source: .official, updatedAt: updatedAt))
+        let next = ClaudeQuotaState(
+            display: model,
+            windows: Self.cardWindows(from: model, now: date),
+            accountEpoch: identity.accountEpoch,
+            accountScope: Self.accountScope(for: identity.accountIdentity),
+            updatedAt: updatedAt,
+            isRefreshing: refreshing,
+            failure: failure,
+            status: status)
+        let changed = lock.withLock { () -> Bool in
+            guard state != next else { return false }
+            state = next
+            return true
+        }
+        if changed { handler?(next) }
+    }
+
+    // MARK: - Pure helpers
+
+    private static let windowOrder = ["five_hour", "seven_day", "seven_day_sonnet", "seven_day_opus"]
+
+    static func cardWindows(from model: QuotaDisplayModel, now: Date) -> [OfficialQuotaWindow] {
+        model.windows
+            .compactMap { display -> (Int, OfficialQuotaWindow)? in
+                guard let used = display.usedPercentage,
+                      let window = OfficialQuotaResponseParser.claudeWindow(
+                        for: display.kind, usedPercentage: used, resetsAt: display.resetsAt, now: now),
+                      let order = windowOrder.firstIndex(of: display.kind.rawValue) else { return nil }
+                return (order, window)
+            }
+            .sorted { $0.0 < $1.0 }
+            .map(\.1)
+    }
+
+    /// Notification scope: the email hash when known (stable across account-file formats), else the stable ID hash.
+    static func accountScope(for identity: AccountIdentity?) -> String? {
+        guard let identity else { return nil }
+        let email = identity.email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let basis = email.isEmpty ? identity.stableID : email
+        return "account:" + SHA256.hash(data: Data(basis.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func failure(from error: OfficialQuotaClientError?) -> ClaudeQuotaFailure {
+        switch error {
+        case .missingCredentials?, nil: return .missingCredentials
+        case let .transport(transport)?:
+            if case .possibleProxy = transport {
+                return .transport(possibleProxy: true, description: transport.localizedDescription)
+            }
+            return .transport(possibleProxy: false, description: transport.localizedDescription)
+        case let .httpStatus(status, _)?: return .http(status)
+        case .invalidJSON?, .unsupportedFormat?: return .invalidResponse
+        }
+    }
+
+    fileprivate func recordClientError(_ error: OfficialQuotaClientError?) {
+        lock.withLock { lastClientError = error }
+    }
+
+    fileprivate func recordCredentialRead(_ token: String, epoch: AccountEpoch) {
+        identity.ingestCredential(accessToken: token, expectedEpoch: epoch)
+    }
+
+    fileprivate var hasAccount: Bool { identity.accountIdentity != nil }
+    fileprivate var currentEpoch: AccountEpoch { identity.accountEpoch }
+    fileprivate var transportClient: OfficialQuotaClient { client }
+}
+
+/// Scheduler transport that performs the single Claude usage request.
+private final class ClaudeUsageTransport: UsageFetchTransport {
+    private weak var pipeline: ClaudeQuotaPipeline?
+
+    init(pipeline: ClaudeQuotaPipeline) { self.pipeline = pipeline }
+
+    func fetchUsage(completion: @escaping (UsageFetchResult) -> Void) {
+        guard let pipeline else { return completion(.failure("pipeline_released")) }
+        guard pipeline.hasAccount else {
+            pipeline.recordClientError(.missingCredentials)
+            completion(.failure("missing_account"))
+            return
+        }
+        let epoch = pipeline.currentEpoch
+        pipeline.transportClient.fetchClaudeUsage(
+            didReadToken: { pipeline.recordCredentialRead($0, epoch: epoch) },
+            completion: { result, error in
+                pipeline.recordClientError(error)
+                completion(result)
+            })
+    }
+}
+
+extension ClaudeQuotaPipeline {
+    /// Production wiring: `~/.claude.json` identity, state under Application Support.
+    /// Nothing is read or watched until the first Claude read is requested.
+    static func makeProduction(
+        client: OfficialQuotaClient,
+        calibrationIntervalCap: @escaping () -> TimeInterval?
+    ) -> ClaudeQuotaPipeline {
+        let identityQueue = DispatchQueue(label: "BalanceBar.AccountIdentity", qos: .utility)
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let directory = support
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "BalanceBar", isDirectory: true)
+            .appendingPathComponent("Quota", isDirectory: true)
+        return ClaudeQuotaPipeline(
+            client: client,
+            identity: ClaudeAccountIdentityProvider(workQueue: identityQueue),
+            identityQueue: identityQueue,
+            stateDirectory: directory,
+            calibrationIntervalCap: calibrationIntervalCap)
+    }
+}

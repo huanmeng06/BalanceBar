@@ -244,3 +244,17 @@ final class StatusSlotView: NSView {
         }
     }
 }
+
+extension StatusSlotText {
+    /// Routes copy through the app's localization tables. Format strings keep a
+    /// literal `%@` so the slot can substitute the time later.
+    static let appLocalize: (StatusSlotText) -> String = { text in
+        guard let key = LocalizationKey(rawValue: text.rawValue) else { return text.defaultText }
+        switch text {
+        case .hoverError, .hoverEstimated, .hoverOfficial, .accessibilityStatus:
+            return tr(key, arguments: ["%@"])
+        default:
+            return tr(key)
+        }
+    }
+}

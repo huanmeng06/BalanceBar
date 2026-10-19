@@ -562,3 +562,17 @@
 "dashboard.refresh.official_quota_frequency" = "官方額度刷新頻率";
 "dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
 "dashboard.refresh.official_for_minutes" = "持續 %1$@ 分鐘";
+
+"quota.status.refreshing" = "更新中…";
+"quota.status.realtime" = "即時";
+"quota.status.hover.refreshing" = "正在讀取最新額度";
+"quota.status.hover.error" = "更新失敗，顯示的是 %1$@ 的資料";
+"quota.status.hover.estimated" = "根據 %1$@ 的資料估算，等待官方確認";
+"quota.status.hover.realtime" = "來自本機即時資料";
+"quota.status.hover.official" = "官方資料，更新於 %1$@";
+"quota.status.hover.external_activity" = "偵測到其他裝置正在使用，已提高更新頻率";
+"quota.status.reset_pending" = "預計已重置，等待確認";
+"quota.status.reset_pending_short" = "待確認";
+"quota.failure.open_usage_page" = "開啟官方用量頁面";
+"quota.status.accessibility" = "額度狀態：%1$@";
+"dashboard.refresh.claude_calibration_note" = "Claude 官方：校準間隔上限。最短 3 分鐘，有即時來源時不發出請求。";

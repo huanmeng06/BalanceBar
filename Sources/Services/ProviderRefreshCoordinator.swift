@@ -213,12 +213,6 @@ enum DevelopmentBankedResetDemo {
     }
 }
 
-/// Shared by the official completions of one quick-switch refresh: only the
-/// first verifies the account against the credential store.
-private final class CredentialVerificationBatch {
-    var verified = false
-}
-
 struct ProviderRefreshActions {
     let currentProvider: (AssistantClient) -> CCSwitchProvider?
     let isActiveClient: (AssistantClient) -> Bool
@@ -379,15 +373,16 @@ final class ProviderRefreshCoordinator {
     private var knownOfficialSummaryIDs: Set<SummaryIdentity> = []
     private var knownAPISummaryIDs: Set<SummaryIdentity> = []
     private var lastAPISummaryFetch: [SummaryIdentity: Date] = [:]
-    /// Last successful Claude official snapshot per provider and account; a
-    /// rate-limited refresh keeps showing it, marked stale, instead of an error.
-    private var lastClaudeOfficialSnapshots: [String: (accountScope: String, snapshot: Snapshot)] = [:]
     private var loadedSummaryClients: Set<AssistantClient> = []
-    /// Fingerprint of the Claude account behind the visible official data.
-    /// Nil until the first Claude request freezes an account.
-    private struct ClaudeAccountObservation { let accountScope: String? }
-    private var observedClaudeAccount: ClaudeAccountObservation?
-    private var lastClaudeIdentityProbe: Date?
+    /// Claude official quota path (identity → scheduler → merge engine →
+    /// status and notifications). Every Claude official Provider shows the
+    /// same account-wide data, so one pipeline serves them all.
+    private let claudeQuota: ClaudeQuotaPipeline?
+    /// The current standard Claude official Provider that receives pipeline updates.
+    private var claudeStandardTarget: (providerID: String, providerName: String, revision: String)?
+    private var claudeObservedEpoch: AccountEpoch?
+    /// Last standard snapshot published for Claude, so identical state is not rendered twice.
+    private var lastClaudePublication: (providerID: String, revision: String, snapshot: Snapshot)?
     private let actions: ProviderRefreshActions
     private let codexResetObservationStore: CodexResetObservationStore
     // Cadence timestamps are owned by `queue`; public entry points never read
@@ -448,8 +443,10 @@ final class ProviderRefreshCoordinator {
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-refresh"),
         actions: ProviderRefreshActions,
         refreshPreferences: AppPreferences? = nil,
+        claudeQuota: ClaudeQuotaPipeline? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
+        self.claudeQuota = claudeQuota
         self.repository = repository
         self.officialQuotaClient = officialQuotaClient
         self.balanceAPIClient = balanceAPIClient
@@ -460,6 +457,12 @@ final class ProviderRefreshCoordinator {
         self.refreshPreferences = refreshPreferences
         self.actions = actions
         queue.setSpecific(key: queueKey, value: ())
+        claudeQuota?.onUpdate = { [weak self] state in
+            self?.performOnQueue { self?.applyClaudeState(state) }
+        }
+        claudeQuota?.onNotification = { [weak self] snapshot in
+            self?.performOnQueue { self?.forwardClaudeNotification(snapshot) }
+        }
     }
 
     func quickSwitchSummariesSnapshot(
@@ -736,11 +739,10 @@ final class ProviderRefreshCoordinator {
             self.lastBalanceFetch = nil
             self.lastOfficialFetch = nil
             self.lastAPISummaryFetch = [:]
-            self.lastClaudeOfficialSnapshots.removeAll()
+            self.lastClaudePublication = nil
             self.knownOfficialSummaryIDs.removeAll()
             self.knownAPISummaryIDs.removeAll()
             self.loadedSummaryClients.removeAll()
-            self.lastClaudeIdentityProbe = nil
             self.lastOfficialSummaryFetch = [:]
             self.quickSwitchSourceRevisions = [:]
         }
@@ -758,6 +760,8 @@ final class ProviderRefreshCoordinator {
             self.aggregationPending = []
             self.standardPublicationEpoch.invalidate()
             self.officialResponseGenerations.values.forEach { $0.invalidate() }
+            self.claudeQuota?.onUpdate = nil
+            self.claudeQuota?.onNotification = nil
         }
         if DispatchQueue.getSpecific(key: queueKey) != nil { finish() }
         else { queue.sync(execute: finish) }
@@ -774,14 +778,16 @@ final class ProviderRefreshCoordinator {
         current: CCSwitchProvider,
         client: AssistantClient,
         forceBalance: Bool,
-        switched: Bool
+        switched: Bool,
+        userInitiated: Bool = false
     ) {
         performOnQueue { [weak self] in
             self?.refreshStandardProviderOnQueue(
                 current: current,
                 client: client,
                 forceBalance: forceBalance,
-                switched: switched
+                switched: switched,
+                userInitiated: userInitiated
             )
         }
     }
@@ -790,7 +796,8 @@ final class ProviderRefreshCoordinator {
         current: CCSwitchProvider,
         client: AssistantClient,
         forceBalance: Bool,
-        switched: Bool
+        switched: Bool,
+        userInitiated: Bool = false
     ) {
         let sourceKey = "\(client.appType)|\(current.id)|\(current.configurationRevision)"
         let sourceChanged = lastStandardSourceKey != sourceKey
@@ -812,12 +819,14 @@ final class ProviderRefreshCoordinator {
                 )
                 return
             }
-            // A newly signed-in Claude account is never held back by the
-            // previous account's interval or left showing its quota.
-            if client == .claude { detectClaudeAccountChange() }
+            if client == .claude {
+                refreshClaudeStandard(current: current, sourceKey: sourceKey, sourceChanged: sourceChanged,
+                    userInitiated: userInitiated)
+                return
+            }
             let currentDate = now()
             let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= officialRefreshInterval } ?? true
-            let shouldRefresh = (client == .claude || refreshPreferences != nil) ? (sourceChanged || due)
+            let shouldRefresh = refreshPreferences != nil ? (sourceChanged || due)
                 : (forceBalance || switched || sourceChanged || due)
             guard shouldRefresh else { return }
             if standardIdentityChanged(from: lastStandardSourceKey, client: client, provider: current) != nil,
@@ -826,14 +835,14 @@ final class ProviderRefreshCoordinator {
             }
             lastStandardSourceKey = sourceKey
             let revision = current.configurationRevision
-            let context = fetchOfficialQuota(
+            fetchOfficialQuota(
                 providerID: current.id,
                 providerName: current.name,
                 client: client,
                 configurationRevision: revision,
                 isValid: { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
             )
-            lastOfficialFetch = officialCadenceAnchor(context: context, now: currentDate)
+            lastOfficialFetch = currentDate
             return
         }
 
@@ -865,7 +874,12 @@ final class ProviderRefreshCoordinator {
             if let query = current.query {
                 self.fetchBalance(providerID: current.id, providerName: current.name, query: query, client: client,
                     configurationRevision: revision, isValid: isValid)
-            } else if current.isOfficial, client == .codex || client == .claude {
+            } else if current.isOfficial, client == .claude {
+                self.claudeStandardTarget = (current.id, current.name, revision)
+                self.claudeQuota?.start()
+                self.claudeQuota?.requestFetch(reason: .initial)
+                if let state = self.claudeQuota?.latestState { self.applyClaudeState(state) }
+            } else if current.isOfficial, client == .codex {
                 self.fetchOfficialQuota(providerID: current.id, providerName: current.name, client: client,
                     configurationRevision: revision, isValid: isValid)
             }
@@ -881,7 +895,6 @@ final class ProviderRefreshCoordinator {
         let client = requestedClient ?? .codex
         queue.async { [weak self] in
             guard let self, self.lifetime.isCurrent() else { return }
-            if client == .claude { self.detectClaudeAccountChange() }
             let currentDate = self.now()
             let initialLoad = !self.loadedSummaryClients.contains(client)
             // Aggregation members follow refreshAggregation's own cadence, so
@@ -900,7 +913,7 @@ final class ProviderRefreshCoordinator {
                 if let providerIDs, !providerIDs.contains(identity.providerID) { return false }
                 guard !aggregatedIDs.contains(identity.providerID) else { return false }
                 return self.lastOfficialSummaryFetch[identity].map {
-                    currentDate.timeIntervalSince($0) >= self.officialRefreshInterval
+                    currentDate.timeIntervalSince($0) >= self.officialInterval(for: client)
                 } ?? true
             }
             guard force || configurationChanged || initialLoad || apiDue || knownOfficialDue else { return }
@@ -917,7 +930,7 @@ final class ProviderRefreshCoordinator {
             let previousRevisions = self.quickSwitchSourceRevisions[client] ?? [:]
             self.quickSwitchSourceRevisions[client] = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.configurationRevision) })
             self.invalidateStaleQuickSwitchSummaries(client: client, sources: sources, previousRevisions: previousRevisions)
-            let credentialBatch = CredentialVerificationBatch()
+            var claudeFetchReason: FetchRequestReason?
             let aggregationIDs: Set<String>
             if client == .codex, let reader = self.aggregationReader, case .active(let entries) = reader.load() {
                 _ = self.refreshAggregation(reader: reader, force: force && self.refreshPreferences == nil)
@@ -929,8 +942,20 @@ final class ProviderRefreshCoordinator {
             for source in sources {
                 if aggregationIDs.contains(source.id) { continue }
                 if let providerIDs, !providerIDs.contains(source.id) { continue }
+                if source.isOfficial, client == .claude {
+                    // One account-wide read serves every Claude official Provider; the
+                    // scheduler decides whether it is sent. Results fan out in applyClaudeState.
+                    let identity = SummaryIdentity(client: client, providerID: source.id)
+                    let officialDue = self.lastOfficialSummaryFetch[identity].map {
+                        currentDate.timeIntervalSince($0) >= self.officialInterval(for: client)
+                    } ?? true
+                    guard officialDue || configurationChanged || previousRevisions[source.id] != source.configurationRevision else { continue }
+                    self.lastOfficialSummaryFetch[identity] = currentDate
+                    claudeFetchReason = initialLoad || configurationChanged ? .initial : (claudeFetchReason ?? .scheduled)
+                    continue
+                }
                 if source.isOfficial {
-                    guard client == .codex || client == .claude else { continue }
+                    guard client == .codex else { continue }
                     let identity = SummaryIdentity(client: client, providerID: source.id)
                     let officialDue = self.lastOfficialSummaryFetch[identity].map {
                         currentDate.timeIntervalSince($0) >= self.officialRefreshInterval
@@ -942,27 +967,22 @@ final class ProviderRefreshCoordinator {
                        previousRevisions[source.id] == source.configurationRevision,
                        let previous = self.lastOfficialSummaryFetch[identity],
                        currentDate.timeIntervalSince(previous) < self.officialRefreshInterval { continue }
-                    let credentials: CodexRequestCredentials? = client == .codex ? source.officialAccessToken.map {
+                    let credentials: CodexRequestCredentials? = source.officialAccessToken.map {
                         CodexRequestCredentials(accessToken: $0, accountKey: nil)
-                    } ?? self.officialQuotaClient.codexRequestCredentials() : self.officialQuotaClient.claudeRequestCredentials()
-                    let accountScope = client == .claude ? self.officialQuotaClient.claudeAccountScope(for: credentials) : nil
-                    if client == .claude { self.observeClaudeAccount(accountScope) }
+                    } ?? self.officialQuotaClient.codexRequestCredentials()
                     let context = OfficialQuotaRequestContext(client: client, providerID: source.id,
-                        storedAccessToken: client == .codex ? source.officialAccessToken : nil, credentials: credentials)
+                        storedAccessToken: source.officialAccessToken, credentials: credentials)
                     self.officialQuotaClient.fetchQuota(context: context) { [weak self] result in
                         guard let self else { return }
                         self.performOnQueue {
-                            // Each provider's configuration revision is checked; the
-                            // account itself is verified against the credential store
-                            // once per batch, later completions reuse that probe.
-                            let verifyStore = !credentialBatch.verified
-                            credentialBatch.verified = true
+                            // Each provider's configuration revision is checked and the
+                            // account is verified against the credential store.
                             guard let currentSource = self.currentQuickSwitchSource(
                                 client: client, providerID: source.id, revision: source.configurationRevision
                             ), currentSource.isOfficial,
                                   currentSource.officialAccessToken == source.officialAccessToken,
                                   self.officialCredentialsAreCurrent(client: client, storedAccessToken: context.storedAccessToken,
-                                      credentials: credentials, verifyClaudeStore: verifyStore) else { return }
+                                      credentials: credentials) else { return }
                             guard case .success(let response) = result else {
                                 self.officialSampleUnavailable(client: client, providerID: source.id)
                                 if previousRevisions[source.id] != source.configurationRevision {
@@ -970,7 +990,7 @@ final class ProviderRefreshCoordinator {
                                 }
                                 return
                             }
-                            let predictionAccountKey = client == .codex ? credentials?.accountKey : nil
+                            let predictionAccountKey = credentials?.accountKey
                             let predictionContexts = predictionAccountKey.map {
                                 self.recordCodexQuotaEvidence(providerID: source.id, accountKey: $0,
                                     windows: response.output.windows, timestamp: self.now())
@@ -991,11 +1011,10 @@ final class ProviderRefreshCoordinator {
                                 quotaPredictionContexts: predictionContexts,
                                 quotaPredictionAccountKey: predictionAccountKey
                             )
-                            sample.notificationAccountScope = accountScope
                             self.actions.notificationSnapshot?(client, source.id, sample)
                         }
                     }
-                    self.lastOfficialSummaryFetch[identity] = self.officialCadenceAnchor(context: context, now: currentDate)
+                    self.lastOfficialSummaryFetch[identity] = currentDate
                     continue
                 }
                 let apiIdentity = SummaryIdentity(client: client, providerID: source.id)
@@ -1054,6 +1073,13 @@ final class ProviderRefreshCoordinator {
                     }
                 }
                 self.lastAPISummaryFetch[apiIdentity] = currentDate
+            }
+            if client == .claude, let claudeQuota = self.claudeQuota {
+                claudeQuota.start()
+                if let reason = claudeFetchReason { claudeQuota.requestFetch(reason: reason) }
+                // A Provider added or edited since the last read shows the account's
+                // current data at once instead of waiting for the next request.
+                if let state = claudeQuota.latestState { self.applyClaudeSummaries(state) }
             }
         }
     }
@@ -1276,45 +1302,100 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    /// Compares the signed-in Claude account with the one behind visible data.
-    /// Skipped until a Claude request has run, so polling stays free of
-    /// Keychain reads when Claude official quota was never shown.
-    private func detectClaudeAccountChange() {
-        guard observedClaudeAccount != nil else { return }
+    /// Interval between automatic official reads. Claude's scheduler enforces
+    /// its own floor, so the user's setting is only a calibration upper bound.
+    private func officialInterval(for client: AssistantClient) -> TimeInterval {
+        client == .claude
+            ? max(officialRefreshInterval, QuotaConstants.automaticRequestMinimumInterval)
+            : officialRefreshInterval
+    }
+
+    /// Standard-provider entry for Claude official: asks the scheduler for a read
+    /// when one is due and publishes whatever the merge engine already knows.
+    private func refreshClaudeStandard(current: CCSwitchProvider, sourceKey: String, sourceChanged: Bool, userInitiated: Bool) {
+        guard let claudeQuota else { return }
         let currentDate = now()
-        guard lastClaudeIdentityProbe.map({ currentDate.timeIntervalSince($0) >= 15 }) ?? true else { return }
-        lastClaudeIdentityProbe = currentDate
-        observeClaudeAccount(officialQuotaClient.currentClaudeAccountScope(maxAge: 0))
+        let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= officialInterval(for: .claude) } ?? true
+        lastStandardSourceKey = sourceKey
+        claudeStandardTarget = (current.id, current.name, current.configurationRevision)
+        if sourceChanged { lastClaudePublication = nil }
+        claudeQuota.start()
+        claudeQuota.tick()
+        if sourceChanged || due || userInitiated {
+            lastOfficialFetch = currentDate
+            claudeQuota.requestFetch(reason: userInitiated ? .manual : (sourceChanged ? .initial : .scheduled))
+        }
+        if sourceChanged, let state = claudeQuota.latestState { applyClaudeState(state) }
     }
 
-    /// `accountScope` is the account identity, not the access token: a token
-    /// refreshed for the same account keeps data and notification progress,
-    /// while request-level checks still compare the frozen token itself.
-    private func observeClaudeAccount(_ accountScope: String?) {
-        // Notifications learn the current account on every observation, so
-        // they stay correct even after this coordinator's indices are reset.
-        actions.notificationAccountScopeChanged?(.claude, accountScope)
-        defer { observedClaudeAccount = ClaudeAccountObservation(accountScope: accountScope) }
-        guard let previous = observedClaudeAccount, previous.accountScope != accountScope else { return }
-        SwitchLog.write("claude official account changed; visible quota cleared; scope_omitted=true",
-            level: .info, category: "refresh.summary")
-        invalidateClaudeAccountData(newAccountScope: accountScope)
+    /// Claude official Providers that currently show the account's quota. The standard
+    /// target counts only while it is still the current, unchanged Provider.
+    private var claudeOfficialProviderIDs: Set<String> {
+        var ids = Set(knownOfficialSummaryIDs.filter { $0.client == .claude }.map(\.providerID))
+        if let target = claudeStandardTarget,
+           standardRequestIsCurrent(client: .claude, providerID: target.providerID, revision: target.revision) {
+            ids.insert(target.providerID)
+        }
+        return ids
     }
 
-    /// One shared rule for every official quota failure (standard and
-    /// quick-switch, any status): the stored notification sample is no longer
-    /// current and must not be re-evaluated until a real refresh succeeds.
-    private func officialSampleUnavailable(client: AssistantClient, providerID: String) {
-        actions.notificationSamplesInvalidated?(client, [providerID])
+    /// Publishes pipeline state to the standard card, the quick-switch summaries and notifications.
+    private func applyClaudeState(_ state: ClaudeQuotaState) {
+        actions.notificationAccountScopeChanged?(.claude, state.accountScope)
+        let accountChanged = claudeObservedEpoch.map { $0 != state.accountEpoch } ?? false
+        claudeObservedEpoch = state.accountEpoch
+        if accountChanged {
+            SwitchLog.write("claude official account changed; visible quota cleared; scope_omitted=true",
+                level: .info, category: "refresh.summary")
+            invalidateClaudeAccountData()
+        }
+        if state.failure != nil { actions.notificationSamplesInvalidated?(.claude, claudeOfficialProviderIDs) }
+        applyClaudeSummaries(state)
+        guard let target = claudeStandardTarget else { return }
+        let snapshot: Snapshot
+        if !state.windows.isEmpty {
+            let representative = state.windows.first(where: { $0.kind == .sevenDay })
+                ?? state.windows.first(where: { $0.kind == .fiveHour }) ?? state.windows[0]
+            var official = Snapshot.official(target.providerName, representative.remaining, representative.label,
+                representative.reset, state.updatedAt ?? now(), windows: state.windows)
+            official.notificationAccountScope = state.accountScope
+            official.quotaStatus = state.status
+            // Keep the account's last data visible; the reason rides on the refresh time.
+            official.staleReason = state.failure.map(Self.claudeFailureReason)
+            snapshot = official
+        } else if let failure = state.failure {
+            var error = Snapshot.providerError(target.providerName, reason: Self.claudeFailureReason(failure), cachedBalance: nil)
+            error.quotaStatus = state.status
+            snapshot = error
+        } else {
+            return
+        }
+        if let last = lastClaudePublication, last.providerID == target.providerID,
+           last.revision == target.revision, last.snapshot == snapshot { return }
+        lastClaudePublication = (target.providerID, target.revision, snapshot)
+        renderForCurrentProvider(snapshot, providerID: target.providerID, client: .claude,
+            configurationRevision: target.revision, notifies: false)
+    }
+
+    /// Every Claude official Provider shows the same account-wide windows.
+    private func applyClaudeSummaries(_ state: ClaudeQuotaState) {
+        guard !state.windows.isEmpty else { return }
+        for id in claudeOfficialProviderIDs {
+            updateQuickSwitchSummary(providerID: id, client: .claude, payload: .officialWindows(state.windows))
+        }
+    }
+
+    /// Official snapshots that passed the adapter reach the existing notification rules
+    /// for every Claude official Provider, matching the per-Provider samples used before.
+    private func forwardClaudeNotification(_ snapshot: Snapshot) {
+        for id in claudeOfficialProviderIDs { actions.notificationSnapshot?(.claude, id, snapshot) }
     }
 
     /// Drops everything derived from the previous Claude account: summary
     /// payloads, both official cadences, and the standard display. The next
     /// refresh requests the new account immediately.
-    private func invalidateClaudeAccountData(newAccountScope: String?) {
-        lastClaudeOfficialSnapshots.removeAll()
+    private func invalidateClaudeAccountData() {
         lastOfficialSummaryFetch = lastOfficialSummaryFetch.filter { $0.key.client != .claude }
-        lastAPISummaryFetch = lastAPISummaryFetch.filter { $0.key.client != .claude }
         quickSwitchSummaryLock.lock()
         let summaryIDs = quickSwitchSummaryPayloads.compactMap { identity, payload -> String? in
             guard identity.client == .claude, case .officialWindows = payload else { return nil }
@@ -1322,17 +1403,32 @@ final class ProviderRefreshCoordinator {
         }
         quickSwitchSummaryLock.unlock()
         summaryIDs.forEach { removeQuickSwitchSummary(providerID: $0, client: .claude) }
-
-        if let previous = standardOfficialRequests[.claude],
-           officialQuotaClient.claudeAccountScope(for: previous.credentials) != newAccountScope {
-            standardOfficialRequests.removeValue(forKey: .claude)
-            officialQuotaClient.cancelQuota(context: previous)
-        }
-        guard let key = lastStandardSourceKey else { return }
-        let parts = key.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 3, parts[0] == AssistantClient.claude.appType else { return }
+        guard let target = claudeStandardTarget else { return }
         lastOfficialFetch = nil
-        clearStandardDisplay(client: .claude, providerID: parts[1], revision: parts[2])
+        lastClaudePublication = nil
+        clearStandardDisplay(client: .claude, providerID: target.providerID, revision: target.revision)
+    }
+
+    private static func claudeFailureReason(_ failure: ClaudeQuotaFailure) -> String {
+        let name = String(describing: AssistantClient.claude.displayName)
+        switch failure {
+        case .missingCredentials:
+            return tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [name])
+        case let .transport(_, description):
+            return tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [name, description])
+        case .rateLimited, .http(429):
+            return tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
+                arguments: ["429"]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
+        case .unauthorized, .http, .invalidResponse:
+            return tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [name])
+        }
+    }
+
+    /// One shared rule for every official quota failure (standard and
+    /// quick-switch, any status): the stored notification sample is no longer
+    /// current and must not be re-evaluated until a real refresh succeeds.
+    private func officialSampleUnavailable(client: AssistantClient, providerID: String) {
+        actions.notificationSamplesInvalidated?(client, [providerID])
     }
 
     /// Replaces the visible and per-client cached snapshot with a placeholder.
@@ -1353,31 +1449,13 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    /// A Claude cache hit or coalesced request keeps the time of the real
-    /// request that produced it, so cadence never stacks two full intervals.
-    private func officialCadenceAnchor(context: OfficialQuotaRequestContext?, now currentDate: Date) -> Date {
-        context.flatMap(officialQuotaClient.claudeCalibrationAge(context:))
-            .map { now().addingTimeInterval(-max(0, $0)) } ?? currentDate
-    }
-
     /// Requests made before this check must belong to the account still signed in.
-    /// `verifyClaudeStore` rereads the Keychain on the owner queue; later checks of
-    /// the same result compare against that shared probe, which any newer read
-    /// (account-change detection or a new request) replaces.
+    /// Claude's account identity is tracked by `ClaudeQuotaPipeline` instead.
     private func officialCredentialsAreCurrent(client: AssistantClient, storedAccessToken: String?,
-                                               credentials: CodexRequestCredentials?,
-                                               verifyClaudeStore: Bool = true) -> Bool {
+                                               credentials: CodexRequestCredentials?) -> Bool {
         switch client {
         case .codex: return storedAccessToken != nil || officialQuotaClient.codexRequestCredentials() == credentials
-        case .claude:
-            let currentFingerprint: String?
-            if verifyClaudeStore, DispatchQueue.getSpecific(key: queueKey) != nil {
-                currentFingerprint = OfficialQuotaClient.claudeAccountFingerprint(officialQuotaClient.claudeRequestCredentials(cacheFor: 0))
-            } else {
-                currentFingerprint = officialQuotaClient.cachedClaudeAccountFingerprint()
-            }
-            return OfficialQuotaClient.claudeAccountFingerprint(credentials) == currentFingerprint
-        case .grok: return true
+        case .claude, .grok: return true
         }
     }
 
@@ -1418,28 +1496,20 @@ final class ProviderRefreshCoordinator {
         }
         // Freeze the account before transport starts. Never assign a late
         // response to the auth profile that happens to be current on arrival.
-        if client == .claude { lastClaudeIdentityProbe = nil }
         let credentials: CodexRequestCredentials?
         switch client {
         case _ where requestContext != nil: credentials = requestContext?.credentials
         case .codex: credentials = source?.officialAccessToken.map {
             CodexRequestCredentials(accessToken: $0, accountKey: source?.officialAccount?.email?.lowercased())
         } ?? officialQuotaClient.codexRequestCredentials()
-        case .claude: credentials = officialQuotaClient.claudeRequestCredentials()
-        case .grok: credentials = nil
+        case .claude, .grok: credentials = nil
         }
-        // Observe before transport: a synchronous cache hit for the new account
-        // must publish after the previous account's data has been cleared.
-        let accountScope = client == .claude ? officialQuotaClient.claudeAccountScope(for: credentials) : nil
-        if client == .claude { observeClaudeAccount(accountScope) }
         let context = requestContext ?? OfficialQuotaRequestContext(client: client, providerID: providerID,
             storedAccessToken: source?.officialAccessToken, credentials: credentials)
-        // Only the completion verifies against the credential store; every
-        // later check of the same result reuses that probe.
-        let credentialsMatch = { [weak self] (verify: Bool) -> Bool in
+        let credentialsMatch = { [weak self] (_: Bool) -> Bool in
             guard let self, isValid() else { return false }
             return self.officialCredentialsAreCurrent(client: client, storedAccessToken: source?.officialAccessToken,
-                credentials: credentials, verifyClaudeStore: verify)
+                credentials: credentials)
         }
         let accountKey = credentials?.accountKey
         if source == nil {
@@ -1497,10 +1567,6 @@ final class ProviderRefreshCoordinator {
                             quotaPredictionContexts: predictionContexts,
                             quotaPredictionAccountKey: client == .codex ? accountKey : nil
                         )
-                        snapshot.notificationAccountScope = accountScope
-                        if client == .claude, let accountScope {
-                            self.lastClaudeOfficialSnapshots[providerID] = (accountScope, snapshot)
-                        }
                         publish(
                             snapshot,
                             providerID: providerID,
@@ -1562,17 +1628,8 @@ final class ProviderRefreshCoordinator {
                 case .failure(.httpStatus(let status, _)) where status == 429:
                     let reason = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
                         arguments: [String(status)]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
-                    // Like a stale aggregation card: keep the same account's
-                    // last quota visible and flag its refresh time instead.
-                    if client == .claude, let last = self.lastClaudeOfficialSnapshots[providerID],
-                       last.accountScope == accountScope {
-                        publish(Self.staleOfficialSnapshot(last.snapshot, reason: reason, now: self.now()),
-                            providerID: providerID, client: client,
-                            isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) })
-                    } else {
-                        fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
-                            isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) })
-                    }
+                    fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
+                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) })
                 case .failure:
                     fail(
                         providerID: providerID,
@@ -1781,6 +1838,7 @@ final class ProviderRefreshCoordinator {
         providerID: String,
         client: AssistantClient,
         configurationRevision: String = "",
+        notifies: Bool = true,
         isCurrentRequest: @escaping () -> Bool = { true }
     ) {
         queue.async { [weak self] in
@@ -1798,7 +1856,7 @@ final class ProviderRefreshCoordinator {
             }
             // A kept (stale) snapshot still reaches notifications so they can mark
             // the stored sample as not current; it is never evaluated as a sample.
-            if next.kind == .official || next.kind == .balance {
+            if notifies, next.kind == .official || next.kind == .balance {
                 self.actions.notificationSnapshot?(client, providerID, next)
             }
             DispatchQueue.main.async {

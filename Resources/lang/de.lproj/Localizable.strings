@@ -562,3 +562,17 @@
 "dashboard.refresh.official_quota_frequency" = "Aktualisierung des offiziellen Kontingents";
 "dashboard.refresh.official_every_seconds" = "Alle %1$@ s";
 "dashboard.refresh.official_for_minutes" = "Für %1$@ Min.";
+
+"quota.status.refreshing" = "Lädt…";
+"quota.status.realtime" = "Live";
+"quota.status.hover.refreshing" = "Aktuelles Kontingent wird gelesen";
+"quota.status.hover.error" = "Aktualisierung fehlgeschlagen. Angezeigt werden die Daten von %1$@";
+"quota.status.hover.estimated" = "Geschätzt aus den Daten von %1$@, offizielle Bestätigung steht aus";
+"quota.status.hover.realtime" = "Aus Live-Daten dieses Macs";
+"quota.status.hover.official" = "Offizielle Daten, aktualisiert um %1$@";
+"quota.status.hover.external_activity" = "Aktivität auf einem anderen Client erkannt; Aktualisierung erfolgt häufiger";
+"quota.status.reset_pending" = "Wahrscheinlich zurückgesetzt; Bestätigung steht aus";
+"quota.status.reset_pending_short" = "Offen";
+"quota.failure.open_usage_page" = "Offizielle Nutzungsseite öffnen";
+"quota.status.accessibility" = "Kontingentstatus: %1$@";
+"dashboard.refresh.claude_calibration_note" = "Claude offiziell: Obergrenze für das Kalibrierungsintervall. Mindestens 3 Minuten; mit Live-Quelle erfolgt keine Anfrage.";

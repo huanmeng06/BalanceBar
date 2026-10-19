@@ -562,3 +562,17 @@
 "dashboard.refresh.official_quota_frequency" = "Frecuencia de actualización de cuota oficial";
 "dashboard.refresh.official_every_seconds" = "Cada %1$@ s";
 "dashboard.refresh.official_for_minutes" = "Durante %1$@ min";
+
+"quota.status.refreshing" = "Cargando…";
+"quota.status.realtime" = "En vivo";
+"quota.status.hover.refreshing" = "Leyendo la cuota más reciente";
+"quota.status.hover.error" = "Error al actualizar. Se muestran los datos de las %1$@";
+"quota.status.hover.estimated" = "Estimado con los datos de las %1$@, pendiente de confirmación oficial";
+"quota.status.hover.realtime" = "Datos en vivo de este Mac";
+"quota.status.hover.official" = "Datos oficiales, actualizados a las %1$@";
+"quota.status.hover.external_activity" = "Se detectó actividad en otro cliente; se actualiza con más frecuencia";
+"quota.status.reset_pending" = "Probablemente restablecida; pendiente de confirmación";
+"quota.status.reset_pending_short" = "Pendiente";
+"quota.failure.open_usage_page" = "Abrir la página oficial de uso";
+"quota.status.accessibility" = "Estado de la cuota: %1$@";
+"dashboard.refresh.claude_calibration_note" = "Claude oficial: límite superior del intervalo de calibración. Mínimo 3 minutos; no se solicita mientras haya una fuente en vivo.";

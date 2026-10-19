@@ -562,3 +562,17 @@
 "dashboard.refresh.official_quota_frequency" = "Official quota refresh frequency";
 "dashboard.refresh.official_every_seconds" = "Every %1$@ s";
 "dashboard.refresh.official_for_minutes" = "For %1$@ min";
+
+"quota.status.refreshing" = "Updating…";
+"quota.status.realtime" = "Live";
+"quota.status.hover.refreshing" = "Reading the latest quota";
+"quota.status.hover.error" = "Update failed. Showing data from %1$@";
+"quota.status.hover.estimated" = "Estimated from data at %1$@, awaiting official confirmation";
+"quota.status.hover.realtime" = "From live data on this Mac";
+"quota.status.hover.official" = "Official data, updated at %1$@";
+"quota.status.hover.external_activity" = "Activity detected on another client; refreshing more often";
+"quota.status.reset_pending" = "Likely reset; awaiting confirmation";
+"quota.status.reset_pending_short" = "Pending";
+"quota.failure.open_usage_page" = "Open official usage page";
+"quota.status.accessibility" = "Quota status: %1$@";
+"dashboard.refresh.claude_calibration_note" = "Claude official: upper limit for the calibration interval. At least 3 minutes; no request while a live source is available.";
