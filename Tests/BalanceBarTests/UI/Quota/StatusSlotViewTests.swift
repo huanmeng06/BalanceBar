@@ -111,8 +111,19 @@ final class StatusSlotViewTests: XCTestCase {
         for (name, state) in allStates {
             let (lightView, light) = try render(state, .aqua)
             let (_, dark) = try render(state, .darkAqua)
-            // The error state uses fixed systemOrange, which may resolve identically in both appearances.
-            if case .error = state {} else {
+            if case .error = state {
+                // systemOrange adapts by only ~0.03 per channel, below differingPixelRatio's 0.1
+                // threshold, so check each render carries its own appearance's exact orange.
+                let lightOrange = resolved(.systemOrange, in: try XCTUnwrap(NSAppearance(named: .aqua)))
+                let darkOrange = resolved(.systemOrange, in: try XCTUnwrap(NSAppearance(named: .darkAqua)))
+                XCTAssertGreaterThan(distance(lightOrange, darkOrange), 0.02, "systemOrange is not appearance-adaptive")
+                for (label, rep, own, other) in [("light", light, lightOrange, darkOrange), ("dark", dark, darkOrange, lightOrange)] {
+                    let ownDistance = nearestDistance(to: own, in: rep)
+                    let otherDistance = nearestDistance(to: other, in: rep)
+                    XCTAssertLessThanOrEqual(ownDistance, 0.01, "error \(label): no pixel matches its orange (\(ownDistance))")
+                    XCTAssertLessThan(ownDistance, otherDistance, "error \(label): rendered with the other appearance's orange")
+                }
+            } else {
                 XCTAssertGreaterThan(differingPixelRatio(light, dark), 0, "\(name): light and dark render identically")
             }
 
@@ -154,6 +165,18 @@ final class StatusSlotViewTests: XCTestCase {
 
     private func distance(_ a: NSColor, _ b: NSColor) -> CGFloat {
         max(abs(a.redComponent - b.redComponent), abs(a.greenComponent - b.greenComponent), abs(a.blueComponent - b.blueComponent))
+    }
+
+    /// Smallest color distance from `target` among fully opaque pixels.
+    private func nearestDistance(to target: NSColor, in rep: NSBitmapImageRep) -> CGFloat {
+        var best = CGFloat.greatestFiniteMagnitude
+        for x in 0..<rep.pixelsWide {
+            for y in 0..<rep.pixelsHigh {
+                guard let c = srgb(rep.colorAt(x: x, y: y)), c.alphaComponent > 0.99 else { continue }
+                best = min(best, distance(c, target))
+            }
+        }
+        return best
     }
 
     private func containsPixel(near target: NSColor, in rep: NSBitmapImageRep, tolerance: CGFloat = 0.12) -> Bool {
