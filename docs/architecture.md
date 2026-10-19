@@ -127,6 +127,22 @@ Schema fixtures and focused contract tests live under `Tests/Fixtures/Quota/`
 and `Tests/BalanceBarTests/Quota/` respectively. Later quota modules depend on
 these contracts through the public protocols and value types.
 
+### Claude official quota path
+
+Claude official quota is read through `ClaudeQuotaPipeline`
+(Sources/Services/ClaudeQuotaPipeline.swift), which `ProviderRefreshCoordinator`
+owns as its only Claude official source: `ClaudeAccountIdentityProvider` (account
+identity, epoch, credential version) → `FetchScheduler` (the single request
+boundary: minimum interval, request budget, 429 cooldown, 401 pause) →
+`QuotaMergeEngine` (the only owner of displayed values) → status slot
+(`Snapshot.quotaStatus`) and `QuotaNotificationAdapter` (existing notification
+rules). `OfficialQuotaClient.fetchClaudeUsage` is the scheduler's transport; it
+neither caches nor backs off. The refresh-interval setting is only the upper
+bound of the calibration interval; automatic reads are never closer than three
+minutes. The pipeline builds its engine and reads account and merge state on
+background queues; the main thread only reads published values. Codex official
+quota and third-party balances keep their previous request path.
+
 ### A native window or AppKit capability
 
 Dashboard window creation, window delegate behavior, presentation, restoration,

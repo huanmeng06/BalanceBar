@@ -547,5 +547,19 @@
     case keyQuotaPaceBodyResetUnavailable = "quota.pace.body.reset_unavailable"
     case keyQuotaPaceBodyExhausted = "quota.pace.body.exhausted"
 
+    case keyQuotaStatusRefreshing = "quota.status.refreshing"
+    case keyQuotaStatusRealtime = "quota.status.realtime"
+    case keyQuotaStatusHoverRefreshing = "quota.status.hover.refreshing"
+    case keyQuotaStatusHoverError = "quota.status.hover.error"
+    case keyQuotaStatusHoverEstimated = "quota.status.hover.estimated"
+    case keyQuotaStatusHoverRealtime = "quota.status.hover.realtime"
+    case keyQuotaStatusHoverOfficial = "quota.status.hover.official"
+    case keyQuotaStatusHoverExternalActivity = "quota.status.hover.external_activity"
+    case keyQuotaStatusResetPending = "quota.status.reset_pending"
+    case keyQuotaStatusResetPendingShort = "quota.status.reset_pending_short"
+    case keyQuotaFailureOpenUsagePage = "quota.failure.open_usage_page"
+    case keyQuotaStatusAccessibility = "quota.status.accessibility"
+    case keyDashboardRefreshClaudeCalibrationNote = "dashboard.refresh.claude_calibration_note"
+
     var rawKey: String { rawValue }
 }

@@ -562,3 +562,17 @@
 "dashboard.refresh.official_quota_frequency" = "공식 할당량 새로 고침 빈도";
 "dashboard.refresh.official_every_seconds" = "%1$@초마다";
 "dashboard.refresh.official_for_minutes" = "%1$@분 동안";
+
+"quota.status.refreshing" = "업데이트 중…";
+"quota.status.realtime" = "실시간";
+"quota.status.hover.refreshing" = "최신 할당량을 읽는 중";
+"quota.status.hover.error" = "업데이트하지 못했습니다. %1$@ 기준 데이터를 표시합니다";
+"quota.status.hover.estimated" = "%1$@ 데이터로 추정한 값이며 공식 확인을 기다리는 중입니다";
+"quota.status.hover.realtime" = "이 Mac의 실시간 데이터";
+"quota.status.hover.official" = "공식 데이터, %1$@에 업데이트됨";
+"quota.status.hover.external_activity" = "다른 클라이언트에서 사용 중임을 감지하여 업데이트 빈도를 높였습니다";
+"quota.status.reset_pending" = "초기화된 것으로 보이며 확인을 기다리는 중입니다";
+"quota.status.reset_pending_short" = "확인 대기";
+"quota.failure.open_usage_page" = "공식 사용량 페이지 열기";
+"quota.status.accessibility" = "할당량 상태: %1$@";
+"dashboard.refresh.claude_calibration_note" = "Claude 공식: 보정 간격의 상한입니다. 최소 3분이며 실시간 소스가 있으면 요청하지 않습니다.";

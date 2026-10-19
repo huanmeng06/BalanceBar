@@ -562,3 +562,17 @@
 "dashboard.refresh.official_quota_frequency" = "官方额度刷新频率";
 "dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
 "dashboard.refresh.official_for_minutes" = "持续 %1$@ 分钟";
+
+"quota.status.refreshing" = "刷新中…";
+"quota.status.realtime" = "实时";
+"quota.status.hover.refreshing" = "正在读取最新额度";
+"quota.status.hover.error" = "更新失败，显示的是 %1$@ 的数据";
+"quota.status.hover.estimated" = "根据 %1$@ 的数据估算，等待官方确认";
+"quota.status.hover.realtime" = "来自本机实时数据";
+"quota.status.hover.official" = "官方数据，更新于 %1$@";
+"quota.status.hover.external_activity" = "检测到其他端在使用，已提高更新频率";
+"quota.status.reset_pending" = "预计已重置，等待确认";
+"quota.status.reset_pending_short" = "待确认";
+"quota.failure.open_usage_page" = "打开官方用量页";
+"quota.status.accessibility" = "额度状态：%1$@";
+"dashboard.refresh.claude_calibration_note" = "Claude 官方：校准间隔上限。最短 3 分钟，有实时来源时不请求。";

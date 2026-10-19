@@ -7040,7 +7040,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         provider.identifier = NSUserInterfaceItemIdentifier("overview.providerTitle")
         provider.frame = headerFrame(layout.title)
 
-        if snapshot.kind == .official || snapshot.kind == .balance {
+        if snapshot.kind == .official, let quotaStatus = snapshot.quotaStatus {
+            // Claude official quota: BB-07's status slot replaces the plain refresh time.
+            let slot = StatusSlotView(localize: StatusSlotText.appLocalize, timeZone: settings.displayTimeZone)
+            applyQuotaStatus(quotaStatus, reason: snapshot.staleReason, to: slot)
+            slot.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
+            slot.frame = Self.statusSlotFrame(in: headerFrame(layout.refreshTime))
+            headerHost.addSubview(slot)
+        } else if snapshot.kind == .official || snapshot.kind == .balance {
             let refreshTime = makeOverviewLabel("", font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
             refreshTime.alignment = .right
             applyRefreshTime(to: refreshTime, date: context.date, staleReason: snapshot.staleReason)
@@ -7460,7 +7467,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = false
         let message = snapshot.overviewReset(refreshDate: nil, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone))
-        let frames = ErrorCardLayout.errorFrames(
+        // Claude official failures add the BB-07 failure view: reason plus a button
+        // that opens the official usage page, in extra height below the detail.
+        let showsUsagePageButton = snapshot.quotaStatus != nil
+        let buttonShift = showsUsagePageButton ? ErrorCardLayout.usagePageButtonHeight : 0
+        let baseFrames = ErrorCardLayout.errorFrames(
             for: message,
             includesAccount: context.account != nil,
             includesSubscription: context.account?.subscription != nil,
@@ -7468,6 +7479,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
             }
         )
+        let frames = baseFrames.shiftedUp(by: buttonShift)
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
         provider.frame = frames.title
@@ -7499,12 +7511,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         amount.alignment = .right
         amount.frame = frames.amount
         view.addSubview(amount)
-        let detail = ErrorCardLayout.makeDetailLabel(
-            frames.detailText,
-            textColor: snapshot.provider.isEmpty ? .secondaryLabelColor : .systemRed
-        )
-        detail.frame = frames.detail
-        view.addSubview(detail)
+        if showsUsagePageButton {
+            let failure = FailureStateView(
+                reason: frames.detailText,
+                localize: StatusSlotText.appLocalize,
+                onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.officialUsageURL) })
+            failure.identifier = NSUserInterfaceItemIdentifier("overview.failureState")
+            failure.frame = NSRect(x: frames.detail.minX, y: frames.detail.minY - buttonShift,
+                                   width: frames.detail.width, height: frames.detail.height + buttonShift)
+            view.addSubview(failure)
+        } else {
+            let detail = ErrorCardLayout.makeDetailLabel(
+                frames.detailText,
+                textColor: snapshot.provider.isEmpty ? .secondaryLabelColor : .systemRed
+            )
+            detail.frame = frames.detail
+            view.addSubview(detail)
+        }
         updateOverviewHeaderNotes(in: view, context: context)
         item.view = view
         return item
@@ -8226,6 +8249,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.setAccessibilityLabel(staleReason.map { tr(.keyAggregationStale) + " · " + timeText + " · " + $0 } ?? timeText)
     }
 
+    /// Right-aligns the fixed-size status slot inside the refresh-time frame.
+    static func statusSlotFrame(in frame: NSRect) -> NSRect {
+        NSRect(x: frame.maxX - StatusSlotView.fixedWidth,
+               y: frame.midY - StatusSlotView.fixedHeight / 2,
+               width: StatusSlotView.fixedWidth, height: StatusSlotView.fixedHeight)
+    }
+
+    /// Shared by a rebuilt card and an in-place update, like `applyRefreshTime`.
+    /// The failure reason, when any, is appended to the slot's hover text.
+    private func applyQuotaStatus(_ state: StatusSlotState, reason: String?, to slot: StatusSlotView) {
+        slot.update(state: state)
+        guard let reason, !reason.isEmpty else { return }
+        slot.toolTip = (slot.toolTip.map { $0 + "\n" } ?? "") + reason
+    }
+
     private func reconcileOverviewSectionsIfTracking() {
         guard menuInput.aggregatedProviders.isEmpty, let host = menuContentHostForUpdate("sections") else { return }
         reconcileOverviewSections(in: host, context: directCardContext(for: snapshot))
@@ -8304,6 +8342,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             labels.first { $0.font?.pointSize == 15 }?.stringValue = snapshot.overviewProvider
             if let refreshTime = labels.first(where: { $0.identifier?.rawValue == "overview.refreshTime" }) {
                 applyRefreshTime(to: refreshTime, date: context.date, staleReason: snapshot.staleReason)
+            }
+            if let slot = header.subviews.compactMap({ $0 as? StatusSlotView }).first,
+               let quotaStatus = snapshot.quotaStatus {
+                applyQuotaStatus(quotaStatus, reason: snapshot.staleReason, to: slot)
             }
             if let account = context.account, case .available(let email) = account.state {
                 descendantViews(of: header, as: AccountEmailView.self).first?.updateText(email)

@@ -2007,7 +2007,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testOfficialAndAPIBalanceRefreshRowsHaveIndependentControlsAndNoSubtitles() throws {
+    func testOfficialAndAPIBalanceRefreshRowsHaveIndependentControlsAndOnlyTheOfficialRowExplainsClaudeCalibration() throws {
         let suite = "RefreshSplit.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -2029,7 +2029,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(api.numberOfItems, 5)
         let officialRow = try XCTUnwrap(SettingsRowView.enclosing(official))
         let apiRow = try XCTUnwrap(SettingsRowView.enclosing(api))
-        XCTAssertTrue(officialRow.detailLabel.isHidden)
+        // INT-1: the official row explains Claude's calibration-interval-cap semantics.
+        XCTAssertFalse(officialRow.detailLabel.isHidden)
+        XCTAssertEqual(officialRow.detailLabel.stringValue, tr(.keyDashboardRefreshClaudeCalibrationNote))
         XCTAssertTrue(apiRow.detailLabel.isHidden)
         let section = try XCTUnwrap(SettingsSectionView.enclosing(officialRow))
         XCTAssertTrue(section.contentViews[0] === officialRow)

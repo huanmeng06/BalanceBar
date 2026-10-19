@@ -562,3 +562,17 @@
 "dashboard.refresh.official_quota_frequency" = "Частота обновления официальной квоты";
 "dashboard.refresh.official_every_seconds" = "Каждые %1$@ с";
 "dashboard.refresh.official_for_minutes" = "В течение %1$@ мин";
+
+"quota.status.refreshing" = "Чтение…";
+"quota.status.realtime" = "Онлайн";
+"quota.status.hover.refreshing" = "Чтение актуальной квоты";
+"quota.status.hover.error" = "Не удалось обновить. Показаны данные на %1$@";
+"quota.status.hover.estimated" = "Оценка по данным на %1$@, ожидается официальное подтверждение";
+"quota.status.hover.realtime" = "Данные в реальном времени с этого Mac";
+"quota.status.hover.official" = "Официальные данные, обновлено в %1$@";
+"quota.status.hover.external_activity" = "Обнаружена активность на другом клиенте; обновление стало чаще";
+"quota.status.reset_pending" = "Вероятно, сброшено; ожидается подтверждение";
+"quota.status.reset_pending_short" = "Ожидание";
+"quota.failure.open_usage_page" = "Открыть официальную страницу использования";
+"quota.status.accessibility" = "Состояние квоты: %1$@";
+"dashboard.refresh.claude_calibration_note" = "Claude (официальный): верхняя граница интервала калибровки. Не менее 3 минут; при наличии источника в реальном времени запросы не отправляются.";

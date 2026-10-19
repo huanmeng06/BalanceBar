@@ -291,6 +291,88 @@ enum OfficialQuotaResponseParser {
         var resetAt: Date? { representative?.resetAt }
     }
 
+
+    /// One Claude usage window as reported by the API, before any merging.
+    struct ClaudeReading {
+        let key: String
+        let usedPercentage: Double
+        /// Absolute reset time as reported, which may already be in the past.
+        let resetsAt: Date?
+        let window: OfficialQuotaWindow
+
+        /// Stable quota-module window kind for this API key.
+        var quotaKind: QuotaWindowKind {
+            switch key {
+            case "five_hour": return .fiveHour
+            case "seven_day": return .sevenDay
+            default: return .other(key)
+            }
+        }
+    }
+
+    private struct ClaudeTier {
+        let key: String
+        let kind: OfficialQuotaWindow.Kind
+        let label: String
+        let daysText: String
+        let duration: Double
+    }
+
+    private static func claudeTiers() -> [ClaudeTier] {
+        [
+            ClaudeTier(key: "five_hour", kind: .fiveHour, label: tr(.keyResponseParsers5HourQuota), daysText: tr(.keyResponseParsers5Hours), duration: 5 * 3_600),
+            ClaudeTier(key: "seven_day", kind: .sevenDay, label: tr(.keyResponseParsers7DayQuota), daysText: tr(.keyResponseParsers7Days), duration: 7 * 86_400),
+            ClaudeTier(key: "seven_day_sonnet", kind: .other, label: tr(.keyResponseParsersSonnet7DayQuota), daysText: tr(.keyResponseParsers7Days2), duration: 7 * 86_400),
+            ClaudeTier(key: "seven_day_opus", kind: .other, label: tr(.keyResponseParsersOpus7DayQuota), daysText: tr(.keyResponseParsers7Days3), duration: 7 * 86_400)
+        ]
+    }
+
+    private static func claudeWindow(_ tier: ClaudeTier, usedPercentage: Double, resetRaw: Any?, resetAt: Date?, now: Date) -> OfficialQuotaWindow {
+        // An unused window (0%) has no `resets_at` yet; like Codex's idle
+        // `reset_after_seconds`, it shows the window length. A used window
+        // without `resets_at` has an unknown start, so it stays unknown.
+        let idleLength = usedPercentage <= 0 ? ResponseParsingSupport.resetDescription(tier.duration, now: now) : nil
+        return OfficialQuotaWindow(
+            kind: tier.kind,
+            remaining: max(0, min(100, 100 - usedPercentage)),
+            label: tier.label,
+            daysText: tier.daysText,
+            reset: ResponseParsingSupport.resetDescription(resetRaw, now: now) ?? idleLength,
+            durationSeconds: tier.duration,
+            resetAt: resetAt
+        )
+    }
+
+    /// Parses the Claude usage payload into per-window readings.
+    static func claudeReadings(object: [String: Any], now: Date = Date()) -> [ClaudeReading] {
+        claudeTiers().compactMap { tier -> ClaudeReading? in
+            guard let window = object[tier.key] as? [String: Any],
+                  let utilization = ResponseParsingSupport.numberValue(window["utilization"]),
+                  utilization.isFinite else { return nil }
+            let raw = window["resets_at"]
+            return ClaudeReading(
+                key: tier.key,
+                usedPercentage: max(0, min(100, utilization)),
+                resetsAt: ResponseParsingSupport.timestampDate(raw),
+                window: claudeWindow(tier, usedPercentage: utilization, resetRaw: raw,
+                    resetAt: ResponseParsingSupport.resetDate(raw, now: now), now: now))
+        }
+    }
+
+    static func claudeReadings(data: Data, now: Date = Date()) throws -> [ClaudeReading] {
+        let readings = claudeReadings(object: try ResponseParsingSupport.object(from: data), now: now)
+        guard !readings.isEmpty else { throw ResponseParserError.unsupportedFormat }
+        return readings
+    }
+
+    /// Builds the display window for a merged reading of the Claude window `kind`.
+    static func claudeWindow(for kind: QuotaWindowKind, usedPercentage: Double, resetsAt: Date?, now: Date = Date()) -> OfficialQuotaWindow? {
+        guard let tier = claudeTiers().first(where: { $0.key == kind.rawValue }) else { return nil }
+        let future = resetsAt.flatMap { $0 > now ? $0 : nil }
+        return claudeWindow(tier, usedPercentage: usedPercentage,
+            resetRaw: future.map { $0.timeIntervalSince1970 }, resetAt: future, now: now)
+    }
+
     static func parse(
         data: Data,
         client: AssistantClient,
@@ -309,31 +391,7 @@ enum OfficialQuotaResponseParser {
         now: Date = Date()
     ) throws -> Output {
         if client == .claude {
-            let tiers: [(String, OfficialQuotaWindow.Kind, String, String, Double)] = [
-                ("five_hour", .fiveHour, tr(.keyResponseParsers5HourQuota), tr(.keyResponseParsers5Hours), 5 * 3_600),
-                ("seven_day", .sevenDay, tr(.keyResponseParsers7DayQuota), tr(.keyResponseParsers7Days), 7 * 86_400),
-                ("seven_day_sonnet", .other, tr(.keyResponseParsersSonnet7DayQuota), tr(.keyResponseParsers7Days2), 7 * 86_400),
-                ("seven_day_opus", .other, tr(.keyResponseParsersOpus7DayQuota), tr(.keyResponseParsers7Days3), 7 * 86_400)
-            ]
-            let windows = tiers.compactMap { name, kind, label, daysText, duration -> OfficialQuotaWindow? in
-                guard let window = object[name] as? [String: Any],
-                      let utilization = ResponseParsingSupport.numberValue(window["utilization"])
-                else { return nil }
-                // An unused window (0%) has no `resets_at` yet; like Codex's idle
-                // `reset_after_seconds`, it shows the window length. A used window
-                // without `resets_at` has an unknown start, so it stays unknown.
-                let idleLength = utilization <= 0 ? ResponseParsingSupport.resetDescription(duration, now: now) : nil
-                return OfficialQuotaWindow(
-                    kind: kind,
-                    remaining: max(0, min(100, 100 - utilization)),
-                    label: label,
-                    daysText: daysText,
-                    reset: ResponseParsingSupport.resetDescription(window["resets_at"], now: now)
-                        ?? idleLength,
-                    durationSeconds: duration,
-                    resetAt: ResponseParsingSupport.resetDate(window["resets_at"], now: now)
-                )
-            }
+            let windows = claudeReadings(object: object, now: now).map(\.window)
             guard !windows.isEmpty else { throw ResponseParserError.unsupportedFormat }
             return Output(windows: windows)
         }

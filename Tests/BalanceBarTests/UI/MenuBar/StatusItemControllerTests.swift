@@ -3324,6 +3324,91 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testClaudeCardShowsTheStatusSlotAndUpdatesItInPlaceThroughRefreshFailureAndRecovery() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let fetchedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 86, label: "5h", daysText: "5 hours",
+            reset: "1h5m", durationSeconds: 18_000, resetAt: fetchedAt.addingTimeInterval(3_900))
+        var official = Snapshot.official("Claude Official", 86, "5h", "1h5m", fetchedAt, windows: [window])
+        official.quotaStatus = .official(at: fetchedAt)
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        let settings = makeSettings()
+        controller.start(snapshot: official, refreshDate: fetchedAt, menuInput: input, settings: settings)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        defer { controller.menuDidClose(controller.statusMenuForTesting) }
+        func slot() throws -> StatusSlotView {
+            XCTAssertTrue(controller.menuItemsForTesting.first?.view === host, "the open menu updates the card in place")
+            func find(_ view: NSView) -> StatusSlotView? {
+                (view as? StatusSlotView) ?? view.subviews.lazy.compactMap(find).first
+            }
+            return try XCTUnwrap(find(host))
+        }
+        let timeText = StatusSlotAppearance.timeText(fetchedAt, timeZone: settings.displayTimeZone)
+        XCTAssertEqual(try slot().textForTesting, timeText)
+        // Same style as the Codex card's plain refresh time: HH:mm:ss at 12 pt monospaced digits.
+        XCTAssertEqual(timeText, AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: fetchedAt))
+        XCTAssertEqual(timeText.count, 8)
+        XCTAssertEqual(try slot().fontForTesting, .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
+        XCTAssertEqual(try slot().identifier?.rawValue, "overview.refreshTime")
+        XCTAssertEqual(try slot().frame.size, NSSize(width: StatusSlotView.fixedWidth, height: StatusSlotView.fixedHeight))
+
+        var refreshing = official
+        refreshing.quotaStatus = .refreshing
+        controller.update(snapshot: refreshing, refreshDate: fetchedAt, menuInput: input, settings: settings)
+        XCTAssertEqual(try slot().textForTesting, tr(.keyQuotaStatusRefreshing))
+
+        var failed = official
+        failed.quotaStatus = .error(at: fetchedAt)
+        failed.staleReason = "Too many requests (HTTP 429)"
+        controller.update(snapshot: failed, refreshDate: fetchedAt, menuInput: input, settings: settings)
+        XCTAssertEqual(try slot().textForTesting, "⚠︎ " + timeText)
+        XCTAssertEqual(try slot().textColorForTesting, .systemOrange)
+        XCTAssertTrue(try slot().toolTip?.contains("HTTP 429") == true, "the failure reason joins the hover text")
+        XCTAssertTrue(try slot().accessibilityLabel()?.contains("⚠︎") == true)
+        XCTAssertNotNil(try slot().accessibilityHelp())
+
+        controller.update(snapshot: official, refreshDate: fetchedAt.addingTimeInterval(60), menuInput: input, settings: settings)
+        XCTAssertEqual(try slot().textForTesting, timeText)
+        XCTAssertFalse(try slot().toolTip?.contains("HTTP 429") == true, "recovery clears the failure reason")
+    }
+
+    @MainActor
+    func testClaudeFailureCardOffersTheOfficialUsagePageAndOtherErrorCardsDoNot() throws {
+        var opened: [URL] = []
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { opened.append($0) },
+            iconChanged: { _ in }))
+        defer { controller.teardown() }
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        func card(for snapshot: Snapshot) throws -> NSView {
+            controller.start(snapshot: snapshot, refreshDate: nil, menuInput: input, settings: makeSettings())
+            return try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        }
+        func find<T: NSView>(_ type: T.Type, in view: NSView) -> T? {
+            (view as? T) ?? view.subviews.lazy.compactMap { find(type, in: $0) }.first
+        }
+        let plain = try card(for: .providerError("Claude Official", reason: "Network down", cachedBalance: nil))
+        XCTAssertNil(find(FailureStateView.self, in: plain))
+
+        var failure = Snapshot.providerError("Claude Official", reason: "Network down", cachedBalance: nil)
+        failure.quotaStatus = .error(at: nil)
+        let withButton = try card(for: failure)
+        let view = try XCTUnwrap(find(FailureStateView.self, in: withButton))
+        XCTAssertEqual(view.reasonForTesting.replacingOccurrences(of: "\u{200B}", with: ""), "Network down")
+        XCTAssertEqual(view.openUsageButton.title, tr(.keyQuotaFailureOpenUsagePage))
+        XCTAssertEqual(view.openUsageButton.accessibilityLabel(), tr(.keyQuotaFailureOpenUsagePage))
+        XCTAssertEqual(withButton.frame.height, plain.frame.height + ErrorCardLayout.usagePageButtonHeight, accuracy: 0.5)
+        view.openUsageButton.performClick(nil)
+        XCTAssertEqual(opened, [FailureStateView.officialUsageURL])
+    }
+
+    @MainActor
     func testOpenMenuUpdatesStaleRefreshTimeInPlaceThroughRateLimitAndRecovery() throws {
         let controller = makeController()
         defer { controller.teardown() }

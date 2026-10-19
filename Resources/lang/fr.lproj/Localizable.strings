@@ -562,3 +562,17 @@
 "dashboard.refresh.official_quota_frequency" = "Fréquence d’actualisation du quota officiel";
 "dashboard.refresh.official_every_seconds" = "Toutes les %1$@ s";
 "dashboard.refresh.official_for_minutes" = "Pendant %1$@ min";
+
+"quota.status.refreshing" = "En cours…";
+"quota.status.realtime" = "En direct";
+"quota.status.hover.refreshing" = "Lecture du dernier quota";
+"quota.status.hover.error" = "Échec de la mise à jour. Données de %1$@ affichées";
+"quota.status.hover.estimated" = "Estimé d’après les données de %1$@, en attente de confirmation officielle";
+"quota.status.hover.realtime" = "Données en direct de ce Mac";
+"quota.status.hover.official" = "Données officielles, mises à jour à %1$@";
+"quota.status.hover.external_activity" = "Activité détectée sur un autre client ; actualisation plus fréquente";
+"quota.status.reset_pending" = "Réinitialisation probable ; en attente de confirmation";
+"quota.status.reset_pending_short" = "En attente";
+"quota.failure.open_usage_page" = "Ouvrir la page d’utilisation officielle";
+"quota.status.accessibility" = "État du quota : %1$@";
+"dashboard.refresh.claude_calibration_note" = "Claude officiel : limite haute de l’intervalle d’étalonnage. 3 minutes minimum ; aucune requête tant qu’une source en direct est disponible.";

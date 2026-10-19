@@ -956,6 +956,10 @@ struct Snapshot: Equatable {
     /// the latest request failed (for example HTTP 429); the reason is shown
     /// on the refresh time instead of replacing the card with an error.
     var staleReason: String? = nil
+    /// Status-slot state for Claude official quota (refreshing, failed,
+    /// reset pending, ...); nil for every other source, which keeps the
+    /// plain refresh-time label.
+    var quotaStatus: StatusSlotState? = nil
     /// Opaque identity of the account this official quota belongs to, so
     /// notification progress and stored samples never cross accounts.
     var notificationAccountScope: String? = nil

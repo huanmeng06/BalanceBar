@@ -613,6 +613,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
+    private let claudeQuota: ClaudeQuotaPipeline
     private let balanceAPIClient = BalanceAPIClient()
     private let balanceProgressStore = ProviderBalanceProgressStore()
     private lazy var notificationCoordinator = BalanceNotificationCoordinator()
@@ -707,12 +708,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     init(
         repository: CCSwitchRepository = CCSwitchRepository(),
         officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
+        claudeQuota: ClaudeQuotaPipeline? = nil,
         updateService: UpdateService? = nil,
         launchAtLoginService: LaunchAtLoginService = SystemLaunchAtLoginService(),
         launchWithChatGPTService: LaunchWithChatGPTService = SystemLaunchWithChatGPTService()
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
+        let calibrationPreferences = preferences
+        self.claudeQuota = claudeQuota ?? ClaudeQuotaPipeline.makeProduction(
+            client: officialQuotaClient,
+            calibrationIntervalCap: {
+                max(calibrationPreferences.officialUsageRefreshInterval, QuotaConstants.automaticRequestMinimumInterval)
+            })
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(
@@ -721,8 +729,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore()
         )
         super.init()
-        let refreshPreferences = preferences
-        officialQuotaClient.configureClaudeCalibrationInterval { refreshPreferences.officialUsageRefreshInterval }
         notificationCoordinator.onPermissionStateChanged = { [weak self] state in
             guard let self else { return }
             let previous = self.lastNotificationPermissionState
@@ -835,7 +841,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 ownedRender: { [weak self] providerID, snapshot in self?.render(snapshot, providerID: providerID) }
             ),
-            refreshPreferences: preferences
+            refreshPreferences: preferences,
+            claudeQuota: self.claudeQuota
         )
         providerSwitchCoordinator = ProviderSwitchCoordinator(
             repository: repository,
@@ -950,7 +957,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     // Claude official refreshes only its quota; during a 429
                     // wait a manual refresh cannot reach the endpoint.
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
-                    return self.officialQuotaClient.claudeManualRefreshBlockedUntil()
+                    return self.claudeQuota.manualRefreshBlockedUntil()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
@@ -2303,7 +2310,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 current: current,
                 client: client,
                 forceBalance: reason.forcesStandardProviderBalance,
-                switched: switched
+                switched: switched,
+                userInitiated: reason == .manual
             )
         }
     }
@@ -2558,6 +2566,9 @@ enum ErrorCardLayout {
     static let amountFont = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
     static let refreshTimeFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
 
+    /// Height of the "open usage page" button row added to a Claude official failure card.
+    static let usagePageButtonHeight: CGFloat = 28
+
     struct ErrorFrames {
         let cardSize: NSSize
         let title: NSRect
@@ -2568,6 +2579,17 @@ enum ErrorCardLayout {
         let amount: NSRect
         let detail: NSRect
         let detailText: String
+
+        /// Grows the card by `extra` at the bottom, keeping the content above in place.
+        func shiftedUp(by extra: CGFloat) -> ErrorFrames {
+            guard extra != 0 else { return self }
+            func up(_ rect: NSRect) -> NSRect { rect.offsetBy(dx: 0, dy: extra) }
+            return ErrorFrames(
+                cardSize: NSSize(width: cardSize.width, height: cardSize.height + extra),
+                title: up(title), refreshTime: up(refreshTime), account: account.map(up),
+                subscription: subscription.map(up), quotaDetail: up(quotaDetail), amount: up(amount),
+                detail: up(detail), detailText: detailText)
+        }
     }
 
     /// Prepares the detail text for word wrapping. Whitespace-delimited tokens

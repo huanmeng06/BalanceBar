@@ -481,6 +481,7 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardGeneralAndRefreshPagesStartup,
                 .keyDashboardGeneralAndRefreshPagesRefresh,
                 .keyDashboardOfficialQuotaRefreshFrequency,
+                .keyDashboardRefreshClaudeCalibrationNote,
                 .keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks,
                 .keyDashboardGeneralAndRefreshPagesBalanceData,
                 .keyDashboardGeneralAndRefreshPagesApplication,
