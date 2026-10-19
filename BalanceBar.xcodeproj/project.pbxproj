@@ -166,6 +166,7 @@
 		A10000000000000300000021 /* BackgroundTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000020 /* BackgroundTestHost.swift */; };
 		A10000000000000300000051 /* TestRepositoryRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000050 /* TestRepositoryRoot.swift */; };
 		A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000030 /* AutomatedTestHostTests.swift */; };
+		A48000000000000000000002 /* ClaudeApplicationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48000000000000000000001 /* ClaudeApplicationIdentity.swift */; };
 		A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */; };
 		A10000000000000200000003 /* ChatGPTLaunchDecision.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000012 /* ChatGPTLaunchDecision.swift */; };
 		A10000000000000200000004 /* ChatGPTLaunchAgentRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */; };
@@ -389,6 +390,7 @@
 		A10000000000000300000020 /* BackgroundTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTestHost.swift; sourceTree = "<group>"; };
 		A10000000000000300000050 /* TestRepositoryRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestRepositoryRoot.swift; sourceTree = "<group>"; };
 		A10000000000000300000030 /* AutomatedTestHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomatedTestHostTests.swift; sourceTree = "<group>"; };
+		A48000000000000000000001 /* ClaudeApplicationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeApplicationIdentity.swift; sourceTree = "<group>"; };
 		A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTApplicationIdentity.swift; sourceTree = "<group>"; };
 		A10000000000000200000012 /* ChatGPTLaunchDecision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchDecision.swift; sourceTree = "<group>"; };
 		A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchAgentRuntime.swift; sourceTree = "<group>"; };
@@ -498,6 +500,7 @@
 				A10000000000000200000010 /* InitialLaunchPresentation.swift */,
 				A10000000000000300000010 /* AutomatedTestHost.swift */,
 				A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */,
+				A48000000000000000000001 /* ClaudeApplicationIdentity.swift */,
 				A10000000000000200000012 /* ChatGPTLaunchDecision.swift */,
 				A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */,
 				A1000000000000000000006D /* DashboardScrollClamping.swift */,
@@ -1351,6 +1354,7 @@
 				A10000000000000200000001 /* InitialLaunchPresentation.swift in Sources */,
 				A10000000000000300000001 /* AutomatedTestHost.swift in Sources */,
 				A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */,
+				A48000000000000000000002 /* ClaudeApplicationIdentity.swift in Sources */,
 				A10000000000000200000003 /* ChatGPTLaunchDecision.swift in Sources */,
 				A10000000000000200000004 /* ChatGPTLaunchAgentRuntime.swift in Sources */,
 				A10000000000000200000005 /* LaunchWithChatGPTService.swift in Sources */,
