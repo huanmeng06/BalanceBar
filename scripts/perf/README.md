@@ -6,7 +6,9 @@ macOS 自带 `python3` 标准库。隔离与有效性保证：
 - **临时 App 副本**：bundle id 改为 `<id>.perf` 并 ad-hoc 重签名，不与正在运行的 BalanceBar 冲突，也不共享 UserDefaults。
 - **临时 HOME**：不读写真实 `~/.claude`、`~/.codex`。
 - **网络沙盒**：App 在 `sandbox-exec` 下运行，拒绝一切远程 IP 收发（例如启动时的 GitHub 更新检查）。只有 `/bin/ps` 不进沙盒运行：它是 setuid 程序，App 用它检测 CLI 进程。每次运行前用同一配置跑一次 `curl --noproxy '*' https://api.github.com`，必须失败。采样期间每个样本都用 `lsof -i` 检查 App，发现任何外部 socket 就中止、不写报告。
-- **写入场景确实触发读取**：App 只在检测到 `claude` 进程且终端 App 在前台时读取 Claude transcript（`ActivityCoordinator`）。因此写入场景会启动一个临时 `claude` 进程（复制 `/bin/sleep`），并用 `open -b com.apple.Terminal` 把 Terminal 置前。**采样期间请保持 Terminal 在前台。** 判断依据是 transcript 的 atime：写入方只追加，不更新 atime，atime 前进就说明 App 读过文件。读取次数少于样本数的 1/4 时判定场景无效，以非零码退出、不写报告。App 只读取最新的主会话，所以多写入方场景通常集中在一个文件上。
+- **写入场景确实触发读取**：App 只在检测到 `claude` 进程且终端 App 在前台时读取 Claude transcript（`ActivityCoordinator`）。因此写入场景会启动一个临时 `claude` 进程（复制 `/bin/sleep`），并用 `open -b com.apple.Terminal` 把 Terminal 置前。**采样期间请保持 Terminal 在前台。** 判断依据是 transcript 的 atime：写入方只追加，不更新 atime，atime 前进就说明 App 读过文件。判定场景无效（以非零码退出、不写报告）的条件有两条：
+  - 读取次数少于样本数的 1/4；
+  - Terminal（`com.apple.Terminal`）在前台的样本少于 75%。每个样本用 `lsappinfo front` 检查。这条单独检查是因为 Terminal 前台过一次之后，App 会一直跟随 Claude 客户端读取 transcript，切走焦点后仍会继续，读取证据单独无法发现焦点丢失。App 只读取最新的主会话，所以多写入方场景通常集中在一个文件上。
 
 ## 先构建
 

@@ -250,6 +250,17 @@ def fake_claude_cli(root):
                             stderr=subprocess.DEVNULL)
 
 
+TERMINAL_BUNDLE_ID = "com.apple.Terminal"
+MIN_TERMINAL_FRONT_FRACTION = 0.75
+
+
+def frontmost_bundle_id():
+    front = subprocess.run(["lsappinfo", "front"], capture_output=True, text=True).stdout.strip()
+    info = subprocess.run(["lsappinfo", "info", "-only", "bundleid", front], capture_output=True,
+                          text=True).stdout
+    return info.split("=", 1)[1].strip().strip('"') if "=" in info else ""
+
+
 def transcript_atimes(home):
     result = {}
     projects = os.path.join(home, ".claude/projects")
@@ -301,7 +312,7 @@ def run(args):
             for thread in threads:
                 thread.start()
             samples, previous, start = [], first, time.monotonic()
-            reads, last_atimes, sockets = {}, {}, set()
+            reads, last_atimes, sockets, terminal_front = {}, {}, set(), 0
             while time.monotonic() - start < duration and process.poll() is None:
                 time.sleep(args.interval)
                 current = rusage(process.pid)
@@ -319,6 +330,8 @@ def run(args):
                         reads[path] += 1
                     last_atimes[path] = atime
                 sockets.update(inet_sockets(process.pid))
+                if writers and frontmost_bundle_id() == TERMINAL_BUNDLE_ID:
+                    terminal_front += 1
             elapsed = time.monotonic() - start
             stop.set()
             for thread in threads:
@@ -346,6 +359,13 @@ def run(args):
         sys.exit(f"app exited after {elapsed:.0f}s of {duration:.0f}s; no report written")
     if sockets:
         sys.exit("网络隔离失效：App 持有外部网络 socket；不写报告\n" + "\n".join(sorted(sockets)))
+    # Once Terminal has been frontmost the app keeps sampling Claude even after focus moves
+    # (ActivityCoordinator's `.other` branch follows the current client), so read evidence
+    # alone cannot detect lost focus; the scenario defines Terminal as frontmost.
+    front_fraction = terminal_front / max(len(samples), 1)
+    if writers and front_fraction < MIN_TERMINAL_FRONT_FRACTION:
+        sys.exit(f"场景无效：Terminal 只在 {terminal_front}/{len(samples)} 个样本中位于前台"
+                 f"（要求 ≥ {MIN_TERMINAL_FRONT_FRACTION:.0%}）；不写报告。采样期间请保持 Terminal 在前台。")
     # The app reads only the newest main-session transcript, so require steady reads overall
     # rather than per file.
     if writers and sum(reads.values()) < max(1, len(samples) // 4):
@@ -373,6 +393,7 @@ def run(args):
     ]
     if writers:
         rows.append(("transcript 读取证据", f"{sum(reads.values())} 次 / {len(samples)} 个样本，按文件 {sorted(reads.values(), reverse=True)}（atime 前进）"))
+        rows.append(("Terminal 前台样本", f"{terminal_front}/{len(samples)}（{front_fraction:.0%}）"))
         rows.append(("模拟 Claude CLI", "运行中（临时 `claude` 进程，Terminal 置前）"
                      + ("；client=claude 已切换" if "client=claude" in switch_log else "")))
     else:
