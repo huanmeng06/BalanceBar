@@ -29,7 +29,7 @@ struct ClaudeCodeVersion: Comparable, Equatable {
 
 /// What is known about the installed Claude Code.
 enum ClaudeCodeVersionStatus: Equatable {
-    /// Not detected yet; the installer decides (it falls back to "copy command" if `claude` is missing).
+    /// Not detected; the menu prompt stays hidden because the minimum version cannot be confirmed.
     case unknown
     case detected(ClaudeCodeVersion)
 }
@@ -71,6 +71,7 @@ enum ModPromptHiddenReason: Equatable {
     case notOfficialDirect
     case recentModData
     case claudeCodeTooOld
+    case claudeCodeVersionUnknown
     case dismissed
     case headlessSignalNotSatisfied
 }
@@ -88,8 +89,10 @@ enum ModPromptVisibility: Equatable {
         if let last = inputs.lastModDataAt, now.timeIntervalSince(last) < ModOnboardingConfig.modDataFreshnessWindow {
             return .hidden(.recentModData)
         }
-        if case let .detected(version) = inputs.claudeCode, version < ModOnboardingConfig.minimumClaudeCodeVersion {
-            return .hidden(.claudeCodeTooOld)
+        switch inputs.claudeCode {
+        case .unknown: return .hidden(.claudeCodeVersionUnknown)
+        case let .detected(version):
+            if version < ModOnboardingConfig.minimumClaudeCodeVersion { return .hidden(.claudeCodeTooOld) }
         }
         guard !inputs.promptDismissed else { return .hidden(.dismissed) }
         if inputs.hasHUDSnapshot, !inputs.headlessSignalSatisfied { return .hidden(.headlessSignalNotSatisfied) }
@@ -107,21 +110,29 @@ enum ModEnhancementStatus: Equatable {
     /// Installed, Claude Code is active, but no Mod data for `noDataWithActivityGrace`.
     case enabledButSilent
 
+    /// - Parameter silenceSince: when the silence clock started: the later of install time and the start of
+    ///   current Claude activity. Without it an installed Mod without data stays `.waitingForData`.
     static func resolve(
         installed: Bool,
         lastModDataAt: Date?,
         claudeActivityDetected: Bool,
         claudeCode: ClaudeCodeVersionStatus,
+        silenceSince: Date? = nil,
         now: Date
     ) -> ModEnhancementStatus {
         if case let .detected(version) = claudeCode, version < ModOnboardingConfig.minimumClaudeCodeVersion {
             return .unsupportedClaudeCode(version)
         }
+        // Confirmed not installed wins over any leftover snapshot.
+        guard installed else { return .notInstalled }
         if let last = lastModDataAt, now.timeIntervalSince(last) < ModOnboardingConfig.noDataWithActivityGrace {
             return .active(lastDataAt: last)
         }
-        guard installed || lastModDataAt != nil else { return .notInstalled }
-        if claudeActivityDetected { return .enabledButSilent }
+        if claudeActivityDetected,
+           let reference = [lastModDataAt, silenceSince].compactMap({ $0 }).max(),
+           now.timeIntervalSince(reference) >= ModOnboardingConfig.noDataWithActivityGrace {
+            return .enabledButSilent
+        }
         if let last = lastModDataAt { return .active(lastDataAt: last) }
         return .waitingForData
     }

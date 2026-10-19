@@ -28,9 +28,9 @@ final class ModPromptVisibilityTests: XCTestCase {
         return i
     }
 
-    func testVisibleWhenAllConditionsMet() {
+    func testVisibleOnlyWhenVersionConfirmed() {
         XCTAssertEqual(ModPromptVisibility.evaluate(inputs(), now: now), .visible)
-        XCTAssertEqual(ModPromptVisibility.evaluate(inputs { $0.claudeCode = .unknown }, now: now), .visible)
+        XCTAssertEqual(ModPromptVisibility.evaluate(inputs { $0.claudeCode = .unknown }, now: now), .hidden(.claudeCodeVersionUnknown))
     }
 
     func testEachConditionHidesPrompt() {
@@ -61,16 +61,25 @@ final class ModPromptVisibilityTests: XCTestCase {
 
     func testEnhancementStatus() {
         let v = ClaudeCodeVersionStatus.detected(.init(major: 2, minor: 1, patch: 291))
-        func status(installed: Bool, last: TimeInterval?, active: Bool, claude: ClaudeCodeVersionStatus = v) -> ModEnhancementStatus {
-            .resolve(installed: installed, lastModDataAt: last.map { now.addingTimeInterval(-$0) }, claudeActivityDetected: active, claudeCode: claude, now: now)
+        func status(installed: Bool, last: TimeInterval?, active: Bool, since: TimeInterval? = nil,
+                    claude: ClaudeCodeVersionStatus = v) -> ModEnhancementStatus {
+            .resolve(installed: installed, lastModDataAt: last.map { now.addingTimeInterval(-$0) }, claudeActivityDetected: active,
+                     claudeCode: claude, silenceSince: since.map { now.addingTimeInterval(-$0) }, now: now)
         }
         XCTAssertEqual(status(installed: false, last: nil, active: true), .notInstalled)
         XCTAssertEqual(status(installed: true, last: nil, active: false), .waitingForData)
-        // 10 minutes without data while Claude is active.
-        XCTAssertEqual(status(installed: true, last: nil, active: true), .enabledButSilent)
-        XCTAssertEqual(status(installed: true, last: 11 * 60, active: true), .enabledButSilent)
-        XCTAssertEqual(status(installed: true, last: 9 * 60, active: true), .active(lastDataAt: now.addingTimeInterval(-9 * 60)))
+        // Just installed with activity but no clock yet, or under 10 minutes: still waiting.
+        XCTAssertEqual(status(installed: true, last: nil, active: true), .waitingForData)
+        XCTAssertEqual(status(installed: true, last: nil, active: true, since: 9 * 60), .waitingForData)
+        XCTAssertEqual(status(installed: true, last: nil, active: true, since: 10 * 60), .enabledButSilent)
+        // Old data, activity started recently: grace applies from the activity start.
+        XCTAssertEqual(status(installed: true, last: 3600, active: true, since: 60), .active(lastDataAt: now.addingTimeInterval(-3600)))
+        XCTAssertEqual(status(installed: true, last: 3600, active: true, since: 11 * 60), .enabledButSilent)
+        XCTAssertEqual(status(installed: true, last: 9 * 60, active: true, since: 30 * 60), .active(lastDataAt: now.addingTimeInterval(-9 * 60)))
         XCTAssertEqual(status(installed: true, last: 3600, active: false), .active(lastDataAt: now.addingTimeInterval(-3600)))
+        // Uninstalled with a leftover snapshot (fresh or stale) is not "enabled".
+        XCTAssertEqual(status(installed: false, last: 3600, active: false), .notInstalled)
+        XCTAssertEqual(status(installed: false, last: 60, active: true), .notInstalled)
         XCTAssertEqual(status(installed: false, last: nil, active: false, claude: .detected(.init(major: 2, minor: 0, patch: 1))),
                        .unsupportedClaudeCode(.init(major: 2, minor: 0, patch: 1)))
     }
