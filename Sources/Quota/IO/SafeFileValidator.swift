@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-/// Tunable limits shared by the quota IO components.
+/// Tunable limits shared by the quota IO components; defaults come from `QuotaConstants`.
 public struct QuotaIOConfiguration: Equatable {
     /// Window used to merge bursts of directory events into one notification.
     public var watchCoalescingInterval: TimeInterval
@@ -16,10 +16,10 @@ public struct QuotaIOConfiguration: Equatable {
     public var maximumDeduplicationKeys: Int
 
     public init(
-        watchCoalescingInterval: TimeInterval = 1,
-        maximumBytesPerRead: Int = 4 * 1_024 * 1_024,
-        maximumLinesPerRead: Int = 10_000,
-        maximumDeduplicationKeys: Int = 50_000
+        watchCoalescingInterval: TimeInterval = QuotaConstants.directoryWatchCoalescingInterval,
+        maximumBytesPerRead: Int = QuotaConstants.incrementalReadMaximumBytes,
+        maximumLinesPerRead: Int = QuotaConstants.incrementalReadMaximumLines,
+        maximumDeduplicationKeys: Int = QuotaConstants.incrementalReadMaximumDeduplicationKeys
     ) {
         self.watchCoalescingInterval = watchCoalescingInterval
         self.maximumBytesPerRead = maximumBytesPerRead

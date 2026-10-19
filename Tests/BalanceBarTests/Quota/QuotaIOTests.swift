@@ -190,6 +190,21 @@ final class QuotaIOTests: XCTestCase {
         }
     }
 
+    func testDefaultConfigurationComesFromQuotaConstants() {
+        let configuration = QuotaIOConfiguration.default
+        XCTAssertEqual(configuration.watchCoalescingInterval, QuotaConstants.directoryWatchCoalescingInterval)
+        XCTAssertEqual(configuration.maximumBytesPerRead, QuotaConstants.incrementalReadMaximumBytes)
+        XCTAssertEqual(configuration.maximumLinesPerRead, QuotaConstants.incrementalReadMaximumLines)
+        XCTAssertEqual(
+            configuration.maximumDeduplicationKeys,
+            QuotaConstants.incrementalReadMaximumDeduplicationKeys
+        )
+        XCTAssertEqual(QuotaConstants.directoryWatchCoalescingInterval, 1)
+        XCTAssertEqual(QuotaConstants.incrementalReadMaximumBytes, 4 * 1_024 * 1_024)
+        XCTAssertEqual(QuotaConstants.incrementalReadMaximumLines, 10_000)
+        XCTAssertEqual(QuotaConstants.incrementalReadMaximumDeduplicationKeys, 50_000)
+    }
+
     // MARK: SafeFileValidator
 
     func testValidatorAcceptsSymlinkInsideAllowedDirectory() throws {
