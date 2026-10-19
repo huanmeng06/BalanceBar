@@ -55,7 +55,20 @@ final class StatusSlotViewTests: XCTestCase {
         view.frame = NSRect(x: 0, y: 0, width: StatusSlotView.fixedWidth, height: StatusSlotView.fixedHeight)
         view.update(state: state)
         view.layoutSubtreeIfNeeded()
-        let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        // Fixed 1x bitmap so pixel size does not depend on the runner's backing scale.
+        let rep = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(StatusSlotView.fixedWidth),
+            pixelsHigh: Int(StatusSlotView.fixedHeight),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        rep.size = view.bounds.size
         view.cacheDisplay(in: view.bounds, to: rep)
         return (view, rep)
     }
