@@ -283,8 +283,9 @@ final class ModOnboardingCoordinator {
     func refreshEnvironment(force: Bool = false, completion: (() -> Void)? = nil) {
         let shouldRun = lock.withLock { () -> Bool in
             if environmentRefreshing { return false }
-            if !force, let last = lastEnvironmentRefresh,
-               now().timeIntervalSince(last) < ModOnboardingConfig.environmentRefreshInterval { return false }
+            let interval = claudeCode == .unknown
+                ? ModOnboardingConfig.unknownVersionRetryInterval : ModOnboardingConfig.environmentRefreshInterval
+            if !force, let last = lastEnvironmentRefresh, now().timeIntervalSince(last) < interval { return false }
             environmentRefreshing = true
             return true
         }

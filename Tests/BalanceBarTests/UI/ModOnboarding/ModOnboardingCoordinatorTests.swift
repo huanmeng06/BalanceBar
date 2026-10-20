@@ -101,6 +101,26 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false), "…and an old one no longer does")
     }
 
+    func testAnUnreadableClaudeVersionIsRetriedAfterAMinuteInsteadOfADay() {
+        fake.version = .unknown
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        XCTAssertEqual(fake.reads, 1)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
+
+        fake.version = .detected(ClaudeCodeVersion(major: 2, minor: 1, patch: 291))
+        refresh(coordinator, force: false)
+        XCTAssertEqual(fake.reads, 1, "too early to look again")
+        clock.advance(by: ModOnboardingConfig.unknownVersionRetryInterval + 1)
+        refresh(coordinator, force: false)
+        XCTAssertEqual(fake.reads, 2)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false), "installing Claude Code shows the prompt")
+
+        clock.advance(by: 3_600)
+        refresh(coordinator, force: false)
+        XCTAssertEqual(fake.reads, 2, "a readable version is only re-read daily")
+    }
+
     func testDismissingThePromptSwapsItForTheDataSourcesRow() {
         let coordinator = makeCoordinator()
         refresh(coordinator)

@@ -16,6 +16,9 @@ enum ModOnboardingConfig {
     static let headlessAccumulationWindow: TimeInterval = 24 * 60 * 60
     /// `claude --version` is read once a day (and again right after an install).
     static let environmentRefreshInterval: TimeInterval = 24 * 60 * 60
+    /// While the version could not be read (for example `claude` was not found), look again after a minute
+    /// instead of waiting a day, so installing Claude Code shows the prompt without restarting the app.
+    static let unknownVersionRetryInterval: TimeInterval = 60
 }
 
 /// Parsed `claude --version` value (for example "2.1.291 (Claude Code)").
