@@ -576,3 +576,7 @@
 "quota.failure.open_usage_page" = "開啟官方用量頁面";
 "quota.status.accessibility" = "額度狀態：%1$@";
 "dashboard.refresh.claude_calibration_note" = "Claude 官方：校準間隔上限。最短 3 分鐘，有即時來源時不發出請求。";
+"claude.refresh.login_expired" = "Claude Code 登入已過期。在終端機執行一次 claude 即可恢復；BalanceBar 不會自行續期登入。";
+"status.item.controller.refresh_now_login_expired" = "立即重新整理（Claude 登入已過期，請先執行 claude）";
+"status.item.controller.refresh_now_rate_limited" = "立即重新整理（被限流，%1$@後可用）";
+"status.item.controller.refresh_now_just_refreshed" = "立即重新整理（剛剛已重新整理）";

@@ -3324,6 +3324,33 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testRefreshItemExplainsLoginExpiredRateLimitAndJustRefreshed() throws {
+        var notice: ClaudeManualRefreshNotice?
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in },
+            iconChanged: { _ in }, manualRefreshNotice: { notice }))
+        defer { controller.teardown() }
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        controller.start(snapshot: .placeholder, refreshDate: Date(), menuInput: input, settings: makeSettings())
+        let refresh = try XCTUnwrap(controller.statusMenuForTesting.items.first { $0.title == tr(.keyStatusItemControllerRefreshNow) })
+
+        notice = .loginExpired
+        XCTAssertTrue(controller.validateMenuItem(refresh), "a paused login can still be retried after claude renews it")
+        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowLoginExpired))
+        notice = .rateLimited(until: Date().addingTimeInterval(900))
+        _ = controller.validateMenuItem(refresh)
+        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: ["15m"]))
+        notice = .justRefreshed
+        _ = controller.validateMenuItem(refresh)
+        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowJustRefreshed))
+        notice = nil
+        _ = controller.validateMenuItem(refresh)
+        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNow))
+    }
+
+    @MainActor
     func testClaudeCardShowsTheStatusSlotAndUpdatesItInPlaceThroughRefreshFailureAndRecovery() throws {
         let controller = makeController()
         defer { controller.teardown() }

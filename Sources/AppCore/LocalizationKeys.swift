@@ -560,6 +560,10 @@
     case keyQuotaFailureOpenUsagePage = "quota.failure.open_usage_page"
     case keyQuotaStatusAccessibility = "quota.status.accessibility"
     case keyDashboardRefreshClaudeCalibrationNote = "dashboard.refresh.claude_calibration_note"
+    case keyClaudeRefreshLoginExpired = "claude.refresh.login_expired"
+    case keyStatusItemControllerRefreshNowLoginExpired = "status.item.controller.refresh_now_login_expired"
+    case keyStatusItemControllerRefreshNowRateLimited = "status.item.controller.refresh_now_rate_limited"
+    case keyStatusItemControllerRefreshNowJustRefreshed = "status.item.controller.refresh_now_just_refreshed"
 
     var rawKey: String { rawValue }
 }

@@ -576,3 +576,7 @@
 "quota.failure.open_usage_page" = "Apri la pagina di utilizzo ufficiale";
 "quota.status.accessibility" = "Stato della quota: %1$@";
 "dashboard.refresh.claude_calibration_note" = "Claude ufficiale: limite massimo dell’intervallo di calibrazione. Minimo 3 minuti; nessuna richiesta finché è disponibile una fonte live.";
+"claude.refresh.login_expired" = "L'accesso a Claude Code è scaduto. Esegui claude una volta nel terminale per ripristinarlo; BalanceBar non rinnova mai l'accesso da solo.";
+"status.item.controller.refresh_now_login_expired" = "Aggiorna ora (accesso a Claude scaduto, esegui prima claude)";
+"status.item.controller.refresh_now_rate_limited" = "Aggiorna ora (limite di richieste, disponibile tra %1$@)";
+"status.item.controller.refresh_now_just_refreshed" = "Aggiorna ora (appena aggiornato)";

@@ -576,3 +576,7 @@
 "quota.failure.open_usage_page" = "Ouvrir la page d’utilisation officielle";
 "quota.status.accessibility" = "État du quota : %1$@";
 "dashboard.refresh.claude_calibration_note" = "Claude officiel : limite haute de l’intervalle d’étalonnage. 3 minutes minimum ; aucune requête tant qu’une source en direct est disponible.";
+"claude.refresh.login_expired" = "La connexion à Claude Code a expiré. Exécutez claude une fois dans un terminal pour la rétablir ; BalanceBar ne renouvelle jamais la connexion lui-même.";
+"status.item.controller.refresh_now_login_expired" = "Actualiser maintenant (connexion Claude expirée, exécutez d'abord claude)";
+"status.item.controller.refresh_now_rate_limited" = "Actualiser maintenant (limite de requêtes, disponible dans %1$@)";
+"status.item.controller.refresh_now_just_refreshed" = "Actualiser maintenant (vient d'être actualisé)";

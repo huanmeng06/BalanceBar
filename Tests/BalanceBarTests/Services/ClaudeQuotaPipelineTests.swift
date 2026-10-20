@@ -77,6 +77,13 @@ private final class GatedConfigurationReader: AccountConfigurationReading {
     }
 }
 
+private final class LockedLines {
+    private let lock = NSLock()
+    private var values: [String] = []
+    func append(_ line: String) { lock.lock(); values.append(line); lock.unlock() }
+    var all: [String] { lock.lock(); defer { lock.unlock() }; return values }
+}
+
 final class ClaudeQuotaPipelineTests: XCTestCase {
     private var directory: URL!
     private var session: URLSession!
@@ -84,6 +91,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     private var reader: MutableCredentialReader!
     private var official: OfficialQuotaClient!
     private var pipelines: [ClaudeQuotaPipeline] = []
+    private let diagnosticLines = LockedLines()
 
     private static let start = Date(timeIntervalSince1970: 1_700_000_000) // 2023-11-14T22:13:20Z
     private static let usage = Data(#"{"five_hour":{"utilization":23,"resets_at":"2023-11-15T03:00:00Z"},"seven_day":{"utilization":41,"resets_at":"2023-11-20T00:00:00Z"}}"#.utf8)
@@ -130,7 +138,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let pipeline = ClaudeQuotaPipeline(
             client: official, identity: identity, identityQueue: identityQueue,
             stateDirectory: directory.appendingPathComponent("state", isDirectory: true),
-            schedulerClock: clock, schedulerConfiguration: configuration, now: { [clock] in clock!.now })
+            schedulerClock: clock, schedulerConfiguration: configuration, now: { [clock] in clock!.now },
+            diagnostics: { [diagnosticLines] message, _ in diagnosticLines.append(message) })
         pipelines.append(pipeline)
         return pipeline
     }
@@ -256,6 +265,72 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let state = waitForState(pipeline) { !$0.windows.isEmpty }
         XCTAssertNil(state?.failure)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 2)
+    }
+
+    /// Issue #562: after a 401 the pause outlives a restart, and a manual refresh used to be skipped
+    /// without any visible state.
+    func testManualRefreshDuringPersistedUnauthorizedPauseShowsLoginExpiredAndRecoversWithTheCredential() throws {
+        PipelineStubProtocol.set(.init(status: 401))
+        let first = makePipeline()
+        first.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(first) { $0.failure == .unauthorized })
+        pipelines.removeAll()
+
+        let restarted = makePipeline()
+        restarted.requestFetch(reason: .manual)
+        quiet(restarted)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "the paused credential is not retried")
+        XCTAssertEqual(restarted.latestState?.failure, .unauthorized, "the skipped manual refresh must be visible")
+        XCTAssertEqual(restarted.manualRefreshNotice(), .loginExpired)
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=unauthorizedPaused") && $0.contains("reasons=manual") },
+                      "the skip reason is logged: \(diagnosticLines.all)")
+
+        PipelineStubProtocol.set(.init(data: Self.usage))
+        reader.set("token-2")
+        clock.advance(by: 3)
+        restarted.requestFetch(reason: .manual)
+        let state = waitForState(restarted) { !$0.windows.isEmpty }
+        XCTAssertNil(state?.failure)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 2)
+        XCTAssertEqual(restarted.manualRefreshNotice(), .justRefreshed, "the login-expired hint is gone once a read succeeds")
+    }
+
+    func testManualRefreshDuringCooldownShowsTheWaitAndLogsTheSkip() throws {
+        PipelineStubProtocol.set(.init(status: 429, headers: ["Retry-After": "1800"]))
+        let first = makePipeline()
+        first.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(first) { $0.failure == .rateLimited })
+        pipelines.removeAll()
+
+        let restarted = makePipeline()
+        restarted.requestFetch(reason: .manual)
+        quiet(restarted)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
+        XCTAssertEqual(restarted.latestState?.failure, .rateLimited)
+        guard case let .rateLimited(until)? = restarted.manualRefreshNotice() else {
+            return XCTFail("expected a rate-limit notice, got \(String(describing: restarted.manualRefreshNotice()))")
+        }
+        XCTAssertEqual(until.timeIntervalSince(Self.start), 1_800, accuracy: 1)
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=cooldown") && $0.contains("cooldown_remaining=") })
+    }
+
+    func testManualRefreshRightAfterASuccessIsSkippedWithAJustRefreshedNotice() throws {
+        let pipeline = makePipeline()
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertEqual(pipeline.manualRefreshNotice(), .justRefreshed)
+
+        clock.advance(by: 10)
+        pipeline.requestFetch(reason: .manual)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "a read inside the manual window is not repeated")
+        XCTAssertNil(pipeline.latestState?.failure, "a just-refreshed skip is a hint, not a failure")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=recentResult") })
+
+        clock.advance(by: 61)
+        XCTAssertNil(pipeline.manualRefreshNotice())
+        pipeline.requestFetch(reason: .manual)
+        waitForRequests(2)
     }
 
     func testSameAccountCredentialRefreshKeepsEpochAndScope() throws {

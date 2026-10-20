@@ -11,6 +11,16 @@ enum ClaudeQuotaFailure: Equatable {
     case invalidResponse
 }
 
+/// Why a manual refresh would not reach the Usage API right now, for the refresh menu item.
+enum ClaudeManualRefreshNotice: Equatable {
+    /// The OAuth token was rejected (401); only a new credential from Claude Code lifts the pause.
+    case loginExpired
+    /// Waiting out a 429 until the given date.
+    case rateLimited(until: Date)
+    /// A read succeeded within the manual-refresh window.
+    case justRefreshed
+}
+
 /// Everything the refresh coordinator needs to publish Claude official quota.
 struct ClaudeQuotaState: Equatable {
     /// Merged display model owned by `QuotaMergeEngine`.
@@ -106,6 +116,8 @@ final class ClaudeQuotaPipeline {
     private let mergeFileStore: QuotaMergeFileStore
     private let notificationRouter = ClaudeNotificationRouter()
     private let now: () -> Date
+    private let manualRefreshWindow: TimeInterval
+    private let diagnostics: (String, SwitchLog.Level) -> Void
     private let queue = DispatchQueue(label: "BalanceBar.ClaudeQuotaPipeline", qos: .utility)
     private let lock = NSLock()
 
@@ -118,6 +130,7 @@ final class ClaudeQuotaPipeline {
     private var failure: ClaudeQuotaFailure?
     private var refreshing = false
     private var lastClientError: OfficialQuotaClientError?
+    private var lastSuccessAt: Date?
     private var state: ClaudeQuotaState?
 
     /// Called on the pipeline queue whenever the published state changes.
@@ -129,6 +142,7 @@ final class ClaudeQuotaPipeline {
 
     /// - Parameters:
     ///   - calibrationIntervalCap: Upper bound for how long a fresh real-time source may suppress requests.
+    ///   - diagnostics: Receives scheduler skip reasons; production writes them to `SwitchLog`.
     init(
         client: OfficialQuotaClient,
         identity: ClaudeAccountIdentityProvider,
@@ -138,9 +152,14 @@ final class ClaudeQuotaPipeline {
         schedulerClock: SchedulerClock = SystemSchedulerClock(),
         schedulerTimer: SchedulerTimer = DispatchSchedulerTimer(),
         schedulerConfiguration: FetchSchedulerConfiguration = FetchSchedulerConfiguration(),
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        diagnostics: @escaping (String, SwitchLog.Level) -> Void = { message, level in
+            SwitchLog.write(message, level: level, category: "refresh.claude")
+        }
     ) {
         self.client = client
+        manualRefreshWindow = schedulerConfiguration.manualRefreshWindow
+        self.diagnostics = diagnostics
         self.identity = identity
         self.identityQueue = identityQueue
         self.now = now
@@ -178,6 +197,17 @@ final class ClaudeQuotaPipeline {
     func manualRefreshBlockedUntil() -> Date? {
         guard let until = stateStore.snapshot.cooldownUntil, until > now() else { return nil }
         return until
+    }
+
+    /// Why a manual refresh would be skipped right now, in the scheduler's own precedence.
+    /// Reads memory only, so the menu can ask while it validates its items.
+    func manualRefreshNotice() -> ClaudeManualRefreshNotice? {
+        if stateStore.snapshot.isUnauthorizedPaused { return .loginExpired }
+        if let until = manualRefreshBlockedUntil() { return .rateLimited(until: until) }
+        if let at = lock.withLock({ lastSuccessAt }), now().timeIntervalSince(at) < manualRefreshWindow {
+            return .justRefreshed
+        }
+        return nil
     }
 
     /// Starts account monitoring and builds the merge engine off the caller's thread.
@@ -258,6 +288,7 @@ final class ClaudeQuotaPipeline {
         lock.withLock {
             failure = nil
             refreshing = false
+            lastSuccessAt = nil
         }
         adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: change.identity))
         publish()
@@ -275,6 +306,7 @@ final class ClaudeQuotaPipeline {
         var newFailure: ClaudeQuotaFailure?
         switch delivery.result {
         case let .success(data):
+            lock.withLock { lastSuccessAt = delivery.receivedAt }
             newFailure = merge(data, delivery: delivery, into: engine)
         case .rateLimited:
             newFailure = .rateLimited
@@ -327,9 +359,33 @@ final class ClaudeQuotaPipeline {
                 publish()
                 if identity.accountIdentity != nil { requestForNewAccount() }
             }
-        case .requested, .skipped, .completed:
+        case .skipped:
+            logSkip(event)
+            // A skipped read is the only signal after a restart that the persisted 401 pause or
+            // 429 cooldown still applies, so surface it instead of leaving the card unchanged.
+            let skipFailure: ClaudeQuotaFailure?
+            switch event.skipReason {
+            case .unauthorizedPaused?: skipFailure = .unauthorized
+            case .cooldown?: skipFailure = .rateLimited
+            default: skipFailure = nil
+            }
+            guard let skipFailure else { return }
+            queue.async { [self] in
+                lock.withLock { failure = skipFailure }
+                publish()
+            }
+        case .requested, .completed:
             break
         }
+    }
+
+    private func logSkip(_ event: FetchSchedulerLogEvent) {
+        let reasons = event.reasons.map { String(describing: $0) }.joined(separator: ",")
+        let skip = event.skipReason.map { String(describing: $0) } ?? "unknown"
+        let cooldown = Int(event.cooldownRemaining.rounded(.up))
+        diagnostics(
+            "claude fetch skipped; skip=\(skip); reasons=\(reasons); cooldown_remaining=\(cooldown)s; tokens=\(event.tokens)",
+            event.reasons.contains(.manual) ? .info : .debug)
     }
 
     private func publish() {
