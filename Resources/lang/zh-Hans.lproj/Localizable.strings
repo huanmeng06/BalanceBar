@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "每 3 秒";
 "dashboard.general.and.refresh.pages.every_5_sec" = "每 5 秒";
 "dashboard.general.and.refresh.pages.every_10_sec" = "每 10 秒";
-"dashboard.general.and.refresh.pages.off" = "关闭";
-"dashboard.general.and.refresh.pages.for_6_sec" = "持续 6 秒";
-"dashboard.general.and.refresh.pages.for_12_sec" = "持续 12 秒";
-"dashboard.general.and.refresh.pages.for_30_sec" = "持续 30 秒";
-"dashboard.general.and.refresh.pages.running" = "任务中";
-"dashboard.general.and.refresh.pages.after" = "结束后";
 "dashboard.general.and.refresh.pages.refresh_now" = "立即刷新";
 "dashboard.general.and.refresh.pages.refresh" = "刷新";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API 服务商余额刷新频率";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "官方额度刷新频率";
 "dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
-"dashboard.refresh.official_for_minutes" = "持续 %1$@ 分钟";
+"dashboard.refresh.official_scope" = "Claude、Codex 等官方账号";
+"dashboard.refresh.api_scope" = "第三方中转 / API Key";
+"dashboard.refresh.minimum_interval_hint" = "部分来源有最短间隔限制";
 
 "quota.status.refreshing" = "刷新中…";
 "quota.status.realtime" = "实时";
@@ -575,4 +571,3 @@
 "quota.status.reset_pending_short" = "待确认";
 "quota.failure.open_usage_page" = "打开官方用量页";
 "quota.status.accessibility" = "额度状态：%1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude 官方：校准间隔上限。最短 3 分钟，有实时来源时不请求。";

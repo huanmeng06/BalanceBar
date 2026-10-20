@@ -570,7 +570,7 @@ final class ProviderRefreshCoordinator {
                         subscription: OpenAISubscriptionTier(planType: profile?.planType)) : nil,
                     status: .loading, reason: nil, fetchedAt: nil)
             }
-            let interval = entry.source.isOfficial ? officialRefreshInterval
+            let interval = entry.source.isOfficial ? officialInterval(for: .codex)
                 : TimeInterval(max(60, (entry.source.query?.intervalMinutes ?? 1) * 60))
             let due = aggregationAttempts[identity].map { now().timeIntervalSince($0) >= interval } ?? true
             let forceEntry = entry.source.isOfficial
@@ -825,7 +825,7 @@ final class ProviderRefreshCoordinator {
                 return
             }
             let currentDate = now()
-            let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= officialRefreshInterval } ?? true
+            let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= officialInterval(for: client) } ?? true
             let shouldRefresh = refreshPreferences != nil ? (sourceChanged || due)
                 : (forceBalance || switched || sourceChanged || due)
             guard shouldRefresh else { return }
@@ -958,7 +958,7 @@ final class ProviderRefreshCoordinator {
                     guard client == .codex else { continue }
                     let identity = SummaryIdentity(client: client, providerID: source.id)
                     let officialDue = self.lastOfficialSummaryFetch[identity].map {
-                        currentDate.timeIntervalSince($0) >= self.officialRefreshInterval
+                        currentDate.timeIntervalSince($0) >= self.officialInterval(for: client)
                     } ?? true
                     guard force || officialDue || configurationChanged || previousRevisions[source.id] != source.configurationRevision else { continue }
                     // Manual refresh rereads configuration and API balances, but
@@ -966,7 +966,7 @@ final class ProviderRefreshCoordinator {
                     if self.refreshPreferences != nil,
                        previousRevisions[source.id] == source.configurationRevision,
                        let previous = self.lastOfficialSummaryFetch[identity],
-                       currentDate.timeIntervalSince(previous) < self.officialRefreshInterval { continue }
+                       currentDate.timeIntervalSince(previous) < self.officialInterval(for: client) { continue }
                     let credentials: CodexRequestCredentials? = source.officialAccessToken.map {
                         CodexRequestCredentials(accessToken: $0, accountKey: nil)
                     } ?? self.officialQuotaClient.codexRequestCredentials()
@@ -1304,12 +1304,10 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    /// Interval between automatic official reads. Claude's scheduler enforces
-    /// its own floor, so the user's setting is only a calibration upper bound.
+    /// Interval between automatic official reads. The user's setting is a desired
+    /// interval; each source never goes below its own floor.
     private func officialInterval(for client: AssistantClient) -> TimeInterval {
-        client == .claude
-            ? max(officialRefreshInterval, QuotaConstants.automaticRequestMinimumInterval)
-            : officialRefreshInterval
+        RefreshPolicy.officialInterval(selected: officialRefreshInterval, client: client)
     }
 
     /// Standard-provider entry for Claude official: asks the scheduler for a read

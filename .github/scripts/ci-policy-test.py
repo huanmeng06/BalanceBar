@@ -97,24 +97,54 @@ class PolicyTests(unittest.TestCase):
         workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
                     'build-and-test.yml').read_text(encoding='utf-8')
         gate_job = workflow.split('\n  merge-gate:\n', 1)[1]
+        draft_expr = ("(needs.scope.outputs.draft == 'true' || (needs.scope.result == 'skipped' "
+                      "&& github.event.pull_request.draft))")
         name_line = next(line for line in gate_job.splitlines()
                          if line.strip().startswith('name: ${{'))
-        self.assertIn("github.event.pull_request.draft && "
-                      "'Draft merge gate inactive (not required)'", name_line)
+        self.assertIn(draft_expr + " && 'Draft merge gate inactive (not required)'", name_line)
         self.assertIn("'PR merge gate'", name_line)
         self.assertIn("- name: Draft status only (not a merge credential)", gate_job)
-        self.assertIn("if: ${{ github.event_name == 'pull_request' && "
-                      "github.event.pull_request.draft }}", gate_job)
-        self.assertNotIn("\n    if:", gate_job.split("\n    steps:", 1)[0])
+        self.assertIn("if: ${{ github.event_name == 'pull_request' && " + draft_expr + " }}", gate_job)
+        # Never skipped (skipped satisfies a required check); cancel still cancels.
+        job_header = gate_job.split("\n    steps:", 1)[0]
+        self.assertIn("\n    needs: scope\n", job_header)
+        self.assertIn("\n    if: ${{ !cancelled() }}\n", job_header)
+        self.assertNotIn('always()', next(line for line in job_header.splitlines()
+                                          if line.startswith('    if:')))
         # The gate credential script must NEVER run in Draft, even when the
         # draft PR is converted from an earlier Ready with a green Full.
-        self.assertIn("!github.event.pull_request.draft && !(", gate_job)
+        self.assertIn("(!" + draft_expr + " && !(", gate_job)
         draft = copy.deepcopy(READY)
         draft['draft'] = True
         accepted, _ = gate.verdict(
             'pull_request', draft, draft,
             {'scope': 'success', 'full': 'success', 'version': 'skipped'}, False)
         self.assertFalse(accepted)
+
+    def test_lanes_follow_live_draft_state_not_payload(self):
+        # #549: opened(draft) and ready_for_review on one SHA within a second.
+        # The newest run carried the stale Draft payload and shadowed Ready.
+        workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
+                    'build-and-test.yml').read_text(encoding='utf-8')
+        self.assertIn('draft: ${{ steps.scope.outputs.draft }}', workflow)
+        self.assertIn('gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .draft', workflow)
+        before_gate = workflow.split('\n  merge-gate:\n', 1)[0]
+        for line in before_gate.splitlines():
+            if line.strip().startswith('if:'):
+                self.assertNotIn('github.event.pull_request.draft', line)
+        stale = dict(READY, draft=True)
+        accepted, _ = gate.verdict('pull_request', stale, READY,
+                                   {'scope': 'success', 'full': 'success'}, False)
+        self.assertTrue(accepted)
+        accepted, _ = gate.verdict('pull_request', READY, dict(READY, draft=True),
+                                   {'scope': 'success', 'full': 'success'}, False)
+        self.assertFalse(accepted)
+        result, _, _, _ = self.run_gate([job('scope'), job('full'), job('smoke')],
+                                        event={'action': 'opened', 'pull_request': stale})
+        self.assertTrue(result[0])
+        self.assertFalse(result[2]['live_draft'])
+        self.assertIsNone(meta.pr_error(stale, READY))
+        self.assertIsNotNone(meta.pr_error(READY, dict(READY, draft=True)))
 
     def test_metadata_gate_does_not_bypass_full(self):
         log = ('2026-10-13T13:12:04.0Z PASS: Full CI for event head/base\n'

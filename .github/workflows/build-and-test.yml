@@ -27,6 +27,7 @@ jobs:
       action: ${{ steps.scope.outputs.action }}
       force_full: ${{ steps.scope.outputs.force_full }}
       reuse_full: ${{ steps.scope.outputs.reuse_full }}
+      draft: ${{ steps.scope.outputs.draft }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,10 +39,23 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           FORCE_FULL: ${{ github.event.action == 'edited' }}
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PAYLOAD_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           set -Eeuo pipefail
           base="${BASE_SHA:-HEAD^}"
           head="${HEAD_SHA:-HEAD}"
+          # Lane follows LIVE draft state, not the event payload. Near-simultaneous
+          # opened(draft)/ready_for_review events on one SHA can deliver a stale
+          # Draft payload in the NEWEST run, and GitHub's merge box only reads the
+          # newest suite of this workflow for the SHA (#549).
+          draft=false
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            draft="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .draft)"
+            [[ "$draft" == true || "$draft" == false ]]
+          fi
+          echo "draft=$draft" >> "$GITHUB_OUTPUT"
+          echo "Live draft: $draft; event payload draft: ${PAYLOAD_DRAFT:-n/a}" >> "$GITHUB_STEP_SUMMARY"
           .github/scripts/ci-basic-checks.sh "$base"
           python3 .github/scripts/ci-scope.py "$base" "$head" >> "$GITHUB_OUTPUT"
           echo "force_full=$FORCE_FULL" >> "$GITHUB_OUTPUT"
@@ -66,7 +80,7 @@ jobs:
   fast:
     name: Fast CI (Debug build and probes; no XCTest)
     needs: scope
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft
+    if: github.event_name == 'pull_request' && needs.scope.outputs.draft == 'true'
     runs-on: ${{ needs.scope.outputs.build == 'true' && 'macos-26' || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
@@ -96,7 +110,7 @@ jobs:
   version-exemption:
     name: PR-wide version-only exemption (no XCTest)
     needs: scope
-    if: github.event_name == 'pull_request' && !github.event.pull_request.draft && needs.scope.outputs.version_only == 'true' && needs.scope.outputs.force_full != 'true'
+    if: github.event_name == 'pull_request' && needs.scope.outputs.draft != 'true' && needs.scope.outputs.version_only == 'true' && needs.scope.outputs.force_full != 'true'
     runs-on: ubuntu-latest
     steps:
       - run: echo 'Only approved version strings differ across the entire PR. XCTest NOT executed; explicit version exemption.' >> "$GITHUB_STEP_SUMMARY"
@@ -104,7 +118,7 @@ jobs:
   full-reuse:
     name: Verified prior Full reuse (version increment; no XCTest)
     needs: scope
-    if: github.event_name == 'pull_request' && !github.event.pull_request.draft && needs.scope.outputs.version_only != 'true' && needs.scope.outputs.reuse_full == 'true' && needs.scope.outputs.force_full != 'true'
+    if: github.event_name == 'pull_request' && needs.scope.outputs.draft != 'true' && needs.scope.outputs.version_only != 'true' && needs.scope.outputs.reuse_full == 'true' && needs.scope.outputs.force_full != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -122,7 +136,7 @@ jobs:
   build-and-test:
     name: Full CI (CLI, probes and serial XCTest)
     needs: scope
-    if: github.event_name == 'workflow_dispatch' || (!github.event.pull_request.draft && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true'))
+    if: github.event_name == 'workflow_dispatch' || (needs.scope.outputs.draft != 'true' && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true'))
     runs-on: macos-26
     timeout-minutes: 20
     env:
@@ -279,29 +293,33 @@ jobs:
   merge-gate:
     # Draft has a short successful job with a DIFFERENT name. Do not skip an
     # actual job named "PR merge gate": skipped counts as a passing required check.
-    # GitHub may display raw name expressions for job-level skipped jobs, so
-    # this job always starts, but the credential script runs ONLY for Ready PRs.
-    # Ready gate has no needs: publish pending before Full finishes. No always()
-    # override: workflow cancellation cancels this gate too.
-    name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'Draft merge gate inactive (not required)' || (github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result') }}
+    # Draft vs Ready comes from scope's LIVE PR state (stale payloads, #549); the
+    # payload is only a fallback when scope is skipped for metadata-only edits.
+    # !cancelled() keeps the gate running when scope fails or is skipped, so it
+    # fails closed instead of being skipped; workflow cancellation still cancels
+    # it (no always()). The gate publishes once scope finishes; until then the
+    # ruleset shows it as Expected, which still blocks merge.
+    needs: scope
+    if: ${{ !cancelled() }}
+    name: ${{ github.event_name == 'pull_request' && (needs.scope.outputs.draft == 'true' || (needs.scope.result == 'skipped' && github.event.pull_request.draft)) && 'Draft merge gate inactive (not required)' || (github.event_name == 'pull_request' && 'PR merge gate' || 'Manual Full result') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Draft status only (not a merge credential)
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
+        if: ${{ github.event_name == 'pull_request' && (needs.scope.outputs.draft == 'true' || (needs.scope.result == 'skipped' && github.event.pull_request.draft)) }}
         run: |
           echo 'Draft: no required PR merge gate is issued. Scope/Fast CI reports real development results; switching Ready starts a fresh Full gate.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
-        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+        if: ${{ github.event_name != 'pull_request' || !(needs.scope.outputs.draft == 'true' || (needs.scope.result == 'skipped' && github.event.pull_request.draft)) }}
         with:
           fetch-depth: 0
       - name: Confirm prior Full gate for metadata-only edit
-        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) }}
+        if: ${{ github.event_name == 'pull_request' && !(needs.scope.outputs.draft == 'true' || (needs.scope.result == 'skipped' && github.event.pull_request.draft)) && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/ci-metadata-gate.py
       - name: Wait for this attempt and verify live PR state
-        if: ${{ github.event_name != 'pull_request' || (!github.event.pull_request.draft && !(github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body))) }}
+        if: ${{ github.event_name != 'pull_request' || (!(needs.scope.outputs.draft == 'true' || (needs.scope.result == 'skipped' && github.event.pull_request.draft)) && !(github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body))) }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/ci-merge-gate.py
