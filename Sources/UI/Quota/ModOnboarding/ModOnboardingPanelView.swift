@@ -232,17 +232,17 @@ final class ModPromptRowView: NSView {
 
 // MARK: - Copy button
 
-/// The small copy control of a code block: a 28 pt rounded button with hover and pressed fills, a pointing-hand
+/// The small copy control of a code block: a 22 pt rounded button with hover and pressed fills, a pointing-hand
 /// cursor, and a green check mark for a moment after the click.
 final class ModCopyButton: NSButton {
-    static let side: CGFloat = 28
+    static let side: CGFloat = 22
     private var isHovering = false { didSet { updateFill() } }
     private var isPressed = false { didSet { updateFill() } }
     private var feedback: DispatchWorkItem?
     private let idleImage = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)?
-        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .regular))
     private let doneImage = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
-        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
 
     /// `true` while the check mark is showing.
     private(set) var isShowingFeedback = false
@@ -255,7 +255,7 @@ final class ModCopyButton: NSButton {
         isBordered = false
         contentTintColor = .secondaryLabelColor
         wantsLayer = true
-        layer?.cornerRadius = 6
+        layer?.cornerRadius = 5
         self.toolTip = toolTip
         setAccessibilityLabel(toolTip)
         translatesAutoresizingMaskIntoConstraints = false
@@ -578,7 +578,7 @@ final class ModOnboardingPanelView: NSView {
             code.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
             code.trailingAnchor.constraint(equalTo: copy.leadingAnchor, constant: -6),
             copy.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
-            copy.topAnchor.constraint(equalTo: container.topAnchor, constant: 5),
+            copy.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
         ])
         return container
     }
