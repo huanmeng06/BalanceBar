@@ -401,7 +401,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "officialUsageRefreshInterval", "officialPostTaskRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
+    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "officialUsageRefreshInterval", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -642,19 +642,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var activityPollInterval: TimeInterval { get { preferences.activityPollInterval } set { preferences.activityPollInterval = newValue } }
     private var codexUsageRefreshInterval: TimeInterval { get { preferences.codexUsageRefreshInterval } set { preferences.codexUsageRefreshInterval = newValue } }
     private var activeUsageRefreshInterval: TimeInterval {
+        let official = RefreshPolicy.officialInterval(selected: preferences.officialUsageRefreshInterval, client: activeClient)
         if activeClient == .codex, aggregationDisplays.contains(where: { !$0.entry.source.isOfficial }) {
-            return min(preferences.officialUsageRefreshInterval, codexUsageRefreshInterval)
+            return min(official, codexUsageRefreshInterval)
         }
-        return currentProviderIsOfficialCache ? preferences.officialUsageRefreshInterval : codexUsageRefreshInterval
+        return currentProviderIsOfficialCache ? official : codexUsageRefreshInterval
     }
     private var activePostTaskRefreshDuration: TimeInterval {
+        let official = RefreshPolicy.officialPostTaskDuration(selected: preferences.officialUsageRefreshInterval, client: activeClient)
         if activeClient == .codex, aggregationDisplays.contains(where: { !$0.entry.source.isOfficial }) {
             return aggregationDisplays.contains(where: { $0.entry.source.isOfficial })
-                ? max(preferences.officialPostTaskRefreshDuration, postCodexRefreshDuration) : postCodexRefreshDuration
+                ? max(official, apiPostTaskRefreshDuration) : apiPostTaskRefreshDuration
         }
-        return currentProviderIsOfficialCache ? preferences.officialPostTaskRefreshDuration : postCodexRefreshDuration
+        return currentProviderIsOfficialCache ? official : apiPostTaskRefreshDuration
     }
-    private var postCodexRefreshDuration: TimeInterval { get { preferences.postCodexRefreshDuration } set { preferences.postCodexRefreshDuration = newValue } }
+    private var apiPostTaskRefreshDuration: TimeInterval { RefreshPolicy.apiPostTaskDuration(interval: codexUsageRefreshInterval) }
     private var showQuickSwitchMenu: Bool { get { preferences.showQuickSwitchMenu } set { preferences.showQuickSwitchMenu = newValue } }
     private var showOpenCCSwitchMenu: Bool { get { preferences.showOpenCCSwitchMenu } set { preferences.showOpenCCSwitchMenu = newValue } }
     private var showOpenChatGPTMenu: Bool { get { preferences.showOpenChatGPTMenu } set { preferences.showOpenChatGPTMenu = newValue } }
@@ -719,7 +721,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         self.claudeQuota = claudeQuota ?? ClaudeQuotaPipeline.makeProduction(
             client: officialQuotaClient,
             calibrationIntervalCap: {
-                max(calibrationPreferences.officialUsageRefreshInterval, QuotaConstants.automaticRequestMinimumInterval)
+                RefreshPolicy.officialInterval(selected: calibrationPreferences.officialUsageRefreshInterval, client: .claude)
             })
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
@@ -1200,7 +1202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "ui.status-item"
         )
         SwitchLog.write(
-            "preferences; language=\(AppLanguage.selected.rawValue); provider_poll=\(providerPollInterval)s; activity_poll=\(activityPollInterval)s; active_refresh=\(codexUsageRefreshInterval)s; trailing_refresh=\(postCodexRefreshDuration)s",
+            "preferences; language=\(AppLanguage.selected.rawValue); provider_poll=\(providerPollInterval)s; activity_poll=\(activityPollInterval)s; active_refresh=\(codexUsageRefreshInterval)s; trailing_refresh=\(apiPostTaskRefreshDuration)s",
             level: .debug,
             category: "configuration"
         )
@@ -1706,26 +1708,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             refreshTimers = true
         case "officialUsageRefreshInterval":
             preferences.officialUsageRefreshInterval = value
-        case "officialPostTaskRefreshDuration":
-            preferences.officialPostTaskRefreshDuration = value
-            if let anchor = activityRefreshLifecycle(for: activeClient).trailingRefreshAnchor {
-                postCodexRefreshDeadline = activePostTaskRefreshDuration > 0
-                    ? anchor.addingTimeInterval(activePostTaskRefreshDuration) : nil
-            }
+            updateTrailingDeadlineAfterIntervalChange()
         case "codexUsageRefreshInterval":
             codexUsageRefreshInterval = value
-        case "postCodexRefreshDuration":
-            postCodexRefreshDuration = value
-            let lifecycle = activityRefreshLifecycle(for: activeClient)
-            if let anchor = lifecycle.trailingRefreshAnchor {
-                postCodexRefreshDeadline = activePostTaskRefreshDuration > 0
-                    ? anchor.addingTimeInterval(activePostTaskRefreshDuration)
-                    : nil
-            } else if !isCodexTaskRunning, postCodexRefreshDeadline != nil {
-                postCodexRefreshDeadline = activePostTaskRefreshDuration > 0
-                    ? Date().addingTimeInterval(activePostTaskRefreshDuration)
-                    : nil
-            }
+            updateTrailingDeadlineAfterIntervalChange()
         default: return
         }
         if refreshTimers {
@@ -2068,6 +2054,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
+    /// The trailing window length follows the selected intervals, so recompute it in place.
+    private func updateTrailingDeadlineAfterIntervalChange() {
+        let duration = activePostTaskRefreshDuration
+        if let anchor = activityRefreshLifecycle(for: activeClient).trailingRefreshAnchor {
+            postCodexRefreshDeadline = duration > 0 ? anchor.addingTimeInterval(duration) : nil
+        } else if !isCodexTaskRunning, postCodexRefreshDeadline != nil {
+            postCodexRefreshDeadline = duration > 0 ? Date().addingTimeInterval(duration) : nil
+        }
+    }
+
     private func establishPostCodexRefreshWindow(from anchor: Date) {
         guard activePostTaskRefreshDuration > 0 else {
             postCodexRefreshDeadline = nil
@@ -2265,7 +2261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func refresh(reason: BalanceRefreshReason) {
         let client = activeClient
         let apiTrailing = activityRefreshLifecycle(for: client).trailingRefreshAnchor.map {
-            Date().timeIntervalSince($0) < postCodexRefreshDuration
+            Date().timeIntervalSince($0) < apiPostTaskRefreshDuration
         } ?? false
         let forceAPIBalance = reason == .activityUsage
             ? (isCodexTaskRunning || apiTrailing) : reason.forcesStandardProviderBalance

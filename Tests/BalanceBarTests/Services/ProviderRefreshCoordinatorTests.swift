@@ -95,6 +95,72 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertTrue(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .defaultValue).isEmpty)
     }
 
+    private func waitUntil(_ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, !condition() { Thread.sleep(forTimeInterval: 0.005) }
+    }
+
+    /// #533: low API balance stored while reminders are off -> reminders on -> request fails ->
+    /// permission re-check must not alert from the stale sample -> real refresh alerts normally.
+    private func assertAPIFailureNeverAlertsFromStaleSample(
+        refresh: (ProviderRefreshCoordinator, CCSwitchProvider) -> Void
+    ) throws {
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        let (notifications, notificationClient, enableNotifications) = notificationHarness(providerID: current.id, agent: .gpt)
+        let lock = NSLock()
+        var invalidations = 0
+        var samples = 0
+        var actions = makeActions()
+        wire(&actions, to: notifications)
+        let forwardSample = actions.notificationSnapshot
+        let forwardInvalidation = actions.notificationSamplesInvalidated
+        actions.notificationSnapshot = { client, id, snapshot in
+            forwardSample?(client, id, snapshot); lock.lock(); samples += 1; lock.unlock()
+        }
+        actions.notificationSamplesInvalidated = { client, ids in
+            forwardInvalidation?(client, ids); lock.lock(); invalidations += 1; lock.unlock()
+        }
+        func count(_ value: () -> Int) -> Int { lock.lock(); defer { lock.unlock() }; return value() }
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: actions)
+
+        // A low balance sample is stored while reminders are still off.
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "3.00") }
+        refresh(coordinator, current)
+        waitUntil { count { samples } == 1 }
+        XCTAssertEqual(count { samples }, 1)
+        enableNotifications()
+        XCTAssertTrue(notificationClient.deliveries.isEmpty)
+
+        // The balance endpoint now fails; reactivating the app re-checks permission.
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data(), statusCode: 500) }
+        refresh(coordinator, current)
+        waitUntil { count { invalidations } == 1 }
+        XCTAssertEqual(count { invalidations }, 1)
+        notifications.refreshPermission()
+        waitForCoordinator(coordinator)
+        XCTAssertTrue(notificationClient.deliveries.isEmpty, "a failed API request must not re-evaluate the stale balance")
+
+        // The first real refresh alerts normally.
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "3.00") }
+        refresh(coordinator, current)
+        waitUntil { count { samples } == 2 }
+        waitUntil { notificationClient.deliveries.count == 1 }
+        XCTAssertEqual(notificationClient.deliveries.count, 1)
+    }
+
+    func testStandardAPIBalanceFailureNeverAlertsFromStaleSampleUntilRefreshSucceeds() throws {
+        try assertAPIFailureNeverAlertsFromStaleSample { coordinator, current in
+            coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        }
+    }
+
+    func testQuickSwitchAPIBalanceFailureNeverAlertsFromStaleSampleUntilRefreshSucceeds() throws {
+        try assertAPIFailureNeverAlertsFromStaleSample { coordinator, current in
+            coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: [current.id])
+        }
+    }
+
     func testStopWaitsForOwnerWorkBeforeCallerInvalidatesTransport() throws {
         let entered = DispatchSemaphore(value: 0)
         let release = DispatchSemaphore(value: 0)
@@ -3893,7 +3959,7 @@ extension ProviderRefreshCoordinatorTests {
     private static let claudeLowUsage = Data(#"{"five_hour":{"utilization":82,"resets_at":"2099-01-01T05:00:00Z"},"seven_day":{"utilization":10,"resets_at":"2099-01-07T00:00:00Z"}}"#.utf8)
 
     /// Wires a real notification coordinator exactly like the app composition.
-    private func notificationHarness(providerID: String) -> (BalanceNotificationCoordinator, FakeBalanceNotificationClient, () -> Void) {
+    private func notificationHarness(providerID: String, agent: BalanceNotificationAgent = .claude) -> (BalanceNotificationCoordinator, FakeBalanceNotificationClient, () -> Void) {
         let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
         let suite = "PR508.Notifications.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -3901,8 +3967,8 @@ extension ProviderRefreshCoordinatorTests {
         let notifications = BalanceNotificationCoordinator(defaults: defaults, client: client)
         let enable = {
             notifications.setGlobalEnabled(true)
-            notifications.setAgentEnabled(true, agent: .claude)
-            notifications.setProviderEnabled(true, agent: .claude, providerID: providerID)
+            notifications.setAgentEnabled(true, agent: agent)
+            notifications.setProviderEnabled(true, agent: agent, providerID: providerID)
         }
         return (notifications, client, enable)
     }

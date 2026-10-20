@@ -46,6 +46,12 @@ public enum QuotaConstants {
 
     /// Delay used to coalesce bursts of account-configuration file events.
     public static let accountChangeCoalescingInterval: TimeInterval = 0.5
+
+    /// Refreshes issued after a task ends for API provider balances.
+    public static let apiPostTaskRefreshCount = 4
+
+    /// Refreshes issued after a task ends for official quota.
+    public static let officialPostTaskRefreshCount = 2
 }
 
 /// Reason supplied when a caller asks the scheduler for a usage read.

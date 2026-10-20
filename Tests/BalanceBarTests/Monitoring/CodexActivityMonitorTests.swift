@@ -108,6 +108,47 @@ final class CodexActivityMonitorTests: XCTestCase {
         )
     }
 
+    func testCommentaryMessageCompletedDoesNotEndTheTurn() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            responseItem(type: "reasoning"),
+            responseItem(status: "completed", phase: "commentary"),
+            responseItem(status: "completed", phase: "commentary"),
+            responseItem(type: "reasoning"),
+            responseItem(type: "function_call")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertTrue(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "an intermediate commentary message completing must not end the whole turn"
+        )
+    }
+
+    func testCommentaryCompletedThenFinalAnswerAndTaskCompleteStillEnd() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            responseItem(status: "completed", phase: "commentary"),
+            responseItem(type: "function_call_output"),
+            responseItem(status: "completed", phase: "final_answer"),
+            responseItem(type: "reasoning")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testCommentaryCompletedThenTaskCompleteEnds() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            responseItem(status: "completed", phase: "commentary"),
+            eventMessage("task_complete")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
     func testCompletedCustomToolCallKeepsTaskRunningUntilFinalResponse() throws {
         let sessionURL = try writeSession([
             eventMessage("task_started"),
@@ -861,6 +902,10 @@ final class CodexActivityMonitorTests: XCTestCase {
 
     private func responseItem(status: String, type: String = "message") -> String {
         "{\"type\":\"response_item\",\"payload\":{\"type\":\"\(type)\",\"status\":\"\(status)\"}}"
+    }
+
+    private func responseItem(status: String, phase: String) -> String {
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"phase\":\"\(phase)\",\"status\":\"\(status)\"}}"
     }
 
     private struct RolloutFixture {

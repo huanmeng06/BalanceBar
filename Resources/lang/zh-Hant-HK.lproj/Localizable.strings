@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "每 3 秒";
 "dashboard.general.and.refresh.pages.every_5_sec" = "每 5 秒";
 "dashboard.general.and.refresh.pages.every_10_sec" = "每 10 秒";
-"dashboard.general.and.refresh.pages.off" = "關閉";
-"dashboard.general.and.refresh.pages.for_6_sec" = "持續 6 秒";
-"dashboard.general.and.refresh.pages.for_12_sec" = "持續 12 秒";
-"dashboard.general.and.refresh.pages.for_30_sec" = "持續 30 秒";
-"dashboard.general.and.refresh.pages.running" = "任務中";
-"dashboard.general.and.refresh.pages.after" = "結束後";
 "dashboard.general.and.refresh.pages.refresh_now" = "立即刷新";
 "dashboard.general.and.refresh.pages.refresh" = "刷新";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API 供應商餘額刷新頻率";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "官方額度刷新頻率";
 "dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
-"dashboard.refresh.official_for_minutes" = "持續 %1$@ 分鐘";
+"dashboard.refresh.official_scope" = "Claude、Codex 等官方帳戶";
+"dashboard.refresh.api_scope" = "第三方中轉 / API Key";
+"dashboard.refresh.minimum_interval_hint" = "部分來源有最短間隔限制";
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "即時";
@@ -575,7 +571,6 @@
 "quota.status.reset_pending_short" = "待確認";
 "quota.failure.open_usage_page" = "開啟官方用量頁面";
 "quota.status.accessibility" = "額度狀態：%1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude 官方：校準間隔上限。最短 3 分鐘，有即時來源時不發出請求。";
 "claude.refresh.login_expired" = "Claude Code 登入已過期。在終端機執行一次 claude 即可恢復；BalanceBar 不會自行續期登入。";
 "status.item.controller.refresh_now_login_expired" = "立即重新整理（Claude 登入已過期，請先執行 claude）";
 "status.item.controller.refresh_now_rate_limited" = "立即重新整理（被限流，%1$@後可用）";

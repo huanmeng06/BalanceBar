@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "Cada 3 s";
 "dashboard.general.and.refresh.pages.every_5_sec" = "Cada 5 s";
 "dashboard.general.and.refresh.pages.every_10_sec" = "Cada 10 s";
-"dashboard.general.and.refresh.pages.off" = "Desactivado";
-"dashboard.general.and.refresh.pages.for_6_sec" = "Durante 6 s";
-"dashboard.general.and.refresh.pages.for_12_sec" = "Durante 12 s";
-"dashboard.general.and.refresh.pages.for_30_sec" = "Durante 30 s";
-"dashboard.general.and.refresh.pages.running" = "En ejecución";
-"dashboard.general.and.refresh.pages.after" = "Después";
 "dashboard.general.and.refresh.pages.refresh_now" = "Actualizar ahora";
 "dashboard.general.and.refresh.pages.refresh" = "Actualizar";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Frecuencia de actualización del saldo del proveedor API";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "Frecuencia de actualización de cuota oficial";
 "dashboard.refresh.official_every_seconds" = "Cada %1$@ s";
-"dashboard.refresh.official_for_minutes" = "Durante %1$@ min";
+"dashboard.refresh.official_scope" = "Cuentas oficiales como Claude y Codex";
+"dashboard.refresh.api_scope" = "Relés de terceros / claves API";
+"dashboard.refresh.minimum_interval_hint" = "Algunas fuentes tienen un intervalo mínimo";
 
 "quota.status.refreshing" = "Cargando…";
 "quota.status.realtime" = "En vivo";
@@ -575,7 +571,6 @@
 "quota.status.reset_pending_short" = "Pendiente";
 "quota.failure.open_usage_page" = "Abrir la página oficial de uso";
 "quota.status.accessibility" = "Estado de la cuota: %1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude oficial: límite superior del intervalo de calibración. Mínimo 3 minutos; no se solicita mientras haya una fuente en vivo.";
 "claude.refresh.login_expired" = "El inicio de sesión de Claude Code ha caducado. Ejecuta claude una vez en una terminal para restaurarlo; BalanceBar nunca renueva el inicio de sesión por sí mismo.";
 "status.item.controller.refresh_now_login_expired" = "Actualizar ahora (sesión de Claude caducada, ejecuta claude primero)";
 "status.item.controller.refresh_now_rate_limited" = "Actualizar ahora (límite de peticiones, disponible en %1$@)";

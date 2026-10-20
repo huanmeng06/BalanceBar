@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "Alle 3 Sek.";
 "dashboard.general.and.refresh.pages.every_5_sec" = "Alle 5 Sek.";
 "dashboard.general.and.refresh.pages.every_10_sec" = "Alle 10 Sek.";
-"dashboard.general.and.refresh.pages.off" = "Aus";
-"dashboard.general.and.refresh.pages.for_6_sec" = "Für 6 Sek.";
-"dashboard.general.and.refresh.pages.for_12_sec" = "Für 12 Sek.";
-"dashboard.general.and.refresh.pages.for_30_sec" = "Für 30 Sek.";
-"dashboard.general.and.refresh.pages.running" = "Läuft";
-"dashboard.general.and.refresh.pages.after" = "Danach";
 "dashboard.general.and.refresh.pages.refresh_now" = "Jetzt aktualisieren";
 "dashboard.general.and.refresh.pages.refresh" = "Aktualisieren";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Aktualisierung des API-Anbieterguthabens";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "Aktualisierung des offiziellen Kontingents";
 "dashboard.refresh.official_every_seconds" = "Alle %1$@ s";
-"dashboard.refresh.official_for_minutes" = "Für %1$@ Min.";
+"dashboard.refresh.official_scope" = "Offizielle Konten wie Claude und Codex";
+"dashboard.refresh.api_scope" = "Drittanbieter-Relays / API-Schlüssel";
+"dashboard.refresh.minimum_interval_hint" = "Einige Quellen haben ein Mindestintervall";
 
 "quota.status.refreshing" = "Lädt…";
 "quota.status.realtime" = "Live";
@@ -575,7 +571,6 @@
 "quota.status.reset_pending_short" = "Offen";
 "quota.failure.open_usage_page" = "Offizielle Nutzungsseite öffnen";
 "quota.status.accessibility" = "Kontingentstatus: %1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude offiziell: Obergrenze für das Kalibrierungsintervall. Mindestens 3 Minuten; mit Live-Quelle erfolgt keine Anfrage.";
 "claude.refresh.login_expired" = "Die Claude-Code-Anmeldung ist abgelaufen. Führe einmal claude im Terminal aus, um sie wiederherzustellen; BalanceBar erneuert die Anmeldung nie selbst.";
 "status.item.controller.refresh_now_login_expired" = "Jetzt aktualisieren (Claude-Anmeldung abgelaufen, zuerst claude ausführen)";
 "status.item.controller.refresh_now_rate_limited" = "Jetzt aktualisieren (Ratenlimit, verfügbar in %1$@)";
