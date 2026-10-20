@@ -53,7 +53,9 @@ private final class MutableCredentialReader: OfficialQuotaCredentialReading {
     func set(_ value: String?) { lock.lock(); token = value; lock.unlock() }
     func codexAccessToken() -> String? { nil }
     func codexAccountProfile() -> CodexAccountProfile? { nil }
-    func claudeAccessToken() -> String? { lock.lock(); defer { lock.unlock() }; return token }
+    func claudeAccessToken() -> String? { lock.lock(); defer { lock.unlock() }; readCount += 1; return token }
+    private var readCount = 0
+    var reads: Int { lock.lock(); defer { lock.unlock() }; return readCount }
 }
 
 private final class PipelineClock: SchedulerClock {
@@ -82,6 +84,25 @@ private final class LockedLines {
     private var values: [String] = []
     func append(_ line: String) { lock.lock(); values.append(line); lock.unlock() }
     var all: [String] { lock.lock(); defer { lock.unlock() }; return values }
+}
+
+/// A real-time source the test drives by hand, in place of the HUD file watcher or the snapshot inbox.
+private final class ManualRealtimeSource: QuotaSource {
+    let sourceID = "manual-realtime"
+    private let lock = NSLock()
+    private var handler: ((QuotaObservation) -> Void)?
+    private(set) var stopCount = 0
+    var isStarted: Bool { lock.withLock { handler != nil } }
+    func start(receiving handler: @escaping (QuotaObservation) -> Void) { lock.withLock { self.handler = handler } }
+    func stop() { lock.withLock { handler = nil; stopCount += 1 } }
+    func emit(_ observation: QuotaObservation) { lock.withLock { handler }?(observation) }
+}
+
+private final class ObservationLog {
+    private let lock = NSLock()
+    private var values: [(source: String, accepted: Bool)] = []
+    func append(_ source: String, _ accepted: Bool) { lock.withLock { values.append((source, accepted)) } }
+    var all: [(source: String, accepted: Bool)] { lock.withLock { values } }
 }
 
 final class ClaudeQuotaPipelineTests: XCTestCase {
@@ -127,7 +148,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     }
 
     private func makePipeline(
-        reader configurationReader: AccountConfigurationReading = DefaultAccountConfigurationReader()
+        reader configurationReader: AccountConfigurationReading = DefaultAccountConfigurationReader(),
+        realtimeSources: [QuotaSource] = [],
+        calibrationIntervalCap: @escaping () -> TimeInterval? = { nil }
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "test.pipeline.identity")
         let identity = ClaudeAccountIdentityProvider(
@@ -138,6 +161,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let pipeline = ClaudeQuotaPipeline(
             client: official, identity: identity, identityQueue: identityQueue,
             stateDirectory: directory.appendingPathComponent("state", isDirectory: true),
+            realtimeSources: realtimeSources, calibrationIntervalCap: calibrationIntervalCap,
             schedulerClock: clock, schedulerConfiguration: configuration, now: { [clock] in clock!.now },
             diagnostics: { [diagnosticLines] message, _ in diagnosticLines.append(message) })
         pipelines.append(pipeline)
@@ -432,6 +456,160 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         })
         XCTAssertEqual(state.windows.first?.remaining, 77, "an old-cycle reading is not a confirmation")
     }
+
+    // MARK: Local real-time sources (INT-2)
+
+    private static let resetFiveHour = ISO8601DateFormatter().date(from: "2023-11-15T03:00:00Z")!
+    private static let resetSevenDay = ISO8601DateFormatter().date(from: "2023-11-20T00:00:00Z")!
+
+    /// A grade-B reading of the same cycle as `usage`, received at the pipeline clock.
+    private func hudObservation(
+        _ window: QuotaWindowKind = .fiveHour, used: Double, source: String = "claude-hud",
+        account: String = "claude:account-a:org", epoch: AccountEpoch? = nil, pipeline: ClaudeQuotaPipeline
+    ) -> QuotaObservation {
+        QuotaObservation(
+            window: window, usedPercentage: used,
+            resetsAt: window == .fiveHour ? Self.resetFiveHour : Self.resetSevenDay,
+            receivedAt: clock.now, source: source, trust: .b, accountID: account,
+            epoch: epoch ?? pipeline.latestState?.accountEpoch ?? .initial)!
+    }
+
+    /// Seeds the official reading and moves the clock past the 3-minute automatic minimum.
+    private func seededPipeline(
+        source: ManualRealtimeSource, calibrationIntervalCap: @escaping () -> TimeInterval? = { nil }
+    ) throws -> ClaudeQuotaPipeline {
+        let pipeline = makePipeline(realtimeSources: [source], calibrationIntervalCap: calibrationIntervalCap)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 200)
+        return pipeline
+    }
+
+    func testFreshHUDReadingSuppressesAutomaticRequestsAndShowsTheRealtimeStatus() throws {
+        let source = ManualRealtimeSource()
+        let pipeline = try seededPipeline(source: source)
+        XCTAssertTrue(source.isStarted, "local sources start together with the pipeline")
+
+        source.emit(hudObservation(used: 27, pipeline: pipeline))
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 73 })
+        XCTAssertEqual(live.status, .realtime)
+
+        let credentialReads = reader.reads
+        pipeline.requestFetch(reason: .scheduled)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "a fresh live reading answers the scheduled refresh")
+        XCTAssertEqual(reader.reads, credentialReads, "…and the credential store is not even consulted")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=realtimeSourceFresh") })
+
+        // The live reading goes stale after two minutes: ordinary reads resume.
+        clock.advance(by: 125)
+        pipeline.requestFetch(reason: .scheduled)
+        waitForRequests(2)
+    }
+
+    func testRejectedLiveReadingDoesNotSuppressRequests() throws {
+        let source = ManualRealtimeSource()
+        let pipeline = try seededPipeline(source: source)
+        // 5 points below the official 23% is outside the grade-B tolerance, so it is not displayed.
+        source.emit(hudObservation(used: 18, pipeline: pipeline))
+        // Another account's snapshot is not displayed either.
+        source.emit(hudObservation(used: 30, account: "claude:someone-else:org", pipeline: pipeline))
+        quiet(pipeline)
+        XCTAssertEqual(pipeline.latestState?.windows.first?.remaining, 77)
+
+        pipeline.requestFetch(reason: .scheduled)
+        waitForRequests(2)
+    }
+
+    func testLiveReadingsDoNotSuppressConfirmationOfAPassedResetTime() throws {
+        let source = ManualRealtimeSource()
+        let pipeline = try seededPipeline(source: source)
+        source.emit(hudObservation(used: 27, pipeline: pipeline))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+
+        // The 5-hour reset time passes while the seven-day window keeps receiving live readings.
+        clock.advance(by: 5 * 3_600)
+        PipelineStubProtocol.set(.init(data: Self.nextCycle))
+        source.emit(hudObservation(.sevenDay, used: 45, pipeline: pipeline))
+        pipeline.tick()
+        waitForRequests(2)
+        let confirmed = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 98 })
+        XCTAssertEqual(confirmed.windows.last?.remaining, 58, "the official read also refreshed the seven-day window")
+    }
+
+    func testCalibrationCapAllowsOneReadWhileLiveReadingsKeepArriving() throws {
+        let source = ManualRealtimeSource()
+        let pipeline = try seededPipeline(source: source, calibrationIntervalCap: { 600 })
+        for step in 0..<3 {
+            source.emit(hudObservation(used: Double(27 + step), pipeline: pipeline))
+            _ = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == Double(73 - step) })
+            pipeline.requestFetch(reason: .scheduled)
+            quiet(pipeline)
+            clock.advance(by: 100)
+        }
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "no request while the cap has not passed")
+
+        // 700 s after the last official read the cap has passed, so one calibration read is allowed.
+        clock.advance(by: 200)
+        source.emit(hudObservation(used: 31, pipeline: pipeline))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 69 })
+        pipeline.requestFetch(reason: .scheduled)
+        waitForRequests(2)
+    }
+
+    func testManualRefreshIsAnsweredByAFreshLiveReadingWithoutARequest() throws {
+        let source = ManualRealtimeSource()
+        let pipeline = try seededPipeline(source: source)
+        XCTAssertNil(pipeline.manualRefreshNotice())
+        source.emit(hudObservation(used: 27, pipeline: pipeline))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        XCTAssertEqual(pipeline.manualRefreshNotice(), .justRefreshed)
+
+        pipeline.requestFetch(reason: .manual)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=freePathSatisfied") })
+
+        clock.advance(by: 61)
+        XCTAssertNil(pipeline.manualRefreshNotice())
+        pipeline.requestFetch(reason: .manual)
+        waitForRequests(2)
+    }
+
+    func testAccountSwitchDropsTheLiveTrustAndOldReadings() throws {
+        let source = ManualRealtimeSource()
+        let pipeline = try seededPipeline(source: source)
+        source.emit(hudObservation(used: 27, pipeline: pipeline))
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+
+        try writeAccount("account-b", email: "b@example.com")
+        let switched = try XCTUnwrap(waitForState(pipeline) { $0.accountEpoch != live.accountEpoch && !$0.windows.isEmpty })
+        XCTAssertNotEqual(switched.status, .realtime, "the previous account's live reading never vouches for the new account")
+        XCTAssertEqual(switched.windows.first?.remaining, 77, "the new account shows its own official reading")
+    }
+
+    func testRealtimeObserverSeesEveryObservationWithItsAcceptance() throws {
+        let source = ManualRealtimeSource()
+        let pipeline = try seededPipeline(source: source)
+        let log = ObservationLog()
+        pipeline.realtimeObserver = { observation, accepted in log.append(observation.source, accepted) }
+        source.emit(hudObservation(used: 27, source: "balancebar-mod", pipeline: pipeline))
+        source.emit(hudObservation(used: 10, source: "claude-hud", pipeline: pipeline))
+        quiet(pipeline)
+        XCTAssertEqual(log.all.map(\.source), ["balancebar-mod", "claude-hud"])
+        XCTAssertEqual(log.all.map(\.accepted), [true, false])
+    }
+
+    func testStoppingThePipelineStopsItsLocalSources() throws {
+        let source = ManualRealtimeSource()
+        var pipeline: ClaudeQuotaPipeline? = makePipeline(realtimeSources: [source])
+        pipeline?.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(try XCTUnwrap(pipeline)) { !$0.windows.isEmpty })
+        pipelines.removeAll()
+        pipeline = nil
+        XCTAssertEqual(source.stopCount, 1)
+    }
+
     // MARK: Manual-test fixtures (PR "如何人工测试" steps 6 and 7)
 
     func testDocumentedCooldownFileDisablesReadsAfterRestart() throws {

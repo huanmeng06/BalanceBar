@@ -509,6 +509,95 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
     }
 
+    // MARK: Codex local rollout log (INT-2)
+
+    func testFreshCodexRolloutLogStandsInForTheUsageRequestUntilItGoesStaleOrTheUserRefreshes() throws {
+        try setCurrentProvider("codex-replacement")
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = TestClock(date: base)
+        let suite = "CodexLocalLog.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+
+        // A Codex rollout log whose newest event is 10 s old, for the signed-in login.
+        let sessions = temporaryDirectoryURL.appendingPathComponent("rollouts/sessions/2026/10/19", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
+        let stamp = ISO8601DateFormatter()
+        stamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let fiveHourReset = Int(base.timeIntervalSince1970) + 10_000
+        let sevenDayReset = Int(base.timeIntervalSince1970) + 400_000
+        let event = "{\"timestamp\":\"\(stamp.string(from: base.addingTimeInterval(-10)))\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"primary\":{\"used_percent\":35,\"window_minutes\":300,\"resets_at\":\(fiveHourReset)},\"secondary\":{\"used_percent\":15,\"window_minutes\":10080,\"resets_at\":\(sevenDayReset)}}}}\n"
+        try Data(event.utf8).write(to: sessions.appendingPathComponent("rollout-a.jsonl"))
+        let identity = CodexAccountIdentityProvider(
+            readProfile: { CodexAccountProfile(email: "me@example.com", planType: "plus") },
+            refreshInterval: 1, now: { clock.now })
+        let source = CodexRolloutSource(
+            sessionsDirectory: temporaryDirectoryURL.appendingPathComponent("rollouts/sessions"),
+            accountProvider: identity, configuration: CodexRolloutConfiguration(maximumFileAge: .infinity), now: { clock.now })
+        let local = CodexLocalQuota(identity: identity, source: source,
+            stateDirectory: temporaryDirectoryURL.appendingPathComponent("codex-state"), now: { clock.now })
+        defer { local.stop() }
+
+        let fiveHour = OfficialQuotaWindow(kind: .fiveHour, remaining: 80, label: "5-hour quota", daysText: "5 hours",
+            reset: "server", durationSeconds: 18_000, resetAt: base.addingTimeInterval(9_000))
+        let sevenDay = OfficialQuotaWindow(kind: .sevenDay, remaining: 45, label: "7-day quota", daysText: "7 days",
+            reset: "server", durationSeconds: 604_800, resetAt: base.addingTimeInterval(300_000))
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data("{}".utf8), statusCode: 200) }
+        let published = PublicationRecorder()
+        // Rendering hops to the main queue, so wait with expectations that spin the run loop.
+        let pendingRender = PendingRender()
+        let coordinator = makeCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: ProfileCredentialReader(email: "me@example.com"),
+                parser: FixedOfficialQuotaParser(windows: [fiveHour, sevenDay])),
+            actions: ProviderRefreshActions(
+                currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
+                isActiveClient: { _ in true },
+                render: { snapshot in published.recordRender(snapshot); pendingRender.fulfill() },
+                storeClientSnapshot: { _, _, _ in },
+                quickSwitchSummaryChanged: { _ in }),
+            refreshPreferences: preferences, codexLocal: local, now: { clock.now })
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        func refresh(force: Bool = false, userInitiated: Bool = false) {
+            let rendered = expectation(description: "codex snapshot rendered")
+            pendingRender.expect(rendered)
+            coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: force,
+                switched: false, userInitiated: userInitiated)
+            wait(for: [rendered], timeout: 3)
+        }
+
+        // 1. The first read after a source change always asks the server and starts the log source.
+        refresh(force: true)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        XCTAssertEqual(published.rendered.last?.officialQuotaWindows.map(\.remaining), [80, 45])
+        let deadline = Date().addingTimeInterval(3)
+        while local.freshDisplay(accountKey: "me@example.com") == nil, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+
+        // 2. The next scheduled refresh is answered by the log: no request, the log's numbers.
+        clock.advance(by: 60)
+        refresh()
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1, "a fresh log makes wham/usage unnecessary")
+        let fromLog = try XCTUnwrap(published.rendered.last)
+        XCTAssertEqual(fromLog.officialQuotaWindows.map(\.remaining), [65, 85])
+        XCTAssertEqual(fromLog.officialQuotaWindows.map(\.label), ["5-hour quota", "7-day quota"])
+
+        // 3. A manual refresh always asks the server, even while the log is fresh.
+        clock.advance(by: 5)
+        coordinator.resetCadence()
+        refresh(userInitiated: true)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        XCTAssertEqual(published.rendered.last?.officialQuotaWindows.map(\.remaining), [80, 45])
+
+        // 4. Once the newest logged event is older than two minutes the ordinary request logic resumes.
+        clock.advance(by: 130)
+        refresh()
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+    }
+
     private func useClaudeOfficialProvider() throws -> CCSwitchProvider {
         try withDatabase { database in
             try execute(database, sql: "UPDATE providers SET name = 'Claude Official', category = 'official', settings_config = '{}', meta = '{}' WHERE app_type = 'claude'")
@@ -2546,12 +2635,13 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         actions: ProviderRefreshActions,
         refreshPreferences: AppPreferences? = nil,
         claudeQuota: ClaudeQuotaPipeline? = nil,
+        codexLocal: CodexLocalQuota? = nil,
         now: @escaping () -> Date = Date.init
     ) -> ProviderRefreshCoordinator {
         let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: officialQuotaClient,
             balanceAPIClient: balanceAPIClient, balanceProgressStore: balanceProgressStore,
             codexResetObservationStore: codexResetObservationStore, queue: queue, actions: actions,
-            refreshPreferences: refreshPreferences, claudeQuota: claudeQuota, now: now)
+            refreshPreferences: refreshPreferences, claudeQuota: claudeQuota, codexLocal: codexLocal, now: now)
         coordinators.append(coordinator)
         return coordinator
     }
@@ -2710,6 +2800,20 @@ private struct FixtureCredentialReader: OfficialQuotaCredentialReading {
     func codexAccessToken() -> String? { codexToken }
     func codexAccountProfile() -> CodexAccountProfile? { nil }
     func claudeAccessToken() -> String? { claudeToken }
+}
+
+private final class PendingRender {
+    private let lock = NSLock()
+    private var pending: XCTestExpectation?
+    func expect(_ expectation: XCTestExpectation) { lock.withLock { pending = expectation } }
+    func fulfill() { lock.withLock { let current = pending; pending = nil; return current }?.fulfill() }
+}
+
+private struct ProfileCredentialReader: OfficialQuotaCredentialReading {
+    let email: String
+    func codexAccessToken() -> String? { "fixture-token" }
+    func codexAccountProfile() -> CodexAccountProfile? { CodexAccountProfile(email: email, planType: "plus") }
+    func claudeAccessToken() -> String? { nil }
 }
 
 private struct IncrementingOfficialQuotaParser: OfficialQuotaParsing {

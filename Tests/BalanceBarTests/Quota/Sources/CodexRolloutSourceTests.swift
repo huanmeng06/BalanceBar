@@ -76,6 +76,34 @@ final class CodexRolloutSourceTests: XCTestCase {
         XCTAssertEqual(byWindow[.fiveHour]?.resetsAt, Date(timeIntervalSince1970: 1_800_003_600))
     }
 
+    func testLargeRolloutIsScannedFromItsTailAndStillFollowedAfterwards() throws {
+        // 6 MB of unrelated lines after an early event, then a late event inside the final 4 MB window.
+        let filler = String(repeating: "{\"type\":\"response_item\",\"payload\":{\"text\":\"" + String(repeating: "x", count: 900) + "\"}}\n", count: 6_500)
+        let early = line(at: 10, primary: window(300, 11), secondary: window(10080, 22))
+        let late = line(at: 90, primary: window(300, 33), secondary: window(10080, 44))
+        let url = try writeRollout("big", early + filler + late)
+        XCTAssertGreaterThan(try XCTUnwrap(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize), 6_000_000)
+        let source = makeSource()
+        let observations = scan(source)
+        let byWindow = Dictionary(uniqueKeysWithValues: observations.map { ($0.window, $0) })
+        XCTAssertEqual(byWindow[.fiveHour]?.usedPercentage, 33, "the newest event is found in the tail")
+        XCTAssertEqual(byWindow[.sevenDay]?.usedPercentage, 44)
+
+        // New lines appended later are read incrementally.
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(line(at: 95, primary: window(300, 55), secondary: window(10080, 66)).utf8))
+        try handle.close()
+        let later = scan(source, paths: [url.path])
+        XCTAssertEqual(later.first { $0.window == .fiveHour }?.usedPercentage, 55)
+    }
+
+    func testEventOnlyBeforeTheTailWindowOfALargeRolloutIsNotReadSoTheServerIsAsked() throws {
+        let filler = String(repeating: "{\"type\":\"response_item\",\"payload\":{\"text\":\"" + String(repeating: "x", count: 900) + "\"}}\n", count: 6_500)
+        try writeRollout("big-old", line(at: 10, primary: window(300, 11), secondary: window(10080, 22)) + filler)
+        XCTAssertTrue(scan(makeSource()).isEmpty, "no event in the tail: no reading, the ordinary request logic applies")
+    }
+
     func testWindowClassificationIgnoresPrimarySecondaryOrder() throws {
         try writeRollout("a", line(at: 10, primary: window(10080, 70), secondary: window(300, 15)))
         let byWindow = Dictionary(uniqueKeysWithValues: scan(makeSource()).map { ($0.window, $0) })

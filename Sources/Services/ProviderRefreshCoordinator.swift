@@ -378,6 +378,11 @@ final class ProviderRefreshCoordinator {
     /// status and notifications). Every Claude official Provider shows the
     /// same account-wide data, so one pipeline serves them all.
     private let claudeQuota: ClaudeQuotaPipeline?
+    /// Codex rate limits read from the local rollout logs. While the newest logged event is fresh the
+    /// standard Codex provider shows these windows instead of sending a `wham/usage` request.
+    private let codexLocal: CodexLocalQuota?
+    /// The last real Codex response of the standard provider, the base that log windows are overlaid on.
+    private var codexLocalBase: [String: (output: OfficialQuotaResponseParser.Output, bankedReset: CodexBankedReset?, at: Date)] = [:]
     /// The current standard Claude official Provider that receives pipeline updates.
     private var claudeStandardTarget: (providerID: String, providerName: String, revision: String)?
     private var claudeObservedEpoch: AccountEpoch?
@@ -444,9 +449,11 @@ final class ProviderRefreshCoordinator {
         actions: ProviderRefreshActions,
         refreshPreferences: AppPreferences? = nil,
         claudeQuota: ClaudeQuotaPipeline? = nil,
+        codexLocal: CodexLocalQuota? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
         self.claudeQuota = claudeQuota
+        self.codexLocal = codexLocal
         self.repository = repository
         self.officialQuotaClient = officialQuotaClient
         self.balanceAPIClient = balanceAPIClient
@@ -840,6 +847,8 @@ final class ProviderRefreshCoordinator {
                 providerName: current.name,
                 client: client,
                 configurationRevision: revision,
+                // A manual refresh and the first read after a source change always ask the server.
+                allowsLocalLog: client == .codex && !userInitiated && !sourceChanged,
                 isValid: { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
             )
             lastOfficialFetch = currentDate
@@ -1466,6 +1475,7 @@ final class ProviderRefreshCoordinator {
                                     source: ProviderSummarySource? = nil,
                                     requestContext: OfficialQuotaRequestContext? = nil,
                                     configurationRevision: String = "",
+                                    allowsLocalLog: Bool = false,
                                     isValid: @escaping () -> Bool = { true },
                                     completion: ((Snapshot) -> Void)? = nil) -> OfficialQuotaRequestContext? {
         func publish(_ snapshot: Snapshot, providerID: String, client: AssistantClient,
@@ -1521,7 +1531,8 @@ final class ProviderRefreshCoordinator {
             }
             standardOfficialRequests[client] = context
         }
-        officialQuotaClient.fetchQuota(context: context) { [weak self] result in
+        let baseKey = providerID + "|" + (accountKey ?? "")
+        let handleResult: (Result<OfficialQuotaResult, OfficialQuotaClientError>, Bool) -> Void = { [weak self] result, isLocalLogResponse in
             guard let self else { return }
             self.performOnQueue {
                 guard credentialsMatch(true) else { return }
@@ -1590,6 +1601,10 @@ final class ProviderRefreshCoordinator {
                         self.performOnQueue {
                             guard credentialsMatch(false),
                                   isCurrentQuota() else { return }
+                            // Only a real server response is a base for later log overlays.
+                            if client == .codex, source == nil, !isLocalLogResponse {
+                                self.codexLocalBase[baseKey] = (response.output, bankedReset, self.now())
+                            }
                             guard client == .codex, bankedReset != nil || self.cachedCodexResetForecast != nil else {
                                 renderOfficial(bankedReset, cachedForecast)
                                 return
@@ -1643,7 +1658,26 @@ final class ProviderRefreshCoordinator {
                 }
             }
         }
+        if allowsLocalLog, client == .codex, source == nil,
+           let local = localCodexResult(baseKey: baseKey, accountKey: accountKey) {
+            SwitchLog.write("codex official quota served from local rollout log; request_skipped=true",
+                level: .debug, category: "refresh.codex", throttleKey: "codex-local-log", minimumInterval: 60)
+            handleResult(.success(local), true)
+        } else {
+            if client == .codex, source == nil { codexLocal?.start() }
+            officialQuotaClient.fetchQuota(context: context) { handleResult($0, false) }
+        }
         return context
+    }
+
+    /// A synthetic quota response built from the fresh local rollout log, or `nil` when the server must be asked:
+    /// no fresh log, no earlier real response to overlay on, or that response is older than the calibration interval.
+    private func localCodexResult(baseKey: String, accountKey: String?) -> OfficialQuotaResult? {
+        guard let codexLocal, let base = codexLocalBase[baseKey],
+              now().timeIntervalSince(base.at) < QuotaConstants.realtimeCalibrationInterval,
+              let display = codexLocal.freshDisplay(accountKey: accountKey),
+              let output = base.output.overlaid(with: display, now: now(), bankedReset: base.bankedReset) else { return nil }
+        return OfficialQuotaResult(output: output, dataSize: 0)
     }
 
     /// Recomputes countdowns from each window's absolute reset time so a kept

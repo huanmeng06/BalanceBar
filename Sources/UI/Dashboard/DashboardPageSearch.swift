@@ -537,6 +537,13 @@ enum DashboardSettingsSearchCatalog {
             ]
         case .advanced:
             return [
+                .keyModSettingsTitle,
+                .keyModSettingsStatusNotInstalled,
+                .keyModSettingsStatusWaiting,
+                .keyModSettingsStatusSilent,
+                .keyModSettingsActionInstall,
+                .keyModSettingsActionCopy,
+                .keyModSettingsPromptToggle,
                 .keyDashboardAdvancedPageDiagnostics,
                 .keyDashboardAdvancedPageDebugLog
             ]
@@ -571,6 +578,11 @@ enum DashboardSettingsSearchCatalog {
                 texts.append(contentsOf: Set(TimeZoneCityCatalog.all.map {
                     TimeZoneCityCatalog.continentTitle(for: $0)
                 }).sorted())
+            }
+            if section == .advanced {
+                // Real-time boost statuses that embed a time or a version.
+                texts.append(tr(.keyModSettingsStatusActive, arguments: [""]))
+                texts.append(tr(.keyModSettingsStatusUnsupported, arguments: [""]))
             }
             return texts
         case .notifications:

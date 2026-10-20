@@ -112,6 +112,8 @@ final class ModOnboardingPanelView: NSView {
     private let localize: (ModOnboardingText) -> String
     private let stack = NSStackView()
     var onRequestClose: () -> Void = {}
+    /// Called after each reload with the panel's new fitting size.
+    var onContentSizeChange: ((NSSize) -> Void)?
 
     private(set) var items: [ModPanelItem] = []
     var snapshotLines: [String] { items.map(\.snapshotLine) }
@@ -144,6 +146,7 @@ final class ModOnboardingPanelView: NSView {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for item in items { stack.addArrangedSubview(makeView(item)) }
         layoutSubtreeIfNeeded()
+        onContentSizeChange?(fittingSize)
     }
 
     /// Triggers a button as if clicked (used by tests).

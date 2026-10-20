@@ -55,6 +55,11 @@ enum ModOnboardingText: String, CaseIterable {
     }
 
     static let defaultLocalize: (ModOnboardingText) -> String = { $0.defaultText }
+
+    /// Routes copy through the app's localization tables (see `LocalizationKey`).
+    static let appLocalize: (ModOnboardingText) -> String = { text in
+        LocalizationKey(rawValue: text.rawValue).map { tr($0) } ?? text.defaultText
+    }
 }
 
 protocol ModPromptPreferenceStoring: AnyObject {
@@ -83,9 +88,14 @@ enum ModPanelState: Equatable {
 /// Drives the panel and the settings page. Main-thread only; installation work runs on the installer's queue.
 final class ModOnboardingController {
     private(set) var state: ModPanelState = .intro(dismissChecked: false) {
-        didSet { if state != oldValue { onChange?() } }
+        didSet { if state != oldValue { onChange?(); onStateChange?() } }
     }
+    /// Observer slot used by the explanation panel.
     var onChange: (() -> Void)?
+    /// Second observer slot, used by the Settings block so it can follow the install progress.
+    var onStateChange: (() -> Void)?
+    /// Called on the main thread when an install attempt ended, before the panel state changes.
+    var onInstallFinished: ((ModInstallResult) -> Void)?
 
     let plan: ModInstallPlan
     private let installer: ModInstaller
@@ -94,7 +104,7 @@ final class ModOnboardingController {
     private var installInFlight = false
 
     init(
-        plan: ModInstallPlan = .standard,
+        plan: ModInstallPlan = .resolved(),
         installer: ModInstaller? = nil,
         preference: ModPromptPreferenceStoring = UserDefaultsModPromptPreference(),
         copyToPasteboard: @escaping (String) -> Void = { text in
@@ -129,6 +139,7 @@ final class ModOnboardingController {
             completion: { [weak self] result in
                 guard let self else { return }
                 self.installInFlight = false
+                self.onInstallFinished?(result)
                 switch result {
                 case .success: self.state = .succeeded
                 case let .failure(failure): self.state = .failed(failure)

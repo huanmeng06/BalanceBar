@@ -11,15 +11,19 @@ final class DashboardAdvancedPage {
         let logViewer: NSView?
 
         let includeLogViewer: Bool
+        /// Settings › Advanced › Real-time boost content; `nil` omits the section.
+        let realtimeBoost: NSView?
 
         init(
             relay: DashboardPreferencePageRelay,
             logViewer: NSView?,
-            includeLogViewer: Bool = true
+            includeLogViewer: Bool = true,
+            realtimeBoost: NSView? = nil
         ) {
             self.relay = relay
             self.logViewer = logViewer
             self.includeLogViewer = includeLogViewer
+            self.realtimeBoost = realtimeBoost
         }
     }
 
@@ -60,7 +64,15 @@ final class DashboardAdvancedPage {
             title: tr(.keyDashboardAdvancedPageDiagnostics),
             contentViews: contentViews
         )
-        return DashboardSettingsComponents.makeSettingsPageContent([logs])
+        var sections: [NSView] = []
+        if let realtimeBoost = input.realtimeBoost {
+            sections.append(SettingsSectionView(
+                title: tr(.keyModSettingsTitle),
+                contentViews: [realtimeBoost]
+            ))
+        }
+        sections.append(logs)
+        return DashboardSettingsComponents.makeSettingsPageContent(sections)
     }
 
     /// Keeps the Diagnostics log pane at the historical 190pt slot. The real

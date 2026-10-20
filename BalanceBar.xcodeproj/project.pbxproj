@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E35FE3CFD82B7CB109D62821 /* ModOnboardingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E68CE3E533818B88003809B /* ModOnboardingCoordinatorTests.swift */; };
+		9C81F7D50F39AEA4891C2BC6 /* CodexLocalQuotaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19546D256B8ED25F4F27159E /* CodexLocalQuotaTests.swift */; };
+		D10831742B8B8BF050858EDD /* ModOnboardingPopoverPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C93910B575F706D877FF8BC /* ModOnboardingPopoverPresenter.swift */; };
+		C7CFA9577E4DB16A0037444F /* ModOnboardingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B46DB48FF59583CB12D561 /* ModOnboardingCoordinator.swift */; };
+		74DE0CDC17264534F4649F66 /* CodexLocalQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = B249D89D9335039E4F94F4C2 /* CodexLocalQuota.swift */; };
 		B52300000000000000000011 /* ClaudeHUDSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52300000000000000000001 /* ClaudeHUDSource.swift */; };
 		B52300000000000000000012 /* ClaudeHUDSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52300000000000000000002 /* ClaudeHUDSourceTests.swift */; };
 		B51B00000000000000000011 /* CodexRolloutSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51B00000000000000000001 /* CodexRolloutSource.swift */; };
@@ -226,6 +231,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		6E68CE3E533818B88003809B /* ModOnboardingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingCoordinatorTests.swift; sourceTree = "<group>"; };
+		19546D256B8ED25F4F27159E /* CodexLocalQuotaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexLocalQuotaTests.swift; sourceTree = "<group>"; };
+		5C93910B575F706D877FF8BC /* ModOnboardingPopoverPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingPopoverPresenter.swift; sourceTree = "<group>"; };
+		C5B46DB48FF59583CB12D561 /* ModOnboardingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingCoordinator.swift; sourceTree = "<group>"; };
+		B249D89D9335039E4F94F4C2 /* CodexLocalQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexLocalQuota.swift; sourceTree = "<group>"; };
 		B52300000000000000000001 /* ClaudeHUDSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeHUDSource.swift; sourceTree = "<group>"; };
 		B52300000000000000000002 /* ClaudeHUDSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeHUDSourceTests.swift; sourceTree = "<group>"; };
 		B51B00000000000000000001 /* CodexRolloutSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutSource.swift; sourceTree = "<group>"; };
@@ -527,6 +537,8 @@
 		C52600000000000000000030 /* ModOnboarding */ = {
 			isa = PBXGroup;
 			children = (
+				5C93910B575F706D877FF8BC /* ModOnboardingPopoverPresenter.swift */,
+				C5B46DB48FF59583CB12D561 /* ModOnboardingCoordinator.swift */,
 				C52600000000000000000001 /* ModOnboardingModel.swift */,
 				C52600000000000000000002 /* ModInstaller.swift */,
 				C52600000000000000000003 /* ModOnboardingController.swift */,
@@ -554,6 +566,7 @@
 		C52600000000000000000033 /* ModOnboarding */ = {
 			isa = PBXGroup;
 			children = (
+				6E68CE3E533818B88003809B /* ModOnboardingCoordinatorTests.swift */,
 				C52600000000000000000006 /* ModOnboardingTests.swift */,
 			);
 			path = ModOnboarding;
@@ -756,6 +769,7 @@
 		A40000000000000000000014 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				19546D256B8ED25F4F27159E /* CodexLocalQuotaTests.swift */,
 				A10000000000000000000058 /* ResponseParsersTests.swift */,
 				A1000000000000000000005F /* CCSwitchRepositoryTests.swift */,
 				A10000000000000000000063 /* CredentialReaderTests.swift */,
@@ -977,6 +991,7 @@
 		A10000000000000000000059 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				B249D89D9335039E4F94F4C2 /* CodexLocalQuota.swift */,
 				A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */,
 				A49300000000000000000001 /* CCSwitchAggregationRepository.swift */,
 				A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */,
@@ -1453,6 +1468,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D10831742B8B8BF050858EDD /* ModOnboardingPopoverPresenter.swift in Sources */,
+				C7CFA9577E4DB16A0037444F /* ModOnboardingCoordinator.swift in Sources */,
+				74DE0CDC17264534F4649F66 /* CodexLocalQuota.swift in Sources */,
 				A10000000000000000000020 /* BalanceBar.swift in Sources */,
 				A10000000000000000000044 /* AppPreferences.swift in Sources */,
 				A10000000000000000000040 /* Localization.swift in Sources */,
@@ -1589,6 +1607,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E35FE3CFD82B7CB109D62821 /* ModOnboardingCoordinatorTests.swift in Sources */,
+				9C81F7D50F39AEA4891C2BC6 /* CodexLocalQuotaTests.swift in Sources */,
 				A10000000000000300000021 /* BackgroundTestHost.swift in Sources */,
 				A10000000000000300000051 /* TestRepositoryRoot.swift in Sources */,
 				A40300000000000000000006 /* DashboardShellTestHarness.swift in Sources */,

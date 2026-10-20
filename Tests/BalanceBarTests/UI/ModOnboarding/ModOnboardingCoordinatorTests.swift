@@ -1,0 +1,329 @@
+import AppKit
+import XCTest
+@testable import BalanceBar
+
+private final class MemoryPromptPreference: ModPromptPreferenceStoring { var isPromptDismissed = false }
+
+private final class MemoryTimestamp: ModDataTimestampStoring { var lastModDataAt: Date? }
+
+private final class MutableClock {
+    private let lock = NSLock()
+    private var value: Date
+    init(_ value: Date) { self.value = value }
+    var now: Date { lock.withLock { value } }
+    func advance(by interval: TimeInterval) { lock.withLock { value.addTimeInterval(interval) } }
+}
+
+/// Scriptable stand-in for `claude --version`, the plugin registry and the HUD source.
+private final class FakeEnvironment {
+    private let lock = NSLock()
+    private var state = (
+        version: ClaudeCodeVersionStatus.detected(ClaudeCodeVersion(major: 2, minor: 1, patch: 291)),
+        record: ModInstallRecord?.none, hud: false, headless: TimeInterval(0), reads: 0)
+
+    var version: ClaudeCodeVersionStatus {
+        get { lock.withLock { state.version } } set { lock.withLock { state.version = newValue } }
+    }
+    var record: ModInstallRecord? {
+        get { lock.withLock { state.record } } set { lock.withLock { state.record = newValue } }
+    }
+    var hud: Bool {
+        get { lock.withLock { state.hud } } set { lock.withLock { state.hud = newValue } }
+    }
+    var headless: TimeInterval {
+        get { lock.withLock { state.headless } } set { lock.withLock { state.headless = newValue } }
+    }
+    var reads: Int { lock.withLock { state.reads } }
+
+    var environment: ModOnboardingCoordinator.Environment {
+        .init(
+            detectClaudeCode: { self.lock.withLock { self.state.reads += 1; return self.state.version } },
+            readInstallRecord: { self.lock.withLock { self.state.record } },
+            hasHUDSnapshot: { self.hud },
+            headlessDuration: { self.headless })
+    }
+}
+
+final class ModOnboardingCoordinatorTests: XCTestCase {
+    private let start = Date(timeIntervalSince1970: 1_800_000_000)
+    private var clock: MutableClock!
+    private var fake: FakeEnvironment!
+    private var preference: MemoryPromptPreference!
+    private var timestamps: MemoryTimestamp!
+
+    override func setUp() {
+        super.setUp()
+        clock = MutableClock(start)
+        fake = FakeEnvironment()
+        preference = MemoryPromptPreference()
+        timestamps = MemoryTimestamp()
+    }
+
+    private func makeCoordinator(installer: ModInstaller? = nil) -> ModOnboardingCoordinator {
+        ModOnboardingCoordinator(
+            plan: .standard, environment: fake.environment, promptPreference: preference, timestamps: timestamps,
+            installer: installer, copyToPasteboard: { _ in }, now: { [clock] in clock!.now })
+    }
+
+    /// Runs a background environment refresh to completion.
+    private func refresh(_ coordinator: ModOnboardingCoordinator, force: Bool = true) {
+        let done = expectation(description: "environment refreshed")
+        coordinator.refreshEnvironment(force: force) { done.fulfill() }
+        wait(for: [done], timeout: 2)
+        // The change notification hops to the main queue after the completion; drain it.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+    }
+
+    private func observation(source: String, observedAt: Date?, receivedAt: Date? = nil) -> QuotaObservation {
+        QuotaObservation(window: .fiveHour, usedPercentage: 10, observedAt: observedAt,
+                         receivedAt: receivedAt ?? clock.now, source: source, trust: .b,
+                         accountID: "a", epoch: .initial)!
+    }
+
+    // MARK: Menu row
+
+    func testMenuRowFollowsThePromptRules() {
+        let coordinator = makeCoordinator()
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources,
+                       "an undetected Claude Code version keeps the prompt hidden")
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: false), .none)
+
+        refresh(coordinator)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
+
+        coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: clock.now))
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources, "Mod data within seven days hides the prompt")
+        clock.advance(by: 8 * 86_400)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt, "…and an old one no longer does")
+    }
+
+    func testDismissingThePromptSwapsItForTheDataSourcesRow() {
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
+        let changed = expectation(description: "menu input refresh requested")
+        coordinator.onChange = { changed.fulfill() }
+        coordinator.controller.setDismissChecked(true)
+        XCTAssertFalse(coordinator.controller.close(), "closing with the checkbox ticked shows the confirmed state")
+        wait(for: [changed], timeout: 1)
+        XCTAssertEqual(coordinator.controller.state, .dismissConfirmed)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
+
+        coordinator.controller.setPromptEnabled(true)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
+    }
+
+    func testHUDSnapshotNeedsTheHeadlessSignalBeforeThePromptShows() {
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        fake.hud = true
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
+        fake.headless = ModOnboardingConfig.headlessDurationThreshold
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
+    }
+
+    // MARK: Status and the silence clock
+
+    func testStatusFollowsInstallRegistryVersionAndData() {
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        XCTAssertEqual(coordinator.enhancementStatus(), .notInstalled)
+
+        fake.record = ModInstallRecord(installedAt: start)
+        refresh(coordinator)
+        XCTAssertEqual(coordinator.enhancementStatus(), .waitingForData)
+
+        let seen = start.addingTimeInterval(30)
+        clock.advance(by: 30)
+        coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: seen))
+        XCTAssertEqual(coordinator.enhancementStatus(), .active(lastDataAt: seen))
+
+        fake.version = .detected(ClaudeCodeVersion(major: 2, minor: 1, patch: 200))
+        refresh(coordinator)
+        XCTAssertEqual(coordinator.enhancementStatus(), .unsupportedClaudeCode(ClaudeCodeVersion(major: 2, minor: 1, patch: 200)))
+    }
+
+    func testSilenceClockStartsAtTheLaterOfInstallTimeAndTheStartOfCurrentActivity() {
+        fake.record = ModInstallRecord(installedAt: start)
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+
+        // Claude Code has been idle for a long time; the install was just now.
+        clock.advance(by: 3_600)
+        XCTAssertEqual(coordinator.enhancementStatus(), .waitingForData, "no activity yet: nothing to be silent about")
+
+        // Work starts; an hour-old install must not make the Mod "silent" immediately.
+        coordinator.setClaudeActivity(running: true)
+        XCTAssertEqual(coordinator.enhancementStatus(), .waitingForData)
+        clock.advance(by: ModOnboardingConfig.noDataWithActivityGrace - 1)
+        XCTAssertEqual(coordinator.enhancementStatus(), .waitingForData)
+        clock.advance(by: 1)
+        XCTAssertEqual(coordinator.enhancementStatus(), .enabledButSilent)
+
+        // Activity that ended and began again restarts the clock.
+        coordinator.setClaudeActivity(running: false)
+        clock.advance(by: 60)
+        coordinator.setClaudeActivity(running: true)
+        XCTAssertEqual(coordinator.enhancementStatus(), .waitingForData)
+    }
+
+    func testReinstallingStartsTheSilenceClockAtTheNewInstallTime() {
+        fake.record = ModInstallRecord(installedAt: start)
+        let coordinator = makeCoordinator()
+        coordinator.setClaudeActivity(running: true)
+        refresh(coordinator)
+        clock.advance(by: 3_600)
+        XCTAssertEqual(coordinator.enhancementStatus(), .enabledButSilent)
+
+        fake.record = ModInstallRecord(installedAt: clock.now)
+        refresh(coordinator)
+        XCTAssertEqual(coordinator.enhancementStatus(), .waitingForData)
+    }
+
+    // MARK: Mod data
+
+    func testOnlyModObservationsCountAndTheTimestampIsPersistedAndCappedAtNow() {
+        let coordinator = makeCoordinator()
+        coordinator.recordObservation(observation(source: "claude-hud", observedAt: clock.now))
+        XCTAssertNil(timestamps.lastModDataAt, "HUD data is not Mod data")
+
+        coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: clock.now.addingTimeInterval(3_600)))
+        XCTAssertEqual(timestamps.lastModDataAt, clock.now, "a clock-skewed snapshot cannot lie in the future")
+
+        let older = clock.now.addingTimeInterval(-500)
+        coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: older))
+        XCTAssertEqual(timestamps.lastModDataAt, clock.now, "an older snapshot never moves the timestamp back")
+
+        // The persisted value survives a restart.
+        let restarted = makeCoordinator()
+        refresh(restarted)
+        XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .dataSources)
+    }
+
+    // MARK: Install
+
+    func testASuccessfulInstallRefreshesTheRegistryAndStartsTheSilenceClock() {
+        final class Locator: ClaudeExecutableLocating { func locate() -> String? { "/usr/local/bin/claude" } }
+        final class Runner: ModCommandRunning {
+            func run(executablePath: String, arguments: [String]) -> ModCommandResult? {
+                ModCommandResult(exitCode: 0, stdout: "{\"outcome\":\"ok\"}", stderr: "")
+            }
+        }
+        let installer = ModInstaller(plan: .standard, locator: Locator(), runner: Runner(),
+                                     workQueue: DispatchQueue(label: "test.mod-install"), callbackQueue: .main)
+        let coordinator = makeCoordinator(installer: installer)
+        refresh(coordinator)
+        XCTAssertEqual(coordinator.enhancementStatus(), .notInstalled)
+
+        fake.record = ModInstallRecord(installedAt: clock.now)
+        let reads = fake.reads
+        let finished = expectation(description: "install finished")
+        coordinator.controller.onStateChange = {
+            if coordinator.controller.state == .succeeded { finished.fulfill() }
+        }
+        coordinator.controller.startInstall()
+        wait(for: [finished], timeout: 2)
+        let deadline = Date().addingTimeInterval(2)
+        while coordinator.enhancementStatus() == .notInstalled, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertGreaterThan(fake.reads, reads, "the install triggers a fresh environment read")
+        XCTAssertEqual(coordinator.enhancementStatus(), .waitingForData)
+    }
+
+    // MARK: Registry and plan
+
+    func testPluginRegistryParsing() {
+        let json = """
+        {"version": 2, "plugins": {
+          "balancebar-mod@balancebar-mods": [{"scope": "user", "installedAt": "2026-10-20T10:00:00.000Z"}],
+          "other@market": [{"scope": "user"}],
+          "empty@market": []
+        }}
+        """
+        let installed = ClaudePluginRegistry.record(from: Data(json.utf8), pluginID: "balancebar-mod@balancebar-mods")
+        XCTAssertEqual(installed?.installedAt, ISO8601DateFormatter().date(from: "2026-10-20T10:00:00Z"))
+        XCTAssertEqual(ClaudePluginRegistry.record(from: Data(json.utf8), pluginID: "other@market"), ModInstallRecord(installedAt: nil))
+        XCTAssertNil(ClaudePluginRegistry.record(from: Data(json.utf8), pluginID: "empty@market"))
+        XCTAssertNil(ClaudePluginRegistry.record(from: Data(json.utf8), pluginID: "missing@market"))
+        XCTAssertNil(ClaudePluginRegistry.record(from: Data("not json".utf8), pluginID: "balancebar-mod@balancebar-mods"))
+    }
+
+    func testStandardPlanNamesThePublishedModAndOnlyDevelopmentBuildsAcceptAnOverride() throws {
+        XCTAssertEqual(ModInstallPlan.standard.pluginID, "balancebar-mod@balancebar-mods")
+        XCTAssertEqual(ModInstallPlan.standard.marketplaceArguments,
+                       ["plugin", "marketplace", "add", "huanmeng06/BalanceBar", "--scope", "user", "--json"])
+        let suite = "ModPlan.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("/tmp/checkout/mod", forKey: ModInstallPlan.developmentSourceKey)
+        defaults.set("local", forKey: ModInstallPlan.developmentScopeKey)
+
+        XCTAssertEqual(ModInstallPlan.resolved(defaults: defaults, bundleIdentifier: "com.huanmeng06.BalanceBar"), .standard,
+                       "a production build ignores the override")
+        let dev = ModInstallPlan.resolved(defaults: defaults, bundleIdentifier: "com.huanmeng06.BalanceBar.dev")
+        XCTAssertEqual(dev.marketplaceSource, "/tmp/checkout/mod")
+        XCTAssertEqual(dev.scope, "local")
+        XCTAssertEqual(dev.pluginID, ModInstallPlan.standard.pluginID)
+
+        defaults.set("elsewhere", forKey: ModInstallPlan.developmentScopeKey)
+        XCTAssertEqual(ModInstallPlan.resolved(defaults: defaults, bundleIdentifier: "com.huanmeng06.BalanceBar.dev").scope, "user",
+                       "an unknown scope falls back to the standard one")
+    }
+
+    // MARK: Localization
+
+    func testEveryOnboardingTextHasAResourceKeyAndTheSimplifiedChineseCopyMatchesItsDefault() {
+        func normalized(_ text: String) -> String { text.replacingOccurrences(of: "%1$@", with: "%@") }
+        for text in ModOnboardingText.allCases {
+            let key = LocalizationKey(rawValue: text.rawValue)
+            XCTAssertNotNil(key, "\(text.rawValue) has no LocalizationKey")
+            if let key { XCTAssertEqual(tr(key, language: .simplifiedChinese), text.defaultText, text.rawValue) }
+            // (no placeholders in the onboarding copy, so no arguments are passed)
+        }
+        for text in RealtimeBoostText.allCases {
+            let key = LocalizationKey(rawValue: text.rawValue)
+            XCTAssertNotNil(key, "\(text.rawValue) has no LocalizationKey")
+            if let key {
+                let takesArgument = text == .statusActive || text == .statusUnsupported
+                XCTAssertEqual(normalized(tr(key, arguments: takesArgument ? ["%1$@"] : [], language: .simplifiedChinese)),
+                               normalized(text.defaultText), text.rawValue)
+            }
+        }
+        XCTAssertNotNil(LocalizationKey(rawValue: "mod.menu.data_sources"))
+        // Statuses that embed a time or a version keep a placeholder in every language.
+        for language in AppLanguage.allCases where language != .system {
+            for key in [LocalizationKey.keyModSettingsStatusActive, .keyModSettingsStatusUnsupported] {
+                XCTAssertTrue(tr(key, arguments: ["%1$@"], language: language).contains("%1$@"), "\(language) \(key.rawKey)")
+            }
+        }
+    }
+
+    // MARK: Views
+
+    func testSettingsBlockShowsStatusAndFollowsInstallProgress() {
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        let view = coordinator.realtimeBoostSettingsView()
+        XCTAssertEqual(view.presentation.statusText, tr(.keyModSettingsStatusNotInstalled))
+        XCTAssertFalse(view.installButton.isHidden)
+
+        fake.record = ModInstallRecord(installedAt: start)
+        refresh(coordinator)
+        let deadline = Date().addingTimeInterval(1)
+        while view.presentation.statusText == tr(.keyModSettingsStatusNotInstalled), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertEqual(view.presentation.statusText, tr(.keyModSettingsStatusWaiting))
+        XCTAssertTrue(view.installButton.isHidden)
+        XCTAssertTrue(coordinator.realtimeBoostSettingsView() === view, "one instance is kept up to date")
+    }
+
+    func testPanelFromTheCoordinatorUsesTheAppLanguageAndStartsAtTheIntro() {
+        let coordinator = makeCoordinator()
+        let panel = coordinator.makePanelView()
+        XCTAssertEqual(coordinator.controller.state, .intro(dismissChecked: false))
+        XCTAssertEqual(panel.snapshotLines.first, "# " + tr(.keyModPanelTitle))
+        XCTAssertTrue(panel.snapshotLines.contains("<" + tr(.keyModPanelInstall) + ">"))
+    }
+}

@@ -243,7 +243,8 @@ public final class CodexRolloutSource: QuotaSource {
     private func events(in file: URL) -> [CodexRateLimitEvent] {
         var result: [CodexRateLimitEvent] = []
         while true {
-            guard let batch = try? reader.read(file) else { break }
+            // Only the newest event per window matters, so a large log is read from its tail.
+            guard let batch = try? reader.read(file, firstReadTailBytes: QuotaConstants.initialTailReadBytes) else { break }
             result.append(contentsOf: batch.lines.compactMap(CodexRolloutParser.parse(line:)))
             if !batch.hasMore { break }
         }

@@ -462,7 +462,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self, self.activeClient == .codex else { return [:] }
                 return Dictionary(uniqueKeysWithValues: self.aggregationDisplays.map { ($0.identity.providerID, $0.snapshot) })
             },
-            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false }
+            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false },
+            makeRealtimeBoostView: { [weak self] forSearch in self?.modOnboarding.realtimeBoostSettingsView(detached: forSearch) }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -614,6 +615,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let ccSwitchRepository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
     private let claudeQuota: ClaudeQuotaPipeline
+    private let codexLocal: CodexLocalQuota
+    private let modOnboarding: ModOnboardingCoordinator
     private let balanceAPIClient = BalanceAPIClient()
     private let balanceProgressStore = ProviderBalanceProgressStore()
     private lazy var notificationCoordinator = BalanceNotificationCoordinator()
@@ -717,12 +720,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
-        let calibrationPreferences = preferences
-        self.claudeQuota = claudeQuota ?? ClaudeQuotaPipeline.makeProduction(
-            client: officialQuotaClient,
-            calibrationIntervalCap: {
-                RefreshPolicy.officialInterval(selected: calibrationPreferences.officialUsageRefreshInterval, client: .claude)
-            })
+        let claudePipeline = claudeQuota ?? ClaudeQuotaPipeline.makeProduction(client: officialQuotaClient)
+        self.claudeQuota = claudePipeline
+        self.codexLocal = CodexLocalQuota.makeProduction(officialQuotaClient: officialQuotaClient)
+        let modPlan = ModInstallPlan.resolved()
+        self.modOnboarding = ModOnboardingCoordinator(
+            plan: modPlan, environment: .production(plan: modPlan, hud: claudePipeline.hudSource))
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(
@@ -731,6 +734,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore()
         )
         super.init()
+        claudePipeline.realtimeObserver = { [weak self] observation, _ in
+            self?.modOnboarding.recordObservation(observation)
+        }
+        modOnboarding.onChange = { [weak self] in self?.refreshStatusItemMenuInput() }
         notificationCoordinator.onPermissionStateChanged = { [weak self] state in
             guard let self else { return }
             let previous = self.lastNotificationPermissionState
@@ -844,7 +851,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 ownedRender: { [weak self] providerID, snapshot in self?.render(snapshot, providerID: providerID) }
             ),
             refreshPreferences: preferences,
-            claudeQuota: self.claudeQuota
+            claudeQuota: self.claudeQuota,
+            codexLocal: self.codexLocal
         )
         providerSwitchCoordinator = ProviderSwitchCoordinator(
             repository: repository,
@@ -964,7 +972,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 manualRefreshNotice: { [weak self] in
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshNotice()
-                }
+                },
+                makeModOnboardingPanel: { [weak self] in self?.modOnboarding.makePanelView() },
+                openDataSources: { [weak self] in self?.openDashboardAdvanced() }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
                 mode: preferences.menuBarAnimationMode
@@ -986,6 +996,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             email: accountProfile?.email,
             subscription: OpenAISubscriptionTier(planType: accountProfile?.planType, client: activeClient)
         )
+        if isOfficialClaude { modOnboarding.refreshEnvironment() }
         let directProviderID = providerChoicesCache.first(where: \.isCurrent)?.id ?? lastProviderID
         let directProviderNotes = aggregationDisplays.isEmpty || activeClient != .codex
             ? directProviderID.flatMap { providerNotesCache[activeClient.appType]?[$0] }.map { [$0] } ?? [] : []
@@ -1011,7 +1022,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showsAvailableUpdateBadge: showsAvailableUpdateBadge,
             aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
             aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked,
-            quickSwitchSafety: quickSwitchSafety
+            quickSwitchSafety: quickSwitchSafety,
+            modRow: modOnboarding.menuRow(isOfficialDirect: isOfficialClaude)
         )
     }
 
@@ -1916,6 +1928,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateNotesWindowController.show(currentVersion: currentVersion, releases: releases)
     }
 
+    /// Settings › Advanced, where the real-time boost and its data sources live.
+    private func openDashboardAdvanced() {
+        dashboardComposition.open(initialSection: .advanced, scrollOffsetY: nil)
+        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
+    }
+
     private func showDashboardSection(_ section: DashboardSection) {
         dashboardComposition.showSection(section)
     }
@@ -2105,6 +2123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let wasRunning = isClaudeTaskRunning
         let stateChanged = running != wasRunning
         isClaudeTaskRunning = running
+        modOnboarding.setClaudeActivity(running: running)
         if stateChanged {
             SwitchLog.write("task state changed; client=claude; running=\(running)")
         }

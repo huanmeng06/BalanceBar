@@ -7,6 +7,13 @@ enum ModOnboardingConfig {
     /// An enabled Mod that stays silent this long while Claude Code is active is reported as "no data".
     static let noDataWithActivityGrace: TimeInterval = 10 * 60
     static let minimumClaudeCodeVersion = ClaudeCodeVersion(major: 2, minor: 1, patch: 287)
+    /// Source label the Mod writes into its snapshots.
+    static let modSourceID = "balancebar-mod"
+    /// Headless Claude Code activity (transcripts written while the HUD snapshot stays quiet) that makes the
+    /// Mod worth offering to a user who already has the HUD.
+    static let headlessDurationThreshold: TimeInterval = 5 * 60
+    /// How long the detected Claude Code version and plugin registry are trusted before being read again.
+    static let environmentRefreshInterval: TimeInterval = 10 * 60
 }
 
 /// Parsed `claude --version` value (for example "2.1.291 (Claude Code)").

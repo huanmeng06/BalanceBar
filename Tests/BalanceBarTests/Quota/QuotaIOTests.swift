@@ -44,6 +44,33 @@ final class QuotaIOTests: XCTestCase {
         XCTAssertEqual(strings(try reader.read(url)), [])
     }
 
+    func testFirstReadTailSkipsToTheEndOfALargeFileAndFollowsAppendsAfterwards() throws {
+        let lines = (0..<100).map { "line-\(String(format: "%03d", $0))" }
+        let url = try write(lines.joined(separator: "\n") + "\n", to: "big.jsonl")   // 100 lines x 9 bytes = 900 bytes
+        let reader = IncrementalJSONLReader()
+        // 25 bytes before the end lands inside line-097, which is dropped as a partial line.
+        let tail = strings(try reader.read(url, firstReadTailBytes: 25))
+        XCTAssertEqual(tail, ["line-098", "line-099"])
+        XCTAssertEqual(reader.lastReadByteCount, 25)
+        XCTAssertEqual(strings(try reader.read(url, firstReadTailBytes: 25)), [], "an already followed file ignores the tail option")
+        try append("line-100\n", to: url)
+        XCTAssertEqual(strings(try reader.read(url, firstReadTailBytes: 25)), ["line-100"])
+    }
+
+    func testFirstReadTailIsIgnoredForSmallFilesAndAfterRotation() throws {
+        let url = try write("a\nb\nc\n", to: "small.jsonl")
+        let reader = IncrementalJSONLReader()
+        XCTAssertEqual(strings(try reader.read(url, firstReadTailBytes: 1_000)), ["a", "b", "c"], "a file smaller than the tail is read whole")
+
+        let big = try write((0..<50).map { "row-\(String(format: "%02d", $0))" }.joined(separator: "\n") + "\n", to: "rot.jsonl")
+        XCTAssertEqual(strings(try reader.read(big, firstReadTailBytes: 12)).count, 1)
+        try FileManager.default.moveItem(at: big, to: root.appendingPathComponent("rot.jsonl.1"))
+        _ = try write((0..<60).map { "new-\(String(format: "%02d", $0))" }.joined(separator: "\n") + "\n", to: "rot.jsonl")
+        let rotated = try reader.read(big, firstReadTailBytes: 12)
+        XCTAssertTrue(rotated.didReset)
+        XCTAssertEqual(rotated.lines.count, 60, "after rotation the new file is read from its start")
+    }
+
     func testTruncationRestartsFromBeginning() throws {
         let url = try write("one\ntwo\nthree\n", to: "log.jsonl")
         let reader = IncrementalJSONLReader()

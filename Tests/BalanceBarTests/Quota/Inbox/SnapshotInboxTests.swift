@@ -111,6 +111,50 @@ final class SnapshotInboxTests: XCTestCase {
         XCTAssertTrue(collect(identity: identity).isEmpty)
     }
 
+    // MARK: Account isolation (INT-2)
+
+    private func writeSnapshot(name: String, emailHash: String?) throws {
+        var object: [String: Any] = [
+            "updated_at": "2026-10-17T06:12:03.250Z",
+            "five_hour": ["used_percentage": 34.0, "resets_at": "2026-10-17T09:00:00Z"],
+            "source": "balancebar-mod"
+        ]
+        if let emailHash { object["account"] = ["email_hash": emailHash] }
+        try JSONSerialization.data(withJSONObject: object).write(to: inbox.appendingPathComponent(name))
+    }
+
+    func testEmailHashFormatMatchesTheModAndNormalizesTheAddress() {
+        // sha256("a@example.com"), as the Mod computes it for the trimmed, lowercased address.
+        let expected = "sha256:08168cd80dfd534ab0f10af10f1303fe00af2d43ab5c1432360d137f8197e17a"
+        XCTAssertEqual(SnapshotInbox.emailHash("a@example.com"), expected)
+        XCTAssertEqual(SnapshotInbox.emailHash(" A@Example.com\n"), expected)
+        XCTAssertEqual(SnapshotInbox.emailHash("   "), "")
+    }
+
+    func testSnapshotNamingAnotherAccountIsDroppedAndTheMatchingOneIsAccepted() throws {
+        let identity = FakeIdentity()
+        identity.accountIdentity = AccountIdentity(stableID: "claude:a:org", email: "a@example.com", idSource: .accountUUID)
+        try writeSnapshot(name: "balancebar-mod-other.json", emailHash: SnapshotInbox.emailHash("b@example.com"))
+        XCTAssertTrue(collect(identity: identity).isEmpty, "another login's file never reaches this account")
+
+        try writeSnapshot(name: "balancebar-mod-mine.json", emailHash: SnapshotInbox.emailHash("A@example.com "))
+        let observations = collect(identity: identity)
+        XCTAssertEqual(observations.map(\.window), [.fiveHour])
+        XCTAssertEqual(observations.first?.accountID, "claude:a:org")
+    }
+
+    func testSnapshotWithoutAnAccountHashOrWithoutAKnownEmailIsStillAccepted() throws {
+        let identity = FakeIdentity()
+        identity.accountIdentity = AccountIdentity(stableID: "claude:a:org", email: "a@example.com", idSource: .accountUUID)
+        try writeSnapshot(name: "hud-style.json", emailHash: nil)
+        XCTAssertEqual(collect(identity: identity).count, 1, "the HUD format names no account")
+
+        try FileManager.default.removeItem(at: inbox.appendingPathComponent("hud-style.json"))
+        let noEmail = FakeIdentity()
+        try writeSnapshot(name: "balancebar-mod-x.json", emailHash: SnapshotInbox.emailHash("b@example.com"))
+        XCTAssertEqual(collect(identity: noEmail).count, 1, "without a known email nothing can be compared")
+    }
+
     func testHalfWrittenFileIsRetriedOnceAndThenRead() throws {
         let target = inbox.appendingPathComponent("hud.json")
         let full = try fixtureData("hud-0.11.3.json")

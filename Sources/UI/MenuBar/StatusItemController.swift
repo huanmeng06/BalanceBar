@@ -2219,6 +2219,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// Why a manual refresh would be skipped for the visible official quota;
         /// read when the menu validates its items.
         let manualRefreshNotice: () -> ClaudeManualRefreshNotice?
+        /// Builds the real-time boost explanation panel, or `nil` when it is not offered.
+        let makeModOnboardingPanel: () -> ModOnboardingPanelView?
+        /// Opens Settings › Advanced, where the real-time boost and its data sources are managed.
+        let openDataSources: () -> Void
 
         init(
             manualRefresh: @escaping () -> Void,
@@ -2237,10 +2241,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             animationFallbackChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in },
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
-            manualRefreshNotice: @escaping () -> ClaudeManualRefreshNotice? = { nil }
+            manualRefreshNotice: @escaping () -> ClaudeManualRefreshNotice? = { nil },
+            makeModOnboardingPanel: @escaping () -> ModOnboardingPanelView? = { nil },
+            openDataSources: @escaping () -> Void = {}
         ) {
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
             self.manualRefreshNotice = manualRefreshNotice
+            self.makeModOnboardingPanel = makeModOnboardingPanel
+            self.openDataSources = openDataSources
             self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
             self.openChatGPT = openChatGPT
@@ -2371,6 +2379,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let lunaReserveHideExhaustedQuota: Bool
         let bankedResetDisplayMode: CodexBankedResetDisplayMode
         let showsAvailableUpdateBadge: Bool
+        /// Real-time boost entry at the bottom of the menu group.
+        let modRow: ModMenuRow
 
         init(
             choices: [ProviderChoice],
@@ -2391,8 +2401,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showsAvailableUpdateBadge: Bool = false,
             aggregatedProviders: [AggregatedProviderDisplay] = [],
             aggregationQuickSwitchBlocked: Bool = false,
-            quickSwitchSafety: CCSwitchQuickSwitchSafety? = nil
+            quickSwitchSafety: CCSwitchQuickSwitchSafety? = nil,
+            modRow: ModMenuRow = .none
         ) {
+            self.modRow = modRow
             self.language = AppLanguage.resolved
             self.aggregatedProviders = aggregatedProviders
             self.quickSwitchSafety = quickSwitchSafety ?? (aggregationQuickSwitchBlocked ? .blockedAggregation : .allowedDirect)
@@ -2438,12 +2450,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
                 && lhs.bankedResetDisplayMode == rhs.bankedResetDisplayMode
                 && lhs.showsAvailableUpdateBadge == rhs.showsAvailableUpdateBadge
+                && lhs.modRow == rhs.modRow
         }
         func hasSameNativeItems(as other: Self) -> Bool {
             activeClient == other.activeClient
                 && statusLinks == other.statusLinks && showQuickSwitchMenu == other.showQuickSwitchMenu
                 && showOpenChatGPTMenu == other.showOpenChatGPTMenu && showOpenCCSwitchMenu == other.showOpenCCSwitchMenu
                 && showStatusMenu == other.showStatusMenu && showsAvailableUpdateBadge == other.showsAvailableUpdateBadge
+                && modRow == other.modRow
                 && language == other.language
         }
     }
@@ -2476,6 +2490,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private var statusItem: NSStatusItem?
     private var statusMenu = NSMenu()
+    private let modOnboardingPresenter = ModOnboardingPopoverPresenter()
     private var retiringStatusMenus: [NSMenu] = []
     private var retiringStatusMenuObservers: [ObjectIdentifier: [NSObjectProtocol]] = [:]
     private var statusItemAttachmentCheckScheduled = false
@@ -6113,6 +6128,34 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func openDashboard() { actions.openDashboard() }
     @objc private func openChatGPT() { actions.openChatGPT() }
 
+    /// "启用实时增强 ›" while the prompt applies, otherwise the quiet "数据来源" entry.
+    private func makeModMenuItem() -> NSMenuItem? {
+        switch menuInput.modRow {
+        case .none:
+            return nil
+        case .prompt:
+            let item = NSMenuItem(
+                title: ModOnboardingText.appLocalize(.promptRow), action: #selector(openModOnboarding), keyEquivalent: "")
+            item.target = self
+            return item
+        case .dataSources:
+            let item = NSMenuItem(
+                title: tr(.keyModMenuDataSources), action: #selector(openDataSources), keyEquivalent: "")
+            item.target = self
+            return item
+        }
+    }
+
+    @objc private func openModOnboarding() {
+        // The menu is still closing; show the panel once the status button can anchor a popover.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let button = self.statusItem?.button, let panel = self.actions.makeModOnboardingPanel() else { return }
+            self.modOnboardingPresenter.present(panel: panel, relativeTo: button)
+        }
+    }
+
+    @objc private func openDataSources() { actions.openDataSources() }
+
     private func openCurrentAgentMenuTitle() -> String {
         switch menuInput.activeClient {
         case .codex:
@@ -6236,6 +6279,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if menuInput.showStatusMenu {
             menu.addItem(makeStatusLinksMenuItem())
         }
+        if let modItem = makeModMenuItem() { menu.addItem(modItem) }
         menu.addItem(.separator())
         menu.addItem(
             withTitle: tr(.keyStatusItemControllerQuitBalancebar),

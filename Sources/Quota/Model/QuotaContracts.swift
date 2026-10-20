@@ -11,6 +11,10 @@ public enum QuotaConstants {
     /// How long a real-time source remains fresh for request suppression.
     public static let realtimeSourceFreshness: TimeInterval = 120
 
+    /// Longest a fresh real-time source may keep suppressing automatic usage requests.
+    /// After this long without a successful read, one calibration read is allowed.
+    public static let realtimeCalibrationInterval: TimeInterval = 60 * 60
+
     /// Maximum allowed difference for a grade-B observation, in percentage points.
     public static let gradeBTolerancePercentagePoints: Double = 2
 
@@ -25,6 +29,9 @@ public enum QuotaConstants {
 
     /// Maximum complete lines returned by a single incremental JSONL read.
     public static let incrementalReadMaximumLines = 10_000
+
+    /// How much of the end of a large log file a first scan reads when only its newest events matter.
+    public static let initialTailReadBytes = 4 * 1_024 * 1_024
 
     /// Maximum remembered deduplication keys per incrementally read file.
     public static let incrementalReadMaximumDeduplicationKeys = 50_000

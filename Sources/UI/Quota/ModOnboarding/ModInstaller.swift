@@ -6,12 +6,38 @@ struct ModInstallPlan: Equatable {
     var pluginID: String
     var scope: String
 
-    /// Placeholder identifiers until BB-14 (#525) publishes the real marketplace; INT-2 passes the final plan.
+    /// The published BalanceBar Mod (BB-14 / #525): plugin `balancebar-mod` from marketplace `balancebar-mods`.
+    /// `marketplaceSource` is the public repository that hosts the marketplace; it only resolves once the
+    /// marketplace is published there. Until then one-click install reports a failure and the panel falls back
+    /// to the copyable commands. Development builds can point it at a checkout (see `resolved`).
     static let standard = ModInstallPlan(
         marketplaceSource: "huanmeng06/BalanceBar",
         pluginID: "balancebar-mod@balancebar-mods",
         scope: "user"
     )
+
+    static let developmentSourceKey = "modOnboarding.marketplaceSource"
+    static let developmentScopeKey = "modOnboarding.scope"
+
+    /// The standard plan, or, for the development bundle only, one with the marketplace source (and optionally
+    /// the scope) taken from user defaults, e.g.
+    /// `defaults write com.huanmeng06.BalanceBar.dev modOnboarding.marketplaceSource "$PWD/mod"`.
+    static func resolved(
+        defaults: UserDefaults = .standard,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) -> ModInstallPlan {
+        var plan = standard
+        guard let bundleIdentifier, bundleIdentifier.hasPrefix("com.huanmeng06.BalanceBar.dev") else { return plan }
+        if let source = defaults.string(forKey: developmentSourceKey)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !source.isEmpty {
+            plan.marketplaceSource = source
+        }
+        if let scope = defaults.string(forKey: developmentScopeKey)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           ["user", "project", "local"].contains(scope) {
+            plan.scope = scope
+        }
+        return plan
+    }
 
     var marketplaceArguments: [String] { ["plugin", "marketplace", "add", marketplaceSource, "--scope", scope, "--json"] }
     var installArguments: [String] { ["plugin", "install", pluginID, "--scope", scope, "--json"] }

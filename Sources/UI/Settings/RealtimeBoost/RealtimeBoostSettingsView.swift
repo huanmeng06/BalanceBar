@@ -27,6 +27,15 @@ enum RealtimeBoostText: String, CaseIterable {
     }
 
     static let defaultLocalize: (RealtimeBoostText) -> String = { $0.defaultText }
+
+    /// Routes copy through the app's localization tables. Status formats keep a literal `%1$@`.
+    static let appLocalize: (RealtimeBoostText) -> String = { text in
+        guard let key = LocalizationKey(rawValue: text.rawValue) else { return text.defaultText }
+        switch text {
+        case .statusActive, .statusUnsupported: return tr(key, arguments: ["%1$@"])
+        default: return tr(key)
+        }
+    }
 }
 
 /// What the settings page shows for a status; tests assert on it without rendering.
@@ -61,19 +70,29 @@ struct RealtimeBoostPresentation: Equatable {
 final class RealtimeBoostSettingsView: NSView {
     private let controller: ModOnboardingController
     private let localize: (RealtimeBoostText) -> String
+    private let modLocalize: (ModOnboardingText) -> String
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
+    private let progressLabel = NSTextField(wrappingLabelWithString: "")
     let installButton: NSButton
     let copyButton: NSButton
     let promptToggle: NSButton
     private(set) var presentation: RealtimeBoostPresentation
 
+    /// - Parameters:
+    ///   - showsTitle: `false` when the page already puts the block in a titled section.
+    ///   - observesController: `false` for a detached copy (Dashboard search results) that must not take over
+    ///     the install-progress observer from the live Settings block.
     init(
         controller: ModOnboardingController,
         status: ModEnhancementStatus,
-        localize: @escaping (RealtimeBoostText) -> String = RealtimeBoostText.defaultLocalize
+        localize: @escaping (RealtimeBoostText) -> String = RealtimeBoostText.defaultLocalize,
+        modLocalize: @escaping (ModOnboardingText) -> String = ModOnboardingText.appLocalize,
+        showsTitle: Bool = true,
+        observesController: Bool = true
     ) {
         self.controller = controller
         self.localize = localize
+        self.modLocalize = modLocalize
         presentation = RealtimeBoostPresentation.make(status: status, localize: localize)
         installButton = NSButton(title: localize(.install), target: nil, action: nil)
         copyButton = NSButton(title: localize(.copyCommands), target: nil, action: nil)
@@ -87,7 +106,11 @@ final class RealtimeBoostSettingsView: NSView {
         promptToggle.target = self; promptToggle.action = #selector(togglePrompt)
         let buttons = NSStackView(views: [installButton, copyButton])
         buttons.spacing = 8
-        let stack = NSStackView(views: [title, statusLabel, buttons, promptToggle])
+        progressLabel.textColor = .secondaryLabelColor
+        progressLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        var views: [NSView] = [statusLabel, progressLabel, buttons, promptToggle]
+        if showsTitle { views.insert(title, at: 0) }
+        let stack = NSStackView(views: views)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -99,6 +122,7 @@ final class RealtimeBoostSettingsView: NSView {
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        if observesController { controller.onStateChange = { [weak self] in self?.apply() } }
         apply()
     }
 
@@ -109,10 +133,32 @@ final class RealtimeBoostSettingsView: NSView {
         apply()
     }
 
+    /// Install progress or the failure fallback, shown under the status while the controller is not idle.
+    private var progressText: String {
+        switch controller.state {
+        case let .installing(step):
+            let labels = [modLocalize(.step1), modLocalize(.step2), modLocalize(.step3)]
+            return labels[step.rawValue] + "…"
+        case .succeeded: return modLocalize(.enabled)
+        case .failed: return modLocalize(.failureTitle)
+        case .intro, .dismissConfirmed: return ""
+        }
+    }
+
     private func apply() {
+        var installing = false
+        var failed = false
+        switch controller.state {
+        case .installing: installing = true
+        case .failed: failed = true
+        default: break
+        }
         statusLabel.stringValue = presentation.statusText
-        installButton.isHidden = !presentation.showsInstallAction
-        copyButton.isHidden = !presentation.showsCopyAction
+        progressLabel.stringValue = progressText
+        progressLabel.isHidden = progressText.isEmpty
+        installButton.isHidden = !presentation.showsInstallAction || installing
+        // A failed install leaves the copyable commands as the way forward.
+        copyButton.isHidden = !(presentation.showsCopyAction || failed)
         promptToggle.state = controller.isPromptDismissed ? .off : .on
     }
 

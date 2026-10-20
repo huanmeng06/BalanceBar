@@ -21,6 +21,8 @@ public struct JSONLReadResult: Equatable {
 /// identity as rotation; both restart at offset 0. Lines longer than
 /// `maximumBytesPerRead` are skipped. Each call reads at most
 /// `maximumBytesPerRead` bytes, regardless of duplicates or skipped lines.
+/// A caller that only needs a file's newest content can pass `firstReadTailBytes`: a file seen for the first
+/// time then starts that many bytes before its end (at the next line boundary) instead of at offset 0.
 /// Format parsing is the caller's job.
 ///
 /// Methods perform blocking IO and are serialized on an internal background
@@ -58,14 +60,16 @@ public final class IncrementalJSONLReader {
     }
 
     /// Reads the next batch synchronously on the internal queue.
-    public func read(_ url: URL) throws -> JSONLReadResult {
-        return try queue.sync { try readLocked(url) }
+    /// - Parameter firstReadTailBytes: For a file not read before, skip everything but roughly this many
+    ///   trailing bytes (the partial line at the cut is dropped). Ignored for files already being followed.
+    public func read(_ url: URL, firstReadTailBytes: Int? = nil) throws -> JSONLReadResult {
+        return try queue.sync { try readLocked(url, firstReadTailBytes: firstReadTailBytes) }
     }
 
     /// Reads the next batch on the internal background queue.
     public func read(_ url: URL, completion: @escaping (Result<JSONLReadResult, Error>) -> Void) {
         queue.async { [self] in
-            completion(Result { try readLocked(url) })
+            completion(Result { try readLocked(url, firstReadTailBytes: nil) })
         }
     }
 
@@ -78,7 +82,7 @@ public final class IncrementalJSONLReader {
         url.standardizedFileURL.path
     }
 
-    private func readLocked(_ url: URL) throws -> JSONLReadResult {
+    private func readLocked(_ url: URL, firstReadTailBytes: Int?) throws -> JSONLReadResult {
         let handle: FileHandle
         var info = stat()
         if let validator {
@@ -103,6 +107,11 @@ public final class IncrementalJSONLReader {
         } else {
             didReset = states[stateKey] != nil
             state = FileState(device: info.st_dev, inode: info.st_ino, offset: 0)
+            if !didReset, let tail = firstReadTailBytes, tail > 0, size > UInt64(tail) {
+                // The cut usually lands inside a line: drop it up to the next newline.
+                state.offset = size - UInt64(tail)
+                state.skippingOversizedLine = true
+            }
         }
 
         var lines: [Data] = []

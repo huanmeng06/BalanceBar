@@ -3351,6 +3351,50 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testRealtimeBoostRowFollowsTheMenuInputAndOpensItsDestinations() throws {
+        var panelRequests = 0
+        var dataSourceOpens = 0
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in },
+            iconChanged: { _ in },
+            makeModOnboardingPanel: { panelRequests += 1; return nil },
+            openDataSources: { dataSourceOpens += 1 }))
+        defer { controller.teardown() }
+        func input(_ row: ModMenuRow) -> StatusItemController.MenuInput {
+            StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+                openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official", modRow: row)
+        }
+        let promptTitle = ModOnboardingText.appLocalize(.promptRow)
+        let dataSourcesTitle = tr(.keyModMenuDataSources)
+        func item(_ title: String) -> NSMenuItem? { controller.statusMenuForTesting.items.first { $0.title == title } }
+
+        controller.start(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.none), settings: makeSettings())
+        XCTAssertNil(item(promptTitle))
+        XCTAssertNil(item(dataSourcesTitle))
+
+        controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.prompt), settings: makeSettings())
+        let prompt = try XCTUnwrap(item(promptTitle), "the install-hint row appears")
+        XCTAssertNil(item(dataSourcesTitle))
+        let items = controller.statusMenuForTesting.items
+        XCTAssertLessThan(try XCTUnwrap(items.firstIndex(of: prompt)), try XCTUnwrap(items.firstIndex { $0.title == tr(.keyStatusItemControllerQuitBalancebar) }),
+                          "it sits in the action group above Quit")
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(prompt.action), to: prompt.target, from: prompt))
+        let deadline = Date().addingTimeInterval(1)
+        while panelRequests == 0, Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }
+        XCTAssertEqual(panelRequests, 1, "the row asks for the explanation panel once the menu has closed")
+
+        controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.dataSources), settings: makeSettings())
+        XCTAssertNil(item(promptTitle), "dismissing swaps the prompt for the quiet data-sources entry")
+        let sources = try XCTUnwrap(item(dataSourcesTitle))
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(sources.action), to: sources.target, from: sources))
+        XCTAssertEqual(dataSourceOpens, 1)
+
+        controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.none), settings: makeSettings())
+        XCTAssertNil(item(dataSourcesTitle))
+    }
+
+    @MainActor
     func testClaudeCardShowsTheStatusSlotAndUpdatesItInPlaceThroughRefreshFailureAndRecovery() throws {
         let controller = makeController()
         defer { controller.teardown() }

@@ -81,7 +81,7 @@ final class ObservedFetchSchedulerStateStore: FetchSchedulerStateStoring {
 ///
 /// Account epochs restart at zero on every launch, so a persisted epoch from an earlier run
 /// would otherwise reject every new observation as stale.
-private final class RebasingMergeStore: QuotaMergeStateStoring {
+final class RebasingMergeStore: QuotaMergeStateStoring {
     private let base: QuotaMergeStateStoring
     private let accountID: String?
     private let epoch: AccountEpoch
@@ -101,6 +101,74 @@ private final class RebasingMergeStore: QuotaMergeStateStoring {
     func save(_ state: QuotaMergeState) { base.save(state) }
 }
 
+/// Lets other threads ask the merge engine whether a window waits for a reset confirmation.
+final class ClaudeMergeEngineBox {
+    private let lock = NSLock()
+    private var engine: QuotaMergeEngine?
+
+    func set(_ engine: QuotaMergeEngine) { lock.withLock { self.engine = engine } }
+
+    /// `true` when a window passed its reset time, whether or not the engine has noticed yet.
+    func hasPassedReset(at date: Date) -> Bool {
+        guard let engine = lock.withLock({ self.engine }) else { return false }
+        return engine.currentState.windows.values.contains { window in
+            window.pendingResetOf != nil || (window.displayed?.resetsAt).map { $0 <= date } ?? false
+        }
+    }
+}
+
+/// Remembers when a trusted real-time source (Claude HUD, the BalanceBar Mod) last had an observation
+/// accepted by the merge engine, so the scheduler can skip requests the local sources already answer.
+///
+/// Only accepted observations count: a snapshot rejected by the merge rules (another account, a stale
+/// cycle) never suppresses a request. While a window waits for a reset confirmation nothing is trusted,
+/// because only an official read can confirm the reset.
+final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefreshFreePathChecking {
+    private let identity: AccountIdentityProviding
+    private let now: () -> Date
+    private let resetPassed: () -> Bool
+    private let lock = NSLock()
+    private var acceptedAt: Date?
+    private var acceptedEpoch: AccountEpoch?
+
+    init(identity: AccountIdentityProviding, now: @escaping () -> Date, resetPassed: @escaping () -> Bool) {
+        self.identity = identity
+        self.now = now
+        self.resetPassed = resetPassed
+    }
+
+    func recordAccepted(at date: Date, epoch: AccountEpoch) {
+        lock.withLock {
+            acceptedAt = date
+            acceptedEpoch = epoch
+        }
+    }
+
+    func clear() {
+        lock.withLock {
+            acceptedAt = nil
+            acceptedEpoch = nil
+        }
+    }
+
+    var lastTrustedRealtimeObservationAt: Date? {
+        let (at, epoch) = lock.withLock { (acceptedAt, acceptedEpoch) }
+        guard let at, epoch == identity.accountEpoch, !resetPassed() else { return nil }
+        return at
+    }
+
+    /// `true` while the newest trusted observation is younger than `window`.
+    func isFresh(within window: TimeInterval) -> Bool {
+        guard let at = lastTrustedRealtimeObservationAt else { return false }
+        let age = now().timeIntervalSince(at)
+        return age >= 0 && age < window
+    }
+
+    func checkFreePath(within window: TimeInterval, completion: @escaping (Bool) -> Void) {
+        completion(isFresh(within: window))
+    }
+}
+
 /// Claude official quota path: account identity → scheduler → merge engine → status and notifications.
 ///
 /// All file, Keychain and merge-state work happens on private background queues; `latestState`
@@ -118,6 +186,10 @@ final class ClaudeQuotaPipeline {
     private let now: () -> Date
     private let manualRefreshWindow: TimeInterval
     private let diagnostics: (String, SwitchLog.Level) -> Void
+    private let realtimeSources: [QuotaSource]
+    private let realtime: ClaudeRealtimeTracker
+    private let engineBox = ClaudeMergeEngineBox()
+    private let realtimeFreshnessWindow: TimeInterval
     private let queue = DispatchQueue(label: "BalanceBar.ClaudeQuotaPipeline", qos: .utility)
     private let lock = NSLock()
 
@@ -141,6 +213,8 @@ final class ClaudeQuotaPipeline {
     private var updateHandler: ((ClaudeQuotaState) -> Void)?
 
     /// - Parameters:
+    ///   - realtimeSources: Local real-time sources (Claude HUD, snapshot inbox). They start with the pipeline
+    ///     and deliver grade-B observations to the merge engine.
     ///   - calibrationIntervalCap: Upper bound for how long a fresh real-time source may suppress requests.
     ///   - diagnostics: Receives scheduler skip reasons; production writes them to `SwitchLog`.
     init(
@@ -148,6 +222,7 @@ final class ClaudeQuotaPipeline {
         identity: ClaudeAccountIdentityProvider,
         identityQueue: DispatchQueue,
         stateDirectory: URL,
+        realtimeSources: [QuotaSource] = [],
         calibrationIntervalCap: @escaping () -> TimeInterval? = { nil },
         schedulerClock: SchedulerClock = SystemSchedulerClock(),
         schedulerTimer: SchedulerTimer = DispatchSchedulerTimer(),
@@ -158,6 +233,10 @@ final class ClaudeQuotaPipeline {
         }
     ) {
         self.client = client
+        self.realtimeSources = realtimeSources
+        realtimeFreshnessWindow = schedulerConfiguration.realtimeSourceFreshness
+        realtime = ClaudeRealtimeTracker(
+            identity: identity, now: now, resetPassed: { [engineBox, now] in engineBox.hasPassedReset(at: now()) })
         manualRefreshWindow = schedulerConfiguration.manualRefreshWindow
         self.diagnostics = diagnostics
         self.identity = identity
@@ -172,6 +251,8 @@ final class ClaudeQuotaPipeline {
             stateStore: stateStore,
             clock: schedulerClock,
             timer: schedulerTimer,
+            freePathChecker: realtime,
+            realtimeFreshness: realtime,
             calibrationIntervalCap: calibrationIntervalCap,
             configuration: schedulerConfiguration,
             logSink: { [weak self] event in self?.schedulerEvent(event) })
@@ -181,8 +262,22 @@ final class ClaudeQuotaPipeline {
     }
 
     deinit {
+        realtimeSources.forEach { $0.stop() }
         identity.stopMonitoring()
     }
+
+    /// Called on the pipeline queue for every observation the local real-time sources delivered, with whether
+    /// the merge engine accepted it (for example to remember when the Mod last delivered data).
+    var realtimeObserver: ((QuotaObservation, Bool) -> Void)? {
+        get { lock.withLock { observerHandler } }
+        set { lock.withLock { observerHandler = newValue } }
+    }
+    private var observerHandler: ((QuotaObservation, Bool) -> Void)?
+
+    /// Production HUD source, kept for diagnostics and the headless signal. `nil` when injected sources are used.
+    private(set) var hudSource: ClaudeHUDSource?
+    /// Production snapshot inbox, kept for health reporting.
+    private(set) var snapshotInbox: SnapshotInbox?
 
     /// Receives official snapshots that passed the notification adapter's rules.
     var onNotification: ((Snapshot) -> Void)? {
@@ -207,6 +302,8 @@ final class ClaudeQuotaPipeline {
         if let at = lock.withLock({ lastSuccessAt }), now().timeIntervalSince(at) < manualRefreshWindow {
             return .justRefreshed
         }
+        // A local real-time source answered within the window, so a manual read would be skipped.
+        if realtime.isFresh(within: manualRefreshWindow) { return .justRefreshed }
         return nil
     }
 
@@ -267,24 +364,54 @@ final class ClaudeQuotaPipeline {
             base: mergeFileStore, accountID: identity.accountIdentity?.stableID, epoch: identity.accountEpoch)
         let adapter = QuotaNotificationAdapter(processor: notificationRouter, providerID: "claude")
         self.adapter = adapter
-        engine = QuotaMergeEngine(scheduler: scheduler, notifications: adapter, store: restoring, now: now)
+        let mergeEngine = QuotaMergeEngine(scheduler: scheduler, notifications: adapter, store: restoring, now: now)
+        engine = mergeEngine
+        engineBox.set(mergeEngine)
         publish()
+        for source in realtimeSources {
+            source.start(receiving: { [weak self] observation in self?.receive(observation) })
+        }
         let reasons = pendingReasons
         pendingReasons.removeAll()
         if let reason = reasons.min(by: { $0.rawValue < $1.rawValue }) { prepareAndRequest(reason) }
     }
 
+    /// Entry for observations from the local real-time sources; they arrive on the sources' own queues.
+    private func receive(_ observation: QuotaObservation) {
+        queue.async { [self] in
+            guard let engine else { return }
+            engine.merge(observation)
+            // Only a reading the merge rules actually displayed counts as a trusted real-time answer.
+            let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
+            let accepted = displayed?.receivedAt == observation.receivedAt && displayed?.source == observation.source
+            if accepted { realtime.recordAccepted(at: now(), epoch: observation.epoch) }
+            self.realtimeObserver?(observation, accepted)
+            if let account = identity.accountIdentity {
+                adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: account))
+            }
+            publish()
+        }
+    }
+
     private func prepareAndRequest(_ reason: FetchRequestReason) {
-        let epoch = identity.accountEpoch
-        let token = client.claudeRequestCredentials(cacheFor: 2).accessToken
-        identity.ingestCredential(accessToken: token, expectedEpoch: epoch)
-        identityQueue.sync {}
+        // While a live local source answers, an automatic read is skipped anyway, so the credential
+        // probe (a Keychain read) is not worth its cost. A read that does go through (the calibration
+        // cap) reads and ingests the token itself.
+        let answeredLive = reason != .manual && reason != .initial
+            && realtime.isFresh(within: realtimeFreshnessWindow)
+        if !answeredLive {
+            let epoch = identity.accountEpoch
+            let token = client.claudeRequestCredentials(cacheFor: 2).accessToken
+            identity.ingestCredential(accessToken: token, expectedEpoch: epoch)
+            identityQueue.sync {}
+        }
         scheduler.requestFetch(reason: reason)
     }
 
     private func identityChanged(_ change: AccountIdentityChange) {
         guard change.accountChanged, let engine else { return }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
+        realtime.clear()
         lock.withLock {
             failure = nil
             refreshing = false
@@ -347,6 +474,8 @@ final class ClaudeQuotaPipeline {
     private func schedulerEvent(_ event: FetchSchedulerLogEvent) {
         switch event.kind {
         case .dispatched:
+            let reasons = event.reasons.map { String(describing: $0) }.joined(separator: ",")
+            diagnostics("claude fetch dispatched; reasons=\(reasons); tokens=\(event.tokens)", .info)
             queue.async { [self] in
                 lock.withLock { refreshing = true }
                 publish()
@@ -398,9 +527,10 @@ final class ClaudeQuotaPipeline {
         // A failure marks the displayed values as outdated without discarding them.
         let shown = failure == nil ? model : QuotaDisplayModel(
             windows: model.windows, isEstimated: model.isEstimated, state: .error, hoverTextKey: model.hoverTextKey)
+        let source: StatusSlotSource = realtime.isFresh(within: realtimeFreshnessWindow) ? .realtime : .official
         let status = StatusSlotState.resolve(
             model: shown,
-            context: StatusSlotContext(isRefreshing: refreshing, source: .official, updatedAt: updatedAt))
+            context: StatusSlotContext(isRefreshing: refreshing, source: source, updatedAt: updatedAt))
         let next = ClaudeQuotaState(
             display: model,
             windows: Self.cardWindows(from: model, now: date),
@@ -493,11 +623,11 @@ private final class ClaudeUsageTransport: UsageFetchTransport {
 }
 
 extension ClaudeQuotaPipeline {
-    /// Production wiring: `~/.claude.json` identity, state under Application Support.
-    /// Nothing is read or watched until the first Claude read is requested.
+    /// Production wiring: `~/.claude.json` identity, the Claude HUD and snapshot inbox sources, state under
+    /// Application Support. Nothing is read or watched until the first Claude read is requested.
     static func makeProduction(
         client: OfficialQuotaClient,
-        calibrationIntervalCap: @escaping () -> TimeInterval?
+        calibrationIntervalCap: @escaping () -> TimeInterval? = { QuotaConstants.realtimeCalibrationInterval }
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "BalanceBar.AccountIdentity", qos: .utility)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -505,11 +635,18 @@ extension ClaudeQuotaPipeline {
         let directory = support
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "BalanceBar", isDirectory: true)
             .appendingPathComponent("Quota", isDirectory: true)
-        return ClaudeQuotaPipeline(
+        let identity = ClaudeAccountIdentityProvider(workQueue: identityQueue)
+        let hud = ClaudeHUDSource(accountProvider: identity)
+        let inbox = SnapshotInbox(identity: identity)
+        let pipeline = ClaudeQuotaPipeline(
             client: client,
-            identity: ClaudeAccountIdentityProvider(workQueue: identityQueue),
+            identity: identity,
             identityQueue: identityQueue,
             stateDirectory: directory,
+            realtimeSources: [hud, inbox],
             calibrationIntervalCap: calibrationIntervalCap)
+        pipeline.hudSource = hud
+        pipeline.snapshotInbox = inbox
+        return pipeline
     }
 }

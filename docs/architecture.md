@@ -140,8 +140,28 @@ rules). `OfficialQuotaClient.fetchClaudeUsage` is the scheduler's transport; it
 neither caches nor backs off. The refresh-interval setting is only the upper
 bound of the calibration interval; automatic reads are never closer than three
 minutes. The pipeline builds its engine and reads account and merge state on
-background queues; the main thread only reads published values. Codex official
-quota and third-party balances keep their previous request path.
+background queues; the main thread only reads published values.
+
+Two local real-time sources feed the same merge engine as grade-B observations
+(`ClaudeHUDSource` and `SnapshotInbox`, which also carries the BalanceBar Mod's
+snapshots). An observation counts as a trusted real-time answer only when the
+engine actually displayed it; while one is younger than
+`QuotaConstants.realtimeSourceFreshness` the scheduler skips automatic reads and
+answers manual refreshes without a request, except for one calibration read after
+`QuotaConstants.realtimeCalibrationInterval` and whenever a window waits for a
+reset confirmation. A snapshot that names another account (`account.email_hash`)
+is dropped. `ModOnboardingCoordinator` (Sources/UI/Quota/ModOnboarding/) owns the
+real-time boost prompt state shared by the menu row, the explanation panel and
+Settings › Advanced.
+
+Codex official quota keeps its request path (including reset cards and
+forecasts). `CodexLocalQuota` (Sources/Services/CodexLocalQuota.swift) reads
+`token_count` rate limits from the local rollout logs into its own merge engine;
+when the newest logged event is fresh, an automatic refresh of the standard
+provider is answered from those windows laid over the last real response
+instead of a `wham/usage` request. A manual refresh, the first read after a
+source change, a stale log, a passed reset time and a response older than the
+calibration interval always ask the server. Third-party balances are unchanged.
 
 ### A native window or AppKit capability
 

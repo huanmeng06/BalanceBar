@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -200,6 +201,13 @@ public final class SnapshotInbox: QuotaSource {
             adapter.health = .degraded(reason: "no active account")
             return
         }
+        // A snapshot that names its account (the Mod writes `sha256:` of the lowercased email) is only
+        // accepted for that account, so another login's file left in the inbox never reaches this one.
+        if let hash = parsed.accountEmailHash, let email = account.email, !Self.emailHash(email).isEmpty,
+           hash.lowercased() != Self.emailHash(email) {
+            adapter.health = .degraded(reason: "snapshot belongs to another account")
+            return
+        }
         let epoch = identity.accountEpoch
         let source = parsed.source.flatMap { $0 == "unknown" ? nil : $0 } ?? adapter.sourceID
         let received = now()
@@ -218,6 +226,13 @@ public final class SnapshotInbox: QuotaSource {
             handler?(observation)
         }
         adapter.health = parsed.discarded.isEmpty ? .healthy : .degraded(reason: parsed.discarded.joined(separator: "; "))
+    }
+
+    /// The hash format Schema v1 producers write: `sha256:` plus the hex digest of the trimmed, lowercased email.
+    static func emailHash(_ email: String) -> String {
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return "" }
+        return "sha256:" + SHA256.hash(data: Data(normalized.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: Paths
