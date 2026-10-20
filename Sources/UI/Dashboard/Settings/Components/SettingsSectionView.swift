@@ -14,10 +14,13 @@ final class SettingsSectionView: NSView {
     static let borderWidth: CGFloat = 0.5
     static let shadowRadius: CGFloat = 14
     static let shadowOffset = NSSize(width: 0, height: -3)
+    static let cardToFootnoteSpacing: CGFloat = 6
 
     let headingLabel: NSTextField
     let cardView: SettingsSectionCardView
     let contentStack = NSStackView()
+    /// Section-wide caption under the card, aligned with row text.
+    let footnoteLabel: NSTextField?
     private(set) var contentViews: [NSView]
     private(set) var separators: [NSView] = []
     private var searchNaturalHeightConstraint: NSLayoutConstraint?
@@ -30,10 +33,12 @@ final class SettingsSectionView: NSView {
     init(
         title: String,
         contentViews: [NSView],
-        separatorIndices: Set<Int>? = nil
+        separatorIndices: Set<Int>? = nil,
+        footnote: String? = nil
     ) {
         headingLabel = NSTextField(labelWithString: title)
         cardView = SettingsSectionCardView()
+        footnoteLabel = footnote.map { NSTextField(wrappingLabelWithString: $0) }
         self.contentViews = contentViews
         super.init(frame: .zero)
         configure(title: title, separatorIndices: separatorIndices)
@@ -42,12 +47,14 @@ final class SettingsSectionView: NSView {
     convenience init(
         title: String?,
         contentViews: [NSView],
-        separatorIndices: Set<Int>? = nil
+        separatorIndices: Set<Int>? = nil,
+        footnote: String? = nil
     ) {
         self.init(
             title: title ?? "",
             contentViews: contentViews,
-            separatorIndices: separatorIndices
+            separatorIndices: separatorIndices,
+            footnote: footnote
         )
     }
 
@@ -134,6 +141,16 @@ final class SettingsSectionView: NSView {
             contentStack.addView(headingLabel, in: .top)
         }
         contentStack.addView(cardView, in: .top)
+        if let footnoteLabel {
+            footnoteLabel.font = .systemFont(ofSize: 11)
+            footnoteLabel.textColor = .secondaryLabelColor
+            footnoteLabel.translatesAutoresizingMaskIntoConstraints = false
+            footnoteLabel.setContentHuggingPriority(.required, for: .vertical)
+            footnoteLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+            footnoteLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            contentStack.addView(footnoteLabel, in: .top)
+            contentStack.setCustomSpacing(Self.cardToFootnoteSpacing, after: cardView)
+        }
 
         addSubview(contentStack)
         NSLayoutConstraint.activate([
@@ -143,6 +160,13 @@ final class SettingsSectionView: NSView {
             contentStack.bottomAnchor.constraint(equalTo: bottomAnchor),
             cardView.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
         ])
+        if let footnoteLabel {
+            let inset = SettingsLayout.rowHorizontalInset
+            NSLayoutConstraint.activate([
+                footnoteLabel.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
+                footnoteLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentStack.trailingAnchor, constant: -inset)
+            ])
+        }
         reconcileSeparators()
     }
 

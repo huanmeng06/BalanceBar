@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "Каждые 3 с";
 "dashboard.general.and.refresh.pages.every_5_sec" = "Каждые 5 с";
 "dashboard.general.and.refresh.pages.every_10_sec" = "Каждые 10 с";
-"dashboard.general.and.refresh.pages.off" = "Отключено";
-"dashboard.general.and.refresh.pages.for_6_sec" = "В течение 6 с";
-"dashboard.general.and.refresh.pages.for_12_sec" = "В течение 12 с";
-"dashboard.general.and.refresh.pages.for_30_sec" = "В течение 30 с";
-"dashboard.general.and.refresh.pages.running" = "Выполняется";
-"dashboard.general.and.refresh.pages.after" = "После";
 "dashboard.general.and.refresh.pages.refresh_now" = "Обновить сейчас";
 "dashboard.general.and.refresh.pages.refresh" = "Обновить";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Частота обновления баланса API-провайдера";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "Частота обновления официальной квоты";
 "dashboard.refresh.official_every_seconds" = "Каждые %1$@ с";
-"dashboard.refresh.official_for_minutes" = "В течение %1$@ мин";
+"dashboard.refresh.official_scope" = "Официальные аккаунты, например Claude и Codex";
+"dashboard.refresh.api_scope" = "Сторонние релеи / API-ключи";
+"dashboard.refresh.minimum_interval_hint" = "Для некоторых источников задан минимальный интервал";
 
 "quota.status.refreshing" = "Чтение…";
 "quota.status.realtime" = "Онлайн";
@@ -575,4 +571,3 @@
 "quota.status.reset_pending_short" = "Ожидание";
 "quota.failure.open_usage_page" = "Открыть официальную страницу использования";
 "quota.status.accessibility" = "Состояние квоты: %1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude (официальный): верхняя граница интервала калибровки. Не менее 3 минут; при наличии источника в реальном времени запросы не отправляются.";

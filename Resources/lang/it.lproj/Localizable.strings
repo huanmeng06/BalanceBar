@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "Ogni 3 s";
 "dashboard.general.and.refresh.pages.every_5_sec" = "Ogni 5 s";
 "dashboard.general.and.refresh.pages.every_10_sec" = "Ogni 10 s";
-"dashboard.general.and.refresh.pages.off" = "Disattivato";
-"dashboard.general.and.refresh.pages.for_6_sec" = "Per 6 s";
-"dashboard.general.and.refresh.pages.for_12_sec" = "Per 12 s";
-"dashboard.general.and.refresh.pages.for_30_sec" = "Per 30 s";
-"dashboard.general.and.refresh.pages.running" = "In esecuzione";
-"dashboard.general.and.refresh.pages.after" = "Dopo";
 "dashboard.general.and.refresh.pages.refresh_now" = "Aggiorna ora";
 "dashboard.general.and.refresh.pages.refresh" = "Aggiorna";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Frequenza aggiornamento saldo fornitore API";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "Frequenza aggiornamento quota ufficiale";
 "dashboard.refresh.official_every_seconds" = "Ogni %1$@ s";
-"dashboard.refresh.official_for_minutes" = "Per %1$@ min";
+"dashboard.refresh.official_scope" = "Account ufficiali come Claude e Codex";
+"dashboard.refresh.api_scope" = "Relay di terze parti / chiavi API";
+"dashboard.refresh.minimum_interval_hint" = "Alcune fonti hanno un intervallo minimo";
 
 "quota.status.refreshing" = "Carico…";
 "quota.status.realtime" = "Live";
@@ -575,4 +571,3 @@
 "quota.status.reset_pending_short" = "In attesa";
 "quota.failure.open_usage_page" = "Apri la pagina di utilizzo ufficiale";
 "quota.status.accessibility" = "Stato della quota: %1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude ufficiale: limite massimo dell’intervallo di calibrazione. Minimo 3 minuti; nessuna richiesta finché è disponibile una fonte live.";

@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "3秒ごと";
 "dashboard.general.and.refresh.pages.every_5_sec" = "5秒ごと";
 "dashboard.general.and.refresh.pages.every_10_sec" = "10秒ごと";
-"dashboard.general.and.refresh.pages.off" = "オフ";
-"dashboard.general.and.refresh.pages.for_6_sec" = "6秒間";
-"dashboard.general.and.refresh.pages.for_12_sec" = "12秒間";
-"dashboard.general.and.refresh.pages.for_30_sec" = "30秒間";
-"dashboard.general.and.refresh.pages.running" = "実行中";
-"dashboard.general.and.refresh.pages.after" = "終了後";
 "dashboard.general.and.refresh.pages.refresh_now" = "今すぐ更新";
 "dashboard.general.and.refresh.pages.refresh" = "更新";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API プロバイダー残高の更新頻度";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "公式クォータの更新頻度";
 "dashboard.refresh.official_every_seconds" = "%1$@ 秒ごと";
-"dashboard.refresh.official_for_minutes" = "%1$@ 分間";
+"dashboard.refresh.official_scope" = "Claude、Codex などの公式アカウント";
+"dashboard.refresh.api_scope" = "サードパーティ中継 / API キー";
+"dashboard.refresh.minimum_interval_hint" = "一部のソースには最短間隔の制限があります";
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "ライブ";
@@ -575,4 +571,3 @@
 "quota.status.reset_pending_short" = "確認待ち";
 "quota.failure.open_usage_page" = "公式の使用状況ページを開く";
 "quota.status.accessibility" = "クォータの状態：%1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude 公式：校正間隔の上限。最短 3 分で、リアルタイムの情報源がある間はリクエストしません。";
