@@ -2007,7 +2007,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testOfficialAndAPIBalanceRefreshRowsHaveIndependentControlsAndOnlyTheOfficialRowExplainsClaudeCalibration() throws {
+    func testRefreshCardHasOneSelectorPerSourceAndRefreshNowLivesInItsOwnCard() throws {
         let suite = "RefreshSplit.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -2015,55 +2015,61 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let relay = DashboardPreferencePageRelay()
         relay.onInterval = { identifier, value in
             if identifier == "officialUsageRefreshInterval" { preferences.officialUsageRefreshInterval = value }
-            if identifier == "officialPostTaskRefreshDuration" { preferences.officialPostTaskRefreshDuration = value }
         }
         let page = DashboardGeneralPage().make(.init(preferences: preferences,
             currentProviderName: "Claude", relay: relay,
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
         let popups = descendants(of: page).compactMap { $0 as? NSPopUpButton }
         let official = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "officialUsageRefreshInterval" })
-        let trailing = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "officialPostTaskRefreshDuration" })
         let api = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "codexUsageRefreshInterval" })
+        XCTAssertNil(popups.first { $0.identifier?.rawValue == "postCodexRefreshDuration" })
+        XCTAssertNil(popups.first { $0.identifier?.rawValue == "officialPostTaskRefreshDuration" })
         XCTAssertEqual(official.numberOfItems, 5)
-        XCTAssertEqual(trailing.numberOfItems, 5)
         XCTAssertEqual(api.numberOfItems, 5)
         let officialRow = try XCTUnwrap(SettingsRowView.enclosing(official))
         let apiRow = try XCTUnwrap(SettingsRowView.enclosing(api))
-        // INT-1: the official row explains Claude's calibration-interval-cap semantics.
-        XCTAssertFalse(officialRow.detailLabel.isHidden)
-        XCTAssertEqual(officialRow.detailLabel.stringValue, tr(.keyDashboardRefreshClaudeCalibrationNote))
-        XCTAssertTrue(apiRow.detailLabel.isHidden)
+        // Both rows share one structure and explain their source scope, not a vendor.
+        XCTAssertEqual(officialRow.titleLabel.stringValue, tr(.keyDashboardOfficialQuotaRefreshFrequency))
+        XCTAssertEqual(officialRow.detailLabel.stringValue, tr(.keyDashboardRefreshOfficialScope))
+        XCTAssertEqual(apiRow.titleLabel.stringValue, tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks))
+        XCTAssertEqual(apiRow.detailLabel.stringValue, tr(.keyDashboardRefreshAPIScope))
+        for row in [officialRow, apiRow] {
+            let hints = descendants(of: row).compactMap { ($0 as? NSTextField)?.stringValue }
+                .filter { $0 == tr(.keyDashboardRefreshMinimumIntervalHint) }
+            XCTAssertTrue(hints.isEmpty)
+        }
         let section = try XCTUnwrap(SettingsSectionView.enclosing(officialRow))
+        // The hint covers both rows, so it appears once as the section footnote.
+        XCTAssertEqual(section.footnoteLabel?.stringValue, tr(.keyDashboardRefreshMinimumIntervalHint))
+        XCTAssertEqual(section.contentViews.count, 2)
         XCTAssertTrue(section.contentViews[0] === officialRow)
         XCTAssertTrue(section.contentViews[1] === apiRow)
+        let refreshNowButton = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSButton }
+            .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) })
+        let refreshNowRow = try XCTUnwrap(SettingsRowView.enclosing(refreshNowButton))
+        XCTAssertFalse(SettingsSectionView.enclosing(refreshNowRow) === section)
         official.selectItem(at: 3)
         _ = official.sendAction(official.action!, to: official.target)
-        trailing.selectItem(at: 4)
-        _ = trailing.sendAction(trailing.action!, to: trailing.target)
         XCTAssertEqual(preferences.officialUsageRefreshInterval, 150)
-        XCTAssertEqual(preferences.officialPostTaskRefreshDuration, 300)
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 3)
-        XCTAssertEqual(preferences.postCodexRefreshDuration, 12)
     }
 
     func testRefreshIntervalPopupsExpandForLongSpanishAndFrenchTitles() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, [String], [String])] = [
+        let cases: [(AppLanguage, [String])] = [
             (
                 .spanish,
-                ["Cada 1 s", "Cada 2 s", "Cada 3 s", "Cada 5 s", "Cada 10 s"],
-                ["Desactivado", "Durante 6 s", "Durante 12 s", "Durante 30 s"]
+                ["Cada 1 s", "Cada 2 s", "Cada 3 s", "Cada 5 s", "Cada 10 s"]
             ),
             (
                 .french,
-                ["Toutes les 1 s", "Toutes les 2 s", "Toutes les 3 s", "Toutes les 5 s", "Toutes les 10 s"],
-                ["Désactivé", "Pendant 6 s", "Pendant 12 s", "Pendant 30 s"]
+                ["Toutes les 1 s", "Toutes les 2 s", "Toutes les 3 s", "Toutes les 5 s", "Toutes les 10 s"]
             )
         ]
 
-        for (language, expectedRunningTitles, expectedTrailingTitles) in cases {
+        for (language, expectedRunningTitles) in cases {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.RefreshIntervalPopup.\(language.rawValue).\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -2079,12 +2085,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let runningPopup = try XCTUnwrap(popupControls.first {
                 $0.identifier?.rawValue == "codexUsageRefreshInterval"
             })
-            let trailingPopup = try XCTUnwrap(popupControls.first {
-                $0.identifier?.rawValue == "postCodexRefreshDuration"
+            let officialPopup = try XCTUnwrap(popupControls.first {
+                $0.identifier?.rawValue == "officialUsageRefreshInterval"
             })
-            let popups = [runningPopup, trailingPopup]
+            let popups = [runningPopup, officialPopup]
             XCTAssertEqual(popups[0].itemTitles, expectedRunningTitles)
-            XCTAssertEqual(popups[1].itemTitles, expectedTrailingTitles)
 
             var localizedWidths: [CGFloat] = []
             for popup in popups {
@@ -2104,7 +2109,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 localizedWidths[0],
                 localizedWidths[1],
                 accuracy: 0.001,
-                "\(language) refresh labels and controls must share one right-aligned column"
+                "\(language) both refresh selectors must share one width"
             )
             XCTAssertGreaterThan(
                 localizedWidths.max() ?? 0,
@@ -2115,227 +2120,71 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testBalanceUpdatesDuringTasksUsesOrderedAdaptiveControlsAcrossWidths() throws {
+    func testRefreshSelectorsStayAlignedAcrossLanguagesAndWidths() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
-        AppLanguage.selected = .simplifiedChinese
 
-        let suiteName = "DashboardPreferencePagesTests.RefreshControlsLayout.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let preferences = AppPreferences(defaults: defaults)
-        let relay = DashboardPreferencePageRelay()
-        relay.onInterval = { identifier, value in
-            switch identifier {
-            case "codexUsageRefreshInterval":
-                preferences.codexUsageRefreshInterval = value
-            case "postCodexRefreshDuration":
-                preferences.postCodexRefreshDuration = value
-            default:
-                break
+        for language in [AppLanguage.simplifiedChinese, .english, .german, .japanese] {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.RefreshAlignment.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let preferences = AppPreferences(defaults: defaults)
+            let relay = DashboardPreferencePageRelay()
+            relay.onInterval = { identifier, value in
+                if identifier == "codexUsageRefreshInterval" { preferences.codexUsageRefreshInterval = value }
             }
-        }
-        let page = DashboardScrollablePageViewController.makePageView(
-            hosting: DashboardGeneralPage().make(.init(
-                preferences: preferences,
-                currentProviderName: "OpenAI",
-                relay: relay,
-                updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
-            ))
-        )
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        let host = NSView(frame: NSRect(x: 0, y: 0, width: 720, height: 520))
-        window.contentView = host
-        page.frame = host.bounds
-        page.autoresizingMask = []
-        host.addSubview(page)
-        defer {
-            window.contentView = nil
-            window.orderOut(nil)
-        }
+            let page = DashboardScrollablePageViewController.makePageView(
+                hosting: DashboardGeneralPage().make(.init(
+                    preferences: preferences,
+                    currentProviderName: "OpenAI",
+                    relay: relay,
+                    updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+                ))
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+                styleMask: [.borderless], backing: .buffered, defer: false
+            )
+            let host = NSView(frame: NSRect(x: 0, y: 0, width: 720, height: 520))
+            window.contentView = host
+            page.autoresizingMask = []
+            host.addSubview(page)
+            defer { window.contentView = nil; window.orderOut(nil) }
 
-        let runningPopup = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSPopUpButton }
-                .first { $0.identifier?.rawValue == "codexUsageRefreshInterval" }
-        )
-        let trailingPopup = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSPopUpButton }
-                .first { $0.identifier?.rawValue == "postCodexRefreshDuration" }
-        )
-        let runningControls = try XCTUnwrap(runningPopup.superview as? NSStackView)
-        let trailingControls = try XCTUnwrap(trailingPopup.superview as? NSStackView)
-        let controls = try XCTUnwrap(runningControls.superview as? DashboardAdaptiveControlsStackView)
-        let row = try XCTUnwrap(SettingsRowView.enclosing(controls))
-        let labels = row.labelsStack
-        let section = try XCTUnwrap(SettingsSectionView.enclosing(row))
-        let rowsStack = section.rowsStack
-        let card = section.cardView
-        let separators = section.separators
+            let popups = descendants(of: page).compactMap { $0 as? NSPopUpButton }
+            let official = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "officialUsageRefreshInterval" })
+            let api = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "codexUsageRefreshInterval" })
+            let officialRow = try XCTUnwrap(SettingsRowView.enclosing(official))
+            let apiRow = try XCTUnwrap(SettingsRowView.enclosing(api))
 
-        XCTAssertEqual(controls.arrangedSubviews.count, 2)
-        XCTAssertTrue(controls.arrangedSubviews[0] === runningControls)
-        XCTAssertTrue(controls.arrangedSubviews[1] === trailingControls)
-
-        func assertCardHeight(_ message: String, file: StaticString = #filePath, line: UInt = #line) {
-            XCTAssertEqual(
-                card.frame.height,
-                DashboardSettingsComponents.settingsSectionIntrinsicHeight(
-                    rowsStack: rowsStack,
-                    separators: separators
-                ),
-                accuracy: 0.5,
-                message,
-                file: file,
-                line: line
-            )
-        }
-
-        func assertLayout(
-            width: CGFloat,
-            orientation: NSUserInterfaceLayoutOrientation,
-            placesAccessoryBelowLabels: Bool,
-            file: StaticString = #filePath,
-            line: UInt = #line
-        ) {
-            window.setContentSize(NSSize(width: width, height: 520))
-            host.setFrameSize(NSSize(width: width, height: 520))
-            page.setFrameSize(host.bounds.size)
-            window.layoutIfNeeded()
-            page.layoutSubtreeIfNeeded()
-            SettingsRowView.flushPendingWrappingHeightCommits(in: page)
-            window.layoutIfNeeded()
-            page.layoutSubtreeIfNeeded()
-
-            XCTAssertEqual(controls.orientation, orientation, file: file, line: line)
-            XCTAssertEqual(
-                row.contentStack.orientation,
-                placesAccessoryBelowLabels ? .vertical : .horizontal,
-                file: file,
-                line: line
-            )
-            XCTAssertGreaterThan(row.titleLabel.frame.width, 1, file: file, line: line)
-            XCTAssertGreaterThan(row.titleLabel.frame.height, 1, file: file, line: line)
-            XCTAssertGreaterThan(row.detailLabel.frame.width, 1, file: file, line: line)
-            XCTAssertGreaterThan(row.detailLabel.frame.height, 1, file: file, line: line)
-            let titleFrame = row.titleLabel.convert(row.titleLabel.bounds, to: row)
-            let detailFrame = row.detailLabel.convert(row.detailLabel.bounds, to: row)
-            XCTAssertTrue(
-                row.bounds.insetBy(dx: 0, dy: -0.5).contains(titleFrame),
-                "refresh title stays inside the row at \(width)",
-                file: file,
-                line: line
-            )
-            XCTAssertTrue(
-                row.bounds.insetBy(dx: 0, dy: -0.5).contains(detailFrame),
-                "refresh detail stays inside the row at \(width)",
-                file: file,
-                line: line
-            )
-            let runningFrame = runningControls.convert(runningControls.bounds, to: row)
-            let trailingFrame = trailingControls.convert(trailingControls.bounds, to: row)
-            let labelsFrame = labels.convert(labels.bounds, to: row)
-            let controlsFrame = controls.convert(controls.bounds, to: row)
-            XCTAssertTrue(
-                row.bounds.insetBy(dx: 0, dy: -0.5).contains(runningFrame),
-                "running controls stay inside the row",
-                file: file,
-                line: line
-            )
-            XCTAssertTrue(
-                row.bounds.insetBy(dx: 0, dy: -0.5).contains(trailingFrame),
-                "after controls stay inside the row",
-                file: file,
-                line: line
-            )
-            if orientation == .horizontal {
-                XCTAssertEqual(
-                    runningFrame.maxY,
-                    trailingFrame.maxY,
-                    accuracy: 0.5,
-                    "running controls precede after controls on one line",
-                    file: file,
-                    line: line
-                )
-            } else {
-                XCTAssertGreaterThan(
-                    runningFrame.minY,
-                    trailingFrame.minY,
-                    "running controls remain before after controls in the vertical reflow",
-                    file: file,
-                    line: line
-                )
+            for width: CGFloat in [720, 516, 320] {
+                window.setContentSize(NSSize(width: width, height: 520))
+                host.setFrameSize(NSSize(width: width, height: 520))
+                page.setFrameSize(host.bounds.size)
+                for _ in 0..<2 {
+                    window.layoutIfNeeded()
+                    page.layoutSubtreeIfNeeded()
+                    SettingsRowView.flushPendingWrappingHeightCommits(in: page)
+                }
+                let officialFrame = official.convert(official.bounds, to: page)
+                let apiFrame = api.convert(api.bounds, to: page)
+                let context = "\(language) at \(width)"
+                XCTAssertEqual(officialFrame.width, apiFrame.width, accuracy: 0.5, "selector width \(context)")
+                XCTAssertEqual(officialFrame.maxX, apiFrame.maxX, accuracy: 0.5, "selector trailing edge \(context)")
+                for row in [officialRow, apiRow] {
+                    let controls = try XCTUnwrap(row.accessoryView)
+                    XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(controls.convert(controls.bounds, to: row)),
+                        "controls stay inside the row \(context)")
+                }
             }
-            if placesAccessoryBelowLabels {
-                XCTAssertLessThanOrEqual(
-                    controlsFrame.maxY,
-                    labelsFrame.minY + 0.5,
-                    "refresh controls occupy a row below the title and subtitle",
-                    file: file,
-                    line: line
-                )
-                XCTAssertGreaterThan(
-                    row.frame.height,
-                    DashboardSettingsComponents.standardRowHeight,
-                    "refresh controls move to a dedicated row at the text line threshold",
-                    file: file,
-                    line: line
-                )
-                XCTAssertTrue(row.detailLabel.isHidden, "refresh frequency rows contain only a title", file: file, line: line)
-            } else {
-                XCTAssertFalse(
-                    labelsFrame.intersects(controlsFrame),
-                    "refresh controls stay beside the text without overlap",
-                    file: file,
-                    line: line
-                )
-                XCTAssertGreaterThanOrEqual(
-                    controlsFrame.minX,
-                    labelsFrame.maxX + 19.5,
-                    "refresh controls stay in the right-side column",
-                    file: file,
-                    line: line
-                )
-                XCTAssertGreaterThanOrEqual(
-                    row.frame.height,
-                    DashboardSettingsComponents.standardRowHeight,
-                    "the refresh row grows for its side-by-side content when needed",
-                    file: file,
-                    line: line
-                )
-            }
-            assertCardHeight("refresh card height follows its adaptive control row", file: file, line: line)
+
+            api.selectItem(at: 4)
+            relay.interval(api)
+            XCTAssertEqual(preferences.codexUsageRefreshInterval, 10)
+            XCTAssertEqual(defaults.double(forKey: "codexUsageRefreshInterval"), 10)
         }
-
-        assertLayout(width: 720, orientation: .horizontal, placesAccessoryBelowLabels: false)
-        let wideHeight = row.frame.height
-        assertLayout(width: 516, orientation: .horizontal, placesAccessoryBelowLabels: true)
-        assertLayout(width: 320, orientation: .vertical, placesAccessoryBelowLabels: true)
-        assertLayout(width: 516, orientation: .horizontal, placesAccessoryBelowLabels: true)
-        assertLayout(width: 720, orientation: .horizontal, placesAccessoryBelowLabels: false)
-        XCTAssertEqual(
-            row.frame.height,
-            wideHeight,
-            accuracy: 1.0,
-            "refresh row must return to its wide height before viewDidEndLiveResize"
-        )
-
-        runningPopup.selectItem(at: 4)
-        relay.interval(runningPopup)
-        trailingPopup.selectItem(at: 2)
-        relay.interval(trailingPopup)
-        XCTAssertEqual(preferences.codexUsageRefreshInterval, 10)
-        XCTAssertEqual(preferences.postCodexRefreshDuration, 12)
-        XCTAssertEqual(defaults.double(forKey: "codexUsageRefreshInterval"), 10)
-        XCTAssertEqual(defaults.double(forKey: "postCodexRefreshDuration"), 12)
     }
 
     func testMenuBarIconDisplayModeIsLocalizedFitsAndPersistsAcrossRefresh() throws {

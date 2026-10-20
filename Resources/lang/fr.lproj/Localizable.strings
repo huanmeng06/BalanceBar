@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "Toutes les 3 s";
 "dashboard.general.and.refresh.pages.every_5_sec" = "Toutes les 5 s";
 "dashboard.general.and.refresh.pages.every_10_sec" = "Toutes les 10 s";
-"dashboard.general.and.refresh.pages.off" = "Désactivé";
-"dashboard.general.and.refresh.pages.for_6_sec" = "Pendant 6 s";
-"dashboard.general.and.refresh.pages.for_12_sec" = "Pendant 12 s";
-"dashboard.general.and.refresh.pages.for_30_sec" = "Pendant 30 s";
-"dashboard.general.and.refresh.pages.running" = "En cours";
-"dashboard.general.and.refresh.pages.after" = "Après";
 "dashboard.general.and.refresh.pages.refresh_now" = "Actualiser maintenant";
 "dashboard.general.and.refresh.pages.refresh" = "Actualiser";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Fréquence d’actualisation du solde du fournisseur API";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "Fréquence d’actualisation du quota officiel";
 "dashboard.refresh.official_every_seconds" = "Toutes les %1$@ s";
-"dashboard.refresh.official_for_minutes" = "Pendant %1$@ min";
+"dashboard.refresh.official_scope" = "Comptes officiels comme Claude et Codex";
+"dashboard.refresh.api_scope" = "Relais tiers / clés API";
+"dashboard.refresh.minimum_interval_hint" = "Certaines sources ont un intervalle minimal";
 
 "quota.status.refreshing" = "En cours…";
 "quota.status.realtime" = "En direct";
@@ -575,4 +571,3 @@
 "quota.status.reset_pending_short" = "En attente";
 "quota.failure.open_usage_page" = "Ouvrir la page d’utilisation officielle";
 "quota.status.accessibility" = "État du quota : %1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude officiel : limite haute de l’intervalle d’étalonnage. 3 minutes minimum ; aucune requête tant qu’une source en direct est disponible.";

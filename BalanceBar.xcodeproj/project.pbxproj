@@ -203,11 +203,19 @@
 		B51900000000000000000014 /* QuotaIOTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51900000000000000000004 /* QuotaIOTests.swift */; };
 		B51800000000000000000030 /* QuotaNotificationAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51800000000000000000010 /* QuotaNotificationAdapter.swift */; };
 		B51800000000000000000031 /* QuotaNotificationAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */; };
+		B53000000000000000000030 /* MultiDeviceCompensation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B53000000000000000000010 /* MultiDeviceCompensation.swift */; };
+		B53000000000000000000031 /* MultiDeviceCompensationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B53000000000000000000020 /* MultiDeviceCompensationTests.swift */; };
 		B51400000000000000000030 /* ClaudeAccountIdentityProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51400000000000000000010 /* ClaudeAccountIdentityProvider.swift */; };
 		B51400000000000000000031 /* ClaudeAccountIdentityProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51400000000000000000020 /* ClaudeAccountIdentityProviderTests.swift */; };
 		B51500000000000000000030 /* FetchScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51500000000000000000010 /* FetchScheduler.swift */; };
 		B51500000000000000000031 /* FetchSchedulerSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51500000000000000000011 /* FetchSchedulerSupport.swift */; };
 		B51500000000000000000032 /* FetchSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51500000000000000000020 /* FetchSchedulerTests.swift */; };
+		B52800000000000000000101 /* TranscriptUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000001 /* TranscriptUsage.swift */; };
+		B52800000000000000000102 /* UsageAttribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000002 /* UsageAttribution.swift */; };
+		B52800000000000000000103 /* UsageWeights.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000003 /* UsageWeights.swift */; };
+		B52800000000000000000104 /* UsageEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000004 /* UsageEstimator.swift */; };
+		B52800000000000000000105 /* ShadowLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000005 /* ShadowLog.swift */; };
+		B52800000000000000000106 /* UsageEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000006 /* UsageEstimatorTests.swift */; };
 		B52200000000000000000011 /* QuotaSourceAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000010 /* QuotaSourceAdapter.swift */; };
 		B52200000000000000000021 /* QuotaSnapshotParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000020 /* QuotaSnapshotParser.swift */; };
 		B52200000000000000000031 /* SnapshotInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000030 /* SnapshotInbox.swift */; };
@@ -438,11 +446,19 @@
 		B51900000000000000000004 /* QuotaIOTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaIOTests.swift; sourceTree = "<group>"; };
 		B51800000000000000000010 /* QuotaNotificationAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaNotificationAdapter.swift; sourceTree = "<group>"; };
 		B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaNotificationAdapterTests.swift; sourceTree = "<group>"; };
+		B53000000000000000000010 /* MultiDeviceCompensation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiDeviceCompensation.swift; sourceTree = "<group>"; };
+		B53000000000000000000020 /* MultiDeviceCompensationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiDeviceCompensationTests.swift; sourceTree = "<group>"; };
 		B51400000000000000000010 /* ClaudeAccountIdentityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAccountIdentityProvider.swift; sourceTree = "<group>"; };
 		B51400000000000000000020 /* ClaudeAccountIdentityProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAccountIdentityProviderTests.swift; sourceTree = "<group>"; };
 		B51500000000000000000010 /* FetchScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetchScheduler.swift; sourceTree = "<group>"; };
 		B51500000000000000000011 /* FetchSchedulerSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetchSchedulerSupport.swift; sourceTree = "<group>"; };
 		B51500000000000000000020 /* FetchSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FetchSchedulerTests.swift; sourceTree = "<group>"; };
+		B52800000000000000000001 /* TranscriptUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptUsage.swift; sourceTree = "<group>"; };
+		B52800000000000000000002 /* UsageAttribution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAttribution.swift; sourceTree = "<group>"; };
+		B52800000000000000000003 /* UsageWeights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWeights.swift; sourceTree = "<group>"; };
+		B52800000000000000000004 /* UsageEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageEstimator.swift; sourceTree = "<group>"; };
+		B52800000000000000000005 /* ShadowLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowLog.swift; sourceTree = "<group>"; };
+		B52800000000000000000006 /* UsageEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageEstimatorTests.swift; sourceTree = "<group>"; };
 		B52200000000000000000010 /* QuotaSourceAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSourceAdapter.swift; sourceTree = "<group>"; };
 		B52200000000000000000020 /* QuotaSnapshotParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSnapshotParser.swift; sourceTree = "<group>"; };
 		B52200000000000000000030 /* SnapshotInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotInbox.swift; sourceTree = "<group>"; };
@@ -701,7 +717,9 @@
 			children = (
 				B51100000000000000000020 /* QuotaModelTests.swift */,
 				B51900000000000000000004 /* QuotaIOTests.swift */,
+				B52800000000000000000901 /* Estimator */,
 				B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */,
+				B53000000000000000000020 /* MultiDeviceCompensationTests.swift */,
 				B51600000000000000000020 /* QuotaMergeEngineTests.swift */,
 				B51400000000000000000003 /* Account */,
 				B51B00000000000000000030 /* Sources */,
@@ -818,7 +836,9 @@
 				B51400000000000000000001 /* Account */,
 				B51100000000000000000002 /* Model */,
 				B51900000000000000000010 /* IO */,
+				B52800000000000000000900 /* Estimator */,
 				B51800000000000000000002 /* Notify */,
+				B53000000000000000000002 /* MultiDevice */,
 				B51600000000000000000002 /* Merge */,
 				B51500000000000000000001 /* Scheduler */,
 				B51B00000000000000000020 /* Sources */,
@@ -869,6 +889,14 @@
 				B51900000000000000000003 /* SafeFileValidator.swift */,
 			);
 			path = IO;
+			sourceTree = "<group>";
+		};
+		B53000000000000000000002 /* MultiDevice */ = {
+			isa = PBXGroup;
+			children = (
+				B53000000000000000000010 /* MultiDeviceCompensation.swift */,
+			);
+			path = MultiDevice;
 			sourceTree = "<group>";
 		};
 		B51800000000000000000002 /* Notify */ = {
@@ -1109,6 +1137,26 @@
 				A10000000000000000000088 /* StatusItemController.swift */,
 			);
 			path = MenuBar;
+			sourceTree = "<group>";
+		};
+		B52800000000000000000900 /* Estimator */ = {
+			isa = PBXGroup;
+			children = (
+				B52800000000000000000001 /* TranscriptUsage.swift */,
+				B52800000000000000000002 /* UsageAttribution.swift */,
+				B52800000000000000000003 /* UsageWeights.swift */,
+				B52800000000000000000004 /* UsageEstimator.swift */,
+				B52800000000000000000005 /* ShadowLog.swift */,
+			);
+			path = Estimator;
+			sourceTree = "<group>";
+		};
+		B52800000000000000000901 /* Estimator */ = {
+			isa = PBXGroup;
+			children = (
+				B52800000000000000000006 /* UsageEstimatorTests.swift */,
+			);
+			path = Estimator;
 			sourceTree = "<group>";
 		};
 		B52200000000000000000101 /* Inbox */ = {
@@ -1401,6 +1449,11 @@
 				B51100000000000000000031 /* QuotaContracts.swift in Sources */,
 				B51900000000000000000011 /* DirectoryWatcher.swift in Sources */,
 				B51900000000000000000012 /* IncrementalJSONLReader.swift in Sources */,
+				B52800000000000000000101 /* TranscriptUsage.swift in Sources */,
+				B52800000000000000000102 /* UsageAttribution.swift in Sources */,
+				B52800000000000000000103 /* UsageWeights.swift in Sources */,
+				B52800000000000000000104 /* UsageEstimator.swift in Sources */,
+				B52800000000000000000105 /* ShadowLog.swift in Sources */,
 				B51900000000000000000013 /* SafeFileValidator.swift in Sources */,
 				B52200000000000000000011 /* QuotaSourceAdapter.swift in Sources */,
 				B52200000000000000000021 /* QuotaSnapshotParser.swift in Sources */,
@@ -1409,6 +1462,7 @@
 				B51B00000000000000000011 /* CodexRolloutSource.swift in Sources */,
 				B51100000000000000000032 /* QuotaSnapshot.swift in Sources */,
 				B51800000000000000000030 /* QuotaNotificationAdapter.swift in Sources */,
+				B53000000000000000000030 /* MultiDeviceCompensation.swift in Sources */,
 				B51500000000000000000030 /* FetchScheduler.swift in Sources */,
 				B51500000000000000000031 /* FetchSchedulerSupport.swift in Sources */,
 				A47000000000000000000002 /* BalanceNotificationModels.swift in Sources */,
@@ -1541,10 +1595,12 @@
 				A1000000000000000000004D /* DomainModelsTests.swift in Sources */,
 				B51100000000000000000033 /* QuotaModelTests.swift in Sources */,
 				B51900000000000000000014 /* QuotaIOTests.swift in Sources */,
+				B52800000000000000000106 /* UsageEstimatorTests.swift in Sources */,
 				B52200000000000000000041 /* SnapshotInboxTests.swift in Sources */,
 				B52300000000000000000012 /* ClaudeHUDSourceTests.swift in Sources */,
 				B51B00000000000000000012 /* CodexRolloutSourceTests.swift in Sources */,
 				B51800000000000000000031 /* QuotaNotificationAdapterTests.swift in Sources */,
+				B53000000000000000000031 /* MultiDeviceCompensationTests.swift in Sources */,
 				C51700000000000000000003 /* StatusSlotViewTests.swift in Sources */,
 				C52600000000000000000016 /* ModOnboardingTests.swift in Sources */,
 				B51600000000000000000033 /* QuotaMergeEngineTests.swift in Sources */,

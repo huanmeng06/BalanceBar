@@ -418,6 +418,13 @@ final class CodexActivityMonitor {
                 running = false
                 terminalSeen = true
                 contextCompactionSeen = false
+            } else if phase == "commentary",
+                      let status,
+                      Self.responseTerminalStatuses.contains(status) {
+                // An intermediate progress message reports "completed" for
+                // the message itself, not for the whole turn: leave the
+                // lifecycle state untouched. A missing phase keeps the legacy
+                // terminal meaning.
             } else if let status,
                       Self.responseTerminalStatuses.contains(status),
                       payloadType == nil || Self.terminalResponseItemTypes.contains(payloadType ?? "") {

@@ -163,10 +163,11 @@ final class SettingsSectionViewTests: XCTestCase {
                 .compactMap { $0 as? NSButton }
                 .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) }
         )
+        // Manual refresh has its own section, separate from the interval settings.
         let refresh = try XCTUnwrap(SettingsSectionView.enclosing(refreshButton))
         XCTAssertEqual(
             refresh.headingLabel.stringValue,
-            tr(.keyDashboardGeneralAndRefreshPagesRefresh)
+            tr(.keyDashboardGeneralAndRefreshPagesRefreshNow)
         )
         XCTAssertNotNil(SettingsRowView.enclosing(refreshButton))
 
