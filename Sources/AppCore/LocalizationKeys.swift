@@ -242,17 +242,13 @@
     case keyDashboardGeneralAndRefreshPagesEvery3Sec = "dashboard.general.and.refresh.pages.every_3_sec"
     case keyDashboardGeneralAndRefreshPagesEvery5Sec = "dashboard.general.and.refresh.pages.every_5_sec"
     case keyDashboardGeneralAndRefreshPagesEvery10Sec = "dashboard.general.and.refresh.pages.every_10_sec"
-    case keyDashboardGeneralAndRefreshPagesOff = "dashboard.general.and.refresh.pages.off"
-    case keyDashboardGeneralAndRefreshPagesFor6Sec = "dashboard.general.and.refresh.pages.for_6_sec"
-    case keyDashboardGeneralAndRefreshPagesFor12Sec = "dashboard.general.and.refresh.pages.for_12_sec"
-    case keyDashboardGeneralAndRefreshPagesFor30Sec = "dashboard.general.and.refresh.pages.for_30_sec"
-    case keyDashboardGeneralAndRefreshPagesRunning = "dashboard.general.and.refresh.pages.running"
-    case keyDashboardGeneralAndRefreshPagesAfter = "dashboard.general.and.refresh.pages.after"
     case keyDashboardGeneralAndRefreshPagesRefreshNow = "dashboard.general.and.refresh.pages.refresh_now"
     case keyDashboardGeneralAndRefreshPagesRefresh = "dashboard.general.and.refresh.pages.refresh"
     case keyDashboardOfficialQuotaRefreshFrequency = "dashboard.refresh.official_quota_frequency"
+    case keyDashboardRefreshOfficialScope = "dashboard.refresh.official_scope"
+    case keyDashboardRefreshAPIScope = "dashboard.refresh.api_scope"
+    case keyDashboardRefreshMinimumIntervalHint = "dashboard.refresh.minimum_interval_hint"
     case keyDashboardOfficialEverySeconds = "dashboard.refresh.official_every_seconds"
-    case keyDashboardOfficialForMinutes = "dashboard.refresh.official_for_minutes"
     case keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks = "dashboard.general.and.refresh.pages.balance_updates_during_tasks"
     case keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning = "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running"
     case keyDashboardGeneralAndRefreshPagesBalanceData = "dashboard.general.and.refresh.pages.balance_data"
@@ -559,7 +555,6 @@
     case keyQuotaStatusResetPendingShort = "quota.status.reset_pending_short"
     case keyQuotaFailureOpenUsagePage = "quota.failure.open_usage_page"
     case keyQuotaStatusAccessibility = "quota.status.accessibility"
-    case keyDashboardRefreshClaudeCalibrationNote = "dashboard.refresh.claude_calibration_note"
 
     var rawKey: String { rawValue }
 }

@@ -17,7 +17,8 @@ def api(path):
 
 
 def pr_error(event_pr, live):
-    if not live or live.get('state') != 'open' or live.get('draft') or event_pr.get('draft'):
+    # Live draft state is authoritative (stale Draft payloads, #549).
+    if not live or live.get('state') != 'open' or live.get('draft'):
         return 'PR is Draft/closed; no metadata merge credential'
     for ref, field in (('head', 'sha'), ('base', 'sha'), ('base', 'ref')):
         expected = event_pr.get(ref, {}).get(field)
