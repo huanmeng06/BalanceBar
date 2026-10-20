@@ -152,6 +152,27 @@ final class MultiDeviceCompensationTests: XCTestCase {
         XCTAssertTrue(scheduler.reasons.isEmpty)
     }
 
+    func testSwitchingBetweenOtherAppsAfterLeavingDesktopKeepsPendingRequest() {
+        let c = makeCompensator()
+        c.foregroundApplicationDidChange(bundleIdentifier: desktop)
+        c.foregroundApplicationDidChange(bundleIdentifier: "com.apple.finder")
+        timer.advance(by: 2)
+        c.foregroundApplicationDidChange(bundleIdentifier: "com.apple.Safari")
+        timer.advance(by: 3)
+        XCTAssertEqual(scheduler.reasons, [.externalActivity])
+    }
+
+    func testDriftUsesPreviousGradeABaselineNotGradeBDisplay() {
+        let c = makeCompensator()
+        c.didAccept(observation(20), previous: nil)
+        timer.advance(by: 30)
+        // Grade-B reading displayed at 45 must not become the official baseline.
+        c.didAccept(observation(45, trust: .b), previous: reading(20))
+        timer.advance(by: 30)
+        c.didAccept(observation(30), previous: reading(45))
+        XCTAssertTrue(c.externalActiveModeIsOn)
+    }
+
     func testSwitchingBetweenOtherAppsNeverRequests() {
         let c = makeCompensator()
         c.foregroundApplicationDidChange(bundleIdentifier: "com.apple.finder")

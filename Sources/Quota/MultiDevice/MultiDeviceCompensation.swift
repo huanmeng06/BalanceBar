@@ -58,6 +58,8 @@ public final class MultiDeviceCompensator: QuotaDriftDetecting {
 
     private let lock = NSLock()
     private var latestOfficial: [String: Double] = [:]
+    /// Previous grade-A reading per window; the displayed reading may be grade B and is not an official baseline.
+    private var officialBaseline: [String: QuotaMergedReading] = [:]
     private var lastOfficialAt: Date?
     private var calibrationGeneration = 0
 
@@ -96,9 +98,12 @@ public final class MultiDeviceCompensator: QuotaDriftDetecting {
     public func didAccept(_ observation: QuotaObservation, previous: QuotaMergedReading?) {
         guard observation.trust == .a else { return }
         lock.lock()
-        latestOfficial[observation.window.rawValue] = observation.usedPercentage
+        let key = observation.window.rawValue
+        let baseline = officialBaseline[key] ?? (previous?.trust == .a ? previous : nil)
+        officialBaseline[key] = QuotaMergedReading(observation)
+        latestOfficial[key] = observation.usedPercentage
         lastOfficialAt = observation.receivedAt
-        let driftDetected = detectsDrift(observation, previous: previous)
+        let driftDetected = detectsDrift(observation, baseline: baseline)
         var startChain = false
         if driftDetected {
             startChain = !isExternalActive
@@ -117,7 +122,7 @@ public final class MultiDeviceCompensator: QuotaDriftDetecting {
         if startChain { scheduleExternalActiveTick(generation: external) }
     }
 
-    private func detectsDrift(_ observation: QuotaObservation, previous: QuotaMergedReading?) -> Bool {
+    private func detectsDrift(_ observation: QuotaObservation, baseline previous: QuotaMergedReading?) -> Bool {
         guard let previous, let localGrowth,
               previous.epoch == observation.epoch,
               Self.sameCycle(previous.resetsAt, observation.resetsAt) else { return false }
@@ -180,7 +185,9 @@ public final class MultiDeviceCompensator: QuotaDriftDetecting {
         lock.lock()
         let wasDesktop = isDesktopForeground
         isDesktopForeground = isDesktop
-        desktopSwitchGeneration += 1
+        // Only Desktop entering or leaving the foreground invalidates a pending request;
+        // switches between other apps must not cancel it.
+        if wasDesktop != isDesktop { desktopSwitchGeneration += 1 }
         let generation = desktopSwitchGeneration
         let leftDesktop = wasDesktop && !isDesktop
         lock.unlock()
@@ -223,9 +230,11 @@ public final class WorkspaceForegroundApplicationMonitor {
 
     public init() {}
 
-    /// Starts observing; replaces any previous observation.
+    /// Starts observing; replaces any previous observation. The current frontmost
+    /// application is reported immediately so a later switch away is recognized.
     public func start(_ handler: @escaping (String?) -> Void) {
         stop()
+        handler(NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
         token = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: nil
         ) { notification in
