@@ -316,6 +316,7 @@ struct ActivityLifecycleStateMachine {
 
 enum ActivityFrontmostKind: Equatable {
     case codex
+    case claudeDesktop
     case terminal
     case other
 }
@@ -364,6 +365,8 @@ enum ActivityClientSelection {
         switch frontmost {
         case .codex:
             return .codex
+        case .claudeDesktop:
+            return .claude
         case .other:
             return current
         case .terminal:
@@ -635,6 +638,9 @@ final class ActivityCoordinator {
         case .codex:
             TerminalFrontmostTTY.discardLatch()
             actions.setActiveClient(.codex)
+        case .claudeDesktop:
+            TerminalFrontmostTTY.discardLatch()
+            actions.setActiveClient(.claude)
         case .other:
             TerminalFrontmostTTY.discardLatch()
         case .terminal:
@@ -924,6 +930,8 @@ final class ActivityCoordinator {
         switch frontmostKind {
         case .codex:
             codexObservation = codexMonitor.activityObservation()
+        case .claudeDesktop:
+            claudeStatus = claudeMonitor.activityStatus()
         case .terminal:
             grokStatus = grokMonitor.activityStatus()
             claudeStatus = claudeMonitor.activityStatus()
@@ -987,6 +995,9 @@ final class ActivityCoordinator {
         case .codex:
             TerminalFrontmostTTY.discardLatch()
             actions.setActiveClient(.codex)
+        case .claudeDesktop:
+            TerminalFrontmostTTY.discardLatch()
+            actions.setActiveClient(.claude)
         case .other:
             TerminalFrontmostTTY.discardLatch()
         case .terminal:
@@ -1000,24 +1011,35 @@ final class ActivityCoordinator {
     }
 
     static func frontmostKind(_ application: NSRunningApplication?) -> ActivityFrontmostKind {
-        if isCodexApplication(application) { return .codex }
-        if isTerminalApplication(application) { return .terminal }
+        frontmostKind(
+            bundleIdentifier: application?.bundleIdentifier,
+            localizedName: application?.localizedName
+        )
+    }
+
+    static func frontmostKind(bundleIdentifier: String?, localizedName: String?) -> ActivityFrontmostKind {
+        if ClaudeApplicationIdentity.matchesDesktop(
+            bundleIdentifier: bundleIdentifier,
+            localizedName: localizedName
+        ) { return .claudeDesktop }
+        if isCodexApplication(bundleIdentifier: bundleIdentifier, localizedName: localizedName) { return .codex }
+        if isTerminalApplication(bundleIdentifier: bundleIdentifier, localizedName: localizedName) { return .terminal }
         return .other
     }
 
-    private static func isCodexApplication(_ application: NSRunningApplication?) -> Bool {
-        guard let application else { return false }
-        let identifier = (application.bundleIdentifier ?? "").lowercased()
-        let name = (application.localizedName ?? "").lowercased()
+    private static func isCodexApplication(bundleIdentifier: String?, localizedName: String?) -> Bool {
+        guard bundleIdentifier != nil || localizedName != nil else { return false }
+        let identifier = (bundleIdentifier ?? "").lowercased()
+        let name = (localizedName ?? "").lowercased()
         if name == "codex" { return true }
         return identifier == "com.openai.codex"
             || (identifier.contains("codex") && !identifier.contains("codexbar"))
     }
 
-    private static func isTerminalApplication(_ application: NSRunningApplication?) -> Bool {
-        guard let application else { return false }
-        let identifier = (application.bundleIdentifier ?? "").lowercased()
-        let name = (application.localizedName ?? "").lowercased()
+    private static func isTerminalApplication(bundleIdentifier: String?, localizedName: String?) -> Bool {
+        guard bundleIdentifier != nil || localizedName != nil else { return false }
+        let identifier = (bundleIdentifier ?? "").lowercased()
+        let name = (localizedName ?? "").lowercased()
         let knownIdentifiers = [
             "com.apple.terminal", "com.googlecode.iterm2", "dev.warp.warp-stable",
             "com.mitchellh.ghostty", "net.kovidgoyal.kitty", "org.alacritty",
