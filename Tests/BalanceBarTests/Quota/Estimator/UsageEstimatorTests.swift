@@ -80,6 +80,52 @@ final class UsageEstimatorTests: XCTestCase {
         XCTAssertEqual(estimator.ingest(lines: [line(uuid: "u3", request: "r2", at: at)]), 0)
     }
 
+    func testLaterRecordOfSameRequestReplacesEarlierUsage() {
+        let (estimator, _) = makeEstimator()
+        _ = estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 10, resetsAt: nil, at: t0)
+        let at = t0.addingTimeInterval(5)
+        XCTAssertEqual(estimator.ingest(lines: [line(uuid: "u1", request: "r1", at: at, input: 0, output: 2)]), 1)
+        let early = estimator.estimate(accountID: "A", window: .fiveHour)!.percent
+        // Same request later reports its final usage (new block uuid).
+        XCTAssertEqual(estimator.ingest(lines: [line(uuid: "u2", request: "r1", at: at, input: 0, output: 500)]), 0)
+        let final = estimator.estimate(accountID: "A", window: .fiveHour)!.percent
+        XCTAssertGreaterThan(final, early)
+        // Expected: exactly one request of 500 output tokens counted, not 502 and not 2.
+        let (reference, _) = makeEstimator()
+        _ = reference.recordOfficial(accountID: "A", window: .fiveHour, percent: 10, resetsAt: nil, at: t0)
+        reference.ingest(lines: [line(uuid: "x", request: "rx", at: at, input: 0, output: 500)])
+        XCTAssertEqual(final, reference.estimate(accountID: "A", window: .fiveHour)!.percent, accuracy: 1e-9)
+        // Repeating the final record changes nothing.
+        estimator.ingest(lines: [line(uuid: "u2", request: "r1", at: at, input: 0, output: 500)])
+        XCTAssertEqual(estimator.estimate(accountID: "A", window: .fiveHour)!.percent, final, accuracy: 1e-9)
+    }
+
+    func testUsageBeforeResetDeadlineIsNotComparedWithNewCycle() {
+        let (estimator, log) = makeEstimator()
+        let reset = t0.addingTimeInterval(1_800)
+        _ = estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 50, resetsAt: reset, at: t0)
+        estimator.ingest(lines: [line(uuid: "u1", request: "r1", at: t0.addingTimeInterval(600), input: 100_000, output: 0)])
+        let result = estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 0,
+                                              resetsAt: reset.addingTimeInterval(18_000), at: reset.addingTimeInterval(600))
+        XCTAssertEqual(result?.scenarios, [EstimatorScenario.resetBoundary])
+        XCTAssertEqual(result?.estimatedPercent, 0)
+        XCTAssertEqual(log.entries.count, 1)
+        // Usage after the deadline does count toward the new cycle.
+        _ = estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 2,
+                                     resetsAt: reset.addingTimeInterval(18_000), at: reset.addingTimeInterval(1_200))
+        estimator.ingest(lines: [line(uuid: "u2", request: "r2", at: reset.addingTimeInterval(1_300), input: 100_000, output: 0)])
+        XCTAssertGreaterThan(estimator.estimate(accountID: "A", window: .fiveHour)!.percent, 2)
+    }
+
+    func testResetWithUnknownDeadlineLogsNoComparison() {
+        let (estimator, log) = makeEstimator()
+        _ = estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 50, resetsAt: nil, at: t0)
+        estimator.ingest(lines: [line(uuid: "u1", request: "r1", at: t0.addingTimeInterval(10), input: 100_000)])
+        XCTAssertNil(estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 0, resetsAt: nil, at: t0.addingTimeInterval(60)))
+        XCTAssertTrue(log.entries.isEmpty)
+        XCTAssertEqual(estimator.estimate(accountID: "A", window: .fiveHour)?.percent, 0)
+    }
+
     // MARK: Attribution
 
     func testAttributionRequiresActiveAccountAndOfficialProvider() {

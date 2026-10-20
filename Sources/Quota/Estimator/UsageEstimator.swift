@@ -17,16 +17,58 @@ public struct UsageEstimate: Equatable {
 public final class UsageEstimator {
     private struct WindowKey: Hashable { let accountID: String; let window: String }
 
-    private struct WindowState {
-        var anchorPercent: Double
-        var anchorAt: Date
-        var resetsAt: Date?
+    /// Usage accumulated since an anchor, split by time so a reset boundary can separate cycles.
+    private struct Bucket {
         var rawUnitsByModel: [String: Double] = [:]
         var sessions: Set<String> = []
         var sawSidechain = false
         var recordCount = 0
         var totalTokens = 0
         var cacheTokens = 0
+
+        mutating func add(_ contribution: Contribution, sign: Double, countRecord: Bool) {
+            rawUnitsByModel[contribution.model, default: 0] = max(0, rawUnitsByModel[contribution.model, default: 0] + sign * contribution.rawUnits)
+            totalTokens = max(0, totalTokens + Int(sign) * contribution.totalTokens)
+            cacheTokens = max(0, cacheTokens + Int(sign) * contribution.cacheTokens)
+            if countRecord {
+                recordCount += 1
+                if contribution.isSidechain { sawSidechain = true }
+                if let session = contribution.sessionID { sessions.insert(session) }
+            }
+        }
+
+        func merged(with other: Bucket) -> Bucket {
+            var result = self
+            for (model, units) in other.rawUnitsByModel { result.rawUnitsByModel[model, default: 0] += units }
+            result.sessions.formUnion(other.sessions)
+            result.sawSidechain = sawSidechain || other.sawSidechain
+            result.recordCount += other.recordCount
+            result.totalTokens += other.totalTokens
+            result.cacheTokens += other.cacheTokens
+            return result
+        }
+    }
+
+    private struct WindowState {
+        var anchorPercent: Double
+        var anchorAt: Date
+        var resetsAt: Date?
+        /// Usage before the known reset deadline (or all usage when no deadline is known).
+        var beforeReset = Bucket()
+        /// Usage at or after the known reset deadline.
+        var afterReset = Bucket()
+    }
+
+    /// What one request has contributed so far; later records of the same request replace it.
+    private struct Contribution: Equatable {
+        var accountID: String
+        var timestamp: Date
+        var model: String
+        var rawUnits: Double
+        var totalTokens: Int
+        var cacheTokens: Int
+        var isSidechain: Bool
+        var sessionID: String?
     }
 
     private struct Learned {
@@ -42,9 +84,9 @@ public final class UsageEstimator {
     private var weights: UsageWeightModel
     private var states: [WindowKey: WindowState] = [:]
     private var learned: [String: Learned] = [:]
-    private var seenKeys: Set<String> = []
-    private var seenOrder: [String] = []
-    private var seenHead = 0
+    private var contributions: [String: Contribution] = [:]
+    private var contributionOrder: [String] = []
+    private var contributionHead = 0
 
     public init(
         configuration: EstimatorConfiguration = EstimatorConfiguration(),
@@ -57,26 +99,33 @@ public final class UsageEstimator {
         weights = UsageWeightModel(configuration: configuration)
     }
 
-    /// Parses, deduplicates by request/message, attributes and accumulates transcript lines.
-    /// Returns the number of records counted.
+    /// Parses, deduplicates, attributes and accumulates transcript lines.
+    ///
+    /// A repeated message is ignored. A later record of the same request with different usage
+    /// (streamed or sub-agent records report early and final totals) replaces the earlier one by
+    /// applying the difference. Returns the number of new requests/messages counted.
     @discardableResult
     public func ingest(lines: [Data]) -> Int {
         let records = lines.compactMap(TranscriptUsageParser.parse)
         lock.lock(); defer { lock.unlock() }
         var counted = 0
-        for record in records where remember(record.deduplicationKey) && remember("u:" + record.uuid) {
+        for record in records {
             guard case let .attributed(accountID) = attributor.attribute(record) else { continue }
-            let raw = weights.rawUnits(for: record)
-            for key in states.keys where key.accountID == accountID {
-                guard record.timestamp >= states[key]!.anchorAt else { continue }
-                states[key]!.rawUnitsByModel[record.model, default: 0] += raw
-                states[key]!.recordCount += 1
-                states[key]!.totalTokens += record.totalTokens
-                states[key]!.cacheTokens += record.cacheTokens
-                if record.isSidechain { states[key]!.sawSidechain = true }
-                if let session = record.sessionID { states[key]!.sessions.insert(session) }
+            let new = Contribution(
+                accountID: accountID, timestamp: record.timestamp, model: record.model,
+                rawUnits: weights.rawUnits(for: record), totalTokens: record.totalTokens,
+                cacheTokens: record.cacheTokens, isSidechain: record.isSidechain, sessionID: record.sessionID)
+            let key = record.deduplicationKey
+            if let previous = contributions[key] {
+                guard previous != new, previous.accountID == accountID, previous.model == new.model else { continue }
+                apply(previous, sign: -1, countRecord: false)
+                apply(new, sign: 1, countRecord: false)
+                contributions[key] = new
+            } else {
+                apply(new, sign: 1, countRecord: true)
+                remember(key, new)
+                counted += 1
             }
-            counted += 1
         }
         return counted
     }
@@ -85,10 +134,15 @@ public final class UsageEstimator {
     public func estimate(accountID: String, window: QuotaWindowKind) -> UsageEstimate? {
         lock.lock(); defer { lock.unlock() }
         guard let state = states[WindowKey(accountID: accountID, window: window.description)] else { return nil }
-        return makeEstimate(state, window: window.description)
+        return makeEstimate(base: state.anchorPercent, bucket: state.beforeReset.merged(with: state.afterReset),
+                            window: window.description)
     }
 
     /// Records an official reading: logs estimate vs official, then learns from it.
+    ///
+    /// When the reading starts a new cycle only usage at or after the previous cycle's reset
+    /// deadline is compared. If that deadline is unknown the cycles cannot be separated, so no
+    /// comparison is logged.
     @discardableResult
     public func recordOfficial(
         accountID: String,
@@ -100,65 +154,74 @@ public final class UsageEstimator {
         lock.lock(); defer { lock.unlock() }
         let windowName = window.description
         let key = WindowKey(accountID: accountID, window: windowName)
-        var entry: ShadowEntry?
+        guard var state = states[key] else {
+            states[key] = WindowState(anchorPercent: percent, anchorAt: date, resetsAt: resetsAt)
+            return nil
+        }
 
-        if var state = states[key] {
-            let resetOccurred = didReset(state, newResetsAt: resetsAt, percent: percent)
+        let resetOccurred = didReset(state, newResetsAt: resetsAt, percent: percent)
+        var entry: ShadowEntry?
+        if !resetOccurred || state.resetsAt != nil {
             let base = resetOccurred ? 0 : state.anchorPercent
-            let estimateState = WindowState(
-                anchorPercent: base, anchorAt: state.anchorAt, resetsAt: state.resetsAt,
-                rawUnitsByModel: state.rawUnitsByModel, sessions: state.sessions,
-                sawSidechain: state.sawSidechain, recordCount: state.recordCount,
-                totalTokens: state.totalTokens, cacheTokens: state.cacheTokens)
-            let estimate = makeEstimate(estimateState, window: windowName)
+            let bucket = resetOccurred ? state.afterReset : state.beforeReset.merged(with: state.afterReset)
+            let estimate = makeEstimate(base: base, bucket: bucket, window: windowName)
             var scenarios: [String] = []
-            if state.rawUnitsByModel.count > 1 { scenarios.append(EstimatorScenario.multiModel) }
-            if state.totalTokens > 0,
-               Double(state.cacheTokens) / Double(state.totalTokens) >= configuration.cacheHeavyShare {
+            if bucket.rawUnitsByModel.count > 1 { scenarios.append(EstimatorScenario.multiModel) }
+            if bucket.totalTokens > 0,
+               Double(bucket.cacheTokens) / Double(bucket.totalTokens) >= configuration.cacheHeavyShare {
                 scenarios.append(EstimatorScenario.cacheHeavy)
             }
-            if state.sawSidechain || state.sessions.count > 1 { scenarios.append(EstimatorScenario.multiAgent) }
+            if bucket.sawSidechain || bucket.sessions.count > 1 { scenarios.append(EstimatorScenario.multiAgent) }
             if attributor.switchOccurred(from: state.anchorAt, to: date) { scenarios.append(EstimatorScenario.accountSwitch) }
             if resetOccurred { scenarios.append(EstimatorScenario.resetBoundary) }
             if scenarios.isEmpty { scenarios.append(EstimatorScenario.baseline) }
-            let levels = Set(state.rawUnitsByModel.keys.map { weights.multiplier(for: $0).level.rawValue }).sorted()
+            let levels = Set(bucket.rawUnitsByModel.keys.map { weights.multiplier(for: $0).level.rawValue }).sorted()
 
             let made = ShadowEntry(
                 at: date, accountID: accountID, window: windowName, officialPercent: percent,
-                estimatedPercent: estimate.percent, anchorPercent: base, recordCount: state.recordCount,
+                estimatedPercent: estimate.percent, anchorPercent: base, recordCount: bucket.recordCount,
                 confidence: estimate.confidence, errorRange: estimate.errorRange,
                 scenarios: scenarios, weightLevels: levels)
             entry = made
             log.append(made)
-
-            if !resetOccurred { learn(from: state, official: percent, windowName: windowName, error: abs(made.error)) }
-            state.resetsAt = resetsAt ?? state.resetsAt
-            state.anchorPercent = percent
-            state.anchorAt = date
-            state.rawUnitsByModel = [:]
-            state.sessions = []
-            state.sawSidechain = false
-            state.recordCount = 0
-            state.totalTokens = 0
-            state.cacheTokens = 0
-            states[key] = state
-        } else {
-            states[key] = WindowState(anchorPercent: percent, anchorAt: date, resetsAt: resetsAt)
+            if !resetOccurred {
+                learn(from: bucket, anchorPercent: state.anchorPercent, official: percent,
+                      windowName: windowName, error: abs(made.error))
+            }
         }
+        state.resetsAt = resetsAt ?? state.resetsAt
+        state.anchorPercent = percent
+        state.anchorAt = date
+        state.beforeReset = Bucket()
+        state.afterReset = Bucket()
+        states[key] = state
         return entry
     }
 
     // MARK: - Private
 
-    private func remember(_ key: String) -> Bool {
-        guard seenKeys.insert(key).inserted else { return false }
-        seenOrder.append(key)
-        while seenOrder.count - seenHead > configuration.maximumDeduplicationKeys {
-            seenKeys.remove(seenOrder[seenHead])
-            seenHead += 1
+    private func apply(_ contribution: Contribution, sign: Double, countRecord: Bool) {
+        for key in states.keys where key.accountID == contribution.accountID {
+            guard contribution.timestamp >= states[key]!.anchorAt else { continue }
+            if let reset = states[key]!.resetsAt, contribution.timestamp >= reset {
+                states[key]!.afterReset.add(contribution, sign: sign, countRecord: countRecord)
+            } else {
+                states[key]!.beforeReset.add(contribution, sign: sign, countRecord: countRecord)
+            }
         }
-        if seenHead > seenOrder.count / 2 { seenOrder.removeFirst(seenHead); seenHead = 0 }
-        return true
+    }
+
+    private func remember(_ key: String, _ contribution: Contribution) {
+        contributions[key] = contribution
+        contributionOrder.append(key)
+        while contributionOrder.count - contributionHead > configuration.maximumDeduplicationKeys {
+            contributions.removeValue(forKey: contributionOrder[contributionHead])
+            contributionHead += 1
+        }
+        if contributionHead > contributionOrder.count / 2 {
+            contributionOrder.removeFirst(contributionHead)
+            contributionHead = 0
+        }
     }
 
     private func didReset(_ state: WindowState, newResetsAt: Date?, percent: Double) -> Bool {
@@ -166,13 +229,13 @@ public final class UsageEstimator {
         return percent < state.anchorPercent
     }
 
-    private func units(_ state: WindowState) -> Double {
-        state.rawUnitsByModel.reduce(0) { $0 + $1.value * weights.multiplier(for: $1.key).value }
+    private func units(_ bucket: Bucket) -> Double {
+        bucket.rawUnitsByModel.reduce(0) { $0 + $1.value * weights.multiplier(for: $1.key).value }
     }
 
-    private func makeEstimate(_ state: WindowState, window: String) -> UsageEstimate {
+    private func makeEstimate(base: Double, bucket: Bucket, window: String) -> UsageEstimate {
         let stats = learned[window] ?? Learned(percentPerUnit: configuration.initialPercentPerUnit)
-        let percent = min(100, max(state.anchorPercent, state.anchorPercent + units(state) * stats.percentPerUnit))
+        let percent = min(100, max(base, base + units(bucket) * stats.percentPerUnit))
         let confidence: Double
         let range: Double
         if stats.samples == 0 {
@@ -186,22 +249,21 @@ public final class UsageEstimator {
         return UsageEstimate(percent: percent, confidence: confidence, errorRange: range)
     }
 
-    private func learn(from state: WindowState, official: Double, windowName: String, error: Double) {
-        let delta = official - state.anchorPercent
+    private func learn(from bucket: Bucket, anchorPercent: Double, official: Double, windowName: String, error: Double) {
+        let delta = official - anchorPercent
         var stats = learned[windowName] ?? Learned(percentPerUnit: configuration.initialPercentPerUnit)
         let alpha = configuration.learningRate
         stats.meanAbsoluteError = stats.samples == 0 ? error : (1 - alpha) * stats.meanAbsoluteError + alpha * error
         stats.samples += 1
 
-        let before = units(state)
+        let before = units(bucket)
         if delta >= configuration.minimumLearnablePercentDelta, before > 0 {
             let predicted = before * stats.percentPerUnit
             var modelShares: [String: Double] = [:]
-            for (model, raw) in state.rawUnitsByModel { modelShares[model] = raw * weights.multiplier(for: model).value / before }
+            for (model, raw) in bucket.rawUnitsByModel { modelShares[model] = raw * weights.multiplier(for: model).value / before }
             weights.learn(ratio: delta / predicted, shares: modelShares)
-            let after = units(state)
-            let implied = delta / after
-            stats.percentPerUnit = (1 - alpha) * stats.percentPerUnit + alpha * implied
+            let after = units(bucket)
+            stats.percentPerUnit = (1 - alpha) * stats.percentPerUnit + alpha * (delta / after)
         }
         learned[windowName] = stats
     }
