@@ -46,11 +46,11 @@ final class MultiDeviceCompensationTests: XCTestCase {
         )
     }
 
-    private func observation(_ used: Double, trust: QuotaTrust = .a) -> QuotaObservation {
+    private func observation(_ used: Double, trust: QuotaTrust = .a, account: String = "acct") -> QuotaObservation {
         QuotaObservation(
             window: .fiveHour, usedPercentage: used,
             resetsAt: Date(timeIntervalSince1970: 1_800_000_000 + 7_200), receivedAt: timer.current,
-            source: "test", trust: trust, accountID: "acct", epoch: .initial
+            source: "test", trust: trust, accountID: account, epoch: .initial
         )!
     }
 
@@ -171,6 +171,14 @@ final class MultiDeviceCompensationTests: XCTestCase {
         timer.advance(by: 30)
         c.didAccept(observation(30), previous: reading(45))
         XCTAssertTrue(c.externalActiveModeIsOn)
+    }
+
+    func testBaselineFromOtherAccountIsNotComparedAtSameEpoch() {
+        let c = makeCompensator()
+        c.didAccept(observation(20, account: "acct-A"), previous: nil)
+        timer.advance(by: 30)
+        c.didAccept(observation(40, account: "acct-B"), previous: nil)
+        XCTAssertFalse(c.externalActiveModeIsOn)
     }
 
     func testSwitchingBetweenOtherAppsNeverRequests() {

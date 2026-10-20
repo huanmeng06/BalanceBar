@@ -59,7 +59,7 @@ public final class MultiDeviceCompensator: QuotaDriftDetecting {
     private let lock = NSLock()
     private var latestOfficial: [String: Double] = [:]
     /// Previous grade-A reading per window; the displayed reading may be grade B and is not an official baseline.
-    private var officialBaseline: [String: QuotaMergedReading] = [:]
+    private var officialBaseline: [String: (accountID: String, reading: QuotaMergedReading)] = [:]
     private var lastOfficialAt: Date?
     private var calibrationGeneration = 0
 
@@ -99,8 +99,10 @@ public final class MultiDeviceCompensator: QuotaDriftDetecting {
         guard observation.trust == .a else { return }
         lock.lock()
         let key = observation.window.rawValue
-        let baseline = officialBaseline[key] ?? (previous?.trust == .a ? previous : nil)
-        officialBaseline[key] = QuotaMergedReading(observation)
+        // A baseline from another account must never be compared against this account's value.
+        let cached = officialBaseline[key].flatMap { $0.accountID == observation.accountID ? $0.reading : nil }
+        let baseline = cached ?? (previous?.trust == .a ? previous : nil)
+        officialBaseline[key] = (observation.accountID, QuotaMergedReading(observation))
         latestOfficial[key] = observation.usedPercentage
         lastOfficialAt = observation.receivedAt
         let driftDetected = detectsDrift(observation, baseline: baseline)
