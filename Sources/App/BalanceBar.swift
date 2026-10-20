@@ -960,6 +960,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     // wait a manual refresh cannot reach the endpoint.
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshBlockedUntil()
+                },
+                manualRefreshNotice: { [weak self] in
+                    guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
+                    return self.claudeQuota.manualRefreshNotice()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(

@@ -2216,6 +2216,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// Date until which the visible official quota is rate-limited, read
         /// when the menu validates its items; nil when refresh is available.
         let manualRefreshBlockedUntil: () -> Date?
+        /// Why a manual refresh would be skipped for the visible official quota;
+        /// read when the menu validates its items.
+        let manualRefreshNotice: () -> ClaudeManualRefreshNotice?
 
         init(
             manualRefresh: @escaping () -> Void,
@@ -2233,9 +2236,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             grokAnimationStateChanged: @escaping (Bool, NSImage?, NSImage?) -> Void = { _, _, _ in },
             animationFallbackChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in },
-            manualRefreshBlockedUntil: @escaping () -> Date? = { nil }
+            manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
+            manualRefreshNotice: @escaping () -> ClaudeManualRefreshNotice? = { nil }
         ) {
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
+            self.manualRefreshNotice = manualRefreshNotice
             self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
             self.openChatGPT = openChatGPT
@@ -6076,6 +6081,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         actions.manualRefreshBlockedUntil().map { Date() >= $0 } ?? true
     }
 
+    /// The refresh item explains a skipped refresh up front, since the menu closes on click.
+    func manualRefreshMenuTitle(now: Date = Date()) -> String {
+        switch actions.manualRefreshNotice() {
+        case nil:
+            return tr(.keyStatusItemControllerRefreshNow)
+        case .loginExpired?:
+            return tr(.keyStatusItemControllerRefreshNowLoginExpired)
+        case let .rateLimited(until)?:
+            let remaining = DateComponentsFormatter()
+            remaining.unitsStyle = .abbreviated
+            remaining.allowedUnits = [.hour, .minute]
+            remaining.maximumUnitCount = 1
+            let text = remaining.string(from: max(60, until.timeIntervalSince(now).rounded(.up))) ?? ""
+            return tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: [text])
+        case .justRefreshed?:
+            return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
+        }
+    }
+
     @objc private func manualRefresh() {
         guard isManualRefreshAvailable else { return }
         actions.manualRefresh()
@@ -6189,7 +6213,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menu.addItem(makeQuickSwitchMenuItem())
         }
         menu.addItem(
-            withTitle: tr(.keyStatusItemControllerRefreshNow),
+            withTitle: manualRefreshMenuTitle(),
             action: #selector(manualRefresh),
             keyEquivalent: "r"
         ).target = self
@@ -8601,6 +8625,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 extension StatusItemController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard menuItem.action == #selector(manualRefresh) else { return true }
+        menuItem.title = manualRefreshMenuTitle()
         return isManualRefreshAvailable
     }
 }

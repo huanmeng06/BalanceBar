@@ -1416,10 +1416,12 @@ final class ProviderRefreshCoordinator {
             return tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [name])
         case let .transport(_, description):
             return tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [name, description])
+        case .unauthorized:
+            return tr(.keyClaudeRefreshLoginExpired)
         case .rateLimited, .http(429):
             return tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
                 arguments: ["429"]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
-        case .unauthorized, .http, .invalidResponse:
+        case .http, .invalidResponse:
             return tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [name])
         }
     }

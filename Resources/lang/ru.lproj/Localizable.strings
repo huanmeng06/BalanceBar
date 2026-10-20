@@ -571,3 +571,7 @@
 "quota.status.reset_pending_short" = "Ожидание";
 "quota.failure.open_usage_page" = "Открыть официальную страницу использования";
 "quota.status.accessibility" = "Состояние квоты: %1$@";
+"claude.refresh.login_expired" = "Срок входа в Claude Code истёк. Запустите claude один раз в терминале, чтобы восстановить вход; BalanceBar сам вход не продлевает.";
+"status.item.controller.refresh_now_login_expired" = "Обновить сейчас (вход в Claude истёк, сначала запустите claude)";
+"status.item.controller.refresh_now_rate_limited" = "Обновить сейчас (лимит запросов, доступно через %1$@)";
+"status.item.controller.refresh_now_just_refreshed" = "Обновить сейчас (только что обновлено)";

@@ -571,3 +571,7 @@
 "quota.status.reset_pending_short" = "確認待ち";
 "quota.failure.open_usage_page" = "公式の使用状況ページを開く";
 "quota.status.accessibility" = "クォータの状態：%1$@";
+"claude.refresh.login_expired" = "Claude Code のサインインが期限切れです。ターミナルで claude を一度実行すると復旧します。BalanceBar がサインインを自動更新することはありません。";
+"status.item.controller.refresh_now_login_expired" = "今すぐ更新（Claude のサインインが期限切れ。先に claude を実行）";
+"status.item.controller.refresh_now_rate_limited" = "今すぐ更新（レート制限中、%1$@後に利用可能）";
+"status.item.controller.refresh_now_just_refreshed" = "今すぐ更新（直前に更新済み）";
