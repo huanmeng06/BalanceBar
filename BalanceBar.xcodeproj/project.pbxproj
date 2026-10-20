@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B51B00000000000000000011 /* CodexRolloutSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51B00000000000000000001 /* CodexRolloutSource.swift */; };
+		B51B00000000000000000012 /* CodexRolloutSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51B00000000000000000002 /* CodexRolloutSourceTests.swift */; };
+		C52600000000000000000011 /* ModOnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000001 /* ModOnboardingModel.swift */; };
+		C52600000000000000000012 /* ModInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000002 /* ModInstaller.swift */; };
+		C52600000000000000000013 /* ModOnboardingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000003 /* ModOnboardingController.swift */; };
+		C52600000000000000000014 /* ModOnboardingPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000004 /* ModOnboardingPanelView.swift */; };
+		C52600000000000000000015 /* RealtimeBoostSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000005 /* RealtimeBoostSettingsView.swift */; };
+		C52600000000000000000016 /* ModOnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52600000000000000000006 /* ModOnboardingTests.swift */; };
 		A10000000000000000000020 /* BalanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* BalanceBar.swift */; };
 		A10000000000000000000044 /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000045 /* AppPreferences.swift */; };
 		A47000000000000000000002 /* BalanceNotificationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47000000000000000000001 /* BalanceNotificationModels.swift */; };
@@ -166,6 +174,7 @@
 		A10000000000000300000021 /* BackgroundTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000020 /* BackgroundTestHost.swift */; };
 		A10000000000000300000051 /* TestRepositoryRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000050 /* TestRepositoryRoot.swift */; };
 		A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000030 /* AutomatedTestHostTests.swift */; };
+		A48000000000000000000002 /* ClaudeApplicationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48000000000000000000001 /* ClaudeApplicationIdentity.swift */; };
 		A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */; };
 		A10000000000000200000003 /* ChatGPTLaunchDecision.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000012 /* ChatGPTLaunchDecision.swift */; };
 		A10000000000000200000004 /* ChatGPTLaunchAgentRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */; };
@@ -203,9 +212,21 @@
 		B52800000000000000000104 /* UsageEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000004 /* UsageEstimator.swift */; };
 		B52800000000000000000105 /* ShadowLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000005 /* ShadowLog.swift */; };
 		B52800000000000000000106 /* UsageEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000006 /* UsageEstimatorTests.swift */; };
+		B52200000000000000000011 /* QuotaSourceAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000010 /* QuotaSourceAdapter.swift */; };
+		B52200000000000000000021 /* QuotaSnapshotParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000020 /* QuotaSnapshotParser.swift */; };
+		B52200000000000000000031 /* SnapshotInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000030 /* SnapshotInbox.swift */; };
+		B52200000000000000000041 /* SnapshotInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000040 /* SnapshotInboxTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B51B00000000000000000001 /* CodexRolloutSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutSource.swift; sourceTree = "<group>"; };
+		B51B00000000000000000002 /* CodexRolloutSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutSourceTests.swift; sourceTree = "<group>"; };
+		C52600000000000000000001 /* ModOnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingModel.swift; sourceTree = "<group>"; };
+		C52600000000000000000002 /* ModInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModInstaller.swift; sourceTree = "<group>"; };
+		C52600000000000000000003 /* ModOnboardingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingController.swift; sourceTree = "<group>"; };
+		C52600000000000000000004 /* ModOnboardingPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingPanelView.swift; sourceTree = "<group>"; };
+		C52600000000000000000005 /* RealtimeBoostSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeBoostSettingsView.swift; sourceTree = "<group>"; };
+		C52600000000000000000006 /* ModOnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* BalanceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceBar.swift; sourceTree = "<group>"; };
 		A10000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000012 /* BalanceBar.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = BalanceBar.icns; sourceTree = "<group>"; };
@@ -395,6 +416,7 @@
 		A10000000000000300000020 /* BackgroundTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTestHost.swift; sourceTree = "<group>"; };
 		A10000000000000300000050 /* TestRepositoryRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestRepositoryRoot.swift; sourceTree = "<group>"; };
 		A10000000000000300000030 /* AutomatedTestHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomatedTestHostTests.swift; sourceTree = "<group>"; };
+		A48000000000000000000001 /* ClaudeApplicationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeApplicationIdentity.swift; sourceTree = "<group>"; };
 		A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTApplicationIdentity.swift; sourceTree = "<group>"; };
 		A10000000000000200000012 /* ChatGPTLaunchDecision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchDecision.swift; sourceTree = "<group>"; };
 		A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchAgentRuntime.swift; sourceTree = "<group>"; };
@@ -429,6 +451,10 @@
 		B52800000000000000000004 /* UsageEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageEstimator.swift; sourceTree = "<group>"; };
 		B52800000000000000000005 /* ShadowLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowLog.swift; sourceTree = "<group>"; };
 		B52800000000000000000006 /* UsageEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageEstimatorTests.swift; sourceTree = "<group>"; };
+		B52200000000000000000010 /* QuotaSourceAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSourceAdapter.swift; sourceTree = "<group>"; };
+		B52200000000000000000020 /* QuotaSnapshotParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSnapshotParser.swift; sourceTree = "<group>"; };
+		B52200000000000000000030 /* SnapshotInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotInbox.swift; sourceTree = "<group>"; };
+		B52200000000000000000040 /* SnapshotInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotInboxTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -467,6 +493,41 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C52600000000000000000030 /* ModOnboarding */ = {
+			isa = PBXGroup;
+			children = (
+				C52600000000000000000001 /* ModOnboardingModel.swift */,
+				C52600000000000000000002 /* ModInstaller.swift */,
+				C52600000000000000000003 /* ModOnboardingController.swift */,
+				C52600000000000000000004 /* ModOnboardingPanelView.swift */,
+			);
+			path = ModOnboarding;
+			sourceTree = "<group>";
+		};
+		C52600000000000000000031 /* RealtimeBoost */ = {
+			isa = PBXGroup;
+			children = (
+				C52600000000000000000005 /* RealtimeBoostSettingsView.swift */,
+			);
+			path = RealtimeBoost;
+			sourceTree = "<group>";
+		};
+		C52600000000000000000032 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				C52600000000000000000031 /* RealtimeBoost */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		C52600000000000000000033 /* ModOnboarding */ = {
+			isa = PBXGroup;
+			children = (
+				C52600000000000000000006 /* ModOnboardingTests.swift */,
+			);
+			path = ModOnboarding;
+			sourceTree = "<group>";
+		};
 		A1000000000000000000001B /* BalanceBar */ = {
 			isa = PBXGroup;
 			children = (
@@ -510,6 +571,7 @@
 				A10000000000000200000010 /* InitialLaunchPresentation.swift */,
 				A10000000000000300000010 /* AutomatedTestHost.swift */,
 				A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */,
+				A48000000000000000000001 /* ClaudeApplicationIdentity.swift */,
 				A10000000000000200000012 /* ChatGPTLaunchDecision.swift */,
 				A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */,
 				A1000000000000000000006D /* DashboardScrollClamping.swift */,
@@ -651,7 +713,9 @@
 				B51800000000000000000020 /* QuotaNotificationAdapterTests.swift */,
 				B51600000000000000000020 /* QuotaMergeEngineTests.swift */,
 				B51400000000000000000003 /* Account */,
+				B51B00000000000000000030 /* Sources */,
 				B51500000000000000000020 /* FetchSchedulerTests.swift */,
+				B52200000000000000000102 /* Inbox */,
 			);
 			path = Quota;
 			sourceTree = "<group>";
@@ -699,6 +763,7 @@
 			isa = PBXGroup;
 			children = (
 				C51700000000000000000008 /* Quota */,
+				C52600000000000000000033 /* ModOnboarding */,
 				A40000000000000000000017 /* MenuBar */,
 				A40000000000000000000018 /* Dashboard */,
 			);
@@ -766,8 +831,34 @@
 				B51800000000000000000002 /* Notify */,
 				B51600000000000000000002 /* Merge */,
 				B51500000000000000000001 /* Scheduler */,
+				B51B00000000000000000020 /* Sources */,
 			);
 			path = Quota;
+			sourceTree = "<group>";
+		};
+		B51B00000000000000000020 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B51B00000000000000000021 /* Codex */,
+				B52200000000000000000101 /* Inbox */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		B51B00000000000000000021 /* Codex */ = {
+			isa = PBXGroup;
+			children = (
+				B51B00000000000000000001 /* CodexRolloutSource.swift */,
+			);
+			path = Codex;
+			sourceTree = "<group>";
+		};
+		B51B00000000000000000030 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B51B00000000000000000002 /* CodexRolloutSourceTests.swift */,
+			);
+			path = Sources;
 			sourceTree = "<group>";
 		};
 		B51900000000000000000010 /* IO */ = {
@@ -889,6 +980,7 @@
 			children = (
 				C51700000000000000000004 /* StatusSlot.swift */,
 				C51700000000000000000005 /* FailureStateView.swift */,
+				C52600000000000000000030 /* ModOnboarding */,
 			);
 			path = Quota;
 			sourceTree = "<group>";
@@ -897,6 +989,7 @@
 			isa = PBXGroup;
 			children = (
 				C51700000000000000000007 /* Quota */,
+				C52600000000000000000032 /* Settings */,
 				A10000000000000000000086 /* MenuBar */,
 				A10000000000000000000092 /* Dashboard */,
 			);
@@ -1036,6 +1129,24 @@
 				B52800000000000000000006 /* UsageEstimatorTests.swift */,
 			);
 			path = Estimator;
+			sourceTree = "<group>";
+		};
+		B52200000000000000000101 /* Inbox */ = {
+			isa = PBXGroup;
+			children = (
+				B52200000000000000000010 /* QuotaSourceAdapter.swift */,
+				B52200000000000000000020 /* QuotaSnapshotParser.swift */,
+				B52200000000000000000030 /* SnapshotInbox.swift */,
+			);
+			path = Inbox;
+			sourceTree = "<group>";
+		};
+		B52200000000000000000102 /* Inbox */ = {
+			isa = PBXGroup;
+			children = (
+				B52200000000000000000040 /* SnapshotInboxTests.swift */,
+			);
+			path = Inbox;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -1300,6 +1411,11 @@
 				B51100000000000000000030 /* QuotaTypes.swift in Sources */,
 				C51700000000000000000001 /* StatusSlot.swift in Sources */,
 				C51700000000000000000002 /* FailureStateView.swift in Sources */,
+				C52600000000000000000011 /* ModOnboardingModel.swift in Sources */,
+				C52600000000000000000012 /* ModInstaller.swift in Sources */,
+				C52600000000000000000013 /* ModOnboardingController.swift in Sources */,
+				C52600000000000000000014 /* ModOnboardingPanelView.swift in Sources */,
+				C52600000000000000000015 /* RealtimeBoostSettingsView.swift in Sources */,
 				B51600000000000000000030 /* QuotaMergeEngine.swift in Sources */,
 				B51400000000000000000030 /* ClaudeAccountIdentityProvider.swift in Sources */,
 				B51100000000000000000031 /* QuotaContracts.swift in Sources */,
@@ -1311,6 +1427,10 @@
 				B52800000000000000000104 /* UsageEstimator.swift in Sources */,
 				B52800000000000000000105 /* ShadowLog.swift in Sources */,
 				B51900000000000000000013 /* SafeFileValidator.swift in Sources */,
+				B52200000000000000000011 /* QuotaSourceAdapter.swift in Sources */,
+				B52200000000000000000021 /* QuotaSnapshotParser.swift in Sources */,
+				B52200000000000000000031 /* SnapshotInbox.swift in Sources */,
+				B51B00000000000000000011 /* CodexRolloutSource.swift in Sources */,
 				B51100000000000000000032 /* QuotaSnapshot.swift in Sources */,
 				B51800000000000000000030 /* QuotaNotificationAdapter.swift in Sources */,
 				B51500000000000000000030 /* FetchScheduler.swift in Sources */,
@@ -1390,6 +1510,7 @@
 				A10000000000000200000001 /* InitialLaunchPresentation.swift in Sources */,
 				A10000000000000300000001 /* AutomatedTestHost.swift in Sources */,
 				A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */,
+				A48000000000000000000002 /* ClaudeApplicationIdentity.swift in Sources */,
 				A10000000000000200000003 /* ChatGPTLaunchDecision.swift in Sources */,
 				A10000000000000200000004 /* ChatGPTLaunchAgentRuntime.swift in Sources */,
 				A10000000000000200000005 /* LaunchWithChatGPTService.swift in Sources */,
@@ -1445,8 +1566,11 @@
 				B51100000000000000000033 /* QuotaModelTests.swift in Sources */,
 				B51900000000000000000014 /* QuotaIOTests.swift in Sources */,
 				B52800000000000000000106 /* UsageEstimatorTests.swift in Sources */,
+				B52200000000000000000041 /* SnapshotInboxTests.swift in Sources */,
+				B51B00000000000000000012 /* CodexRolloutSourceTests.swift in Sources */,
 				B51800000000000000000031 /* QuotaNotificationAdapterTests.swift in Sources */,
 				C51700000000000000000003 /* StatusSlotViewTests.swift in Sources */,
+				C52600000000000000000016 /* ModOnboardingTests.swift in Sources */,
 				B51600000000000000000033 /* QuotaMergeEngineTests.swift in Sources */,
 				B51400000000000000000031 /* ClaudeAccountIdentityProviderTests.swift in Sources */,
 				B51500000000000000000032 /* FetchSchedulerTests.swift in Sources */,
