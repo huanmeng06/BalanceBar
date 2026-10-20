@@ -2724,6 +2724,39 @@ final class DashboardPageSearchTests: XCTestCase {
         }
     }
 
+    func testSearchingRefreshFootnoteKeepsTheRefreshRows() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        for language in [AppLanguage.english, .simplifiedChinese] {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPageSearchTests.RefreshFootnote.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let page = DashboardGeneralPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                currentProviderName: "OpenAI",
+                relay: DashboardPreferencePageRelay(),
+                updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+            ))
+            defer { DashboardSettingsComponents.disconnectPopUpButtonActions(in: page) }
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 900),
+                styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = page
+            defer { window.contentView = nil; window.orderOut(nil) }
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
+
+            let heading = tr(.keyDashboardGeneralAndRefreshPagesRefresh)
+            let section = try XCTUnwrap(firstSection(titled: heading, in: page) as? SettingsSectionView)
+            let filter = DashboardPageSearchFilter()
+            XCTAssertTrue(filter.apply(query: tr(.keyDashboardRefreshMinimumIntervalHint), to: page,
+                pageTitle: "General", mode: .titles), "\(language) footnote query finds the section")
+            window.layoutIfNeeded()
+            XCTAssertFalse(isCollapsedForSearch(section.contentViews[0]))
+            XCTAssertFalse(isCollapsedForSearch(section.contentViews[1]))
+        }
+    }
+
     func testVisibleCopySkipsHiddenSubtreeCopy() {
         let hiddenField = NSTextField(labelWithString: "Hidden Provider Copy")
         hiddenField.isHidden = true
