@@ -376,12 +376,18 @@ final class ModOnboardingPanelView: NSView {
             column.setCustomSpacing(10, after: icon)
             return column
         case let .point(symbol, title, detail):
+            // Every icon sits in the same square box, solid accent color, so differently shaped symbols line up.
+            let box: CGFloat = 30
             let icon = NSImageView(image: Self.symbol(symbol, size: 20, weight: .medium) ?? NSImage())
-            icon.symbolConfiguration = NSImage.SymbolConfiguration(hierarchicalColor: .controlAccentColor)
             icon.contentTintColor = .controlAccentColor
-            icon.widthAnchor.constraint(equalToConstant: 28).isActive = true
+            icon.imageScaling = .scaleProportionallyDown
+            icon.imageAlignment = .alignCenter
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            icon.widthAnchor.constraint(equalToConstant: box).isActive = true
+            icon.heightAnchor.constraint(equalToConstant: box).isActive = true
             icon.setContentHuggingPriority(.required, for: .horizontal)
-            let textWidth = contentWidth - 28 - 12
+            icon.setContentCompressionResistancePriority(.required, for: .horizontal)
+            let textWidth = contentWidth - box - 12
             let column = NSStackView(views: [
                 label(title, size: 13, weight: .semibold, width: textWidth),
                 label(detail, size: 12, color: .secondaryLabelColor, width: textWidth),
@@ -391,7 +397,7 @@ final class ModOnboardingPanelView: NSView {
             column.spacing = 2
             let row = NSStackView(views: [icon, column])
             row.orientation = .horizontal
-            row.alignment = .top
+            row.alignment = .centerY
             row.spacing = 12
             return row
         case let .text(text):
