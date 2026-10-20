@@ -1,0 +1,197 @@
+import XCTest
+@testable import BalanceBar
+
+final class ClaudeHUDSourceTests: XCTestCase {
+    private var root: URL!
+    private var hud: URL!
+    private var transcripts: URL!
+    private var export: URL!
+    private let base = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private struct FakeAccount: AccountIdentityProviding {
+        var accountIdentity: AccountIdentity? = AccountIdentity(stableID: "claude:acct", idSource: .accountUUID)
+        var credentialVersion: CredentialVersion? = nil
+        var accountEpoch = AccountEpoch(2)
+    }
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClaudeHUDTests-\(UUID().uuidString)", isDirectory: true)
+            .resolvingSymlinksInPath()
+        hud = root.appendingPathComponent("plugins/claude-hud", isDirectory: true)
+        transcripts = root.appendingPathComponent("projects", isDirectory: true)
+        export = root.appendingPathComponent("export/usage.json")
+        try FileManager.default.createDirectory(at: transcripts, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    private func makeSource(
+        configuration: ClaudeHUDConfiguration = ClaudeHUDConfiguration(),
+        now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_800_000_100) }
+    ) -> ClaudeHUDSource {
+        ClaudeHUDSource(
+            hudDirectory: hud, transcriptsDirectory: transcripts, accountProvider: FakeAccount(),
+            configuration: configuration, now: now
+        )
+    }
+
+    private func writeConfig(_ json: String) throws {
+        try FileManager.default.createDirectory(at: hud, withIntermediateDirectories: true)
+        try Data(json.utf8).write(to: hud.appendingPathComponent("config.json"))
+    }
+
+    private func writeConfig(exportingTo path: URL?) throws {
+        let display = path.map { "{\"externalUsageWritePath\":\"\($0.path)\"}" } ?? "{}"
+        try writeConfig("{\"display\":\(display)}")
+    }
+
+    private func writeSnapshot(used: Double, to url: URL? = nil) throws {
+        let url = url ?? export!
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let iso = ISO8601DateFormatter().string(from: base)
+        let reset = ISO8601DateFormatter().string(from: base.addingTimeInterval(3_600))
+        try Data("{\"updated_at\":\"\(iso)\",\"five_hour\":{\"used_percentage\":\(used),\"resets_at\":\"\(reset)\"}}".utf8)
+            .write(to: url)
+    }
+
+    private func scan(_ source: ClaudeHUDSource, configChanged: Bool = true) -> [QuotaObservation] {
+        var result: [QuotaObservation] = []
+        source.rescan(configChanged: configChanged) { result.append($0) }
+        return result
+    }
+
+    // MARK: Discovery
+
+    func testSnapshotBecomesGradeBObservationWithUnknownObservedAt() throws {
+        try writeConfig(exportingTo: export)
+        try writeSnapshot(used: 42)
+        let source = makeSource()
+        defer { source.stop() }
+        let observations = scan(source)
+        XCTAssertEqual(observations.count, 1)
+        let observation = try XCTUnwrap(observations.first)
+        XCTAssertEqual(observation.source, "claude-hud")
+        XCTAssertEqual(observation.trust, .b)
+        XCTAssertNil(observation.observedAt)
+        XCTAssertEqual(observation.receivedAt, Date(timeIntervalSince1970: 1_800_000_100))
+        XCTAssertEqual(observation.usedPercentage, 42)
+        XCTAssertEqual(source.diagnostics.status, .exporting(path: export.standardizedFileURL))
+        XCTAssertEqual(source.diagnostics.health, .healthy)
+    }
+
+    func testSourceIsAddedModifiedAndRemovedWithConfig() throws {
+        let source = makeSource()
+        defer { source.stop() }
+        XCTAssertTrue(scan(source).isEmpty)
+        XCTAssertEqual(source.diagnostics.status, .notInstalled)
+
+        try writeConfig(exportingTo: export)
+        try writeSnapshot(used: 10)
+        XCTAssertEqual(scan(source).map(\.usedPercentage), [10])
+
+        let other = root.appendingPathComponent("other/usage.json")
+        try writeSnapshot(used: 77, to: other)
+        try writeConfig(exportingTo: other)
+        XCTAssertEqual(scan(source).map(\.usedPercentage), [77])
+        XCTAssertEqual(source.diagnostics.status, .exporting(path: other.standardizedFileURL))
+
+        try writeConfig(exportingTo: nil)
+        XCTAssertTrue(scan(source).isEmpty)
+        XCTAssertEqual(source.diagnostics.status, .exportDisabled)
+
+        try FileManager.default.removeItem(at: hud.appendingPathComponent("config.json"))
+        XCTAssertTrue(scan(source).isEmpty)
+        XCTAssertEqual(source.diagnostics.status, .notInstalled)
+    }
+
+    func testInstalledWithoutExportOnlyReportsDiagnosticsAndLeavesConfigUntouched() throws {
+        try writeConfig(exportingTo: nil)
+        let configURL = hud.appendingPathComponent("config.json")
+        let before = try Data(contentsOf: configURL)
+        let source = makeSource()
+        defer { source.stop() }
+        XCTAssertTrue(scan(source).isEmpty)
+        XCTAssertEqual(source.diagnostics.status, .exportDisabled)
+        XCTAssertEqual(source.diagnostics.configurationExample, ClaudeHUDSource.configurationExample)
+        XCTAssertEqual(try Data(contentsOf: configURL), before)
+    }
+
+    func testInvalidConfigsAreUnusable() throws {
+        for json in ["[]", "{\"display\":{\"externalUsageWritePath\":5}}",
+                     "{\"display\":{\"externalUsageWritePath\":\"relative.json\"}}"] {
+            try writeConfig(json)
+            let source = makeSource()
+            defer { source.stop() }
+            _ = scan(source)
+            guard case .configUnusable = source.diagnostics.status else {
+                return XCTFail("expected configUnusable for \(json), got \(source.diagnostics.status)")
+            }
+        }
+    }
+
+    func testMalformedSnapshotIsDegradedWithoutObservation() throws {
+        try writeConfig(exportingTo: export)
+        try FileManager.default.createDirectory(at: export.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("{not json".utf8).write(to: export)
+        let source = makeSource()
+        defer { source.stop() }
+        XCTAssertTrue(scan(source).isEmpty)
+        Thread.sleep(forTimeInterval: 0.5) // the half-write retry runs after 0.1 s
+        guard case .degraded = source.diagnostics.health else { return XCTFail("expected degraded") }
+    }
+
+    func testLiveWatchersFollowConfigWithoutRestart() throws {
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("plugins"), withIntermediateDirectories: true)
+        let source = ClaudeHUDSource(
+            hudDirectory: hud, transcriptsDirectory: transcripts, accountProvider: FakeAccount(),
+            ioConfiguration: QuotaIOConfiguration(watchCoalescingInterval: 0.05)
+        )
+        defer { source.stop() }
+        let received = expectation(description: "observation after config appears")
+        received.assertForOverFulfill = false
+        source.start { observation in
+            if observation.usedPercentage == 55 { received.fulfill() }
+        }
+        Thread.sleep(forTimeInterval: 0.3)
+        try writeSnapshot(used: 55)
+        try writeConfig(exportingTo: export)
+        wait(for: [received], timeout: 5)
+    }
+
+    // MARK: Headless signal
+
+    func testHeadlessDurationAccumulatesOnlyWhileSnapshotIsStale() throws {
+        try writeConfig(exportingTo: export)
+        try writeSnapshot(used: 1)
+        let source = makeSource(configuration: ClaudeHUDConfiguration(snapshotLiveness: 30, maximumActivityGap: 60))
+        defer { source.stop() }
+        _ = scan(source) // snapshot received at base + 100
+
+        let t0 = base.addingTimeInterval(100)
+        source.recordTranscriptActivitySync(at: t0)
+        source.recordTranscriptActivitySync(at: t0.addingTimeInterval(10)) // HUD alive: not headless
+        XCTAssertEqual(source.headlessDuration, 0)
+
+        source.recordTranscriptActivitySync(at: t0.addingTimeInterval(50)) // snapshot 50s old: +40
+        source.recordTranscriptActivitySync(at: t0.addingTimeInterval(60)) // +10
+        XCTAssertEqual(source.headlessDuration, 50)
+
+        source.recordTranscriptActivitySync(at: t0.addingTimeInterval(1_000)) // idle gap capped at 60
+        XCTAssertEqual(source.headlessDuration, 110)
+
+        source.resetHeadlessDuration()
+        XCTAssertEqual(source.headlessDuration, 0)
+    }
+
+    func testHeadlessDurationIgnoredWithoutExport() throws {
+        let source = makeSource()
+        defer { source.stop() }
+        _ = scan(source)
+        source.recordTranscriptActivitySync(at: base)
+        source.recordTranscriptActivitySync(at: base.addingTimeInterval(20))
+        XCTAssertEqual(source.headlessDuration, 0)
+    }
+}
