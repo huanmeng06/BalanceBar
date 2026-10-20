@@ -216,6 +216,9 @@
 		B52800000000000000000104 /* UsageEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000004 /* UsageEstimator.swift */; };
 		B52800000000000000000105 /* ShadowLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000005 /* ShadowLog.swift */; };
 		B52800000000000000000106 /* UsageEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52800000000000000000006 /* UsageEstimatorTests.swift */; };
+		B52900000000000000000101 /* EstimateCalibrationTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52900000000000000000001 /* EstimateCalibrationTrigger.swift */; };
+		B52900000000000000000102 /* EstimateCalibrationTriggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52900000000000000000002 /* EstimateCalibrationTriggerTests.swift */; };
+		B52900000000000000000103 /* EstimateCalibrationSimulationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52900000000000000000003 /* EstimateCalibrationSimulationTests.swift */; };
 		B52200000000000000000011 /* QuotaSourceAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000010 /* QuotaSourceAdapter.swift */; };
 		B52200000000000000000021 /* QuotaSnapshotParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000020 /* QuotaSnapshotParser.swift */; };
 		B52200000000000000000031 /* SnapshotInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52200000000000000000030 /* SnapshotInbox.swift */; };
@@ -461,6 +464,9 @@
 		B52800000000000000000003 /* UsageWeights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWeights.swift; sourceTree = "<group>"; };
 		B52800000000000000000004 /* UsageEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageEstimator.swift; sourceTree = "<group>"; };
 		B52800000000000000000005 /* ShadowLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowLog.swift; sourceTree = "<group>"; };
+		B52900000000000000000001 /* EstimateCalibrationTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstimateCalibrationTrigger.swift; sourceTree = "<group>"; };
+		B52900000000000000000002 /* EstimateCalibrationTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstimateCalibrationTriggerTests.swift; sourceTree = "<group>"; };
+		B52900000000000000000003 /* EstimateCalibrationSimulationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstimateCalibrationSimulationTests.swift; sourceTree = "<group>"; };
 		B52800000000000000000006 /* UsageEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageEstimatorTests.swift; sourceTree = "<group>"; };
 		B52200000000000000000010 /* QuotaSourceAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSourceAdapter.swift; sourceTree = "<group>"; };
 		B52200000000000000000020 /* QuotaSnapshotParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSnapshotParser.swift; sourceTree = "<group>"; };
@@ -1172,14 +1178,33 @@
 				B52800000000000000000003 /* UsageWeights.swift */,
 				B52800000000000000000004 /* UsageEstimator.swift */,
 				B52800000000000000000005 /* ShadowLog.swift */,
+				B52900000000000000000900 /* Scheduling */,
 			);
 			path = Estimator;
+			sourceTree = "<group>";
+		};
+		B52900000000000000000900 /* Scheduling */ = {
+			isa = PBXGroup;
+			children = (
+				B52900000000000000000001 /* EstimateCalibrationTrigger.swift */,
+			);
+			path = Scheduling;
+			sourceTree = "<group>";
+		};
+		B52900000000000000000901 /* Scheduling */ = {
+			isa = PBXGroup;
+			children = (
+				B52900000000000000000002 /* EstimateCalibrationTriggerTests.swift */,
+				B52900000000000000000003 /* EstimateCalibrationSimulationTests.swift */,
+			);
+			path = Scheduling;
 			sourceTree = "<group>";
 		};
 		B52800000000000000000901 /* Estimator */ = {
 			isa = PBXGroup;
 			children = (
 				B52800000000000000000006 /* UsageEstimatorTests.swift */,
+				B52900000000000000000901 /* Scheduling */,
 			);
 			path = Estimator;
 			sourceTree = "<group>";
@@ -1480,6 +1505,7 @@
 				B52800000000000000000102 /* UsageAttribution.swift in Sources */,
 				B52800000000000000000103 /* UsageWeights.swift in Sources */,
 				B52800000000000000000104 /* UsageEstimator.swift in Sources */,
+				B52900000000000000000101 /* EstimateCalibrationTrigger.swift in Sources */,
 				B52800000000000000000105 /* ShadowLog.swift in Sources */,
 				B51900000000000000000013 /* SafeFileValidator.swift in Sources */,
 				B52200000000000000000011 /* QuotaSourceAdapter.swift in Sources */,
@@ -1623,6 +1649,8 @@
 				B51100000000000000000033 /* QuotaModelTests.swift in Sources */,
 				B51900000000000000000014 /* QuotaIOTests.swift in Sources */,
 				B52800000000000000000106 /* UsageEstimatorTests.swift in Sources */,
+				B52900000000000000000102 /* EstimateCalibrationTriggerTests.swift in Sources */,
+				B52900000000000000000103 /* EstimateCalibrationSimulationTests.swift in Sources */,
 				B52200000000000000000041 /* SnapshotInboxTests.swift in Sources */,
 				B52300000000000000000012 /* ClaudeHUDSourceTests.swift in Sources */,
 				B51B00000000000000000012 /* CodexRolloutSourceTests.swift in Sources */,
