@@ -301,6 +301,8 @@ final class ModOnboardingPanelTests: XCTestCase {
         func find(_ v: NSView) -> ModCopyButton? { (v as? ModCopyButton) ?? v.subviews.lazy.compactMap(find).first }
         let button = try XCTUnwrap(find(view))
         XCTAssertEqual(button.frame.width, ModCopyButton.side)
+        XCTAssertEqual(button.frame.height, ModCopyButton.side, "the copy button is square")
+        XCTAssertEqual(button.layer?.bounds.size, CGSize(width: ModCopyButton.side, height: ModCopyButton.side))
         XCTAssertEqual(button.toolTip, ModOnboardingText.copyCommands.defaultText)
         XCTAssertFalse(button.isShowingFeedback)
         button.performClick(nil)

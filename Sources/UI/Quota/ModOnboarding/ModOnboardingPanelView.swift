@@ -266,6 +266,9 @@ final class ModCopyButton: NSButton {
 
     required init?(coder: NSCoder) { nil }
 
+    /// A plain NSButton pads its frame beyond the aligned rect, which made the 22x22 constraints a taller frame.
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
