@@ -3,6 +3,73 @@ import XCTest
 @testable import BalanceBar
 
 final class ActivityCoordinatorTests: XCTestCase {
+    func testFrontmostKindRecognizesClaudeDesktop() {
+        XCTAssertEqual(
+            ActivityCoordinator.frontmostKind(bundleIdentifier: "com.anthropic.claudefordesktop", localizedName: "Claude"),
+            .claudeDesktop
+        )
+        XCTAssertEqual(
+            ActivityCoordinator.frontmostKind(bundleIdentifier: "com.anthropic.claudefordesktop", localizedName: nil),
+            .claudeDesktop
+        )
+        XCTAssertEqual(
+            ActivityCoordinator.frontmostKind(bundleIdentifier: nil, localizedName: "Claude"),
+            .claudeDesktop
+        )
+    }
+
+    func testFrontmostKindKeepsOtherAppsSeparateFromClaudeDesktop() {
+        XCTAssertEqual(
+            ActivityCoordinator.frontmostKind(bundleIdentifier: "com.openai.codex", localizedName: "Codex"),
+            .codex
+        )
+        XCTAssertEqual(
+            ActivityCoordinator.frontmostKind(bundleIdentifier: "com.apple.Terminal", localizedName: "Terminal"),
+            .terminal
+        )
+        XCTAssertEqual(
+            ActivityCoordinator.frontmostKind(bundleIdentifier: "com.example.claudebar", localizedName: "ClaudeBar"),
+            .other
+        )
+        XCTAssertEqual(
+            ActivityCoordinator.frontmostKind(bundleIdentifier: "com.example.other", localizedName: "Claude Code Helper"),
+            .other
+        )
+        XCTAssertEqual(ActivityCoordinator.frontmostKind(bundleIdentifier: nil, localizedName: nil), .other)
+    }
+
+    func testClaudeDesktopSelectsClaudeRegardlessOfPreviousClientOrProcesses() {
+        for current in [AssistantClient.codex, .claude, .grok] {
+            XCTAssertEqual(
+                ActivityClientSelection.client(
+                    frontmost: .claudeDesktop,
+                    current: current,
+                    grokProcessRunning: true,
+                    claudeProcessRunning: false
+                ),
+                .claude
+            )
+        }
+    }
+
+    func testClaudeDesktopTransitionsMatchCodexAndOtherApps() {
+        func select(_ frontmost: ActivityFrontmostKind, _ current: AssistantClient) -> AssistantClient {
+            ActivityClientSelection.client(
+                frontmost: frontmost, current: current,
+                grokProcessRunning: false, claudeProcessRunning: false
+            )
+        }
+        XCTAssertEqual(select(.claudeDesktop, .codex), .claude)
+        XCTAssertEqual(select(.codex, .claude), .codex)
+        XCTAssertEqual(select(.other, .claude), .claude)
+    }
+
+    func testClaudeDesktopDoesNotEnableFastIdentityPolling() {
+        XCTAssertFalse(ActivityIdentityPolling.shouldUseFastIdentity(
+            frontmost: .claudeDesktop, grokProcessRunning: true, claudeProcessRunning: true
+        ))
+    }
+
     func testTerminalWithOnlyGrokSelectsGrok() {
         XCTAssertEqual(
             ActivityClientSelection.client(

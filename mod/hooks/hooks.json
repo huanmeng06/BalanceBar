@@ -1,0 +1,4 @@
+{
+  "description": "BalanceBar Mod hooks",
+  "modules": ["./register.js"]
+}
