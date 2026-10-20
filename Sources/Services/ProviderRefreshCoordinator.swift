@@ -1038,6 +1038,7 @@ final class ProviderRefreshCoordinator {
                             client: client, providerID: source.id, revision: source.configurationRevision
                         ) != nil else { return }
                         guard case .success(let response) = result else {
+                            self.officialSampleUnavailable(client: client, providerID: source.id)
                             if previousRevisions[source.id] != source.configurationRevision {
                                 self.removeQuickSwitchSummary(providerID: source.id, client: client)
                             }
@@ -1192,6 +1193,7 @@ final class ProviderRefreshCoordinator {
         completion: ((Snapshot) -> Void)? = nil
     ) {
         func fail(providerID: String, providerName: String, reason: String, client: AssistantClient) {
+            officialSampleUnavailable(client: client, providerID: providerID)
             if let completion { completion(.providerError(providerName, reason: reason, cachedBalance: nil)) }
             else {
                 renderBalanceError(
@@ -1422,8 +1424,8 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    /// One shared rule for every official quota failure (standard and
-    /// quick-switch, any status): the stored notification sample is no longer
+    /// One shared rule for every official quota and API balance failure
+    /// (standard and quick-switch, any status): the stored notification sample is no longer
     /// current and must not be re-evaluated until a real refresh succeeds.
     private func officialSampleUnavailable(client: AssistantClient, providerID: String) {
         actions.notificationSamplesInvalidated?(client, [providerID])
