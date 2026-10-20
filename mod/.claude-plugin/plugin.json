@@ -1,0 +1,10 @@
+{
+  "name": "balancebar-mod",
+  "displayName": "BalanceBar Mod",
+  "version": "1.0.0",
+  "description": "Writes Claude Code rate-limit snapshots (Schema v1 superset) to the BalanceBar inbox after each measured turn.",
+  "author": {
+    "name": "BalanceBar"
+  },
+  "license": "MIT"
+}
