@@ -2036,9 +2036,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         for row in [officialRow, apiRow] {
             let hints = descendants(of: row).compactMap { ($0 as? NSTextField)?.stringValue }
                 .filter { $0 == tr(.keyDashboardRefreshMinimumIntervalHint) }
-            XCTAssertEqual(hints.count, 1)
+            XCTAssertTrue(hints.isEmpty)
         }
         let section = try XCTUnwrap(SettingsSectionView.enclosing(officialRow))
+        // The hint covers both rows, so it appears once as the section footnote.
+        XCTAssertEqual(section.footnoteLabel?.stringValue, tr(.keyDashboardRefreshMinimumIntervalHint))
         XCTAssertEqual(section.contentViews.count, 2)
         XCTAssertTrue(section.contentViews[0] === officialRow)
         XCTAssertTrue(section.contentViews[1] === apiRow)

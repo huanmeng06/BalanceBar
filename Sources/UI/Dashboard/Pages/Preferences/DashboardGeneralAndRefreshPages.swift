@@ -437,7 +437,8 @@ final class DashboardGeneralPage {
             }, selected: input.preferences.officialUsageRefreshInterval, identifier: "officialUsageRefreshInterval",
             target: input.relay, action: #selector(DashboardPreferencePageRelay.interval(_:)))
         // Both rows share one structure: a right-aligned selector of identical
-        // width with the minimum-interval hint underneath.
+        // width. The minimum-interval hint applies to the whole section, so it
+        // sits once under the card instead of repeating under each selector.
         let refreshPopupWidth = ceil(max(
             108, activeRefreshPopup.fittingSize.width, officialActivePopup.fittingSize.width
         ))
@@ -449,16 +450,11 @@ final class DashboardGeneralPage {
             let preferredWidth = popup.widthAnchor.constraint(equalToConstant: refreshPopupWidth)
             preferredWidth.priority = .defaultHigh
             preferredWidth.isActive = true
-            let hint = NSTextField(wrappingLabelWithString: tr(.keyDashboardRefreshMinimumIntervalHint))
-            hint.font = .systemFont(ofSize: 11)
-            hint.textColor = .secondaryLabelColor
-            hint.alignment = .right
-            hint.translatesAutoresizingMaskIntoConstraints = false
-            hint.widthAnchor.constraint(lessThanOrEqualToConstant: 220).isActive = true
-            let controls = NSStackView(views: [popup, hint])
+            // The wrapper takes the row's accessory sizing, so the popup keeps
+            // the shared preferred width.
+            let controls = NSStackView(views: [popup])
             controls.orientation = .vertical
             controls.alignment = .trailing
-            controls.spacing = 3
             return controls
         }
         let refreshButton = NSButton(
@@ -477,7 +473,8 @@ final class DashboardGeneralPage {
                     detail: tr(.keyDashboardRefreshAPIScope),
                     accessoryView: refreshControls(activeRefreshPopup)
                 )
-            ]
+            ],
+            footnote: tr(.keyDashboardRefreshMinimumIntervalHint)
         )
         let refreshNow = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),
