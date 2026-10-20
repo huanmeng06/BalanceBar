@@ -30,11 +30,12 @@ final class ClaudeHUDSourceTests: XCTestCase {
 
     private func makeSource(
         configuration: ClaudeHUDConfiguration = ClaudeHUDConfiguration(),
+        environment: [String: String] = [:],
         now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_800_000_100) }
     ) -> ClaudeHUDSource {
         ClaudeHUDSource(
             hudDirectory: hud, transcriptsDirectory: transcripts, accountProvider: FakeAccount(),
-            configuration: configuration, now: now
+            configuration: configuration, environment: environment, homeDirectory: root, now: now
         )
     }
 
@@ -161,7 +162,69 @@ final class ClaudeHUDSourceTests: XCTestCase {
         wait(for: [received], timeout: 5)
     }
 
+    func testEnvironmentVariablesAndTildeInExportPathAreExpanded() throws {
+        try writeConfig("{\"display\":{\"externalUsageWritePath\":\"${EXPORT_DIR}/usage.json\"}}")
+        let source = makeSource(environment: ["EXPORT_DIR": root.appendingPathComponent("export").path])
+        defer { source.stop() }
+        _ = scan(source)
+        XCTAssertEqual(source.diagnostics.status, .exporting(path: export.standardizedFileURL))
+
+        XCTAssertEqual(
+            ClaudeHUDSource.expandPath("~/a/${X}/${UNSET}", environment: ["X": "b"], homeDirectory: root),
+            root.path + "/a/b/${UNSET}"
+        )
+        XCTAssertEqual(ClaudeHUDSource.expandPath("~", environment: [:], homeDirectory: root), root.path)
+
+        try writeConfig("{\"display\":{\"externalUsageWritePath\":\"${UNSET}/usage.json\"}}")
+        _ = scan(source)
+        guard case .configUnusable = source.diagnostics.status else { return XCTFail("unset variable stays relative") }
+    }
+
+    func testStopFromObservationHandlerDoesNotDeadlock() throws {
+        try writeConfig(exportingTo: export)
+        try writeSnapshot(used: 5)
+        let source = makeSource()
+        var count = 0
+        source.rescan(configChanged: true) { _ in
+            count += 1
+            source.stop()
+        }
+        XCTAssertEqual(count, 1)
+    }
+
     // MARK: Headless signal
+
+    func testResetClearsPreviousActivityTimestamp() throws {
+        try writeConfig(exportingTo: export)
+        let source = makeSource()
+        defer { source.stop() }
+        _ = scan(source) // no snapshot yet: HUD never alive
+        source.recordTranscriptActivitySync(at: base)
+        source.recordTranscriptActivitySync(at: base.addingTimeInterval(10))
+        XCTAssertEqual(source.headlessDuration, 10)
+        source.resetHeadlessDuration()
+        source.recordTranscriptActivitySync(at: base.addingTimeInterval(30))
+        XCTAssertEqual(source.headlessDuration, 0)
+        source.recordTranscriptActivitySync(at: base.addingTimeInterval(35))
+        XCTAssertEqual(source.headlessDuration, 5)
+    }
+
+    func testReenablingExportDoesNotCountActivityFromWhileDisabled() throws {
+        try writeConfig(exportingTo: export)
+        let source = makeSource()
+        defer { source.stop() }
+        _ = scan(source)
+        source.recordTranscriptActivitySync(at: base)
+        try writeConfig(exportingTo: nil)
+        _ = scan(source)
+        source.recordTranscriptActivitySync(at: base.addingTimeInterval(20)) // export off
+        try writeConfig(exportingTo: export)
+        _ = scan(source)
+        source.recordTranscriptActivitySync(at: base.addingTimeInterval(30))
+        XCTAssertEqual(source.headlessDuration, 0)
+        source.recordTranscriptActivitySync(at: base.addingTimeInterval(40))
+        XCTAssertEqual(source.headlessDuration, 10)
+    }
 
     func testHeadlessDurationAccumulatesOnlyWhileSnapshotIsStale() throws {
         try writeConfig(exportingTo: export)

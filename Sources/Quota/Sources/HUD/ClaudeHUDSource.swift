@@ -75,6 +75,10 @@ public final class ClaudeHUDSource: QuotaSource, ClaudeHUDHeadlessSignaling {
     private let configuration: ClaudeHUDConfiguration
     private let ioConfiguration: QuotaIOConfiguration
     private let now: () -> Date
+    private let environment: [String: String]
+    private let homeDirectory: URL
+    private static let queueKey = DispatchSpecificKey<UUID>()
+    private let queueTag = UUID()
     private let queue = DispatchQueue(label: "BalanceBar.ClaudeHUDSource", qos: .utility)
     private let watcherQueue = DispatchQueue(label: "BalanceBar.ClaudeHUDSource.Watcher", qos: .utility)
 
@@ -109,8 +113,13 @@ public final class ClaudeHUDSource: QuotaSource, ClaudeHUDHeadlessSignaling {
         accountProvider: AccountIdentityProviding,
         configuration: ClaudeHUDConfiguration = ClaudeHUDConfiguration(),
         ioConfiguration: QuotaIOConfiguration = .default,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         now: @escaping () -> Date = Date.init
     ) {
+        queue.setSpecific(key: Self.queueKey, value: queueTag)
+        self.environment = environment
+        self.homeDirectory = homeDirectory
         self.hudDirectory = hudDirectory.standardizedFileURL
         self.transcriptsDirectory = transcriptsDirectory.standardizedFileURL
         self.accountProvider = accountProvider
@@ -136,10 +145,14 @@ public final class ClaudeHUDSource: QuotaSource, ClaudeHUDHeadlessSignaling {
         return headless
     }
 
+    /// Also drops the previous transcript timestamp so the next write does not bridge the reset.
     public func resetHeadlessDuration() {
-        stateLock.lock()
-        headless = 0
-        stateLock.unlock()
+        onQueue {
+            stateLock.lock()
+            headless = 0
+            stateLock.unlock()
+            lastTranscriptActivity = nil
+        }
     }
 
     // MARK: QuotaSource
@@ -160,8 +173,15 @@ public final class ClaudeHUDSource: QuotaSource, ClaudeHUDHeadlessSignaling {
         }
     }
 
+    /// Safe to call from any thread, including from inside the observation handler.
     public func stop() {
-        queue.sync { stopWatchersLocked() }
+        onQueue { stopWatchersLocked() }
+    }
+
+    /// Runs `body` on the source queue, or inline when already on it (avoids self-deadlock).
+    private func onQueue<T>(_ body: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: Self.queueKey) == queueTag { return body() }
+        return queue.sync(execute: body)
     }
 
     private func stopWatchers() {
@@ -185,8 +205,11 @@ public final class ClaudeHUDSource: QuotaSource, ClaudeHUDHeadlessSignaling {
     func reload() {
         let previous = status
         status = Self.discover(
-            hudDirectory: hudDirectory, maximumSize: configuration.maximumConfigSize
+            hudDirectory: hudDirectory, maximumSize: configuration.maximumConfigSize,
+            environment: environment, homeDirectory: homeDirectory
         )
+        // Transcript activity from before export was (re-)enabled must not count as headless time.
+        if status != previous { lastTranscriptActivity = nil }
         if case let .exporting(path) = status {
             if status != previous || exportWatcher == nil {
                 exportWatcher?.stop()
@@ -210,7 +233,12 @@ public final class ClaudeHUDSource: QuotaSource, ClaudeHUDHeadlessSignaling {
         publish()
     }
 
-    static func discover(hudDirectory: URL, maximumSize: Int) -> ClaudeHUDExportStatus {
+    static func discover(
+        hudDirectory: URL,
+        maximumSize: Int,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> ClaudeHUDExportStatus {
         let configURL = hudDirectory.appendingPathComponent("config.json")
         guard FileManager.default.fileExists(atPath: configURL.path) else { return .notInstalled }
         let data: Data
@@ -229,11 +257,33 @@ public final class ClaudeHUDSource: QuotaSource, ClaudeHUDHeadlessSignaling {
         guard let text = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
             return (raw is NSNull) ? .exportDisabled : .configUnusable(reason: "externalUsageWritePath is not a path")
         }
-        let expanded = (text as NSString).expandingTildeInPath
+        let expanded = expandPath(text, environment: environment, homeDirectory: homeDirectory)
         guard expanded.hasPrefix("/") else {
             return .configUnusable(reason: "externalUsageWritePath must be absolute")
         }
         return .exporting(path: URL(fileURLWithPath: expanded).standardizedFileURL)
+    }
+
+    /// Mirrors Claude HUD's rule: a leading `~` / `~/` and `${VAR}` are expanded; unset variables
+    /// stay as written.
+    static func expandPath(_ text: String, environment: [String: String], homeDirectory: URL) -> String {
+        var path = text
+        if path == "~" {
+            path = homeDirectory.path
+        } else if path.hasPrefix("~/") {
+            path = homeDirectory.path + "/" + path.dropFirst(2)
+        }
+        guard let pattern = try? NSRegularExpression(pattern: "\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}") else { return path }
+        var result = ""
+        var cursor = path.startIndex
+        let whole = NSRange(path.startIndex..., in: path)
+        for match in pattern.matches(in: path, range: whole) {
+            guard let full = Range(match.range, in: path), let name = Range(match.range(at: 1), in: path) else { continue }
+            result += path[cursor..<full.lowerBound]
+            result += environment[String(path[name])] ?? String(path[full])
+            cursor = full.upperBound
+        }
+        return result + path[cursor...]
     }
 
     // MARK: Events
@@ -328,8 +378,12 @@ public final class ClaudeHUDSource: QuotaSource, ClaudeHUDHeadlessSignaling {
     /// Counts transcript activity that happens while the HUD snapshot is not being refreshed.
     /// Must run on `queue`.
     func recordTranscriptActivity(at date: Date) {
+        guard case .exporting = status else {
+            lastTranscriptActivity = nil
+            return
+        }
         defer { lastTranscriptActivity = date }
-        guard case .exporting = status, let previous = lastTranscriptActivity, date > previous else { return }
+        guard let previous = lastTranscriptActivity, date > previous else { return }
         let hudAlive = lastSnapshotUpdate.map { date.timeIntervalSince($0) <= configuration.snapshotLiveness } ?? false
         guard !hudAlive else { return }
         let increment = min(date.timeIntervalSince(previous), configuration.maximumActivityGap)
