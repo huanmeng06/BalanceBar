@@ -429,19 +429,14 @@ final class AppPreferencesTests: XCTestCase {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 3)
-        XCTAssertEqual(preferences.postCodexRefreshDuration, 12)
         XCTAssertEqual(preferences.menuBarHorizontalPadding, 10)
         defaults.set(0, forKey: "codexUsageRefreshInterval")
         defaults.set(-1, forKey: "menuBarHorizontalPadding")
-        defaults.set(-4, forKey: "postCodexRefreshDuration")
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 3)
         XCTAssertEqual(preferences.menuBarHorizontalPadding, 10)
-        XCTAssertEqual(preferences.postCodexRefreshDuration, 0)
         preferences.codexUsageRefreshInterval = 8
-        preferences.postCodexRefreshDuration = 5
         preferences.menuBarHorizontalPadding = 14
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 8)
-        XCTAssertEqual(preferences.postCodexRefreshDuration, 5)
         XCTAssertEqual(preferences.menuBarHorizontalPadding, 14)
     }
 
@@ -449,22 +444,48 @@ final class AppPreferencesTests: XCTestCase {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(preferences.officialUsageRefreshInterval, 60)
-        XCTAssertEqual(preferences.officialPostTaskRefreshDuration, 120)
         preferences.codexUsageRefreshInterval = 5
-        preferences.postCodexRefreshDuration = 30
         preferences.officialUsageRefreshInterval = 150
-        preferences.officialPostTaskRefreshDuration = 300
         let reloaded = AppPreferences(defaults: defaults)
         XCTAssertEqual(reloaded.officialUsageRefreshInterval, 150)
-        XCTAssertEqual(reloaded.officialPostTaskRefreshDuration, 300)
         XCTAssertEqual(reloaded.codexUsageRefreshInterval, 5)
-        XCTAssertEqual(reloaded.postCodexRefreshDuration, 30)
         defaults.set(3, forKey: "officialUsageRefreshInterval")
-        defaults.set(-5, forKey: "officialPostTaskRefreshDuration")
         XCTAssertEqual(reloaded.officialUsageRefreshInterval, 60)
-        XCTAssertEqual(reloaded.officialPostTaskRefreshDuration, 120)
-        reloaded.officialPostTaskRefreshDuration = 0
-        XCTAssertEqual(reloaded.officialPostTaskRefreshDuration, 0)
+    }
+
+    func testLegacyTrailingRefreshValuesAreIgnored() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(0, forKey: "postCodexRefreshDuration")
+        defaults.set(300, forKey: "officialPostTaskRefreshDuration")
+        // The trailing window is derived only from the selected intervals.
+        XCTAssertEqual(
+            RefreshPolicy.apiPostTaskDuration(interval: preferences.codexUsageRefreshInterval),
+            TimeInterval(QuotaConstants.apiPostTaskRefreshCount) * 3
+        )
+        XCTAssertEqual(
+            RefreshPolicy.officialPostTaskDuration(selected: preferences.officialUsageRefreshInterval, client: .codex),
+            TimeInterval(QuotaConstants.officialPostTaskRefreshCount) * 60
+        )
+    }
+
+    func testOfficialIntervalIsMaxOfSelectionAndSourceFloor() {
+        let floor = QuotaConstants.automaticRequestMinimumInterval
+        XCTAssertEqual(floor, 180)
+        for selected in AppPreferences.officialUsageRefreshIntervals {
+            XCTAssertGreaterThanOrEqual(RefreshPolicy.officialInterval(selected: selected, client: .claude), 180)
+            XCTAssertEqual(RefreshPolicy.officialInterval(selected: selected, client: .codex), selected)
+        }
+        XCTAssertEqual(RefreshPolicy.officialInterval(selected: 60, client: .claude), 180)
+        XCTAssertEqual(RefreshPolicy.officialInterval(selected: 400, client: .claude), 400)
+    }
+
+    func testPostTaskWindowIsAFixedNumberOfRefreshesAtTheEffectiveInterval() {
+        XCTAssertEqual(QuotaConstants.apiPostTaskRefreshCount, 4)
+        XCTAssertEqual(QuotaConstants.officialPostTaskRefreshCount, 2)
+        XCTAssertEqual(RefreshPolicy.apiPostTaskDuration(interval: 5), 20)
+        XCTAssertEqual(RefreshPolicy.officialPostTaskDuration(selected: 90, client: .codex), 180)
+        XCTAssertEqual(RefreshPolicy.officialPostTaskDuration(selected: 60, client: .claude), 360)
     }
 
     func testBalanceDisplayThresholdDefaultsRoundsAndRejectsInvalidValues() {

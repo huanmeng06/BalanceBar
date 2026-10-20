@@ -268,13 +268,22 @@ Draft test health. A dedicated runner is needed because GitHub does not
 reliably evaluate dynamic job names for skipped jobs.
 A skipped job with the **required** check name would be unsafe because GitHub
 accepts skipped required checks as passing. Draft PRs cannot merge under GitHub's
-PR rules. On `ready_for_review`, the real `PR merge gate` has no dependencies and
-is created immediately as a pending check, including when returning to Ready
-with the same head SHA. Do not treat a previous same-SHA green result as the
-new Ready validation; confirm the new check appeared and completed. This event
-transition remains an important live acceptance test.
-The gate has no `always()` cancellation override, so cancelling the workflow
-cancels the gate too. It polls current-attempt evidence via the read-only Actions jobs API. Only scope
+PR rules.
+
+Draft vs Ready is decided from the **live** PR draft state read by the scope job,
+not from the event payload. Near-simultaneous `opened`(Draft) and
+`ready_for_review` events on one SHA can deliver a stale Draft payload in the
+newest run, and the PR merge box only evaluates the newest `Build and Test` run
+for that SHA (#549). Re-running an older attempt therefore never refreshes the
+required check; push or toggle Ready to create a new run. The payload is only a
+fallback when scope is skipped for metadata-only edits. The gate `needs: scope`
+and is created once scope finishes (shown as Expected, still blocking, until
+then), including when returning to Ready with the same head SHA. Do not treat a
+previous same-SHA green result as the new Ready validation; confirm the new
+check appeared and completed. This event transition remains an important live
+acceptance test.
+The gate uses `if: !cancelled()`, so it fails closed (never skipped) when scope
+fails, while cancelling the workflow cancels the gate too. It polls current-attempt evidence via the read-only Actions jobs API. Only scope
 may be reused: when absent in the current attempt, the most recent prior scope
 in the same run must have succeeded with the same head SHA. A newer failed,
 cancelled or skipped scope blocks reuse. Full/version exemption/smoke are never

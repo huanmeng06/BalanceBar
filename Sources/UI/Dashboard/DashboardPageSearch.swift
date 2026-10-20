@@ -336,7 +336,6 @@ enum DashboardSettingsSearchCatalog {
     private static let languageKey = LocalizationKey.keyDashboardGeneralAndRefreshPagesLanguage
     private static let keysRequiringArguments: Set<String> = [
         "dashboard.refresh.official_every_seconds",
-        "dashboard.refresh.official_for_minutes",
         "dashboard.about.page.version_value",
         "dashboard.general.and.refresh.pages.current_provider_value",
         "dashboard.general.and.refresh.pages.downloading_value",
@@ -394,9 +393,6 @@ enum DashboardSettingsSearchCatalog {
             values.append(contentsOf: languageSearchTitles())
             values.append(contentsOf: AppPreferences.officialUsageRefreshIntervals.map {
                 tr(.keyDashboardOfficialEverySeconds, arguments: [String(Int($0))])
-            })
-            values.append(contentsOf: AppPreferences.officialPostTaskRefreshDurations.filter { $0 > 0 }.map {
-                tr(.keyDashboardOfficialForMinutes, arguments: [String(Int($0 / 60))])
             })
         }
         return values
@@ -481,8 +477,11 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardGeneralAndRefreshPagesStartup,
                 .keyDashboardGeneralAndRefreshPagesRefresh,
                 .keyDashboardOfficialQuotaRefreshFrequency,
-                .keyDashboardRefreshClaudeCalibrationNote,
+                .keyDashboardRefreshOfficialScope,
+                .keyDashboardRefreshAPIScope,
+                .keyDashboardRefreshMinimumIntervalHint,
                 .keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks,
+                .keyDashboardGeneralAndRefreshPagesRefreshNow,
                 .keyDashboardGeneralAndRefreshPagesBalanceData,
                 .keyDashboardGeneralAndRefreshPagesApplication,
                 .keyDashboardGeneralAndRefreshPagesLanguage,
@@ -1022,7 +1021,7 @@ final class DashboardPageSearchFilter {
         case .titles:
             for section in collectSections(in: root) {
                 if let heading = sectionHeading(section) {
-                    keepBest(DashboardPageSearch.bestMatch(texts: [heading], query: needle))
+                    keepBest(DashboardPageSearch.bestMatch(texts: [heading] + sectionFootnote(section), query: needle))
                 }
                 for row in rows(in: section) {
                     keepBest(rowMatch(row, query: needle, includeVisibleCopy: false, sectionHeading: sectionHeading(section)))
@@ -1032,7 +1031,7 @@ final class DashboardPageSearchFilter {
             let sections = collectSections(in: root)
             for section in sections {
                 if let heading = sectionHeading(section) {
-                    keepBest(DashboardPageSearch.bestMatch(texts: [heading], query: needle))
+                    keepBest(DashboardPageSearch.bestMatch(texts: [heading] + sectionFootnote(section), query: needle))
                 }
                 for row in rows(in: section) {
                     keepBest(rowMatch(row, query: needle, includeVisibleCopy: true, sectionHeading: sectionHeading(section)))
@@ -1126,9 +1125,8 @@ final class DashboardPageSearchFilter {
            let sectionID = activeSearchIndex?.documentIDByView[ObjectIdentifier(section)] {
             headingMatches = activeDocumentMatches.contains(sectionID)
         } else {
-            headingMatches = sectionHeading(section).map {
-                DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil
-            } == true
+            headingMatches = ((sectionHeading(section).map { [$0] } ?? []) + sectionFootnote(section))
+                .contains { DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil }
         }
         if headingMatches {
             _ = restoreSearchHiddenView(section)
@@ -1320,12 +1318,14 @@ final class DashboardPageSearchFilter {
             rowsBySection[ObjectIdentifier(section)] = rows
             let sectionID = searchDocumentID(for: section, prefix: "section")
             documentIDByView[ObjectIdentifier(section)] = sectionID
+            // The footnote sits outside the rows but describes the whole section,
+            // so it matches like the heading and keeps every row visible.
             if let heading = sectionHeading(section), !heading.isEmpty {
                 documents.append(
                     DashboardSearchDocument(
                         id: sectionID,
                         sectionID: nil,
-                        texts: [heading],
+                        texts: [heading] + sectionFootnote(section),
                         supportingTexts: [],
                         businessVisible: !DashboardSearchVisibility.isBusinessHidden(section),
                         order: documentOrder
@@ -1390,6 +1390,11 @@ final class DashboardPageSearchFilter {
         )
         searchIndexes.setObject(index, forKey: root)
         return index
+    }
+
+    private func sectionFootnote(_ section: NSView) -> [String] {
+        guard let text = (section as? SettingsSectionView)?.footnoteLabel?.stringValue, !text.isEmpty else { return [] }
+        return [text]
     }
 
     private func searchDocumentID(for view: NSView, prefix: String) -> String {

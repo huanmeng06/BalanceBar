@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "Every 3 sec";
 "dashboard.general.and.refresh.pages.every_5_sec" = "Every 5 sec";
 "dashboard.general.and.refresh.pages.every_10_sec" = "Every 10 sec";
-"dashboard.general.and.refresh.pages.off" = "Off";
-"dashboard.general.and.refresh.pages.for_6_sec" = "For 6 sec";
-"dashboard.general.and.refresh.pages.for_12_sec" = "For 12 sec";
-"dashboard.general.and.refresh.pages.for_30_sec" = "For 30 sec";
-"dashboard.general.and.refresh.pages.running" = "Running";
-"dashboard.general.and.refresh.pages.after" = "After";
 "dashboard.general.and.refresh.pages.refresh_now" = "Refresh Now";
 "dashboard.general.and.refresh.pages.refresh" = "Refresh";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API provider balance refresh frequency";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "Official quota refresh frequency";
 "dashboard.refresh.official_every_seconds" = "Every %1$@ s";
-"dashboard.refresh.official_for_minutes" = "For %1$@ min";
+"dashboard.refresh.official_scope" = "Official accounts such as Claude and Codex";
+"dashboard.refresh.api_scope" = "Third-party relays / API keys";
+"dashboard.refresh.minimum_interval_hint" = "Some sources have a minimum interval";
 
 "quota.status.refreshing" = "Updating…";
 "quota.status.realtime" = "Live";
@@ -575,4 +571,3 @@
 "quota.status.reset_pending_short" = "Pending";
 "quota.failure.open_usage_page" = "Open official usage page";
 "quota.status.accessibility" = "Quota status: %1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude official: upper limit for the calibration interval. At least 3 minutes; no request while a live source is available.";
