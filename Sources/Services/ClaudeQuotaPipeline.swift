@@ -157,6 +157,13 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
         return at
     }
 
+    /// Age of the newest accepted real-time reading for diagnostics: seconds, or "none". Ignores the reset and
+    /// account checks, so a log line shows what was there even when it was not trusted.
+    func ageDescription() -> String {
+        guard let at = lock.withLock({ acceptedAt }) else { return "none" }
+        return "\(Int(max(0, now().timeIntervalSince(at))))s"
+    }
+
     /// `true` while the newest trusted observation is younger than `window`.
     func isFresh(within window: TimeInterval) -> Bool {
         guard let at = lastTrustedRealtimeObservationAt else { return false }
@@ -475,7 +482,7 @@ final class ClaudeQuotaPipeline {
         switch event.kind {
         case .dispatched:
             let reasons = event.reasons.map { String(describing: $0) }.joined(separator: ",")
-            diagnostics("claude fetch dispatched; reasons=\(reasons); tokens=\(event.tokens)", .info)
+            diagnostics("claude fetch dispatched; reasons=\(reasons); tokens=\(event.tokens); live_age=\(realtime.ageDescription())", .info)
             queue.async { [self] in
                 lock.withLock { refreshing = true }
                 publish()
@@ -513,7 +520,7 @@ final class ClaudeQuotaPipeline {
         let skip = event.skipReason.map { String(describing: $0) } ?? "unknown"
         let cooldown = Int(event.cooldownRemaining.rounded(.up))
         diagnostics(
-            "claude fetch skipped; skip=\(skip); reasons=\(reasons); cooldown_remaining=\(cooldown)s; tokens=\(event.tokens)",
+            "claude fetch skipped; skip=\(skip); reasons=\(reasons); cooldown_remaining=\(cooldown)s; tokens=\(event.tokens); live_age=\(realtime.ageDescription())",
             event.reasons.contains(.manual) ? .info : .debug)
     }
 

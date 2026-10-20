@@ -10,10 +10,12 @@ enum ModOnboardingConfig {
     /// Source label the Mod writes into its snapshots.
     static let modSourceID = "balancebar-mod"
     /// Headless Claude Code activity (transcripts written while the HUD snapshot stays quiet) that makes the
-    /// Mod worth offering to a user who already has the HUD.
-    static let headlessDurationThreshold: TimeInterval = 5 * 60
-    /// How long the detected Claude Code version and plugin registry are trusted before being read again.
-    static let environmentRefreshInterval: TimeInterval = 10 * 60
+    /// Mod worth offering to a user who already has the HUD: more than 30 minutes within one day.
+    static let headlessDurationThreshold: TimeInterval = 30 * 60
+    /// The window over which headless time accumulates.
+    static let headlessAccumulationWindow: TimeInterval = 24 * 60 * 60
+    /// `claude --version` is read once a day (and again right after an install).
+    static let environmentRefreshInterval: TimeInterval = 24 * 60 * 60
 }
 
 /// Parsed `claude --version` value (for example "2.1.291 (Claude Code)").

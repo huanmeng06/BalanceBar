@@ -1,32 +1,53 @@
 import AppKit
 
-/// One visible element of the panel; the view renders exactly this list, and tests snapshot it.
+struct ModPanelButton: Equatable {
+    let title: String
+    let action: ModPanelItem.ButtonAction
+    var isDefault = false
+}
+
+/// One visible element of the window; the view renders exactly this list, and tests snapshot it.
 enum ModPanelItem: Equatable {
-    case title(String)
+    /// Centered header. A `nil` symbol shows the application icon.
+    case hero(symbol: String?, title: String, subtitle: String?)
+    case point(symbol: String, title: String, detail: String)
     case text(String)
+    case bullet(String)
     case step(label: String, status: StepStatus)
-    case code(String)
+    case codeBlock(String, copyAction: ButtonAction)
+    /// Short, monospaced error summary returned by Claude Code.
+    case detail(String)
     case checkbox(title: String, checked: Bool)
-    case button(title: String, action: ButtonAction)
+    case footer(leading: [ModPanelButton], trailing: [ModPanelButton])
 
     enum StepStatus: String, Equatable { case pending, running, done }
-    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, undoDismiss }
+    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, openSettings }
 
+    /// Text form used by tests; the view draws icons instead of the `[x]` marks.
     var snapshotLine: String {
         switch self {
-        case let .title(t): return "# \(t)"
+        case let .hero(_, title, subtitle): return "# \(title)" + (subtitle.map { "\n\($0)" } ?? "")
+        case let .point(_, title, detail): return "◆ \(title) — \(detail)"
         case let .text(t): return t
+        case let .bullet(t): return "• \(t)"
         case let .step(label, status):
             let mark = status == .done ? "[x]" : status == .running ? "[~]" : "[ ]"
             return "\(mark) \(label)"
-        case let .code(c): return "$ " + c.replacingOccurrences(of: "\n", with: "\n$ ")
+        case let .codeBlock(c, _): return "$ " + c.replacingOccurrences(of: "\n", with: "\n$ ")
+        case let .detail(d): return "> \(d)"
         case let .checkbox(title, checked): return "(\(checked ? "x" : " ")) \(title)"
-        case let .button(title, _): return "<\(title)>"
+        case let .footer(leading, trailing):
+            func render(_ buttons: [ModPanelButton]) -> String {
+                buttons.map { "<\($0.title)>" + ($0.isDefault ? "*" : "") }.joined(separator: " ")
+            }
+            return [render(leading), render(trailing)].filter { !$0.isEmpty }.joined(separator: " | ")
         }
     }
 }
 
 enum ModPanelContent {
+    static let pointSymbols = ["bolt.fill", "terminal", "gauge.with.dots.needle.33percent", "lock.shield"]
+
     static func items(
         for state: ModPanelState,
         plan: ModInstallPlan,
@@ -35,88 +56,205 @@ enum ModPanelContent {
         let t = localize
         switch state {
         case let .intro(checked):
-            return [
-                .title(t(.panelTitle)),
-                .text("• " + t(.point1)), .text("• " + t(.point2)), .text("• " + t(.point3)), .text("• " + t(.point4)),
-                .checkbox(title: t(.dismissCheckbox), checked: checked),
-                .button(title: t(.installButton), action: .install),
-                .button(title: t(.closeButton), action: .close),
+            let points: [(ModOnboardingText, ModOnboardingText)] = [
+                (.point1Title, .point1Detail), (.point2Title, .point2Detail),
+                (.point3Title, .point3Detail), (.point4Title, .point4Detail),
             ]
+            return [.hero(symbol: nil, title: t(.panelTitle), subtitle: t(.panelSubtitle))]
+                + zip(pointSymbols, points).map { .point(symbol: $0, title: t($1.0), detail: t($1.1)) }
+                + [
+                    .checkbox(title: t(.dismissCheckbox), checked: checked),
+                    .footer(
+                        leading: [ModPanelButton(title: t(.copyCommands), action: .copyCommands)],
+                        trailing: [ModPanelButton(title: t(.laterButton), action: .close),
+                                   ModPanelButton(title: t(.installButton), action: .install, isDefault: true)]),
+                ]
         case let .installing(current):
-            let labels = [t(.step1), t(.step2), t(.step3)]
-            let steps = ModInstallStep.allCases.map { step -> ModPanelItem in
-                let status: ModPanelItem.StepStatus = step.rawValue < current.rawValue ? .done
-                    : step == current ? .running : .pending
-                return .step(label: labels[step.rawValue], status: status)
-            }
-            return [.title(t(.panelTitle))] + steps
-        case .succeeded:
-            let labels = [t(.step1), t(.step2), t(.step3)]
-            return [.title(t(.enabled))]
-                + labels.map { .step(label: $0, status: .done) }
+            return [.hero(symbol: nil, title: t(.panelTitle), subtitle: nil)] + steps(current: current, t: t)
+                + [.footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close)])]
+        case .awaitingFirstData:
+            // Nothing is asked of the user right now: new sessions pick the Mod up by themselves.
+            return [.hero(symbol: nil, title: t(.panelTitle), subtitle: nil)] + steps(current: .finish, t: t)
                 + [.text(t(.enabledNote)), .text(t(.reloadHint)),
-                   .button(title: ModInstallPlan.reloadCommand, action: .copyReload),
-                   .button(title: t(.closeButton), action: .close)]
+                   .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
+                   .footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)])]
+        case .enabled:
+            return [.hero(symbol: "checkmark.circle.fill", title: t(.enabled), subtitle: t(.enabledNote)),
+                    .footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)])]
+        case .silent:
+            return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.silentTitle), subtitle: nil),
+                    .text(t(.silentIntro)),
+                    .bullet(t(.silentItem1)), .bullet(t(.silentItem2)), .bullet(t(.silentItem3)),
+                    .footer(leading: [], trailing: [
+                        ModPanelButton(title: t(.closeButton), action: .close),
+                        ModPanelButton(title: t(.dismissedOpenSettings), action: .openSettings, isDefault: true)])]
         case let .failed(failure):
             let reason: ModOnboardingText = failure == .claudeNotFound ? .failureClaudeMissing : .failureCommandFailed
-            return [
-                .title(t(.failureTitle)), .text(t(reason)), .code(plan.copyableCommands),
-                .button(title: t(.copyCommands), action: .copyCommands),
-                .button(title: t(.closeButton), action: .close),
+            var items: [ModPanelItem] = [
+                .hero(symbol: "exclamationmark.triangle.fill", title: t(.failureTitle), subtitle: nil),
+                .text(t(reason)),
             ]
+            if let summary = summary(of: failure) { items.append(.detail(summary)) }
+            items.append(.codeBlock(plan.copyableCommands, copyAction: .copyCommands))
+            items.append(.footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)]))
+            return items
         case .dismissConfirmed:
-            return [
-                .title(t(.dismissedTitle)), .text(t(.dismissedNote)),
-                .button(title: t(.undoDismiss), action: .undoDismiss),
-                .button(title: t(.closeButton), action: .close),
-            ]
+            return [.hero(symbol: nil, title: t(.dismissedTitle), subtitle: t(.dismissedNote)),
+                    .footer(leading: [], trailing: [
+                        ModPanelButton(title: t(.dismissedOpenSettings), action: .openSettings),
+                        ModPanelButton(title: t(.dismissedOk), action: .close, isDefault: true)])]
         }
+    }
+
+    private static func steps(current: ModInstallStep, t: (ModOnboardingText) -> String) -> [ModPanelItem] {
+        let labels = [t(.step1), t(.step2), t(.step3)]
+        return ModInstallStep.allCases.map { step -> ModPanelItem in
+            let status: ModPanelItem.StepStatus = step.rawValue < current.rawValue ? .done
+                : step == current ? .running : .pending
+            return .step(label: labels[step.rawValue], status: status)
+        }
+    }
+
+    /// The first two lines of what Claude Code said when a command failed.
+    private static func summary(of failure: ModInstallFailure) -> String? {
+        guard case let .commandFailed(_, _, detail) = failure else { return nil }
+        let lines = detail.split(whereSeparator: \.isNewline).prefix(2).map(String.init)
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 }
 
-/// Menu prompt row. Plain button so it can sit in a menu item's custom view.
+// MARK: - Menu prompt row
+
+/// The menu prompt: a rounded block with a soft accent tint, the main copy, the "why" link and a chevron.
+/// Lives in a menu item's custom view; clicking anywhere on it closes the menu and runs `onClick`.
 final class ModPromptRowView: NSView {
-    let button: NSButton
+    static let rowHeight: CGFloat = 52
+
+    private let block = NSView()
+    private let iconView = NSImageView()
+    private let mainLabel: NSTextField
+    private let whyLabel: NSTextField
+    private let chevron = NSImageView()
+    private var isHovering = false { didSet { updateBackground() } }
     var onClick: () -> Void = {}
 
-    init(localize: (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
-        button = NSButton(title: localize(.promptRow), target: nil, action: nil)
-        super.init(frame: .zero)
-        button.isBordered = false
-        button.alignment = .left
-        button.font = .systemFont(ofSize: NSFont.systemFontSize)
-        button.contentTintColor = .controlAccentColor
-        button.target = self
-        button.action = #selector(clicked)
-        button.setAccessibilityLabel(localize(.promptRow))
-        button.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(button)
+    var mainText: String { mainLabel.stringValue }
+    var whyText: String { whyLabel.stringValue }
+
+    /// - Parameter headless: shows the headless wording (a HUD user whose headless runs go untracked).
+    init(headless: Bool = false, localize: (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
+        mainLabel = NSTextField(labelWithString: localize(headless ? .promptHeadless : .promptRow))
+        whyLabel = NSTextField(labelWithString: localize(.promptWhy))
+        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: Self.rowHeight))
+        autoresizingMask = [.width]
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(mainLabel.stringValue + ", " + whyLabel.stringValue)
+
+        block.wantsLayer = true
+        block.layer?.cornerRadius = 8
+        block.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(block)
+
+        iconView.image = Self.symbol("bolt.fill", size: 15)
+        iconView.contentTintColor = .controlAccentColor
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+        mainLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        mainLabel.textColor = .controlAccentColor
+        mainLabel.lineBreakMode = .byTruncatingTail
+        whyLabel.font = .systemFont(ofSize: 11)
+        whyLabel.textColor = .controlAccentColor
+        chevron.image = Self.symbol("chevron.right", size: 11)
+        chevron.contentTintColor = .tertiaryLabelColor
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+
+        let texts = NSStackView(views: [mainLabel, whyLabel])
+        texts.orientation = .vertical
+        texts.alignment = .leading
+        texts.spacing = 1
+        let row = NSStackView(views: [iconView, texts, chevron])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 10
+        row.translatesAutoresizingMaskIntoConstraints = false
+        block.addSubview(row)
         NSLayoutConstraint.activate([
-            button.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            button.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -14),
-            button.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            button.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            block.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            block.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            block.topAnchor.constraint(equalTo: topAnchor, constant: 3),
+            block.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
+            row.leadingAnchor.constraint(equalTo: block.leadingAnchor, constant: 12),
+            row.trailingAnchor.constraint(equalTo: block.trailingAnchor, constant: -12),
+            row.centerYAnchor.constraint(equalTo: block.centerYAnchor),
         ])
+        updateBackground()
     }
 
     required init?(coder: NSCoder) { nil }
 
-    @objc private func clicked() { onClick() }
+    private static func symbol(_ name: String, size: CGFloat) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size, weight: .semibold))
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovering = true }
+    override func mouseExited(with event: NSEvent) { isHovering = false }
+
+    override func mouseUp(with event: NSEvent) {
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        enclosingMenuItem?.menu?.cancelTracking()
+        let handler = onClick
+        DispatchQueue.main.async { handler() }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBackground()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick()
+        return true
+    }
+
+    private func updateBackground() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            block.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(isHovering ? 0.20 : 0.12).cgColor
+        }
+    }
 }
 
-/// Explanation panel content: renders `ModPanelContent` for the controller's current state.
+// MARK: - Window content
+
+/// Explanation window content: renders `ModPanelContent` for the controller's current state.
 final class ModOnboardingPanelView: NSView {
-    static let fixedWidth: CGFloat = 320
+    static let fixedWidth: CGFloat = 380
+    static let inset: CGFloat = 24
+    /// How long "enabled ✓" stays before the window closes itself.
+    static let successDisplayDuration: TimeInterval = 2
+    static let silenceCheckInterval: TimeInterval = 30
 
     private let controller: ModOnboardingController
     private let localize: (ModOnboardingText) -> String
     private let stack = NSStackView()
+    private var previousState: ModPanelState?
+    private var silenceTimer: Timer?
+    private(set) var defaultButton: NSButton?
     var onRequestClose: () -> Void = {}
-    /// Called after each reload with the panel's new fitting size.
+    /// Called after each reload with the view's new fitting size.
     var onContentSizeChange: ((NSSize) -> Void)?
+    /// Called with the default button after each reload, so a window can bind the Return key to it.
+    var onDefaultButtonChange: ((NSButton?) -> Void)?
 
     private(set) var items: [ModPanelItem] = []
     var snapshotLines: [String] { items.map(\.snapshotLine) }
+    private var contentWidth: CGFloat { Self.fixedWidth - 2 * Self.inset }
 
     init(controller: ModOnboardingController, localize: @escaping (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
         self.controller = controller
@@ -124,8 +262,8 @@ final class ModOnboardingPanelView: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.fixedWidth, height: 10))
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+        stack.spacing = 14
+        stack.edgeInsets = NSEdgeInsets(top: Self.inset, left: Self.inset, bottom: Self.inset, right: Self.inset)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -141,62 +279,224 @@ final class ModOnboardingPanelView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
+    deinit { silenceTimer?.invalidate() }
+
     func reload() {
+        let wasWaiting = previousState == .awaitingFirstData || previousState == .silent
+        previousState = controller.state
         items = ModPanelContent.items(for: controller.state, plan: controller.plan, localize: localize)
+        defaultButton = nil
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for item in items { stack.addArrangedSubview(makeView(item)) }
+        for item in items {
+            let view = makeView(item)
+            stack.addArrangedSubview(view)
+            // Fill the content width; the hero centers its own content.
+            view.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+        }
+        stack.setCustomSpacing(18, after: stack.arrangedSubviews.first ?? NSView())
         layoutSubtreeIfNeeded()
+        onDefaultButtonChange?(defaultButton)
         onContentSizeChange?(fittingSize)
+        updateSilenceTimer()
+        // The first snapshot arrived while the window was open: show "enabled ✓" briefly, then close.
+        if wasWaiting, controller.state == .enabled {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.successDisplayDuration) { [weak self] in
+                guard let self, self.controller.state == .enabled else { return }
+                self.onRequestClose()
+            }
+        }
     }
 
-    /// Triggers a button as if clicked (used by tests).
+    /// While waiting for the first snapshot, ten minutes without one (with Claude Code active) turns into advice.
+    private func updateSilenceTimer() {
+        guard controller.state == .awaitingFirstData else {
+            silenceTimer?.invalidate()
+            silenceTimer = nil
+            return
+        }
+        guard silenceTimer == nil else { return }
+        let timer = Timer(timeInterval: Self.silenceCheckInterval, repeats: true) { [weak self] _ in
+            self?.controller.checkSilence()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        silenceTimer = timer
+    }
+
+    /// Triggers a button as if clicked (used by tests and the window's Esc / Return handling).
     func perform(_ action: ModPanelItem.ButtonAction) {
         switch action {
         case .install: controller.startInstall()
         case .copyCommands: controller.copyInstallCommands()
         case .copyReload: controller.copyReloadCommand()
-        case .undoDismiss: controller.setPromptEnabled(true)
+        case .openSettings:
+            controller.openSettings()
+            onRequestClose()
         case .close: if controller.close() { onRequestClose() }
         }
     }
 
+    // MARK: Drawing
+
+    private static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight = .regular) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size, weight: weight))
+    }
+
+    private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor,
+                       alignment: NSTextAlignment = .left, width: CGFloat? = nil) -> NSTextField {
+        let field = NSTextField(wrappingLabelWithString: text)
+        field.font = .systemFont(ofSize: size, weight: weight)
+        field.textColor = color
+        field.alignment = alignment
+        field.preferredMaxLayoutWidth = width ?? contentWidth
+        field.isSelectable = false
+        return field
+    }
+
     private func makeView(_ item: ModPanelItem) -> NSView {
         switch item {
-        case let .title(text):
-            let label = NSTextField(labelWithString: text)
-            label.font = .boldSystemFont(ofSize: NSFont.systemFontSize + 1)
-            return label
+        case let .hero(symbol, title, subtitle):
+            let icon = NSImageView()
+            let size: CGFloat = 56
+            if let symbol {
+                icon.image = Self.symbol(symbol, size: 44, weight: .medium)
+                icon.contentTintColor = symbol.hasPrefix("exclamation") ? .systemOrange : .systemGreen
+            } else {
+                icon.image = NSApp?.applicationIconImage
+            }
+            icon.imageScaling = .scaleProportionallyUpOrDown
+            icon.widthAnchor.constraint(equalToConstant: size).isActive = true
+            icon.heightAnchor.constraint(equalToConstant: size).isActive = true
+            var views: [NSView] = [icon, label(title, size: 17, weight: .semibold, alignment: .center)]
+            if let subtitle { views.append(label(subtitle, size: 13, color: .secondaryLabelColor, alignment: .center)) }
+            let column = NSStackView(views: views)
+            column.orientation = .vertical
+            column.alignment = .centerX
+            column.spacing = 8
+            column.setCustomSpacing(10, after: icon)
+            return column
+        case let .point(symbol, title, detail):
+            let icon = NSImageView(image: Self.symbol(symbol, size: 20, weight: .medium) ?? NSImage())
+            icon.symbolConfiguration = NSImage.SymbolConfiguration(hierarchicalColor: .controlAccentColor)
+            icon.contentTintColor = .controlAccentColor
+            icon.widthAnchor.constraint(equalToConstant: 28).isActive = true
+            icon.setContentHuggingPriority(.required, for: .horizontal)
+            let textWidth = contentWidth - 28 - 12
+            let column = NSStackView(views: [
+                label(title, size: 13, weight: .semibold, width: textWidth),
+                label(detail, size: 12, color: .secondaryLabelColor, width: textWidth),
+            ])
+            column.orientation = .vertical
+            column.alignment = .leading
+            column.spacing = 2
+            let row = NSStackView(views: [icon, column])
+            row.orientation = .horizontal
+            row.alignment = .top
+            row.spacing = 12
+            return row
         case let .text(text):
-            let label = NSTextField(wrappingLabelWithString: text)
-            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-            label.textColor = .secondaryLabelColor
-            label.preferredMaxLayoutWidth = Self.fixedWidth - 28
-            return label
-        case let .step(label, status):
-            let field = NSTextField(labelWithString: item.snapshotLine)
-            field.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-            field.textColor = status == .pending ? .tertiaryLabelColor : .labelColor
-            field.setAccessibilityLabel("\(label), \(status.rawValue)")
+            return label(text, size: 13, color: .secondaryLabelColor)
+        case let .bullet(text):
+            return label("•  " + text, size: 13, color: .secondaryLabelColor)
+        case let .step(text, status):
+            let indicator: NSView
+            switch status {
+            case .done:
+                let image = NSImageView(image: Self.symbol("checkmark.circle.fill", size: 16) ?? NSImage())
+                image.contentTintColor = .systemGreen
+                indicator = image
+            case .running:
+                let spinner = NSProgressIndicator()
+                spinner.style = .spinning
+                spinner.controlSize = .small
+                spinner.isIndeterminate = true
+                spinner.startAnimation(nil)
+                indicator = spinner
+            case .pending:
+                let image = NSImageView(image: Self.symbol("circle", size: 16) ?? NSImage())
+                image.contentTintColor = .tertiaryLabelColor
+                indicator = image
+            }
+            indicator.widthAnchor.constraint(equalToConstant: 18).isActive = true
+            indicator.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            let title = label(text, size: 13, weight: status == .running ? .semibold : .regular,
+                              color: status == .pending ? .tertiaryLabelColor : .labelColor, width: contentWidth - 30)
+            title.setAccessibilityLabel("\(text), \(status.rawValue)")
+            let row = NSStackView(views: [indicator, title])
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.spacing = 10
+            return row
+        case let .codeBlock(text, copyAction):
+            return makeCodeBlock(text, copyAction: copyAction)
+        case let .detail(text):
+            let field = label(text, size: 11, color: .secondaryLabelColor)
+            field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            field.isSelectable = true
             return field
-        case let .code(text):
-            let label = NSTextField(wrappingLabelWithString: text)
-            label.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-            label.isSelectable = true
-            label.preferredMaxLayoutWidth = Self.fixedWidth - 28
-            return label
         case let .checkbox(title, checked):
             let box = NSButton(checkboxWithTitle: title, target: self, action: #selector(checkboxToggled(_:)))
             box.state = checked ? .on : .off
-            box.controlSize = .small
+            box.controlSize = .regular
             return box
-        case let .button(title, action):
-            let button = NSButton(title: title, target: self, action: #selector(buttonPressed(_:)))
-            button.bezelStyle = .rounded
-            button.controlSize = .small
-            button.identifier = NSUserInterfaceItemIdentifier(Self.identifier(for: action))
-            if action == .install { button.keyEquivalent = "\r" }
-            return button
+        case let .footer(leading, trailing):
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.spacing = 10
+            leading.forEach { row.addArrangedSubview(makeButton($0)) }
+            let spacer = NSView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            row.addArrangedSubview(spacer)
+            trailing.forEach { row.addArrangedSubview(makeButton($0)) }
+            return row
         }
+    }
+
+    private func makeButton(_ model: ModPanelButton) -> NSButton {
+        let button = NSButton(title: model.title, target: self, action: #selector(buttonPressed(_:)))
+        button.bezelStyle = .push
+        button.controlSize = .large
+        button.identifier = NSUserInterfaceItemIdentifier(Self.identifier(for: model.action))
+        if model.isDefault {
+            button.keyEquivalent = "\r"
+            defaultButton = button
+        }
+        return button
+    }
+
+    private func makeCodeBlock(_ text: String, copyAction: ModPanelItem.ButtonAction) -> NSView {
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 6
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.effectiveAppearance.performAsCurrentDrawingAppearance {
+            container.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+        }
+        let code = NSTextField(wrappingLabelWithString: text)
+        code.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        code.isSelectable = true
+        code.preferredMaxLayoutWidth = contentWidth - 24 - 28
+        code.translatesAutoresizingMaskIntoConstraints = false
+        let copy = NSButton(image: Self.symbol("doc.on.doc", size: 12) ?? NSImage(), target: self, action: #selector(copyPressed(_:)))
+        copy.isBordered = false
+        copy.contentTintColor = .secondaryLabelColor
+        copy.identifier = NSUserInterfaceItemIdentifier(Self.identifier(for: copyAction))
+        copy.setAccessibilityLabel(localize(.copyCommands))
+        copy.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(code)
+        container.addSubview(copy)
+        NSLayoutConstraint.activate([
+            code.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            code.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            code.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
+            code.trailingAnchor.constraint(equalTo: copy.leadingAnchor, constant: -6),
+            copy.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+            copy.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
+            copy.widthAnchor.constraint(equalToConstant: 22),
+            copy.heightAnchor.constraint(equalToConstant: 22),
+        ])
+        return container
     }
 
     @objc private func checkboxToggled(_ sender: NSButton) { controller.setDismissChecked(sender.state == .on) }
@@ -206,8 +506,17 @@ final class ModOnboardingPanelView: NSView {
         perform(action)
     }
 
+    /// Copy icon: copies, then shows a check mark for a moment.
+    @objc private func copyPressed(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue, let action = Self.action(for: id) else { return }
+        let original = sender.image
+        perform(action)
+        sender.image = Self.symbol("checkmark", size: 12)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak sender] in sender?.image = original }
+    }
+
     private static func identifier(for action: ModPanelItem.ButtonAction) -> String { String(describing: action) }
     private static func action(for id: String) -> ModPanelItem.ButtonAction? {
-        [.install, .close, .copyCommands, .copyReload, .undoDismiss].first { identifier(for: $0) == id }
+        [.install, .close, .copyCommands, .copyReload, .openSettings].first { identifier(for: $0) == id }
     }
 }

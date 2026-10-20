@@ -6,6 +6,8 @@ private final class MemoryPromptPreference: ModPromptPreferenceStoring { var isP
 
 private final class MemoryTimestamp: ModDataTimestampStoring { var lastModDataAt: Date? }
 
+private final class MemoryHeadless: ModHeadlessStoring { var accumulation = ModHeadlessAccumulation() }
+
 private final class MutableClock {
     private let lock = NSLock()
     private var value: Date
@@ -50,6 +52,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
     private var fake: FakeEnvironment!
     private var preference: MemoryPromptPreference!
     private var timestamps: MemoryTimestamp!
+    private var headlessStore: MemoryHeadless!
 
     override func setUp() {
         super.setUp()
@@ -57,11 +60,12 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         fake = FakeEnvironment()
         preference = MemoryPromptPreference()
         timestamps = MemoryTimestamp()
+        headlessStore = MemoryHeadless()
     }
 
     private func makeCoordinator(installer: ModInstaller? = nil) -> ModOnboardingCoordinator {
         ModOnboardingCoordinator(
-            plan: .standard, environment: fake.environment, promptPreference: preference, timestamps: timestamps,
+            plan: .standard, environment: fake.environment, promptPreference: preference, timestamps: timestamps, headlessStore: headlessStore,
             installer: installer, copyToPasteboard: { _ in }, now: { [clock] in clock!.now })
     }
 
@@ -89,18 +93,18 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: false), .none)
 
         refresh(coordinator)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false))
 
         coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: clock.now))
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources, "Mod data within seven days hides the prompt")
         clock.advance(by: 8 * 86_400)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt, "…and an old one no longer does")
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false), "…and an old one no longer does")
     }
 
     func testDismissingThePromptSwapsItForTheDataSourcesRow() {
         let coordinator = makeCoordinator()
         refresh(coordinator)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false))
         let changed = expectation(description: "menu input refresh requested")
         coordinator.onChange = { changed.fulfill() }
         coordinator.controller.setDismissChecked(true)
@@ -110,7 +114,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
 
         coordinator.controller.setPromptEnabled(true)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false))
     }
 
     func testHUDSnapshotNeedsTheHeadlessSignalBeforeThePromptShows() {
@@ -119,7 +123,44 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         fake.hud = true
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
         fake.headless = ModOnboardingConfig.headlessDurationThreshold
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources, "exactly 30 minutes is not more than 30 minutes")
+        fake.headless = ModOnboardingConfig.headlessDurationThreshold + 60
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: true),
+                       "a HUD user with enough headless time gets the headless wording")
+    }
+
+    func testHeadlessTimeAccumulatesPerDayAndSurvivesARestart() {
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        fake.hud = true
+        fake.headless = 20 * 60
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
+        XCTAssertEqual(headlessStore.accumulation.seconds, 20 * 60)
+
+        // A restart: the HUD source counts from zero again, but the day's total is kept.
+        let restarted = makeCoordinator()
+        refresh(restarted)
+        fake.headless = 11 * 60
+        XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .prompt(headless: true), "20 + 11 minutes within one day")
+
+        // Once the day is over the sum starts again.
+        clock.advance(by: ModOnboardingConfig.headlessAccumulationWindow + 60)
+        fake.headless = 12 * 60
+        XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .dataSources)
+        XCTAssertEqual(headlessStore.accumulation.seconds, 60)
+    }
+
+    func testClaudeCodeVersionIsReadOncePerDayAndAfterAnInstall() {
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        let reads = fake.reads
+        clock.advance(by: 23 * 3_600)
+        coordinator.refreshEnvironment()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertEqual(fake.reads, reads, "not before a day has passed")
+        clock.advance(by: 2 * 3_600)
+        refresh(coordinator, force: false)
+        XCTAssertEqual(fake.reads, reads + 1)
     }
 
     // MARK: Status and the silence clock
@@ -219,7 +260,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         let reads = fake.reads
         let finished = expectation(description: "install finished")
         coordinator.controller.onStateChange = {
-            if coordinator.controller.state == .succeeded { finished.fulfill() }
+            if coordinator.controller.state == .awaitingFirstData { finished.fulfill() }
         }
         coordinator.controller.startInstall()
         wait(for: [finished], timeout: 2)
@@ -229,6 +270,25 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         }
         XCTAssertGreaterThan(fake.reads, reads, "the install triggers a fresh environment read")
         XCTAssertEqual(coordinator.enhancementStatus(), .waitingForData)
+
+        // The Mod's first snapshot completes the install.
+        coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: clock.now))
+        let enabled = Date().addingTimeInterval(2)
+        while coordinator.controller.state != .enabled, Date() < enabled {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertEqual(coordinator.controller.state, .enabled)
+    }
+
+    func testWindowWaitingForDataTurnsSilentOnlyAfterTenMinutesOfActivity() {
+        fake.record = ModInstallRecord(installedAt: start)
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        coordinator.setClaudeActivity(running: true)
+        XCTAssertEqual(coordinator.controller.silenceCheck?(), false)
+        clock.advance(by: ModOnboardingConfig.noDataWithActivityGrace)
+        XCTAssertEqual(coordinator.controller.silenceCheck?(), true)
+        XCTAssertEqual(coordinator.enhancementStatus(), .enabledButSilent)
     }
 
     // MARK: Registry and plan
@@ -301,29 +361,102 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
 
     // MARK: Views
 
-    func testSettingsBlockShowsStatusAndFollowsInstallProgress() {
+    func testSettingsRowsShowStatusAndFollowTheInstall() throws {
         let coordinator = makeCoordinator()
         refresh(coordinator)
-        let view = coordinator.realtimeBoostSettingsView()
-        XCTAssertEqual(view.presentation.statusText, tr(.keyModSettingsStatusNotInstalled))
-        XCTAssertFalse(view.installButton.isHidden)
+        let rows = coordinator.realtimeBoostSettingsRows()
+        XCTAssertEqual(rows.count, 2)
+        let status = try XCTUnwrap(rows.first as? SettingsRowView)
+        XCTAssertEqual(status.titleLabel.stringValue, tr(.keyModSettingsStatusNotInstalled))
 
         fake.record = ModInstallRecord(installedAt: start)
         refresh(coordinator)
         let deadline = Date().addingTimeInterval(1)
-        while view.presentation.statusText == tr(.keyModSettingsStatusNotInstalled), Date() < deadline {
+        while status.titleLabel.stringValue == tr(.keyModSettingsStatusNotInstalled), Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.02))
         }
-        XCTAssertEqual(view.presentation.statusText, tr(.keyModSettingsStatusWaiting))
-        XCTAssertTrue(view.installButton.isHidden)
-        XCTAssertTrue(coordinator.realtimeBoostSettingsView() === view, "one instance is kept up to date")
+        XCTAssertEqual(status.titleLabel.stringValue, tr(.keyModSettingsStatusWaiting))
+        XCTAssertEqual(status.detailLabel.stringValue, tr(.keyModSettingsUninstallNote))
+        XCTAssertTrue(coordinator.realtimeBoostSettingsRows().first === status, "one set is kept up to date")
+        XCTAssertFalse(coordinator.realtimeBoostSettingsRows(detached: true).first === status, "search gets its own copy")
     }
 
     func testPanelFromTheCoordinatorUsesTheAppLanguageAndStartsAtTheIntro() {
         let coordinator = makeCoordinator()
         let panel = coordinator.makePanelView()
         XCTAssertEqual(coordinator.controller.state, .intro(dismissChecked: false))
-        XCTAssertEqual(panel.snapshotLines.first, "# " + tr(.keyModPanelTitle))
-        XCTAssertTrue(panel.snapshotLines.contains("<" + tr(.keyModPanelInstall) + ">"))
+        XCTAssertTrue(try XCTUnwrap(panel.snapshotLines.first).hasPrefix("# " + tr(.keyModPanelTitle)))
+        XCTAssertTrue(panel.snapshotLines.last?.contains("<" + tr(.keyModPanelInstall) + ">") == true)
+    }
+
+    func testWindowControllerBuildsAStandaloneWindowWithEscapeAndDefaultButton() throws {
+        let coordinator = makeCoordinator()
+        let window = coordinator.windowController.prepare()
+        XCTAssertTrue(window.styleMask.contains(.titled)); XCTAssertTrue(window.styleMask.contains(.closable))
+        XCTAssertFalse(window.styleMask.contains(.resizable))
+        XCTAssertTrue(window.titlebarAppearsTransparent); XCTAssertEqual(window.titleVisibility, .hidden)
+        XCTAssertFalse(window.isReleasedWhenClosed)
+        XCTAssertEqual(window.contentView?.frame.width, ModOnboardingPanelView.fixedWidth)
+        XCTAssertEqual(window.defaultButtonCell?.title, tr(.keyModPanelInstall))
+
+        // Esc is "later": it closes the window.
+        window.orderOut(nil)
+        window.cancelOperation(nil)
+        XCTAssertFalse(window.isVisible)
+        // The window is reused.
+        XCTAssertTrue(coordinator.windowController.prepare() === window)
+        XCTAssertGreaterThan(window.frame.height, 300)
+    }
+
+    /// Renders every state in both appearances to PNG files for a visual self-check (set BB_MOD_RENDER_DIR).
+    func testRenderEveryStateToImagesWhenAskedTo() throws {
+        guard let directory = ProcessInfo.processInfo.environment["BB_MOD_RENDER_DIR"] else { return }
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        let states: [(String, ModPanelState)] = [
+            ("intro", .intro(dismissChecked: false)), ("intro-checked", .intro(dismissChecked: true)),
+            ("installing", .installing(current: .installPlugin)), ("awaiting", .awaitingFirstData),
+            ("enabled", .enabled), ("silent", .silent), ("failed-missing", .failed(.claudeNotFound)),
+            ("failed-command", .failed(.commandFailed(step: .installPlugin, exitCode: 1, detail: "Plugin not found in marketplace\nSee claude plugin marketplace list"))),
+            ("dismissed", .dismissConfirmed),
+        ]
+        for (appearanceName, name) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            for (label, state) in states {
+                let c = ModOnboardingController(preference: MemoryPromptPreference(), copyToPasteboard: { _ in })
+                c.setStateForTesting(state)
+                let view = ModOnboardingPanelView(controller: c, localize: ModOnboardingText.appLocalize)
+                view.appearance = try XCTUnwrap(NSAppearance(named: name))
+                view.wantsLayer = true
+                view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+                }
+                view.layoutSubtreeIfNeeded()
+                let size = view.fittingSize
+                view.frame = NSRect(origin: .zero, size: size)
+                view.layoutSubtreeIfNeeded()
+                let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
+                window.appearance = view.appearance
+                window.contentView = view
+                view.layoutSubtreeIfNeeded()
+                let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                view.cacheDisplay(in: view.bounds, to: rep)
+                let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+                try png.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(label)-\(appearanceName).png"))
+            }
+            // The menu prompt row on a menu-like background, and the "data sources" label.
+            for headless in [false, true] {
+                let row = ModPromptRowView(headless: headless, localize: ModOnboardingText.appLocalize)
+                row.appearance = NSAppearance(named: name)
+                row.wantsLayer = true
+                row.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    row.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+                }
+                row.frame = NSRect(x: 0, y: 0, width: 320, height: ModPromptRowView.rowHeight)
+                row.layoutSubtreeIfNeeded()
+                let rep = try XCTUnwrap(row.bitmapImageRepForCachingDisplay(in: row.bounds))
+                row.cacheDisplay(in: row.bounds, to: rep)
+                try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+                    .write(to: URL(fileURLWithPath: directory).appendingPathComponent("prompt-row\(headless ? "-headless" : "")-\(appearanceName).png"))
+            }
+        }
     }
 }

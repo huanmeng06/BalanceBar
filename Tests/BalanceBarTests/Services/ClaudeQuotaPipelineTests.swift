@@ -498,6 +498,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.requestFetch(reason: .scheduled)
         quiet(pipeline)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "a fresh live reading answers the scheduled refresh")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=realtimeSourceFresh") && $0.contains("live_age=0s") },
+                      "the log says how old the live reading was")
         XCTAssertEqual(reader.reads, credentialReads, "…and the credential store is not even consulted")
         XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=realtimeSourceFresh") })
 
@@ -505,6 +507,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 125)
         pipeline.requestFetch(reason: .scheduled)
         waitForRequests(2)
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("claude fetch dispatched") && $0.contains("live_age=125s") },
+                      "a read that goes through records how stale the live reading was")
     }
 
     func testRejectedLiveReadingDoesNotSuppressRequests() throws {

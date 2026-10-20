@@ -3,9 +3,10 @@ import AppKit
 /// What the status menu shows for the real-time boost.
 enum ModMenuRow: Equatable {
     case none
-    /// "启用实时增强 ›": opens the explanation panel.
-    case prompt
-    /// "数据来源": the quiet entry that replaces the prompt; opens Settings › Advanced.
+    /// The accent-tinted prompt under the quota card; opens the explanation window. `headless` switches to the
+    /// wording for a user whose HUD does not follow headless runs.
+    case prompt(headless: Bool)
+    /// "数据来源": the quiet gray entry that replaces the prompt; opens Settings › Advanced.
     case dataSources
 }
 
@@ -48,6 +49,35 @@ final class UserDefaultsModDataTimestamp: ModDataTimestampStoring {
     var lastModDataAt: Date? {
         get { defaults.object(forKey: Self.key) == nil ? nil : Date(timeIntervalSince1970: defaults.double(forKey: Self.key)) }
         set { defaults.set(newValue?.timeIntervalSince1970, forKey: Self.key) }
+    }
+}
+
+/// Headless Claude Code time accumulated within the current day, persisted across launches.
+struct ModHeadlessAccumulation: Equatable {
+    var windowStart: Date?
+    var seconds: TimeInterval = 0
+}
+
+protocol ModHeadlessStoring: AnyObject {
+    var accumulation: ModHeadlessAccumulation { get set }
+}
+
+final class UserDefaultsModHeadlessStore: ModHeadlessStoring {
+    static let startKey = "modOnboarding.headlessWindowStart"
+    static let secondsKey = "modOnboarding.headlessSeconds"
+    private let defaults: UserDefaults
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    var accumulation: ModHeadlessAccumulation {
+        get {
+            ModHeadlessAccumulation(
+                windowStart: defaults.object(forKey: Self.startKey) == nil
+                    ? nil : Date(timeIntervalSince1970: defaults.double(forKey: Self.startKey)),
+                seconds: defaults.double(forKey: Self.secondsKey))
+        }
+        set {
+            defaults.set(newValue.windowStart?.timeIntervalSince1970, forKey: Self.startKey)
+            defaults.set(newValue.seconds, forKey: Self.secondsKey)
+        }
     }
 }
 
@@ -110,6 +140,8 @@ final class ModOnboardingCoordinator {
 
     private let environment: Environment
     private let timestamps: ModDataTimestampStoring
+    private let headlessStore: ModHeadlessStoring
+    private var lastHeadlessSeen: TimeInterval = 0
     private let preference: NotifyingPromptPreference
     private let now: () -> Date
     private let queue = DispatchQueue(label: "balancebar.mod-environment", qos: .utility)
@@ -122,19 +154,22 @@ final class ModOnboardingCoordinator {
     private var claudeActive = false
     private var activityStartedAt: Date?
     private var lastModDataAt: Date?
-    private var settingsView: RealtimeBoostSettingsView?
+    private var settingsRows: RealtimeBoostSettingsRows?
+    private(set) lazy var windowController = ModOnboardingWindowController(makeView: { [unowned self] in self.makePanelView() })
 
     init(
         plan: ModInstallPlan = .resolved(),
         environment: Environment,
         promptPreference: ModPromptPreferenceStoring = UserDefaultsModPromptPreference(),
         timestamps: ModDataTimestampStoring = UserDefaultsModDataTimestamp(),
+        headlessStore: ModHeadlessStoring = UserDefaultsModHeadlessStore(),
         installer: ModInstaller? = nil,
         copyToPasteboard: ((String) -> Void)? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.environment = environment
         self.timestamps = timestamps
+        self.headlessStore = headlessStore
         self.now = now
         preference = NotifyingPromptPreference(base: promptPreference)
         if let copyToPasteboard {
@@ -145,6 +180,7 @@ final class ModOnboardingCoordinator {
         }
         lastModDataAt = timestamps.lastModDataAt
         preference.onChange = { [weak self] in self?.notify() }
+        controller.silenceCheck = { [weak self] in self?.enhancementStatus() == .enabledButSilent }
         controller.onInstallFinished = { [weak self] result in
             guard let self, case .success = result else { return }
             // The registry now lists the plugin: pick up the install time that starts the silence clock.
@@ -157,7 +193,8 @@ final class ModOnboardingCoordinator {
     /// The menu row for the current state; only meaningful for the official Claude provider.
     func menuRow(isOfficialDirect: Bool) -> ModMenuRow {
         guard isOfficialDirect else { return .none }
-        return promptVisibility(isOfficialDirect: true).isVisible ? .prompt : .dataSources
+        guard promptVisibility(isOfficialDirect: true).isVisible else { return .dataSources }
+        return .prompt(headless: environment.hasHUDSnapshot())
     }
 
     func promptVisibility(isOfficialDirect: Bool) -> ModPromptVisibility {
@@ -169,8 +206,28 @@ final class ModOnboardingCoordinator {
             claudeCode: claudeCode,
             promptDismissed: controller.isPromptDismissed,
             hasHUDSnapshot: hasSnapshot,
-            headlessSignalSatisfied: environment.headlessDuration() >= ModOnboardingConfig.headlessDurationThreshold)
+            headlessSignalSatisfied: accumulatedHeadlessTime() > ModOnboardingConfig.headlessDurationThreshold)
         return ModPromptVisibility.evaluate(inputs, now: now())
+    }
+
+    /// Headless time within the last day. The HUD source reports time since launch, so only the growth since the
+    /// previous look is added; the sum survives restarts and restarts its day once the window is over.
+    private func accumulatedHeadlessTime() -> TimeInterval {
+        let current = environment.headlessDuration()
+        return lock.withLock {
+            let delta = current >= lastHeadlessSeen ? current - lastHeadlessSeen : current
+            lastHeadlessSeen = current
+            var accumulation = headlessStore.accumulation
+            let date = now()
+            if let start = accumulation.windowStart, date.timeIntervalSince(start) <= ModOnboardingConfig.headlessAccumulationWindow,
+               date >= start {
+                accumulation.seconds += delta
+            } else {
+                accumulation = ModHeadlessAccumulation(windowStart: date, seconds: delta)
+            }
+            if delta > 0 || headlessStore.accumulation.windowStart == nil { headlessStore.accumulation = accumulation }
+            return accumulation.seconds
+        }
     }
 
     func enhancementStatus() -> ModEnhancementStatus {
@@ -215,6 +272,8 @@ final class ModOnboardingCoordinator {
             // A steady stream of snapshots must not rebuild the menu each time.
             return previous.map { date.timeIntervalSince($0) > 60 } ?? true
         }
+        // The first snapshot after an install completes it ("wait for first data").
+        DispatchQueue.main.async { [weak self] in self?.controller.markFirstDataReceived() }
         if notifyChange { notify() }
     }
 
@@ -252,34 +311,39 @@ final class ModOnboardingCoordinator {
 
     // MARK: Views (main thread)
 
-    /// The Settings › Advanced block. One instance is kept up to date and re-parented by each page build;
+    /// The Settings › Advanced rows. One set is kept up to date and re-parented by each page build;
     /// `detached` returns a separate snapshot for Dashboard search results.
-    func realtimeBoostSettingsView(detached: Bool = false) -> RealtimeBoostSettingsView {
+    func realtimeBoostSettingsRows(detached: Bool = false) -> [NSView] {
         if detached {
-            return RealtimeBoostSettingsView(
+            return RealtimeBoostSettingsRows(
                 controller: controller, status: enhancementStatus(), localize: RealtimeBoostText.appLocalize,
-                showsTitle: false, observesController: false)
+                observesController: false, onShowDescription: nil).rows
         }
-        if let settingsView { return settingsView }
-        let view = RealtimeBoostSettingsView(
-            controller: controller, status: enhancementStatus(),
-            localize: RealtimeBoostText.appLocalize, showsTitle: false)
-        settingsView = view
+        if let settingsRows { return settingsRows.rows }
+        let rows = RealtimeBoostSettingsRows(
+            controller: controller, status: enhancementStatus(), localize: RealtimeBoostText.appLocalize,
+            onShowDescription: { [weak self] in self?.showWindow() })
+        settingsRows = rows
         refreshEnvironment()
-        return view
+        return rows.rows
     }
 
-    /// A fresh explanation panel in its intro state (an install already in flight keeps showing its progress).
-    func makePanelView() -> ModOnboardingPanelView {
-        controller.resetToIntro()
+    /// Opens (or brings forward) the explanation window.
+    func showWindow() {
         refreshEnvironment()
+        windowController.show()
+    }
+
+    /// A fresh explanation view in its intro state (an install in progress keeps showing its progress).
+    func makePanelView() -> ModOnboardingPanelView {
+        controller.resetToIntro(force: enhancementStatus() == .notInstalled)
         return ModOnboardingPanelView(controller: controller, localize: ModOnboardingText.appLocalize)
     }
 
     private func notify() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.settingsView?.update(status: self.enhancementStatus())
+            self.settingsRows?.update(status: self.enhancementStatus())
             self.onChange?()
         }
     }

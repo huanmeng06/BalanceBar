@@ -463,7 +463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 return Dictionary(uniqueKeysWithValues: self.aggregationDisplays.map { ($0.identity.providerID, $0.snapshot) })
             },
             isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false },
-            makeRealtimeBoostView: { [weak self] forSearch in self?.modOnboarding.realtimeBoostSettingsView(detached: forSearch) }
+            makeRealtimeBoostRows: { [weak self] forSearch in self?.modOnboarding.realtimeBoostSettingsRows(detached: forSearch) ?? [] }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -738,6 +738,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             self?.modOnboarding.recordObservation(observation)
         }
         modOnboarding.onChange = { [weak self] in self?.refreshStatusItemMenuInput() }
+        modOnboarding.controller.onOpenSettings = { [weak self] in self?.openDashboardAdvanced() }
         notificationCoordinator.onPermissionStateChanged = { [weak self] state in
             guard let self else { return }
             let previous = self.lastNotificationPermissionState
@@ -973,7 +974,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshNotice()
                 },
-                makeModOnboardingPanel: { [weak self] in self?.modOnboarding.makePanelView() },
+                showModOnboarding: { [weak self] in self?.modOnboarding.showWindow() },
                 openDataSources: { [weak self] in self?.openDashboardAdvanced() }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(

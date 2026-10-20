@@ -11,19 +11,19 @@ final class DashboardAdvancedPage {
         let logViewer: NSView?
 
         let includeLogViewer: Bool
-        /// Settings › Advanced › Real-time boost content; `nil` omits the section.
-        let realtimeBoost: NSView?
+        /// Settings › Advanced › Real-time boost rows; empty omits the section.
+        let realtimeBoostRows: [NSView]
 
         init(
             relay: DashboardPreferencePageRelay,
             logViewer: NSView?,
             includeLogViewer: Bool = true,
-            realtimeBoost: NSView? = nil
+            realtimeBoostRows: [NSView] = []
         ) {
             self.relay = relay
             self.logViewer = logViewer
             self.includeLogViewer = includeLogViewer
-            self.realtimeBoost = realtimeBoost
+            self.realtimeBoostRows = realtimeBoostRows
         }
     }
 
@@ -65,10 +65,10 @@ final class DashboardAdvancedPage {
             contentViews: contentViews
         )
         var sections: [NSView] = []
-        if let realtimeBoost = input.realtimeBoost {
+        if !input.realtimeBoostRows.isEmpty {
             sections.append(SettingsSectionView(
                 title: tr(.keyModSettingsTitle),
-                contentViews: [realtimeBoost]
+                contentViews: input.realtimeBoostRows
             ))
         }
         sections.append(logs)

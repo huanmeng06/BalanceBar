@@ -34,7 +34,7 @@ struct DashboardPreferencePageActions {
     let onOpenUpdateNotes: () -> Void
     let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
     let onClamp: () -> Void
-    var makeRealtimeBoostView: (_ forSearch: Bool) -> NSView? = { _ in nil }
+    var makeRealtimeBoostRows: (_ forSearch: Bool) -> [NSView] = { _ in [] }
 }
 
 final class DashboardPreferencePages {
@@ -169,7 +169,7 @@ final class DashboardPreferencePages {
                 relay: relay,
                 logViewer: forSearch ? nil : logsPage.makeViewer(),
                 includeLogViewer: !forSearch,
-                realtimeBoost: actions.makeRealtimeBoostView(forSearch)
+                realtimeBoostRows: actions.makeRealtimeBoostRows(forSearch)
             ))
         case .notifications:
             notificationsPage?.showRoot()

@@ -23,8 +23,8 @@ struct DashboardCompositionState {
     let defaultStatusLinks: () -> [StatusLink]
     let setStatusLinks: ([StatusLink]) -> Void
     let notificationConfiguration: DashboardNotificationPageConfiguration?
-    /// Settings › Advanced › Real-time boost content, or `nil` when the section is not offered.
-    let makeRealtimeBoostView: (_ forSearch: Bool) -> NSView?
+    /// Settings › Advanced › Real-time boost rows, empty when the section is not offered.
+    let makeRealtimeBoostRows: (_ forSearch: Bool) -> [NSView]
 
     init(
         preferences: AppPreferences,
@@ -47,9 +47,9 @@ struct DashboardCompositionState {
         snapshotProviderID: @escaping () -> String? = { nil },
         aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
         isAggregationMode: @escaping () -> Bool = { false },
-        makeRealtimeBoostView: @escaping (_ forSearch: Bool) -> NSView? = { _ in nil }
+        makeRealtimeBoostRows: @escaping (_ forSearch: Bool) -> [NSView] = { _ in [] }
     ) {
-        self.makeRealtimeBoostView = makeRealtimeBoostView
+        self.makeRealtimeBoostRows = makeRealtimeBoostRows
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
         self.providerPollInterval = providerPollInterval
@@ -282,7 +282,7 @@ final class DashboardCompositionController {
                     ?? StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
             onClamp: actions.onClamp,
-            makeRealtimeBoostView: state.makeRealtimeBoostView
+            makeRealtimeBoostRows: state.makeRealtimeBoostRows
         ),
         launchAtLoginController: launchAtLoginController,
         launchWithChatGPTController: launchWithChatGPTController,

@@ -562,10 +562,6 @@
 
     case keyModPromptRow = "mod.prompt.row"
     case keyModPanelTitle = "mod.panel.title"
-    case keyModPanelPoint1 = "mod.panel.point1"
-    case keyModPanelPoint2 = "mod.panel.point2"
-    case keyModPanelPoint3 = "mod.panel.point3"
-    case keyModPanelPoint4 = "mod.panel.point4"
     case keyModPanelInstall = "mod.panel.install"
     case keyModPanelDismissCheckbox = "mod.panel.dismiss_checkbox"
     case keyModPanelClose = "mod.panel.close"
@@ -582,7 +578,6 @@
     case keyModFailureCopied = "mod.failure.copied"
     case keyModDismissedTitle = "mod.dismissed.title"
     case keyModDismissedNote = "mod.dismissed.note"
-    case keyModDismissedUndo = "mod.dismissed.undo"
     case keyModSettingsTitle = "mod.settings.title"
     case keyModSettingsStatusNotInstalled = "mod.settings.status.not_installed"
     case keyModSettingsStatusWaiting = "mod.settings.status.waiting"
@@ -593,6 +588,29 @@
     case keyModSettingsActionCopy = "mod.settings.action.copy"
     case keyModSettingsPromptToggle = "mod.settings.prompt_toggle"
     case keyModMenuDataSources = "mod.menu.data_sources"
+
+    case keyModPromptWhy = "mod.prompt.why"
+    case keyModPanelSubtitle = "mod.panel.subtitle"
+    case keyModPanelLater = "mod.panel.later"
+    case keyModDismissedOpenSettings = "mod.dismissed.open_settings"
+    case keyModDismissedOk = "mod.dismissed.ok"
+    case keyModSettingsUninstallNote = "mod.settings.uninstall_note"
+
+    case keyModPanelPoint1Title = "mod.panel.point1.title"
+    case keyModPanelPoint1Detail = "mod.panel.point1.detail"
+    case keyModPanelPoint2Title = "mod.panel.point2.title"
+    case keyModPanelPoint2Detail = "mod.panel.point2.detail"
+    case keyModPanelPoint3Title = "mod.panel.point3.title"
+    case keyModPanelPoint3Detail = "mod.panel.point3.detail"
+    case keyModPanelPoint4Title = "mod.panel.point4.title"
+    case keyModPanelPoint4Detail = "mod.panel.point4.detail"
+    case keyModPromptHeadless = "mod.prompt.headless"
+    case keyModSilentTitle = "mod.silent.title"
+    case keyModSilentIntro = "mod.silent.intro"
+    case keyModSilentItem1 = "mod.silent.item1"
+    case keyModSilentItem2 = "mod.silent.item2"
+    case keyModSilentItem3 = "mod.silent.item3"
+    case keyModSettingsActionViewNote = "mod.settings.action.view_note"
 
     var rawKey: String { rawValue }
 }

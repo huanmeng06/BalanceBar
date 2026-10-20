@@ -2219,8 +2219,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// Why a manual refresh would be skipped for the visible official quota;
         /// read when the menu validates its items.
         let manualRefreshNotice: () -> ClaudeManualRefreshNotice?
-        /// Builds the real-time boost explanation panel, or `nil` when it is not offered.
-        let makeModOnboardingPanel: () -> ModOnboardingPanelView?
+        /// Opens the real-time boost explanation window.
+        let showModOnboarding: () -> Void
         /// Opens Settings › Advanced, where the real-time boost and its data sources are managed.
         let openDataSources: () -> Void
 
@@ -2242,12 +2242,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in },
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
             manualRefreshNotice: @escaping () -> ClaudeManualRefreshNotice? = { nil },
-            makeModOnboardingPanel: @escaping () -> ModOnboardingPanelView? = { nil },
+            showModOnboarding: @escaping () -> Void = {},
             openDataSources: @escaping () -> Void = {}
         ) {
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
             self.manualRefreshNotice = manualRefreshNotice
-            self.makeModOnboardingPanel = makeModOnboardingPanel
+            self.showModOnboarding = showModOnboarding
             self.openDataSources = openDataSources
             self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
@@ -2490,7 +2490,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private var statusItem: NSStatusItem?
     private var statusMenu = NSMenu()
-    private let modOnboardingPresenter = ModOnboardingPopoverPresenter()
     private var retiringStatusMenus: [NSMenu] = []
     private var retiringStatusMenuObservers: [ObjectIdentifier: [NSObjectProtocol]] = [:]
     private var statusItemAttachmentCheckScheduled = false
@@ -6128,30 +6127,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func openDashboard() { actions.openDashboard() }
     @objc private func openChatGPT() { actions.openChatGPT() }
 
-    /// "启用实时增强 ›" while the prompt applies, otherwise the quiet "数据来源" entry.
-    private func makeModMenuItem() -> NSMenuItem? {
-        switch menuInput.modRow {
-        case .none:
-            return nil
-        case .prompt:
-            let item = NSMenuItem(
-                title: ModOnboardingText.appLocalize(.promptRow), action: #selector(openModOnboarding), keyEquivalent: "")
-            item.target = self
-            return item
-        case .dataSources:
-            let item = NSMenuItem(
-                title: tr(.keyModMenuDataSources), action: #selector(openDataSources), keyEquivalent: "")
-            item.target = self
-            return item
-        }
+    /// The accent-tinted prompt row under the quota card.
+    private func makeModPromptItem() -> NSMenuItem? {
+        guard case let .prompt(headless) = menuInput.modRow else { return nil }
+        let view = ModPromptRowView(headless: headless, localize: ModOnboardingText.appLocalize)
+        view.onClick = { [weak self] in self?.openModOnboarding() }
+        let item = NSMenuItem()
+        item.view = view
+        return item
     }
 
-    @objc private func openModOnboarding() {
-        // The menu is still closing; show the panel once the status button can anchor a popover.
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let button = self.statusItem?.button, let panel = self.actions.makeModOnboardingPanel() else { return }
-            self.modOnboardingPresenter.present(panel: panel, relativeTo: button)
-        }
+    /// "数据来源": the quiet gray entry at the bottom that replaces the prompt.
+    private func makeDataSourcesItem() -> NSMenuItem? {
+        guard menuInput.modRow == .dataSources else { return nil }
+        let title = tr(.keyModMenuDataSources)
+        let item = NSMenuItem(title: title, action: #selector(openDataSources), keyEquivalent: "")
+        item.target = self
+        item.attributedTitle = NSAttributedString(string: title, attributes: [
+            .font: NSFont.menuFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ])
+        return item
+    }
+
+    private func openModOnboarding() {
+        // The menu is closing; open the window once it is gone.
+        DispatchQueue.main.async { [weak self] in self?.actions.showModOnboarding() }
     }
 
     @objc private func openDataSources() { actions.openDataSources() }
@@ -6251,6 +6252,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             item.view = viewport
             menu.addItem(item)
         }
+        // The real-time boost prompt sits right under the quota card, above Quick Switch and Refresh.
+        if let prompt = makeModPromptItem() { menu.addItem(prompt) }
         menu.addItem(.separator())
         if menuInput.showQuickSwitchMenu {
             menu.addItem(makeQuickSwitchMenuItem())
@@ -6279,7 +6282,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if menuInput.showStatusMenu {
             menu.addItem(makeStatusLinksMenuItem())
         }
-        if let modItem = makeModMenuItem() { menu.addItem(modItem) }
+        if let sources = makeDataSourcesItem() { menu.addItem(sources) }
         menu.addItem(.separator())
         menu.addItem(
             withTitle: tr(.keyStatusItemControllerQuitBalancebar),
