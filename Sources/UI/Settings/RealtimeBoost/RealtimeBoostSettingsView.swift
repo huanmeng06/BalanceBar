@@ -141,10 +141,7 @@ final class RealtimeBoostSettingsRows {
         spinner.controlSize = .small
         spinner.isIndeterminate = true
         spinner.isDisplayedWhenStopped = false
-        for button in [installButton, copyButton, descriptionButton] {
-            button.bezelStyle = .rounded
-            button.controlSize = .small
-        }
+        // Same size and style as the other buttons on this page (for example "export log").
         installButton.bezelColor = .controlAccentColor
         let actions = NSStackView(views: [spinner, installButton, copyButton, descriptionButton])
         actions.orientation = .horizontal
@@ -185,9 +182,8 @@ final class RealtimeBoostSettingsRows {
         default: break
         }
         statusRow.titleLabel.stringValue = presentation.statusText
-        let detail = detailText
-        statusRow.detailLabel.stringValue = detail
-        statusRow.detailLabel.isHidden = detail.isEmpty
+        statusRow.updateDetail(detailText)
+        statusRow.invalidateAfterContentChange()
         dot.effectiveAppearance.performAsCurrentDrawingAppearance {
             dot.layer?.backgroundColor = presentation.statusTone.color.cgColor
         }
