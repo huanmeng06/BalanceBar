@@ -33,7 +33,10 @@ struct DiagnosticsRequestStats: Equatable {
         let cutoff = now.addingTimeInterval(-window)
         let recent = events.filter { $0.timestamp > cutoff && $0.timestamp <= now }
         requestsInWindow = recent.filter { $0.kind == .dispatched }.count
-        rateLimitedInWindow = recent.filter { $0.kind == .completed && $0.outcome == "rate_limited" }.count
+        // A 429 that returns after an account switch is logged as discardedStaleEpoch but still starts a cooldown.
+        rateLimitedInWindow = recent.filter {
+            ($0.kind == .completed || $0.kind == .discardedStaleEpoch) && $0.outcome == "rate_limited"
+        }.count
         if let latest = events.filter({ $0.timestamp <= now }).max(by: { $0.timestamp < $1.timestamp }) {
             cooldownRemaining = max(0, latest.cooldownRemaining - now.timeIntervalSince(latest.timestamp))
         } else {
@@ -56,6 +59,9 @@ struct DiagnosticsInputs {
         let sourceID: String
         let trust: QuotaTrust
         let health: QuotaAdapterHealth
+        /// Observation source IDs this adapter's data arrives under when they differ from `sourceID`
+        /// (for example the inbox adapter delivers snapshots whose own `source` is "claude-hud").
+        var observedSourceIDs: [String] = []
     }
 
     var adapters: [Adapter] = []
@@ -94,6 +100,7 @@ enum DiagnosticsContent {
             }
         }
         var rows = inputs.adapters.map { adapter -> DiagnosticsSourceRow in
+            let ids = [adapter.sourceID] + adapter.observedSourceIDs
             let status: DiagnosticsSourceStatus
             let reason: String?
             switch adapter.health {
@@ -103,9 +110,9 @@ enum DiagnosticsContent {
             }
             return DiagnosticsSourceRow(
                 sourceID: adapter.sourceID, status: status,
-                lastUpdated: latest[adapter.sourceID]?.receivedAt, trust: adapter.trust, reason: reason)
+                lastUpdated: ids.compactMap { latest[$0]?.receivedAt }.max(), trust: adapter.trust, reason: reason)
         }
-        let known = Set(rows.map(\.sourceID))
+        let known = Set(inputs.adapters.flatMap { [$0.sourceID] + $0.observedSourceIDs })
         rows += latest.filter { !known.contains($0.key) }.map {
             DiagnosticsSourceRow(sourceID: $0.key, status: .active, lastUpdated: $0.value.receivedAt,
                                  trust: $0.value.trust, reason: nil)
@@ -119,7 +126,7 @@ enum DiagnosticsContent {
         if rows.isEmpty { out.append(.text("暂无数据来源。")) }
         for row in rows {
             let trust = row.trust.map { $0 == .a ? "A 级（可信）" : "B 级（需校验）" } ?? "—"
-            let updated = row.lastUpdated.map(formatTime) ?? "从未更新"
+            let updated = row.lastUpdated.map(formatTime) ?? "暂无匹配的更新记录"
             out.append(.text("\(row.sourceID) · \(statusText(row.status)) · 最近更新 \(updated) · 可信度 \(trust)"))
             if let reason = row.reason { out.append(.text("    原因：\(reason)")) }
         }

@@ -36,10 +36,10 @@ final class DiagnosticsTests: XCTestCase {
         XCTAssertEqual(lines(inputs), [
             "# 数据来源诊断",
             "## 数据来源",
-            "codex · 降级 · 最近更新 从未更新 · 可信度 B 级（需校验）",
+            "codex · 降级 · 最近更新 暂无匹配的更新记录 · 可信度 B 级（需校验）",
             "    原因：校验失败：文件过大",
             "inbox · 正常 · 最近更新 T-30 · 可信度 B 级（需校验）",
-            "mod · 不可用 · 最近更新 从未更新 · 可信度 A 级（可信）",
+            "mod · 不可用 · 最近更新 暂无匹配的更新记录 · 可信度 A 级（可信）",
             "    原因：目录不存在",
             "## 请求统计",
             "近 1 小时请求：0 次",
@@ -100,6 +100,51 @@ final class DiagnosticsTests: XCTestCase {
     func testHUDExampleIsAValidSnapshot() throws {
         let data = Data(DiagnosticsContent.hudExample.utf8)
         XCTAssertNoThrow(try SnapshotValidatingProbe.decode(data))
+    }
+
+    func testDiscardedStaleEpochRateLimitIsCounted() {
+        let events = [
+            event(.dispatched, ago: 300),
+            event(.discardedStaleEpoch, ago: 200, outcome: "rate_limited", cooldown: 900),
+            event(.discardedStaleEpoch, ago: 150, outcome: "success", cooldown: 750),
+        ]
+        let stats = DiagnosticsRequestStats(events: events, now: now)
+        XCTAssertEqual(stats.rateLimitedInWindow, 1)
+        XCTAssertGreaterThan(stats.cooldownRemaining, 0)
+    }
+
+    func testAdapterUpdateTimeFollowsObservedSourceIDs() {
+        var inputs = DiagnosticsInputs(now: now)
+        inputs.hudExportDetected = true
+        inputs.adapters = [.init(sourceID: "inbox", trust: .b, health: .healthy, observedSourceIDs: ["claude-hud"])]
+        inputs.mergeState = mergeState(source: "claude-hud", trust: .b, receivedAgo: 20)
+        let rows = DiagnosticsContent.sourceRows(inputs)
+        XCTAssertEqual(rows.count, 1, "observed source must not be listed separately")
+        XCTAssertEqual(rows.first?.sourceID, "inbox")
+        XCTAssertEqual(rows.first?.lastUpdated, now.addingTimeInterval(-20))
+    }
+
+    func testUnmatchedAdapterIsNotReportedAsNeverUpdated() {
+        var inputs = DiagnosticsInputs(now: now)
+        inputs.hudExportDetected = true
+        inputs.adapters = [.init(sourceID: "inbox", trust: .b, health: .healthy)]
+        XCTAssertTrue(lines(inputs).contains("inbox · 正常 · 最近更新 暂无匹配的更新记录 · 可信度 B 级（需校验）"))
+    }
+
+    func testLongContentIsScrollableInWindow() {
+        var inputs = DiagnosticsInputs(now: now)
+        inputs.adapters = (0..<12).map {
+            .init(sourceID: "source-\($0)", trust: .b, health: .degraded(reason: String(repeating: "原因说明 ", count: 20)))
+        }
+        let controller = DiagnosticsWindowController(provider: { inputs })
+        controller.show()
+        defer { controller.window?.close() }
+        let scroll = controller.window?.contentView as? NSScrollView
+        XCTAssertNotNil(scroll)
+        XCTAssertTrue(scroll?.hasVerticalScroller ?? false)
+        XCTAssertTrue(controller.window?.styleMask.contains(.resizable) ?? false)
+        XCTAssertTrue(scroll?.documentView === controller.contentView)
+        XCTAssertGreaterThan(controller.contentView.frame.height, 400)
     }
 
     func testViewIsReadOnlyAndRendersItems() {

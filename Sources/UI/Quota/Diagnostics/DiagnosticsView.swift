@@ -17,21 +17,24 @@ final class DiagnosticsView: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: Self.fixedWidth),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 
     required init?(coder: NSCoder) { nil }
 
+    /// Top-anchored so a scroll view starts at the first line.
+    override var isFlipped: Bool { true }
+
     func reload(_ items: [DiagnosticsItem]) {
         self.items = items
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for item in items { stack.addArrangedSubview(makeView(item)) }
-        layoutSubtreeIfNeeded()
+        // Used as a scroll view's document view: the frame (not constraints) carries the content height.
+        stack.layoutSubtreeIfNeeded()
+        setFrameSize(NSSize(width: Self.fixedWidth, height: stack.fittingSize.height))
     }
 
     private func makeView(_ item: DiagnosticsItem) -> NSView {
@@ -68,6 +71,7 @@ final class DiagnosticsWindowController {
     private let provider: () -> DiagnosticsInputs
     private let view = DiagnosticsView()
     private(set) var window: NSWindow?
+    var contentView: DiagnosticsView { view }
 
     init(provider: @escaping () -> DiagnosticsInputs) {
         self.provider = provider
@@ -82,10 +86,15 @@ final class DiagnosticsWindowController {
         if window == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: DiagnosticsView.fixedWidth, height: 400),
-                styleMask: [.titled, .closable], backing: .buffered, defer: false)
+                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             window.title = "数据来源诊断"
             window.isReleasedWhenClosed = false
-            window.contentView = view
+            let scroll = NSScrollView(frame: NSRect(origin: .zero, size: window.contentRect(forFrameRect: window.frame).size))
+            scroll.hasVerticalScroller = true
+            scroll.drawsBackground = false
+            scroll.autohidesScrollers = true
+            scroll.documentView = view
+            window.contentView = scroll
             window.center()
             self.window = window
         }
