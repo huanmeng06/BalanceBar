@@ -27,7 +27,10 @@ def event_kind(event):
 
 
 def pr_error(event_pr, live_pr):
-    if not live_pr or live_pr.get('state') != 'open' or live_pr.get('draft') or event_pr.get('draft'):
+    # Live draft state is authoritative: a stale Draft payload can arrive in the
+    # newest run after the PR is already Ready (#549). Head/base identity below
+    # still binds the credential to exactly what this run validated.
+    if not live_pr or live_pr.get('state') != 'open' or live_pr.get('draft'):
         return 'Draft/closed PR has no merge credential'
     for ref, field in (('head', 'sha'), ('base', 'sha'), ('base', 'ref')):
         expected = event_pr.get(ref, {}).get(field)
@@ -182,6 +185,8 @@ def wait_for_evidence(event, event_name):
                                    for key, j in selected.items() if j}
             results['scope_reused'] = bool(not current['scope'] and history_scope)
             results['workflow_id'] = workflow_id
+            if live is not None:
+                results['live_draft'] = bool(live.get('draft'))
             gate_job = next((j for j in jobs if j.get('name') == GATE_NAME
                              and str(j.get('run_id')) == run_id
                              and j.get('run_attempt') == attempt
@@ -249,7 +254,8 @@ if __name__ == '__main__':
                 f"gate {results.get('gate_job_id', 'unknown')}; "
                 f"event {os.environ.get('GITHUB_EVENT_NAME', 'unknown')}/"
                 f"{event.get('action', 'unknown')}; "
-                f"draft {str(pr.get('draft', False)).lower()}")
+                f"draft {str(results.get('live_draft', pr.get('draft', False))).lower()}; "
+                f"payload draft {str(pr.get('draft', False)).lower()}")
     summary = f"{'PASS' if ok else 'FAIL'}: {reason}\n{identity}\nEvent head: {pr.get('head', {}).get('sha', os.environ['GITHUB_SHA'])}\nBase: {pr.get('base', {}).get('ref')} / {pr.get('base', {}).get('sha')}\nCheckout/merge SHA: {os.environ['GITHUB_SHA']}\nResults: {results}\n"
     print(summary)
     with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
