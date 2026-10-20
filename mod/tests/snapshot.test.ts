@@ -85,3 +85,16 @@ test("missing inbox directory is skipped, not created", async () => {
   })
   expect(await writeSnapshot($, { a: 1 }, "x.json")).toBe(false)
 })
+
+test("account switch is picked up on the next measure", async () => {
+  let email = "a@example.com"
+  const { $, written } = fakeContext()
+  ;($ as any).fs.read = async () => JSON.stringify({ oauthAccount: { emailAddress: email } })
+  await recordMeasure($)
+  email = "b@example.com"
+  await recordMeasure($)
+  const names = Object.keys(written)
+  expect(names.length).toBe(2)
+  expect(names[0] === names[1]).toBe(false)
+  expect(JSON.parse(written[names[1]]).account.email_hash).toBe(await hashEmail("b@example.com"))
+})

@@ -7,8 +7,6 @@ import {
   snapshotFilename,
 } from "./snapshot.js"
 
-let cachedEmailHash
-
 function text(value) {
   return typeof value === "string" && value ? value : undefined
 }
@@ -29,17 +27,16 @@ async function readConfiguredInbox($) {
   }
 }
 
+/// Re-read on every observation so an account switch is never attributed to the old account.
 async function readEmailHash($, home) {
-  if (cachedEmailHash !== undefined) return cachedEmailHash || null
   try {
     if (!home) return null
     const text = await $.fs.read(`${home.replace(/\/$/, "")}/.claude.json`)
     const email = extractEmail(text)
-    cachedEmailHash = email ? await hashEmail(email) : ""
+    return email ? await hashEmail(email) : null
   } catch {
     return null
   }
-  return cachedEmailHash || null
 }
 
 /// Writes into the first existing inbox directory. The directory is never created.
