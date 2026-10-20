@@ -292,6 +292,26 @@ final class ModOnboardingPanelTests: XCTestCase {
         XCTAssertEqual(c.state, .dismissConfirmed); XCTAssertTrue(pref.isPromptDismissed)
     }
 
+    func testCopyButtonOfTheCodeBlockCopiesAndShowsACheckMark() throws {
+        var copied: String?
+        let c = controller(locator: nil, results: [], copied: { copied = $0 })
+        c.setStateForTesting(.failed(.claudeNotFound))
+        let view = ModOnboardingPanelView(controller: c)
+        view.layoutSubtreeIfNeeded()
+        func find(_ v: NSView) -> ModCopyButton? { (v as? ModCopyButton) ?? v.subviews.lazy.compactMap(find).first }
+        let button = try XCTUnwrap(find(view))
+        XCTAssertEqual(button.frame.width, ModCopyButton.side)
+        XCTAssertEqual(button.toolTip, ModOnboardingText.copyCommands.defaultText)
+        XCTAssertFalse(button.isShowingFeedback)
+        button.performClick(nil)
+        XCTAssertEqual(copied, ModInstallPlan.standard.copyableCommands)
+        XCTAssertTrue(button.isShowingFeedback)
+        let reset = expectation(description: "feedback ends")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { reset.fulfill() }
+        wait(for: [reset], timeout: 3)
+        XCTAssertFalse(button.isShowingFeedback)
+    }
+
     func testOpenAdvancedSettingsButtonAsksTheAppAndClosesTheWindow() {
         let c = controller(locator: nil, results: [])
         var opened = 0

@@ -230,6 +230,88 @@ final class ModPromptRowView: NSView {
     }
 }
 
+// MARK: - Copy button
+
+/// The small copy control of a code block: a 28 pt rounded button with hover and pressed fills, a pointing-hand
+/// cursor, and a green check mark for a moment after the click.
+final class ModCopyButton: NSButton {
+    static let side: CGFloat = 28
+    private var isHovering = false { didSet { updateFill() } }
+    private var isPressed = false { didSet { updateFill() } }
+    private var feedback: DispatchWorkItem?
+    private let idleImage = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)?
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
+    private let doneImage = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+
+    /// `true` while the check mark is showing.
+    private(set) var isShowingFeedback = false
+
+    init(toolTip: String) {
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.side, height: Self.side))
+        image = idleImage
+        imagePosition = .imageOnly
+        imageScaling = .scaleNone
+        isBordered = false
+        contentTintColor = .secondaryLabelColor
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        self.toolTip = toolTip
+        setAccessibilityLabel(toolTip)
+        translatesAutoresizingMaskIntoConstraints = false
+        widthAnchor.constraint(equalToConstant: Self.side).isActive = true
+        heightAnchor.constraint(equalToConstant: Self.side).isActive = true
+        updateFill()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func mouseEntered(with event: NSEvent) { isHovering = true }
+    override func mouseExited(with event: NSEvent) { isHovering = false }
+
+    override func mouseDown(with event: NSEvent) {
+        isPressed = true
+        super.mouseDown(with: event)   // tracks until the button is released
+        isPressed = false
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateFill()
+    }
+
+    /// Shows the check mark for 1.2 s.
+    func flashCopied() {
+        feedback?.cancel()
+        isShowingFeedback = true
+        image = doneImage
+        contentTintColor = .systemGreen
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.isShowingFeedback = false
+            self.image = self.idleImage
+            self.contentTintColor = .secondaryLabelColor
+        }
+        feedback = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: work)
+    }
+
+    private func updateFill() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let alpha: CGFloat = isPressed ? 0.16 : isHovering ? 0.09 : 0
+            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(alpha).cgColor
+        }
+    }
+}
+
 // MARK: - Window content
 
 /// Explanation window content: renders `ModPanelContent` for the controller's current state.
@@ -482,14 +564,12 @@ final class ModOnboardingPanelView: NSView {
         let code = NSTextField(wrappingLabelWithString: text)
         code.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         code.isSelectable = true
-        code.preferredMaxLayoutWidth = contentWidth - 24 - 28
+        code.preferredMaxLayoutWidth = contentWidth - 10 - 6 - ModCopyButton.side - 6
         code.translatesAutoresizingMaskIntoConstraints = false
-        let copy = NSButton(image: Self.symbol("doc.on.doc", size: 12) ?? NSImage(), target: self, action: #selector(copyPressed(_:)))
-        copy.isBordered = false
-        copy.contentTintColor = .secondaryLabelColor
+        let copy = ModCopyButton(toolTip: localize(.copyCommands))
+        copy.target = self
+        copy.action = #selector(copyPressed(_:))
         copy.identifier = NSUserInterfaceItemIdentifier(Self.identifier(for: copyAction))
-        copy.setAccessibilityLabel(localize(.copyCommands))
-        copy.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(code)
         container.addSubview(copy)
         NSLayoutConstraint.activate([
@@ -497,10 +577,8 @@ final class ModOnboardingPanelView: NSView {
             code.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
             code.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
             code.trailingAnchor.constraint(equalTo: copy.leadingAnchor, constant: -6),
-            copy.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
-            copy.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
-            copy.widthAnchor.constraint(equalToConstant: 22),
-            copy.heightAnchor.constraint(equalToConstant: 22),
+            copy.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
+            copy.topAnchor.constraint(equalTo: container.topAnchor, constant: 5),
         ])
         return container
     }
@@ -515,10 +593,8 @@ final class ModOnboardingPanelView: NSView {
     /// Copy icon: copies, then shows a check mark for a moment.
     @objc private func copyPressed(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue, let action = Self.action(for: id) else { return }
-        let original = sender.image
         perform(action)
-        sender.image = Self.symbol("checkmark", size: 12)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak sender] in sender?.image = original }
+        (sender as? ModCopyButton)?.flashCopied()
     }
 
     private static func identifier(for action: ModPanelItem.ButtonAction) -> String { String(describing: action) }
