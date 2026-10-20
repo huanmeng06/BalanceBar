@@ -1824,10 +1824,7 @@ final class DashboardPageSearchTests: XCTestCase {
         let active = try XCTUnwrap(firstDescendant(of: row) {
             $0.identifier?.rawValue == "codexUsageRefreshInterval"
         } as? NSPopUpButton)
-        let trailing = try XCTUnwrap(firstDescendant(of: row) {
-            $0.identifier?.rawValue == "postCodexRefreshDuration"
-        } as? NSPopUpButton)
-        let originalPopupSizes = [active.frame.size, trailing.frame.size]
+        let originalPopupSizes = [active.frame.size]
         let originalRowHeight = row.frame.height
         let originalCardHeight = section.cardView.frame.height
         let originalRowWidth = row.bounds.width
@@ -1836,7 +1833,6 @@ final class DashboardPageSearchTests: XCTestCase {
         let originalDetailHeight = row.detailLabel.frame.height
 
         XCTAssertLessThan(active.frame.width, 180)
-        XCTAssertLessThan(trailing.frame.width, 180)
         XCTAssertLessThan(originalRowHeight, 220)
 
         composition.applySearchQueryForTesting(
@@ -1852,21 +1848,15 @@ final class DashboardPageSearchTests: XCTestCase {
         let resultActive = try XCTUnwrap(firstDescendant(of: resultRow) {
             $0.identifier?.rawValue == "codexUsageRefreshInterval"
         } as? NSPopUpButton)
-        let resultTrailing = try XCTUnwrap(firstDescendant(of: resultRow) {
-            $0.identifier?.rawValue == "postCodexRefreshDuration"
-        } as? NSPopUpButton)
-        let adaptiveState = resultRow.accessoryView as? DashboardAdaptiveControlsStackView
 
         XCTAssertFalse(isCollapsedForSearch(resultRow))
         XCTAssertEqual(resultActive.frame.size.width, originalPopupSizes[0].width, accuracy: 1)
         XCTAssertEqual(resultActive.frame.size.height, originalPopupSizes[0].height, accuracy: 1)
-        XCTAssertEqual(resultTrailing.frame.size.width, originalPopupSizes[1].width, accuracy: 1)
-        XCTAssertEqual(resultTrailing.frame.size.height, originalPopupSizes[1].height, accuracy: 1)
         XCTAssertEqual(
             resultRow.frame.height,
             originalRowHeight,
             accuracy: 2,
-            "section=\(composition.section), row width \(originalRowWidth)->\(resultRow.bounds.width), content \(resultRow.contentStack.frame), orientation \(originalContentOrientation.rawValue)->\(resultRow.contentStack.orientation.rawValue), intrinsic=\(resultRow.intrinsicContentSize.height), detail width \(originalDetailWidth)->\(resultRow.detailLabel.preferredMaxLayoutWidth), detail height \(originalDetailHeight)->\(resultRow.detailLabel.frame.height), labels \(resultRow.labelsStack.frame), accessory \(String(describing: resultRow.accessoryView?.frame)), adaptiveVertical=\(String(describing: adaptiveState?.stacksControlsVertically))"
+            "section=\(composition.section), row width \(originalRowWidth)->\(resultRow.bounds.width), content \(resultRow.contentStack.frame), orientation \(originalContentOrientation.rawValue)->\(resultRow.contentStack.orientation.rawValue), intrinsic=\(resultRow.intrinsicContentSize.height), detail width \(originalDetailWidth)->\(resultRow.detailLabel.preferredMaxLayoutWidth), detail height \(originalDetailHeight)->\(resultRow.detailLabel.frame.height), labels \(resultRow.labelsStack.frame), accessory \(String(describing: resultRow.accessoryView?.frame))"
         )
         XCTAssertLessThan(resultSection.cardView.frame.height, originalCardHeight - 40)
         XCTAssertLessThanOrEqual(sectionHeadingToCardGap(in: resultSection), 16)
@@ -2690,8 +2680,8 @@ final class DashboardPageSearchTests: XCTestCase {
         let firstTitle = tr(.keyDashboardOfficialQuotaRefreshFrequency, language: .english)
         let secondTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: .english)
         let section = try XCTUnwrap(firstSection(titled: refreshHeading, in: page) as? SettingsSectionView)
-        XCTAssertEqual(section.contentViews.count, 3)
-        XCTAssertEqual(section.separators.count, 2)
+        XCTAssertEqual(section.contentViews.count, 2)
+        XCTAssertEqual(section.separators.count, 1)
         let separator = try XCTUnwrap(section.separators.first)
         XCTAssertFalse(separator.isHidden)
 
@@ -2712,6 +2702,26 @@ final class DashboardPageSearchTests: XCTestCase {
         assertVisualSeparatorsMatchVisibleRows(section)
         XCTAssertTrue(section.contentViews[0] === settingsRow(titled: firstTitle, in: section))
         XCTAssertTrue(section.contentViews[1] === settingsRow(titled: secondTitle, in: section))
+    }
+
+    func testGeneralSearchCatalogCoversUnifiedRefreshSettings() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        for language in [AppLanguage.english, .simplifiedChinese, .german, .japanese] {
+            AppLanguage.selected = language
+            let titles = DashboardSettingsSearchCatalog.titles(for: .general)
+            for key in [
+                LocalizationKey.keyDashboardOfficialQuotaRefreshFrequency,
+                .keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks,
+                .keyDashboardRefreshOfficialScope,
+                .keyDashboardRefreshAPIScope,
+                .keyDashboardRefreshMinimumIntervalHint,
+                .keyDashboardGeneralAndRefreshPagesRefreshNow
+            ] {
+                XCTAssertTrue(titles.contains(tr(key)), "\(language) search catalog lacks \(key.rawValue)")
+            }
+            XCTAssertFalse(titles.contains { $0.contains("Claude official") || $0.contains("Claude 官方") })
+        }
     }
 
     func testVisibleCopySkipsHiddenSubtreeCopy() {

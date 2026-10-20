@@ -207,12 +207,6 @@
 "dashboard.general.and.refresh.pages.every_3_sec" = "3초마다";
 "dashboard.general.and.refresh.pages.every_5_sec" = "5초마다";
 "dashboard.general.and.refresh.pages.every_10_sec" = "10초마다";
-"dashboard.general.and.refresh.pages.off" = "끔";
-"dashboard.general.and.refresh.pages.for_6_sec" = "6초 동안";
-"dashboard.general.and.refresh.pages.for_12_sec" = "12초 동안";
-"dashboard.general.and.refresh.pages.for_30_sec" = "30초 동안";
-"dashboard.general.and.refresh.pages.running" = "실행 중";
-"dashboard.general.and.refresh.pages.after" = "이후";
 "dashboard.general.and.refresh.pages.refresh_now" = "지금 업데이트";
 "dashboard.general.and.refresh.pages.refresh" = "업데이트";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API 공급자 잔액 새로 고침 빈도";
@@ -561,7 +555,9 @@
 
 "dashboard.refresh.official_quota_frequency" = "공식 할당량 새로 고침 빈도";
 "dashboard.refresh.official_every_seconds" = "%1$@초마다";
-"dashboard.refresh.official_for_minutes" = "%1$@분 동안";
+"dashboard.refresh.official_scope" = "Claude, Codex 등 공식 계정";
+"dashboard.refresh.api_scope" = "서드파티 중계 / API 키";
+"dashboard.refresh.minimum_interval_hint" = "일부 소스에는 최소 간격 제한이 있습니다";
 
 "quota.status.refreshing" = "업데이트 중…";
 "quota.status.realtime" = "실시간";
@@ -575,4 +571,3 @@
 "quota.status.reset_pending_short" = "확인 대기";
 "quota.failure.open_usage_page" = "공식 사용량 페이지 열기";
 "quota.status.accessibility" = "할당량 상태: %1$@";
-"dashboard.refresh.claude_calibration_note" = "Claude 공식: 보정 간격의 상한입니다. 최소 3분이며 실시간 소스가 있으면 요청하지 않습니다.";

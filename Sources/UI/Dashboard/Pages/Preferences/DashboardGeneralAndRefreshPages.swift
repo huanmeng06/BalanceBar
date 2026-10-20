@@ -431,73 +431,36 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.interval(_:))
         )
-        let trailingRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
-            values: [
-                (0, tr(.keyDashboardGeneralAndRefreshPagesOff)),
-                (6, tr(.keyDashboardGeneralAndRefreshPagesFor6Sec)),
-                (12, tr(.keyDashboardGeneralAndRefreshPagesFor12Sec)),
-                (30, tr(.keyDashboardGeneralAndRefreshPagesFor30Sec))
-            ],
-            selected: input.preferences.postCodexRefreshDuration,
-            identifier: "postCodexRefreshDuration",
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.interval(_:))
-        )
-        func refreshControls(activeRefreshPopup: NSPopUpButton, trailingRefreshPopup: NSPopUpButton) -> DashboardAdaptiveControlsStackView {
-            let runningLabel = NSTextField(labelWithString: tr(.keyDashboardGeneralAndRefreshPagesRunning))
-            let trailingLabel = NSTextField(labelWithString: tr(.keyDashboardGeneralAndRefreshPagesAfter))
-            [runningLabel, trailingLabel].forEach {
-                $0.font = .systemFont(ofSize: 11)
-                $0.textColor = .secondaryLabelColor
-                $0.alignment = .right
-                $0.translatesAutoresizingMaskIntoConstraints = false
-                $0.widthAnchor.constraint(equalToConstant: 48).isActive = true
-            }
-            [activeRefreshPopup, trailingRefreshPopup].forEach {
-                $0.translatesAutoresizingMaskIntoConstraints = false
-            }
-            let commonRefreshPopupWidth = ceil(
-                max(108, max(activeRefreshPopup.fittingSize.width, trailingRefreshPopup.fittingSize.width))
-            )
-            [activeRefreshPopup, trailingRefreshPopup].forEach { popup in
-                for constraint in popup.constraints where constraint.firstAttribute == .width {
-                    constraint.priority = .defaultHigh
-                }
-                let preferredWidth = popup.widthAnchor.constraint(equalToConstant: commonRefreshPopupWidth)
-                preferredWidth.priority = .defaultHigh
-                preferredWidth.isActive = true
-            }
-            let runningControls = NSStackView(views: [runningLabel, activeRefreshPopup])
-            runningControls.orientation = .horizontal
-            runningControls.alignment = .centerY
-            runningControls.spacing = 7
-            let trailingControls = NSStackView(views: [trailingLabel, trailingRefreshPopup])
-            trailingControls.orientation = .horizontal
-            trailingControls.alignment = .centerY
-            trailingControls.spacing = 7
-            let controls = DashboardAdaptiveControlsStackView(
-                views: [runningControls, trailingControls]
-            )
-            controls.allowsTextDrivenDedicatedRow = true
-            controls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
-            controls.orientation = .horizontal
-            controls.alignment = .centerY
-            controls.spacing = 5
-            return controls
-        }
-        let activeRefreshControls = refreshControls(activeRefreshPopup: activeRefreshPopup, trailingRefreshPopup: trailingRefreshPopup)
         let officialActivePopup = DashboardSettingsComponents.makeIntervalPopUpButton(
             values: AppPreferences.officialUsageRefreshIntervals.map {
                 ($0, tr(.keyDashboardOfficialEverySeconds, arguments: [String(Int($0))]))
             }, selected: input.preferences.officialUsageRefreshInterval, identifier: "officialUsageRefreshInterval",
             target: input.relay, action: #selector(DashboardPreferencePageRelay.interval(_:)))
-        let officialTrailingPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
-            values: AppPreferences.officialPostTaskRefreshDurations.map {
-                ($0, $0 == 0 ? tr(.keyDashboardGeneralAndRefreshPagesOff)
-                    : tr(.keyDashboardOfficialForMinutes, arguments: [String(Int($0 / 60))]))
-            }, selected: input.preferences.officialPostTaskRefreshDuration, identifier: "officialPostTaskRefreshDuration",
-            target: input.relay, action: #selector(DashboardPreferencePageRelay.interval(_:)))
-        let officialRefreshControls = refreshControls(activeRefreshPopup: officialActivePopup, trailingRefreshPopup: officialTrailingPopup)
+        // Both rows share one structure: a right-aligned selector of identical
+        // width with the minimum-interval hint underneath.
+        let refreshPopupWidth = ceil(max(
+            108, activeRefreshPopup.fittingSize.width, officialActivePopup.fittingSize.width
+        ))
+        func refreshControls(_ popup: NSPopUpButton) -> NSStackView {
+            popup.translatesAutoresizingMaskIntoConstraints = false
+            for constraint in popup.constraints where constraint.firstAttribute == .width {
+                constraint.priority = .defaultHigh
+            }
+            let preferredWidth = popup.widthAnchor.constraint(equalToConstant: refreshPopupWidth)
+            preferredWidth.priority = .defaultHigh
+            preferredWidth.isActive = true
+            let hint = NSTextField(wrappingLabelWithString: tr(.keyDashboardRefreshMinimumIntervalHint))
+            hint.font = .systemFont(ofSize: 11)
+            hint.textColor = .secondaryLabelColor
+            hint.alignment = .right
+            hint.translatesAutoresizingMaskIntoConstraints = false
+            hint.widthAnchor.constraint(lessThanOrEqualToConstant: 220).isActive = true
+            let controls = NSStackView(views: [popup, hint])
+            controls.orientation = .vertical
+            controls.alignment = .trailing
+            controls.spacing = 3
+            return controls
+        }
         let refreshButton = NSButton(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),
             target: input.relay,
@@ -507,13 +470,18 @@ final class DashboardGeneralPage {
             title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             contentViews: [
                 SettingsRowView(title: tr(.keyDashboardOfficialQuotaRefreshFrequency),
-                    detail: tr(.keyDashboardRefreshClaudeCalibrationNote),
-                    accessoryView: officialRefreshControls),
+                    detail: tr(.keyDashboardRefreshOfficialScope),
+                    accessoryView: refreshControls(officialActivePopup)),
                 SettingsRowView(
                     title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
-                    detail: nil,
-                    accessoryView: activeRefreshControls
-                ),
+                    detail: tr(.keyDashboardRefreshAPIScope),
+                    accessoryView: refreshControls(activeRefreshPopup)
+                )
+            ]
+        )
+        let refreshNow = SettingsSectionView(
+            title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),
+            contentViews: [
                 SettingsRowView(
                     title: tr(.keyDashboardGeneralAndRefreshPagesBalanceData),
                     detail: tr(.keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow),
@@ -630,7 +598,7 @@ final class DashboardGeneralPage {
                 updateRow
             ]
         )
-        return DashboardSettingsComponents.makeSettingsPageContent([system, refreshing, startup, app])
+        return DashboardSettingsComponents.makeSettingsPageContent([system, refreshing, refreshNow, startup, app])
     }
 
     func refreshDisplayTimeZone(_ selection: AppTimeZoneSelection) {

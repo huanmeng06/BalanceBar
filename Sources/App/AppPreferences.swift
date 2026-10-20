@@ -479,7 +479,6 @@ final class AppPreferences {
     var animateCodexActivity: Bool { get { bool("animateCodexActivity", default: true) } set { defaults.set(newValue, forKey: "animateCodexActivity") } }
     var activityPollInterval: TimeInterval { get { positiveDouble("activityPollInterval", default: 0.25) } set { defaults.set(newValue, forKey: "activityPollInterval") } }
     static let officialUsageRefreshIntervals: [TimeInterval] = [60, 90, 120, 150, 180]
-    static let officialPostTaskRefreshDurations: [TimeInterval] = [0, 60, 120, 180, 300]
     var officialUsageRefreshInterval: TimeInterval {
         get {
             let value = defaults.double(forKey: "officialUsageRefreshInterval")
@@ -487,19 +486,7 @@ final class AppPreferences {
         }
         set { defaults.set(Self.officialUsageRefreshIntervals.contains(newValue) ? newValue : 60, forKey: "officialUsageRefreshInterval") }
     }
-    var officialPostTaskRefreshDuration: TimeInterval {
-        get {
-            guard defaults.object(forKey: "officialPostTaskRefreshDuration") != nil else { return 120 }
-            let value = defaults.double(forKey: "officialPostTaskRefreshDuration")
-            return Self.officialPostTaskRefreshDurations.contains(value) ? value : 120
-        }
-        set { defaults.set(Self.officialPostTaskRefreshDurations.contains(newValue) ? newValue : 120, forKey: "officialPostTaskRefreshDuration") }
-    }
     var codexUsageRefreshInterval: TimeInterval { get { positiveDouble("codexUsageRefreshInterval", default: 3) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }
-    var postCodexRefreshDuration: TimeInterval {
-        get { max(0, (defaults.object(forKey: "postCodexRefreshDuration") as? NSNumber)?.doubleValue ?? 12) }
-        set { defaults.set(newValue, forKey: "postCodexRefreshDuration") }
-    }
     var showQuickSwitchMenu: Bool { get { bool("showQuickSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showQuickSwitchMenu") } }
     var showOpenCCSwitchMenu: Bool { get { bool("showOpenCCSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenCCSwitchMenu") } }
     var showOpenChatGPTMenu: Bool { get { bool("showOpenChatGPTMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenChatGPTMenu") } }
@@ -1229,5 +1216,28 @@ enum TimeZoneCityCatalog {
         let short = "\(sign)\(abs(minutes) / 60)"
         let full = String(format: "%@%02d:%02d", sign, abs(minutes) / 60, abs(minutes) % 60)
         return [short, full, "utc" + short, "utc" + full].contains { $0.hasPrefix(query) }
+    }
+}
+
+/// Resolves the user's refresh-interval choices into the values actually used.
+/// Per-source floors and trailing-refresh counts come from `QuotaConstants`.
+enum RefreshPolicy {
+    /// Shortest automatic official request interval a source allows.
+    static func officialMinimumInterval(for client: AssistantClient) -> TimeInterval {
+        client == .claude ? QuotaConstants.automaticRequestMinimumInterval : 0
+    }
+
+    /// The selected interval is a desired value; each source never goes below its floor.
+    static func officialInterval(selected: TimeInterval, client: AssistantClient) -> TimeInterval {
+        max(selected, officialMinimumInterval(for: client))
+    }
+
+    /// Fixed trailing window after a task ends: a set number of refreshes at the active interval.
+    static func officialPostTaskDuration(selected: TimeInterval, client: AssistantClient) -> TimeInterval {
+        TimeInterval(QuotaConstants.officialPostTaskRefreshCount) * officialInterval(selected: selected, client: client)
+    }
+
+    static func apiPostTaskDuration(interval: TimeInterval) -> TimeInterval {
+        TimeInterval(QuotaConstants.apiPostTaskRefreshCount) * interval
     }
 }
