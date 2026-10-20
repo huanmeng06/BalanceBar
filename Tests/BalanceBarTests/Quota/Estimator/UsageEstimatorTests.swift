@@ -100,6 +100,23 @@ final class UsageEstimatorTests: XCTestCase {
         XCTAssertEqual(estimator.estimate(accountID: "A", window: .fiveHour)!.percent, final, accuracy: 1e-9)
     }
 
+    func testSameRequestRepeatedAcrossOfficialAnchorIsNotCountedAgain() {
+        let (estimator, _) = makeEstimator()
+        _ = estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 10, resetsAt: nil, at: t0)
+        estimator.ingest(lines: [line(uuid: "u1", request: "r1", at: t0.addingTimeInterval(10), input: 100, output: 0)])
+        _ = estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 10, resetsAt: nil, at: t0.addingTimeInterval(60))
+        // Same usage, later timestamp, after the new anchor.
+        estimator.ingest(lines: [line(uuid: "u2", request: "r1", at: t0.addingTimeInterval(120), input: 100, output: 0)])
+        XCTAssertEqual(estimator.estimate(accountID: "A", window: .fiveHour)?.percent, 10)
+        // Growth of that request after the anchor counts only the growth (50 more input tokens).
+        estimator.ingest(lines: [line(uuid: "u3", request: "r1", at: t0.addingTimeInterval(130), input: 150, output: 0)])
+        let (reference, _) = makeEstimator()
+        _ = reference.recordOfficial(accountID: "A", window: .fiveHour, percent: 10, resetsAt: nil, at: t0)
+        reference.ingest(lines: [line(uuid: "x", request: "rx", at: t0.addingTimeInterval(10), input: 50, output: 0)])
+        XCTAssertEqual(estimator.estimate(accountID: "A", window: .fiveHour)!.percent,
+                       reference.estimate(accountID: "A", window: .fiveHour)!.percent, accuracy: 1e-9)
+    }
+
     func testUsageBeforeResetDeadlineIsNotComparedWithNewCycle() {
         let (estimator, log) = makeEstimator()
         let reset = t0.addingTimeInterval(1_800)

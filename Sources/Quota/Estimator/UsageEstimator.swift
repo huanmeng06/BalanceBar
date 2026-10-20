@@ -117,9 +117,11 @@ public final class UsageEstimator {
                 cacheTokens: record.cacheTokens, isSidechain: record.isSidechain, sessionID: record.sessionID)
             let key = record.deduplicationKey
             if let previous = contributions[key] {
-                guard previous != new, previous.accountID == accountID, previous.model == new.model else { continue }
-                apply(previous, sign: -1, countRecord: false)
-                apply(new, sign: 1, countRecord: false)
+                // Only a change in usage counts; a repeat with a different timestamp is a no-op.
+                guard previous.accountID == accountID, previous.model == new.model,
+                      previous.rawUnits != new.rawUnits || previous.totalTokens != new.totalTokens
+                        || previous.cacheTokens != new.cacheTokens else { continue }
+                applyUpdate(from: previous, to: new)
                 contributions[key] = new
             } else {
                 apply(new, sign: 1, countRecord: true)
@@ -207,6 +209,31 @@ public final class UsageEstimator {
                 states[key]!.afterReset.add(contribution, sign: sign, countRecord: countRecord)
             } else {
                 states[key]!.beforeReset.add(contribution, sign: sign, countRecord: countRecord)
+            }
+        }
+    }
+
+    /// Applies the usage difference of a revised request. A window whose anchor is newer than the
+    /// original record only receives the growth, never the full revised usage.
+    private func applyUpdate(from old: Contribution, to new: Contribution) {
+        for key in states.keys where key.accountID == new.accountID {
+            let anchorAt = states[key]!.anchorAt
+            var delta = new
+            delta.rawUnits = new.rawUnits - old.rawUnits
+            delta.totalTokens = new.totalTokens - old.totalTokens
+            delta.cacheTokens = new.cacheTokens - old.cacheTokens
+            if old.timestamp >= anchorAt {
+                delta.timestamp = old.timestamp
+            } else {
+                guard new.timestamp >= anchorAt else { continue }
+                delta.rawUnits = max(0, delta.rawUnits)
+                delta.totalTokens = max(0, delta.totalTokens)
+                delta.cacheTokens = max(0, delta.cacheTokens)
+            }
+            if let reset = states[key]!.resetsAt, delta.timestamp >= reset {
+                states[key]!.afterReset.add(delta, sign: 1, countRecord: false)
+            } else {
+                states[key]!.beforeReset.add(delta, sign: 1, countRecord: false)
             }
         }
     }
