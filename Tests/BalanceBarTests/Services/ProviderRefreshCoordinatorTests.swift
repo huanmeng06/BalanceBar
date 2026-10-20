@@ -95,6 +95,57 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertTrue(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .defaultValue).isEmpty)
     }
 
+    /// #533: an API balance failure shares the official-quota rule: the stored
+    /// notification sample stops being current until a real refresh succeeds.
+    private func apiFailureHarness() -> (ProviderRefreshActions, () -> [Set<String>], () -> Int) {
+        let lock = NSLock()
+        var invalidated: [Set<String>] = []
+        var samples = 0
+        var actions = makeActions()
+        actions.notificationSnapshot = { _, _, _ in lock.lock(); samples += 1; lock.unlock() }
+        actions.notificationSamplesInvalidated = { _, ids in lock.lock(); invalidated.append(ids); lock.unlock() }
+        return (actions, { lock.lock(); defer { lock.unlock() }; return invalidated },
+                { lock.lock(); defer { lock.unlock() }; return samples })
+    }
+
+    private func waitUntil(_ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, !condition() { Thread.sleep(forTimeInterval: 0.005) }
+    }
+
+    func testStandardAPIBalanceFailureInvalidatesNotificationSampleUntilRefreshSucceeds() throws {
+        let (actions, invalidated, samples) = apiFailureHarness()
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: actions)
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data(), statusCode: 500) }
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        waitUntil { invalidated().contains([current.id]) }
+        XCTAssertTrue(invalidated().contains([current.id]), "a failed API balance request must invalidate the stored sample")
+        XCTAssertEqual(samples(), 0)
+
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "10.00") }
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        waitUntil { samples() == 1 }
+        XCTAssertEqual(samples(), 1, "a real refresh publishes a sample again")
+    }
+
+    func testQuickSwitchAPIBalanceFailureInvalidatesNotificationSampleUntilRefreshSucceeds() throws {
+        let (actions, invalidated, samples) = apiFailureHarness()
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: actions)
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data(), statusCode: 500) }
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-custom"])
+        waitUntil { invalidated().contains(["codex-custom"]) }
+        XCTAssertTrue(invalidated().contains(["codex-custom"]))
+        XCTAssertEqual(samples(), 0)
+
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "10.00") }
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex, providerIDs: ["codex-custom"])
+        waitUntil { samples() == 1 }
+        XCTAssertEqual(samples(), 1)
+    }
+
     func testStopWaitsForOwnerWorkBeforeCallerInvalidatesTransport() throws {
         let entered = DispatchSemaphore(value: 0)
         let release = DispatchSemaphore(value: 0)
