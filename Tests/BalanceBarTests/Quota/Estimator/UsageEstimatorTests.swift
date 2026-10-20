@@ -117,6 +117,23 @@ final class UsageEstimatorTests: XCTestCase {
                        reference.estimate(accountID: "A", window: .fiveHour)!.percent, accuracy: 1e-9)
     }
 
+    func testRequestGrowthAcrossResetDeadlineCountsInNewCycle() {
+        let (estimator, _) = makeEstimator()
+        let reset = t0.addingTimeInterval(1_800)
+        _ = estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 50, resetsAt: reset, at: t0)
+        estimator.ingest(lines: [line(uuid: "u1", request: "r1", at: reset.addingTimeInterval(-60), input: 100_000, output: 0)])
+        estimator.ingest(lines: [line(uuid: "u2", request: "r1", at: reset.addingTimeInterval(60), input: 150_000, output: 0)])
+        let entry = estimator.recordOfficial(accountID: "A", window: .fiveHour, percent: 1,
+                                             resetsAt: reset.addingTimeInterval(18_000), at: reset.addingTimeInterval(300))
+        let (reference, _) = makeEstimator()
+        _ = reference.recordOfficial(accountID: "A", window: .fiveHour, percent: 50, resetsAt: reset, at: t0)
+        reference.ingest(lines: [line(uuid: "x", request: "rx", at: reset.addingTimeInterval(60), input: 50_000, output: 0)])
+        let expected = reference.recordOfficial(accountID: "A", window: .fiveHour, percent: 1,
+                                                resetsAt: reset.addingTimeInterval(18_000), at: reset.addingTimeInterval(300))
+        XCTAssertGreaterThan(entry!.estimatedPercent, 0)
+        XCTAssertEqual(entry!.estimatedPercent, expected!.estimatedPercent, accuracy: 1e-9)
+    }
+
     func testUsageBeforeResetDeadlineIsNotComparedWithNewCycle() {
         let (estimator, log) = makeEstimator()
         let reset = t0.addingTimeInterval(1_800)

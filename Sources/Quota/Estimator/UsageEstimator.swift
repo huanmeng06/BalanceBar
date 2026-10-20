@@ -223,7 +223,8 @@ public final class UsageEstimator {
             delta.totalTokens = new.totalTokens - old.totalTokens
             delta.cacheTokens = new.cacheTokens - old.cacheTokens
             if old.timestamp >= anchorAt {
-                delta.timestamp = old.timestamp
+                // Growth happened when the revision arrived; a correction downwards undoes the original.
+                delta.timestamp = delta.rawUnits >= 0 ? max(old.timestamp, new.timestamp) : old.timestamp
             } else {
                 guard new.timestamp >= anchorAt else { continue }
                 delta.rawUnits = max(0, delta.rawUnits)
