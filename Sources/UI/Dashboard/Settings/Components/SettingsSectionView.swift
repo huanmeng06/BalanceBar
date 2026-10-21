@@ -142,6 +142,8 @@ final class SettingsSectionView: NSView {
         }
         contentStack.addView(cardView, in: .top)
         if let footnoteLabel {
+            // Like the other labels on the page: no text cursor over text that cannot be selected.
+            footnoteLabel.isSelectable = false
             footnoteLabel.font = .systemFont(ofSize: 11)
             footnoteLabel.textColor = .secondaryLabelColor
             footnoteLabel.translatesAutoresizingMaskIntoConstraints = false
