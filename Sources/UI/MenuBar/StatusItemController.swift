@@ -6127,6 +6127,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func applyManualRefreshTitle(to item: NSMenuItem) {
         let full = manualRefreshMenuTitle()
+        // "Just refreshed" is not a warning: the card header already shows the refresh time, so the item keeps
+        // its plain name and the note moves to the tooltip.
+        if case .justRefreshed? = actions.manualRefreshNotice() {
+            item.title = tr(.keyStatusItemControllerRefreshNow)
+            item.toolTip = full
+            return
+        }
         let fitted = Self.fittedMenuTitle(full)
         item.title = fitted
         item.toolTip = fitted == full ? nil : full

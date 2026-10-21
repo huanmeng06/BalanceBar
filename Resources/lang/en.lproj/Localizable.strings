@@ -592,8 +592,8 @@
 "mod.failure.copy" = "Copy commands";
 "mod.failure.copied" = "Copied";
 "mod.dismissed.title" = "Prompt hidden";
-"mod.dismissed.note" = "You can install the Mod later in Settings › Advanced › Real-time boost, or show the prompt again.";
-"mod.settings.title" = "Real-time boost";
+"mod.dismissed.note" = "You can install the Mod later in Settings › Advanced › Claude real-time boost, or show the prompt again.";
+"mod.settings.title" = "Claude real-time boost";
 "mod.settings.status.not_installed" = "Not installed";
 "mod.settings.status.waiting" = "Installed, waiting for data from a new session";
 "mod.settings.status.active" = "Enabled · latest data %1$@";

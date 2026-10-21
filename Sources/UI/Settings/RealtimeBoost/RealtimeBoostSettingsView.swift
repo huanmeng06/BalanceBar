@@ -16,7 +16,7 @@ enum RealtimeBoostText: String, CaseIterable {
 
     var defaultText: String {
         switch self {
-        case .title: return "实时增强"
+        case .title: return "Claude 实时增强"
         case .statusNotInstalled: return "未安装"
         case .statusWaiting: return "已安装，等待新会话的数据"
         case .statusActive: return "已启用 · 最近数据 %@"

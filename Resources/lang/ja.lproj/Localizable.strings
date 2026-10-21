@@ -592,8 +592,8 @@
 "mod.failure.copy" = "コマンドをコピー";
 "mod.failure.copied" = "コピーしました";
 "mod.dismissed.title" = "ヒントを非表示にしました";
-"mod.dismissed.note" = "Mod は後から 設定 › 詳細 › リアルタイム強化 でインストールするか、ヒントを再表示できます。";
-"mod.settings.title" = "リアルタイム強化";
+"mod.dismissed.note" = "Mod は後から 設定 › 詳細 › Claude リアルタイム強化 でインストールするか、ヒントを再表示できます。";
+"mod.settings.title" = "Claude リアルタイム強化";
 "mod.settings.status.not_installed" = "未インストール";
 "mod.settings.status.waiting" = "インストール済み。新しいセッションのデータを待っています";
 "mod.settings.status.active" = "有効 · 最新データ %1$@";

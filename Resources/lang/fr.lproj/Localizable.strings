@@ -592,8 +592,8 @@
 "mod.failure.copy" = "Copier les commandes";
 "mod.failure.copied" = "Copié";
 "mod.dismissed.title" = "Invite masquée";
-"mod.dismissed.note" = "Vous pourrez installer le Mod plus tard dans Réglages › Avancé › Boost en temps réel, ou réafficher l’invite.";
-"mod.settings.title" = "Boost en temps réel";
+"mod.dismissed.note" = "Vous pourrez installer le Mod plus tard dans Réglages › Avancé › Boost en temps réel de Claude, ou réafficher l’invite.";
+"mod.settings.title" = "Boost en temps réel de Claude";
 "mod.settings.status.not_installed" = "Non installé";
 "mod.settings.status.waiting" = "Installé, en attente de données d’une nouvelle session";
 "mod.settings.status.active" = "Activé · dernières données %1$@";

@@ -592,8 +592,8 @@
 "mod.failure.copy" = "Скопировать команды";
 "mod.failure.copied" = "Скопировано";
 "mod.dismissed.title" = "Подсказка скрыта";
-"mod.dismissed.note" = "Позже Mod можно установить в Настройки › Дополнительно › Данные в реальном времени или снова показать подсказку.";
-"mod.settings.title" = "Данные в реальном времени";
+"mod.dismissed.note" = "Позже Mod можно установить в Настройки › Дополнительно › Данные Claude в реальном времени или снова показать подсказку.";
+"mod.settings.title" = "Данные Claude в реальном времени";
 "mod.settings.status.not_installed" = "Не установлено";
 "mod.settings.status.waiting" = "Установлено, ожидаются данные из новой сессии";
 "mod.settings.status.active" = "Включено · последние данные: %1$@";

@@ -76,7 +76,7 @@ enum ModOnboardingText: String, CaseIterable {
         case .copyCommands: return "复制命令"
         case .copied: return "已复制"
         case .dismissedTitle: return "已隐藏提示"
-        case .dismissedNote: return "之后可以在 设置 › 高级 › 实时增强 中安装 Mod，或重新显示提示。"
+        case .dismissedNote: return "之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod，或重新显示提示。"
         case .dismissedOpenSettings: return "打开高级设置"
         case .dismissedOk: return "好"
         }

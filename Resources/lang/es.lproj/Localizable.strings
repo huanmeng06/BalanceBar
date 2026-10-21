@@ -592,8 +592,8 @@
 "mod.failure.copy" = "Copiar comandos";
 "mod.failure.copied" = "Copiado";
 "mod.dismissed.title" = "Aviso oculto";
-"mod.dismissed.note" = "Más tarde puedes instalar el Mod en Ajustes › Avanzado › Mejora en tiempo real, o volver a mostrar el aviso.";
-"mod.settings.title" = "Mejora en tiempo real";
+"mod.dismissed.note" = "Más tarde puedes instalar el Mod en Ajustes › Avanzado › Mejora en tiempo real de Claude, o volver a mostrar el aviso.";
+"mod.settings.title" = "Mejora en tiempo real de Claude";
 "mod.settings.status.not_installed" = "No instalado";
 "mod.settings.status.waiting" = "Instalado, esperando datos de una sesión nueva";
 "mod.settings.status.active" = "Activado · últimos datos %1$@";

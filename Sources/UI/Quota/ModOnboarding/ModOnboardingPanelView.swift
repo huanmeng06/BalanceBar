@@ -129,12 +129,18 @@ enum ModPanelContent {
 /// Lives in a menu item's custom view; clicking anywhere on it closes the menu and runs `onClick`.
 final class ModPromptRowView: NSView {
     static let rowHeight: CGFloat = 52
+    /// The tint block extends past the content by `contentPadding`; the icon and the chevron sit on the card's
+    /// 16 pt grid (the progress bars' edges and a submenu arrow's right edge).
+    static let contentPadding: CGFloat = 8
+    static let blockInset: CGFloat = OpenCodexCardLayout.horizontalInset - contentPadding
 
     private let block = NSView()
-    private let iconView = NSImageView()
+    let iconView = NSImageView()
     private let mainLabel: NSTextField
+    /// Whether the main text is cut short at the card width (test seam).
+    var mainTextIsTruncated: Bool { mainLabel.intrinsicContentSize.width > mainLabel.frame.width + 0.5 }
     private let whyLabel: NSTextField
-    private let chevron = NSImageView()
+    let chevron = NSImageView()
     private var isHovering = false { didSet { updateBackground() } }
     var onClick: () -> Void = {}
 
@@ -164,13 +170,17 @@ final class ModPromptRowView: NSView {
         whyLabel.font = .systemFont(ofSize: 11)
         whyLabel.textColor = .controlAccentColor
         chevron.image = Self.symbol("chevron.right", size: 11)
-        chevron.contentTintColor = .tertiaryLabelColor
+        chevron.contentTintColor = .labelColor
         chevron.setContentHuggingPriority(.required, for: .horizontal)
 
         let texts = NSStackView(views: [mainLabel, whyLabel])
         texts.orientation = .vertical
         texts.alignment = .leading
         texts.spacing = 1
+        // The text column takes the slack so the chevron sits at the trailing edge.
+        texts.setContentHuggingPriority(.init(1), for: .horizontal)
+        mainLabel.setContentHuggingPriority(.init(1), for: .horizontal)
+        whyLabel.setContentHuggingPriority(.init(1), for: .horizontal)
         let row = NSStackView(views: [iconView, texts, chevron])
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -178,12 +188,12 @@ final class ModPromptRowView: NSView {
         row.translatesAutoresizingMaskIntoConstraints = false
         block.addSubview(row)
         NSLayoutConstraint.activate([
-            block.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            block.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            block.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.blockInset),
+            block.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.blockInset),
             block.topAnchor.constraint(equalTo: topAnchor, constant: 3),
             block.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
-            row.leadingAnchor.constraint(equalTo: block.leadingAnchor, constant: 12),
-            row.trailingAnchor.constraint(equalTo: block.trailingAnchor, constant: -12),
+            row.leadingAnchor.constraint(equalTo: block.leadingAnchor, constant: Self.contentPadding),
+            row.trailingAnchor.constraint(equalTo: block.trailingAnchor, constant: -Self.contentPadding),
             row.centerYAnchor.constraint(equalTo: block.centerYAnchor),
         ])
         updateBackground()

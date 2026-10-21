@@ -3358,7 +3358,8 @@ extension StatusItemControllerTests {
         XCTAssertEqual(refresh.title, StatusItemController.fittedMenuTitle(tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: ["15m"])))
         notice = .justRefreshed
         _ = controller.validateMenuItem(refresh)
-        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowJustRefreshed))
+        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNow), "just refreshed keeps the plain title")
+        XCTAssertEqual(refresh.toolTip, tr(.keyStatusItemControllerRefreshNowJustRefreshed))
         notice = nil
         _ = controller.validateMenuItem(refresh)
         XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNow))

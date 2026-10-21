@@ -592,8 +592,8 @@
 "mod.failure.copy" = "Copia i comandi";
 "mod.failure.copied" = "Copiato";
 "mod.dismissed.title" = "Suggerimento nascosto";
-"mod.dismissed.note" = "Potrai installare il Mod più tardi in Impostazioni › Avanzate › Potenziamento in tempo reale, o mostrare di nuovo il suggerimento.";
-"mod.settings.title" = "Potenziamento in tempo reale";
+"mod.dismissed.note" = "Potrai installare il Mod più tardi in Impostazioni › Avanzate › Potenziamento in tempo reale di Claude, o mostrare di nuovo il suggerimento.";
+"mod.settings.title" = "Potenziamento in tempo reale di Claude";
 "mod.settings.status.not_installed" = "Non installato";
 "mod.settings.status.waiting" = "Installato, in attesa dei dati di una nuova sessione";
 "mod.settings.status.active" = "Attivo · ultimi dati %1$@";

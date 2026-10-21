@@ -180,7 +180,7 @@ final class ModOnboardingPanelTests: XCTestCase {
         XCTAssertEqual(failed[1], "命令未成功完成。请在终端中运行下面的命令：")
         XCTAssertEqual(failed[2], "> boom\nsecond", "the first two lines of Claude Code's answer are shown")
         XCTAssertEqual(lines(.dismissConfirmed), [
-            "# 已隐藏提示\n之后可以在 设置 › 高级 › 实时增强 中安装 Mod，或重新显示提示。", "<打开高级设置> <好>*"])
+            "# 已隐藏提示\n之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod，或重新显示提示。", "<打开高级设置> <好>*"])
     }
 
     func testPanelViewRendersEveryStateInBothAppearances() throws {
@@ -332,6 +332,18 @@ final class ModOnboardingPanelTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { reset.fulfill() }
         wait(for: [reset], timeout: 3)
         XCTAssertEqual(button.title, original)
+    }
+
+    func testPromptRowContentSitsOnTheCardGridAndShowsItsTextInFull() {
+        let row = ModPromptRowView(localize: ModOnboardingText.appLocalize)
+        row.frame = NSRect(x: 0, y: 0, width: OpenCodexCardLayout.cardWidth, height: ModPromptRowView.rowHeight)
+        row.layoutSubtreeIfNeeded()
+        let inset = OpenCodexCardLayout.horizontalInset
+        let icon = row.convert(row.iconView.bounds, from: row.iconView)
+        let chevron = row.convert(row.chevron.bounds, from: row.chevron)
+        XCTAssertEqual(icon.minX, inset, accuracy: 0.5, "the icon lines up with the progress bars' left edge")
+        XCTAssertEqual(row.bounds.maxX - chevron.maxX, inset, accuracy: 0.5, "the chevron lines up with the submenu arrows below")
+        XCTAssertFalse(row.mainTextIsTruncated, "the standard prompt fits at the card width")
     }
 
     func testOpenAdvancedSettingsButtonAsksTheAppAndClosesTheWindow() {

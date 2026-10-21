@@ -592,8 +592,8 @@
 "mod.failure.copy" = "Befehle kopieren";
 "mod.failure.copied" = "Kopiert";
 "mod.dismissed.title" = "Hinweis ausgeblendet";
-"mod.dismissed.note" = "Du kannst den Mod später unter Einstellungen › Erweitert › Echtzeit-Boost installieren oder den Hinweis wieder einblenden.";
-"mod.settings.title" = "Echtzeit-Boost";
+"mod.dismissed.note" = "Du kannst den Mod später unter Einstellungen › Erweitert › Claude-Echtzeit-Boost installieren oder den Hinweis wieder einblenden.";
+"mod.settings.title" = "Claude-Echtzeit-Boost";
 "mod.settings.status.not_installed" = "Nicht installiert";
 "mod.settings.status.waiting" = "Installiert, wartet auf Daten aus einer neuen Sitzung";
 "mod.settings.status.active" = "Aktiv · letzte Daten %1$@";

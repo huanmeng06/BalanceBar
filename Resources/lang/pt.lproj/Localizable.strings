@@ -592,8 +592,8 @@
 "mod.failure.copy" = "Copiar comandos";
 "mod.failure.copied" = "Copiado";
 "mod.dismissed.title" = "Aviso ocultado";
-"mod.dismissed.note" = "Pode instalar o Mod mais tarde em Definições › Avançadas › Reforço em tempo real, ou voltar a mostrar o aviso.";
-"mod.settings.title" = "Reforço em tempo real";
+"mod.dismissed.note" = "Pode instalar o Mod mais tarde em Definições › Avançadas › Reforço em tempo real do Claude, ou voltar a mostrar o aviso.";
+"mod.settings.title" = "Reforço em tempo real do Claude";
 "mod.settings.status.not_installed" = "Não instalado";
 "mod.settings.status.waiting" = "Instalado, a aguardar dados de uma nova sessão";
 "mod.settings.status.active" = "Ativado · últimos dados %1$@";
