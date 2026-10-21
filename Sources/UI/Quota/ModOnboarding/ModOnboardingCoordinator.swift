@@ -211,13 +211,16 @@ final class ModOnboardingCoordinator {
     }
 
     func promptVisibility(isOfficialDirect: Bool) -> ModPromptVisibility {
-        let (claudeCode, lastModDataAt) = lock.withLock { (self.claudeCode, self.lastModDataAt) }
+        let (claudeCode, lastModDataAt, notInstalled) = lock.withLock {
+            (self.claudeCode, self.lastModDataAt, self.installChecked && self.installRecord == nil)
+        }
         let hasSnapshot = environment.hasHUDSnapshot()
         let inputs = ModPromptInputs(
             isOfficialDirect: isOfficialDirect,
             lastModDataAt: lastModDataAt,
             claudeCode: claudeCode,
             promptDismissed: controller.isPromptDismissed,
+            confirmedNotInstalled: notInstalled,
             hasHUDSnapshot: hasSnapshot,
             headlessSignalSatisfied: accumulatedHeadlessTime() > ModOnboardingConfig.headlessDurationThreshold)
         return ModPromptVisibility.evaluate(inputs, now: now())

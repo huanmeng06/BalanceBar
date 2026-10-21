@@ -95,8 +95,16 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         refresh(coordinator)
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false))
 
+        fake.record = ModInstallRecord(installedAt: start)
+        refresh(coordinator)
         coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: clock.now))
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources, "Mod data within seven days hides the prompt")
+        fake.record = nil
+        refresh(coordinator)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false),
+                       "uninstalled: leftover data from a session that still has the Mod loaded no longer hides it")
+        fake.record = ModInstallRecord(installedAt: start)
+        refresh(coordinator)
         clock.advance(by: 8 * 86_400)
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false), "…and an old one no longer does")
     }
@@ -281,6 +289,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertEqual(timestamps.lastModDataAt, clock.now, "an older snapshot never moves the timestamp back")
 
         // The persisted value survives a restart.
+        fake.record = ModInstallRecord(installedAt: start)
         let restarted = makeCoordinator()
         refresh(restarted)
         XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .dataSources)

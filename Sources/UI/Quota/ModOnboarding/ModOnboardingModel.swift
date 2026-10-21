@@ -58,6 +58,9 @@ struct ModPromptInputs: Equatable {
     var lastModDataAt: Date?
     var claudeCode: ClaudeCodeVersionStatus
     var promptDismissed: Bool
+    /// The plugin registry was read and does not list the Mod: leftover data from sessions that still have it loaded
+    /// no longer counts as "the user already has the Mod".
+    var confirmedNotInstalled: Bool
     /// A HUD snapshot exists; the headless signal must then be satisfied too.
     var hasHUDSnapshot: Bool
     var headlessSignalSatisfied: Bool
@@ -67,6 +70,7 @@ struct ModPromptInputs: Equatable {
         lastModDataAt: Date? = nil,
         claudeCode: ClaudeCodeVersionStatus = .unknown,
         promptDismissed: Bool = false,
+        confirmedNotInstalled: Bool = false,
         hasHUDSnapshot: Bool = false,
         headlessSignalSatisfied: Bool = true
     ) {
@@ -74,6 +78,7 @@ struct ModPromptInputs: Equatable {
         self.lastModDataAt = lastModDataAt
         self.claudeCode = claudeCode
         self.promptDismissed = promptDismissed
+        self.confirmedNotInstalled = confirmedNotInstalled
         self.hasHUDSnapshot = hasHUDSnapshot
         self.headlessSignalSatisfied = headlessSignalSatisfied
     }
@@ -94,11 +99,12 @@ enum ModPromptVisibility: Equatable {
 
     var isVisible: Bool { self == .visible }
 
-    /// Menu prompt row display rule: official direct, no Mod data within 7 days, Claude Code >= v2.1.287,
+    /// Menu prompt row display rule: official direct, no Mod data within 7 days (unless the Mod is confirmed uninstalled), Claude Code >= v2.1.287,
     /// not dismissed, and (with a HUD snapshot) the headless signal satisfied.
     static func evaluate(_ inputs: ModPromptInputs, now: Date) -> ModPromptVisibility {
         guard inputs.isOfficialDirect else { return .hidden(.notOfficialDirect) }
-        if let last = inputs.lastModDataAt, now.timeIntervalSince(last) < ModOnboardingConfig.modDataFreshnessWindow {
+        if !inputs.confirmedNotInstalled, let last = inputs.lastModDataAt,
+           now.timeIntervalSince(last) < ModOnboardingConfig.modDataFreshnessWindow {
             return .hidden(.recentModData)
         }
         switch inputs.claudeCode {
