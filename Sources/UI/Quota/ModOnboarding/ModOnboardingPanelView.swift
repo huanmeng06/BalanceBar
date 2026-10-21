@@ -315,6 +315,25 @@ final class ModCopyButton: NSButton {
     }
 }
 
+extension NSButton {
+    /// Shows `text` as the title for a moment ("copied" feedback), then restores the original title.
+    func flashTitle(_ text: String, duration: TimeInterval = 1.2) {
+        let original = (objc_getAssociatedObject(self, &NSButton.flashOriginalKey) as? String) ?? title
+        objc_setAssociatedObject(self, &NSButton.flashOriginalKey, original, .OBJC_ASSOCIATION_COPY_NONATOMIC)
+        title = text
+        let token = UUID()
+        objc_setAssociatedObject(self, &NSButton.flashTokenKey, token, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self, objc_getAssociatedObject(self, &NSButton.flashTokenKey) as? UUID == token else { return }
+            self.title = original
+            objc_setAssociatedObject(self, &NSButton.flashOriginalKey, nil, .OBJC_ASSOCIATION_COPY_NONATOMIC)
+        }
+    }
+
+    private static var flashOriginalKey: UInt8 = 0
+    private static var flashTokenKey: UInt8 = 0
+}
+
 // MARK: - Window content
 
 /// Explanation window content: renders `ModPanelContent` for the controller's current state.
@@ -591,6 +610,7 @@ final class ModOnboardingPanelView: NSView {
     @objc private func buttonPressed(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue, let action = Self.action(for: id) else { return }
         perform(action)
+        if action == .copyCommands || action == .copyReload { sender.flashTitle("✓ " + localize(.copied)) }
     }
 
     /// Copy icon: copies, then shows a check mark for a moment.

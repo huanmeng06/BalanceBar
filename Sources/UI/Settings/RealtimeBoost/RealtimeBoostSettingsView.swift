@@ -196,7 +196,10 @@ final class RealtimeBoostSettingsRows {
     }
 
     @objc private func install() { controller.startInstall() }
-    @objc private func copyCommands() { controller.copyInstallCommands() }
+    @objc private func copyCommands() {
+        controller.copyInstallCommands()
+        copyButton.flashTitle("✓ " + modLocalize(.copied))
+    }
     @objc private func showDescription() { onShowDescription?() }
     @objc private func togglePrompt() { controller.setPromptEnabled(promptSwitch.state == .on) }
 }
