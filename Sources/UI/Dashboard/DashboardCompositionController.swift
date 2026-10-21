@@ -413,6 +413,9 @@ final class DashboardCompositionController {
                 window?.makeFirstResponder(nil)
                 restorePageScrollOffsetY(scrollOffsetY)
             }
+        } else if initialSection != .general, section != initialSection {
+            // The window was already open on another page: go to the page that was asked for.
+            pageSession.selectSection(initialSection)
         }
         windowController.present()
         refreshLaunchAtLogin()

@@ -7108,4 +7108,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let subtitleInk = subtitle.accountLabel.convert(NSPoint(x: AccountMarqueeView.leadingInkInset(of: subtitle.accountLabel), y: 0), to: overview).x
         XCTAssertEqual(subtitleInk, titleInk, accuracy: 0.001, file: file, line: line)
     }
+    @MainActor
+    func testOpeningASectionWhileTheDashboardIsAlreadyOpenSwitchesToIt() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/open-section.db")))
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        _ = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        XCTAssertEqual(composition.section, .general)
+        composition.open(initialSection: .advanced)
+        XCTAssertEqual(composition.section, .advanced, "\"open advanced settings\" must land on the Advanced page even when the window was open")
+        composition.open()
+        XCTAssertEqual(composition.section, .advanced, "a plain open keeps the page the user is on")
+    }
+
 }
