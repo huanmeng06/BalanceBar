@@ -42,6 +42,11 @@ struct ModInstallPlan: Equatable {
     var marketplaceArguments: [String] { ["plugin", "marketplace", "add", marketplaceSource, "--scope", scope, "--json"] }
     var installArguments: [String] { ["plugin", "install", pluginID, "--scope", scope, "--json"] }
 
+    var uninstallArguments: [String] { ["plugin", "uninstall", pluginID, "--scope", scope] }
+
+    /// Copy-paste fallback shown when the app cannot remove the Mod itself.
+    var uninstallCommand: String { "claude " + uninstallArguments.joined(separator: " ") }
+
     /// Copy-paste fallback shown when the app cannot run the commands itself.
     var copyableCommands: String {
         "claude " + marketplaceArguments.joined(separator: " ") + "\n"
@@ -131,6 +136,19 @@ final class ModInstaller {
                 if let failure = Self.failure(for: result, step: step) { return finish(.failure(failure)) }
             }
             report(.finish)
+            finish(.success)
+        }
+    }
+
+    /// Removes the Mod with `claude plugin uninstall`; reports the result on `callbackQueue`.
+    func uninstall(completion: @escaping (ModInstallResult) -> Void) {
+        workQueue.async { [plan, locator, runner, callbackQueue] in
+            func finish(_ result: ModInstallResult) { callbackQueue.async { completion(result) } }
+            guard let path = locator.locate() else { return finish(.failure(.claudeNotFound)) }
+            guard let result = runner.run(executablePath: path, arguments: plan.uninstallArguments) else {
+                return finish(.failure(.commandFailed(step: .installPlugin, exitCode: nil, detail: "launch failed")))
+            }
+            if let failure = Self.failure(for: result, step: .installPlugin) { return finish(.failure(failure)) }
             finish(.success)
         }
     }

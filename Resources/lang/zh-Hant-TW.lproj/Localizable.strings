@@ -575,7 +575,7 @@
 "status.item.controller.refresh_now_login_expired" = "立即刷新（登入已過期，請執行 claude）";
 "status.item.controller.refresh_now_rate_limited" = "立即刷新（被限流，%1$@後可用）";
 "status.item.controller.refresh_now_just_refreshed" = "立即刷新（剛剛已刷新）";
-"mod.prompt.row" = "安裝 BalanceBar Mod，額度即時更新";
+"mod.prompt.row" = "為 Claude 安裝 Mod，額度即時更新";
 "mod.panel.title" = "讓 Claude 額度即時更新";
 "mod.panel.install" = "一鍵安裝";
 "mod.panel.dismiss_checkbox" = "不再於選單中提示";
@@ -624,3 +624,12 @@
 "mod.silent.item2" = "是否為新工作階段，或已在其中執行 /reload-plugins";
 "mod.silent.item3" = "組織政策是否只允許受管理的外掛程式";
 "mod.settings.action.view_note" = "檢視說明";
+"mod.manage.title" = "BalanceBar Mod 已安裝";
+"mod.manage.remove_note" = "不想用了？解除安裝後，新工作階段不再向 BalanceBar 寫入資料，額度回到定時查詢。";
+"mod.manage.uninstall" = "解除安裝";
+"mod.manage.uninstalling" = "正在解除安裝…";
+"mod.manage.uninstalled_title" = "已解除安裝";
+"mod.manage.uninstalled_note" = "已在執行的工作階段會繼續載入它，直到重新開啟工作階段或在其中執行 /reload-plugins。";
+"mod.manage.failure_title" = "無法自動解除安裝";
+"mod.manage.failure_note" = "請在終端機中執行下面的指令：";
+"mod.settings.action.manage" = "管理";

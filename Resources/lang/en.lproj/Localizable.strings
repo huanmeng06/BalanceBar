@@ -575,7 +575,7 @@
 "status.item.controller.refresh_now_login_expired" = "Refresh Now (Claude sign-in expired, run claude first)";
 "status.item.controller.refresh_now_rate_limited" = "Refresh Now (rate limited, available in %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Refresh Now (just refreshed)";
-"mod.prompt.row" = "Install BalanceBar Mod for live quota updates";
+"mod.prompt.row" = "Install the Claude Mod for live quota updates";
 "mod.panel.title" = "Make Claude quota update in real time";
 "mod.panel.install" = "Install with one click";
 "mod.panel.dismiss_checkbox" = "Don’t show this in the menu again";
@@ -624,3 +624,12 @@
 "mod.silent.item2" = "This is a new session, or /reload-plugins was run in it";
 "mod.silent.item3" = "Your organization policy allows managed plugins only";
 "mod.settings.action.view_note" = "Show description";
+"mod.manage.title" = "BalanceBar Mod is installed";
+"mod.manage.remove_note" = "Not needed any more? After uninstalling, new sessions stop sending data and the quota goes back to scheduled checks.";
+"mod.manage.uninstall" = "Uninstall";
+"mod.manage.uninstalling" = "Uninstalling…";
+"mod.manage.uninstalled_title" = "Uninstalled";
+"mod.manage.uninstalled_note" = "Sessions that are already running keep it loaded until you reopen them or run /reload-plugins in them.";
+"mod.manage.failure_title" = "Could not uninstall automatically";
+"mod.manage.failure_note" = "Run this command in a terminal:";
+"mod.settings.action.manage" = "Manage";

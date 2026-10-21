@@ -185,6 +185,31 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
 
     // MARK: Status and the silence clock
 
+    func testTheWindowOffersStatusAndRemovalOnceTheModIsInstalled() {
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        _ = coordinator.makePanelView()
+        XCTAssertEqual(coordinator.controller.state, .intro(dismissChecked: false), "not installed: the install pitch")
+
+        fake.record = ModInstallRecord(installedAt: start)
+        refresh(coordinator)
+        _ = coordinator.makePanelView()
+        guard case let .installed(text) = coordinator.controller.state else { return XCTFail("expected the management view") }
+        XCTAssertEqual(text, RealtimeBoostPresentation.make(status: .waitingForData, localize: RealtimeBoostText.appLocalize).statusText)
+
+        let seen = start.addingTimeInterval(30)
+        clock.advance(by: 30)
+        coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: seen))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        guard case let .installed(updated) = coordinator.controller.state else { return XCTFail("expected the management view") }
+        XCTAssertNotEqual(updated, text, "an open management window follows the live status")
+
+        fake.record = nil
+        refresh(coordinator)
+        _ = coordinator.makePanelView()
+        XCTAssertEqual(coordinator.controller.state, .intro(dismissChecked: false), "uninstalled elsewhere: back to the pitch")
+    }
+
     func testStatusFollowsInstallRegistryVersionAndData() {
         let coordinator = makeCoordinator()
         refresh(coordinator)
@@ -438,6 +463,8 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
             ("enabled", .enabled), ("silent", .silent), ("failed-missing", .failed(.claudeNotFound)),
             ("failed-command", .failed(.commandFailed(step: .installPlugin, exitCode: 1, detail: "Plugin not found in marketplace\nSee claude plugin marketplace list"))),
             ("dismissed", .dismissConfirmed),
+            ("installed", .installed(statusText: "已启用 · 最近数据 03:39:00")), ("uninstalling", .uninstalling),
+            ("uninstalled", .uninstalled), ("uninstall-failed", .uninstallFailed(.claudeNotFound)),
         ]
         for (appearanceName, name) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             for (label, state) in states {

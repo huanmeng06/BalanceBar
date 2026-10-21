@@ -575,7 +575,7 @@
 "status.item.controller.refresh_now_login_expired" = "Обновить сейчас (вход в Claude истёк, сначала запустите claude)";
 "status.item.controller.refresh_now_rate_limited" = "Обновить сейчас (лимит запросов, доступно через %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Обновить сейчас (только что обновлено)";
-"mod.prompt.row" = "Установить BalanceBar Mod для квоты в реальном времени";
+"mod.prompt.row" = "Установить Mod для Claude: квота в реальном времени";
 "mod.panel.title" = "Квота Claude в реальном времени";
 "mod.panel.install" = "Установить в один клик";
 "mod.panel.dismiss_checkbox" = "Больше не показывать в меню";
@@ -624,3 +624,12 @@
 "mod.silent.item2" = "Это новая сессия или в ней выполнен /reload-plugins";
 "mod.silent.item3" = "Не разрешает ли политика организации только управляемые плагины";
 "mod.settings.action.view_note" = "Показать описание";
+"mod.manage.title" = "BalanceBar Mod установлен";
+"mod.manage.remove_note" = "Больше не нужен? После удаления новые сессии перестанут присылать данные, а квота снова будет запрашиваться по расписанию.";
+"mod.manage.uninstall" = "Удалить";
+"mod.manage.uninstalling" = "Удаление…";
+"mod.manage.uninstalled_title" = "Удалено";
+"mod.manage.uninstalled_note" = "Уже запущенные сессии продолжат его использовать, пока вы не перезапустите их или не выполните в них /reload-plugins.";
+"mod.manage.failure_title" = "Не удалось удалить автоматически";
+"mod.manage.failure_note" = "Выполните эту команду в терминале:";
+"mod.settings.action.manage" = "Управление";

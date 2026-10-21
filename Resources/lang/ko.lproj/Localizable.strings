@@ -575,7 +575,7 @@
 "status.item.controller.refresh_now_login_expired" = "지금 업데이트 (Claude 로그인 만료, 먼저 claude 실행)";
 "status.item.controller.refresh_now_rate_limited" = "지금 업데이트 (요청 제한 중, %1$@ 후 가능)";
 "status.item.controller.refresh_now_just_refreshed" = "지금 업데이트 (방금 업데이트됨)";
-"mod.prompt.row" = "BalanceBar Mod 설치로 할당량 실시간 업데이트";
+"mod.prompt.row" = "Claude용 Mod 설치로 할당량 실시간 업데이트";
 "mod.panel.title" = "Claude 할당량을 실시간으로 업데이트";
 "mod.panel.install" = "한 번에 설치";
 "mod.panel.dismiss_checkbox" = "메뉴에 다시 표시하지 않기";
@@ -624,3 +624,12 @@
 "mod.silent.item2" = "새 세션이거나 그 안에서 /reload-plugins 를 실행했는지";
 "mod.silent.item3" = "조직 정책이 관리되는 플러그인만 허용하는지";
 "mod.settings.action.view_note" = "설명 보기";
+"mod.manage.title" = "BalanceBar Mod가 설치되어 있습니다";
+"mod.manage.remove_note" = "더 이상 필요 없나요? 제거하면 새 세션은 데이터를 보내지 않고 할당량은 정기 조회로 돌아갑니다.";
+"mod.manage.uninstall" = "제거";
+"mod.manage.uninstalling" = "제거 중…";
+"mod.manage.uninstalled_title" = "제거되었습니다";
+"mod.manage.uninstalled_note" = "이미 실행 중인 세션은 다시 열거나 /reload-plugins 를 실행할 때까지 계속 로드된 상태입니다.";
+"mod.manage.failure_title" = "자동으로 제거할 수 없습니다";
+"mod.manage.failure_note" = "터미널에서 다음 명령을 실행하세요:";
+"mod.settings.action.manage" = "관리";

@@ -125,6 +125,27 @@ final class ModInstallerTests: XCTestCase {
         XCTAssertEqual(outcome, .failure(.commandFailed(step: .addMarketplace, exitCode: 0, detail: "outcome=error")))
     }
 
+    func testUninstallRunsOneCommandAndReportsFailures() {
+        func uninstall(locator: String?, results: [ModCommandResult?]) -> (ModInstallResult, [[String]]) {
+            let runner = ScriptedRunner(results)
+            let q = DispatchQueue(label: "test.uninstaller")
+            let installer = ModInstaller(locator: FakeLocator(path: locator), runner: runner, workQueue: q, callbackQueue: q)
+            let done = expectation(description: "uninstall")
+            var result: ModInstallResult?
+            installer.uninstall { result = $0; done.fulfill() }
+            wait(for: [done], timeout: 5)
+            return (result!, runner.calls)
+        }
+        let (good, calls) = uninstall(locator: "/bin/claude", results: [ok])
+        XCTAssertEqual(good, .success)
+        XCTAssertEqual(calls, [["plugin", "uninstall", "balancebar-mod@balancebar-mods", "--scope", "user"]])
+        XCTAssertEqual(ModInstallPlan.standard.uninstallCommand, "claude plugin uninstall balancebar-mod@balancebar-mods --scope user")
+        XCTAssertEqual(uninstall(locator: nil, results: [ok]).0, .failure(.claudeNotFound))
+        let bad = ModCommandResult(exitCode: 1, stdout: "", stderr: "not installed")
+        XCTAssertEqual(uninstall(locator: "/bin/claude", results: [bad]).0,
+                       .failure(.commandFailed(step: .installPlugin, exitCode: 1, detail: "not installed")))
+    }
+
     func testLocatorSearchesPathThenKnownDirectories() {
         var seen: [String] = []
         let locator = DefaultClaudeExecutableLocator(environment: ["PATH": "/a:/b"], homeDirectory: "/h",
@@ -314,6 +335,59 @@ final class ModOnboardingPanelTests: XCTestCase {
         XCTAssertFalse(button.isShowingFeedback)
     }
 
+    func testSnapshotInstalledManagementViewAndUninstallStates() {
+        XCTAssertEqual(lines(.installed(statusText: "已启用 · 最近数据 03:39:00")), [
+            "# BalanceBar Mod 已安装\n已启用 · 最近数据 03:39:00",
+            "新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。", "想让当前会话也马上生效，可在其中输入 /reload-plugins。",
+            "$ /reload-plugins", "不想用了？卸载后，新会话不再向 BalanceBar 写入数据，额度回到定时查询。",
+            "<卸载> | <关闭>*"])
+        XCTAssertFalse(lines(.installed(statusText: "x")).contains { $0.contains("一键安装") }, "an installed Mod is not asked to install again")
+        XCTAssertEqual(lines(.uninstalling), ["# BalanceBar Mod 已安装\n正在卸载…", "<关闭>"])
+        XCTAssertEqual(lines(.uninstalled), ["# 已卸载\n已在运行的会话会继续加载它，直到重开会话或在其中运行 /reload-plugins。", "<关闭>*"])
+        XCTAssertEqual(lines(.uninstallFailed(.claudeNotFound)), [
+            "# 无法自动卸载", "请在终端中运行下面的命令：", "$ claude plugin uninstall balancebar-mod@balancebar-mods --scope user", "<关闭>*"])
+    }
+
+    func testUninstallFlowFromTheManagementView() {
+        var copied: String?
+        let c = controller(locator: "/bin/claude", results: [ok], copied: { copied = $0 })
+        c.showInstalled(statusText: "s")
+        XCTAssertEqual(c.state, .installed(statusText: "s"))
+        c.updateInstalledStatus("t")
+        XCTAssertEqual(c.state, .installed(statusText: "t"))
+        let done = expectation(description: "uninstalled")
+        var finished: ModInstallResult?
+        c.onUninstallFinished = { finished = $0; done.fulfill() }
+        c.startUninstall()
+        XCTAssertEqual(c.state, .uninstalling)
+        wait(for: [done], timeout: 5)
+        XCTAssertEqual(finished, .success)
+        XCTAssertEqual(c.state, .uninstalled)
+
+        let failing = controller(locator: nil, results: [])
+        failing.showInstalled(statusText: "s")
+        let failed = expectation(description: "failed")
+        failing.onUninstallFinished = { _ in failed.fulfill() }
+        failing.startUninstall()
+        wait(for: [failed], timeout: 5)
+        XCTAssertEqual(failing.state, .uninstallFailed(.claudeNotFound))
+        failing.copyUninstallCommand()
+        _ = copied
+    }
+
+    func testProgressScreensAreNotReplacedByTheManagementView() {
+        let c = controller(locator: nil, results: [])
+        c.setStateForTesting(.awaitingFirstData)
+        c.showInstalled(statusText: "s")
+        XCTAssertEqual(c.state, .awaitingFirstData, "reopening during the first-data wait keeps showing the progress")
+        c.setStateForTesting(.silent)
+        c.showInstalled(statusText: "s")
+        XCTAssertEqual(c.state, .silent)
+        c.setStateForTesting(.enabled)
+        c.showInstalled(statusText: "s")
+        XCTAssertEqual(c.state, .installed(statusText: "s"))
+    }
+
     func testTextCopyButtonShowsCopiedFeedbackThenRestoresItsTitle() throws {
         var copied: String?
         let c = controller(locator: nil, results: [], copied: { copied = $0 })
@@ -395,7 +469,7 @@ final class ModOnboardingPanelTests: XCTestCase {
 
     func testPromptRowShowsTheDocumentCopyAndRunsItsAction() {
         let row = ModPromptRowView()
-        XCTAssertEqual(row.mainText, "安装 BalanceBar Mod，额度实时更新")
+        XCTAssertEqual(row.mainText, "为 Claude 安装 Mod，额度实时更新")
         XCTAssertEqual(row.whyText, "为什么这么做？")
         XCTAssertEqual(ModPromptRowView(headless: true).mainText, "检测到 headless 运行，安装 Mod 可让这部分也实时更新")
         var clicks = 0

@@ -575,7 +575,7 @@
 "status.item.controller.refresh_now_login_expired" = "Jetzt aktualisieren (Claude-Anmeldung abgelaufen, zuerst claude ausführen)";
 "status.item.controller.refresh_now_rate_limited" = "Jetzt aktualisieren (Ratenlimit, verfügbar in %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Jetzt aktualisieren (gerade aktualisiert)";
-"mod.prompt.row" = "BalanceBar Mod installieren – Kontingent in Echtzeit";
+"mod.prompt.row" = "Claude-Mod installieren – Kontingent in Echtzeit";
 "mod.panel.title" = "Claude-Kontingent in Echtzeit aktualisieren";
 "mod.panel.install" = "Mit einem Klick installieren";
 "mod.panel.dismiss_checkbox" = "Im Menü nicht mehr anzeigen";
@@ -624,3 +624,12 @@
 "mod.silent.item2" = "Es ist eine neue Sitzung, oder /reload-plugins wurde dort ausgeführt";
 "mod.silent.item3" = "Ob die Organisationsrichtlinie nur verwaltete Plugins erlaubt";
 "mod.settings.action.view_note" = "Beschreibung anzeigen";
+"mod.manage.title" = "BalanceBar Mod ist installiert";
+"mod.manage.remove_note" = "Nicht mehr nötig? Nach dem Deinstallieren senden neue Sitzungen keine Daten mehr und das Kontingent wird wieder zeitgesteuert abgefragt.";
+"mod.manage.uninstall" = "Deinstallieren";
+"mod.manage.uninstalling" = "Wird deinstalliert …";
+"mod.manage.uninstalled_title" = "Deinstalliert";
+"mod.manage.uninstalled_note" = "Bereits laufende Sitzungen behalten ihn geladen, bis du sie neu öffnest oder dort /reload-plugins ausführst.";
+"mod.manage.failure_title" = "Automatische Deinstallation nicht möglich";
+"mod.manage.failure_note" = "Führe diesen Befehl im Terminal aus:";
+"mod.settings.action.manage" = "Verwalten";

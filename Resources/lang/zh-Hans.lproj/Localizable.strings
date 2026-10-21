@@ -575,7 +575,7 @@
 "status.item.controller.refresh_now_login_expired" = "立即刷新（登录已过期，请运行 claude）";
 "status.item.controller.refresh_now_rate_limited" = "立即刷新（被限流，%1$@后可用）";
 "status.item.controller.refresh_now_just_refreshed" = "立即刷新（刚刚已刷新）";
-"mod.prompt.row" = "安装 BalanceBar Mod，额度实时更新";
+"mod.prompt.row" = "为 Claude 安装 Mod，额度实时更新";
 "mod.panel.title" = "让 Claude 额度实时更新";
 "mod.panel.install" = "一键安装";
 "mod.panel.dismiss_checkbox" = "不再在菜单中提示";
@@ -624,3 +624,12 @@
 "mod.silent.item2" = "是否是新会话，或已在会话中运行 /reload-plugins";
 "mod.silent.item3" = "组织策略是否只允许托管插件";
 "mod.settings.action.view_note" = "查看说明";
+"mod.manage.title" = "BalanceBar Mod 已安装";
+"mod.manage.remove_note" = "不想用了？卸载后，新会话不再向 BalanceBar 写入数据，额度回到定时查询。";
+"mod.manage.uninstall" = "卸载";
+"mod.manage.uninstalling" = "正在卸载…";
+"mod.manage.uninstalled_title" = "已卸载";
+"mod.manage.uninstalled_note" = "已在运行的会话会继续加载它，直到重开会话或在其中运行 /reload-plugins。";
+"mod.manage.failure_title" = "无法自动卸载";
+"mod.manage.failure_note" = "请在终端中运行下面的命令：";
+"mod.settings.action.manage" = "管理";

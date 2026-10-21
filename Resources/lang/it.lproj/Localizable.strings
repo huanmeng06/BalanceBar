@@ -575,7 +575,7 @@
 "status.item.controller.refresh_now_login_expired" = "Aggiorna ora (accesso a Claude scaduto, esegui prima claude)";
 "status.item.controller.refresh_now_rate_limited" = "Aggiorna ora (limite di richieste, disponibile tra %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Aggiorna ora (appena aggiornato)";
-"mod.prompt.row" = "Installa BalanceBar Mod per la quota in tempo reale";
+"mod.prompt.row" = "Installa il Mod per Claude: quota in tempo reale";
 "mod.panel.title" = "Aggiorna la quota di Claude in tempo reale";
 "mod.panel.install" = "Installa con un clic";
 "mod.panel.dismiss_checkbox" = "Non mostrare più nel menu";
@@ -624,3 +624,12 @@
 "mod.silent.item2" = "È una sessione nuova, oppure vi è stato eseguito /reload-plugins";
 "mod.silent.item3" = "Se la policy dell’organizzazione consente solo plugin gestiti";
 "mod.settings.action.view_note" = "Mostra descrizione";
+"mod.manage.title" = "BalanceBar Mod è installato";
+"mod.manage.remove_note" = "Non ti serve più? Dopo la disinstallazione le nuove sessioni non inviano più dati e la quota torna alle richieste programmate.";
+"mod.manage.uninstall" = "Disinstalla";
+"mod.manage.uninstalling" = "Disinstallazione…";
+"mod.manage.uninstalled_title" = "Disinstallato";
+"mod.manage.uninstalled_note" = "Le sessioni già in esecuzione lo mantengono caricato finché non le riapri o vi esegui /reload-plugins.";
+"mod.manage.failure_title" = "Impossibile disinstallare automaticamente";
+"mod.manage.failure_note" = "Esegui questo comando in un terminale:";
+"mod.settings.action.manage" = "Gestisci";

@@ -11,6 +11,7 @@ enum RealtimeBoostText: String, CaseIterable {
     case install = "mod.settings.action.install"
     case copyCommands = "mod.settings.action.copy"
     case viewNote = "mod.settings.action.view_note"
+    case manage = "mod.settings.action.manage"
     case promptToggle = "mod.settings.prompt_toggle"
     case uninstallNote = "mod.settings.uninstall_note"
 
@@ -25,6 +26,7 @@ enum RealtimeBoostText: String, CaseIterable {
         case .install: return "一键安装"
         case .copyCommands: return "复制命令"
         case .viewNote: return "查看说明"
+        case .manage: return "管理"
         case .promptToggle: return "在菜单中显示安装提示"
         case .uninstallNote: return "卸载：在 Claude Code 中输入 /plugin 即可移除。"
         }
@@ -191,6 +193,8 @@ final class RealtimeBoostSettingsRows {
         // A failed install leaves the copyable commands as the way forward.
         copyButton.isHidden = !(presentation.showsCopyAction || failed)
         descriptionButton.isHidden = installing
+        // An installed Mod opens its management view, not the install pitch.
+        descriptionButton.title = presentation.showsUninstallNote ? localize(.manage) : localize(.viewNote)
         if installing { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         promptSwitch.state = controller.isPromptDismissed ? .off : .on
     }

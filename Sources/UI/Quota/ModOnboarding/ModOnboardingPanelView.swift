@@ -21,7 +21,7 @@ enum ModPanelItem: Equatable {
     case footer(leading: [ModPanelButton], trailing: [ModPanelButton])
 
     enum StepStatus: String, Equatable { case pending, running, done }
-    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, openSettings }
+    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, openSettings, uninstall, copyUninstall }
 
     /// Text form used by tests; the view draws icons instead of the `[x]` marks.
     var snapshotLine: String {
@@ -96,6 +96,28 @@ enum ModPanelContent {
             ]
             if let summary = summary(of: failure) { items.append(.detail(summary)) }
             items.append(.codeBlock(plan.copyableCommands, copyAction: .copyCommands))
+            items.append(.footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)]))
+            return items
+        case let .installed(statusText):
+            return [.hero(symbol: nil, title: t(.manageTitle), subtitle: statusText),
+                    .text(t(.enabledNote)), .text(t(.reloadHint)),
+                    .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
+                    .text(t(.manageRemoveNote)),
+                    .footer(leading: [ModPanelButton(title: t(.uninstallButton), action: .uninstall)],
+                            trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)])]
+        case .uninstalling:
+            return [.hero(symbol: nil, title: t(.manageTitle), subtitle: t(.uninstalling)),
+                    .footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close)])]
+        case .uninstalled:
+            return [.hero(symbol: "checkmark.circle.fill", title: t(.uninstalledTitle), subtitle: t(.uninstalledNote)),
+                    .footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)])]
+        case let .uninstallFailed(failure):
+            var items: [ModPanelItem] = [
+                .hero(symbol: "exclamationmark.triangle.fill", title: t(.uninstallFailureTitle), subtitle: nil),
+                .text(t(.uninstallFailureNote)),
+            ]
+            if let summary = summary(of: failure) { items.append(.detail(summary)) }
+            items.append(.codeBlock(plan.uninstallCommand, copyAction: .copyUninstall))
             items.append(.footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)]))
             return items
         case .dismissConfirmed:
@@ -442,6 +464,8 @@ final class ModOnboardingPanelView: NSView {
         case .install: controller.startInstall()
         case .copyCommands: controller.copyInstallCommands()
         case .copyReload: controller.copyReloadCommand()
+        case .uninstall: controller.startUninstall()
+        case .copyUninstall: controller.copyUninstallCommand()
         case .openSettings:
             controller.openSettings()
             onRequestClose()
@@ -458,7 +482,9 @@ final class ModOnboardingPanelView: NSView {
 
     private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor,
                        alignment: NSTextAlignment = .left, width: CGFloat? = nil) -> NSTextField {
-        let field = NSTextField(wrappingLabelWithString: text)
+        // Keep the slash command in one piece when the line wraps (no break after "/" or at the hyphen).
+        let unbroken = text.replacingOccurrences(of: ModInstallPlan.reloadCommand, with: "/\u{2060}reload\u{2011}plugins")
+        let field = NSTextField(wrappingLabelWithString: unbroken)
         field.font = .systemFont(ofSize: size, weight: weight)
         field.textColor = color
         field.alignment = alignment
@@ -620,7 +646,7 @@ final class ModOnboardingPanelView: NSView {
     @objc private func buttonPressed(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue, let action = Self.action(for: id) else { return }
         perform(action)
-        if action == .copyCommands || action == .copyReload { sender.flashTitle("✓ " + localize(.copied)) }
+        if action == .copyCommands || action == .copyReload || action == .copyUninstall { sender.flashTitle("✓ " + localize(.copied)) }
     }
 
     /// Copy icon: copies, then shows a check mark for a moment.
@@ -632,6 +658,6 @@ final class ModOnboardingPanelView: NSView {
 
     private static func identifier(for action: ModPanelItem.ButtonAction) -> String { String(describing: action) }
     private static func action(for id: String) -> ModPanelItem.ButtonAction? {
-        [.install, .close, .copyCommands, .copyReload, .openSettings].first { identifier(for: $0) == id }
+        [.install, .close, .copyCommands, .copyReload, .openSettings, .uninstall, .copyUninstall].first { identifier(for: $0) == id }
     }
 }

@@ -181,6 +181,14 @@ final class ModOnboardingCoordinator {
         lastModDataAt = timestamps.lastModDataAt
         preference.onChange = { [weak self] in self?.notify() }
         controller.silenceCheck = { [weak self] in self?.enhancementStatus() == .enabledButSilent }
+        controller.onUninstallFinished = { [weak self] result in
+            switch result {
+            case .success: SwitchLog.write("mod uninstall finished; result=success", category: "mod.install")
+            case let .failure(failure):
+                SwitchLog.write("mod uninstall finished; result=failure; \(failure.summary)", level: .warning, category: "mod.install")
+            }
+            if case .success = result { self?.refreshEnvironment(force: true) }
+        }
         controller.onInstallFinished = { [weak self] result in
             switch result {
             case .success: SwitchLog.write("mod install finished; result=success", category: "mod.install")
@@ -340,16 +348,29 @@ final class ModOnboardingCoordinator {
         windowController.show()
     }
 
-    /// A fresh explanation view in its intro state (an install in progress keeps showing its progress).
+    /// A fresh window view: the intro for a Mod that is not installed, status and removal for an installed one
+    /// (an install in progress keeps showing its progress).
     func makePanelView() -> ModOnboardingPanelView {
-        controller.resetToIntro(force: enhancementStatus() == .notInstalled)
+        let status = enhancementStatus()
+        switch status {
+        case .notInstalled, .unsupportedClaudeCode:
+            controller.resetToIntro(force: status == .notInstalled)
+        case .waitingForData, .active, .enabledButSilent:
+            controller.showInstalled(statusText: installedStatusText(status))
+        }
         return ModOnboardingPanelView(controller: controller, localize: ModOnboardingText.appLocalize)
+    }
+
+    private func installedStatusText(_ status: ModEnhancementStatus) -> String {
+        RealtimeBoostPresentation.make(status: status, localize: RealtimeBoostText.appLocalize).statusText
     }
 
     private func notify() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.settingsRows?.update(status: self.enhancementStatus())
+            let status = self.enhancementStatus()
+            self.settingsRows?.update(status: status)
+            self.controller.updateInstalledStatus(self.installedStatusText(status))
             self.onChange?()
         }
     }

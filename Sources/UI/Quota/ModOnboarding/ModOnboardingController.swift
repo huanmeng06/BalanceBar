@@ -39,10 +39,18 @@ enum ModOnboardingText: String, CaseIterable {
     case dismissedNote = "mod.dismissed.note"
     case dismissedOpenSettings = "mod.dismissed.open_settings"
     case dismissedOk = "mod.dismissed.ok"
+    case manageTitle = "mod.manage.title"
+    case manageRemoveNote = "mod.manage.remove_note"
+    case uninstallButton = "mod.manage.uninstall"
+    case uninstalling = "mod.manage.uninstalling"
+    case uninstalledTitle = "mod.manage.uninstalled_title"
+    case uninstalledNote = "mod.manage.uninstalled_note"
+    case uninstallFailureTitle = "mod.manage.failure_title"
+    case uninstallFailureNote = "mod.manage.failure_note"
 
     var defaultText: String {
         switch self {
-        case .promptRow: return "安装 BalanceBar Mod，额度实时更新"
+        case .promptRow: return "为 Claude 安装 Mod，额度实时更新"
         case .promptHeadless: return "检测到 headless 运行，安装 Mod 可让这部分也实时更新"
         case .promptWhy: return "为什么这么做？"
         case .panelTitle: return "让 Claude 额度实时更新"
@@ -79,6 +87,14 @@ enum ModOnboardingText: String, CaseIterable {
         case .dismissedNote: return "之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod，或重新显示提示。"
         case .dismissedOpenSettings: return "打开高级设置"
         case .dismissedOk: return "好"
+        case .manageTitle: return "BalanceBar Mod 已安装"
+        case .manageRemoveNote: return "不想用了？卸载后，新会话不再向 BalanceBar 写入数据，额度回到定时查询。"
+        case .uninstallButton: return "卸载"
+        case .uninstalling: return "正在卸载…"
+        case .uninstalledTitle: return "已卸载"
+        case .uninstalledNote: return "已在运行的会话会继续加载它，直到重开会话或在其中运行 /reload-plugins。"
+        case .uninstallFailureTitle: return "无法自动卸载"
+        case .uninstallFailureNote: return "请在终端中运行下面的命令："
         }
     }
 
@@ -117,6 +133,11 @@ enum ModPanelState: Equatable {
     case silent
     case failed(ModInstallFailure)
     case dismissConfirmed
+    /// The Mod is installed: its status and how to remove it (`statusText` is the settings status line).
+    case installed(statusText: String)
+    case uninstalling
+    case uninstalled
+    case uninstallFailed(ModInstallFailure)
 }
 
 /// Drives the window and the settings block. Main-thread only; installation work runs on the installer's queue.
@@ -130,6 +151,8 @@ final class ModOnboardingController {
     var onStateChange: (() -> Void)?
     /// Called on the main thread when an install attempt ended, before the panel state changes.
     var onInstallFinished: ((ModInstallResult) -> Void)?
+    /// Called on the main thread when an uninstall attempt ended, before the panel state changes.
+    var onUninstallFinished: ((ModInstallResult) -> Void)?
     /// Asks the app to open Settings › Advanced.
     var onOpenSettings: (() -> Void)?
     /// Asks the coordinator whether the Mod is installed but silent (checked while the window waits for data).
@@ -140,6 +163,7 @@ final class ModOnboardingController {
     private let preference: ModPromptPreferenceStoring
     private let copyToPasteboard: (String) -> Void
     private var installInFlight = false
+    private var uninstallInFlight = false
 
     init(
         plan: ModInstallPlan = .resolved(),
@@ -169,10 +193,41 @@ final class ModOnboardingController {
     /// A fresh intro, except while an install is in progress (`force` discards even that, for example when the
     /// plugin turned out not to be installed).
     func resetToIntro(force: Bool = false) {
-        guard !installInFlight else { return }
+        guard !installInFlight, !uninstallInFlight else { return }
         if !force, state == .awaitingFirstData || state == .silent { return }
         state = .intro(dismissChecked: false)
     }
+
+    /// The window for an installed Mod: status and removal instead of the install pitch. Progress screens stay as they are.
+    func showInstalled(statusText: String) {
+        guard !installInFlight, !uninstallInFlight else { return }
+        switch state {
+        case .awaitingFirstData, .silent, .installing, .uninstalling: return
+        default: state = .installed(statusText: statusText)
+        }
+    }
+
+    /// Keeps the status line of an open management window current.
+    func updateInstalledStatus(_ statusText: String) {
+        if case .installed = state { state = .installed(statusText: statusText) }
+    }
+
+    func startUninstall() {
+        guard case .installed = state, !uninstallInFlight else { return }
+        uninstallInFlight = true
+        state = .uninstalling
+        installer.uninstall { [weak self] result in
+            guard let self else { return }
+            self.uninstallInFlight = false
+            self.onUninstallFinished?(result)
+            switch result {
+            case .success: self.state = .uninstalled
+            case let .failure(failure): self.state = .uninstallFailed(failure)
+            }
+        }
+    }
+
+    func copyUninstallCommand() { copyToPasteboard(plan.uninstallCommand) }
 
     func setDismissChecked(_ checked: Bool) {
         guard case .intro = state else { return }

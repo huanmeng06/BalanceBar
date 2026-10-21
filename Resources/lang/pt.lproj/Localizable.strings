@@ -575,7 +575,7 @@
 "status.item.controller.refresh_now_login_expired" = "Atualizar agora (login do Claude expirado, execute claude primeiro)";
 "status.item.controller.refresh_now_rate_limited" = "Atualizar agora (limite de requisições, disponível em %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Atualizar agora (acabou de atualizar)";
-"mod.prompt.row" = "Instalar o BalanceBar Mod para cota em tempo real";
+"mod.prompt.row" = "Instalar o Mod do Claude: cota em tempo real";
 "mod.panel.title" = "Atualize a cota do Claude em tempo real";
 "mod.panel.install" = "Instalar com um clique";
 "mod.panel.dismiss_checkbox" = "Não voltar a mostrar no menu";
@@ -624,3 +624,12 @@
 "mod.silent.item2" = "É uma sessão nova, ou foi executado /reload-plugins nela";
 "mod.silent.item3" = "Se a política da organização só permite plugins geridos";
 "mod.settings.action.view_note" = "Ver descrição";
+"mod.manage.title" = "O BalanceBar Mod está instalado";
+"mod.manage.remove_note" = "Já não precisa? Depois de desinstalar, as sessões novas deixam de enviar dados e a cota volta às consultas agendadas.";
+"mod.manage.uninstall" = "Desinstalar";
+"mod.manage.uninstalling" = "A desinstalar…";
+"mod.manage.uninstalled_title" = "Desinstalado";
+"mod.manage.uninstalled_note" = "As sessões já em execução mantêm-no carregado até as reabrir ou executar /reload-plugins nelas.";
+"mod.manage.failure_title" = "Não foi possível desinstalar automaticamente";
+"mod.manage.failure_note" = "Execute este comando num terminal:";
+"mod.settings.action.manage" = "Gerir";

@@ -612,5 +612,15 @@
     case keyModSilentItem3 = "mod.silent.item3"
     case keyModSettingsActionViewNote = "mod.settings.action.view_note"
 
+    case keyModManageTitle = "mod.manage.title"
+    case keyModManageRemoveNote = "mod.manage.remove_note"
+    case keyModManageUninstall = "mod.manage.uninstall"
+    case keyModManageUninstalling = "mod.manage.uninstalling"
+    case keyModManageUninstalledTitle = "mod.manage.uninstalled_title"
+    case keyModManageUninstalledNote = "mod.manage.uninstalled_note"
+    case keyModManageFailureTitle = "mod.manage.failure_title"
+    case keyModManageFailureNote = "mod.manage.failure_note"
+    case keyModSettingsActionManage = "mod.settings.action.manage"
+
     var rawKey: String { rawValue }
 }

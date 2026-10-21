@@ -575,7 +575,7 @@
 "status.item.controller.refresh_now_login_expired" = "今すぐ更新（Claude のサインインが期限切れ。先に claude を実行）";
 "status.item.controller.refresh_now_rate_limited" = "今すぐ更新（レート制限中、%1$@後に利用可能）";
 "status.item.controller.refresh_now_just_refreshed" = "今すぐ更新（直前に更新済み）";
-"mod.prompt.row" = "BalanceBar Mod をインストールして残量をリアルタイム更新";
+"mod.prompt.row" = "Claude 用 Mod を入れて残量をリアルタイム更新";
 "mod.panel.title" = "Claude の残量をリアルタイムで更新";
 "mod.panel.install" = "ワンクリックでインストール";
 "mod.panel.dismiss_checkbox" = "メニューに今後表示しない";
@@ -624,3 +624,12 @@
 "mod.silent.item2" = "新しいセッションであること、またはその中で /reload-plugins を実行したこと";
 "mod.silent.item3" = "組織のポリシーが管理対象プラグインのみを許可していないか";
 "mod.settings.action.view_note" = "説明を表示";
+"mod.manage.title" = "BalanceBar Mod はインストール済みです";
+"mod.manage.remove_note" = "不要になりましたか？アンインストールすると、新しいセッションはデータを送らなくなり、残量は定期取得に戻ります。";
+"mod.manage.uninstall" = "アンインストール";
+"mod.manage.uninstalling" = "アンインストール中…";
+"mod.manage.uninstalled_title" = "アンインストールしました";
+"mod.manage.uninstalled_note" = "すでに実行中のセッションは、再起動するか /reload-plugins を実行するまで読み込んだままです。";
+"mod.manage.failure_title" = "自動でアンインストールできませんでした";
+"mod.manage.failure_note" = "ターミナルで次のコマンドを実行してください：";
+"mod.settings.action.manage" = "管理";
