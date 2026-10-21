@@ -202,14 +202,30 @@ public final class CodexRolloutSource: QuotaSource {
 
     /// Reads changed files (or the most recent files when `paths` is `nil` or names a directory).
     /// Must run on `queue`; tests call it through `rescan(paths:)`.
+    /// The login a scan works for: read once at its start and compared again before anything is published.
+    private struct LoginSnapshot: Equatable {
+        let identity: AccountIdentity
+        let epoch: AccountEpoch
+        /// The signed-in ChatGPT account id (`""` when unknown); `nil` when the per-file check is off (tests only).
+        let chatGPTAccountID: String?
+    }
+
+    private func loginSnapshot() -> LoginSnapshot? {
+        // Without a current Codex account there is nobody to attribute the reading to.
+        guard let identity = accountProvider.accountIdentity else { return nil }
+        return LoginSnapshot(
+            identity: identity, epoch: accountProvider.accountEpoch,
+            chatGPTAccountID: currentAccountID.map { $0() ?? "" })
+    }
+
     private func scan(paths: Set<String>?) {
-        guard handler != nil else { return }
+        guard handler != nil, let login = loginSnapshot() else { return }
         let files = filesToRead(for: paths)
         var newest: [QuotaWindowKind: (event: CodexRateLimitEvent, reading: CodexRateLimitReading)] = [:]
         // A rollout log does not say which login a reading belongs to, but its `session_meta` names the account that
         // created the session. A file counts for the current login only when that account matches; a session started
         // by another login keeps writing to its own file, so it can never be attributed to the one signed in now.
-        let currentID = currentAccountID.map { $0() ?? "" }
+        let currentID = login.chatGPTAccountID
         for file in files {
             if let currentID {
                 guard !currentID.isEmpty, creatorAccountID(of: file) == currentID else { continue }
@@ -222,13 +238,18 @@ public final class CodexRolloutSource: QuotaSource {
                 }
             }
         }
-        publish(newest)
+        // The login may have changed while the files were read (the identity is cached for a couple of seconds):
+        // then these readings were filtered for the old login and must not be handed to the new one.
+        guard loginSnapshot() == login else { return }
+        publish(newest, for: login)
     }
 
-    private func publish(_ newest: [QuotaWindowKind: (event: CodexRateLimitEvent, reading: CodexRateLimitReading)]) {
-        // Without a current Codex account there is nobody to attribute the reading to.
-        guard let account = accountProvider.accountIdentity else { return }
-        let epoch = accountProvider.accountEpoch
+    private func publish(
+        _ newest: [QuotaWindowKind: (event: CodexRateLimitEvent, reading: CodexRateLimitReading)],
+        for login: LoginSnapshot
+    ) {
+        let account = login.identity
+        let epoch = login.epoch
         let receivedAt = now()
         // A new login must not be held back by the previous login's event times.
         if attributedAccount?.stableID != account.stableID || attributedAccount?.epoch != epoch {

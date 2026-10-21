@@ -263,6 +263,31 @@ final class CodexRolloutSourceTests: XCTestCase {
         XCTAssertTrue(source.hasFreshData(at: base.addingTimeInterval(60)))
     }
 
+    func testALoginSwitchWhileScanningNeverHandsTheOldLoginsReadingsToTheNewLogin() throws {
+        // The identity provider reports login A while the scan starts and login B by the time it would publish.
+        final class FlippingAccount: AccountIdentityProviding {
+            private let lock = NSLock()
+            private var reads = 0
+            var flipped: Bool { lock.withLock { reads >= 2 } }
+            var accountIdentity: AccountIdentity? {
+                lock.withLock { reads += 1 }
+                return AccountIdentity(stableID: flipped ? "codex:b" : "codex:a", idSource: .accountUUID)
+            }
+            var credentialVersion: CredentialVersion? { nil }
+            var accountEpoch: AccountEpoch { .initial }
+        }
+        try writeRollout("a", line(at: 10, primary: window(300, 80), secondary: window(10080, 20)), creator: "acct-A")
+        let account = FlippingAccount()
+        let source = CodexRolloutSource(
+            sessionsDirectory: root.appendingPathComponent("sessions"),
+            accountProvider: account,
+            configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
+            now: { self.base.addingTimeInterval(100) },
+            currentAccountID: { account.flipped ? "acct-B" : "acct-A" })
+        XCTAssertTrue(scan(source).isEmpty, "A's readings were filtered for A; B is signed in by the time they would be published")
+        XCTAssertFalse(source.hasFreshData(at: base.addingTimeInterval(20)))
+    }
+
     func testALogWithoutACreatorAccountIsNotAttributed() throws {
         try writeRollout("old", line(at: 10, primary: window(300, 10), secondary: window(10080, 20)), creator: nil)
         XCTAssertTrue(scan(makeSource()).isEmpty, "older Codex versions fall back to the server")
