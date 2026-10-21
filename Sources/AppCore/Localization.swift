@@ -202,6 +202,9 @@ enum AppLanguage: String, CaseIterable {
         }
     }
 
+    /// The locale for formatting numbers and durations in this language.
+    var formattingLocale: Locale { Locale(identifier: resourceLocalization) }
+
     fileprivate var resourceLocalization: String {
         switch self {
         case .system:

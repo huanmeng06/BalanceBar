@@ -114,6 +114,30 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(otherDeliveries, 1)
     }
 
+    func testStatusSnapshotReportsTokensIntervalAndInFlightWork() {
+        let scheduler = makeScheduler()
+        let idle = scheduler.statusSnapshot()
+        XCTAssertEqual(idle.tokens, 3)
+        XCTAssertNil(idle.nextTokenAt, "a full bucket has nothing arriving")
+        XCTAssertNil(idle.lastDispatchAt)
+        XCTAssertFalse(idle.isBusy)
+
+        let dispatchTime = clock.now
+        request(scheduler, .scheduled)
+        let busy = scheduler.statusSnapshot()
+        XCTAssertTrue(busy.isBusy)
+        XCTAssertEqual(busy.tokens, 1, "an automatic read costs two tokens")
+        XCTAssertEqual(busy.lastDispatchAt, dispatchTime)
+        XCTAssertEqual(busy.nextTokenAt, dispatchTime.addingTimeInterval(busy.tokenRefillInterval))
+
+        complete(scheduler, .success(Data()))
+        clock.advance(60)
+        let done = scheduler.statusSnapshot()
+        XCTAssertFalse(done.isBusy)
+        XCTAssertEqual(done.lastSuccessAt, dispatchTime)
+        XCTAssertEqual(done.at, clock.now)
+    }
+
     func testAutomaticMinimumInterval() {
         let scheduler = makeScheduler()
         request(scheduler, .scheduled)

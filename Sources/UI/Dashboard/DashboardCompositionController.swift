@@ -25,6 +25,8 @@ struct DashboardCompositionState {
     let notificationConfiguration: DashboardNotificationPageConfiguration?
     /// Settings › Advanced › Real-time boost rows, empty when the section is not offered.
     let makeRealtimeBoostRows: (_ forSearch: Bool) -> [NSView]
+    /// What holds the next official Claude read back, for the "?" next to the refresh frequency.
+    let claudeRefreshStatus: () -> ClaudeRefreshStatus?
 
     init(
         preferences: AppPreferences,
@@ -47,9 +49,11 @@ struct DashboardCompositionState {
         snapshotProviderID: @escaping () -> String? = { nil },
         aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
         isAggregationMode: @escaping () -> Bool = { false },
-        makeRealtimeBoostRows: @escaping (_ forSearch: Bool) -> [NSView] = { _ in [] }
+        makeRealtimeBoostRows: @escaping (_ forSearch: Bool) -> [NSView] = { _ in [] },
+        claudeRefreshStatus: @escaping () -> ClaudeRefreshStatus? = { nil }
     ) {
         self.makeRealtimeBoostRows = makeRealtimeBoostRows
+        self.claudeRefreshStatus = claudeRefreshStatus
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
         self.providerPollInterval = providerPollInterval
@@ -282,7 +286,8 @@ final class DashboardCompositionController {
                     ?? StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
             onClamp: actions.onClamp,
-            makeRealtimeBoostRows: state.makeRealtimeBoostRows
+            makeRealtimeBoostRows: state.makeRealtimeBoostRows,
+            claudeRefreshStatus: state.claudeRefreshStatus
         ),
         launchAtLoginController: launchAtLoginController,
         launchWithChatGPTController: launchWithChatGPTController,

@@ -47,12 +47,220 @@ final class RefreshRateTimelineView: NSView {
     }
 }
 
+private extension NSBox {
+    static func separator(width: CGFloat) -> NSBox {
+        let box = NSBox()
+        box.boxType = .separator
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.widthAnchor.constraint(equalToConstant: width).isActive = true
+        return box
+    }
+}
+
+/// Dots for the request tokens left (filled) out of the bucket's capacity.
+final class RefreshTokenDotsView: NSView {
+    var filled = 0 { didSet { if filled != oldValue { needsDisplay = true } } }
+    private let total: Int
+
+    init(total: Int) {
+        self.total = total
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        widthAnchor.constraint(equalToConstant: CGFloat(total) * 14).isActive = true
+        heightAnchor.constraint(equalToConstant: 12).isActive = true
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            for index in 0..<total {
+                let dot = NSRect(x: CGFloat(index) * 14 + 1, y: bounds.midY - 5, width: 10, height: 10)
+                if index < filled {
+                    NSColor.controlAccentColor.setFill()
+                    NSBezierPath(ovalIn: dot).fill()
+                } else {
+                    NSColor.tertiaryLabelColor.setStroke()
+                    let path = NSBezierPath(ovalIn: dot.insetBy(dx: 0.75, dy: 0.75))
+                    path.lineWidth = 1.5
+                    path.stroke()
+                }
+            }
+        }
+    }
+}
+
+/// "Right now": what is holding the next official read back, with a bar that fills while it waits, the request
+/// tokens as dots and the age of the Mod's data. Refreshes itself every second while it is on screen.
+final class RefreshRateLiveStatusView: NSView {
+    private let provider: () -> ClaudeRefreshStatus?
+    private let language: AppLanguage
+    private let now: () -> Date
+    private let dot = NSView()
+    private let sentence = NSTextField(wrappingLabelWithString: "")
+    private let bar = NSProgressIndicator()
+    private let lastReadValue = NSTextField(labelWithString: "")
+    private let tokenDots = RefreshTokenDotsView(total: QuotaConstants.requestTokenBucketCapacity)
+    private let modValue = NSTextField(labelWithString: "")
+    private var timer: Timer?
+
+    init(width: CGFloat, language: AppLanguage, now: @escaping () -> Date = Date.init, provider: @escaping () -> ClaudeRefreshStatus?) {
+        self.provider = provider
+        self.language = language
+        self.now = now
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+
+        func localize(_ key: LocalizationKey) -> String { tr(key, language: language) }
+        dot.wantsLayer = true
+        dot.layer?.cornerRadius = 4
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        dot.widthAnchor.constraint(equalToConstant: 8).isActive = true
+        dot.heightAnchor.constraint(equalToConstant: 8).isActive = true
+        sentence.font = .systemFont(ofSize: 12, weight: .medium)
+        sentence.isSelectable = false
+        sentence.preferredMaxLayoutWidth = width - 8 - 8
+        let header = NSStackView(views: [dot, sentence])
+        header.orientation = .horizontal
+        header.alignment = .firstBaseline
+        header.spacing = 8
+        header.alignment = .top
+
+        bar.style = .bar
+        bar.isIndeterminate = false
+        bar.minValue = 0
+        bar.maxValue = 1
+        bar.controlSize = .small
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.widthAnchor.constraint(equalToConstant: width).isActive = true
+
+        func infoRow(_ label: String, _ value: NSView) -> NSView {
+            let caption = NSTextField(labelWithString: label)
+            caption.font = .systemFont(ofSize: 11)
+            caption.textColor = .secondaryLabelColor
+            caption.setContentHuggingPriority(.required, for: .horizontal)
+            caption.setContentCompressionResistancePriority(.required, for: .horizontal)
+            let row = NSStackView(views: [caption, value])
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.spacing = 8
+            return row
+        }
+        for field in [lastReadValue, modValue] {
+            field.font = .systemFont(ofSize: 11)
+            field.lineBreakMode = .byClipping
+            field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+        let tokenHint = NSTextField(wrappingLabelWithString: localize(.keyRefreshStatusTokensHint))
+        tokenHint.font = .systemFont(ofSize: 10)
+        tokenHint.textColor = .tertiaryLabelColor
+        tokenHint.isSelectable = false
+        tokenHint.preferredMaxLayoutWidth = width
+
+        let stack = NSStackView(views: [
+            header, bar,
+            infoRow(localize(.keyRefreshStatusLastRead), lastReadValue),
+            infoRow(localize(.keyRefreshStatusTokensLabel), tokenDots),
+            tokenHint,
+            infoRow(localize(.keyRefreshStatusModLabel), modValue),
+        ])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 7
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            widthAnchor.constraint(equalToConstant: width),
+        ])
+        update()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        timer?.invalidate()
+        timer = nil
+        guard window != nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.update() }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    deinit { timer?.invalidate() }
+
+    private func duration(_ seconds: TimeInterval) -> String {
+        let formatter = DateComponentsFormatter()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = language.formattingLocale
+        formatter.calendar = calendar
+        formatter.unitsStyle = .abbreviated
+        formatter.allowedUnits = seconds >= 60 ? [.minute, .second] : [.second]
+        formatter.maximumUnitCount = 2
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter.string(from: max(1, seconds.rounded(.up))) ?? "\(Int(seconds))s"
+    }
+
+    /// Reads the scheduler's state and shows it.
+    func update() {
+        func localize(_ key: LocalizationKey, _ arguments: [String] = []) -> String { tr(key, arguments: arguments, language: language) }
+        guard let status = provider() else { return }
+        let date = now()
+        let phase = status.phase(now: date)
+        var color = NSColor.systemGreen
+        var progress: Double?
+        let text: String
+        switch phase {
+        case .reading:
+            text = localize(.keyRefreshStatusPhaseReading)
+        case .loginExpired:
+            text = localize(.keyRefreshStatusPhaseLogin); color = .systemRed
+        case let .rateLimited(remaining):
+            text = localize(.keyRefreshStatusPhaseRate, [duration(remaining)]); color = .systemRed
+        case let .liveFresh(age):
+            text = localize(.keyRefreshStatusPhaseLive, [duration(age)])
+            progress = 1 - age / max(1, status.realtimeFreshnessWindow)
+        case let .waitingInterval(remaining, total):
+            text = localize(.keyRefreshStatusPhaseInterval, [duration(remaining)]); color = .systemOrange
+            progress = 1 - remaining / max(1, total)
+        case let .waitingTokens(remaining, total):
+            text = localize(.keyRefreshStatusPhaseTokens, [duration(remaining)]); color = .systemOrange
+            progress = 1 - remaining / max(1, total)
+        case .ready:
+            text = localize(.keyRefreshStatusPhaseReady)
+        }
+        sentence.stringValue = text
+        dot.effectiveAppearance.performAsCurrentDrawingAppearance { dot.layer?.backgroundColor = color.cgColor }
+        bar.isHidden = progress == nil
+        bar.doubleValue = min(1, max(0, progress ?? 0))
+        if let last = status.scheduler.lastSuccessAt ?? status.scheduler.lastDispatchAt {
+            lastReadValue.stringValue = localize(.keyRefreshStatusLastReadValue, [
+                StatusSlotAppearance.timeText(last, timeZone: .current), duration(date.timeIntervalSince(last))])
+        } else {
+            lastReadValue.stringValue = localize(.keyRefreshStatusLastReadNone)
+        }
+        tokenDots.filled = status.tokensAvailable(at: date)
+        if let realtimeAt = status.realtimeAt {
+            modValue.stringValue = localize(.keyRefreshStatusModValue, [duration(max(0, date.timeIntervalSince(realtimeAt)))])
+        } else {
+            modValue.stringValue = localize(.keyRefreshStatusModNone)
+        }
+        lastReadValue.invalidateIntrinsicContentSize()
+        modValue.invalidateIntrinsicContentSize()
+    }
+}
+
 /// The content of the "?" popover next to the refresh frequency: a title, the timelines and three plain sentences.
 final class RefreshRateHelpContentView: NSView {
     static let width: CGFloat = 340
 
     /// - Parameter selectedInterval: the frequency currently chosen in Settings, shown next to the first timeline.
-    init(selectedInterval: TimeInterval, language: AppLanguage = .selected) {
+    init(selectedInterval: TimeInterval, language: AppLanguage = .selected, now: @escaping () -> Date = Date.init,
+         status: (() -> ClaudeRefreshStatus?)? = nil) {
         func localize(_ key: LocalizationKey) -> String { tr(key, language: language) }
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: 10))
         let inset: CGFloat = 16
@@ -95,7 +303,15 @@ final class RefreshRateHelpContentView: NSView {
         rows.alignment = .leading
         rows.spacing = 10
 
-        let stack = NSStackView(views: [
+        var live: [NSView] = []
+        if let status {
+            live = [
+                text(localize(.keyRefreshStatusNowTitle), size: 13, weight: .semibold),
+                RefreshRateLiveStatusView(width: contentWidth, language: language, now: now, provider: status),
+                NSBox.separator(width: contentWidth),
+            ]
+        }
+        let stack = NSStackView(views: live + [
             text(localize(.keyRefreshHelpTitle), size: 13, weight: .semibold),
             rows,
             text(localize(.keyRefreshHelpLine1), size: 12, color: .secondaryLabelColor),
@@ -126,9 +342,11 @@ final class RefreshRateHelpContentView: NSView {
 final class RefreshRateHelpButton: NSButton {
     private var popover: NSPopover?
     private let selectedInterval: () -> TimeInterval
+    private let status: (() -> ClaudeRefreshStatus?)?
 
-    init(selectedInterval: @escaping () -> TimeInterval) {
+    init(selectedInterval: @escaping () -> TimeInterval, status: (() -> ClaudeRefreshStatus?)? = nil) {
         self.selectedInterval = selectedInterval
+        self.status = status
         super.init(frame: NSRect(x: 0, y: 0, width: 16, height: 16))
         image = NSImage(systemSymbolName: "questionmark.circle", accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
@@ -153,7 +371,7 @@ final class RefreshRateHelpButton: NSButton {
 
     @objc private func toggle() {
         if let popover, popover.isShown { popover.performClose(nil); return }
-        let content = RefreshRateHelpContentView(selectedInterval: selectedInterval())
+        let content = RefreshRateHelpContentView(selectedInterval: selectedInterval(), status: status)
         let controller = NSViewController()
         controller.view = content
         let popover = DashboardTextTooltip.makePopover()

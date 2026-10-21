@@ -85,6 +85,28 @@ public final class FetchScheduler: FetchScheduling {
         }
     }
 
+    /// What the scheduler would allow right now. Briefly waits on the scheduler queue; never call it from there.
+    public func statusSnapshot() -> FetchSchedulerStatus {
+        queue.sync {
+            let now = clock.now
+            refillTokens(now: now)
+            return FetchSchedulerStatus(
+                tokens: tokens,
+                tokenCapacity: configuration.tokenCapacity,
+                tokenRefillInterval: configuration.tokenRefillInterval,
+                nextTokenAt: tokens < configuration.tokenCapacity
+                    ? tokenRefillAnchor.addingTimeInterval(configuration.tokenRefillInterval) : nil,
+                automaticTokenCost: configuration.automaticTokenCost,
+                lastDispatchAt: lastDispatchAt,
+                automaticMinimumInterval: configuration.automaticMinimumInterval,
+                lastSuccessAt: currentEpochLastSuccessAt,
+                cooldownRemaining: cooldownRemaining(now: now),
+                isUnauthorizedPaused: persistent.isUnauthorizedPaused,
+                isBusy: isBusy,
+                at: now)
+        }
+    }
+
     /// Blocks until previously enqueued scheduler work has run. Intended for tests and shutdown.
     public func waitUntilIdle() {
         queue.sync {}

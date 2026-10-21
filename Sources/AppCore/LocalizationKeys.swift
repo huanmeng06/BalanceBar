@@ -636,5 +636,22 @@
     case keyRefreshHelpLine2 = "refresh.help.line2"
     case keyRefreshHelpLine3 = "refresh.help.line3"
 
+    case keyRefreshStatusNowTitle = "refresh.status.now_title"
+    case keyRefreshStatusPhaseReading = "refresh.status.phase_reading"
+    case keyRefreshStatusPhaseLogin = "refresh.status.phase_login"
+    case keyRefreshStatusPhaseRate = "refresh.status.phase_rate"
+    case keyRefreshStatusPhaseLive = "refresh.status.phase_live"
+    case keyRefreshStatusPhaseInterval = "refresh.status.phase_interval"
+    case keyRefreshStatusPhaseTokens = "refresh.status.phase_tokens"
+    case keyRefreshStatusPhaseReady = "refresh.status.phase_ready"
+    case keyRefreshStatusLastRead = "refresh.status.last_read"
+    case keyRefreshStatusLastReadValue = "refresh.status.last_read_value"
+    case keyRefreshStatusLastReadNone = "refresh.status.last_read_none"
+    case keyRefreshStatusTokensLabel = "refresh.status.tokens_label"
+    case keyRefreshStatusTokensHint = "refresh.status.tokens_hint"
+    case keyRefreshStatusModLabel = "refresh.status.mod_label"
+    case keyRefreshStatusModValue = "refresh.status.mod_value"
+    case keyRefreshStatusModNone = "refresh.status.mod_none"
+
     var rawKey: String { rawValue }
 }

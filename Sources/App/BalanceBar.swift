@@ -463,7 +463,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 return Dictionary(uniqueKeysWithValues: self.aggregationDisplays.map { ($0.identity.providerID, $0.snapshot) })
             },
             isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false },
-            makeRealtimeBoostRows: { [weak self] forSearch in self?.modOnboarding.realtimeBoostSettingsRows(detached: forSearch) ?? [] }
+            makeRealtimeBoostRows: { [weak self] forSearch in self?.modOnboarding.realtimeBoostSettingsRows(detached: forSearch) ?? [] },
+            claudeRefreshStatus: { [weak self] in self?.claudeQuota.refreshStatus() }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },

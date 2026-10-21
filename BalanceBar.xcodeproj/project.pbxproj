@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		8A13DB4A2954C885F8703323 /* ClaudeRefreshStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5241D53F729ED9C54FE4FAB /* ClaudeRefreshStatusTests.swift */; };
+		0B5D2167AA67822EEADE3E1E /* ClaudeRefreshStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB3AAAA0E2EFFA5EDD3C70 /* ClaudeRefreshStatus.swift */; };
 		362C7C46999A5E109E0AAFE8 /* RefreshRateHelpTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16648F22828C6D53293C3D8B /* RefreshRateHelpTests.swift */; };
 		9153C335564CDD28F090B696 /* RefreshRateHelp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F16E5DB24DAB5A2885C2FC /* RefreshRateHelp.swift */; };
 		D213BD4BFFF58015CDC6752F /* ModOnboardingWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E7DB4D843D913BA93BB2D97 /* ModOnboardingWindowController.swift */; };
@@ -233,6 +235,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A5241D53F729ED9C54FE4FAB /* ClaudeRefreshStatusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRefreshStatusTests.swift; sourceTree = "<group>"; };
+		99FB3AAAA0E2EFFA5EDD3C70 /* ClaudeRefreshStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRefreshStatus.swift; sourceTree = "<group>"; };
 		16648F22828C6D53293C3D8B /* RefreshRateHelpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshRateHelpTests.swift; sourceTree = "<group>"; };
 		71F16E5DB24DAB5A2885C2FC /* RefreshRateHelp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshRateHelp.swift; sourceTree = "<group>"; };
 		1E7DB4D843D913BA93BB2D97 /* ModOnboardingWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingWindowController.swift; sourceTree = "<group>"; };
@@ -773,6 +777,7 @@
 		A40000000000000000000014 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A5241D53F729ED9C54FE4FAB /* ClaudeRefreshStatusTests.swift */,
 				19546D256B8ED25F4F27159E /* CodexLocalQuotaTests.swift */,
 				A10000000000000000000058 /* ResponseParsersTests.swift */,
 				A1000000000000000000005F /* CCSwitchRepositoryTests.swift */,
@@ -996,6 +1001,7 @@
 		A10000000000000000000059 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				99FB3AAAA0E2EFFA5EDD3C70 /* ClaudeRefreshStatus.swift */,
 				B249D89D9335039E4F94F4C2 /* CodexLocalQuota.swift */,
 				A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */,
 				A49300000000000000000001 /* CCSwitchAggregationRepository.swift */,
@@ -1474,6 +1480,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0B5D2167AA67822EEADE3E1E /* ClaudeRefreshStatus.swift in Sources */,
 				9153C335564CDD28F090B696 /* RefreshRateHelp.swift in Sources */,
 				D213BD4BFFF58015CDC6752F /* ModOnboardingWindowController.swift in Sources */,
 				C7CFA9577E4DB16A0037444F /* ModOnboardingCoordinator.swift in Sources */,
@@ -1614,6 +1621,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8A13DB4A2954C885F8703323 /* ClaudeRefreshStatusTests.swift in Sources */,
 				362C7C46999A5E109E0AAFE8 /* RefreshRateHelpTests.swift in Sources */,
 				E35FE3CFD82B7CB109D62821 /* ModOnboardingCoordinatorTests.swift in Sources */,
 				9C81F7D50F39AEA4891C2BC6 /* CodexLocalQuotaTests.swift in Sources */,

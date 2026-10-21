@@ -155,6 +155,26 @@ public struct FetchSchedulerConfiguration: Equatable {
     public init() {}
 }
 
+/// A read-only snapshot of what the scheduler allows right now (for Settings; never used to decide anything).
+public struct FetchSchedulerStatus: Equatable {
+    public var tokens: Int
+    public var tokenCapacity: Int
+    public var tokenRefillInterval: TimeInterval
+    /// When the next request token arrives, `nil` while the bucket is full.
+    public var nextTokenAt: Date?
+    public var automaticTokenCost: Int
+    public var lastDispatchAt: Date?
+    public var automaticMinimumInterval: TimeInterval
+    /// Last successful read for the current account.
+    public var lastSuccessAt: Date?
+    /// Remaining 429 cooldown at `at`.
+    public var cooldownRemaining: TimeInterval
+    public var isUnauthorizedPaused: Bool
+    public var isBusy: Bool
+    /// When the snapshot was taken.
+    public var at: Date
+}
+
 /// Why a request was skipped instead of sent.
 public enum FetchSkipReason: String, Equatable {
     case coalescedIntoInFlight = "coalesced_in_flight"

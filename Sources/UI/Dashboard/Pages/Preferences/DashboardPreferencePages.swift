@@ -35,6 +35,7 @@ struct DashboardPreferencePageActions {
     let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
     let onClamp: () -> Void
     var makeRealtimeBoostRows: (_ forSearch: Bool) -> [NSView] = { _ in [] }
+    var claudeRefreshStatus: () -> ClaudeRefreshStatus? = { nil }
 }
 
 final class DashboardPreferencePages {
@@ -77,6 +78,7 @@ final class DashboardPreferencePages {
         relay.onLaunchWithChatGPT = actions.onLaunchWithChatGPT
         relay.onOpenLaunchWithChatGPTSettings = actions.onOpenLaunchWithChatGPTSettings
         relay.onInterval = actions.onInterval
+        relay.claudeRefreshStatus = actions.claudeRefreshStatus
         relay.onOffsetAdjust = actions.onOffsetAdjust
         relay.onOffsetValue = actions.onOffsetValue
         relay.onOffsetValueEnded = actions.onOffsetValueEnded

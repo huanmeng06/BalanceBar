@@ -79,6 +79,8 @@ final class DashboardPreferencePageRelay: NSObject {
     var onOpenCCSwitch: (() -> Void)?
     var onOpenSystemMenuBarSettings: (() -> Void)?
     var onManualRefresh: (() -> Void)?
+    /// Why and when the next official Claude read can happen (the "?" next to the refresh frequency).
+    var claudeRefreshStatus: (() -> ClaudeRefreshStatus?)?
     var onCheckForUpdates: (() -> Void)?
     var onInstallUpdate: (() -> Void)?
     var onOpenUpdateNotes: (() -> Void)?

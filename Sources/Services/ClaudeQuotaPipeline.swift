@@ -276,6 +276,15 @@ final class ClaudeQuotaPipeline {
         }
     }
 
+    /// Why and when the next official read can happen, for Settings. Cheap enough to call once a second.
+    func refreshStatus() -> ClaudeRefreshStatus? {
+        guard let scheduler else { return nil }
+        return ClaudeRefreshStatus(
+            scheduler: scheduler.statusSnapshot(),
+            realtimeAt: realtime.lastTrustedRealtimeObservationAt,
+            realtimeFreshnessWindow: realtimeFreshnessWindow)
+    }
+
     deinit {
         realtimeSources.forEach { $0.stop() }
         identity.stopMonitoring()
